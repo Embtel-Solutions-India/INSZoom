@@ -1,0 +1,245 @@
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7000/api',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  timeout: 120_000
+})
+
+let refreshPromise = null
+
+const clearStoredSession = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('loginTime')
+  localStorage.removeItem('user')
+}
+
+const refreshAccessToken = async () => {
+  const refreshToken = localStorage.getItem('refreshToken')
+  if (!refreshToken) throw new Error('No refresh token')
+
+  const response = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken })
+  const { accessToken, refreshToken: newRefreshToken } = response.data || {}
+  if (!accessToken) throw new Error('Refresh failed')
+
+  localStorage.setItem('token', accessToken)
+  if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken)
+  localStorage.setItem('loginTime', Date.now().toString())
+  return accessToken
+}
+
+// Add token to requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    // The instance default Content-Type is 'application/json'. Left in place
+    // for a FormData payload (file uploads), axios's own transformRequest
+    // sees that header and JSON-stringifies the FormData instead of sending
+    // it as multipart — silently dropping every file. Clearing it here lets
+    // axios detect FormData and hand it to the browser to set the correct
+    // multipart boundary itself.
+    if (config.data instanceof FormData) {
+      if (typeof config.headers?.delete === 'function') {
+        config.headers.delete('Content-Type')
+      } else if (config.headers) {
+        delete config.headers['Content-Type']
+      }
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+export const notificationsApi = {
+  registerDevice: (token, meta = {}) => api.post('/notifications/register-device', { token, ...meta }),
+  unregisterDevice: (token) => api.delete('/notifications/unregister-device', { data: { token } }),
+};
+
+// Handle response errors
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+      error.userMessage = 'The server is taking too long to respond. Please try again.'
+    }
+    const originalRequest = error.config
+    if (error.response?.status === 401 && !originalRequest?._retry) {
+      if (error.response?.data?.code === 'TOKEN_EXPIRED' && localStorage.getItem('refreshToken')) {
+        originalRequest._retry = true
+        try {
+          if (!refreshPromise) {
+            refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null })
+          }
+          const nextToken = await refreshPromise
+          originalRequest.headers = originalRequest.headers || {}
+          originalRequest.headers.Authorization = `Bearer ${nextToken}`
+          return api(originalRequest)
+        } catch {
+          clearStoredSession()
+        }
+      } else {
+        clearStoredSession()
+      }
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+export default api
+
+export const casesApi = {
+  dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
+  list: (params = {}) => api.get('/cases', { params }),
+  get: (id) => api.get(`/cases/${id}`),
+  workflow: (id) => api.get(`/cases/${id}/workflow`),
+  recalculateWorkflow: (id, reason) => api.post(`/cases/${id}/workflow/recalculate`, { reason }),
+  generateForms: (id) => api.post(`/cases/${id}/workflow/generate-forms`),
+  generatePackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-package`, payload),
+  generateWordPackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-word-package`, payload),
+  create: (payload) => api.post('/cases', payload),
+  update: (id, payload) => api.put(`/cases/${id}`, payload),
+  archive: (id) => api.delete(`/cases/${id}`),
+  updateStage: (id, payload) => api.put(`/cases/${id}/stage`, payload),
+  addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
+  assignCaseManager: (id, caseManagerId, notes, extra = {}) =>
+    api.put(`/cases/${id}/assign-case-manager`, { caseManagerId, notes, ...extra }),
+  addDocumentReference: (id, documentId) =>
+    api.post(`/cases/${id}/document-references`, { documentId }),
+  addUSCISFormReference: (id, payload) =>
+    api.post(`/cases/${id}/uscis-form-references`, payload),
+  addQuestionnaireReference: (id, payload) =>
+    api.post(`/cases/${id}/questionnaire-references`, payload),
+  sendQuestionnaire: (id, payload) =>
+    api.post(`/cases/${id}/send-questionnaire`, payload),
+  submitQuestionnaire: (id, payload) =>
+    api.post(`/cases/${id}/submit-questionnaire`, payload),
+  approveQuestionnaire: (id, payload) =>
+    api.post(`/cases/${id}/approve-questionnaire`, payload),
+  addons: (id) => api.get(`/cases/${id}/addons`),
+}
+
+export const lifecycleApi = {
+  tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
+  saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),
+}
+
+export const employmentWorkflowApi = {
+  createRequest: (caseId, payload) => api.post(`/employment-workflow/${caseId}/requests`, payload),
+}
+
+export const questionnairesApi = {
+  list: (params = {}) => api.get('/questionnaires', { params }),
+  defaults: () => api.get('/questionnaires/defaults'),
+  create: (payload) => api.post('/questionnaires', payload),
+  update: (id, payload) => api.put(`/questionnaires/${id}`, payload),
+  archive: (id) => api.delete(`/questionnaires/${id}`),
+  duplicate: (id, payload = {}) => api.post(`/questionnaires/${id}/clone`, payload),
+  version: (id) => api.post(`/questionnaires/${id}/version`),
+  get: (id) => api.get(`/questionnaires/${id}`),
+  getForCase: (caseId, params = {}) => api.get(`/questionnaires/case/${caseId}`, { params }),
+  listCaseChecklists: (caseId) => api.get(`/questionnaires/case/${caseId}/checklists`),
+  createQuestion: (id, payload) => api.post(`/questionnaires/${id}/questions`, payload),
+  updateQuestion: (id, questionId, payload) => api.put(`/questionnaires/${id}/questions/${questionId}`, payload),
+  deleteQuestion: (id, questionId) => api.delete(`/questionnaires/${id}/questions/${questionId}`),
+  assign: (id, payload) => api.post(`/questionnaires/${id}/assign`, payload),
+  answers: (id, params = {}) => api.get(`/questionnaires/${id}/answers`, { params }),
+  progress: (id, params = {}) => api.get(`/questionnaires/${id}/progress`, { params }),
+  mappings: (id) => api.get(`/questionnaires/${id}/uscis-mappings`),
+  generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
+}
+
+export const documentsApi = {
+  preview: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),
+  review: (documentId, payload) => api.put(`/documents/${documentId}/review`, payload),
+  versions: (documentId) => api.get(`/documents/${documentId}/versions`),
+}
+
+export const clientIntakeApi = {
+  caseIntake: (caseId) => api.get(`/client-intake/cases/${caseId}`),
+}
+
+export const uscisFormsApi = {
+  caseForms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
+  createCaseForm: (caseId, payload) => api.post(`/uscis-forms/case/${caseId}`, payload),
+  render: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/render`),
+  workspace: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace`),
+  saveDraft: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/draft`, payload),
+  autoSave: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/autosave`, payload),
+  saveSection: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/section`, payload),
+  review: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/review`, payload),
+  saveWorkspaceField: (caseId, formId, payload) => api.patch(`/uscis-forms/case/${caseId}/${formId}/workspace/field`, payload),
+  saveWorkspaceSection: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/workspace/section`, payload),
+  reviewWorkspaceField: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/field/review`, payload),
+  reviewWorkspaceSection: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/section/review`, payload),
+  decideWorkspaceForm: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/decision`, payload),
+  lockWorkspaceForm: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/lock`, payload),
+  refreshWorkspace: (caseId, formId, payload = {}) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/refresh`, payload),
+  resetWorkspace: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/reset`, payload),
+  resolveWorkspaceConflict: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/conflict`, payload),
+  rollbackWorkspaceField: (caseId, formId, historyId) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/history/${historyId}/rollback`),
+  addWorkspaceComment: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/comments`, payload),
+  resolveWorkspaceComment: (caseId, formId, commentId) => api.patch(`/uscis-forms/case/${caseId}/${formId}/workspace/comments/${commentId}/resolve`),
+  createWorkspaceTask: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/tasks`, payload),
+  workspaceValidation: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/validation`),
+  workspaceHistory: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/history`),
+  workspaceSources: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/sources`),
+  workspaceComparison: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/comparison`),
+  searchWorkspaceFields: (caseId, formId, q) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/search`, { params: { q } }),
+}
+
+export const formGenerationApi = {
+  generatePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/generate`, payload),
+  regeneratePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/regenerate`, payload),
+  previewPdf: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
+  downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }),
+}
+
+export const petitionApi = {
+  assemble: (caseId, payload = {}) => api.post(`/petition/cases/${caseId}/assemble`, payload),
+  listPackages: (caseId) => api.get(`/petition/cases/${caseId}/packages`),
+  getPackage: (packageId) => api.get(`/petition/packages/${packageId}`),
+  getValidation: (packageId) => api.get(`/petition/packages/${packageId}/validation`),
+  previewUrl: (packageId) => `${api.defaults.baseURL}/petition/packages/${packageId}/preview`,
+  preview: (packageId) => api.get(`/petition/packages/${packageId}/preview`, { responseType: 'blob' }),
+  download: (packageId, format = 'pdf') => api.get(`/petition/packages/${packageId}/download`, { params: { format }, responseType: 'blob' }),
+  saveLetter: (packageId, sectionKey, html) => api.patch(`/petition/packages/${packageId}/letters/${sectionKey}`, { html }),
+  reorderExhibits: (packageId, order) => api.patch(`/petition/packages/${packageId}/exhibits/order`, { order }),
+  finalize: (packageId, payload = {}) => api.post(`/petition/packages/${packageId}/finalize`, payload),
+  unlock: (packageId, reason) => api.post(`/petition/packages/${packageId}/unlock`, { reason }),
+  recordFiling: (packageId, payload) => api.post(`/petition/packages/${packageId}/filing`, payload),
+  recordReceipt: (packageId, payload) => api.post(`/petition/packages/${packageId}/receipt`, payload),
+  listDefinitions: () => api.get('/petition/definitions'),
+  getDefinition: (key) => api.get(`/petition/definitions/${key}`),
+  upsertDefinition: (key, payload) => api.put(`/petition/definitions/${key}`, payload),
+}
+
+// Public eligibility quiz leads — same Backend module BAIS's own admin
+// portal reads from (Backend/src/modules/eligibility-quiz/quiz.routes.js,
+// mounted at /eligibility-quiz). Every lead here originated from a
+// prospect completing the public quiz (and, if consultationId is
+// populated, going on to book a free consultation).
+export const leadsApi = {
+  list: (params = {}) => api.get('/eligibility-quiz/leads', { params }),
+  get: (id) => api.get(`/eligibility-quiz/leads/${id}`),
+  markSeen: (id) => api.post(`/eligibility-quiz/leads/${id}/seen`, {}),
+  updateStatus: (id, status) => api.patch(`/eligibility-quiz/leads/${id}/status`, { status }),
+  addNote: (id, text) => api.post(`/eligibility-quiz/leads/${id}/notes`, { text }),
+}
+
+export const eligibilityApi = {
+  evaluate: (caseId, payload = {}) => api.post('/eligibility/evaluate', { caseId, ...payload }),
+  results: (caseId) => api.get(`/eligibility/${caseId}/results`),
+  gaps: (caseId) => api.get(`/eligibility/${caseId}/gaps`),
+  recommendations: (caseId) => api.get(`/eligibility/${caseId}/recommendations`),
+  recalculate: (caseId, payload = {}) => api.post(`/eligibility/${caseId}/recalculate`, payload),
+  override: (caseId, payload = {}) => api.post(`/eligibility/${caseId}/override`, payload),
+}

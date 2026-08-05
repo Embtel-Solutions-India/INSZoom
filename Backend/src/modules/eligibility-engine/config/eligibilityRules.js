@@ -1,0 +1,102 @@
+const DISCLAIMER = "Attorney review required. This advisory analysis is not legal advice and does not determine eligibility or approval.";
+
+const evidenceCatalog = {
+  advanced_degree: ["educationHistory", "degree", "transcript", "questionnaire.education"],
+  specialty_occupation: ["employmentHistory", "skills", "jobTitle", "questionnaire.specialtyOccupation"],
+  employer_sponsor: ["petitioner.name", "company.name", "case.companyId"],
+  publications: ["extractedDocuments.byDocumentType.publication", "ocr.publications", "questionnaire.publications"],
+  awards: ["extractedDocuments.byDocumentType.award", "ocr.awards", "questionnaire.awards"],
+  judging: ["questionnaire.judging", "ocr.judging"],
+  original_contributions: ["questionnaire.originalContributions", "ocr.patents", "extractedDocuments.byDocumentType.patent"],
+  memberships: ["questionnaire.memberships", "ocr.memberships"],
+  high_salary: ["questionnaire.highSalary", "ocr.salary", "extractedDocuments.byDocumentType.salary"],
+  critical_role: ["employmentHistory", "questionnaire.criticalRole", "ocr.criticalRole"],
+  media_coverage: ["questionnaire.mediaCoverage", "ocr.press", "extractedDocuments.byDocumentType.press"],
+  recommendation_letters: ["extractedDocuments.byDocumentType.recommendation_letter", "ocr.recommendationLetters"],
+  national_importance: ["questionnaire.nationalImportance", "ocr.nationalImportance"],
+  work_authorization: ["beneficiary.currentVisaStatus", "beneficiary.visaType", "questionnaire.workAuthorization"],
+  family_relationship: ["questionnaire.familyRelationship", "beneficiary.familyMembers", "dependents"],
+  employmentHistory: ["employmentHistory"],
+  skills: ["questionnaire.skills", "ocr.skills", "beneficiary.skills"],
+  multinational_manager: ["questionnaire.multinationalManager", "employmentHistory"],
+  specialized_knowledge: ["questionnaire.specializedKnowledge", "skills", "employmentHistory"],
+  student_intent: ["questionnaire.studentIntent", "educationHistory"],
+};
+
+const eligibilityRules = [
+  {
+    category: "H-1B",
+    label: "H-1B Specialty Occupation",
+    description: "Advisory assessment for specialty occupation sponsorship readiness.",
+    evidenceWeights: { employer_sponsor: 25, specialty_occupation: 30, advanced_degree: 25, work_authorization: 10, recommendation_letters: 10 },
+    requiredEvidence: ["employer_sponsor", "specialty_occupation"],
+    dynamicQuestions: ["What is the offered role and SOC/title?", "Does the role normally require at least a bachelor's degree?", "Will a U.S. employer sponsor the petition?"],
+  },
+  {
+    category: "O-1A",
+    label: "O-1A Extraordinary Ability",
+    evidenceWeights: { awards: 18, publications: 14, judging: 14, original_contributions: 18, memberships: 10, high_salary: 10, critical_role: 10, media_coverage: 6 },
+    requiredEvidence: [],
+    thresholdEvidenceCount: 3,
+    dynamicQuestions: ["Do you have nationally or internationally recognized awards?", "Have you judged others' work?", "Do you have press or media coverage?"],
+  },
+  {
+    category: "EB-1A",
+    label: "EB-1A Extraordinary Ability",
+    evidenceWeights: { awards: 18, publications: 14, judging: 14, original_contributions: 18, memberships: 10, high_salary: 10, critical_role: 10, media_coverage: 6 },
+    requiredEvidence: [],
+    thresholdEvidenceCount: 3,
+    dynamicQuestions: ["Do you have publications or citations?", "Have you made original contributions?", "Do memberships require outstanding achievement?"],
+  },
+  {
+    category: "EB-2 NIW",
+    label: "EB-2 National Interest Waiver",
+    evidenceWeights: { advanced_degree: 20, publications: 12, original_contributions: 18, national_importance: 25, recommendation_letters: 15, critical_role: 10 },
+    requiredEvidence: ["advanced_degree", "national_importance"],
+    dynamicQuestions: ["What is the proposed endeavor?", "Why is it nationally important?", "Who can independently recommend the work?"],
+  },
+  {
+    category: "L-1A",
+    label: "L-1A Intracompany Manager or Executive",
+    evidenceWeights: { employer_sponsor: 25, multinational_manager: 35, critical_role: 20, employmentHistory: 20 },
+    requiredEvidence: ["employer_sponsor", "multinational_manager"],
+    dynamicQuestions: ["Has the beneficiary worked abroad for a qualifying company?", "Was the role managerial or executive?"],
+  },
+  {
+    category: "L-1B",
+    label: "L-1B Specialized Knowledge",
+    evidenceWeights: { employer_sponsor: 25, specialized_knowledge: 35, critical_role: 20, employmentHistory: 20 },
+    requiredEvidence: ["employer_sponsor", "specialized_knowledge"],
+    dynamicQuestions: ["What proprietary or specialized knowledge does the beneficiary hold?", "How is that knowledge uncommon?"],
+  },
+  {
+    category: "F-1",
+    label: "F-1 Student Visa",
+    evidenceWeights: { student_intent: 35, advanced_degree: 25, work_authorization: 10, family_relationship: 5 },
+    requiredEvidence: ["student_intent"],
+    dynamicQuestions: ["Which school/program issued admission?", "What funding and nonimmigrant intent evidence exists?"],
+  },
+  {
+    category: "OPT",
+    label: "Optional Practical Training",
+    evidenceWeights: { student_intent: 25, advanced_degree: 25, work_authorization: 25, specialty_occupation: 25 },
+    requiredEvidence: ["student_intent", "work_authorization"],
+    dynamicQuestions: ["What is the degree completion date?", "Is the proposed work related to the field of study?"],
+  },
+  {
+    category: "STEM OPT",
+    label: "STEM OPT Extension",
+    evidenceWeights: { student_intent: 20, advanced_degree: 25, work_authorization: 25, employer_sponsor: 15, specialty_occupation: 15 },
+    requiredEvidence: ["student_intent", "work_authorization", "employer_sponsor"],
+    dynamicQuestions: ["Is the degree STEM-designated?", "Is the employer E-Verify enrolled?", "Is there a training plan?"],
+  },
+  {
+    category: "Family-Based Green Card",
+    label: "Family-Based Green Card",
+    evidenceWeights: { family_relationship: 45, work_authorization: 10, recommendation_letters: 5 },
+    requiredEvidence: ["family_relationship"],
+    dynamicQuestions: ["What is the qualifying family relationship?", "Is proof of relationship available?", "Is financial sponsorship evidence available?"],
+  },
+];
+
+module.exports = { DISCLAIMER, eligibilityRules, evidenceCatalog };

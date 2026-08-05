@@ -1,0 +1,178 @@
+const LeadModel = require("../../models/Lead");
+const Settings = require("../../models/Settings");
+const emailService = require("../email/email.service");
+const entityConfigService = require("../entity-config/entityConfig.service");
+const telemetryService = require("../telemetry/telemetry.service");
+const crmSyncService = require("../eligibility-quiz/crmSync.service");
+const notificationService = require("../notifications/notification.service");
+const realtimeGateway = require("../realtime/realtime.gateway");
+
+const STAFF_ROLES = ["super_admin", "admin", "case_manager"];
+
+const LEAD_EMAIL_RECIPIENT = "kritagya@bayareaimmigrationservices.com";
+
+function clean(value) {
+  return String(value || "").trim();
+}
+
+// Preserved for backward compatibility — some existing/legacy callers may
+// still read `email.mailtoUrl`/`email.subject`/`email.body` off createLead()'s
+// return value; nothing about the response shape changes.
+function buildLeadEmail(lead) {
+  const createdAt = lead.createdAt ? new Date(lead.createdAt).toLocaleString("en-US") : new Date().toLocaleString("en-US");
+  const subject = `New Consultation Lead - ${lead.fullName}`;
+  const body = [
+    "A new consultation lead has been received from the BAIS client portal.",
+    "",
+    `Name: ${lead.fullName}`,
+    `Email: ${lead.email}`,
+    `Phone: ${lead.phone}`,
+    `Visa Type: ${lead.visaType || "Not specified"}`,
+    `Source: ${lead.source || "BAIS appointment form"}`,
+    `Submitted: ${createdAt}`,
+    "",
+    "Message:",
+    lead.message || "No message provided.",
+  ].join("\n");
+
+  return {
+    subject,
+    body,
+    mailtoUrl: `mailto:${LEAD_EMAIL_RECIPIENT}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+  };
+}
+
+async function resolveNotificationRecipient() {
+  const settings = await Settings.findOne({ key: "global" }).select("leadNotificationEmail");
+  return settings?.leadNotificationEmail || LEAD_EMAIL_RECIPIENT;
+}
+
+// Two independent channels, both best-effort:
+//  1. A single configured recipient (Settings.leadNotificationEmail, falling
+//     back to the legacy hardcoded address) gets the plain email — this is
+//     the original Phase 1 mechanism and stays exactly as-is.
+//  2. Every admin/case_manager gets a real in-app + push + socket
+//     notification (via the shared notification system, not a bespoke one)
+//     so the admin Leads Inbox lights up live regardless of who's logged in
+//     — this is the piece Phase 1 was missing.
+async function notifyStaffOfLead(lead) {
+  const to = await resolveNotificationRecipient();
+  const emailData = {
+    fullName: lead.fullName,
+    email: lead.email,
+    phone: lead.phone,
+    visaPathway: lead.visaPathway,
+    source: lead.source,
+    tier: lead.scoreResult?.tier,
+    criteriaMetCount: lead.scoreResult?.criteriaMetCount,
+    routing: lead.scoreResult?.routing,
+  };
+
+  await emailService.sendTemplateEmail("quiz-lead-internal", { to, data: emailData, source: "shared" }).catch(() => null);
+
+  const tierLabel = lead.scoreResult?.tier ? ` (Tier ${lead.scoreResult.tier})` : "";
+  await notificationService.createForRoles(STAFF_ROLES, {
+    type: "lead_created",
+    title: `New lead: ${lead.fullName}${tierLabel}`,
+    message: `${lead.visaPathway || "General inquiry"} — ${lead.email}`,
+    link: "/admin/portal?tab=leads",
+    priority: lead.scoreResult?.tier === "A" ? "high" : "medium",
+    channels: ["in_app", "socket", "push"],
+    metadata: { leadId: String(lead._id), tier: lead.scoreResult?.tier },
+    source: "shared",
+  }).catch(() => null);
+
+  realtimeGateway.emitToRole("admin", "lead:created", lead);
+  realtimeGateway.emitToRole("case_manager", "lead:created", lead);
+}
+
+// Backward-compatible entry point for the existing `/leads/public` contract
+// (BAIS appointment/consultation form). Now ALSO persists a `Lead` document
+// (previously this only ever produced a mailto: link and never touched the
+// database) and sends the staff notification via sendTemplateEmail instead
+// of a hardcoded mailto recipient — the response shape callers already rely
+// on (`{lead, email}`) is unchanged.
+async function createLead(payload = {}, req) {
+  const leadData = {
+    fullName: clean(payload.fullName || payload.name),
+    email: clean(payload.email).toLowerCase(),
+    phone: clean(payload.phone),
+    visaType: clean(payload.visaType || payload.visa),
+    message: clean(payload.message),
+    source: clean(payload.source) || "BAIS appointment form",
+    ipAddress: req?.ip,
+    userAgent: req?.headers?.["user-agent"],
+    createdAt: new Date(),
+  };
+
+  const email = buildLeadEmail(leadData);
+  leadData.mailtoUrl = email.mailtoUrl;
+
+  const persisted = await LeadModel.create({
+    fullName: leadData.fullName,
+    email: leadData.email,
+    phone: leadData.phone,
+    visaPathway: leadData.visaType,
+    source: leadData.source,
+    message: leadData.message,
+    userAgent: leadData.userAgent,
+  });
+  await notifyStaffOfLead(persisted);
+
+  return { lead: leadData, email };
+}
+
+// Full public-quiz lead: persists the complete quiz payload (profile +
+// criteria answers + scoreResult + UTM + disclaimer version + ipHash), sends
+// the prospect confirmation email, fires telemetry, and enqueues CRM sync
+// (fire-and-forget — never awaited by the caller, so submit() stays fast).
+async function createQuizLead(payload, req) {
+  const lead = await LeadModel.create({
+    fullName: payload.fullName,
+    email: payload.email,
+    phone: payload.phone,
+    visaPathway: payload.visaPathway,
+    source: payload.source || "public_quiz",
+    utm: payload.utm,
+    profileAnswers: payload.profileAnswers,
+    criteriaAnswers: payload.criteriaAnswers,
+    scoreResult: payload.scoreResult,
+    disclaimerAcceptedVersion: payload.disclaimerAcceptedVersion,
+    ipHash: payload.ipHash,
+    userAgent: req?.headers?.["user-agent"],
+  });
+
+  const publicConfig = await entityConfigService.getPublicConfig().catch(() => ({}));
+  await emailService.sendTemplateEmail("quiz-lead-confirmation", {
+    to: lead.email,
+    data: {
+      fullName: lead.fullName,
+      visaPathway: lead.visaPathway,
+      pathwayString: lead.scoreResult?.pathwayString,
+      nextStep: payload.nextStep,
+      msoEntityShortName: publicConfig.msoEntityShortName,
+    },
+    source: "shared",
+  }).catch(() => null);
+  await notifyStaffOfLead(lead);
+
+  telemetryService.track({
+    name: "lead.created",
+    sessionId: payload.sessionId,
+    properties: { visaPathway: lead.visaPathway, tier: lead.scoreResult?.tier, routing: lead.scoreResult?.routing },
+    utm: payload.utm,
+    ip: req?.ip,
+  }).catch(() => {});
+
+  // Fire-and-forget: CRM sync must never delay or fail the quiz submit response.
+  crmSyncService.syncLead(lead, req).catch(() => {});
+
+  return lead;
+}
+
+module.exports = {
+  LEAD_EMAIL_RECIPIENT,
+  buildLeadEmail,
+  createLead,
+  createQuizLead,
+};

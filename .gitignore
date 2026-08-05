@@ -1,0 +1,6 @@
+node_modules/
+.agents/
+.claude/
+.VSCodeCounter/
+H0_I-129_template_seed_prompt.md
+ImmigrationCRM.code-workspace

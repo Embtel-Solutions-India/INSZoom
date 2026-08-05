@@ -1,0 +1,10 @@
+{
+  "name": "bais-client-portal",
+  "private": true,
+  "scripts": {
+    "dev": "cd Frontend && npm run dev",
+    "build": "cd Frontend && npm run build",
+    "lint": "cd Frontend && npm run lint",
+    "preview": "cd Frontend && npm run preview"
+  }
+}

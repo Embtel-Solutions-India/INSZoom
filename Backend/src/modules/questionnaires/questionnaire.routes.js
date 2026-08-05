@@ -1,0 +1,60 @@
+const router = require("express").Router();
+const authenticate = require("../../middleware/authenticate");
+const authorizeRoles = require("../../middleware/authorizeRoles");
+const authorizePermissions = require("../../middleware/authorizePermissions");
+const upload = require("../uploads/upload.middleware");
+const ctrl = require("./questionnaire.controller");
+
+const designerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
+const reviewerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
+const readerRoles = [...reviewerRoles, "client", "employer", "employee", "beneficiary"];
+
+router.get("/", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionnaires);
+router.post("/", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createQuestionnaire);
+router.get("/library", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getLibrary);
+router.get("/question-library", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionLibrary);
+router.get("/question-library/:itemId", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionLibraryItem);
+router.post("/question-library/custom", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createCustomLibraryQuestion);
+router.post("/question-library/synchronize", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("questionnaires:create"), ctrl.synchronizeQuestionLibrary);
+router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.ensureDefaultTemplates);
+router.post("/defaults/seed", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.ensureDefaultTemplates);
+router.get("/case/:caseId", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
+router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);
+router.post("/import", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.importQuestionnaire);
+router.post("/ai-generate", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.generateQuestionnaire);
+
+router.get("/responses/:responseId", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getResponse);
+router.post("/responses/:responseId/review", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:review"), ctrl.approveResponse);
+
+router.get("/:id", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionnaire);
+router.put("/:id", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.updateQuestionnaire);
+router.delete("/:id", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:delete"), ctrl.deleteQuestionnaire);
+router.post("/:id/request-approval", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.requestApproval);
+router.post("/:id/approve-definition", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:review"), ctrl.approveDefinition);
+router.post("/:id/publish", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:publish"), ctrl.publishQuestionnaire);
+router.post("/:id/version", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createVersion);
+router.post("/:id/clone", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.cloneQuestionnaire);
+router.get("/:id/export", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:read"), ctrl.exportQuestionnaire);
+router.get("/:id/visible-questions", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getVisibleQuestions);
+router.get("/:id/answers", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getAnswers);
+router.post("/:id/answers", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.saveAnswer);
+router.post("/:id/answers/files", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), upload.array("files", 10), ctrl.saveFileAnswer);
+router.get("/:id/progress", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getProgress);
+router.get("/:id/validation", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.validateAnswers);
+router.post("/:id/validate", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.validateAnswers);
+router.post("/:id/document-requests", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.generateDocumentRequests);
+router.get("/:id/uscis-mappings", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getUscisMappings);
+router.post("/:id/assign", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:assign"), ctrl.assignQuestionnaire);
+router.post("/:id/questions", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.createQuestion);
+router.post("/:id/questions/bulk", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.bulkCreateQuestions);
+router.put("/:id/questions/:questionId", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.updateQuestion);
+router.delete("/:id/questions/:questionId", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.deleteQuestion);
+router.put("/:id/reorder", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.reorderQuestionnaire);
+router.post("/:id/lock", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.lockQuestionnaire);
+router.post("/:id/unlock", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.unlockQuestionnaire);
+router.post("/:id/comments", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.addComment);
+router.post("/:id/autosave", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.autoSaveAnswers);
+router.post("/:id/submit", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:submit"), ctrl.submitAnswers);
+router.get("/:id/analytics", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getAnalytics);
+
+module.exports = router;

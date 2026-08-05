@@ -1,0 +1,48 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22c55e"/>
+      <stop offset="100%" stop-color="#14b8a6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect
+    x="0"
+    y="0"
+    width="512"
+    height="512"
+    rx="80"
+    fill="url(#bgGradient)"
+  />
+
+  <!-- Top Diamond -->
+  <polygon
+    points="256,110 380,175 256,240 132,175"
+    fill="white"
+  />
+
+  <!-- Middle Layer -->
+  <path
+    d="M132 250
+       L256 315
+       L380 250"
+    fill="none"
+    stroke="white"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <!-- Bottom Layer -->
+  <path
+    d="M132 330
+       L256 395
+       L380 330"
+    fill="none"
+    stroke="white"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
