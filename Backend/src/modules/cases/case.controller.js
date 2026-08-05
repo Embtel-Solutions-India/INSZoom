@@ -11,6 +11,7 @@ const caseService = require("./case.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
 const { evaluateStageGate } = require("./case-gating.config");
+const { createPerfTimer } = require("../../utils/perfTimer");
 const questionnaireService = require("../questionnaires/questionnaire.service");
 const messageService = require("../messages/message.service");
 const paymentGateway = require("../payments/payment.gateway");
@@ -449,22 +450,35 @@ exports.purchaseAddon = async (req, res, next) => {
 };
 
 exports.getCases = async (req, res, next) => {
+  const timer = createPerfTimer("cases_list_performance", {
+    requestId: req.requestId,
+    userId: req.user?._id,
+    role: req.user?.role,
+  });
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const filter = await caseService.resolveCaseSearchFilter(req.query, req.user);
+    timer.mark("filter_resolved", { page, limit });
     const sort = caseService.buildCaseSort(req.query);
     const skip = (page - 1) * limit;
+    timer.mark("pagination_ready", { skip, sort });
 
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      caseService.populateCaseQuery(Case.find(filter).sort(sort).skip(skip).limit(limit)),
+      caseService.populateCaseListQuery(
+        Case.find(filter).sort(sort).skip(skip).limit(limit).lean({ virtuals: true })
+      ),
     ]);
+    timer.mark("case_query_completed", { total, count: cases.length });
 
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
+    timer.mark("case_serialization_completed", { count: serializedCases.length });
     res.json({ success: true, count: serializedCases.length, total, page, pages: Math.ceil(total / limit), cases: serializedCases, summaries, data: serializedCases });
+    timer.done({ success: true });
   } catch (error) {
+    timer.done({ success: false, errorName: error.name, errorCode: error.code });
     handleError(error, next);
   }
 };

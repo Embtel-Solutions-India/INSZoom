@@ -31,6 +31,26 @@ const refreshAccessToken = async () => {
   return accessToken
 }
 
+const shortGetCache = new Map()
+const cachedGet = (url, config = {}, ttlMs = 5000) => {
+  const key = `${url}?${JSON.stringify(config.params || {})}`
+  const cached = shortGetCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.promise
+  const promise = api.get(url, config)
+    .then((response) => response)
+    .catch((error) => {
+      const item = shortGetCache.get(key)
+      if (item?.promise === promise) shortGetCache.delete(key)
+      throw error
+    })
+    .finally(() => {
+      const item = shortGetCache.get(key)
+      if (item?.promise === promise) item.expiresAt = Date.now() + ttlMs
+    })
+  shortGetCache.set(key, { promise, expiresAt: Date.now() + ttlMs })
+  return promise
+}
+
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
@@ -145,8 +165,8 @@ export const questionnairesApi = {
   duplicate: (id, payload = {}) => api.post(`/questionnaires/${id}/clone`, payload),
   version: (id) => api.post(`/questionnaires/${id}/version`),
   get: (id) => api.get(`/questionnaires/${id}`),
-  getForCase: (caseId, params = {}) => api.get(`/questionnaires/case/${caseId}`, { params }),
-  listCaseChecklists: (caseId) => api.get(`/questionnaires/case/${caseId}/checklists`),
+  getForCase: (caseId, params = {}) => cachedGet(`/questionnaires/case/${caseId}`, { params }),
+  listCaseChecklists: (caseId) => cachedGet(`/questionnaires/case/${caseId}/checklists`),
   createQuestion: (id, payload) => api.post(`/questionnaires/${id}/questions`, payload),
   updateQuestion: (id, questionId, payload) => api.put(`/questionnaires/${id}/questions/${questionId}`, payload),
   deleteQuestion: (id, questionId) => api.delete(`/questionnaires/${id}/questions/${questionId}`),

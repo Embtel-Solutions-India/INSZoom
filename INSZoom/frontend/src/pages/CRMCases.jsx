@@ -68,8 +68,17 @@ const CRMCases = () => {
   // subsequent refetches (search, filters, pagination, socket-driven
   // refreshes) update the rows in place instead of blanking the page.
   const hasLoadedOnce = useRef(false)
+  const activeFetchRef = useRef({ seq: 0, controller: null })
+
+  useEffect(() => () => {
+    activeFetchRef.current.controller?.abort()
+  }, [])
 
   const fetchCases = async () => {
+    const seq = activeFetchRef.current.seq + 1
+    activeFetchRef.current.controller?.abort()
+    const controller = new AbortController()
+    activeFetchRef.current = { seq, controller }
     try {
       if (!hasLoadedOnce.current) setLoading(true)
       const params = { page, limit, ...deepLinkFilters }
@@ -77,14 +86,17 @@ const CRMCases = () => {
       if (statusFilter) params.status = statusFilter
       if (appliedSearch) params.search = appliedSearch
 
-      const response = await api.get('/cases', { params })
+      const response = await api.get('/cases', { params, signal: controller.signal })
+      if (seq !== activeFetchRef.current.seq) return
       setCases(response.data.cases || [])
       // Handle the paginated response shape; fall back to a single page
       // when the endpoint does not return pagination metadata.
       setTotalPages(response.data.pages || 1)
     } catch (error) {
+      if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return
       console.error('Error fetching cases:', error)
     } finally {
+      if (seq !== activeFetchRef.current.seq) return
       hasLoadedOnce.current = true
       setLoading(false)
     }

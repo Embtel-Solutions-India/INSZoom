@@ -35,6 +35,17 @@ async function verifyFillable(pdfStorageKey) {
   return fieldCount;
 }
 
+function storedFieldCount(template) {
+  return Array.isArray(template?.formFields) ? template.formFields.length : 0;
+}
+
+function canTrustStoredFieldCount(template) {
+  return template?.status === "active"
+    && template?.activeFlag === true
+    && template?.officialStatus === "current"
+    && storedFieldCount(template) >= MIN_FIELD_COUNT;
+}
+
 async function seedI539Template({ file } = {}) {
   const existing = await USCISFormTemplate.find({ formCode: FORM_CODE, version: VERSION });
   if (existing.length > 1) {
@@ -52,7 +63,9 @@ async function seedI539Template({ file } = {}) {
     template = await USCISFormTemplate.findById(result.template._id);
   }
 
-  const fieldCount = await verifyFillable(template.pdfStorageKey);
+  const fieldCount = canTrustStoredFieldCount(template)
+    ? storedFieldCount(template)
+    : await verifyFillable(template.pdfStorageKey);
 
   template.status = "active";
   template.activeFlag = true;

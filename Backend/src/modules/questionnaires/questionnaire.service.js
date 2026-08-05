@@ -1705,12 +1705,11 @@ function reconcileQuestionFields(existingDoc, definitionQuestion) {
 // ENSURE_TTL_MS so normal traffic hits the cached result; a genuine content
 // change (a deploy, or an admin re-seed via the /defaults/seed endpoint)
 // still gets picked up within the TTL without needing a server restart.
-const ENSURE_TTL_MS = 5 * 60 * 1000;
 let ensureCache = { at: 0, promise: null };
 
 async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
   const now = Date.now();
-  if (!force && ensureCache.promise && now - ensureCache.at < ENSURE_TTL_MS) return ensureCache.promise;
+  if (!force && ensureCache.promise) return ensureCache.promise;
   const promise = ensureDefaultVisaTemplatesUncached(user, req).catch((error) => {
     // Don't cache a failure — the next call should retry against the DB.
     ensureCache = { at: 0, promise: null };
@@ -1928,9 +1927,9 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     throw error;
   }
   const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, caseData._id, requestedParticipant?._id || caseData.user || user?._id);
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
-  const answers = await Answer.find({ responseId }).populate("question").sort({ updatedAt: -1 });
+  const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();
   timer.mark("answer_lookup", { count: answers.length });
   const answerMap = getAnswerMapFromAnswers(answers);
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));

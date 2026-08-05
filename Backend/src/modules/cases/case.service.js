@@ -392,6 +392,22 @@ function populateCaseQuery(query) {
   ]);
 }
 
+function populateCaseListQuery(query) {
+  return query.populate([
+    { path: "user", select: "email displayName name role" },
+    { path: "clientProfile", select: "fullName email phone status user companyId" },
+    { path: "beneficiary", select: "fullName email visaType status companyId user" },
+    { path: "petitioner", select: "name displayName fullName email legalName role" },
+    { path: "employer", select: "name legalName status" },
+    { path: "organization", select: "name legalName status" },
+    { path: "companyId", select: "name legalName status" },
+    { path: "assignedCaseManager", select: "name displayName email department phone role" },
+    { path: "primaryOwner", select: "name displayName email department phone role" },
+    { path: "secondaryOwner", select: "name displayName email department phone role" },
+    { path: "assignedTeamLead", select: "name displayName email department phone role" },
+  ]);
+}
+
 function hasQueryValue(value) {
   if (Array.isArray(value)) return value.length > 0;
   if (value && typeof value === "object" && "$in" in value) return Array.isArray(value.$in) && value.$in.length > 0;
@@ -581,6 +597,7 @@ module.exports = {
   isAdmin,
   isStaff,
   linkCases,
+  populateCaseListQuery,
   populateCaseQuery,
   reopenCase,
   resolveTeamLeadForCase,

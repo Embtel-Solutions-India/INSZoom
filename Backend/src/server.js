@@ -25,8 +25,15 @@ process.on("unhandledRejection", (reason) => {
   });
 });
 
+function scheduleInitialRun(run, delayMs) {
+  const handle = setTimeout(run, Math.max(Number(delayMs) || 0, 0));
+  handle.unref?.();
+  return handle;
+}
+
 function startWorkflowMaintenance() {
   const intervalMs = Number(process.env.WORKFLOW_MAINTENANCE_INTERVAL_MS || 5 * 60 * 1000);
+  const initialDelayMs = Number(process.env.WORKFLOW_MAINTENANCE_INITIAL_DELAY_MS || 15 * 1000);
   const run = async () => {
     await Promise.all([
       workflowService.checkSlaBreaches(),
@@ -34,62 +41,68 @@ function startWorkflowMaintenance() {
       workflowService.retryFailedActions(),
     ]).catch((error) => logger.error("workflow_maintenance_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startNotificationMaintenance() {
   const intervalMs = Number(process.env.NOTIFICATION_MAINTENANCE_INTERVAL_MS || 60 * 1000);
+  const initialDelayMs = Number(process.env.NOTIFICATION_MAINTENANCE_INITIAL_DELAY_MS || 20 * 1000);
   const run = async () => {
     await Promise.all([
       notificationService.processScheduled(100),
       notificationService.retryFailed(100),
     ]).catch((error) => logger.error("notification_maintenance_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startAppointmentMaintenance() {
   const intervalMs = Number(process.env.APPOINTMENT_REMINDER_INTERVAL_MS || 60 * 1000);
+  const initialDelayMs = Number(process.env.APPOINTMENT_REMINDER_INITIAL_DELAY_MS || 25 * 1000);
   const run = async () => {
     await appointmentService.sendDueReminders().catch((error) => logger.error("appointment_reminder_processing_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startPaymentMaintenance() {
   const intervalMs = Number(process.env.PAYMENT_RECONCILIATION_INTERVAL_MS || 2 * 60 * 1000);
+  const initialDelayMs = Number(process.env.PAYMENT_RECONCILIATION_INITIAL_DELAY_MS || 30 * 1000);
   const run = async () => {
     await paymentService.reconcilePendingPayments(
       Number(process.env.PAYMENT_RECONCILIATION_BATCH_SIZE || 50)
     ).catch((error) => logger.error("payment_reconciliation_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startReminderGeneration() {
   const intervalMs = Number(process.env.REMINDER_GENERATION_INTERVAL_MS || 60 * 60 * 1000);
+  const initialDelayMs = Number(process.env.REMINDER_GENERATION_INITIAL_DELAY_MS || 35 * 1000);
   const run = async () => {
     await reminderGenerationService.runAll().catch((error) => logger.error("reminder_generation_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startAIMaintenance() {
   const intervalMs = Number(process.env.AI_JOB_RECOVERY_INTERVAL_MS || 60 * 1000);
+  const initialDelayMs = Number(process.env.AI_JOB_RECOVERY_INITIAL_DELAY_MS || 40 * 1000);
   const run = async () => {
     await aiOrchestrationService.recoverQueuedJobs().catch((error) => logger.error("ai_job_recovery_failed", { error }));
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 function startEodReportMaintenance() {
   const intervalMs = Number(process.env.EOD_REPORT_CHECK_INTERVAL_MS || 5 * 60 * 1000);
+  const initialDelayMs = Number(process.env.EOD_REPORT_INITIAL_DELAY_MS || 45 * 1000);
   const generationHour = Math.min(Math.max(Number(process.env.EOD_REPORT_GENERATION_HOUR_IST || 6), 0), 23);
   const backfillDays = Math.min(Math.max(Number(process.env.EOD_REPORT_BACKFILL_DAYS || 7), 1), 31);
   let lastSuccessfulRun = "";
@@ -110,16 +123,14 @@ function startEodReportMaintenance() {
       logger.error("automatic_eod_report_generation_failed", { error });
     }
   };
-  run();
+  scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
 
 connectDB()
   .then(() => {
-    if (process.env.SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP === "true") {
-      questionnaireService.ensureDefaultVisaTemplates(undefined, undefined, { force: true })
-        .catch((error) => logger.error("questionnaire_template_initialization_failed", { error }));
-    }
+    questionnaireService.ensureDefaultVisaTemplates(undefined, undefined, { force: process.env.SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP === "true" })
+      .catch((error) => logger.error("questionnaire_template_initialization_failed", { error }));
     const seedI129 = require("./modules/uscis-form-import/seeds/i129.seed");
     const seedI129F = require("./modules/uscis-form-import/seeds/i129f.seed");
     const seedI130 = require("./modules/uscis-form-import/seeds/i130.seed");
@@ -128,7 +139,7 @@ connectDB()
     const seedI539A = require("./modules/uscis-form-import/seeds/i539a.seed");
     const seedI907 = require("./modules/uscis-form-import/seeds/i907.seed");
 
-    [
+    const uscisSeeds = [
       ["I-129", seedI129],
       ["I-129F", seedI129F],
       ["I-130", seedI130],
@@ -136,13 +147,18 @@ connectDB()
       ["I-539", seedI539],
       ["I-539A", seedI539A],
       ["I-907", seedI907],
-    ].forEach(([code, seed]) => {
-      seed().then(({ template, fieldCount }) => {
-        console.log(`[startup] ${code} template ready: ${template._id}, ${fieldCount} fields, visaTypes: [${(template.visaTypes || []).join(", ")}]`);
-      }).catch((err) => {
-        console.error(`[startup] ${code} seed warning (non-fatal):`, err.message);
-      });
-    });
+    ];
+    const runUscisSeeds = async () => {
+      for (const [code, seed] of uscisSeeds) {
+        try {
+          const { template, fieldCount } = await seed();
+          console.log(`[startup] ${code} template ready: ${template._id}, ${fieldCount} fields, visaTypes: [${(template.visaTypes || []).join(", ")}]`);
+        } catch (err) {
+          console.error(`[startup] ${code} seed warning (non-fatal):`, err.message);
+        }
+      }
+    };
+    scheduleInitialRun(runUscisSeeds, Number(process.env.USCIS_TEMPLATE_SEED_INITIAL_DELAY_MS || 5 * 1000));
     const server = http.createServer(app);
     realtimeGateway.init(server, { origins: env.clientOrigins });
     const workflowMaintenance = startWorkflowMaintenance();
