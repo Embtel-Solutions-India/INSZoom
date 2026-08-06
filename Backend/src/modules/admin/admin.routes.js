@@ -10,5 +10,6 @@ router.get("/users", ctrl.getAllUsers);
 router.get("/users/:userId", ctrl.getUserDetail);
 router.put("/users/:userId/toggle-status", ctrl.toggleUserStatus);
 router.get("/documents", ctrl.getDocumentOverview);
+router.delete("/demo-data", authorizeRoles("super_admin"), ctrl.purgeDemoData);
 
 module.exports = router;

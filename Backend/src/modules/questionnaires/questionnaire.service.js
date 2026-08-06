@@ -828,6 +828,15 @@ function calculateSectionCompletion(questionnaire, visibleQuestions, answerMap) 
     });
 }
 
+// Shared by calculateDetailedProgress's default path and by callers (e.g.
+// listCaseChecklists) that need the visible-question list itself, not just
+// the completion stats derived from it - see visibleQuestionsOverride below.
+async function resolveVisibleQuestions(questionnaire, answerMap, user) {
+  return (
+    await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 })
+  ).filter((question) => isQuestionVisible(question, answerMap, user));
+}
+
 // visibleQuestionsOverride lets a caller that already fetched+filtered this
 // questionnaire's questions (e.g. getQuestionnaireForCase) skip the redundant
 // Question.find + isQuestionVisible pass this function used to always redo -
@@ -835,11 +844,11 @@ function calculateSectionCompletion(questionnaire, visibleQuestions, answerMap) 
 // twice per request; an employer-sponsored case's 3 simultaneous employer/
 // business_plan/employee questionnaire fetches turned that into 6 Question
 // queries instead of 3). Every other caller keeps the original self-contained
-// behavior by simply omitting the 4th argument.
+// behavior by simply omitting the 4th argument. It also lets a caller pass a
+// filtered subset (e.g. file-type questions only) to get completion stats
+// scoped to that subset instead of the whole questionnaire.
 async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
-  const visibleQuestions = visibleQuestionsOverride || (
-    await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 })
-  ).filter((question) => isQuestionVisible(question, answerMap, user));
+  const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   const required = visibleQuestions.filter((question) => question.required);
   const answeredRequiredKeys = new Set(
@@ -871,7 +880,15 @@ async function calculateDetailedProgress(questionnaire, answerMap, user, visible
 
 async function generateDocumentRequests({ questionnaire, caseData, answerMap, questions, user, req, persist = true }) {
   if (!caseData) return [];
-  const existingNames = new Set([...(caseData.checklistItems || []), ...(caseData.documentChecklist || [])].map((item) => item.name));
+  const existingItems = [...(caseData.checklistItems || []), ...(caseData.documentChecklist || [])];
+  const existingNames = new Set(existingItems.map((item) => item.name));
+  // Also dedup by documentType, not just name - a static registry document
+  // (e.g. "Copy of the passport", documentType "passport") and a
+  // questionnaire-generated evidence request for the same underlying
+  // document (e.g. "Passport Evidence", documentType "passport") are the
+  // same real-world requirement under different names, and must not both
+  // appear as separate checklist rows.
+  const existingDocumentTypes = new Set(existingItems.map((item) => item.documentType).filter(Boolean));
   const created = [];
   const requestedDate = new Date();
 
@@ -879,14 +896,15 @@ async function generateDocumentRequests({ questionnaire, caseData, answerMap, qu
     const value = getAnswerValue(answerMap, question.key);
     if (!answerTriggersEvidenceRequest(question, value)) continue;
     const name = documentRequestName(question);
-    if (existingNames.has(name)) continue;
+    const documentType = question.evidenceCategory || question.key;
+    if (existingNames.has(name) || existingDocumentTypes.has(documentType)) continue;
 
     const request = {
       name,
       description: `Generated from ${questionnaire.title}: ${question.label}`,
       required: Boolean(question.required),
       category: question.evidenceCategory || "evidence",
-      documentType: question.evidenceCategory || question.key,
+      documentType,
       status: "requested",
       requestedDate,
       notes: "Generated from questionnaire response",
@@ -896,6 +914,7 @@ async function generateDocumentRequests({ questionnaire, caseData, answerMap, qu
       caseData.documentChecklist.push(request);
     }
     existingNames.add(name);
+    existingDocumentTypes.add(documentType);
     created.push(request);
   }
 
@@ -937,12 +956,20 @@ function caseAudit(action, description, user, changes = {}, req) {
 async function addQuestionnaireDocumentRequestsAtomic(caseId, requests = [], questionnaire, user, req, operationId) {
   const inserted = [];
   for (const request of requests) {
+    const query = {
+      _id: caseId,
+      "checklistItems.name": { $ne: request.name },
+      "documentChecklist.name": { $ne: request.name },
+    };
+    // Same dedup widening as generateDocumentRequests' in-memory pre-check:
+    // also guard against a documentType collision, not just a name
+    // collision, so a race between two writers can't slip in a duplicate.
+    if (request.documentType) {
+      query["checklistItems.documentType"] = { $ne: request.documentType };
+      query["documentChecklist.documentType"] = { $ne: request.documentType };
+    }
     const result = await Case.updateOne(
-      {
-        _id: caseId,
-        "checklistItems.name": { $ne: request.name },
-        "documentChecklist.name": { $ne: request.name },
-      },
+      query,
       {
         $push: {
           checklistItems: request,
@@ -2146,7 +2173,18 @@ async function listCaseChecklists(caseId, user) {
   }, new Map());
   const checklists = await Promise.all(resolved.map(async (entry) => {
     const responseAnswers = answersByResponseId.get(entry.responseId) || [];
-    const progress = await calculateDetailedProgress(entry.questionnaire, getAnswerMapFromAnswers(responseAnswers), user);
+    const answerMap = getAnswerMapFromAnswers(responseAnswers);
+    const visibleQuestions = await resolveVisibleQuestions(entry.questionnaire, answerMap, user);
+    const progress = await calculateDetailedProgress(entry.questionnaire, answerMap, user, visibleQuestions);
+    // Scoped to upload (file-type) questions only, so UI that shows "document"
+    // completion (as opposed to questionnaire-answer completion) doesn't mix
+    // in unanswered field questions - see CRMCaseDetail.jsx's documentsProgress.
+    const documentProgress = await calculateDetailedProgress(
+      entry.questionnaire,
+      answerMap,
+      user,
+      visibleQuestions.filter((question) => question.type === "file")
+    );
     return {
       referenceId: entry.referenceId,
       questionnaireId: entry.questionnaire._id,
@@ -2162,6 +2200,7 @@ async function listCaseChecklists(caseId, user) {
       responseId: entry.responseId,
       resolvedDynamically: !entry.explicit,
       progress,
+      documentProgress,
     };
   }));
   timer.mark("progress_mapping", { count: checklists.length });
@@ -2380,6 +2419,7 @@ module.exports = {
   createQuestionnaire,
   ensureDefaultVisaTemplates,
   exportQuestionnaire,
+  generateDocumentRequests,
   generateDocumentRequestsForResponse,
   generateQuestionnaireFromPrompt,
   getAnswers,
@@ -2387,6 +2427,7 @@ module.exports = {
   getProgress,
   getQuestionnaireForCase,
   listCaseChecklists,
+  resolveVisibleQuestions,
   syncFileAnswerFromDocument,
   removeFileAnswerForDocument,
   getUscisMappings,

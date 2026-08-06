@@ -5,6 +5,10 @@ const Document = require("../../models/Document");
 const User = require("../../models/User");
 const { resolveDocumentRequirements } = require("../document-requirements/document-requirement.resolver");
 const { invalidateUserCache } = require("../../config/redis");
+const demoDataService = require("./demo-data.service");
+const { recordAuditEvent } = require("../audit/audit.service");
+
+const DEMO_PURGE_CONFIRMATION = "DELETE_DEMO_DATA";
 
 const clientRoles = ["client", "user"];
 
@@ -171,4 +175,30 @@ async function getDocumentOverview(req, res, next) {
   }
 }
 
-module.exports = { getAllUsers, getDocumentOverview, getOverview, getUserDetail, toggleUserStatus };
+async function purgeDemoData(req, res, next) {
+  try {
+    if (req.body?.confirm !== DEMO_PURGE_CONFIRMATION) {
+      return res.status(400).json({
+        success: false,
+        message: `Confirmation required: send { "confirm": "${DEMO_PURGE_CONFIRMATION}" }`,
+      });
+    }
+    const { deleted, orphanedReferences } = await demoDataService.purgeDemoData();
+    await recordAuditEvent({
+      req,
+      action: "demo_data_purged",
+      entityType: "system",
+      details: `Purged demo/seed data: ${JSON.stringify(deleted)}`,
+      newValue: deleted,
+      severity: "critical",
+      status: "success",
+      source: "api",
+      metadata: { deleted, orphanedReferences },
+    });
+    res.json({ success: true, message: "Demo data purged", deleted, orphanedReferences });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = { getAllUsers, getDocumentOverview, getOverview, getUserDetail, toggleUserStatus, purgeDemoData };

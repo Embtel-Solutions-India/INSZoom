@@ -13,7 +13,8 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
-  Brain
+  Brain,
+  Trash2
 } from 'lucide-react'
 
 const Settings = () => {
@@ -21,6 +22,7 @@ const Settings = () => {
   const [settings, setSettings] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [purging, setPurging] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [testConnectionResult, setTestConnectionResult] = useState(null)
   const [testingConnection, setTestingConnection] = useState(false)
@@ -68,6 +70,21 @@ const Settings = () => {
       alert('Failed to save settings')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handlePurgeDemoData = async () => {
+    if (!window.confirm('Permanently delete ALL demo/seed users, clients, cases and companies, plus their documents, tasks, messages and analytics rows? This cannot be undone.')) return
+    setPurging(true)
+    try {
+      const response = await api.delete('/admin/demo-data', { data: { confirm: 'DELETE_DEMO_DATA' } })
+      const deleted = response.data?.deleted || {}
+      alert(`Demo data purged:\n${Object.entries(deleted).map(([k, v]) => `${k}: ${v}`).join('\n')}`)
+    } catch (error) {
+      console.error('Error purging demo data:', error)
+      alert(error.response?.data?.message || 'Failed to purge demo data')
+    } finally {
+      setPurging(false)
     }
   }
 
@@ -545,6 +562,26 @@ const Settings = () => {
               >
                 <Save className="w-4 h-4" />
                 {saving ? 'Saving...' : 'Save Security Settings'}
+              </button>
+            </div>
+
+            <div className="border-t border-gray-200 pt-6">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-red-100 rounded-lg">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h4 className="text-md font-semibold text-gray-900">Danger Zone</h4>
+                  <p className="text-sm text-gray-500">Removes demo/seed data created by the shared backend's seed scripts. Never touches real client, questionnaire, or form template data.</p>
+                </div>
+              </div>
+              <button
+                onClick={handlePurgeDemoData}
+                disabled={purging}
+                className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                {purging ? 'Purging...' : 'Purge Demo Data'}
               </button>
             </div>
           </div>

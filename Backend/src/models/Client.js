@@ -233,6 +233,10 @@ const clientSchema = new mongoose.Schema(
     notes: [noteSchema],
     activityHistory: [timelineSchema],
     auditHistory: [auditSchema],
+    // Set only by Backend/src/seeds/* on records those seeds actually CREATE.
+    // Unrelated to `source` (sync-origin marker). Consumed only by
+    // DELETE /api/admin/demo-data.
+    isDemoData: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

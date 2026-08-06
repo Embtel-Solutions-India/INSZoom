@@ -3,6 +3,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const env = require("../config/env");
+const { assertDemoSeedAllowed } = require("./demoSeedGuard");
 
 const users = [
   {
@@ -110,6 +111,7 @@ async function seedUsers() {
         displayName: userData.name,
         isActive: true,
         isEmailVerified: true,
+        isDemoData: true,
       });
     }
     created[userData.email] = user;
@@ -126,6 +128,7 @@ async function seedUsers() {
 module.exports = seedUsers;
 
 if (require.main === module) {
+  assertDemoSeedAllowed();
   mongoose
     .connect(env.mongoUri)
     .then(() => seedUsers())
