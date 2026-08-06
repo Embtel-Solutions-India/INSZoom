@@ -1657,8 +1657,15 @@ const VISA_TEMPLATE_DEFINITIONS = [
     sections: ["Personal Information", "Education", "Research", "National Importance", "Impact", "Evidence Uploads"],
     questions: [
       makeQuestion("fullName", "Full legal name", "text", "personal_information", 1, { required: true, uscisMappings: ["I140.beneficiary.fullName"] }),
-      makeQuestion("degreeLevel", "Highest degree level", "select", "education", 1, { required: true, options: ["Bachelor", "Master", "PhD", "MD", "Other"], uscisMappings: ["H1B.education.degree", "I140.beneficiary.education.degreeLevel"] }),
-      makeQuestion("fieldOfStudy", "Field of study", "text", "education", 2, { required: true }),
+      // masterDataPath overrides below avoid inferMasterDataPath's generic
+      // sectionMap fallback, which would otherwise resolve an "education"-
+      // section question to the top-level `education` slot buildMasterCaseData
+      // pre-seeds as an ARRAY (meant for a repeatable education-history
+      // shape) and then try to set a flat scalar key as a sibling property
+      // of that array - MongoDB rejects this at save time ("Cannot create
+      // field ... in element {education: []}"), confirmed empirically.
+      makeQuestion("degreeLevel", "Highest degree level", "select", "education", 1, { required: true, options: ["Bachelor", "Master", "PhD", "MD", "Other"], uscisMappings: ["H1B.education.degree", "I140.beneficiary.education.degreeLevel"], metadata: { masterDataPath: "questionnaire.degreeLevel" } }),
+      makeQuestion("fieldOfStudy", "Field of study", "text", "education", 2, { required: true, metadata: { masterDataPath: "questionnaire.fieldOfStudy" } }),
       makeQuestion("proposedEndeavor", "Describe your proposed endeavor", "textarea", "research", 1, { required: true }),
       makeQuestion("nationalImportance", "Why is the endeavor nationally important?", "textarea", "national_importance", 1, { required: true, eligibilityWeight: 30, evidenceCategory: "National Importance" }),
       makeQuestion("hasImpactEvidence", "Do you have evidence of impact?", "radio", "impact", 1, { options: ["Yes", "No"], eligibilityWeight: 25, evidenceCategory: "Impact" }),
@@ -1675,9 +1682,10 @@ const VISA_TEMPLATE_DEFINITIONS = [
     questions: [
       makeQuestion("fullName", "Full legal name", "text", "personal_information", 1, { required: true, uscisMappings: ["I129.part2.beneficiary.fullName"] }),
       makeQuestion("passportNumber", "Passport number", "text", "personal_information", 2, { uscisMappings: ["I129.part2.passportNumber"] }),
-      makeQuestion("degreeLevel", "Highest degree level", "select", "education", 1, { required: true, options: ["Bachelor", "Master", "PhD", "Other"], uscisMappings: ["H1B.education.degree"] }),
-      makeQuestion("degreeField", "Degree field", "text", "education", 2, { required: true }),
-      makeQuestion("hasUSDegree", "Was the degree earned in the United States?", "radio", "education", 3, { options: ["Yes", "No"] }),
+      // Same masterDataPath-collision fix as niw_questionnaire above.
+      makeQuestion("degreeLevel", "Highest degree level", "select", "education", 1, { required: true, options: ["Bachelor", "Master", "PhD", "Other"], uscisMappings: ["H1B.education.degree"], metadata: { masterDataPath: "questionnaire.degreeLevel" } }),
+      makeQuestion("degreeField", "Degree field", "text", "education", 2, { required: true, metadata: { masterDataPath: "questionnaire.degreeField" } }),
+      makeQuestion("hasUSDegree", "Was the degree earned in the United States?", "radio", "education", 3, { options: ["Yes", "No"], metadata: { masterDataPath: "questionnaire.hasUSDegree" } }),
       makeQuestion("currentStatus", "Current immigration status", "text", "employment", 1, { uscisMappings: ["I129.part2.currentStatus"] }),
       makeQuestion("employerName", "Employer legal name", "text", "employer_information", 1, { required: true, uscisMappings: ["I129.part1.employerName"] }),
       makeQuestion("jobTitle", "Offered position title", "text", "position_information", 1, { required: true, uscisMappings: ["I129.part5.jobTitle"] }),

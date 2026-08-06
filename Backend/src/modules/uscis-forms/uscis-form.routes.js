@@ -45,6 +45,7 @@ router.get("/case/:caseId/:formId/workspace/history", authenticate, authorizePer
 router.get("/case/:caseId/:formId/workspace/sources", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveSources);
 router.get("/case/:caseId/:formId/workspace/comparison", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveComparison);
 router.get("/case/:caseId/:formId/workspace/search", authenticate, authorizePermissions("forms:read"), ctrl.searchInteractiveFields);
+router.get("/:id/pdf", authenticate, authorizePermissions("forms:read"), ctrl.getTemplatePdf);
 router.get("/:id", authenticate, authorizePermissions("forms:read"), ctrl.get);
 router.put("/:id", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:update"), ctrl.update);
 router.delete("/:id", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:delete"), ctrl.remove);

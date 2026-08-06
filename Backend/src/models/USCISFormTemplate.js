@@ -121,6 +121,14 @@ const uscisFormTemplateSchema = new mongoose.Schema(
         semanticType: String,
         fieldLabel: String,
         label: String,
+        // Which of FieldLabelEnrichmentService's derivation methods produced
+        // `label` (crosswalk_note / pdf_tooltip / naming_pattern /
+        // labelize_fallback) - kept for traceability/debugging, not shown to
+        // end users. The raw /TU tooltip text itself is NOT persisted here -
+        // storing it for all ~980 fields pushed a real template document to
+        // Mongo's 16MB subdocument-array ceiling (confirmed empirically); it
+        // is only needed transiently, at label-derivation time.
+        labelSource: String,
         sectionKey: String,
         sectionId: String,
         sectionTitle: String,

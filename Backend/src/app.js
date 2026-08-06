@@ -16,7 +16,12 @@ const { perfMiddleware } = require("./utils/perfTimer");
 
 const app = express();
 
-app.use(helmet());
+// Firebase's redirect-flow internals still rely on window.opener in some
+// browsers; helmet's default same-origin COOP blocks that. same-origin-allow-popups
+// keeps the isolation benefit while letting those popups/openers communicate.
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));
 app.use(compression());
 app.use(requestContext);
 app.use(perfMiddleware);

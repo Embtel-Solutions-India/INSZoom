@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+// Vite's `?url` import (not `new URL(spec, import.meta.url)` - that form
+// mis-resolves this specific nested `pkg/node_modules/pkg2/...` path to a
+// root-relative `/node_modules/...` URL that the dev server 404s on;
+// confirmed empirically) correctly resolves react-pdf's OWN bundled
+// pdfjs-dist worker file - see the workerSrc assignment below for why it
+// has to be THIS exact copy, not the project's top-level pdfjs-dist.
+import pdfWorkerUrl from 'react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {
   AlertCircle,
   AlertTriangle,
@@ -22,12 +31,37 @@ import {
   Save,
   Search,
   ShieldCheck,
+  SkipForward,
   SplitSquareHorizontal,
   Unlock,
   UserCheck,
   XCircle,
 } from 'lucide-react'
 import { formGenerationApi, uscisFormsApi } from '../../services/api'
+
+// Must be set in the SAME module that renders <Document>/<Page> (react-pdf's
+// own README warning - module execution order can otherwise silently
+// overwrite it), same pattern PdfDocumentPages.jsx already established for
+// petition exhibit rendering.
+// react-pdf@10 bundles its OWN pdfjs-dist (5.4.296 - see
+// react-pdf/node_modules/pdfjs-dist), which this project's top-level
+// pdfjs-dist dependency (^6.2.108, a DIFFERENT major version, used
+// elsewhere e.g. server-side PDF field scanning) does not match - pointing
+// the worker at the top-level package throws "API version does not match
+// Worker version" and the page never renders (confirmed empirically).
+// Referencing react-pdf's own nested copy keeps the API and worker on the
+// exact same build. PdfDocumentPages.jsx (petition exhibit rendering)
+// predates this project's pdfjs-dist major-version bump and has the same
+// latent mismatch - out of scope for this task to fix, but worth the same
+// treatment if it starts erroring too.
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+
+// The rendered page's on-screen width, in CSS px - field overlays are
+// positioned by converting each field's real x/y/width/height (PDF points,
+// bottom-left origin - see PDFFieldScannerService's coordinateSystem) into
+// this same pixel space via one scale factor per page (PAGE_RENDER_WIDTH /
+// the real PDF page width in points).
+const PAGE_RENDER_WIDTH = 900
 
 const getByPath = (source, path) => {
   if (!source || !path) return undefined
@@ -195,6 +229,131 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
   return <input type={inputType} className={common} value={value ?? ''} placeholder={field.placeholder || ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />
 }
 
+// Filled / empty / flagged - reusing the SAME statusTone palette the rest of
+// this file already uses for review-status badges, rather than a second
+// color system: flagged fields borrow 'rejected'/'needs_revision', filled
+// fields borrow 'auto_filled'/'manual_override', and "nothing entered yet"
+// deliberately has no entry in statusTone (StatusBadge's own fallback for an
+// unrecognized key - 'border-slate-200 bg-slate-100 text-slate-700' - IS the
+// neutral/empty look, not a new palette).
+function fieldFillTone(field, value, errors) {
+  if (errors?.length) return 'rejected'
+  if (field.conflicts?.length) return 'needs_revision'
+  if (!hasValue(value)) return null
+  return field.manualOverride ? 'manual_override' : 'auto_filled'
+}
+
+const OVERLAY_BORDER_TONE = {
+  rejected: 'border-red-500 bg-red-50/70',
+  needs_revision: 'border-amber-500 bg-amber-50/70',
+  auto_filled: 'border-blue-400 bg-blue-50/70',
+  manual_override: 'border-violet-500 bg-violet-50/70',
+}
+
+function overlayCompactValue(field, value) {
+  if (field.fieldType === 'checkbox') return hasValue(value) && value !== false ? '✓' : ''
+  if (field.fieldType === 'signature') return ''
+  if (!hasValue(value)) return ''
+  if (Array.isArray(value)) return value.join(', ')
+  if (typeof value === 'object') return JSON.stringify(value)
+  const option = (field.options || []).find((item) => (item.value ?? item.exportValue ?? item) === value)
+  return String(option?.label ?? value)
+}
+
+// One field's real-position overlay on top of the rasterized page image.
+// `scale` converts PDF points -> CSS px for this page's current render
+// width; `pageHeightPt` flips the PDF's bottom-left-origin y into the
+// page's top-left CSS origin. Clicking an unselected, editable overlay opens
+// it for inline edit (renders the real FieldInput, positioned over the same
+// spot, expanded to a usable minimum size) - exactly the existing FieldInput
+// component, just placed by coordinates instead of flat-list order.
+function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, editing, selected, onSelect, onStartEdit, onChange, onBlur }) {
+  const coords = field.coordinates || field.position
+  if (!coords || coords.width == null || coords.height == null) return null
+  const left = (coords.x || 0) * scale
+  const top = (pageHeightPt - (coords.y || 0) - coords.height) * scale
+  const width = Math.max(coords.width * scale, 14)
+  const height = Math.max(coords.height * scale, 12)
+  const tone = fieldFillTone(field, value, errors)
+  const boxClass = tone
+    ? OVERLAY_BORDER_TONE[tone]
+    : field.required
+      ? 'border-slate-400 border-dashed bg-white/40'
+      : 'border-slate-300 border-dashed bg-white/30'
+
+  if (editing) {
+    const popoverWidth = Math.max(width, 240)
+    return (
+      <div
+        id={`uscis-field-${field.fieldName}`}
+        className="absolute z-30 rounded-md border-2 border-blue-600 bg-white p-2 shadow-xl"
+        style={{ left, top, minWidth: popoverWidth, maxWidth: 360 }}
+      >
+        <p className="mb-1 truncate text-[10px] font-bold text-slate-500">{field.label || field.fieldLabel}</p>
+        <FieldInput field={field} value={value} disabled={!canEdit} invalid={errors?.length > 0} onChange={onChange} onBlur={onBlur} />
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      id={`uscis-field-${field.fieldName}`}
+      title={field.label || field.fieldLabel}
+      onClick={() => { onSelect(); if (canEdit) onStartEdit() }}
+      className={`absolute flex items-center overflow-hidden rounded-[2px] border px-1 text-left text-[11px] leading-none text-slate-800 transition hover:z-20 hover:border-blue-500 hover:ring-2 hover:ring-blue-200 ${boxClass} ${selected ? 'z-10 ring-2 ring-blue-400' : ''}`}
+      style={{ left, top, width, height }}
+    >
+      <span className="truncate">{overlayCompactValue(field, value)}</span>
+    </button>
+  )
+}
+
+// One rasterized USCIS page (the real blank template PDF, via react-pdf)
+// with every in-scope field's overlay positioned on top of it at its real
+// coordinates - this IS the "legit form" look Task 2 asks for, replacing
+// the flat per-field list this component used to render exclusively.
+function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, registerPageRef }) {
+  const scale = pdfPageWidth ? PAGE_RENDER_WIDTH / pdfPageWidth : 1
+  const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
+  return (
+    <div
+      id={`uscis-page-${pageNumber}`}
+      ref={(node) => registerPageRef(pageNumber, node)}
+      className="relative mx-auto mb-6 bg-white shadow-md"
+      style={{ width: PAGE_RENDER_WIDTH, minHeight: renderHeight }}
+    >
+      <Page
+        pageNumber={pageNumber}
+        width={PAGE_RENDER_WIDTH}
+        renderAnnotationLayer={false}
+        renderTextLayer={false}
+        loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
+        error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {pageNumber}.</div>}
+      />
+      <div className="absolute inset-0">
+        {fields.map((field) => (
+          <FieldOverlay
+            key={field.fieldName}
+            field={field}
+            value={getByPath(values, field.fieldName)}
+            errors={validationErrors[field.fieldName]}
+            scale={scale}
+            pageHeightPt={pdfPageHeight}
+            canEdit={canEdit}
+            editing={editingFieldName === field.fieldName}
+            selected={selectedFieldName === field.fieldName}
+            onSelect={() => onSelectField(field)}
+            onStartEdit={() => onStartEdit(field)}
+            onChange={(nextValue) => onChangeField(field, nextValue)}
+            onBlur={() => onBlurField(field)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }) {
   const [loading, setLoading] = useState(true)
   const [workspace, setWorkspace] = useState(null)
@@ -211,7 +370,12 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const [comparison, setComparison] = useState(false)
   const [undoStack, setUndoStack] = useState([])
   const [redoStack, setRedoStack] = useState([])
+  const [editingFieldName, setEditingFieldName] = useState('')
+  const [templatePdfUrl, setTemplatePdfUrl] = useState(null)
+  const [templatePdfError, setTemplatePdfError] = useState('')
+  const [pdfPageCount, setPdfPageCount] = useState(0)
   const lastSaved = useRef({})
+  const pageRefs = useRef(new Map())
 
   const loadWorkspace = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -235,7 +399,6 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }, [loadWorkspace])
 
   const sections = workspace?.template?.sections || []
-  const pages = workspace?.renderer?.pages || workspace?.template?.pages || []
   const allFields = useMemo(() => sections.flatMap((section) => (section.fields || []).filter((field) => !field.hidden).map((field) => ({ ...field, sectionKey: section.key, sectionTitle: section.title }))), [sections])
   const selectedField = useMemo(() => allFields.find((field) => field.fieldName === selectedFieldName), [allFields, selectedFieldName])
   const validationErrors = workspace?.caseForm?.validationErrors?.fields || workspace?.validationErrors || {}
@@ -255,6 +418,85 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   useEffect(() => {
     if (!selectedFieldName && allFields.length) setSelectedFieldName(allFields[0].fieldName)
   }, [allFields, selectedFieldName])
+
+  // Groups every in-scope field by its real PDF page number (already
+  // captured per-field by PDFFieldScannerService, threaded through
+  // unchanged) - this IS the "real visual page layout" grouping Task 2
+  // needs, replacing the flat per-field list this component used to render
+  // as its only view.
+  const pageDimensionsByNumber = useMemo(() => {
+    const map = new Map()
+    ;(workspace?.template?.pageDimensions || []).forEach((page) => map.set(page.pageNumber, page))
+    return map
+  }, [workspace])
+
+  const fieldsByPage = useMemo(() => {
+    const map = new Map()
+    allFields.forEach((field) => {
+      const pageNumber = field.pageNumber || field.coordinates?.pageNumber || 1
+      if (!map.has(pageNumber)) map.set(pageNumber, [])
+      map.get(pageNumber).push(field)
+    })
+    return map
+  }, [allFields])
+
+  // Every page the real PDF has gets a row here, whether or not the
+  // crosswalk considers it "in scope" - a page with no crosswalk edges
+  // still has real, editable AcroForm fields (manual_entry ones) a case
+  // manager may need to see, so it still renders visually rather than
+  // falling back to a flat list.
+  const pageNumbers = useMemo(() => {
+    const fromDimensions = [...pageDimensionsByNumber.keys()]
+    const fromFields = [...fieldsByPage.keys()]
+    const fromPdf = pdfPageCount ? Array.from({ length: pdfPageCount }, (_, index) => index + 1) : []
+    return [...new Set([...fromDimensions, ...fromFields, ...fromPdf])].sort((a, b) => a - b)
+  }, [pageDimensionsByNumber, fieldsByPage, pdfPageCount])
+
+  const pageCompletion = useCallback((pageNumber) => {
+    const fields = fieldsByPage.get(pageNumber) || []
+    const filled = fields.filter((field) => hasValue(getByPath(values, field.fieldName))).length
+    return { total: fields.length, filled }
+  }, [fieldsByPage, values])
+
+  const templateId = workspace?.template?._id
+
+  useEffect(() => {
+    if (!templateId) return undefined
+    let cancelled = false
+    let objectUrl = null
+    setTemplatePdfError('')
+    setTemplatePdfUrl(null)
+    uscisFormsApi.templatePdf(templateId)
+      .then((response) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(response.data)
+        setTemplatePdfUrl(objectUrl)
+      })
+      .catch(() => { if (!cancelled) setTemplatePdfError('Unable to load the official USCIS page image for this form - showing field data without the page background.') })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [templateId])
+
+  const registerPageRef = useCallback((pageNumber, node) => {
+    if (node) pageRefs.current.set(pageNumber, node)
+    else pageRefs.current.delete(pageNumber)
+  }, [])
+
+  const scrollToPage = useCallback((pageNumber) => {
+    pageRefs.current.get(pageNumber)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  const selectField = (field) => {
+    setSelectedFieldName(field.fieldName)
+    setActiveSection(field.sectionKey)
+  }
+
+  const startEditField = (field) => {
+    if (!canEdit) return
+    setEditingFieldName(field.fieldName)
+  }
 
   const action = async (key, callback, successMessage, reload = true) => {
     setBusy(key)
@@ -291,6 +533,15 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       value,
       reason: 'Interactive USCIS form review',
     }), `${field.label || field.fieldLabel} saved`)
+  }
+
+  // Closes the overlay's inline editor and persists via the SAME saveField
+  // path a flat-list row's onBlur already used - clicking a field on the
+  // rendered page and editing it really does write through to the backend
+  // (verifiable via save + reload), not just local visual state.
+  const blurEditingField = async (field) => {
+    setEditingFieldName('')
+    await saveField(field)
   }
 
   const undo = async () => {
@@ -434,6 +685,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     const next = problemFields[(currentIndex + 1) % problemFields.length]
     setSelectedFieldName(next.fieldName)
     setActiveSection(next.sectionKey)
+    setEditingFieldName(canEdit ? next.fieldName : '')
     document.getElementById(`uscis-field-${CSS.escape(next.fieldName)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
@@ -526,22 +778,23 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               <div><span className="block text-[10px] uppercase text-slate-400">Petitioner</span><strong className="text-slate-800">{workspace.caseSummary.petitioner?.legalName || workspace.caseSummary.petitioner?.name || 'Not assigned'}</strong></div>
             </div>
           </div>
-          {pages.length > 0 && (
+          {pageNumbers.length > 0 && (
             <div className="border-b border-slate-200 p-3">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">USCIS Pages</p>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">USCIS Pages · jump to page</p>
               <div className="grid grid-cols-3 gap-1.5">
-                {pages.slice(0, 24).map((page) => {
-                  const firstSectionKey = page.sections?.[0]
-                  const active = page.sections?.includes(activeSection)
+                {pageNumbers.map((pageNumber) => {
+                  const { total, filled } = pageCompletion(pageNumber)
+                  const active = fieldsByPage.get(pageNumber)?.some((field) => field.sectionKey === activeSection)
                   return (
                     <button
-                      key={page.pageNumber}
+                      key={pageNumber}
                       type="button"
-                      onClick={() => firstSectionKey && setActiveSection(firstSectionKey)}
+                      onClick={() => scrollToPage(pageNumber)}
+                      title={`${filled} of ${total} fields filled`}
                       className={`rounded border px-2 py-1 text-[10px] font-semibold ${active ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                     >
-                      Pg {page.pageNumber}
-                      <span className="ml-1 text-slate-400">{page.percent ?? 0}%</span>
+                      Pg {pageNumber}
+                      <span className="ml-1 text-slate-400">{total ? `${filled}/${total}` : '—'}</span>
                     </button>
                   )
                 })}
@@ -576,73 +829,86 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             })}
           </nav>
           <div className="border-t border-slate-200 p-3">
-            <button type="button" onClick={nextProblem} className="flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white"><AlertCircle className="h-4 w-4" />Next issue <span className="text-slate-400">F8</span></button>
+            <button type="button" onClick={nextProblem} title="Jumps to the next empty required field or validation error, wherever it is on the form" className="flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white"><SkipForward className="h-4 w-4" />Next empty/flagged field <span className="text-slate-400">F8</span></button>
           </div>
         </aside>
 
         <main className="max-h-[680px] overflow-y-auto bg-slate-200/60 p-3 sm:p-5">
-          {visibleSections.filter((section) => section.key === activeSection || search).map((section) => (
-            <section key={section.key} className="mx-auto mb-5 max-w-4xl overflow-hidden border border-slate-400 bg-white shadow-sm">
-              <div className="border-b-4 border-[#12365b] bg-slate-50 px-5 py-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#12365b]">Department of Homeland Security · U.S. Citizenship and Immigration Services</p>
-                    <h3 className="mt-1 text-base font-black text-slate-950">{section.title}</h3>
-                    {section.description && <p className="mt-1 text-xs text-slate-600">{section.description}</p>}
-                  </div>
-                  <div className="flex gap-2">
-                    {permissions.canReview && <button type="button" onClick={() => reviewSection('approved')} className="rounded border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-800">Approve Section</button>}
-                    {permissions.canReview && <button type="button" onClick={() => reviewSection('needs_revision')} className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800">Needs Revision</button>}
-                    {canEdit && <button type="button" onClick={() => saveSection(section)} disabled={busy === `section:${section.key}`} className="flex items-center gap-1 rounded bg-[#12365b] px-2.5 py-1.5 text-[11px] font-semibold text-white"><Save className="h-3 w-3" />Save</button>}
-                  </div>
+          {selectedField && (
+            <div className="mx-auto mb-4 flex max-w-[900px] items-start justify-between gap-3 rounded-md border border-blue-200 bg-blue-50/70 px-4 py-2.5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Selected field</p>
+                <p className="truncate text-sm font-semibold text-blue-950">{selectedField.label || selectedField.fieldLabel}{selectedField.required && <span className="ml-1 text-red-600">*</span>}</p>
+              </div>
+              {comparison && selectedField.canonicalValue !== undefined && !sameValue(getByPath(values, selectedField.fieldName), selectedField.canonicalValue) && (
+                <div className="grid shrink-0 grid-cols-2 gap-2 text-[11px]">
+                  <div><span className="block font-semibold text-amber-900">Canonical</span>{displayValue(selectedField.canonicalValue)}</div>
+                  <div><span className="block font-semibold text-amber-900">Current</span>{displayValue(getByPath(values, selectedField.fieldName))}</div>
                 </div>
-              </div>
-              <div className="divide-y divide-slate-300">
-                {(section.fields || []).filter((field) => !field.hidden).map((field, fieldIndex) => {
-                  const value = getByPath(values, field.fieldName)
-                  const errors = validationErrors[field.fieldName] || []
-                  const selected = selectedFieldName === field.fieldName
-                  const reviewStatus = field.review?.status || field.verificationStatus
-                  const fieldTone = errors.length ? 'border-l-red-500 bg-red-50/40' : field.conflicts?.length ? 'border-l-amber-500 bg-amber-50/40' : field.manualOverride ? 'border-l-violet-500' : reviewStatus === 'approved' || reviewStatus === 'verified' ? 'border-l-blue-500' : 'border-l-blue-400'
-                  return (
-                    <div
-                      id={`uscis-field-${field.fieldName}`}
-                      key={field.fieldName}
-                      onClick={() => setSelectedFieldName(field.fieldName)}
-                      className={`grid cursor-pointer grid-cols-1 border-l-4 px-4 py-4 transition md:grid-cols-[42px_minmax(180px,0.8fr)_minmax(260px,1.2fr)] ${fieldTone} ${selected ? 'ring-2 ring-inset ring-blue-300' : ''}`}
-                    >
-                      <div className="mb-2 text-xs font-bold text-slate-500 md:mb-0">{field.order ?? fieldIndex + 1}.</div>
-                      <div className="pr-4">
-                        <label className="text-xs font-bold leading-5 text-slate-900">{field.label || field.fieldLabel}{field.required && <span className="ml-1 text-red-600">*</span>}</label>
-                        {field.helpText && <p className="mt-1 text-[11px] leading-4 text-slate-500">{field.helpText}</p>}
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          <StatusBadge status={reviewStatus} />
-                          {field.manualOverride && <StatusBadge status="manual_override">Manual</StatusBadge>}
-                          {field.conflicts?.length > 0 && <StatusBadge status="needs_revision">Conflict</StatusBadge>}
-                        </div>
-                      </div>
-                      <div>
-                        {comparison && field.canonicalValue !== undefined && !sameValue(value, field.canonicalValue) && (
-                          <div className="mb-2 grid grid-cols-2 gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px]">
-                            <div><span className="block font-semibold text-amber-900">Canonical</span>{displayValue(field.canonicalValue)}</div>
-                            <div><span className="block font-semibold text-amber-900">Current form</span>{displayValue(value)}</div>
-                          </div>
-                        )}
-                        <FieldInput field={field} value={value} disabled={!canEdit} invalid={errors.length > 0} onChange={(nextValue) => updateField(field, nextValue)} onBlur={() => saveField(field)} />
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-                          <span className="font-semibold text-slate-600">{field.source || 'Unmapped source'}</span>
-                          {field.confidence !== undefined && <span>{field.confidence}% confidence</span>}
-                          <span className="truncate">{field.sourceField || field.fieldName}</span>
-                          {busy === `field:${field.fieldName}` && <span className="text-blue-700">Saving…</span>}
-                        </div>
-                        {errors.map((item) => <p key={String(item)} className="mt-1 flex items-center gap-1 text-[11px] font-medium text-red-700"><AlertTriangle className="h-3 w-3" />{typeof item === 'string' ? item : item.message}</p>)}
-                      </div>
+              )}
+            </div>
+          )}
+          {templatePdfError && (
+            <div className="mx-auto mb-4 max-w-[900px] rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">{templatePdfError}</div>
+          )}
+          {templatePdfUrl ? (
+            <Document
+              file={templatePdfUrl}
+              loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>}
+              error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to load the official USCIS PDF - field data is still shown below once pages render.</div>}
+              onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
+            >
+              {pageNumbers.map((pageNumber) => {
+                const dims = pageDimensionsByNumber.get(pageNumber) || {}
+                const { total, filled } = pageCompletion(pageNumber)
+                return (
+                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: PAGE_RENDER_WIDTH }}>
+                    <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold text-slate-600">
+                      <span>Page {pageNumber}</span>
+                      <span className={filled === total && total > 0 ? 'text-blue-700' : 'text-slate-500'}>{total ? `${filled} of ${total} fields filled` : 'No fillable fields on this page'}</span>
                     </div>
-                  )
-                })}
+                    <PdfFormPage
+                      pageNumber={pageNumber}
+                      pdfPageWidth={dims.width || 612}
+                      pdfPageHeight={dims.height || 792}
+                      fields={fieldsByPage.get(pageNumber) || []}
+                      values={values}
+                      validationErrors={validationErrors}
+                      canEdit={canEdit}
+                      selectedFieldName={selectedFieldName}
+                      editingFieldName={editingFieldName}
+                      onSelectField={selectField}
+                      onStartEdit={startEditField}
+                      onChangeField={updateField}
+                      onBlurField={blurEditingField}
+                      registerPageRef={registerPageRef}
+                    />
+                  </div>
+                )
+              })}
+            </Document>
+          ) : (
+            !templatePdfError && <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>
+          )}
+          {selectedField && (
+            <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-4 py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={selectedField.review?.status || selectedField.verificationStatus} />
+                {selectedField.manualOverride && <StatusBadge status="manual_override">Manual</StatusBadge>}
+                {selectedField.conflicts?.length > 0 && <StatusBadge status="needs_revision">Conflict</StatusBadge>}
+                <span className="text-[11px] text-slate-500">{selectedField.source || 'Unmapped source'}</span>
+                {busy === `field:${selectedField.fieldName}` && <span className="text-[11px] text-blue-700">Saving…</span>}
               </div>
-              <div className="border-t border-slate-300 bg-slate-50 px-5 py-2 text-center text-[10px] text-slate-500">Form {workspace.template.formCode} · Edition {workspace.template.version || 'Current'} · Internal Review Copy</div>
-            </section>
+              {permissions.canReview && (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => reviewSection('approved')} className="rounded border border-blue-300 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-800">Approve Section</button>
+                  <button type="button" onClick={() => reviewSection('needs_revision')} className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800">Needs Revision</button>
+                </div>
+              )}
+            </div>
+          )}
+          {(validationErrors[selectedFieldName] || []).map((item) => (
+            <p key={String(item)} className="mx-auto mt-1.5 flex max-w-[900px] items-center gap-1 text-[11px] font-medium text-red-700"><AlertTriangle className="h-3 w-3" />{typeof item === 'string' ? item : item.message}</p>
           ))}
         </main>
 

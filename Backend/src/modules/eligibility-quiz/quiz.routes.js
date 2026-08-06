@@ -34,7 +34,7 @@ router.get("/visas", publicQuizLimiter, ctrl.getVisas);
 // logged-in user who already has a case (see CASE_EXISTS below).
 router.post("/submit", publicQuizLimiter, optionalAuthenticate, submitRules, validate, ctrl.submit);
 
-const staffRoles = ["super_admin", "admin", "case_manager"];
+const staffRoles = ["super_admin", "admin"];
 
 router.get("/leads", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.listLeads);
 router.get("/leads/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.getLead);

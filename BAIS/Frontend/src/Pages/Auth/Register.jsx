@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
+import { getPostLoginDest, resolvePostLoginDest } from "../../utils/postLoginDest";
 
 /* ── Icons ── */
 const UserIcon = () => (
@@ -131,7 +132,7 @@ function ContactCard({ icon, title, lines, animClass }) {
 /* ── Main component ── */
 export default function Register() {
   const navigate = useNavigate();
-  const { signup, loginWithGoogle } = useAuth();
+  const { signup, loginWithGoogle, googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError, user, authLoading } = useAuth();
 
   const [form,    setForm]    = useState({ fullName: "", phone: "", email: "", password: "", confirmPassword: "", referralCode: "" });
   const [error,   setError]   = useState("");
@@ -141,6 +142,7 @@ export default function Register() {
   const [pendingInvite, setPendingInvite] = useState(false);
   const [resendingInvite, setResendingInvite] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
     document.title = "Sign Up | BAIS Immigration Portal";
@@ -150,6 +152,44 @@ export default function Register() {
     if (ref) setForm((f) => ({ ...f, referralCode: ref.trim().toUpperCase() }));
     return () => clearTimeout(t);
   }, []);
+
+  // signInWithRedirect leaves this page and comes back to it after Google
+  // completes - pick up the result here instead of inline in handleGoogle,
+  // mirroring exactly where the old popup flow's `navigate()` call was.
+  // Someone can legitimately land on Google auth from the Register page
+  // despite already having an account (e.g. clicked the wrong button), so
+  // this still runs the real case-check via resolvePostLoginDest rather
+  // than assuming "new user" - only handleSubmit's plain email signup below
+  // can safely skip straight to /dashboard/intake.
+  useEffect(() => {
+    if (!googleRedirectUser) return;
+    const redirectingUser = googleRedirectUser;
+    clearGoogleRedirectUser();
+    (async () => {
+      const dest = await resolvePostLoginDest(redirectingUser);
+      if (dest.external) window.location.href = dest.url; // cross-app navigation - navigate() can't leave this origin
+      else navigate(dest.url, { replace: true });
+    })();
+  }, [googleRedirectUser, navigate, clearGoogleRedirectUser]);
+
+  useEffect(() => {
+    if (!googleAuthError) return;
+    setError(googleAuthError);
+    setGoogleLoading(false);
+    clearGoogleAuthError();
+  }, [googleAuthError, clearGoogleAuthError]);
+
+  // Staff-only guard (not broadened to clients like Login.jsx's twin effect):
+  // handleSubmit below deliberately shows a "Account created!" message for
+  // 1.6s before its own navigate() fires, and a client-covering version of
+  // this effect would fire the instant signup() sets `user` - well before
+  // that pause elapses - cutting the confirmation message short. Staff have
+  // no such pause to protect, so this branch is safe to resolve immediately.
+  useEffect(() => {
+    if (!user || authLoading) return;
+    const dest = getPostLoginDest(user);
+    if (dest.external) window.location.href = dest.url;
+  }, [user, authLoading]);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
@@ -166,7 +206,10 @@ export default function Register() {
     try {
       await signup(fullName, email, password, referralCode.trim().toUpperCase() || undefined, phone);
       setSuccess("Account created! Redirecting…");
-      setTimeout(() => navigate("/dashboard"), 1600);
+      // A brand-new signup can't have a case yet - go straight to the
+      // intake wizard rather than /dashboard (which would just bounce here
+      // a beat later via Dashboard.jsx's own loadCase() check anyway).
+      setTimeout(() => navigate("/dashboard/intake", { replace: true }), 1600);
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (err.code === "PENDING_INVITE") {
@@ -197,13 +240,15 @@ export default function Register() {
   }
 
   async function handleGoogle() {
-    setError(""); setLoading(true);
+    setError(""); setGoogleLoading(true);
     try {
-      const u = await loginWithGoogle();
-      navigate(u?.role === "admin" ? "/admin/portal" : "/dashboard");
+      // Triggers a full-page redirect to Google - this component unmounts
+      // here on success. The result is handled by the useEffect above once
+      // Google redirects back to this same page.
+      await loginWithGoogle();
     } catch {
       setError("Unable to continue with Google. Please try again or use email sign-up.");
-      setLoading(false);
+      setGoogleLoading(false);
     }
   }
 
@@ -305,17 +350,21 @@ export default function Register() {
             </div>
 
             {/* Google */}
-            <button onClick={handleGoogle} disabled={loading}
+            <button onClick={handleGoogle} disabled={loading || googleLoading}
               className="flex items-center justify-center gap-2.5 w-full py-3 mb-3
                 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700
                 hover:bg-slate-50 hover:border-slate-300 hover:shadow-md
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
-              <GoogleIcon />
-              Continue with Google
+              {googleLoading ? "Redirecting to Google…" : (
+                <>
+                  <GoogleIcon />
+                  Continue with Google
+                </>
+              )}
             </button>
 
             {/* Submit */}
-            <button onClick={handleSubmit} disabled={loading}
+            <button onClick={handleSubmit} disabled={loading || googleLoading}
               className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56]
                 text-white text-sm font-bold rounded-xl
                 shadow-sm shadow-emerald-200 hover:shadow-md

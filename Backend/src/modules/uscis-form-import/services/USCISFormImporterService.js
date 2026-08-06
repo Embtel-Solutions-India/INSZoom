@@ -5,6 +5,7 @@ const notificationService = require("../../notifications/notification.service");
 const storageService = require("../../uploads/storage.service");
 const PDFFieldScannerService = require("./PDFFieldScannerService");
 const FormMetadataService = require("./FormMetadataService");
+const FieldLabelEnrichmentService = require("./FieldLabelEnrichmentService");
 const FormVersionService = require("./FormVersionService");
 const { FormValidationService, enterpriseError } = require("./FormValidationService");
 const { normalizePdf } = require("../../../utils/normalizePdf");
@@ -213,6 +214,14 @@ class USCISFormImporterService {
       metadata.formCode = normalizeFormCode(metadata.formCode);
       metadata.formNumber = metadata.formCode;
       this.validation.validateMetadata(metadata);
+      // Human-readable labels + USCIS-use-only classification (see
+      // FieldLabelEnrichmentService's own header). Fields are kept (not
+      // dropped) here, including uscis_use_only ones - PDF flattening and
+      // FormMappingService both walk the FULL formFields array, so barcode
+      // fields still need to exist there; they're filtered out later, at
+      // the review-facing boundary (uscis-form.service.js's buildSections()),
+      // not at storage time.
+      scanResult.fields = FieldLabelEnrichmentService.enrichFields(scanResult.fields, metadata.formCode);
       const sameVersion = await USCISFormTemplate.findOne({ formCode: metadata.formCode, version: metadata.version });
       const sameVersionChecksum = sameVersion?.artifacts?.form?.checksum || sameVersion?.importMetadata?.checksum || sameVersion?.lifecycle?.sourceChecksum;
       if (sameVersion && sameVersionChecksum && sameVersionChecksum !== sourceChecksum) {

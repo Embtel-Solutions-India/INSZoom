@@ -462,31 +462,50 @@ function fieldCatalog() {
       section: "employee",
       condition: { field: "employee.immigrationStatus.insideUnitedStates", operator: "equals", value: "no" },
     },
-    { path: "employee.education.highestLevel", label: "Highest Education Level", section: "employee" },
-    { path: "employee.education.majorFieldOfStudy", label: "Major Field of Study", section: "employee" },
-    { path: "employee.education.hasUsMastersOrHigher", label: "Has US Masters or Higher", section: "employee" },
+    // masterDataPath is set explicitly (to the same dotted path) on every
+    // entry below - without it, inferMasterDataPath (questionnaire.service.js)
+    // falls through to its generic sectionMap fallback, which resolves this
+    // section ("Education", via sectionTitleFor) to the top-level slot
+    // buildMasterCaseData pre-seeds as `education: []` (a flat array, meant
+    // for an older repeatable-education-history shape), then tries to set a
+    // FLAT underscored key like "employee_education_highest_level" AS A
+    // PROPERTY OF THAT ARRAY - which MongoDB's $set rejects at save time
+    // ("Cannot create field ... in element {education: []}"), because BSON
+    // arrays can't take arbitrary string keys. Confirmed empirically: any
+    // employee_education_* answer crashed the save before this fix. Every
+    // other employee.* field either gets a real canonicalPath
+    // (EMPLOYEE_CANONICAL_PATHS above - personal.*/immigrationStatus.* only,
+    // deliberately not education) or, like these, needs its own
+    // masterDataPath to avoid the same collision.
+    { path: "employee.education.highestLevel", label: "Highest Education Level", section: "employee", masterDataPath: "employee.education.highestLevel" },
+    { path: "employee.education.majorFieldOfStudy", label: "Major Field of Study", section: "employee", masterDataPath: "employee.education.majorFieldOfStudy" },
+    { path: "employee.education.hasUsMastersOrHigher", label: "Has US Masters or Higher", section: "employee", masterDataPath: "employee.education.hasUsMastersOrHigher" },
     {
       path: "employee.education.usInstitutionName",
       label: "US Institution Name",
       section: "employee",
+      masterDataPath: "employee.education.usInstitutionName",
       condition: { field: "employee.education.hasUsMastersOrHigher", operator: "equals", value: "yes" },
     },
     {
       path: "employee.education.degreeAwardDate",
       label: "Degree Award Date",
       section: "employee",
+      masterDataPath: "employee.education.degreeAwardDate",
       condition: { field: "employee.education.hasUsMastersOrHigher", operator: "equals", value: "yes" },
     },
     {
       path: "employee.education.degreeType",
       label: "Degree Type",
       section: "employee",
+      masterDataPath: "employee.education.degreeType",
       condition: { field: "employee.education.hasUsMastersOrHigher", operator: "equals", value: "yes" },
     },
     {
       path: "employee.education.institutionAddress",
       label: "Institution Address",
       section: "employee",
+      masterDataPath: "employee.education.institutionAddress",
       condition: { field: "employee.education.hasUsMastersOrHigher", operator: "equals", value: "yes" },
     },
     { path: "employee.immigrationHistory.hasValidPassport", label: "Has Valid Passport", section: "employee" },
@@ -540,10 +559,19 @@ function fieldCatalog() {
     },
     { path: "employee.previousHLStatusHistory", label: "Previous H/L Status History", section: "employee", repeatable: true },
     {
+      // Same masterDataPath-collision fix as the education fields above:
+      // sectionTitleFor("employee.dependents") resolves to a "Dependents"
+      // section, which inferMasterDataPath's sectionMap maps to the
+      // top-level `dependents` slot buildMasterCaseData pre-seeds as an
+      // ARRAY - without an explicit override, saving an employee_dependents
+      // answer crashes the same way ("Cannot create field
+      // 'employee_dependents' in element {dependents: []}"), confirmed
+      // empirically via h6-conditional-forms.test.js.
       path: "employee.dependents",
       label: "Dependents",
       section: "employee",
       repeatable: true,
+      masterDataPath: "questionnaire.dependents",
       condition: { field: "employee.immigrationHistory.hasH4Dependents", operator: "equals", value: "yes" },
     },
   ];

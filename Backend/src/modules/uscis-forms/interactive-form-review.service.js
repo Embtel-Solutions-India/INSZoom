@@ -285,10 +285,18 @@ class InteractiveFormReviewService {
       review: caseForm.sectionReviews?.[section.key] || { status: "not_started" },
       fields: section.fields.map((field) => this.buildFieldView(field, caseForm, canonicalState, documents)),
     }));
+    // template.layout (a field that doesn't exist on USCISFormTemplate's own
+    // schema - it's `formLayout`) was always undefined here; Task 2's page
+    // rendering needs the real per-page pixel dimensions
+    // (formLayout.pages[].width/height, in PDF points) to scale the
+    // rasterized page image and its field overlays correctly, so this now
+    // reads the real field instead of silently sending nothing.
+    const pageDimensions = (template.formLayout?.pages || template.formStructure?.pages || [])
+      .map((page) => ({ pageNumber: page.pageNumber, width: page.width, height: page.height, rotation: page.rotation || 0 }));
     return {
       ...rendered,
       caseForm,
-      template: { ...rendered.template, layout: template.layout, structure: template.formStructure || template.structure, sections },
+      template: { ...rendered.template, layout: template.formLayout || {}, pageDimensions, structure: template.formStructure || template.structure, sections },
       caseSummary: {
         _id: caseData._id,
         caseNumber: caseData.caseNumber || caseData.caseId,

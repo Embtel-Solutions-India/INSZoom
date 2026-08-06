@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
+import { resolvePostLoginDest } from "../../utils/postLoginDest";
 
 export default function Login() {
   const [email,       setEmail]       = useState("");
@@ -12,8 +13,9 @@ export default function Login() {
   const [pendingInvite, setPendingInvite] = useState(false);
   const [resendingInvite, setResendingInvite] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError, user, authLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,12 +24,61 @@ export default function Login() {
     return () => clearTimeout(t);
   }, []);
 
+  // signInWithRedirect leaves this page and comes back to it after Google
+  // completes - pick up the result here instead of inline in handleGoogle,
+  // mirroring exactly where the old popup flow's `navigate()` call was.
+  // resolvePostLoginDest sends INSZoom staff roles (super_admin/admin/
+  // team_lead/case_manager) to the INSZoom portal instead of the BAIS
+  // client dashboard, and for clients checks whether a case already exists
+  // so a brand-new Google signup lands directly on /dashboard/intake
+  // instead of flashing /dashboard first.
+  useEffect(() => {
+    if (!googleRedirectUser) return;
+    const redirectingUser = googleRedirectUser;
+    clearGoogleRedirectUser();
+    (async () => {
+      const dest = await resolvePostLoginDest(redirectingUser);
+      if (dest.external) window.location.href = dest.url; // cross-app navigation - navigate() can't leave this origin
+      else navigate(dest.url, { replace: true });
+    })();
+  }, [googleRedirectUser, navigate, clearGoogleRedirectUser]);
+
+  useEffect(() => {
+    if (!googleAuthError) return;
+    setError(googleAuthError);
+    setGoogleLoading(false);
+    clearGoogleAuthError();
+  }, [googleAuthError, clearGoogleAuthError]);
+
+  // Catches every other way this page can end up with an authenticated user
+  // in context - not just the Google path above, but also a bookmarked/
+  // back-navigated visit to /login while already signed in (email/password
+  // login has no role gate the way INSZoom's does, and previously this
+  // guard only handled staff, leaving an already-logged-in client stuck on
+  // the login form instead of being sent on to /dashboard).
+  useEffect(() => {
+    if (!user || authLoading) return;
+    let cancelled = false;
+    (async () => {
+      const dest = await resolvePostLoginDest(user);
+      if (cancelled) return;
+      if (dest.external) window.location.href = dest.url;
+      else navigate(dest.url, { replace: true });
+    })();
+    return () => { cancelled = true; };
+  }, [user, authLoading, navigate]);
+
   const handleLogin = async () => {
     if (!email || !password) { setError("Please enter your email and password."); return; }
     setError(""); setPendingInvite(false); setResendSent(false); setLoading(true);
     try {
+      // No navigate() here - the already-authenticated-guard effect above
+      // reacts to `user` becoming set (which login() does internally) and
+      // resolves the correct destination itself. Navigating here too would
+      // race it: this would fire first with a guess, then the guard's async
+      // case-check would correct it a beat later, producing exactly the
+      // /dashboard-then-/dashboard/intake flash this page is meant to avoid.
       await login(email, password);
-      navigate("/dashboard");
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (err.code === "PENDING_INVITE") {
@@ -57,14 +108,17 @@ export default function Login() {
   };
 
   const handleGoogle = async () => {
-    setError(""); setLoading(true);
+    setError(""); setGoogleLoading(true);
     try {
-      const u = await loginWithGoogle();
-      navigate(u?.role === "admin" ? "/admin/portal" : "/dashboard");
-    } catch (err){
+      // Triggers a full-page redirect to Google - this component unmounts
+      // here on success. The result is handled by the useEffect above once
+      // Google redirects back to this same page.
+      await loginWithGoogle();
+    } catch (err) {
       console.error(err);
       setError("Unable to continue with Google. Please try again or use email login.");
-    } finally { setLoading(false); }
+      setGoogleLoading(false);
+    }
   };
 
   const handleKey = (e) => { if (e.key === "Enter") handleLogin(); };
@@ -105,14 +159,18 @@ export default function Login() {
           {/* Google */}
           <button
             onClick={handleGoogle}
-            disabled={loading}
+            disabled={loading || googleLoading}
             className="flex items-center justify-center gap-3 w-full py-3 mb-5
               bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700
               hover:bg-slate-50 hover:border-slate-300 hover:shadow-md
               transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
           >
-            <GoogleIcon />
-            Continue with Google
+            {googleLoading ? "Redirecting to Google…" : (
+              <>
+                <GoogleIcon />
+                Continue with Google
+              </>
+            )}
           </button>
 
           {/* Divider */}
@@ -196,7 +254,7 @@ export default function Login() {
           {/* Login button */}
           <button
             onClick={handleLogin}
-            disabled={loading}
+            disabled={loading || googleLoading}
             className="w-full py-3 mb-3 bg-[#1D9E75] hover:bg-[#0F6E56]
               text-white text-sm font-bold rounded-xl
               shadow-sm shadow-emerald-200 hover:shadow-md hover:shadow-emerald-300

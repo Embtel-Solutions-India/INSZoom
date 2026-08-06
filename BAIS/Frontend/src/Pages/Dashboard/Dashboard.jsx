@@ -472,13 +472,12 @@ function PaymentSummaryCard({ plan }) {
     if (!plan) return null;
 
     const status = plan.paymentStatus || "not_started";
-    const amount = Number(plan.amount || 0);
-    const currency = plan.currency || "USD";
-
-    const formattedAmount = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-    }).format(amount);
+    // plan.amount is stored in cents (see case.controller.js's plan.amount
+    // normalization and payment.service.js, which copies it straight into
+    // Payment.totalAmount/baseAmount - all cents) - moneyFromCents divides
+    // by 100 before formatting, same helper this file already uses for
+    // paymentSummary.amountPaid/remainingAmount below.
+    const formattedAmount = moneyFromCents(plan.amount);
 
     return (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

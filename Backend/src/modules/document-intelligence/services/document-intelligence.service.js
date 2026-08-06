@@ -551,7 +551,6 @@ async function uploadAndProcess({ file, body, user, req }) {
 // dot-path $set that only adds keys rather than replacing the field
 // wholesale (never clobbers the uscis mapping saveAnswers just computed).
 async function applyAnswerMatches({ caseId, documentType, extraction, matches, labelByTarget, user, req }) {
-  const fieldByKey = new Map((extraction.extractedData || []).map((field) => [field.key, field]));
   const targets = await questionnaireService.resolveCaseQuestionnaires(caseId);
   const targetByQuestionnaireId = new Map(targets.map((target) => [String(target.questionnaire._id), target]));
 
@@ -572,15 +571,24 @@ async function applyAnswerMatches({ caseId, documentType, extraction, matches, l
     const toWrite = [];
     const pendingItems = [];
     for (const match of questionnaireMatches) {
-      const field = fieldByKey.get(match.fieldKey);
-      if (!field) continue;
+      // `match.value` is already populated by applyQuestionnairePrefill's
+      // caller-side fieldByKey (built from the FULL matched-fields set,
+      // including derived fields like deriveEducationScalarFields' output
+      // that never appear in extraction.extractedData itself) - do not
+      // re-derive it from extraction.extractedData here, or every derived-
+      // field match silently drops (confirmed empirically: this used to
+      // look itself up via a local fieldByKey keyed off
+      // extraction.extractedData only, so an OCR-derived
+      // "educationHighestLevel" match was matched correctly upstream but
+      // then discarded here for having no literal extractedData entry).
+      if (match.value === undefined) continue;
       const label = labelByTarget.get(`answer:${match.targetPath}`);
       const existingValue = existingByKey.get(match.targetPath);
       const isEmpty = existingValue === undefined || existingValue === null || existingValue === "";
-      const isSame = !isEmpty && String(existingValue) === String(field.value);
+      const isSame = !isEmpty && String(existingValue) === String(match.value);
       const base = {
         key: match.targetPath,
-        value: field.value,
+        value: match.value,
         label,
         confidence: match.combinedConfidence,
         sourceDocumentType: documentType,
@@ -588,7 +596,7 @@ async function applyAnswerMatches({ caseId, documentType, extraction, matches, l
         questionnaireId: target.questionnaire._id,
       };
       if (isEmpty || isSame) {
-        toWrite.push({ questionKey: match.targetPath, value: field.value });
+        toWrite.push({ questionKey: match.targetPath, value: match.value });
         pendingItems.push({ ...base, applied: true, conflict: false });
       } else {
         items.push({ ...base, applied: false, conflict: true });
@@ -672,16 +680,28 @@ async function applyQuestionnairePrefill(extraction, caseId, user, req, options 
     return extraction;
   }
 
+  // A resume's "education" field is an array - no questionnaire question
+  // accepts it as-is (see field-mapping.registry.js's own comment on
+  // FIELD_MAPPINGS.resume). Project it into the flat scalar fields the
+  // employee checklist actually asks for (deriveEducationScalarFields picks
+  // the highest-RANKED entry, not the most recent) so matching below has
+  // something to match against; never persisted back onto `extraction`
+  // itself, only used in-memory for this matching pass.
+  const derivedFields = ["resume", "cv"].includes(documentType)
+    ? extractionMappingService.deriveEducationScalarFields(fields)
+    : [];
+  const allFields = derivedFields.length ? [...fields, ...derivedFields] : fields;
+
   let matches = [];
   try {
-    matches = await semanticFieldMatcher.matchFields({ documentType, fields, caseId });
+    matches = await semanticFieldMatcher.matchFields({ documentType, fields: allFields, caseId });
   } catch (error) {
     matches = [];
   }
   const catalog = await semanticFieldMatcher.buildTargetCatalog(caseId);
   matches = [
     ...matches,
-    ...deterministicAnswerMatches({ documentType, fields, catalog, existingMatches: matches }),
+    ...deterministicAnswerMatches({ documentType, fields: allFields, catalog, existingMatches: matches }),
   ];
   if (!matches.length) {
     extraction.questionnairePrefill = [];
@@ -690,7 +710,7 @@ async function applyQuestionnairePrefill(extraction, caseId, user, req, options 
   }
 
   const labelByTarget = new Map(catalog.map((entry) => [`${entry.targetSystem}:${entry.targetPath}`, entry.label]));
-  const fieldByKey = new Map(fields.map((field) => [field.key, field]));
+  const fieldByKey = new Map(allFields.map((field) => [field.key, field]));
   const enrichedMatches = matches.map((match) => ({
     ...match,
     value: fieldByKey.get(match.fieldKey)?.value,
@@ -1201,4 +1221,5 @@ module.exports = {
   uploadAndExtractNowDetailed,
   prefillSummaryForCase,
   reviewMasterDataField,
+  applyQuestionnairePrefill,
 };

@@ -9,6 +9,13 @@
 // MappingGraphService.persistVersion/activate, which itself retires the
 // prior active version - never mutates an existing USCISMappingVersion's
 // (immutable) graph in place.
+//
+// As of the L-1A crosswalk addition, the graph this seed produces covers
+// BOTH H-1B and L-1A/L-1B - there is no separate "i129-l1a-mapping.seed.js"
+// (USCISFormTemplate only supports one active mapping version per template,
+// so a second independently-run seed against the same I-129 template would
+// fight this one over that single slot). Re-run this same seed after any
+// crosswalk change, for any visa type sharing this form.
 const mongoose = require("mongoose");
 const env = require("../../../config/env");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
@@ -183,7 +190,7 @@ if (require.main === module) {
     .connect(env.mongoUri)
     .then(() => seedI129H1bMapping({}))
     .then(({ template, mappingVersion, classification }) => {
-      console.log("I-129 H-1B mapping seeded and activated.");
+      console.log("I-129 mapping seeded and activated (covers H-1B and L-1A/L-1B).");
       console.log("  templateId:", String(template._id));
       console.log("  mappingVersion:", mappingVersion.mappingVersion, "| status:", mappingVersion.status, "| checksum:", mappingVersion.checksum.slice(0, 12) + "...");
       console.log("  template.mappingStatus:", template.mappingStatus, "| activeMappingVersionId:", String(template.activeMappingVersionId));

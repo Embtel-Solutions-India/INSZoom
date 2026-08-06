@@ -12,6 +12,7 @@ const FormMappingService = require("../form-mapping/services/FormMappingService"
 const workflowService = require("../workflows/workflow.service");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
 const { createPerfTimer } = require("../../utils/perfTimer");
+const { isUscisUseOnly } = require("../uscis-form-import/services/FieldLabelEnrichmentService");
 
 const TEMPLATE_CACHE_TTL_MS = Number(process.env.USCIS_TEMPLATE_CACHE_TTL_MS || 5 * 60 * 1000);
 const templateCache = {
@@ -502,8 +503,19 @@ function normalizeField(field = {}, index = 0) {
   };
 }
 
+// USCIS-internal fields (barcodes, etc.) never reach the review UI - the
+// stored `uscisUseOnly` flag (set at import time, FieldLabelEnrichmentService)
+// is trusted when present; a template imported before that enrichment
+// existed falls back to a live pattern check so the same guarantee holds
+// without requiring every template to be re-imported/backfilled first.
+function isReviewFacing(field, formCode) {
+  if (field.uscisUseOnly === true) return false;
+  if (field.uscisUseOnly === false) return true;
+  return !isUscisUseOnly(field.fieldName, formCode);
+}
+
 function buildSections(template) {
-  const fields = (template.formFields || []).map(normalizeField);
+  const fields = (template.formFields || []).filter((field) => isReviewFacing(field, template.formCode)).map(normalizeField);
   if (template.sections?.length) {
     return template.sections
       .map((section, index) => ({

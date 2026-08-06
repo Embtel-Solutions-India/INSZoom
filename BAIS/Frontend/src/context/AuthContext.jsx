@@ -1,6 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
-import { signInWithPopup } from "firebase/auth";
-import { auth, googleProvider } from "../firebase";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { auth, googleProvider, signInWithRedirect, getRedirectResult } from "../firebase";
 import { authApi, tokenStore } from "../services/api";
 import { initializeNotifications, unregisterCurrentDevice } from "../services/notificationService";
 
@@ -9,28 +8,76 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // Set exactly once, right after a Google signInWithRedirect flow lands
+  // back on the page - Login/Register consume it to navigate (role-based,
+  // same as the old popup flow's inline `navigate()`) and then clear it.
+  // Kept separate from `user` so this doesn't also re-fire on ordinary
+  // email/password logins, which already navigate themselves.
+  const [googleRedirectUser, setGoogleRedirectUser] = useState(null);
+  const [googleAuthError, setGoogleAuthError] = useState("");
 
   const clearSession = useCallback(() => {
     tokenStore.clear();
     setUser(null);
   }, []);
 
-  // Rehydrate session on mount
+  const clearGoogleRedirectUser = useCallback(() => setGoogleRedirectUser(null), []);
+  const clearGoogleAuthError = useCallback(() => setGoogleAuthError(""), []);
+
+  // getRedirectResult() only ever returns Google's real result on the FIRST
+  // call after a redirect completes - every call after that resolves to
+  // null, even within the same page load. React.StrictMode (main.jsx)
+  // double-invokes effects in dev (mount -> cleanup -> mount again), which
+  // races two calls to it: whichever call actually receives the real result
+  // may belong to the invocation whose cleanup already fired, so its
+  // now-stale `cancelled` guard would silently drop a successful sign-in,
+  // and the second invocation finds nothing left to consume. This ref
+  // ensures the redirect check + token exchange runs exactly once per
+  // provider lifetime regardless of how many times the effect fires.
+  const redirectCheckStarted = useRef(false);
+
+  // On mount: first check whether we just landed back from a Google
+  // signInWithRedirect round-trip, THEN fall back to the normal
+  // localStorage-token rehydration. Both paths share the same authLoading
+  // gate so ProtectedRoute never flashes "please log in" while the
+  // redirect-result exchange is still in flight.
   useEffect(() => {
-    const access = tokenStore.getAccess();
-    if (!access) {
-      setAuthLoading(false);
-      return;
-    }
-    authApi
-      .me()
-      // features (feature-flag server defaults) only comes back from /auth/me,
-      // not login/signup/acceptInvite — attaching it here means a flag flip
-      // takes effect on next refresh, matching the flag module's contract.
-      .then(({ user: u, features }) => setUser(u ? { ...u, features } : u))
-      .catch(clearSession)
-      .finally(() => setAuthLoading(false));
-  }, []);
+    if (redirectCheckStarted.current) return;
+    redirectCheckStarted.current = true;
+    (async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          const idToken = await result.user.getIdToken();
+          const data = await authApi.googleToken(idToken);
+          tokenStore.set(data.accessToken);
+          setUser(data.user);
+          setGoogleRedirectUser(data.user);
+          setAuthLoading(false);
+          return;
+        }
+      } catch (err) {
+        // Real config/account errors (e.g. unauthorized-domain, disabled
+        // user) - NOT the common case, which is getRedirectResult simply
+        // resolving to null on every ordinary page load.
+        console.error("Google redirect sign-in failed:", err);
+        setGoogleAuthError("Unable to complete Google sign-in. Please try again or use email login.");
+      }
+      const access = tokenStore.getAccess();
+      if (!access) {
+        setAuthLoading(false);
+        return;
+      }
+      authApi
+        .me()
+        // features (feature-flag server defaults) only comes back from /auth/me,
+        // not login/signup/acceptInvite — attaching it here means a flag flip
+        // takes effect on next refresh, matching the flag module's contract.
+        .then(({ user: u, features }) => setUser(u ? { ...u, features } : u))
+        .catch(clearSession)
+        .finally(() => setAuthLoading(false));
+    })();
+  }, [clearSession]);
 
   // Listen for global session-expired events (triggered by api.js on 401)
   useEffect(() => {
@@ -76,14 +123,11 @@ export function AuthProvider({ children }) {
     await authApi.logout().catch(() => {});
   }, [clearSession]);
 
-  // Firebase popup → exchange Firebase ID token for our JWT
+  // Triggers a full-page redirect to Google - does not resolve with a user;
+  // the result is picked up by the getRedirectResult effect above once
+  // Google redirects back and this provider remounts.
   const loginWithGoogle = useCallback(async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    const idToken = await result.user.getIdToken();
-    const data = await authApi.googleToken(idToken);
-    tokenStore.set(data.accessToken);
-    setUser(data.user);
-    return data.user;
+    await signInWithRedirect(auth, googleProvider);
   }, []);
 
   // Called by OAuthCallback page (passport redirect flow — kept for compatibility)
@@ -100,8 +144,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser }),
-    [user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser]
+    () => ({
+      user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
+    }),
+    [
+      user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
+    ]
   );
 
   return (
