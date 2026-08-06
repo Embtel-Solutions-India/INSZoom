@@ -25,6 +25,8 @@
     "seed:i907": "node src/modules/uscis-form-import/seeds/i907.seed.js",
     "seed:uscis-forms": "node -e \"const mongoose=require('mongoose'); const env=require('./src/config/env'); const r=require; mongoose.connect(env.mongoUri).then(()=>['i129','i129f','i130','i134','i539','i539a','i907'].reduce((p,n)=>p.then(()=>r('./src/modules/uscis-form-import/seeds/'+n+'.seed')()), Promise.resolve())).then(()=>mongoose.disconnect()).catch(async e=>{console.error(e.message); await mongoose.disconnect().catch(()=>{}); process.exit(1);})\"",
     "seed:i129-mapping": "node src/modules/form-mapping/seeds/i129-h1b-mapping.seed.js",
+    "seed:i129f-k1-mapping": "node src/modules/form-mapping/seeds/i129f-k1-mapping.seed.js",
+    "seed:i130-k3-mapping": "node src/modules/form-mapping/seeds/i130-k3-mapping.seed.js",
     "import:form": "node src/modules/uscis-form-import/scripts/importLocalForm.js",
     "test:e2e": "node --test \"src/modules/h1b-e2e/tests/*.test.js\""
   },

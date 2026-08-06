@@ -23,8 +23,9 @@ const ADMIN_PORTAL_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager']
 
 // Mirrors the backend's authorizeRoles(...) gate on the /eligibility-quiz/leads*
 // routes exactly (Backend/src/modules/eligibility-quiz/quiz.routes.js) — no
-// team_lead there, so it's deliberately narrower than ADMIN_PORTAL_ROLES.
-const LEADS_ROLES = ['super_admin', 'admin', 'case_manager']
+// team_lead or case_manager there, so it's deliberately narrower than
+// ADMIN_PORTAL_ROLES.
+const LEADS_ROLES = ['super_admin', 'admin']
 
 export const canAccessAdminPortal = (user) => Boolean(user?.role && ADMIN_PORTAL_ROLES.includes(user.role))
 
@@ -73,6 +74,8 @@ export const canAccessModule = (user, module) => {
     questionnaires: ADMIN_PORTAL_ROLES,
     tasks: ADMIN_PORTAL_ROLES,
     'case-managers': ['super_admin', 'admin', 'team_lead'],
+    teams: ['super_admin', 'admin', 'team_lead'],
+    'fee-schedule': ['super_admin', 'admin', 'team_lead'],
   }
   return moduleAccess[module]?.includes(user.role) || false
 }
@@ -126,6 +129,8 @@ export const getSidebarMenuItems = (user) => {
     { path: '/leads', icon: Inbox, label: 'Leads', roles: LEADS_ROLES },
     { path: '/crm-cases', icon: Briefcase, label: 'Cases', roles: ADMIN_PORTAL_ROLES },
     { path: '/tasks', icon: CheckCircle, label: 'Tasks', roles: ADMIN_PORTAL_ROLES },
+    { path: '/teams', icon: Users, label: 'Teams', roles: ['super_admin', 'admin', 'team_lead'] },
+    { path: '/fee-schedule', icon: DollarSign, label: 'Fee Schedule', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/users', icon: Users, label: 'Staff', roles: ['super_admin', 'admin'] },
     { path: '/case-managers', icon: Users, label: 'Case Managers', roles: ['super_admin', 'admin'] },
     { path: '/leaderboard', icon: Scale, label: 'Leaderboard', roles: ['super_admin', 'admin', 'team_lead'] },

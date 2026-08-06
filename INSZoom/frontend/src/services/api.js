@@ -188,6 +188,7 @@ export const clientIntakeApi = {
 }
 
 export const uscisFormsApi = {
+  templatePdf: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { responseType: 'blob' }),
   caseForms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
   createCaseForm: (caseId, payload) => api.post(`/uscis-forms/case/${caseId}`, payload),
   render: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/render`),

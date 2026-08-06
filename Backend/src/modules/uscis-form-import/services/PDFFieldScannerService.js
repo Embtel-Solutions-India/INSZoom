@@ -2,6 +2,7 @@ const {
   PDFCheckBox,
   PDFDropdown,
   PDFDocument,
+  PDFName,
   PDFOptionList,
   PDFRadioGroup,
   PDFSignature,
@@ -138,7 +139,20 @@ function parseDefaultAppearance(defaultAppearance = "") {
   };
 }
 
-function extractWidget(pdfDoc, widget, index) {
+// USCIS AcroForm PDFs carry a /TU (tooltip / "TU" = user name) entry on
+// nearly every widget - confirmed empirically against the real seeded I-129
+// template (980/980 fields had one, including the barcode field, whose /TU
+// is just its own field name and is filtered out downstream). Checked on
+// the widget annotation first (per-widget instruction, e.g. "Enter City or
+// Town."), falling back to the field-level AcroField's own /TU (some PDFs
+// only set it there) - never assumed present, always degrades to undefined.
+function widgetTooltip(widget, acroField) {
+  const widgetTu = safeCall(() => widget.dict.get(PDFName.of("TU"))?.decodeText?.(), undefined);
+  if (widgetTu) return widgetTu;
+  return safeCall(() => acroField?.dict.get(PDFName.of("TU"))?.decodeText?.(), undefined);
+}
+
+function extractWidget(pdfDoc, widget, index, acroField) {
   const rect = safeCall(() => widget.getRectangle?.(), {}) || {};
   const pageNumber = pageNumberForWidget(pdfDoc, widget);
   const page = pageNumber ? pdfDoc.getPage(pageNumber - 1) : undefined;
@@ -178,6 +192,7 @@ function extractWidget(pdfDoc, widget, index) {
     flags,
     hidden: Boolean(flags & (ANNOTATION_FLAGS.invisible | ANNOTATION_FLAGS.hidden | ANNOTATION_FLAGS.noView)),
     readOnly: Boolean(flags & ANNOTATION_FLAGS.readOnly),
+    tooltip: widgetTooltip(widget, acroField),
     appearance: {
       ...parseDefaultAppearance(defaultAppearance),
       borderColor: safeCall(() => appearanceCharacteristics?.getBorderColor?.(), undefined),
@@ -191,7 +206,7 @@ function extractWidget(pdfDoc, widget, index) {
 
 function extractWidgets(pdfDoc, field) {
   const widgets = safeCall(() => field.acroField?.getWidgets?.(), []) || [];
-  return widgets.map((widget, index) => extractWidget(pdfDoc, widget, index));
+  return widgets.map((widget, index) => extractWidget(pdfDoc, widget, index, field.acroField));
 }
 
 function fieldOptions(field) {
@@ -556,6 +571,7 @@ class PDFFieldScannerService {
           semanticType: type,
           label: labelFromName(fieldName),
           fieldLabel: labelFromName(fieldName),
+          tooltip: primaryWidget.tooltip,
           sectionId,
           sectionKey: sectionId,
           sectionTitle: sectionId === "general" ? "General" : _.startCase(sectionId.replace(/^part/i, "Part ")),

@@ -7,6 +7,8 @@ router.use("/client-intake", require("../modules/client-intake/client-intake.rou
 router.use("/beneficiaries", require("../modules/beneficiaries/beneficiary.routes"));
 router.use("/companies", require("../modules/companies/company.routes"));
 router.use("/users", require("../modules/users/user.routes"));
+router.use("/team-members", require("../modules/team-management/team-management.routes"));
+router.use("/fee-schedule", require("../modules/fee-schedule/fee-schedule.routes"));
 router.use("/dashboard", require("../modules/dashboard/dashboard.routes"));
 router.use("/analytics", require("../modules/dashboard/analytics.routes"));
 router.use("/reports", require("../modules/reports/report.routes"));

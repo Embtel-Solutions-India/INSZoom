@@ -7,6 +7,7 @@ const uscisFormImporterService = require("./uscis-form-importer.service");
 const interactiveFormReviewService = require("./interactive-form-review.service");
 const USCISScannerService = require("../uscis-lifecycle/services/USCISScannerService");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
+const storageService = require("../uploads/storage.service");
 
 const templates = createCrudController(USCISFormTemplate, {
   label: "USCIS form template",
@@ -163,6 +164,37 @@ async function createCaseForm(req, res, next) {
   try {
     const form = await uscisFormService.createCaseForm(req.params.caseId, req.body, req.user, req);
     res.status(201).json({ success: true, data: form, form });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Serves the template's own blank source PDF bytes (not a case's filled
+// copy) - Task 2's page-image rendering needs the REAL blank USCIS page to
+// rasterize as the visual background each field overlay sits on top of.
+// Mirrors documents/document.controller.js's previewDocument pattern: read
+// the stored bytes, send inline with the right content-type, no
+// transformation here (react-pdf/pdf.js does the actual rendering
+// client-side).
+async function getTemplatePdf(req, res, next) {
+  try {
+    const template = await USCISFormTemplate.findById(req.params.id).select("formCode version artifacts pdfStorageKey").lean();
+    if (!template) {
+      const error = new Error("USCIS form template not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const key = template.artifacts?.form?.storageKey || template.pdfStorageKey;
+    if (!key) {
+      const error = new Error("This template has no stored PDF artifact");
+      error.statusCode = 404;
+      throw error;
+    }
+    const buffer = await storageService.readBuffer(key);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${template.formCode}-${template.version}.pdf"`);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buffer);
   } catch (error) {
     next(error);
   }
@@ -383,6 +415,7 @@ module.exports = {
   getAllCaseForms,
   getCaseForms,
   getSyncHistory,
+  getTemplatePdf,
   getVersions,
   getInteractiveComments: reviewDetails("comments"),
   getInteractiveComparison: reviewDetails("comparison"),

@@ -3,11 +3,22 @@ import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import { documentsApi } from '../../services/api'
+// react-pdf@10 bundles its OWN pdfjs-dist (react-pdf/node_modules/pdfjs-dist,
+// 5.4.296), a different major version than this project's top-level
+// pdfjs-dist dependency (^6.2.108, used server-side for PDF field
+// scanning). Pointing the worker at the top-level package throws "API
+// version does not match Worker version" and pages never render (confirmed
+// empirically) - worse, `pdfjs.GlobalWorkerOptions.workerSrc` is a shared
+// singleton across every module using react-pdf's `pdfjs` export, so this
+// same fix has to live everywhere that sets it (see
+// components/uscis/USCISFormRenderer.jsx's own copy of this note) or
+// whichever one evaluates last silently wins and breaks the other.
+import pdfWorkerUrl from 'react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 // The worker must be configured in the SAME module that renders
 // <Document>/<Page> (react-pdf's own README warning) — never in a separate
 // "setup once" file, or module execution order can silently overwrite it.
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
 // Fetches one Document's PDF as a blob and renders every page as its own
 // "sheet" (a plain div per page — the page-shell/shadow styling is applied

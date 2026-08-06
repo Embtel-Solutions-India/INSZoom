@@ -126,7 +126,7 @@ const Layout = () => {
               I
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">INSZoom</h1>
+              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">Immigratia</h1>
               <p className="text-[10px] font-medium text-gray-400 tracking-wide uppercase truncate">Internal CRM</p>
             </div>
           </div>
