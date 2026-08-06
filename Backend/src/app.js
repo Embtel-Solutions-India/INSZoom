@@ -12,12 +12,14 @@ const requestContext = require("./middleware/requestContext");
 const sanitizeRequest = require("./middleware/sanitizeRequest");
 const paymentController = require("./modules/payments/payment.controller");
 const logger = require("./utils/logger");
+const { perfMiddleware } = require("./utils/perfTimer");
 
 const app = express();
 
 app.use(helmet());
 app.use(compression());
 app.use(requestContext);
+app.use(perfMiddleware);
 app.use(
   cors({
     origin: env.clientOrigins,

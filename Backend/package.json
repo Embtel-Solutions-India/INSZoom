@@ -14,6 +14,7 @@
     "seed": "node src/seeds/index.js",
     "backfill:family-checklist-references": "node src/scripts/backfillFamilyChecklistReferences.js",
     "migrate:case-participants": "node src/scripts/migrateCaseParticipants.js",
+    "indexes:case-list": "node src/scripts/createCaseListIndexes.js",
     "seed:package-definitions": "node src/modules/petition/seeds/packageDefinitions.seed.js",
     "seed:i129": "node src/modules/uscis-form-import/seeds/i129.seed.js",
     "seed:i129f": "node src/modules/uscis-form-import/seeds/i129f.seed.js",

@@ -5,6 +5,7 @@ const Case = require("../models/Case");
 const env = require("../config/env");
 const seedUsers = require("./seedUsers");
 const seedClients = require("./seedClients");
+const { assertDemoSeedAllowed } = require("./demoSeedGuard");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -169,6 +170,7 @@ async function seedCases() {
         assignedCaseManager: users[seed.assignedCaseManagerEmail]?._id,
         assignedTeamLead: users["teamlead@inszoom.com"]?._id,
         primaryOwner: users[seed.assignedCaseManagerEmail]?._id,
+        isDemoData: true,
       });
 
       // Bypass mongoose timestamps middleware so seeded cases carry a realistic,
@@ -190,6 +192,7 @@ async function seedCases() {
 module.exports = seedCases;
 
 if (require.main === module) {
+  assertDemoSeedAllowed();
   mongoose
     .connect(env.mongoUri)
     .then(() => seedCases())

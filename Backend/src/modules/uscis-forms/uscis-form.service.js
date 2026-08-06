@@ -11,6 +11,37 @@ const CanonicalProfileService = require("../canonical/services/CanonicalProfileS
 const FormMappingService = require("../form-mapping/services/FormMappingService");
 const workflowService = require("../workflows/workflow.service");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
+const { createPerfTimer } = require("../../utils/perfTimer");
+
+const TEMPLATE_CACHE_TTL_MS = Number(process.env.USCIS_TEMPLATE_CACHE_TTL_MS || 5 * 60 * 1000);
+const templateCache = {
+  activeTemplates: null,
+  activeTemplatesExpiresAt: 0,
+  latestByCode: new Map(),
+};
+
+function cloneTemplate(template) {
+  return template ? JSON.parse(JSON.stringify(template)) : template;
+}
+
+function invalidateTemplateCache() {
+  templateCache.activeTemplates = null;
+  templateCache.activeTemplatesExpiresAt = 0;
+  templateCache.latestByCode.clear();
+}
+
+async function activeTemplatesCached() {
+  const now = Date.now();
+  if (templateCache.activeTemplates && templateCache.activeTemplatesExpiresAt > now) {
+    return templateCache.activeTemplates.map(cloneTemplate);
+  }
+  const templates = await USCISFormTemplate.find({ status: "active", activeFlag: { $ne: false }, officialStatus: { $ne: "deprecated" } })
+    .select("_id formCode formNumber version editionDate activeMappingVersion mappingVersion activeMappingVersionId latestMappingVersionId validationVersion renderingVersion visaTypes supportedVisaCategories assignmentRules activeFlag officialStatus status title")
+    .lean();
+  templateCache.activeTemplates = templates;
+  templateCache.activeTemplatesExpiresAt = now + TEMPLATE_CACHE_TTL_MS;
+  return templates.map(cloneTemplate);
+}
 
 const FIELD_TYPES = {
   text: "text",
@@ -275,9 +306,14 @@ async function resolveH1bDependents(caseData) {
 }
 
 async function findLatestActiveTemplate(formCode) {
-  const templates = await USCISFormTemplate.find({ formCode, status: "active", activeFlag: { $ne: false }, officialStatus: { $ne: "deprecated" } }).lean();
+  const cacheKey = normalizeFormCode(formCode);
+  const cached = templateCache.latestByCode.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cloneTemplate(cached.template);
+  const templates = (await activeTemplatesCached()).filter((template) => normalizeFormCode(template.formCode) === cacheKey);
   if (!templates.length) return null;
-  return [...templates].sort(latestTemplateSort)[0];
+  const template = [...templates].sort(latestTemplateSort)[0];
+  templateCache.latestByCode.set(cacheKey, { template, expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS });
+  return cloneTemplate(template);
 }
 
 // Resolves which condition-triggered templates currently apply. Silently
@@ -357,7 +393,9 @@ async function reconcileConditionalForms(caseData, user, req, conditions) {
 // form whose condition became false) happens separately in
 // ensureAssignedForms itself, not here, so this function stays a pure read.
 async function latestTemplatesByAssignmentRules(caseData) {
-  const templates = await USCISFormTemplate.find({ status: "active", activeFlag: { $ne: false }, officialStatus: { $ne: "deprecated" } }).lean();
+  const timer = createPerfTimer("uscis_template_resolution_performance", { caseId: caseData?._id, visaType: caseData?.visaType });
+  const templates = await activeTemplatesCached();
+  timer.mark("active_template_lookup", { count: templates.length });
   const grouped = new Map();
   templates.filter((template) => templateAppliesToCase(template, caseData)).forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
@@ -365,10 +403,12 @@ async function latestTemplatesByAssignmentRules(caseData) {
     if (!existing || latestTemplateSort(template, existing) < 0) grouped.set(code, template);
   });
   const { templates: conditional } = await resolveConditionalTemplates(caseData);
+  timer.mark("conditional_template_resolution", { count: conditional.length });
   conditional.forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     if (!grouped.has(code)) grouped.set(code, template);
   });
+  timer.done({ selectedCount: grouped.size });
   return [...grouped.values()];
 }
 
@@ -851,6 +891,7 @@ async function getVersions(formCode) {
 
 async function activateTemplate(templateId, user, req) {
   const result = await VersionManagementService.activate(templateId, user, req);
+  invalidateTemplateCache();
   return result.template;
 }
 
@@ -873,6 +914,7 @@ async function retireTemplate(templateId, user, req) {
     userAgent: req?.headers?.["user-agent"],
     description: `Retired ${template.formCode} ${template.version}`,
   }).catch(() => null);
+  invalidateTemplateCache();
   return template;
 }
 
@@ -1036,4 +1078,5 @@ module.exports = {
   hasAttorneyOnRecord,
   resolveH1bDependents,
   resolveConditionalTemplates,
+  invalidateTemplateCache,
 };

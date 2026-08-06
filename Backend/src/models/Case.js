@@ -774,6 +774,10 @@ const caseSchema = new mongoose.Schema(
     filingReadinessScore: { type: Number, min: 0, max: 100, default: 0 },
     lastSyncedAt: { type: Date, default: null },
     legacySource: { type: String, enum: ["BAIS", "INSZoom", "shared", ""], default: "shared" },
+    // Set only by Backend/src/seeds/* on records those seeds actually CREATE.
+    // Unrelated to `legacySource` (sync-origin marker). Consumed only by
+    // DELETE /api/admin/demo-data.
+    isDemoData: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

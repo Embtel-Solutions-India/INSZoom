@@ -6,6 +6,7 @@ const Client = require("../models/Client");
 const User = require("../models/User");
 const env = require("../config/env");
 const seedUsers = require("./seedUsers");
+const { assertDemoSeedAllowed } = require("./demoSeedGuard");
 
 async function seedCompany(users) {
   const employer = users["employer@inszoom.com"];
@@ -32,6 +33,7 @@ async function seedCompany(users) {
       hrManager: employer?._id,
       hrUsers: employer ? [employer._id] : [],
       source: "shared",
+      isDemoData: true,
     });
   }
 
@@ -169,6 +171,7 @@ async function seedClients(users) {
       client = await Client.create({
         ...clientData,
         user: userAccount?._id,
+        isDemoData: true,
       });
     } else if (userAccount && !client.user) {
       client.user = userAccount._id;
@@ -187,6 +190,7 @@ async function seedClients(users) {
 module.exports = seedClients;
 
 if (require.main === module) {
+  assertDemoSeedAllowed();
   mongoose
     .connect(env.mongoUri)
     .then(async () => {

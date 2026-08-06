@@ -316,11 +316,15 @@ const CRMCaseDetail = () => {
     return () => { mounted = false }
   }, [caseData?._id])
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId].filter(Boolean)
-  const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.progress)
+  const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
+  // Scoped to upload (file-type) questions only — c.progress mixes in
+  // questionnaire field answers, which QuestionnaireAnswersPanel already
+  // renders separately, so using it here double-counted field answers as
+  // "documents pending".
   const documentsProgress = {
-    totalRequired: relevantChecklistProgress.reduce((sum, c) => sum + (c.progress.totalRequired || 0), 0),
-    answeredRequired: relevantChecklistProgress.reduce((sum, c) => sum + (c.progress.answeredRequired || 0), 0),
-    missingRequired: relevantChecklistProgress.flatMap((c) => c.progress.missingRequired || []),
+    totalRequired: relevantChecklistProgress.reduce((sum, c) => sum + (c.documentProgress.totalRequired || 0), 0),
+    answeredRequired: relevantChecklistProgress.reduce((sum, c) => sum + (c.documentProgress.answeredRequired || 0), 0),
+    missingRequired: relevantChecklistProgress.flatMap((c) => c.documentProgress.missingRequired || []),
   }
   const [availableAddons, setAvailableAddons] = useState([])
   const [addonsLoading, setAddonsLoading] = useState(false)

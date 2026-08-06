@@ -72,6 +72,10 @@ const userSchema = new mongoose.Schema(
     referralDiscountAvailable: { type: Boolean, default: false },
     referralDiscountReason: { type: String, enum: ["", "signup", "reward"], default: "" },
     referralRewardCount: { type: Number, default: 0 },
+    // Set only by Backend/src/seeds/* on records those seeds actually CREATE.
+    // Unrelated to `source`/`legacySource` (sync-origin marker). Consumed only
+    // by DELETE /api/admin/demo-data.
+    isDemoData: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

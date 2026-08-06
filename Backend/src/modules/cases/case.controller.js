@@ -11,6 +11,7 @@ const caseService = require("./case.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
 const { evaluateStageGate } = require("./case-gating.config");
+const { createPerfTimer } = require("../../utils/perfTimer");
 const questionnaireService = require("../questionnaires/questionnaire.service");
 const messageService = require("../messages/message.service");
 const paymentGateway = require("../payments/payment.gateway");
@@ -398,8 +399,14 @@ exports.purchaseAddon = async (req, res, next) => {
       history: [{ status: "payment_pending", note: "Premium Processing upgrade requested", by: req.user._id }],
     });
     PREMIUM_PROCESSING_ADDON.requiredDocuments.forEach((document) => {
-      const exists = (caseData.documentChecklist || []).some((item) => item.documentType === document.documentType);
-      if (!exists) caseData.documentChecklist.push({ ...document, category: "immigration", requestedDate: new Date() });
+      // Dedup by documentType against BOTH mirrored arrays (matching
+      // assignStandardDocuments' pattern) and push into both — pushing into
+      // documentChecklist alone let this diverge from checklistItems.
+      const exists = [...(caseData.documentChecklist || []), ...(caseData.checklistItems || [])].some((item) => item.documentType === document.documentType);
+      if (exists) return;
+      const next = { ...document, category: "immigration", requestedDate: new Date() };
+      caseData.documentChecklist.push(next);
+      caseData.checklistItems.push(next);
     });
     caseService.addTimelineEvent(caseData, "addon", "Premium Processing Purchased", "Premium Processing (Form I-907) upgrade was added and is pending payment.", req.user, { addonKey: PREMIUM_PROCESSING_ADDON.key, paymentId: payment._id });
     await caseData.save();
@@ -449,22 +456,35 @@ exports.purchaseAddon = async (req, res, next) => {
 };
 
 exports.getCases = async (req, res, next) => {
+  const timer = createPerfTimer("cases_list_performance", {
+    requestId: req.requestId,
+    userId: req.user?._id,
+    role: req.user?.role,
+  });
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
     const filter = await caseService.resolveCaseSearchFilter(req.query, req.user);
+    timer.mark("filter_resolved", { page, limit });
     const sort = caseService.buildCaseSort(req.query);
     const skip = (page - 1) * limit;
+    timer.mark("pagination_ready", { skip, sort });
 
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      caseService.populateCaseQuery(Case.find(filter).sort(sort).skip(skip).limit(limit)),
+      caseService.populateCaseListQuery(
+        Case.find(filter).sort(sort).skip(skip).limit(limit).lean({ virtuals: true })
+      ),
     ]);
+    timer.mark("case_query_completed", { total, count: cases.length });
 
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
+    timer.mark("case_serialization_completed", { count: serializedCases.length });
     res.json({ success: true, count: serializedCases.length, total, page, pages: Math.ceil(total / limit), cases: serializedCases, summaries, data: serializedCases });
+    timer.done({ success: true });
   } catch (error) {
+    timer.done({ success: false, errorName: error.name, errorCode: error.code });
     handleError(error, next);
   }
 };
@@ -583,6 +603,10 @@ exports.createCase = async (req, res, next) => {
     const teamLead = await caseService.resolveTeamLeadForCase(req.body);
     const newCase = await Case.create({
       ...req.body,
+      // Never let a client-supplied body flag a real case as demo data (the
+      // only other writers of this field are Backend/src/seeds/*, which pass
+      // it explicitly rather than spreading req.body).
+      isDemoData: false,
       caseId: req.body.caseId || caseNumber,
       caseNumber,
       clientPortalId: req.body.clientPortalId || caseNumber,
@@ -1212,17 +1236,29 @@ exports.requestDocuments = async (req, res, next) => {
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to modify this case" });
 
     const requiredDocuments = req.body.requiredDocuments || [];
+    const existingDocumentTypes = new Set(
+      [...(caseData.documentChecklist || []), ...(caseData.checklistItems || [])].map((item) => item.documentType).filter(Boolean)
+    );
     requiredDocuments.forEach((documentType) => {
-      caseData.documentChecklist.push({
+      const resolvedType = documentType.documentType || documentType.name || documentType;
+      // Dedup by documentType against BOTH mirrored arrays, and push into
+      // both — this previously had no dedup at all and pushed into
+      // documentChecklist only, so re-requesting or repeating a document
+      // duplicated it and diverged the two arrays.
+      if (existingDocumentTypes.has(resolvedType)) return;
+      const next = {
         name: documentType.name || documentType,
-        documentType: documentType.documentType || documentType.name || documentType,
+        documentType: resolvedType,
         description: documentType.description,
         required: documentType.required !== false,
         status: "requested",
         requestedDate: new Date(),
         dueDate: documentType.dueDate || req.body.dueDate,
         notes: req.body.message,
-      });
+      };
+      caseData.documentChecklist.push(next);
+      caseData.checklistItems.push(next);
+      existingDocumentTypes.add(resolvedType);
     });
     await workflowService.documentsRequested(caseData, req.user, { requiredDocuments, dueDate: req.body.dueDate });
     caseService.addAuditEntry(caseData, "request_documents", "Documents requested", req.user, req.body, req);
