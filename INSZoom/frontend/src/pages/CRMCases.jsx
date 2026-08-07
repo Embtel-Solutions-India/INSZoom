@@ -3,8 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { Briefcase, Search, Filter, Download, User, Calendar, DollarSign, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus } from 'lucide-react'
+import { Briefcase, Search, Filter, Download, User, Calendar, DollarSign, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
+import CreateCaseModal from '../components/CreateCaseModal'
+
+// Case managers, team leads, and admins can create a case directly from this
+// portal (see Backend's POST /cases/create-with-client authorizeRoles list).
+const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager']
 
 const CRMCases = () => {
   const navigate = useNavigate()
@@ -25,9 +30,9 @@ const CRMCases = () => {
     attention: searchParams.get('attention') || undefined,
     visaType: searchParams.get('visaType') || undefined,
   })
-  const [refreshing, setRefreshing] = useState(false)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const limit = 20
 
   useEffect(() => {
@@ -113,14 +118,18 @@ const CRMCases = () => {
     setStatusFilter(value)
   }
 
-  const handleRefreshCases = async () => {
-    try {
-      setRefreshing(true)
-      await fetchCases()
-    } catch (error) {
-      console.error('Error refreshing cases:', error)
-    } finally {
-      setRefreshing(false)
+  const handleRefreshCases = () => {
+    // Matches the navbar's Refresh button (Layout.jsx) — a full page reload,
+    // not a silent in-place refetch.
+    window.location.reload()
+  }
+
+  const handleCaseCreated = (data) => {
+    setShowCreateModal(false)
+    setPage(1)
+    fetchCases()
+    if (data?.case?.caseNumber) {
+      alert(`Case ${data.case.caseNumber} created. An activation email has been sent to the client.`)
     }
   }
 
@@ -162,6 +171,30 @@ const CRMCases = () => {
     'Not selected'
   )
 
+  const getCreator = (caseItem) => {
+    const creator = caseItem.createdBy || caseItem.creator || {}
+    const name = creator.name || creator.displayName || creator.email || caseItem.createdByName || 'Unknown'
+    const role = creator.role || caseItem.createdByRole || ''
+    return { name, role }
+  }
+
+  const formatRole = (role) => (
+    String(role || '')
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  )
+
+  const formatCreatedDate = (value) => {
+    if (!value) return ''
+    try {
+      return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value))
+    } catch {
+      return ''
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -170,15 +203,32 @@ const CRMCases = () => {
           <h1 className="text-2xl font-bold text-gray-900">CRM Cases</h1>
           <p className="text-gray-600 mt-1">Manage cases imported from Client Portal</p>
         </div>
-        <button
-          onClick={handleRefreshCases}
-          disabled={refreshing}
-          className="btn-primary flex items-center justify-center gap-2 disabled:opacity-50 w-full sm:w-auto"
-        >
-          <Download className="w-4 h-4" />
-          {refreshing ? 'Refreshing...' : 'Refresh Cases'}
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {CAN_CREATE_CASE_ROLES.includes(user?.role) && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4" />
+              New Case
+            </button>
+          )}
+          <button
+            onClick={handleRefreshCases}
+            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
+          >
+            <Download className="w-4 h-4" />
+            Refresh Cases
+          </button>
+        </div>
       </div>
+
+      {showCreateModal && (
+        <CreateCaseModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleCaseCreated}
+        />
+      )}
 
       {/* Filters */}
       <div className="card">
@@ -248,6 +298,7 @@ const CRMCases = () => {
               {cases.map((caseItem) => {
                 const awaitingAssignment = isAwaitingAssignment(caseItem)
                 const caseManagerName = caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName
+                const creator = getCreator(caseItem)
                 return (
                   <div key={caseItem._id} className={`p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40' : ''}`}>
                     <div className="flex items-start justify-between gap-2">
@@ -305,6 +356,14 @@ const CRMCases = () => {
                         </button>
                       </div>
                     </div>
+
+                    <div className="flex items-center gap-2 rounded-lg bg-white/70 px-2 py-1.5 text-xs text-gray-600">
+                      <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                      <span className="font-medium text-gray-700">Created By</span>
+                      <span className="truncate">{creator.name}</span>
+                      {creator.role && <span className="shrink-0 text-gray-400">({formatRole(creator.role)})</span>}
+                      {caseItem.createdAt && <span className="ml-auto shrink-0 text-gray-500">{formatCreatedDate(caseItem.createdAt)}</span>}
+                    </div>
                   </div>
                 )
               })}
@@ -314,19 +373,21 @@ const CRMCases = () => {
             <div className="hidden md:block overflow-x-auto">
             <table className="w-full table-fixed">
               <colgroup>
-                <col className="w-[16%]" />
-                <col className="w-[19%]" />
-                <col className="w-[16%]" />
-                <col className="w-[11%]" />
-                <col className="w-[11%]" />
+                <col className="w-[13%]" />
+                <col className="w-[17%]" />
                 <col className="w-[14%]" />
                 <col className="w-[13%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
               </colgroup>
               <thead>
                 <tr className="bg-gray-50">
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Number</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visa / Package</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Manager</th>
@@ -336,6 +397,7 @@ const CRMCases = () => {
               <tbody>
                 {cases.map((caseItem) => {
                     const awaitingAssignment = isAwaitingAssignment(caseItem)
+                    const creator = getCreator(caseItem)
                     return (
                     <tr key={caseItem._id} className={`border-b hover:bg-gray-50 ${awaitingAssignment ? 'bg-amber-50/40' : ''}`}>
                       <td className="px-3 py-3 align-top">
@@ -356,6 +418,12 @@ const CRMCases = () => {
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="truncate" title={resolveDisplayVisa(caseItem)}>{resolveDisplayVisa(caseItem)}</p>
                         <p className="text-xs text-gray-500 capitalize truncate">{getPackageLabel(caseItem)?.replace?.('_', ' ') || getPackageLabel(caseItem)}</p>
+                      </td>
+                      <td className="px-3 py-3 align-top min-w-0">
+                        <p className="font-medium truncate" title={creator.name}>{creator.name}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {formatRole(creator.role) || 'Creator'}{caseItem.createdAt ? ` - ${formatCreatedDate(caseItem.createdAt)}` : ''}
+                        </p>
                       </td>
                       <td className="px-3 py-3 align-top">
                         <span className={`inline-block max-w-full truncate px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseItem.stage)}`}>

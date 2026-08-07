@@ -152,16 +152,6 @@ const Leaderboard = () => {
           </div>
         )}
       </div>
-
-      {/* Score Formula */}
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-3">Score Formula</h3>
-        <div className="text-sm text-gray-600 space-y-2">
-          {role === 'case_manager' && (
-            <p><strong>Case Manager:</strong> Closed Cases × 10 - Overdue Cases × 5</p>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

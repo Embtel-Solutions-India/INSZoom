@@ -13,7 +13,7 @@ const CanonicalProfileService = require("../canonical/services/CanonicalProfileS
 const notificationService = require("../notifications/notification.service");
 const uscisFormService = require("./uscis-form.service");
 
-const EDIT_ROLES = new Set(["super_admin", "admin", "case_manager"]);
+const EDIT_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const REVIEW_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const APPROVE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 const UNLOCK_ROLES = new Set(["super_admin", "admin", "team_lead"]);

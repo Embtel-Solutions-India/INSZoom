@@ -110,12 +110,23 @@ export default function Login() {
   const handleGoogle = async () => {
     setError(""); setGoogleLoading(true);
     try {
-      // Triggers a full-page redirect to Google - this component unmounts
-      // here on success. The result is handled by the useEffect above once
-      // Google redirects back to this same page.
+      // On most browsers this triggers a full-page redirect to Google -
+      // this component unmounts here on success, and the result is handled
+      // by the useEffect above once Google redirects back to this page. On
+      // Edge (see firebase.js's redirectWillLoseState), it opens a popup
+      // instead and resolves inline without unmounting - context's
+      // loginWithGoogle sets googleRedirectUser itself in that case, which
+      // the same useEffect below also reacts to, so no separate handling is
+      // needed here either way.
       await loginWithGoogle();
     } catch (err) {
-      console.error(err);
+      // auth/popup-closed-by-user means the user dismissed the popup (Edge
+      // path only) - not an error worth surfacing.
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
+        setGoogleLoading(false);
+        return;
+      }
+      console.error("Google sign-in error:", err?.code, err?.message);
       setError("Unable to continue with Google. Please try again or use email login.");
       setGoogleLoading(false);
     }

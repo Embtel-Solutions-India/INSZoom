@@ -6,6 +6,7 @@ const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const ctrl = require("./case.controller");
 const { PRIORITIES } = require("./case.constants");
+const { PACKAGE_NAMES } = require("../../config/packages");
 
 const staffRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const managerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -26,6 +27,24 @@ router.post(
   body("clientEmail").optional().isEmail().withMessage("Valid client email is required"),
   validate,
   ctrl.createCase
+);
+router.post(
+  "/create-with-client",
+  authenticate,
+  authorizeRoles(...staffRoles),
+  authorizePermissions("cases:create"),
+  body("clientName").trim().notEmpty().withMessage("Client name is required"),
+  body("clientEmail").isEmail().normalizeEmail().withMessage("Valid client email is required"),
+  body("visaType").notEmpty().withMessage("Visa type is required"),
+  body("packageName").optional({ checkFalsy: true }).isIn(PACKAGE_NAMES).withMessage(`Package must be one of: ${PACKAGE_NAMES.join(", ")}`),
+  body("clientPhone").optional().isString(),
+  body("assignedCaseManager").optional().isMongoId().withMessage("assignedCaseManager must be a valid ID"),
+  body("employerName").optional({ checkFalsy: true }).isString(),
+  body("employerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid employer email is required"),
+  body("employerCompletionMode").optional({ checkFalsy: true }).isIn(["employer_completes", "invite_employees"]).withMessage("Invalid employer workflow option"),
+  body("caseDetails").optional({ checkFalsy: true }).isString(),
+  validate,
+  ctrl.createCaseWithClient
 );
 router.get("/:id/addons", authenticate, authorizePermissions("cases:read"), ctrl.getAvailableAddons);
 router.post(

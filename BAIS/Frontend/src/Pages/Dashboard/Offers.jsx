@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import OfferCard from "../../components/OfferCard";
 import StartAssessmentButton from "../../components/StartAssessmentButton";
-import { getPriceRangesByTier, formatCentsRange } from "../../config/pricingCatalog";
+import {
+  ATTORNEY_REVIEW_PACKAGE,
+  FULL_ATTORNEY_FILING_PACKAGE,
+  SELF_FILING_PACKAGE,
+  getPriceRangesByTier,
+  formatCentsRange,
+} from "../../config/pricingCatalog";
 import { PLANS } from "../../config/planConfig";
 import { leadsApi, referralApi, tokenStore } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
@@ -24,27 +30,27 @@ const TIER_RANGES = getPriceRangesByTier();
 const OFFERS = [
   {
     icon: IconSparkles,
-    tier: "self-file",
-    title: "Self-File Package",
+    tier: SELF_FILING_PACKAGE,
+    title: SELF_FILING_PACKAGE,
     description: "Guided self-file kit with templates, checklists, and optional attorney review.",
-    price: formatCentsRange(TIER_RANGES["self-file"].min, TIER_RANGES["self-file"].max),
-    features: PLANS.find((p) => p.id === "self-file")?.features || [],
+    price: formatCentsRange(TIER_RANGES[SELF_FILING_PACKAGE].min, TIER_RANGES[SELF_FILING_PACKAGE].max),
+    features: PLANS.find((p) => p.id === SELF_FILING_PACKAGE)?.features || [],
   },
   {
     icon: IconGift,
-    tier: "standard",
-    title: "Attorney Review Package",
+    tier: ATTORNEY_REVIEW_PACKAGE,
+    title: ATTORNEY_REVIEW_PACKAGE,
     description: "Package includes full document review and a one-hour attorney consultation.",
-    price: formatCentsRange(TIER_RANGES.standard.min, TIER_RANGES.standard.max),
-    features: PLANS.find((p) => p.id === "standard")?.features || [],
+    price: formatCentsRange(TIER_RANGES[ATTORNEY_REVIEW_PACKAGE].min, TIER_RANGES[ATTORNEY_REVIEW_PACKAGE].max),
+    features: PLANS.find((p) => p.id === ATTORNEY_REVIEW_PACKAGE)?.features || [],
   },
   {
     icon: IconHandThumbsUp,
-    tier: "premium",
-    title: "Full Attorney Filing Package",
+    tier: FULL_ATTORNEY_FILING_PACKAGE,
+    title: FULL_ATTORNEY_FILING_PACKAGE,
     description: "End-to-end attorney-led filing, USCIS forms, and case management.",
-    price: formatCentsRange(TIER_RANGES.premium.min, TIER_RANGES.premium.max),
-    features: PLANS.find((p) => p.id === "premium")?.features || [],
+    price: formatCentsRange(TIER_RANGES[FULL_ATTORNEY_FILING_PACKAGE].min, TIER_RANGES[FULL_ATTORNEY_FILING_PACKAGE].max),
+    features: PLANS.find((p) => p.id === FULL_ATTORNEY_FILING_PACKAGE)?.features || [],
   },
 ];
 

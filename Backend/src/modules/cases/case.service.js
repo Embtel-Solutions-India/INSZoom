@@ -247,6 +247,11 @@ function summarizeCase(caseData) {
     stage: data.stage,
     stageLabel: activeStage?.label || data.stage,
     priority: data.priority,
+    creator: data.createdBy ? {
+      _id: data.createdBy?._id || data.createdBy,
+      name: data.createdBy?.name || data.createdBy?.displayName || data.createdBy?.email,
+      role: data.createdBy?.role,
+    } : null,
     assignedUsers: {
       primaryOwner: data.primaryOwner,
       secondaryOwner: data.secondaryOwner,
@@ -387,6 +392,7 @@ function populateCaseQuery(query) {
     { path: "primaryOwner", select: "name displayName email department phone role" },
     { path: "secondaryOwner", select: "name displayName email department phone role" },
     { path: "assignedTeamLead", select: "name displayName email department phone role" },
+    { path: "createdBy", select: "name displayName email role" },
     { path: "internalNotes.author", select: "name displayName role" },
     { path: "timeline.createdBy", select: "name displayName role" },
   ]);
@@ -405,6 +411,7 @@ function populateCaseListQuery(query) {
     { path: "primaryOwner", select: "name displayName email department phone role" },
     { path: "secondaryOwner", select: "name displayName email department phone role" },
     { path: "assignedTeamLead", select: "name displayName email department phone role" },
+    { path: "createdBy", select: "name displayName email role" },
   ]);
 }
 

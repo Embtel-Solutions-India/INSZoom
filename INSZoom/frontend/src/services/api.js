@@ -126,6 +126,7 @@ export const casesApi = {
   generatePackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-package`, payload),
   generateWordPackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-word-package`, payload),
   create: (payload) => api.post('/cases', payload),
+  createWithClient: (payload) => api.post('/cases/create-with-client', payload),
   update: (id, payload) => api.put(`/cases/${id}`, payload),
   archive: (id) => api.delete(`/cases/${id}`),
   updateStage: (id, payload) => api.put(`/cases/${id}/stage`, payload),
@@ -145,6 +146,10 @@ export const casesApi = {
   approveQuestionnaire: (id, payload) =>
     api.post(`/cases/${id}/approve-questionnaire`, payload),
   addons: (id) => api.get(`/cases/${id}/addons`),
+}
+
+export const usersApi = {
+  caseManagers: () => api.get('/users/case-managers'),
 }
 
 export const lifecycleApi = {
@@ -222,6 +227,7 @@ export const formGenerationApi = {
   regeneratePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/regenerate`, payload),
   previewPdf: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
   downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }),
+  draftPdf: (caseFormId) => api.get(`/forms/${caseFormId}/draft-pdf`, { responseType: 'blob' }),
 }
 
 export const petitionApi = {

@@ -1,8 +1,14 @@
 /** Service plan definitions — controls features and pricing display */
+import {
+  ATTORNEY_REVIEW_PACKAGE,
+  FULL_ATTORNEY_FILING_PACKAGE,
+  SELF_FILING_PACKAGE,
+} from "./pricingCatalog";
+
 export const PLANS = [
   {
-    id: "premium",
-    label: "Full Attorney Filing",
+    id: FULL_ATTORNEY_FILING_PACKAGE,
+    label: FULL_ATTORNEY_FILING_PACKAGE,
     tagline: "End-to-end attorney-led filing",
     price: "Contact for pricing",
     color: {
@@ -33,8 +39,8 @@ export const PLANS = [
     },
   },
   {
-    id: "standard",
-    label: "Attorney Review",
+    id: ATTORNEY_REVIEW_PACKAGE,
+    label: ATTORNEY_REVIEW_PACKAGE,
     tagline: "Guided support & attorney review",
     price: "Contact for pricing",
     color: {
@@ -63,8 +69,8 @@ export const PLANS = [
     },
   },
   {
-    id: "self-file",
-    label: "Self-File",
+    id: SELF_FILING_PACKAGE,
+    label: SELF_FILING_PACKAGE,
     tagline: "Self-guided with resources",
     price: "Contact for pricing",
     color: {
@@ -94,9 +100,9 @@ export const PLANS = [
 ];
 
 export const PLAN_LABELS = {
-  premium: "Full Attorney Filing Package",
-  standard: "Attorney Review Package",
-  "self-file": "Self-File Package",
+  [FULL_ATTORNEY_FILING_PACKAGE]: FULL_ATTORNEY_FILING_PACKAGE,
+  [ATTORNEY_REVIEW_PACKAGE]: ATTORNEY_REVIEW_PACKAGE,
+  [SELF_FILING_PACKAGE]: SELF_FILING_PACKAGE,
   "": "Not Selected",
 };
 

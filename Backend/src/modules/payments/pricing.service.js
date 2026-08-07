@@ -1,18 +1,11 @@
+const { SELF_FILING, ATTORNEY_REVIEW, FULL_ATTORNEY_FILING, normalizePackageName } = require("../../config/packages");
+
 const DEFAULT_CURRENCY = "usd";
 const PRICING_VERSION = "2026-06-enterprise-pricing-v1";
-const DEFAULT_TIER_PRICES = { "self-file": 49900, standard: 149900, premium: 399900 };
-
-const PACKAGE_ALIASES = {
-  self_file: "self-file",
-  guided_review: "standard",
-  full_service: "premium",
-  "self-file": "self-file",
-  standard: "standard",
-  premium: "premium",
-};
+const DEFAULT_TIER_PRICES = { [SELF_FILING]: 49900, [ATTORNEY_REVIEW]: 149900, [FULL_ATTORNEY_FILING]: 399900 };
 
 function normalizeTier(tier) {
-  return PACKAGE_ALIASES[tier] || "self-file";
+  return normalizePackageName(tier) || SELF_FILING;
 }
 
 function resolveBasePrice(visaType, tier) {
@@ -20,11 +13,7 @@ function resolveBasePrice(visaType, tier) {
   return {
     tierKey,
     packageKey: tierKey,
-    packageName: {
-      "self-file": "Self-File Package",
-      standard: "Guided Review Package",
-      premium: "Full Service Filing Package",
-    }[tierKey],
+    packageName: tierKey,
     visaType: visaType || "",
     baseAmount: DEFAULT_TIER_PRICES[tierKey],
     currency: DEFAULT_CURRENCY,

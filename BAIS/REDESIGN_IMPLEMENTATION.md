@@ -152,9 +152,9 @@ Your visa immigration client portal has been redesigned to be more professional,
 7. **Contact Section** - Form to request consultation
 
 **Package Details**:
-- **Consultation Package** - ₹5,000 (1-hour consultation + roadmap)
-- **Application Package** - ₹25,000+ (Full application service)
-- **Premium Package** - ₹50,000+ (Everything + expert letters + RFE support)
+- **Self Filing Package** - ₹5,000+ (guided self-filing support)
+- **Attorney Review Package** - ₹25,000+ (application review and filing guidance)
+- **Full Attorney Filing Package** - ₹50,000+ (everything + expert letters + RFE support)
 
 **Referral Program**:
 - Earn ₹5,000 per successful referral

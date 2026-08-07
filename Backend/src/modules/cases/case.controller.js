@@ -2,6 +2,7 @@ const path = require("path");
 const multer = require("multer");
 const Case = require("../../models/Case");
 const CaseAssignmentEvent = require("../../models/CaseAssignmentEvent");
+const Client = require("../../models/Client");
 const Conversation = require("../../models/Conversation");
 const Questionnaire = require("../../models/Questionnaire");
 const User = require("../../models/User");
@@ -20,6 +21,10 @@ const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const storageService = require("../uploads/storage.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const emailService = require("../email/email.service");
+const clientInviteService = require("../auth/clientInvite.service");
+const { generateUniqueReferralCode } = require("../../utils/referralCode");
+const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 
 const checklistAllowedMimeTypes = new Set([
   "image/jpeg",
@@ -209,7 +214,7 @@ async function recordReassignment(caseData, role, previousAssignedTo, assignedTo
 
 async function notifyAssignee(userId, caseData, role, actor, req) {
   if (!userId) return;
-  const packageName = caseData.plan?.packageName || caseData.plan?.tier || caseData.packageName || caseData.package;
+  const packageName = caseData.package || caseData.primaryPackage || caseData.plan?.tier;
   const detailParts = [
     caseData.clientName ? `Client: ${caseData.clientName}` : null,
     caseData.visaType ? `Visa: ${caseData.visaType}` : null,
@@ -600,6 +605,11 @@ exports.createCase = async (req, res, next) => {
     const checklist = [...(req.body.checklistItems || req.body.documentChecklist || [])];
     const requesterRole = normalizeRole(req.user.role);
     const primaryApplicant = req.body.primaryApplicant || req.body.assessmentAnswers?.primaryApplicant;
+    const packageInput = req.body.package || req.body.packageName || req.body.primaryPackage || req.body.plan?.tier;
+    const normalizedPackage = packageInput ? normalizePackageName(packageInput) : "";
+    if (packageInput && !normalizedPackage) {
+      return res.status(400).json({ success: false, message: `Package must be one of: ${PACKAGE_NAMES.join(", ")}` });
+    }
     const teamLead = await caseService.resolveTeamLeadForCase(req.body);
     const newCase = await Case.create({
       ...req.body,
@@ -624,6 +634,12 @@ exports.createCase = async (req, res, next) => {
       parentCase: req.body.parentCase || req.body.parentCaseId,
       clientName: req.body.clientName || req.user.displayName || req.user.name,
       clientEmail: req.body.clientEmail || req.user.email,
+      package: normalizedPackage,
+      primaryPackage: normalizedPackage || req.body.primaryPackage,
+      plan: {
+        ...(req.body.plan || {}),
+        tier: normalizedPackage || "",
+      },
       checklistItems: checklist,
       documentChecklist: checklist,
       status: req.body.status || (req.body.assignedCaseManager ? "assigned" : "pending_assignment"),
@@ -662,6 +678,14 @@ exports.updateCase = async (req, res, next) => {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "package") && req.body.package) {
+      const normalized = normalizePackageName(req.body.package);
+      if (!normalized) {
+        return res.status(400).json({ success: false, message: `Package must be one of: ${PACKAGE_NAMES.join(", ")}` });
+      }
+      req.body.package = normalized;
+    }
 
     const oldStatus = caseData.status;
     const oldStage = caseData.stage;
@@ -1477,6 +1501,216 @@ exports.reopenCase = async (req, res, next) => {
     if (!caseData) return;
     const reopened = await caseService.reopenCase(caseData, req.user, req);
     res.json({ success: true, message: "Case reopened successfully", case: reopened });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Staff-initiated case creation from the INSZoom portal (case managers and
+// team leads only) — creates the client User/Client records and sends a
+// portal-activation invite instead of going through client self-registration.
+exports.createCaseWithClient = async (req, res, next) => {
+  try {
+    const {
+      clientName,
+      clientEmail,
+      clientPhone,
+      visaType,
+      packageName,
+      assignedCaseManager,
+      employerName,
+      employerEmail,
+      employerCompletionMode,
+      caseDetails,
+    } = req.body;
+
+    if (!clientName || !clientName.trim()) {
+      return res.status(400).json({ success: false, message: "Client name is required" });
+    }
+    if (!clientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail)) {
+      return res.status(400).json({ success: false, message: "A valid client email is required" });
+    }
+    if (!visaType) {
+      return res.status(400).json({ success: false, message: "Visa type is required" });
+    }
+    const normalizedPackage = packageName ? normalizePackageName(packageName) : "";
+    if (packageName && !normalizedPackage) {
+      return res.status(400).json({
+        success: false,
+        message: `Package must be one of: ${PACKAGE_NAMES.join(", ")}`,
+      });
+    }
+
+    const email = clientEmail.toLowerCase().trim();
+
+    const existingUser = await User.findOne({ email }).select("+password");
+    if (existingUser && existingUser.password) {
+      return res.status(409).json({
+        success: false,
+        message: "An active account already exists for this email address. The client can log in directly.",
+        code: "CLIENT_ALREADY_REGISTERED",
+      });
+    }
+    if (existingUser && clientInviteService.isPendingClientInvite(existingUser)) {
+      return res.status(409).json({
+        success: false,
+        message: "A pending invitation already exists for this email. Resend the invite instead.",
+        code: "PENDING_CLIENT_INVITE",
+      });
+    }
+
+    const referralCode = await generateUniqueReferralCode(User);
+    const nameParts = clientName.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    const newUser = await User.create({
+      email,
+      name: clientName.trim(),
+      displayName: clientName.trim(),
+      phone: clientPhone || undefined,
+      role: "client",
+      referralCode,
+      isActive: false,
+      isEmailVerified: false,
+    });
+
+    const caseNumber = generateCaseNumber("INS");
+    const selectedAt = normalizedPackage ? new Date() : undefined;
+    const checklist = await resolveDocumentRequirements(visaType);
+    const clientProfile = await Client.findOneAndUpdate(
+      { user: newUser._id },
+      {
+        user: newUser._id,
+        clientPortalId: caseNumber,
+        email,
+        fullName: clientName.trim(),
+        firstName,
+        lastName,
+        primaryPhone: clientPhone || undefined,
+        visaType,
+        visaCategory: visaType,
+        selectedPlan: normalizedPackage,
+        planSelectedAt: selectedAt,
+        completed: true,
+        lastStep: 100,
+        assessmentCompleted: true,
+        intakeSubmission: {
+          status: "locked",
+          submittedAt: new Date(),
+          submittedBy: req.user._id,
+          lockedAt: new Date(),
+          lockedBy: req.user._id,
+        },
+        source: "INSZoom",
+        createdBy: req.user._id,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    const teamLead = await caseService.resolveTeamLeadForCase(req.body);
+    const assignmentMode = employerCompletionMode === "invite_employees" ? "invite_employees" : employerCompletionMode === "employer_completes" ? "employer_completes" : "";
+    const trimmedEmployerName = String(employerName || "").trim();
+    const trimmedEmployerEmail = String(employerEmail || "").trim().toLowerCase();
+    const trimmedCaseDetails = String(caseDetails || "").trim();
+    const questionnaireMasterData = {};
+    if (assignmentMode) {
+      questionnaireMasterData.employeeQuestionnaireAssignment = {
+        mode: assignmentMode,
+        selectedAt: new Date(),
+        selectedBy: req.user._id,
+      };
+    }
+    if (trimmedEmployerName || trimmedEmployerEmail) {
+      questionnaireMasterData.employer = {
+        company: {
+          fullName: trimmedEmployerName,
+          email: trimmedEmployerEmail,
+        },
+      };
+    }
+
+    const newCase = await Case.create({
+      isDemoData: false,
+      caseId: caseNumber,
+      caseNumber,
+      clientPortalId: caseNumber,
+      user: newUser._id,
+      clientProfile: clientProfile._id,
+      createdBy: req.user._id,
+      lastModifiedBy: req.user._id,
+      clientName: clientName.trim(),
+      clientEmail: email,
+      visaType,
+      visaCategory: visaType,
+      // Case has no top-level "packageName" field — only the enum-constrained
+      // "package" and free-text "primaryPackage" (both hold the same
+      // canonical string; see Backend/src/config/packages.js).
+      package: normalizedPackage,
+      primaryPackage: normalizedPackage || undefined,
+      plan: {
+        tier: normalizedPackage,
+        selectedAt,
+        paymentStatus: "not_started",
+        currency: "USD",
+      },
+      documentChecklist: checklist,
+      checklistItems: checklist,
+      questionnaireData: {
+        masterData: questionnaireMasterData,
+      },
+      petitionerName: trimmedEmployerName || undefined,
+      employeeInvite: assignmentMode === "invite_employees" ? {
+        status: "not_sent",
+        invitedBy: req.user._id,
+      } : undefined,
+      employerEmployeeWorkflow: assignmentMode ? {
+        employerStatus: "not_started",
+        employeeStatus: assignmentMode === "invite_employees" ? "not_invited" : "in_progress",
+        caseManagerStatus: assignmentMode === "invite_employees" ? "waiting_for_employee" : "waiting_for_employer",
+      } : undefined,
+      status: assignedCaseManager ? "assigned" : "pending_assignment",
+      assignedTeamLead: teamLead?._id,
+      teamId: teamLead?.teamId,
+      assignedAgent: assignedCaseManager ? (req.user.displayName || req.user.name) : "Team Lead Queue",
+      agentEmail: assignedCaseManager ? req.user.email : undefined,
+      primaryOwner: assignedCaseManager,
+      assignedCaseManager: assignedCaseManager || undefined,
+      internalNotes: trimmedCaseDetails ? [{
+        author: req.user._id,
+        note: trimmedCaseDetails,
+        category: "general",
+        visibility: "team",
+      }] : [],
+      legacySource: "INSZoom",
+    });
+
+    await caseService.hydrateCaseRelationships(newCase, req.user, req);
+    caseService.setStage(newCase, "intake", req.user, "Case created by staff");
+    await workflowService.caseCreated(newCase, req.user);
+    caseService.addAuditEntry(newCase, "create", "Case created by staff via INSZoom portal", req.user, { caseNumber }, req);
+    await newCase.save();
+    await caseService.writeAuditLog("create", newCase, req.user, req.body, req);
+
+    const lifecycle = await lifecycleOrchestrator.initializeCase(newCase, req.user, req);
+
+    const inviteToken = await clientInviteService.createClientInviteToken(newUser);
+    await emailService.sendTemplateEmail("client-portal-invitation", {
+      to: email,
+      data: { clientName: clientName.trim(), caseNumber, token: inviteToken },
+      caseId: lifecycle.case._id,
+      userId: newUser._id,
+      source: "shared",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Case created and client invitation sent",
+      case: lifecycle.case,
+      caseSummary: caseService.summarizeCase(lifecycle.case),
+      clientUserId: newUser._id,
+      inviteSent: true,
+    });
   } catch (error) {
     handleError(error, next);
   }

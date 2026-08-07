@@ -242,11 +242,21 @@ export default function Register() {
   async function handleGoogle() {
     setError(""); setGoogleLoading(true);
     try {
-      // Triggers a full-page redirect to Google - this component unmounts
-      // here on success. The result is handled by the useEffect above once
-      // Google redirects back to this same page.
+      // On most browsers this triggers a full-page redirect to Google -
+      // this component unmounts here on success, and the result is handled
+      // by the useEffect above once Google redirects back to this page. On
+      // Edge it opens a popup instead and resolves inline (see firebase.js's
+      // redirectWillLoseState) - no separate handling needed here either
+      // way, since context sets googleRedirectUser in both cases.
       await loginWithGoogle();
-    } catch {
+    } catch (err) {
+      // auth/popup-closed-by-user means the user dismissed the popup (Edge
+      // path only) - not an error worth surfacing.
+      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
+        setGoogleLoading(false);
+        return;
+      }
+      console.error("Google sign-in error:", err?.code, err?.message);
       setError("Unable to continue with Google. Please try again or use email sign-up.");
       setGoogleLoading(false);
     }

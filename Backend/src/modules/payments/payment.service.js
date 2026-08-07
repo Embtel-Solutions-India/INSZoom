@@ -11,6 +11,7 @@ const workflowService = require("../workflows/workflow.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const pricingService = require("./pricing.service");
 const paymentGateway = require("./payment.gateway");
+const { normalizePackageName } = require("../../config/packages");
 
 const FINANCE_ROLES = ["super_admin", "admin"];
 const MANUAL_PAYMENT_ROLES = [...FINANCE_ROLES, "team_lead"];
@@ -347,11 +348,7 @@ async function createPayment(payload, user, req) {
     invoices: [invoice],
     package: payload.package || context.caseData?.package || price.packageKey,
     packageKey: payload.packageKey || casePlan.tier || price.packageKey,
-    packageName: payload.packageName || {
-      "self-file": "Essentials Package",
-      standard: "Enhanced Package",
-      premium: "Professional Package",
-    }[payload.packageKey || casePlan.tier || price.packageKey] || price.packageName,
+    packageName: payload.packageName || normalizePackageName(payload.packageKey || casePlan.tier) || price.packageName,
     pricingVersion: price.pricingVersion,
     baseAmount,
     subtotalAmount: discounted.totalAmount,
@@ -395,22 +392,14 @@ async function getOrCreateClientPayment(user, caseData, req) {
       packageKey: caseData.plan?.tier,
       baseAmount: caseData.plan?.amount,
       totalAmount: caseData.plan?.amount,
-      packageName: {
-        "self-file": "Essentials Package",
-        standard: "Enhanced Package",
-        premium: "Professional Package",
-      }[caseData.plan?.tier],
+      packageName: normalizePackageName(caseData.plan?.tier),
       legacySource: "BAIS",
     }, user, req);
   } else if ((payment.amountPaid || 0) <= 0 && caseData.plan?.amount && payment.totalAmount !== caseData.plan.amount) {
     const tier = caseData.plan?.tier || payment.packageKey;
     payment.package = caseData.package || payment.package;
     payment.packageKey = tier || payment.packageKey;
-    payment.packageName = {
-      "self-file": "Essentials Package",
-      standard: "Enhanced Package",
-      premium: "Professional Package",
-    }[tier] || payment.packageName;
+    payment.packageName = normalizePackageName(tier) || payment.packageName;
     payment.baseAmount = caseData.plan.amount;
     payment.subtotalAmount = caseData.plan.amount;
     payment.totalAmount = caseData.plan.amount;

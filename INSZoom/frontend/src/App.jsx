@@ -36,7 +36,6 @@ const TaskDetails = lazy(() => import('./pages/TaskDetails'))
 const TaskCalendar = lazy(() => import('./pages/TaskCalendar'))
 const QuestionnaireTemplates = lazy(() => import('./pages/QuestionnaireTemplates'))
 const Teams = lazy(() => import('./pages/Teams'))
-const FeeSchedule = lazy(() => import('./pages/FeeSchedule'))
 
 function App() {
   return (
@@ -303,14 +302,6 @@ function App() {
                 element={
                   <ProtectedRoute module="teams" requiredRoles={['super_admin', 'admin', 'team_lead']}>
                     <Teams />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="fee-schedule"
-                element={
-                  <ProtectedRoute module="fee-schedule" requiredRoles={['super_admin', 'admin', 'team_lead']}>
-                    <FeeSchedule />
                   </ProtectedRoute>
                 }
               />

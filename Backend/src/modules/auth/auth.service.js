@@ -9,6 +9,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const { invalidateUserCache } = require("../../config/redis");
 const { isPendingInvite } = require("./employeeInvite.service");
+const { isPendingClientInvite } = require("./clientInvite.service");
 
 function authPayload(user, accessToken, refreshToken, options = {}) {
   const userPayload = user.toAuthJSON ? user.toAuthJSON() : user;
@@ -62,6 +63,16 @@ async function registerClient(payload, req) {
       const error = new Error("This email has a pending invitation. Check your email or request a new invite to activate your account.");
       error.status = 409;
       error.code = "PENDING_INVITE";
+      throw error;
+    }
+    // Same idea, for a client whose case was created by staff via the
+    // INSZoom portal (see cases:createCaseWithClient) — they have a User
+    // record but no password yet, so ordinary signup should redirect them
+    // to activation instead of a dead-end 409.
+    if (isPendingClientInvite(exists)) {
+      const error = new Error("This email has a pending portal invitation. Check your email or request a new invite to activate your account.");
+      error.status = 409;
+      error.code = "PENDING_CLIENT_INVITE";
       throw error;
     }
     const error = new Error("Email already registered");

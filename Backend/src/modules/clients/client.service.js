@@ -13,6 +13,7 @@ const beneficiaryService = require("../beneficiaries/beneficiary.service");
 const { resolveDocumentRequirements } = require("../document-requirements/document-requirement.resolver");
 const generateCaseNumber = require("../cases/caseId");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { normalizePackageName } = require("../../config/packages");
 const caseService = require("../cases/case.service");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
@@ -95,7 +96,7 @@ function mapLegacyProfile(data = {}, userId) {
     passportInfo: data.passportInfo,
     visaCategory: data.visaCategory || visaSelection.visaCategory,
     visaType: data.visaType || visaSelection.visaType,
-    selectedPlan: data.selectedPlan || visaSelection.package || data.package,
+    selectedPlan: normalizePackageName(data.selectedPlan || visaSelection.package || data.package),
     employmentHistory: data.employmentHistory || data.employment,
     educationHistory: data.educationHistory || data.education,
     assessmentCompleted: data.assessmentCompleted,
@@ -207,7 +208,7 @@ async function ensureCaseForCompletedClient(client, data = {}, user, req) {
     assessmentAnswers: client.assessmentAnswers || null,
     assessmentMatchPercentage: client.assessmentMatchPercentage || 0,
     plan: {
-      tier: data.selectedPlan || client.selectedPlan || "",
+      tier: normalizePackageName(data.selectedPlan || client.selectedPlan) || "",
       selectedAt: data.selectedPlan ? new Date() : client.planSelectedAt,
       paymentStatus: "not_started",
     },

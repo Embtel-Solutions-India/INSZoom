@@ -4,7 +4,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { casesApi, tokenStore } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 import { isEmployeeAccount } from "../../utils/auth";
+import useHasCase from "../../hooks/useHasCase";
 import { IconCheckmark } from "../../utils/iconComponents";
+import {
+  ATTORNEY_REVIEW_PACKAGE,
+  FULL_ATTORNEY_FILING_PACKAGE,
+  SELF_FILING_PACKAGE,
+} from "../../config/pricingCatalog";
 
 const SERVICE_STEPS = [
   {
@@ -541,9 +547,9 @@ const SERVICE_STEPS = [
 ];
 const SERVICE_PACKAGES = [
   {
-    key: "essentials",
-    planKey: "self-file",
-    label: "Essentials",
+    key: SELF_FILING_PACKAGE,
+    planKey: SELF_FILING_PACKAGE,
+    label: SELF_FILING_PACKAGE,
     price: "$599*",
     amountCents: 59900,
     tagline: "Do-it-yourself application preparation",
@@ -551,24 +557,24 @@ const SERVICE_PACKAGES = [
     features: ["Guided intake", "Required forms checklist", "Document checklist", "Secure portal access", "Virtual PDF application"],
   },
   {
-    key: "enhanced",
-    planKey: "standard",
-    label: "Enhanced",
+    key: ATTORNEY_REVIEW_PACKAGE,
+    planKey: ATTORNEY_REVIEW_PACKAGE,
+    label: ATTORNEY_REVIEW_PACKAGE,
     price: "$899*",
     amountCents: 89900,
     tagline: "Legal review of your application",
     badge: "Best Value",
-    features: ["Everything in Essentials", "Attorney review", "Live chat support", "Document quality review", "RFE readiness guidance"],
+    features: [`Everything in ${SELF_FILING_PACKAGE}`, "Attorney review", "Live chat support", "Document quality review", "RFE readiness guidance"],
   },
   {
-    key: "professional",
-    planKey: "premium",
-    label: "Professional",
+    key: FULL_ATTORNEY_FILING_PACKAGE,
+    planKey: FULL_ATTORNEY_FILING_PACKAGE,
+    label: FULL_ATTORNEY_FILING_PACKAGE,
     price: "$1,299*",
     amountCents: 129900,
-    tagline: "Professional legal support when you need it",
+    tagline: "Attorney-led legal support when you need it",
     badge: "Most Support",
-    features: ["Everything in Enhanced", "Attorney consultations", "Priority case manager", "Application assembled for filing", "Interview preparation kit"],
+    features: [`Everything in ${ATTORNEY_REVIEW_PACKAGE}`, "Attorney consultations", "Priority case manager", "Application assembled for filing", "Interview preparation kit"],
   },
 ];
 
@@ -826,11 +832,6 @@ function buildCasePayloadFromIntake(answers, result, servicePackage) {
     student_exchange: "student_exchange",
     business_investor: "business_investor",
   };
-  const packageMap = {
-    essentials: "self_file",
-    enhanced: "guided_review",
-    professional: "full_service",
-  };
   const selectedKey = result?.category || answers.workVisaType || answers.studentVisaType || answers.businessPathway || answers.employmentPath;
   const visaType = visaTypeMap[selectedKey] || result?.likelyForms?.[0] || "Strategy Review";
   return {
@@ -839,7 +840,7 @@ function buildCasePayloadFromIntake(answers, result, servicePackage) {
     caseType: result?.category || "immigration",
     petitionType: result?.title,
     petitionSubType: selectedKey,
-    package: packageMap[servicePackage.key] || servicePackage.planKey || "",
+    package: servicePackage.planKey || servicePackage.key || "",
     plan: {
       tier: servicePackage.planKey,
       selectedAt: new Date().toISOString(),
@@ -883,6 +884,7 @@ function SelectionCard({ option, selected, onClick }) {
 function ServiceIntakeQuiz() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { hasCase, loading: hasCaseLoading } = useHasCase();
   // Brand-new for every client, every time — no cross-case/cross-user
   // localStorage carryover (that was the root cause of stale pre-populated
   // answers and the "jump straight to the package screen" bug below).
@@ -905,9 +907,18 @@ function ServiceIntakeQuiz() {
 
   // Invited employees complete only their own checklist (Documents page) —
   // the visa-selection/plan/checkout intake wizard is not part of their flow.
+  // A client whose case was already opened by staff (INSZoom's "New Case")
+  // has no reason to run the self-registration questionnaire either — send
+  // them straight to their dashboard instead.
   useEffect(() => {
-    if (isEmployeeAccount(user)) navigate("/dashboard/documents", { replace: true });
-  }, [user, navigate]);
+    if (isEmployeeAccount(user)) {
+      navigate("/dashboard/documents", { replace: true });
+      return;
+    }
+    if (!hasCaseLoading && hasCase) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [user, navigate, hasCase, hasCaseLoading]);
 
   useEffect(() => {
     if (currentIndex > visibleSteps.length - 1) setCurrentIndex(Math.max(visibleSteps.length - 1, 0));
@@ -979,6 +990,10 @@ function ServiceIntakeQuiz() {
       setSaving(false);
     }
   };
+
+  // Redirect effect above fires for an employee or an already-cased client;
+  // render nothing while that's still resolving instead of flashing the quiz.
+  if (hasCaseLoading && user) return null;
 
   // ── Package/plan screen, shown after the last question ──────────────────
   if (result) {
