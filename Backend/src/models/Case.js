@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { CASE_LIFECYCLE_STAGES, CASE_STATUSES, CRM_STAGES, PRIORITIES, STAGE_NAMES } = require("../modules/cases/case.constants");
+const { PACKAGE_NAMES } = require("../config/packages");
 
 const activitySchema = new mongoose.Schema(
   {
@@ -442,7 +443,7 @@ const caseSchema = new mongoose.Schema(
     caseType: { type: String, default: "immigration", index: true },
     petitionType: { type: String, trim: true, index: true },
     petitionSubType: { type: String, trim: true },
-    package: { type: String, enum: ["self_file", "guided_review", "full_service", ""], default: "" },
+    package: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },
     primaryPackage: { type: String, trim: true },
     addons: [addonSchema],
     jobPosition: {
@@ -656,7 +657,7 @@ const caseSchema = new mongoose.Schema(
     internalNotes: [internalNoteSchema],
 
     plan: {
-      tier: { type: String, enum: ["premium", "standard", "self-file", ""], default: "" },
+      tier: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },
       selectedAt: Date,
       paymentStatus: { type: String, enum: ["not_started", "pending", "paid", "failed", "refunded"], default: "not_started" },
       amount: { type: Number, default: 0 },

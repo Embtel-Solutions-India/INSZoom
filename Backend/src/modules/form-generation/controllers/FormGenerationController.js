@@ -64,6 +64,37 @@ exports.regenerate = async (req, res) => {
   }
 };
 
+// Streams a fillable (non-flattened) draft PDF directly to the caller.
+// Does NOT require approved/locked status - usable at any editable stage.
+// Does NOT write a Document record - draft working copies are not stored.
+// The PDF is still a real AcroForm: values are pre-filled but the fields
+// remain interactive so an attorney can make final adjustments and sign.
+exports.draftPdf = async (req, res) => {
+  try {
+    const caseForm = await require("../../../models/CaseForm")
+      .findById(req.params.caseFormId)
+      .populate("formTemplateId");
+    if (!caseForm) return handle(res, Object.assign(new Error("Case form not found"), { status: 404 }));
+    if (!caseForm.formTemplateId) return handle(res, Object.assign(new Error("Form template not found"), { status: 404 }));
+
+    const PDFRenderer = require("../services/PDFRenderer");
+    const rendered = await PDFRenderer.render({
+      caseForm,
+      template: caseForm.formTemplateId.toObject(),
+      watermark: "DRAFT",
+      flatten: false,
+    });
+
+    const filename = `${caseForm.formCode || "uscis-form"}-DRAFT-${caseForm._id}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", rendered.buffer.length);
+    res.send(rendered.buffer);
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
 exports.generatePackage = async (req, res) => {
   try {
     const data = await FilingPackageService.assemble(req.body || {}, req.user, req);

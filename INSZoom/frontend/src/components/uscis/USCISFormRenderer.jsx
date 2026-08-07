@@ -25,7 +25,9 @@ import {
   Link2,
   Lock,
   MessageSquare,
+  Minus,
   PanelRight,
+  Plus,
   RefreshCw,
   RotateCcw,
   Save,
@@ -62,6 +64,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 // this same pixel space via one scale factor per page (PAGE_RENDER_WIDTH /
 // the real PDF page width in points).
 const PAGE_RENDER_WIDTH = 900
+const MIN_PAGE_RENDER_WIDTH = 612
 
 const getByPath = (source, path) => {
   if (!source || !path) return undefined
@@ -114,10 +117,18 @@ function StatusBadge({ status, children }) {
   )
 }
 
-function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
+function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommit }) {
   const common = `w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2 ${invalid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-slate-300 focus:border-blue-600 focus:ring-blue-100'} disabled:bg-slate-50 disabled:text-slate-500`
   const options = field.options || []
   const isDisabled = disabled || field.readOnly || field.readonly
+  const handleKeyDown = (event) => {
+    if (isDisabled) return
+    if (event.key === 'Enter' && field.fieldType !== 'textarea') {
+      event.preventDefault()
+      onCommit?.()
+    }
+    if (event.key === 'Tab') onCommit?.()
+  }
 
   if (field.hidden) return null
   if (field.fieldType === 'signature' || field.semanticType === 'signature') {
@@ -128,11 +139,11 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
     )
   }
   if (field.fieldType === 'textarea') {
-    return <textarea rows={4} className={common} value={value ?? ''} placeholder={field.placeholder || ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />
+    return <textarea rows={4} className={common} value={value ?? ''} placeholder={field.placeholder || ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onCommit?.() } if (event.key === 'Tab') onCommit?.() }} />
   }
   if (field.fieldType === 'select' || field.fieldType === 'dropdown') {
     return (
-      <select className={common} value={value ?? ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur}>
+      <select className={common} value={value ?? ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} onKeyDown={handleKeyDown}>
         <option value="">Select an option</option>
         {options.map((option) => {
           const optionValue = option.value ?? option.exportValue ?? option
@@ -148,7 +159,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
           const optionValue = option.value ?? option.exportValue ?? option
           return (
             <label key={String(optionValue)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${value === optionValue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>
-              <input type="radio" checked={value === optionValue} disabled={isDisabled} onChange={() => onChange(optionValue)} onBlur={onBlur} />
+              <input type="radio" checked={value === optionValue} disabled={isDisabled} onChange={() => onChange(optionValue)} onBlur={onBlur} onKeyDown={handleKeyDown} />
               {option.label || optionValue}
             </label>
           )
@@ -159,7 +170,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
   if (field.fieldType === 'checkbox') {
     return (
       <label className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>
-        <input type="checkbox" checked={Boolean(value)} disabled={isDisabled} onChange={(event) => onChange(event.target.checked)} onBlur={onBlur} />
+        <input type="checkbox" checked={Boolean(value)} disabled={isDisabled} onChange={(event) => onChange(event.target.checked)} onBlur={onBlur} onKeyDown={handleKeyDown} />
         Selected
       </label>
     )
@@ -178,6 +189,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
                 disabled={isDisabled}
                 onChange={(event) => onChange(event.target.checked ? [...selected, optionValue] : selected.filter((item) => item !== optionValue))}
                 onBlur={onBlur}
+                onKeyDown={handleKeyDown}
               />
               {option.label || optionValue}
             </label>
@@ -199,6 +211,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
             disabled={isDisabled}
             onChange={(event) => onChange({ ...address, [key]: event.target.value })}
             onBlur={onBlur}
+            onKeyDown={handleKeyDown}
           />
         ))}
       </div>
@@ -215,7 +228,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
             <div className="grid gap-2 sm:grid-cols-2">
               {columns.map((column) => {
                 const key = column.fieldId || column.fieldName || column.key
-                return <input key={key} className={common} value={row[key] || ''} placeholder={column.label || labelize(key)} disabled={isDisabled} onChange={(event) => updateRow(rowIndex, key, event.target.value)} onBlur={onBlur} />
+                return <input key={key} className={common} value={row[key] || ''} placeholder={column.label || labelize(key)} disabled={isDisabled} onChange={(event) => updateRow(rowIndex, key, event.target.value)} onBlur={onBlur} onKeyDown={handleKeyDown} />
               })}
             </div>
             {!isDisabled && <button type="button" className="mt-2 text-xs font-semibold text-red-600" onClick={() => onChange(rows.filter((_, index) => index !== rowIndex))}>Remove entry</button>}
@@ -226,7 +239,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur }) {
     )
   }
   const inputType = field.fieldType === 'number' || field.fieldType === 'currency' ? 'number' : field.fieldType === 'date' ? 'date' : field.fieldType === 'email' ? 'email' : field.fieldType === 'phone' ? 'tel' : 'text'
-  return <input type={inputType} className={common} value={value ?? ''} placeholder={field.placeholder || ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} />
+  return <input type={inputType} className={common} value={value ?? ''} placeholder={field.placeholder || ''} disabled={isDisabled} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} onKeyDown={handleKeyDown} />
 }
 
 // Filled / empty / flagged - reusing the SAME statusTone palette the rest of
@@ -267,7 +280,7 @@ function overlayCompactValue(field, value) {
 // it for inline edit (renders the real FieldInput, positioned over the same
 // spot, expanded to a usable minimum size) - exactly the existing FieldInput
 // component, just placed by coordinates instead of flat-list order.
-function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, editing, selected, onSelect, onStartEdit, onChange, onBlur }) {
+function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, editing, selected, onSelect, onStartEdit, onChange, onBlur, onCommit }) {
   const coords = field.coordinates || field.position
   if (!coords || coords.width == null || coords.height == null) return null
   const left = (coords.x || 0) * scale
@@ -290,7 +303,7 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
         style={{ left, top, minWidth: popoverWidth, maxWidth: 360 }}
       >
         <p className="mb-1 truncate text-[10px] font-bold text-slate-500">{field.label || field.fieldLabel}</p>
-        <FieldInput field={field} value={value} disabled={!canEdit} invalid={errors?.length > 0} onChange={onChange} onBlur={onBlur} />
+        <FieldInput field={field} value={value} disabled={!canEdit} invalid={errors?.length > 0} onChange={onChange} onBlur={onBlur} onCommit={onCommit} />
       </div>
     )
   }
@@ -300,7 +313,10 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
       type="button"
       id={`uscis-field-${field.fieldName}`}
       title={field.label || field.fieldLabel}
-      onClick={() => { onSelect(); if (canEdit) onStartEdit() }}
+      onClick={async () => {
+        const selectedOk = await onSelect()
+        if (selectedOk !== false && canEdit) onStartEdit()
+      }}
       className={`absolute flex items-center overflow-hidden rounded-[2px] border px-1 text-left text-[11px] leading-none text-slate-800 transition hover:z-20 hover:border-blue-500 hover:ring-2 hover:ring-blue-200 ${boxClass} ${selected ? 'z-10 ring-2 ring-blue-400' : ''}`}
       style={{ left, top, width, height }}
     >
@@ -313,19 +329,19 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
 // with every in-scope field's overlay positioned on top of it at its real
 // coordinates - this IS the "legit form" look Task 2 asks for, replacing
 // the flat per-field list this component used to render exclusively.
-function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, registerPageRef }) {
-  const scale = pdfPageWidth ? PAGE_RENDER_WIDTH / pdfPageWidth : 1
+function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, onCommitField, registerPageRef }) {
+  const scale = pdfPageWidth ? renderWidth / pdfPageWidth : 1
   const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
   return (
     <div
       id={`uscis-page-${pageNumber}`}
       ref={(node) => registerPageRef(pageNumber, node)}
       className="relative mx-auto mb-6 bg-white shadow-md"
-      style={{ width: PAGE_RENDER_WIDTH, minHeight: renderHeight }}
+      style={{ width: renderWidth, minHeight: renderHeight }}
     >
       <Page
         pageNumber={pageNumber}
-        width={PAGE_RENDER_WIDTH}
+        width={renderWidth}
         renderAnnotationLayer={false}
         renderTextLayer={false}
         loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
@@ -347,6 +363,7 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, fields, values, 
             onStartEdit={() => onStartEdit(field)}
             onChange={(nextValue) => onChangeField(field, nextValue)}
             onBlur={() => onBlurField(field)}
+            onCommit={() => onCommitField(field)}
           />
         ))}
       </div>
@@ -374,8 +391,18 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const [templatePdfUrl, setTemplatePdfUrl] = useState(null)
   const [templatePdfError, setTemplatePdfError] = useState('')
   const [pdfPageCount, setPdfPageCount] = useState(0)
+  const [leftPanelOpen, setLeftPanelOpen] = useState(false)
+  const [zoomMode, setZoomMode] = useState('fit-width')
+  const [zoomScale, setZoomScale] = useState(1)
+  const [saveState, setSaveState] = useState('saved')
+  const [dirtyCount, setDirtyCount] = useState(0)
+  const [viewerSize, setViewerSize] = useState({ width: PAGE_RENDER_WIDTH, height: 680 })
   const lastSaved = useRef({})
+  const valuesRef = useRef({})
+  const dirtyFieldsRef = useRef(new Set())
+  const saveStateTimer = useRef(null)
   const pageRefs = useRef(new Map())
+  const viewerRef = useRef(null)
 
   const loadWorkspace = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -383,8 +410,13 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       const response = await uscisFormsApi.workspace(caseId, caseForm._id)
       const next = response.data
       setWorkspace(next)
-      setValues(next.values || next.caseForm?.fieldValues || {})
-      lastSaved.current = structuredClone(next.values || next.caseForm?.fieldValues || {})
+      const nextValues = next.values || next.caseForm?.fieldValues || {}
+      setValues(nextValues)
+      valuesRef.current = nextValues
+      lastSaved.current = structuredClone(nextValues)
+      dirtyFieldsRef.current = new Set()
+      setDirtyCount(0)
+      setSaveState('saved')
       setActiveSection((current) => current || next.template?.sections?.[0]?.key || '')
       setErrorMessage('')
     } catch (error) {
@@ -397,6 +429,36 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   useEffect(() => {
     loadWorkspace()
   }, [loadWorkspace])
+
+  useEffect(() => {
+    valuesRef.current = values
+  }, [values])
+
+  useEffect(() => {
+    const node = viewerRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(([entry]) => {
+      const rect = entry?.contentRect
+      if (rect) setViewerSize({ width: rect.width, height: rect.height })
+    })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => () => {
+    if (saveStateTimer.current) clearTimeout(saveStateTimer.current)
+  }, [])
+
+  useEffect(() => {
+    const beforeUnload = (event) => {
+      if (!dirtyFieldsRef.current.size) return undefined
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+    window.addEventListener('beforeunload', beforeUnload)
+    return () => window.removeEventListener('beforeunload', beforeUnload)
+  }, [])
 
   const sections = workspace?.template?.sections || []
   const allFields = useMemo(() => sections.flatMap((section) => (section.fields || []).filter((field) => !field.hidden).map((field) => ({ ...field, sectionKey: section.key, sectionTitle: section.title }))), [sections])
@@ -484,13 +546,67 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     else pageRefs.current.delete(pageNumber)
   }, [])
 
-  const scrollToPage = useCallback((pageNumber) => {
-    pageRefs.current.get(pageNumber)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
+  const saveFieldByName = useCallback(async (fieldName, value, reason = 'Interactive USCIS form review') => {
+    const field = allFields.find((item) => item.fieldName === fieldName)
+    if (!field || !canEdit) return
+    await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, {
+      fieldName: field.fieldName,
+      sectionKey: field.sectionKey,
+      value,
+      reason,
+    })
+    lastSaved.current = setByPath(lastSaved.current, field.fieldName, value)
+    dirtyFieldsRef.current.delete(field.fieldName)
+    setDirtyCount(dirtyFieldsRef.current.size)
+  }, [allFields, canEdit, caseId, caseForm._id])
 
-  const selectField = (field) => {
+  const savePendingChanges = useCallback(async (reason = 'Auto-save before action', options = {}) => {
+    if (!canEdit || !dirtyFieldsRef.current.size) return true
+    setSaveState('saving')
+    setBusy((current) => current || 'auto-save')
+    setErrorMessage('')
+    try {
+      const fieldNames = [...dirtyFieldsRef.current]
+      for (const fieldName of fieldNames) {
+        const value = getByPath(valuesRef.current, fieldName)
+        const previous = getByPath(lastSaved.current, fieldName)
+        if (sameValue(previous, value)) {
+          dirtyFieldsRef.current.delete(fieldName)
+          setDirtyCount(dirtyFieldsRef.current.size)
+          continue
+        }
+        await saveFieldByName(fieldName, value, reason)
+      }
+      setSaveState('saved')
+      setNotice('Saved')
+      if (saveStateTimer.current) clearTimeout(saveStateTimer.current)
+      saveStateTimer.current = setTimeout(() => setSaveState('idle'), 1800)
+      if (options.reload !== false) await loadWorkspace(true)
+      onSaved?.()
+      return true
+    } catch (error) {
+      setSaveState('error')
+      setErrorMessage(error.response?.data?.message || 'Unable to save changes. Please try again.')
+      return false
+    } finally {
+      setBusy((current) => current === 'auto-save' ? '' : current)
+    }
+  }, [canEdit, loadWorkspace, onSaved, saveFieldByName])
+
+  const scrollToPage = useCallback(async (pageNumber) => {
+    if (!(await savePendingChanges('Auto-save before page change'))) return
+    pageRefs.current.get(pageNumber)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [savePendingChanges])
+
+  const selectField = async (field) => {
+    if (editingFieldName && editingFieldName !== field.fieldName) {
+      const saved = await savePendingChanges('Auto-save before selecting another field')
+      if (!saved) return false
+      setEditingFieldName('')
+    }
     setSelectedFieldName(field.fieldName)
     setActiveSection(field.sectionKey)
+    return true
   }
 
   const startEditField = (field) => {
@@ -518,21 +634,30 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     if (!sameValue(previousValue, nextValue)) {
       setUndoStack((current) => [...current.slice(-49), { fieldName: field.fieldName, value: previousValue, sectionKey: field.sectionKey }])
       setRedoStack([])
-      setValues((current) => setByPath(current, field.fieldName, nextValue))
+      dirtyFieldsRef.current.add(field.fieldName)
+      setDirtyCount(dirtyFieldsRef.current.size)
+      setSaveState('dirty')
+      setValues((current) => {
+        const next = setByPath(current, field.fieldName, nextValue)
+        valuesRef.current = next
+        return next
+      })
     }
   }
 
-  const saveField = async (field, explicitValue) => {
+  const saveField = async (field, explicitValue, options = {}) => {
     if (!field || !canEdit) return
     const value = explicitValue !== undefined ? explicitValue : getByPath(values, field.fieldName)
+    if (explicitValue !== undefined) valuesRef.current = setByPath(valuesRef.current, field.fieldName, explicitValue)
     const previous = getByPath(lastSaved.current, field.fieldName)
-    if (sameValue(previous, value)) return
-    await action(`field:${field.fieldName}`, () => uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, {
-      fieldName: field.fieldName,
-      sectionKey: field.sectionKey,
-      value,
-      reason: 'Interactive USCIS form review',
-    }), `${field.label || field.fieldLabel} saved`)
+    if (sameValue(previous, value)) {
+      dirtyFieldsRef.current.delete(field.fieldName)
+      setDirtyCount(dirtyFieldsRef.current.size)
+      return
+    }
+    dirtyFieldsRef.current.add(field.fieldName)
+    setDirtyCount(dirtyFieldsRef.current.size)
+    await savePendingChanges(options.reason || 'Interactive USCIS form review', { reload: options.reload !== false })
   }
 
   // Closes the overlay's inline editor and persists via the SAME saveField
@@ -544,6 +669,11 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     await saveField(field)
   }
 
+  const commitEditingField = async (field) => {
+    await saveField(field)
+    setEditingFieldName('')
+  }
+
   const undo = async () => {
     const entry = undoStack[undoStack.length - 1]
     if (!entry) return
@@ -551,7 +681,14 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     const currentValue = getByPath(values, entry.fieldName)
     setUndoStack((current) => current.slice(0, -1))
     setRedoStack((current) => [...current, { ...entry, value: currentValue }])
-    setValues((current) => setByPath(current, entry.fieldName, entry.value))
+    dirtyFieldsRef.current.add(entry.fieldName)
+    setDirtyCount(dirtyFieldsRef.current.size)
+    setSaveState('dirty')
+    setValues((current) => {
+      const next = setByPath(current, entry.fieldName, entry.value)
+      valuesRef.current = next
+      return next
+    })
     await saveField(field, entry.value)
   }
 
@@ -562,7 +699,14 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     const currentValue = getByPath(values, entry.fieldName)
     setRedoStack((current) => current.slice(0, -1))
     setUndoStack((current) => [...current, { ...entry, value: currentValue }])
-    setValues((current) => setByPath(current, entry.fieldName, entry.value))
+    dirtyFieldsRef.current.add(entry.fieldName)
+    setDirtyCount(dirtyFieldsRef.current.size)
+    setSaveState('dirty')
+    setValues((current) => {
+      const next = setByPath(current, entry.fieldName, entry.value)
+      valuesRef.current = next
+      return next
+    })
     await saveField(field, entry.value)
   }
 
@@ -571,8 +715,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     await action(`section:${section.key}`, () => uscisFormsApi.saveWorkspaceSection(caseId, caseForm._id, { sectionKey: section.key, fieldValues }), `${section.title} saved`)
   }
 
-  const reviewField = (status) => {
+  const reviewField = async (status) => {
     if (!selectedField) return
+    if (!(await savePendingChanges('Auto-save before field review'))) return
     action(`review:${selectedField.fieldName}`, () => uscisFormsApi.reviewWorkspaceField(caseId, caseForm._id, {
       fieldName: selectedField.fieldName,
       sectionKey: selectedField.sectionKey,
@@ -581,9 +726,10 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }), `Field marked ${labelize(status).toLowerCase()}`)
   }
 
-  const reviewSection = (status) => {
+  const reviewSection = async (status) => {
     const section = sections.find((item) => item.key === activeSection)
     if (!section) return
+    if (!(await savePendingChanges('Auto-save before section review'))) return
     action(`section-review:${section.key}`, () => uscisFormsApi.reviewWorkspaceSection(caseId, caseForm._id, {
       sectionKey: section.key,
       status,
@@ -591,7 +737,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }), `${section.title} marked ${labelize(status).toLowerCase()}`)
   }
 
-  const decideForm = (decision) => {
+  const decideForm = async (decision) => {
+    if (!(await savePendingChanges('Auto-save before form decision'))) return
     action(`decision:${decision}`, () => uscisFormsApi.decideWorkspaceForm(caseId, caseForm._id, {
       action: decision,
       reason: decisionReason || undefined,
@@ -599,8 +746,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }), decision === 'approve' ? 'Form approved and ready for PDF generation' : 'Review decision saved')
   }
 
-  const addComment = () => {
+  const addComment = async () => {
     if (!comment.trim()) return
+    if (!(await savePendingChanges('Auto-save before adding comment'))) return
     action('comment', () => uscisFormsApi.addWorkspaceComment(caseId, caseForm._id, {
       scope: selectedField ? 'field' : 'section',
       fieldName: selectedField?.fieldName,
@@ -611,8 +759,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     setComment('')
   }
 
-  const createTask = () => {
+  const createTask = async () => {
     if (!selectedField) return
+    if (!(await savePendingChanges('Auto-save before creating task'))) return
     action('task', () => uscisFormsApi.createWorkspaceTask(caseId, caseForm._id, {
       title: `Review ${selectedField.label || selectedField.fieldLabel}`,
       description: `Verify ${selectedField.fieldName} in ${workspace.template.formCode}.`,
@@ -623,13 +772,15 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }), 'Review task created')
   }
 
-  const resetField = () => {
+  const resetField = async () => {
     if (!selectedField) return
+    if (!(await savePendingChanges('Auto-save before reset'))) return
     action('reset', () => uscisFormsApi.resetWorkspace(caseId, caseForm._id, { fieldName: selectedField.fieldName }), 'Field reset to the latest canonical value')
   }
 
-  const useCanonicalValue = () => {
+  const useCanonicalValue = async () => {
     if (!selectedField) return
+    if (!(await savePendingChanges('Auto-save before conflict resolution'))) return
     action('resolve-conflict', () => uscisFormsApi.resolveWorkspaceConflict(caseId, caseForm._id, {
       fieldName: selectedField.fieldName,
       sectionKey: selectedField.sectionKey,
@@ -639,14 +790,23 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }), 'Conflict resolved with the canonical value')
   }
 
-  const generatePdf = () => {
+  const refreshForm = async () => {
+    if (!(await savePendingChanges('Auto-save before refresh'))) return
+    action('refresh', () => uscisFormsApi.refreshWorkspace(caseId, caseForm._id), 'Form refreshed from canonical data')
+  }
+
+  const generatePdf = async () => {
+    if (!(await savePendingChanges('Auto-save before PDF generation'))) return
     action('generate-pdf', () => formGenerationApi.generatePdf(caseForm._id, { watermark: 'FINAL', flatten: true }), 'Official USCIS PDF generated')
   }
 
   const openPdf = async () => {
+    const hadPendingChanges = dirtyFieldsRef.current.size > 0
+    if (!(await savePendingChanges('Auto-save before PDF preview'))) return
     setBusy('preview-pdf')
     setErrorMessage('')
     try {
+      if (hadPendingChanges) await formGenerationApi.generatePdf(caseForm._id, { watermark: 'FINAL', flatten: true })
       const response = await formGenerationApi.previewPdf(caseForm._id)
       const url = URL.createObjectURL(response.data)
       window.open(url, '_blank', 'noopener,noreferrer')
@@ -659,9 +819,12 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }
 
   const downloadPdf = async () => {
+    const hadPendingChanges = dirtyFieldsRef.current.size > 0
+    if (!(await savePendingChanges('Auto-save before PDF download'))) return
     setBusy('download-pdf')
     setErrorMessage('')
     try {
+      if (hadPendingChanges) await formGenerationApi.generatePdf(caseForm._id, { watermark: 'FINAL', flatten: true })
       const response = await formGenerationApi.downloadPdf(caseForm._id)
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
@@ -678,7 +841,31 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }
 
-  const nextProblem = () => {
+  // Downloads a fillable (non-flattened) draft PDF with all saved field values
+  // pre-populated. Available at any editable status - no approve/lock needed.
+  const downloadDraftPdf = async () => {
+    if (!(await savePendingChanges('Auto-save before draft PDF download'))) return
+    setBusy('download-draft')
+    setErrorMessage('')
+    try {
+      const response = await formGenerationApi.draftPdf(caseForm._id)
+      const url = URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${caseForm.formCode || 'uscis-form'}-DRAFT-${caseForm._id}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'Unable to download the draft PDF')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const nextProblem = async () => {
+    if (!(await savePendingChanges('Auto-save before moving to next issue'))) return
     const problemFields = allFields.filter((field) => validationErrors[field.fieldName]?.length || !hasValue(getByPath(values, field.fieldName)) && field.required)
     if (!problemFields.length) return
     const currentIndex = problemFields.findIndex((field) => field.fieldName === selectedFieldName)
@@ -689,12 +876,26 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     document.getElementById(`uscis-field-${CSS.escape(next.fieldName)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
+  const handleClose = async () => {
+    if (!(await savePendingChanges('Auto-save before closing form'))) return
+    onClose?.()
+  }
+
+  const renderWidthForPage = useCallback((dims = {}) => {
+    const pdfWidth = dims.width || MIN_PAGE_RENDER_WIDTH
+    const pdfHeight = dims.height || 792
+    const availableWidth = Math.max(MIN_PAGE_RENDER_WIDTH, viewerSize.width - 32)
+    const availableHeight = Math.max(360, viewerSize.height - 120)
+    if (zoomMode === '100') return pdfWidth
+    if (zoomMode === 'fit-page') return Math.max(280, Math.min(availableWidth, pdfWidth * (availableHeight / pdfHeight)))
+    return Math.max(pdfWidth, availableWidth) * zoomScale
+  }, [viewerSize.height, viewerSize.width, zoomMode, zoomScale])
+
   useEffect(() => {
     const onKeyDown = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        const section = sections.find((item) => item.key === activeSection)
-        if (section && canEdit) saveSection(section)
+        if (canEdit) savePendingChanges('Manual keyboard save')
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault()
@@ -727,7 +928,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       <header className="border-b border-slate-300 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={onClose} className="rounded-md border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Back to forms"><ArrowLeft className="h-4 w-4" /></button>
+            <button type="button" onClick={handleClose} className="rounded-md border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Back to forms"><ArrowLeft className="h-4 w-4" /></button>
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#12365b] text-white"><FileText className="h-5 w-5" /></div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -739,15 +940,28 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${saveState === 'saving' ? 'bg-blue-50 text-blue-700' : saveState === 'error' ? 'bg-red-50 text-red-700' : saveState === 'dirty' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+              {saveState === 'saving' ? 'Saving...' : saveState === 'dirty' ? `${dirtyCount || 1} unsaved` : saveState === 'error' ? 'Save failed' : 'Saved ✓'}
+            </span>
             <button type="button" onClick={undo} disabled={!undoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Undo</button>
             <button type="button" onClick={redo} disabled={!redoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Redo</button>
-            <button type="button" onClick={() => action('refresh', () => uscisFormsApi.refreshWorkspace(caseId, caseForm._id), 'Form refreshed from canonical data')} disabled={!canEdit || busy === 'refresh'} className="flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5 ${busy === 'refresh' ? 'animate-spin' : ''}`} />Refresh</button>
+            <button
+              type="button"
+              onClick={downloadDraftPdf}
+              disabled={busy === 'download-draft' || busy === 'auto-save'}
+              className="flex items-center gap-1 rounded-md border border-emerald-400 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              title="Saves the current section and downloads a fillable PDF with all filled values"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {busy === 'download-draft' ? 'Preparing...' : 'Save & Download Draft PDF'}
+            </button>
+            <button type="button" onClick={refreshForm} disabled={!canEdit || busy === 'refresh'} className="flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5 ${busy === 'refresh' ? 'animate-spin' : ''}`} />Refresh</button>
             {permissions.canApprove && !locked && <button type="button" onClick={() => decideForm('approve')} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"><ShieldCheck className="h-4 w-4" />Approve Form</button>}
             {['approved', 'ready_for_pdf', 'locked'].includes(workspace.caseForm.status) && <button type="button" onClick={generatePdf} disabled={busy === 'generate-pdf'} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"><FileCheck2 className="h-4 w-4" />{busy === 'generate-pdf' ? 'Generating…' : 'Generate PDF'}</button>}
             {workspace.caseForm.generatedPdfDocument && <button type="button" onClick={openPdf} disabled={busy === 'preview-pdf'} className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Preview PDF</button>}
             {workspace.caseForm.generatedPdfDocument && <button type="button" onClick={downloadPdf} disabled={busy === 'download-pdf'} className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50"><Download className="h-3.5 w-3.5" />{busy === 'download-pdf' ? 'Downloading…' : 'Download PDF'}</button>}
-            {permissions.canLock && !locked && ['approved', 'ready_for_pdf', 'generated'].includes(workspace.caseForm.status) && <button type="button" onClick={() => action('lock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: true }), 'Form locked')} className="rounded-md border border-slate-800 px-3 py-2 text-xs font-semibold text-slate-800"><Lock className="inline h-3.5 w-3.5" /> Lock</button>}
-            {permissions.canUnlock && locked && <button type="button" onClick={() => action('unlock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: false, reason: decisionReason }), 'Form unlocked')} className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><Unlock className="inline h-3.5 w-3.5" /> Unlock</button>}
+            {permissions.canLock && !locked && ['approved', 'ready_for_pdf', 'generated'].includes(workspace.caseForm.status) && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before lock')) action('lock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: true }), 'Form locked') }} className="rounded-md border border-slate-800 px-3 py-2 text-xs font-semibold text-slate-800"><Lock className="inline h-3.5 w-3.5" /> Lock</button>}
+            {permissions.canUnlock && locked && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before unlock')) action('unlock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: false, reason: decisionReason }), 'Form unlocked') }} className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><Unlock className="inline h-3.5 w-3.5" /> Unlock</button>}
           </div>
         </div>
         <div className="mt-3 flex items-center gap-3">
@@ -759,13 +973,23 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
         {workspace.caseForm.syncState?.stale && (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <span><strong>New canonical data is available.</strong> Refresh to update auto-filled fields; manual overrides stay protected.</span>
-            {canEdit && <button type="button" onClick={() => action('refresh', () => uscisFormsApi.refreshWorkspace(caseId, caseForm._id), 'Form refreshed from canonical data')} className="rounded bg-amber-800 px-2.5 py-1.5 font-semibold text-white">Review updates</button>}
+            {canEdit && <button type="button" onClick={refreshForm} className="rounded bg-amber-800 px-2.5 py-1.5 font-semibold text-white">Review updates</button>}
           </div>
         )}
       </header>
 
-      <div className="grid min-h-[680px] grid-cols-1 xl:grid-cols-[250px_minmax(500px,1fr)_330px]">
-        <aside className="border-b border-slate-300 bg-white xl:border-b-0 xl:border-r">
+      <div className="relative grid min-h-[680px] grid-cols-1 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <button
+          type="button"
+          onClick={() => setLeftPanelOpen((current) => !current)}
+          className="absolute left-0 top-4 z-40 flex h-12 w-5 items-center justify-center rounded-r-md border border-l-0 border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+          aria-label={leftPanelOpen ? 'Collapse page navigation' : 'Expand page navigation'}
+          title={leftPanelOpen ? 'Hide navigation' : 'Show navigation'}
+        >
+          {leftPanelOpen ? '<' : '>'}
+        </button>
+
+        <aside className={`absolute left-0 top-0 z-30 h-full w-[250px] border-r border-slate-300 bg-white shadow-xl transition-transform duration-200 ease-out ${leftPanelOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="border-b border-slate-200 p-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -810,7 +1034,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                 <button
                   type="button"
                   key={section.key}
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!(await savePendingChanges('Auto-save before section change'))) return
                     setActiveSection(section.key)
                     setSelectedFieldName((section.fields || []).find((field) => !field.hidden)?.fieldName || '')
                   }}
@@ -833,7 +1058,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
           </div>
         </aside>
 
-        <main className="max-h-[680px] overflow-y-auto bg-slate-200/60 p-3 sm:p-5">
+        <main ref={viewerRef} className="max-h-[680px] min-w-0 overflow-auto bg-slate-200/60 p-2 pl-6 sm:p-3 sm:pl-7">
           {selectedField && (
             <div className="mx-auto mb-4 flex max-w-[900px] items-start justify-between gap-3 rounded-md border border-blue-200 bg-blue-50/70 px-4 py-2.5">
               <div className="min-w-0">
@@ -851,6 +1076,29 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
           {templatePdfError && (
             <div className="mx-auto mb-4 max-w-[900px] rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">{templatePdfError}</div>
           )}
+          <div className="sticky top-0 z-20 mb-3 flex min-w-max items-center justify-between gap-3 border-b border-slate-300 bg-slate-100/95 px-2 py-2 backdrop-blur">
+            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white p-1">
+              {[
+                ['fit-width', 'Fit Width'],
+                ['fit-page', 'Fit Page'],
+                ['100', '100%'],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => { setZoomMode(mode); setZoomScale(1) }}
+                  className={`rounded px-2 py-1 text-[11px] font-semibold ${zoomMode === mode ? 'bg-blue-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white p-1">
+              <button type="button" onClick={() => { setZoomMode('fit-width'); setZoomScale((current) => Math.max(0.5, Number((current - 0.1).toFixed(2)))) }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="Zoom out"><Minus className="h-3.5 w-3.5" /></button>
+              <span className="w-12 text-center text-[11px] font-semibold text-slate-600">{zoomMode === '100' ? '100%' : `${Math.round(zoomScale * 100)}%`}</span>
+              <button type="button" onClick={() => { setZoomMode('fit-width'); setZoomScale((current) => Math.min(2.5, Number((current + 0.1).toFixed(2)))) }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="Zoom in"><Plus className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
           {templatePdfUrl ? (
             <Document
               file={templatePdfUrl}
@@ -861,8 +1109,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               {pageNumbers.map((pageNumber) => {
                 const dims = pageDimensionsByNumber.get(pageNumber) || {}
                 const { total, filled } = pageCompletion(pageNumber)
+                const renderWidth = renderWidthForPage(dims)
                 return (
-                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: PAGE_RENDER_WIDTH }}>
+                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: renderWidth }}>
                     <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold text-slate-600">
                       <span>Page {pageNumber}</span>
                       <span className={filled === total && total > 0 ? 'text-blue-700' : 'text-slate-500'}>{total ? `${filled} of ${total} fields filled` : 'No fillable fields on this page'}</span>
@@ -871,6 +1120,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       pageNumber={pageNumber}
                       pdfPageWidth={dims.width || 612}
                       pdfPageHeight={dims.height || 792}
+                      renderWidth={renderWidth}
                       fields={fieldsByPage.get(pageNumber) || []}
                       values={values}
                       validationErrors={validationErrors}
@@ -881,6 +1131,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       onStartEdit={startEditField}
                       onChangeField={updateField}
                       onBlurField={blurEditingField}
+                      onCommitField={commitEditingField}
                       registerPageRef={registerPageRef}
                     />
                   </div>

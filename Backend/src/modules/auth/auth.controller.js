@@ -3,6 +3,7 @@ const sessionService = require("./session.service");
 const passwordResetService = require("./passwordReset.service");
 const emailVerificationService = require("./emailVerification.service");
 const employeeInviteService = require("./employeeInvite.service");
+const clientInviteService = require("./clientInvite.service");
 const firebaseService = require("./firebase.service");
 const emailService = require("../email/email.service");
 const env = require("../../config/env");
@@ -193,8 +194,12 @@ async function resendInvite(req, res, next) {
   try {
     // Public + neutral, mirroring forgotPassword: never reveals whether the
     // email exists or is a pending invite. Guides a passwordless invited
-    // employee back to activation without ever exposing a token in the API.
-    await employeeInviteService.resendInviteEmail(req.body.email);
+    // employee (or a staff-created client) back to activation without ever
+    // exposing a token in the API.
+    const empResult = await employeeInviteService.resendInviteEmail(req.body.email);
+    if (!empResult.sent) {
+      await clientInviteService.resendClientInviteEmail(req.body.email);
+    }
     res.json({
       success: true,
       message: "If an account is pending activation for this email, a new invitation has been sent.",
@@ -229,7 +234,9 @@ async function resendVerification(req, res, next) {
 
 async function getInviteDetails(req, res, next) {
   try {
-    const details = await employeeInviteService.getInviteDetails(req.params.token);
+    const details =
+      (await employeeInviteService.getInviteDetails(req.params.token)) ||
+      (await clientInviteService.getClientInviteDetails(req.params.token));
     if (!details) return res.status(400).json({ success: false, message: "Invalid or expired invitation link" });
     res.json({ success: true, ...details });
   } catch (error) {
@@ -242,7 +249,10 @@ async function acceptInvite(req, res, next) {
     if (req.body.password !== req.body.confirmPassword) {
       return res.status(400).json({ success: false, message: "Passwords do not match" });
     }
-    const user = await employeeInviteService.acceptInvite(req.params.token, req.body.password);
+    let user = await employeeInviteService.acceptInvite(req.params.token, req.body.password);
+    if (!user) {
+      user = await clientInviteService.acceptClientInvite(req.params.token, req.body.password);
+    }
     if (!user) return res.status(400).json({ success: false, message: "Invalid or expired invitation link" });
     const result = await authService.issueTokens(user, req, { message: "Account activated successfully" });
     res.locals.authUserId = user._id;

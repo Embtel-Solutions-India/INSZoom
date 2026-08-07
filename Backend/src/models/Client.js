@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { PACKAGE_NAMES } = require("../config/packages");
 
 const childSchema = new mongoose.Schema(
   {
@@ -213,7 +214,7 @@ const clientSchema = new mongoose.Schema(
     assessmentAnswers: { type: mongoose.Schema.Types.Mixed, default: null },
     assessmentRecommendedVisa: { type: String, default: "" },
     assessmentMatchPercentage: { type: Number, default: 0 },
-    selectedPlan: { type: String, enum: ["premium", "standard", "self-file", "self_file", "guided_review", "full_service", ""], default: "" },
+    selectedPlan: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },
     planSelectedAt: Date,
 
     completed: { type: Boolean, default: false, index: true },

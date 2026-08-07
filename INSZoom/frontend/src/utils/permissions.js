@@ -75,7 +75,6 @@ export const canAccessModule = (user, module) => {
     tasks: ADMIN_PORTAL_ROLES,
     'case-managers': ['super_admin', 'admin', 'team_lead'],
     teams: ['super_admin', 'admin', 'team_lead'],
-    'fee-schedule': ['super_admin', 'admin', 'team_lead'],
   }
   return moduleAccess[module]?.includes(user.role) || false
 }
@@ -130,7 +129,6 @@ export const getSidebarMenuItems = (user) => {
     { path: '/crm-cases', icon: Briefcase, label: 'Cases', roles: ADMIN_PORTAL_ROLES },
     { path: '/tasks', icon: CheckCircle, label: 'Tasks', roles: ADMIN_PORTAL_ROLES },
     { path: '/teams', icon: Users, label: 'Teams', roles: ['super_admin', 'admin', 'team_lead'] },
-    { path: '/fee-schedule', icon: DollarSign, label: 'Fee Schedule', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/users', icon: Users, label: 'Staff', roles: ['super_admin', 'admin'] },
     { path: '/case-managers', icon: Users, label: 'Case Managers', roles: ['super_admin', 'admin'] },
     { path: '/leaderboard', icon: Scale, label: 'Leaderboard', roles: ['super_admin', 'admin', 'team_lead'] },

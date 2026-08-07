@@ -10,79 +10,82 @@
 
 export const DEFAULT_CURRENCY = "USD";
 export const REFERRAL_DISCOUNT_PERCENT = 10;
+export const SELF_FILING_PACKAGE = "Self Filing Package";
+export const ATTORNEY_REVIEW_PACKAGE = "Attorney Review Package";
+export const FULL_ATTORNEY_FILING_PACKAGE = "Full Attorney Filing Package";
 
 export const PACKAGE_TIERS = {
-  "self-file": {
-    id: "self-file",
+  [SELF_FILING_PACKAGE]: {
+    id: SELF_FILING_PACKAGE,
     order: 1,
-    label: "Self-File",
-    packageName: "Self-File Package",
+    label: SELF_FILING_PACKAGE,
+    packageName: SELF_FILING_PACKAGE,
     tagline: "Self-guided filing with templates and checklists",
     badge: "SELF",
   },
-  standard: {
-    id: "standard",
+  [ATTORNEY_REVIEW_PACKAGE]: {
+    id: ATTORNEY_REVIEW_PACKAGE,
     order: 2,
-    label: "Attorney Review",
-    packageName: "Attorney Review Package",
+    label: ATTORNEY_REVIEW_PACKAGE,
+    packageName: ATTORNEY_REVIEW_PACKAGE,
     tagline: "Full document review plus an attorney consultation",
     badge: "REVIEW",
   },
-  premium: {
-    id: "premium",
+  [FULL_ATTORNEY_FILING_PACKAGE]: {
+    id: FULL_ATTORNEY_FILING_PACKAGE,
     order: 3,
-    label: "Full Attorney Filing",
-    packageName: "Full Attorney Filing Package",
+    label: FULL_ATTORNEY_FILING_PACKAGE,
+    packageName: FULL_ATTORNEY_FILING_PACKAGE,
     tagline: "End-to-end attorney-led filing and case management",
     badge: "FULL",
   },
 };
 
-export const DEFAULT_TIER_PRICES = { "self-file": 49900, standard: 149900, premium: 399900 };
+export const DEFAULT_TIER_PRICES = { [SELF_FILING_PACKAGE]: 49900, [ATTORNEY_REVIEW_PACKAGE]: 149900, [FULL_ATTORNEY_FILING_PACKAGE]: 399900 };
 
 export const PRICE_MATRIX = {
   // Work
-  "H-1B": { "self-file": 69900, standard: 189900, premium: 449900 },
-  "L-1":  { "self-file": 79900, standard: 219900, premium: 499900 },
-  "O-1":  { "self-file": 99900, standard: 249900, premium: 599900 },
-  "E-3":  { "self-file": 59900, standard: 159900, premium: 349900 },
-  "TN":   { "self-file": 49900, standard: 129900, premium: 299900 },
+  "H-1B": { [SELF_FILING_PACKAGE]: 69900, [ATTORNEY_REVIEW_PACKAGE]: 189900, [FULL_ATTORNEY_FILING_PACKAGE]: 449900 },
+  "L-1":  { [SELF_FILING_PACKAGE]: 79900, [ATTORNEY_REVIEW_PACKAGE]: 219900, [FULL_ATTORNEY_FILING_PACKAGE]: 499900 },
+  "O-1":  { [SELF_FILING_PACKAGE]: 99900, [ATTORNEY_REVIEW_PACKAGE]: 249900, [FULL_ATTORNEY_FILING_PACKAGE]: 599900 },
+  "E-3":  { [SELF_FILING_PACKAGE]: 59900, [ATTORNEY_REVIEW_PACKAGE]: 159900, [FULL_ATTORNEY_FILING_PACKAGE]: 349900 },
+  "TN":   { [SELF_FILING_PACKAGE]: 49900, [ATTORNEY_REVIEW_PACKAGE]: 129900, [FULL_ATTORNEY_FILING_PACKAGE]: 299900 },
 
   // Family
-  "K-1":  { "self-file": 69900, standard: 179900, premium: 349900 },
-  "K-3":  { "self-file": 69900, standard: 179900, premium: 349900 },
-  "H-4":  { "self-file": 39900, standard: 99900,  premium: 199900 },
-  "F-3":  { "self-file": 79900, standard: 199900, premium: 399900 },
-  "F-4":  { "self-file": 79900, standard: 199900, premium: 399900 },
+  "K-1":  { [SELF_FILING_PACKAGE]: 69900, [ATTORNEY_REVIEW_PACKAGE]: 179900, [FULL_ATTORNEY_FILING_PACKAGE]: 349900 },
+  "K-3":  { [SELF_FILING_PACKAGE]: 69900, [ATTORNEY_REVIEW_PACKAGE]: 179900, [FULL_ATTORNEY_FILING_PACKAGE]: 349900 },
+  "H-4":  { [SELF_FILING_PACKAGE]: 39900, [ATTORNEY_REVIEW_PACKAGE]: 99900,  [FULL_ATTORNEY_FILING_PACKAGE]: 199900 },
+  "F-3":  { [SELF_FILING_PACKAGE]: 79900, [ATTORNEY_REVIEW_PACKAGE]: 199900, [FULL_ATTORNEY_FILING_PACKAGE]: 399900 },
+  "F-4":  { [SELF_FILING_PACKAGE]: 79900, [ATTORNEY_REVIEW_PACKAGE]: 199900, [FULL_ATTORNEY_FILING_PACKAGE]: 399900 },
 
   // Student
-  "F-1":         { "self-file": 39900, standard: 99900,  premium: 179900 },
-  "F-1 CPT/OPT": { "self-file": 39900, standard: 99900,  premium: 179900 },
-  "F-2":         { "self-file": 29900, standard: 79900,  premium: 149900 },
-  "M-1":         { "self-file": 39900, standard: 99900,  premium: 179900 },
-  "M-2":         { "self-file": 29900, standard: 79900,  premium: 149900 },
-  "J-1":         { "self-file": 49900, standard: 119900, premium: 219900 },
+  "F-1":         { [SELF_FILING_PACKAGE]: 39900, [ATTORNEY_REVIEW_PACKAGE]: 99900,  [FULL_ATTORNEY_FILING_PACKAGE]: 179900 },
+  "F-1 CPT/OPT": { [SELF_FILING_PACKAGE]: 39900, [ATTORNEY_REVIEW_PACKAGE]: 99900,  [FULL_ATTORNEY_FILING_PACKAGE]: 179900 },
+  "F-2":         { [SELF_FILING_PACKAGE]: 29900, [ATTORNEY_REVIEW_PACKAGE]: 79900,  [FULL_ATTORNEY_FILING_PACKAGE]: 149900 },
+  "M-1":         { [SELF_FILING_PACKAGE]: 39900, [ATTORNEY_REVIEW_PACKAGE]: 99900,  [FULL_ATTORNEY_FILING_PACKAGE]: 179900 },
+  "M-2":         { [SELF_FILING_PACKAGE]: 29900, [ATTORNEY_REVIEW_PACKAGE]: 79900,  [FULL_ATTORNEY_FILING_PACKAGE]: 149900 },
+  "J-1":         { [SELF_FILING_PACKAGE]: 49900, [ATTORNEY_REVIEW_PACKAGE]: 119900, [FULL_ATTORNEY_FILING_PACKAGE]: 219900 },
 
   // Temporary / Visitor
-  "B-1":  { "self-file": 29900, standard: 79900,  premium: 149900 },
-  "B-2":  { "self-file": 29900, standard: 79900,  premium: 149900 },
-  "H-2B": { "self-file": 59900, standard: 159900, premium: 349900 },
-  "ESTA": { "self-file": 19900, standard: 49900,  premium: 99900 },
+  "B-1":  { [SELF_FILING_PACKAGE]: 29900, [ATTORNEY_REVIEW_PACKAGE]: 79900,  [FULL_ATTORNEY_FILING_PACKAGE]: 149900 },
+  "B-2":  { [SELF_FILING_PACKAGE]: 29900, [ATTORNEY_REVIEW_PACKAGE]: 79900,  [FULL_ATTORNEY_FILING_PACKAGE]: 149900 },
+  "H-2B": { [SELF_FILING_PACKAGE]: 59900, [ATTORNEY_REVIEW_PACKAGE]: 159900, [FULL_ATTORNEY_FILING_PACKAGE]: 349900 },
+  "ESTA": { [SELF_FILING_PACKAGE]: 19900, [ATTORNEY_REVIEW_PACKAGE]: 49900,  [FULL_ATTORNEY_FILING_PACKAGE]: 99900 },
 
   // Business
-  "E-1":  { "self-file": 79900, standard: 219900, premium: 449900 },
-  "E-2":  { "self-file": 99900, standard: 249900, premium: 549900 },
-  "EB-5": { "self-file": 149900, standard: 399900, premium: 899900 },
+  "E-1":  { [SELF_FILING_PACKAGE]: 79900, [ATTORNEY_REVIEW_PACKAGE]: 219900, [FULL_ATTORNEY_FILING_PACKAGE]: 449900 },
+  "E-2":  { [SELF_FILING_PACKAGE]: 99900, [ATTORNEY_REVIEW_PACKAGE]: 249900, [FULL_ATTORNEY_FILING_PACKAGE]: 549900 },
+  "EB-5": { [SELF_FILING_PACKAGE]: 149900, [ATTORNEY_REVIEW_PACKAGE]: 399900, [FULL_ATTORNEY_FILING_PACKAGE]: 899900 },
 
   // Green Card / Permanent / Self-Sponsored
-  "EB-1":     { "self-file": 119900, standard: 299900, premium: 699900 },
-  "EB-1A":    { "self-file": 119900, standard: 299900, premium: 699900 },
-  "EB-2":     { "self-file": 99900,  standard: 249900, premium: 549900 },
-  "EB-2 NIW": { "self-file": 119900, standard: 299900, premium: 699900 },
-  "EB-3":     { "self-file": 89900,  standard: 229900, premium: 499900 },
+  "EB-1":     { [SELF_FILING_PACKAGE]: 119900, [ATTORNEY_REVIEW_PACKAGE]: 299900, [FULL_ATTORNEY_FILING_PACKAGE]: 699900 },
+  "EB-1A":    { [SELF_FILING_PACKAGE]: 119900, [ATTORNEY_REVIEW_PACKAGE]: 299900, [FULL_ATTORNEY_FILING_PACKAGE]: 699900 },
+  "EB-2":     { [SELF_FILING_PACKAGE]: 99900,  [ATTORNEY_REVIEW_PACKAGE]: 249900, [FULL_ATTORNEY_FILING_PACKAGE]: 549900 },
+  "EB-2 NIW": { [SELF_FILING_PACKAGE]: 119900, [ATTORNEY_REVIEW_PACKAGE]: 299900, [FULL_ATTORNEY_FILING_PACKAGE]: 699900 },
+  "EB-3":     { [SELF_FILING_PACKAGE]: 89900,  [ATTORNEY_REVIEW_PACKAGE]: 229900, [FULL_ATTORNEY_FILING_PACKAGE]: 499900 },
 };
 
-export const normalizeTier = (t) => (PACKAGE_TIERS[t] ? t : "self-file");
+export const normalizeTier = (t) => (PACKAGE_TIERS[t] ? t : SELF_FILING_PACKAGE);
 
 /** Price for a visa type + tier, in USD cents. */
 export function getAmountCents(visaType, tier) {

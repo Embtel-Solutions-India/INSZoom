@@ -8,17 +8,21 @@ test("interactive review permissions enforce role-specific capabilities", () => 
   const teamLead = InteractiveFormReviewService.permissions({ role: "team_lead" });
   const attorney = InteractiveFormReviewService.permissions({ role: "attorney" });
   const client = InteractiveFormReviewService.permissions({ role: "client" });
+  const employee = InteractiveFormReviewService.permissions({ role: "employee" });
 
   assert.equal(caseManager.canEdit, true);
   assert.equal(caseManager.canApprove, false);
   assert.equal(teamLead.canReview, true);
-  assert.equal(teamLead.canEdit, false);
+  assert.equal(teamLead.canEdit, true);
+  assert.equal(teamLead.canApprove, true);
   // updated: attorney review/approval authority removed (attorney collaboration descoped) —
   // approval now rests with admin/team_lead only.
   assert.equal(attorney.canApprove, false);
   assert.equal(attorney.canLock, false);
   assert.equal(client.readOnly, true);
   assert.equal(client.canReview, false);
+  assert.equal(employee.canEdit, false);
+  assert.equal(employee.canReview, false);
 });
 
 test("field review view includes canonical comparison, evidence, and conflicts", () => {

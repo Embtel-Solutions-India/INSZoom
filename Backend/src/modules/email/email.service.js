@@ -11,6 +11,7 @@ const TEMPLATES = {
   "case-assigned-case-manager": require("./templates/case-assigned-case-manager"),
   "client-intake-submitted-case-manager": require("./templates/client-intake-submitted-case-manager"),
   "employee-case-invitation": require("./templates/employee-case-invitation"),
+  "client-portal-invitation": require("./templates/client-portal-invitation"),
   "password-reset": require("./templates/password-reset"),
   "family-beneficiary-invitation": require("./templates/family-beneficiary-invitation"),
   "quiz-lead-confirmation": require("./templates/quiz-lead-confirmation"),

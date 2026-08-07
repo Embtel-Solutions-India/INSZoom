@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { auth, googleProvider, signInWithRedirect, getRedirectResult } from "../firebase";
+import { auth, googleProvider, signInWithRedirect, signInWithPopup, getRedirectResult, redirectWillLoseState } from "../firebase";
 import { authApi, tokenStore } from "../services/api";
 import { initializeNotifications, unregisterCurrentDevice } from "../services/notificationService";
 
@@ -123,10 +123,25 @@ export function AuthProvider({ children }) {
     await authApi.logout().catch(() => {});
   }, [clearSession]);
 
-  // Triggers a full-page redirect to Google - does not resolve with a user;
-  // the result is picked up by the getRedirectResult effect above once
-  // Google redirects back and this provider remounts.
+  // Edge deletes the pending-redirect state during signInWithRedirect's
+  // navigation chain through the firebaseapp.com auth handler (confirmed via
+  // diagnostic capture) - getRedirectResult() then always resolves to null
+  // on return, silently stranding the user back on /login. For Edge (and,
+  // on a less-confirmed bet, Safari/iOS - see firebase.js's authDomain
+  // comment) this uses signInWithPopup instead, which resolves inline
+  // without a navigation chain. Everyone else keeps using
+  // signInWithRedirect, picked up by the getRedirectResult effect above.
   const loginWithGoogle = useCallback(async () => {
+    if (redirectWillLoseState()) {
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      const data = await authApi.googleToken(idToken);
+      tokenStore.set(data.accessToken);
+      setUser(data.user);
+      setGoogleRedirectUser(data.user);
+      setAuthLoading(false);
+      return;
+    }
     await signInWithRedirect(auth, googleProvider);
   }, []);
 

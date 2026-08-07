@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { PACKAGE_NAMES } = require("../config/packages");
 
 const PAYMENT_STATUSES = ["not_started", "draft", "pending", "processing", "authorized", "partial", "partially_paid", "paid", "succeeded", "overdue", "failed", "refunded", "partially_refunded", "cancelled", "expired"];
 const TRANSACTION_STATUSES = ["draft", "pending", "processing", "authorized", "paid", "succeeded", "failed", "cancelled", "expired", "refunded", "partially_refunded", "requires_action"];
@@ -144,7 +145,7 @@ const paymentSchema = new mongoose.Schema(
     invoiceNumber: { type: String, unique: true, sparse: true },
     invoices: [invoiceSchema],
 
-    package: { type: String, enum: ["self_file", "guided_review", "full_service", "self-file", "standard", "premium", ""], default: "" },
+    package: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },
     packageKey: String,
     packageName: String,
     pricingVersion: String,
