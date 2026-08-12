@@ -884,7 +884,7 @@ function SelectionCard({ option, selected, onClick }) {
 function ServiceIntakeQuiz() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { hasCase, loading: hasCaseLoading } = useHasCase();
+  const { hasCase, loading: hasCaseLoading, isError: hasCaseError } = useHasCase();
   // Brand-new for every client, every time — no cross-case/cross-user
   // localStorage carryover (that was the root cause of stale pre-populated
   // answers and the "jump straight to the package screen" bug below).
@@ -1101,6 +1101,14 @@ function ServiceIntakeQuiz() {
           <div className="h-full bg-slate-900 transition-all duration-500 ease-out" style={{ width: `${completion}%` }} />
         </div>
       </header>
+
+      {hasCaseError && (
+        <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-center">
+          <p className="text-sm font-semibold text-amber-800">
+            We couldn't confirm whether you already have a case in progress. If you do, please check your Dashboard before starting a new one.
+          </p>
+        </div>
+      )}
 
       <main className="flex-1 flex items-center justify-center px-6 py-14">
         <div className="w-full max-w-lg">

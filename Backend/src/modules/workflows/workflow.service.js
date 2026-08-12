@@ -807,7 +807,12 @@ async function approveWorkflow(workflow, payload, user, req) {
 
 async function checkSlaBreaches(user, req) {
   const now = new Date();
-  const workflows = await Workflow.find({ dueAt: { $lte: now }, status: { $in: ["active", "waiting"] }, slaBreachedAt: { $exists: false } });
+  // These three queries were unbounded — a backlog would load every matching
+  // Workflow/Task into memory as full Mongoose documents in one tick. Each is
+  // naturally self-limiting across ticks: once slaBreachedAt/reminders.sent/
+  // sla.breachedAt is set for a record, it stops matching, so a backlog
+  // larger than one batch just finishes over subsequent ticks.
+  const workflows = await Workflow.find({ dueAt: { $lte: now }, status: { $in: ["active", "waiting"] }, slaBreachedAt: { $exists: false } }).limit(200);
   for (const workflow of workflows) {
     workflow.slaBreachedAt = now;
     workflow.escalatedAt = now;
@@ -818,14 +823,14 @@ async function checkSlaBreaches(user, req) {
       message: `${workflow.name} breached SLA.`,
       caseId: workflow.caseId,
       source: "workflow",
-    }, user, req);
+    }, user, req).catch(() => null);
     await workflow.save();
   }
   const reminderTasks = await Task.find({
     status: { $nin: ["completed", "cancelled"] },
     "reminders.date": { $lte: now },
     "reminders.sent": { $ne: true },
-  });
+  }).limit(200);
   let remindersSent = 0;
   for (const task of reminderTasks) {
     const pendingReminders = (task.reminders || []).filter((reminder) => reminder.date && reminder.date <= now && !reminder.sent);
@@ -854,7 +859,7 @@ async function checkSlaBreaches(user, req) {
     status: { $nin: ["completed", "cancelled"] },
     dueDate: { $lte: now },
     "sla.breachedAt": { $exists: false },
-  });
+  }).limit(200);
   let escalatedTasks = 0;
   for (const task of overdueTasks) {
     task.sla = { ...(task.sla?.toObject?.() || task.sla || {}), breachedAt: now };
@@ -897,7 +902,7 @@ async function processScheduledWorkflows(user, req) {
   const workflows = await Workflow.find({
     status: "waiting",
     "executions.scheduledFor": { $lte: now },
-  });
+  }).limit(200);
   for (const workflow of workflows) {
     workflow.status = "active";
     workflow.history.push({ event: "workflow.resumed", status: "active", message: "Scheduled wait completed", performedBy: user?._id });
@@ -908,7 +913,7 @@ async function processScheduledWorkflows(user, req) {
 
 async function retryFailedActions(user, req) {
   const now = new Date();
-  const workflows = await Workflow.find({ "executions.status": "retrying", "executions.nextRetryAt": { $lte: now } });
+  const workflows = await Workflow.find({ "executions.status": "retrying", "executions.nextRetryAt": { $lte: now } }).limit(200);
   for (const workflow of workflows) {
     const dueExecutions = workflow.executions.filter((execution) => execution.status === "retrying" && execution.nextRetryAt && execution.nextRetryAt <= now);
     for (const execution of dueExecutions) {

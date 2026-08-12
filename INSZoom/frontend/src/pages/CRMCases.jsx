@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { Briefcase, Search, Filter, Download, User, Calendar, DollarSign, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus } from 'lucide-react'
+import { Search, Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import CreateCaseModal from '../components/CreateCaseModal'
 
@@ -18,6 +18,7 @@ const CRMCases = () => {
   const { subscribe, connected } = useSocket()
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '')
   const [appliedSearch, setAppliedSearch] = useState(searchTerm)
   const [stageFilter, setStageFilter] = useState(searchParams.get('stage') || '')
@@ -32,8 +33,16 @@ const CRMCases = () => {
   })
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 5,
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  })
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const limit = 20
+  const limit = 5
 
   useEffect(() => {
     fetchCases()
@@ -86,6 +95,7 @@ const CRMCases = () => {
     activeFetchRef.current = { seq, controller }
     try {
       if (!hasLoadedOnce.current) setLoading(true)
+      setError('')
       const params = { page, limit, ...deepLinkFilters }
       if (stageFilter) params.stage = stageFilter
       if (statusFilter) params.status = statusFilter
@@ -94,12 +104,21 @@ const CRMCases = () => {
       const response = await api.get('/cases', { params, signal: controller.signal })
       if (seq !== activeFetchRef.current.seq) return
       setCases(response.data.cases || [])
-      // Handle the paginated response shape; fall back to a single page
-      // when the endpoint does not return pagination metadata.
-      setTotalPages(response.data.pages || 1)
+      const meta = response.data.pagination || {
+        page: response.data.page || page,
+        limit,
+        total: response.data.total || 0,
+        totalPages: response.data.pages || 1,
+        hasNextPage: (response.data.page || page) < (response.data.pages || 1),
+        hasPreviousPage: (response.data.page || page) > 1,
+      }
+      setPagination(meta)
+      setTotalPages(meta.totalPages || 1)
     } catch (error) {
       if (error.code === 'ERR_CANCELED' || error.name === 'CanceledError') return
       console.error('Error fetching cases:', error)
+      setError(error.userMessage || 'Unable to load cases. Please try again.')
+      setCases([])
     } finally {
       if (seq !== activeFetchRef.current.seq) return
       hasLoadedOnce.current = true
@@ -131,6 +150,34 @@ const CRMCases = () => {
     if (data?.case?.caseNumber) {
       alert(`Case ${data.case.caseNumber} created. An activation email has been sent to the client.`)
     }
+  }
+
+  const retryFetchCases = () => {
+    hasLoadedOnce.current = false
+    fetchCases()
+  }
+
+  const getVisiblePages = () => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
+    const pages = new Set([1, totalPages, page - 1, page, page + 1])
+    if (page <= 3) {
+      pages.add(2)
+      pages.add(3)
+      pages.add(4)
+    }
+    if (page >= totalPages - 2) {
+      pages.add(totalPages - 3)
+      pages.add(totalPages - 2)
+      pages.add(totalPages - 1)
+    }
+    return Array.from(pages)
+      .filter((value) => value >= 1 && value <= totalPages)
+      .sort((left, right) => left - right)
+      .reduce((items, value, index, array) => {
+        if (index > 0 && value - array[index - 1] > 1) items.push('ellipsis')
+        items.push(value)
+        return items
+      }, [])
   }
 
   const getStageColor = (stage) => {
@@ -286,6 +333,13 @@ const CRMCases = () => {
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-gray-600">Loading cases...</div>
+          </div>
+        ) : error ? (
+          <div className="px-6 py-12 text-center text-sm">
+            <p className="font-medium text-red-700">{error}</p>
+            <button type="button" onClick={retryFetchCases} className="btn-secondary mt-4">
+              Try Again
+            </button>
           </div>
         ) : cases.length === 0 ? (
           <div className="px-6 py-12 text-center text-gray-500 text-sm">
@@ -473,22 +527,38 @@ const CRMCases = () => {
       </div>
 
       {/* Pagination controls */}
-      {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4">
+      {!loading && !error && totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
+            disabled={!pagination.hasPreviousPage}
             className="btn-secondary flex items-center gap-1 disabled:opacity-50"
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
           </button>
-          <span className="text-sm text-gray-600">
-            Page {page} of {totalPages}
-          </span>
+          {getVisiblePages().map((item, index) => (
+            item === 'ellipsis' ? (
+              <span key={`ellipsis-${index}`} className="px-2 text-sm text-gray-500">...</span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPage(item)}
+                aria-current={item === page ? 'page' : undefined}
+                className={`h-9 min-w-9 rounded-lg px-3 text-sm font-semibold ${
+                  item === page
+                    ? 'bg-primary-600 text-white'
+                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {item}
+              </button>
+            )
+          ))}
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
+            disabled={!pagination.hasNextPage}
             className="btn-secondary flex items-center gap-1 disabled:opacity-50"
           >
             Next

@@ -13,6 +13,20 @@ const CanonicalProfileService = require("../canonical/services/CanonicalProfileS
 const notificationService = require("../notifications/notification.service");
 const uscisFormService = require("./uscis-form.service");
 
+// Server-side execution budget for the primary-bound reads on this path.
+// IMPORTANT, measured not assumed: maxTimeMS caps how long the SERVER spends
+// executing an operation - it does NOT bound a stalled or dead connection.
+// The failures actually observed here are MongoNetworkTimeoutError (client<->
+// primary transport), which only socketTimeoutMS governs (set in
+// config/database.js). So this guards against a genuinely slow server-side
+// query and nothing else; it is not what rescues a degraded primary.
+const WORKSPACE_READ_TIMEOUT_MS = Number(process.env.WORKSPACE_READ_TIMEOUT_MS || 5000);
+
+// Excludes the 7.36MB raw-import `definition` blob (48.8% of a live I-129
+// template document) that nothing on this path reads - see the full
+// rationale where it is defined in uscis-form.service.js.
+const { TEMPLATE_RENDER_EXCLUDE } = uscisFormService;
+
 const EDIT_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const REVIEW_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager"]);
 const APPROVE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
@@ -106,18 +120,51 @@ class InteractiveFormReviewService {
     });
   }
 
-  static async load(caseId, caseFormId, user) {
-    const caseData = await Case.findById(caseId)
+  // options.caseForm: an already-populated CaseForm document the caller has
+  // ALREADY fetched in this same request (open() gets one back from
+  // renderCaseForm, which fetches, mutates and saves it). Reusing it removes a
+  // second, byte-for-byte identical `CaseForm.findOne(...).populate(...)` round
+  // trip - confirmed via live logs as the 36218ms `caseforms.findOne` in a
+  // 38953ms workspace request against the degraded primary. Only skipped when
+  // the passed document is genuinely populated; otherwise we still query, so
+  // correctness never depends on the caller getting this right.
+  //
+  // The canAccessCase() check below is deliberately NOT made skippable: 13 of
+  // this method's 14 call sites are write operations (saveField, saveSection,
+  // decide, lock, ...) that never call getAccessibleCase first and rely on
+  // this as their ONLY case-level authorization. It is also a synchronous
+  // in-memory check - skipping it would save no database time whatsoever.
+  static async load(caseId, caseFormId, user, options = {}) {
+    let caseQuery = Case.findById(caseId)
       .populate("user", "firstName lastName name email")
       .populate("clientProfile", "firstName lastName fullName email user")
       .populate("beneficiary", "firstName middleName lastName email")
       .populate("companyId", "name legalName")
       .populate("assignedCaseManager", "firstName lastName name email")
-      .populate("assignedTeamLead", "firstName lastName name email");
+      .populate("assignedTeamLead", "firstName lastName name email")
+      .maxTimeMS(WORKSPACE_READ_TIMEOUT_MS);
+    if (options.readOnlyOpen) caseQuery = caseQuery.read("secondaryPreferred");
+    const caseData = await caseQuery;
     if (!caseData) throw error("Case not found", 404);
     if (!caseService.canAccessCase(user, caseData)) throw error("Not authorized to access this form", 403);
-    const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate("formTemplateId");
+    const reusable = options.caseForm
+      && idOf(options.caseForm._id) === idOf(caseFormId)
+      && idOf(options.caseForm.caseId) === idOf(caseId)
+      && typeof options.caseForm.populated === "function"
+      && options.caseForm.populated("formTemplateId");
+    let caseFormQuery = CaseForm.findOne({ _id: caseFormId, caseId })
+      .populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE })
+      .maxTimeMS(WORKSPACE_READ_TIMEOUT_MS);
+    if (options.readOnlyOpen) caseFormQuery = caseFormQuery.read("secondaryPreferred");
+    const caseForm = reusable
+      ? options.caseForm
+      : await caseFormQuery;
     if (!caseForm) throw error("Case form not found", 404);
+    // Same dangling-reference guard renderCaseForm already carries: populate()
+    // resolves to null when formTemplateId points at a deleted template, and
+    // .toObject() on null is an uncaught TypeError (a 500 with no explanation)
+    // rather than an actionable error.
+    if (!caseForm.formTemplateId) throw error("This case form's USCIS template is missing or was removed - it needs to be re-assigned before it can be opened", 409);
     let template = caseForm.formTemplateId.toObject();
     const lockedMapping = await FormMappingService.loadMappingVersion(
       template,
@@ -244,12 +291,31 @@ class InteractiveFormReviewService {
   }
 
   static async open(caseId, caseFormId, user, req, options = {}) {
-    const rendered = await uscisFormService.renderCaseForm(caseId, caseFormId, user, req, { caseFormOnly: false });
-    const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user);
+    // renderCaseForm already builds the canonical profile internally (via
+    // buildBindingContext) to merge canonical values into the rendered form.
+    // captureContext hands that same result back so this method doesn't call
+    // CanonicalProfileService.get() a SECOND time for the same case - each
+    // call can trigger a full canonical rebuild fanning out across
+    // Beneficiary/Company/Answer/Document. Captured via an out-parameter
+    // rather than added to renderCaseForm's return value on purpose: that
+    // return value is serialized straight to the client by the /render
+    // endpoint, and the canonical profile has no business being bulked into
+    // that response just to pass it between two functions in this process.
+    const renderContext = {};
+    const rendered = await uscisFormService.renderCaseForm(caseId, caseFormId, user, req, { caseFormOnly: false, captureContext: renderContext, readOnlyOpen: options.readOnlyOpen });
+    // Reuses the CaseForm document renderCaseForm just fetched, mutated and
+    // saved, instead of re-querying the identical document (see load()).
+    const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user, { caseForm: rendered.caseForm, readOnlyOpen: options.readOnlyOpen });
     const [canonicalState, documents, tasks] = await Promise.all([
-      CanonicalProfileService.get(caseId, user, req),
-      Document.find({ caseId }).select("_id originalName fileName documentType category documentUrl filePath reviewStatus extractionConfidence tags").lean(),
-      Task.find({ caseId, tags: `case-form:${caseFormId}` }).populate("assignedTo", "firstName lastName name email").sort({ createdAt: -1 }).lean(),
+      // Falls back to a real fetch only when renderCaseForm couldn't produce
+      // one (buildBindingContext swallows canonical failures and yields null),
+      // preserving the previous behaviour exactly in that case.
+      renderContext.canonicalState || CanonicalProfileService.get(caseId, user, req),
+      // Read-only display data: never written back in this request, plays no
+      // part in any authorization decision. Safe to serve from a secondary,
+      // unlike the case/caseForm reads above.
+      Document.find({ caseId }).select("_id originalName fileName documentType category documentUrl filePath reviewStatus extractionConfidence tags").read("secondaryPreferred").lean(),
+      Task.find({ caseId, tags: `case-form:${caseFormId}` }).populate("assignedTo", "firstName lastName name email").sort({ createdAt: -1 }).read("secondaryPreferred").lean(),
     ]);
     const permissions = this.permissions(user);
     const canonicalVersion = Number(canonicalState.version || 0);
@@ -327,7 +393,7 @@ class InteractiveFormReviewService {
     const previousValue = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
     if (valuesEqual(previousValue, payload.value)) return caseForm;
     await AutoFillService.overrideField(caseId, caseForm.formCode, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
-    const updated = await CaseForm.findById(caseFormId).populate("formTemplateId");
+    const updated = await CaseForm.findById(caseFormId).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
     updated.status = "under_review";
     updated.lastModifiedBy = this.userId(user);
     updated.lastModifiedAt = new Date();

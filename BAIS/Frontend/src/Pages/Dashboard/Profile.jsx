@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { casesApi, profileApi } from "../../services/api";
+import { profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
@@ -49,9 +49,13 @@ export default function Profile() {
 
   useEffect(() => {
     let mounted = true;
-    Promise.allSettled([profileApi.getIntake(), casesApi.my()]).then(([intakeResult]) => {
+    // casesApi.my() used to be fetched alongside this and discarded unread —
+    // every field this page needs (activeCase below) already comes from
+    // getIntake()'s embedded intake.case, so it was a full 16-populate case
+    // fetch for nothing on every Profile page load.
+    profileApi.getIntake().then((intakeResult) => {
       if (!mounted) return;
-      const intake = intakeResult.status === "fulfilled" ? intakeResult.value?.intake : null;
+      const intake = intakeResult?.intake;
       const client = intake?.client || {};
       const activeCase = intake?.case || {};
       setData({
@@ -125,34 +129,34 @@ export default function Profile() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="First name">
-              <input className={inputClass} value={data.firstName} onChange={(e) => update("firstName", e.target.value)} />
+              <input id="profile-firstName" name="firstName" className={inputClass} value={data.firstName} onChange={(e) => update("firstName", e.target.value)} />
             </Field>
             <Field label="Last name">
-              <input className={inputClass} value={data.lastName} onChange={(e) => update("lastName", e.target.value)} />
+              <input id="profile-lastName" name="lastName" className={inputClass} value={data.lastName} onChange={(e) => update("lastName", e.target.value)} />
             </Field>
           </div>
 
           <Field label="Email">
-            <input type="email" className={inputClass} value={data.email} onChange={(e) => update("email", e.target.value)} />
+            <input type="email" id="profile-email" name="email" className={inputClass} value={data.email} onChange={(e) => update("email", e.target.value)} />
           </Field>
 
           <Field label="Phone">
-            <input className={inputClass} value={data.primaryPhone} onChange={(e) => update("primaryPhone", e.target.value)} />
+            <input id="profile-primaryPhone" name="primaryPhone" className={inputClass} value={data.primaryPhone} onChange={(e) => update("primaryPhone", e.target.value)} />
           </Field>
 
           <Field label="Address">
-            <input className={`${inputClass} mb-2.5`} placeholder="Street address" value={data.address} onChange={(e) => update("address", e.target.value)} />
+            <input id="profile-address" name="address" className={`${inputClass} mb-2.5`} placeholder="Street address" value={data.address} onChange={(e) => update("address", e.target.value)} />
             <div className="grid grid-cols-2 gap-2.5">
-              <input className={inputClass} placeholder="City" value={data.city} onChange={(e) => update("city", e.target.value)} />
-              <input className={inputClass} placeholder="State" value={data.state} onChange={(e) => update("state", e.target.value)} />
-              <input className={inputClass} placeholder="ZIP code" value={data.zipCode} onChange={(e) => update("zipCode", e.target.value)} />
-              <input className={inputClass} placeholder="Country" value={data.country} onChange={(e) => update("country", e.target.value)} />
+              <input id="profile-city" name="city" className={inputClass} placeholder="City" value={data.city} onChange={(e) => update("city", e.target.value)} />
+              <input id="profile-state" name="state" className={inputClass} placeholder="State" value={data.state} onChange={(e) => update("state", e.target.value)} />
+              <input id="profile-zipCode" name="zipCode" className={inputClass} placeholder="ZIP code" value={data.zipCode} onChange={(e) => update("zipCode", e.target.value)} />
+              <input id="profile-country" name="country" className={inputClass} placeholder="Country" value={data.country} onChange={(e) => update("country", e.target.value)} />
             </div>
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
             <Field label="Visa category">
-              <select className={inputClass} value={data.visaCategory} onChange={(e) => update("visaCategory", e.target.value)}>
+              <select id="profile-visaCategory" name="visaCategory" className={inputClass} value={data.visaCategory} onChange={(e) => update("visaCategory", e.target.value)}>
                 <option value="">Select</option>
                 {/* The intake questionnaire stores its own category vocabulary
                     (e.g. "employment", "naturalization") which doesn't line up
@@ -165,7 +169,7 @@ export default function Profile() {
               </select>
             </Field>
             <Field label="Visa to apply for">
-              <select className={inputClass} value={data.visaType} onChange={(e) => update("visaType", e.target.value)} disabled={!data.visaCategory}>
+              <select id="profile-visaType" name="visaType" className={inputClass} value={data.visaType} onChange={(e) => update("visaType", e.target.value)} disabled={!data.visaCategory}>
                 <option value="">Select</option>
                 {data.visaType && !visaTypes.includes(data.visaType) && (
                   <option value={data.visaType}>{data.visaType}</option>

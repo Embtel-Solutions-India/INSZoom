@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { documentsApi } from "../services/api";
 
 // Shared files/extractions bookkeeping + upload/remove handlers, lifted out of
@@ -15,10 +15,20 @@ export default function useDocumentChecklist(context = {}) {
   const [files, setFiles] = useState({});
   const [extractions, setExtractions] = useState({});
   const [uploadsInFlight, setUploadsInFlight] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const pendingUploads = useRef(new Set());
 
-  useEffect(() => {
+  // FIX: this used to swallow every failure (`.catch(() => {})`) with no
+  // loading flag at all, so a failed /documents fetch left `files` at `{}`
+  // forever with zero indication anything went wrong — uploaded documents
+  // just silently didn't appear. loading/error/reload now let a caller
+  // distinguish "still fetching" / "fetch failed, here's why" / "no
+  // documents yet" instead of treating all three the same way.
+  const load = useCallback(() => {
     let mounted = true;
+    setLoading(true);
+    setError(null);
     documentsApi.list().then((docs) => {
       if (!mounted) return;
       const grouped = {};
@@ -30,9 +40,16 @@ export default function useDocumentChecklist(context = {}) {
       const extractionMap = {};
       docs.forEach((d) => { extractionMap[d._id] = { status: d.intelligenceStatus || d.processing?.status || d.aiExtractionStatus }; });
       setExtractions(extractionMap);
-    }).catch(() => {});
+    }).catch((err) => {
+      if (!mounted) return;
+      setError(err.message || "Failed to load documents");
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => load(), [load]);
 
   const handleUpload = async (file, category, documentType, controls) => {
     setUploadsInFlight((count) => count + 1);
@@ -67,5 +84,5 @@ export default function useDocumentChecklist(context = {}) {
   // a client can never lose an in-progress upload by submitting too early.
   const awaitUploads = () => Promise.allSettled([...pendingUploads.current]);
 
-  return { files, extractions, handleUpload, handleRemove, uploadsInFlight, awaitUploads };
+  return { files, extractions, handleUpload, handleRemove, uploadsInFlight, awaitUploads, loading, error, reload: load };
 }

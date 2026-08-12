@@ -200,5 +200,17 @@ caseFormSchema.index({ caseId: 1, formTemplateId: 1, participantId: 1 }, { uniqu
 caseFormSchema.index({ caseId: 1, participantId: 1, formCode: 1 });
 caseFormSchema.index({ caseId: 1, formCode: 1, formEditionDate: 1 });
 caseFormSchema.index({ "syncState.requiresRegeneration": 1, updatedAt: -1 });
+// listCaseForms/getAllCaseForms both do .sort({updatedAt: -1}) - the former
+// filtered by caseId, the latter with no filter at all. Neither pattern was
+// covered by an existing index, so Mongo fell back to an in-memory sort of
+// full documents (each one can embed large fieldValues/validationErrors) and
+// hit the 32MB sort limit ("Sort exceeded memory limit... Pass
+// allowDiskUse:true", confirmed via GET /uscis-forms/case - same failure
+// mode as the USCISFormTemplate registry index added earlier). The
+// compound index covers the filtered case via ESR (equality on caseId, sort
+// on updatedAt); the plain index covers the unfiltered "all case forms" case,
+// which a compound index leading with caseId cannot satisfy.
+caseFormSchema.index({ caseId: 1, updatedAt: -1 });
+caseFormSchema.index({ updatedAt: -1 });
 
 module.exports = mongoose.model("CaseForm", caseFormSchema);

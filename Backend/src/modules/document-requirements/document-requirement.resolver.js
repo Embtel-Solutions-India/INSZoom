@@ -58,7 +58,7 @@ async function requirementsFromCanonicalDb(visaType) {
   const questionnaireIds = questionnaires.map((item) => item._id);
   const questions = await Question.find({
     questionnaire: { $in: questionnaireIds },
-    active: { $ne: false },
+    active: true,
     $or: [
       { type: { $in: ["file", "file-multiple"] } },
       { "metadata.requestedType": "file-multiple" },

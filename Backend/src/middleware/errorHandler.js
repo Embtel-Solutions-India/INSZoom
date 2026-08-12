@@ -1,7 +1,63 @@
 const logger = require("../utils/logger");
 
+// GET /api/uscis-forms/case/:caseId (and any other endpoint hitting a dead/
+// slow MongoDB connection) used to surface as a bare 500 after the request
+// hung for tens of seconds - the frontend then had nothing to distinguish
+// that from "the case genuinely has zero forms", and collapsed both to an
+// empty list. These are the MongoDB driver's own error class names for a
+// connectivity/timeout failure (as opposed to a query/validation bug in our
+// own code) - recognizing them lets a database outage answer honestly and
+// quickly instead of looking identical to "nothing to show here."
+const DATABASE_UNAVAILABLE_ERROR_NAMES = new Set([
+  "MongoNetworkTimeoutError",
+  "MongoNetworkError",
+  "MongoServerSelectionError",
+  "MongooseServerSelectionError",
+  "MongoTimeoutError",
+  "MongoWriteConcernError",
+  "MongoPoolClosedError",
+]);
+
+// code 50 / codeName "MaxTimeMSExpired": a query bounded with .maxTimeMS()
+// (used by uscis-form.service.js's getAccessibleCase to fail fast against a
+// degraded primary instead of hanging for the full socket timeout) ran out
+// of its budget server-side - the same "can't get an answer from the
+// database right now" condition as the network-level errors above, just
+// surfaced as a server error instead of a connection error.
+function isDatabaseUnavailableError(error) {
+  if (error?.code === 50 || error?.codeName === "MaxTimeMSExpired") return !error.status && !error.statusCode;
+  return DATABASE_UNAVAILABLE_ERROR_NAMES.has(error?.name) && !error.status && !error.statusCode;
+}
+
 function errorHandler(error, req, res, next) {
+  if (isDatabaseUnavailableError(error)) {
+    logger.error("request_error", {
+      requestId: req.requestId,
+      method: req.method,
+      path: req.originalUrl || req.url,
+      statusCode: 503,
+      userId: req.user?._id,
+      role: req.user?.role,
+      error,
+    });
+    return res.status(503).json({
+      success: false,
+      message: "Unable to complete this request because the database is temporarily unavailable. Please try again shortly.",
+      errorCode: "DATABASE_UNAVAILABLE",
+      code: "DATABASE_UNAVAILABLE",
+      requestId: req.requestId,
+    });
+  }
   const status = error.status || error.statusCode || 500;
+
+  // TEMP DIAGNOSTIC — prints the true stack for 5xx while DEBUG_ERRORS=true.
+  // Safe to leave in; only fires on real errors and only when the flag is set.
+  if (process.env.DEBUG_ERRORS === "true" && status >= 500) {
+    console.error("=== 5XX STACK ===", req.method, req.originalUrl);
+    console.error(error && error.stack ? error.stack : error);
+    console.error("=================");
+  }
+
   const exposeMessage = status < 500 || process.env.EXPOSE_INTERNAL_ERRORS === "true";
   const payload = {
     success: false,
@@ -32,3 +88,4 @@ function errorHandler(error, req, res, next) {
 }
 
 module.exports = errorHandler;
+module.exports.isDatabaseUnavailableError = isDatabaseUnavailableError;

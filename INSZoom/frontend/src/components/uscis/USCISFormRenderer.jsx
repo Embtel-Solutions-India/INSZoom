@@ -329,7 +329,7 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
 // with every in-scope field's overlay positioned on top of it at its real
 // coordinates - this IS the "legit form" look Task 2 asks for, replacing
 // the flat per-field list this component used to render exclusively.
-function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, onCommitField, registerPageRef }) {
+function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, onCommitField, registerPageRef, showBackground = true }) {
   const scale = pdfPageWidth ? renderWidth / pdfPageWidth : 1
   const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
   return (
@@ -339,14 +339,18 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fie
       className="relative mx-auto mb-6 bg-white shadow-md"
       style={{ width: renderWidth, minHeight: renderHeight }}
     >
-      <Page
-        pageNumber={pageNumber}
-        width={renderWidth}
-        renderAnnotationLayer={false}
-        renderTextLayer={false}
-        loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
-        error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {pageNumber}.</div>}
-      />
+      {showBackground ? (
+        <Page
+          pageNumber={pageNumber}
+          width={renderWidth}
+          renderAnnotationLayer={false}
+          renderTextLayer={false}
+          loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
+          error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {pageNumber}.</div>}
+        />
+      ) : (
+        <div style={{ width: renderWidth, height: renderHeight }} />
+      )}
       <div className="absolute inset-0">
         {fields.map((field) => (
           <FieldOverlay
@@ -920,6 +924,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   if (!workspace) {
     return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">{errorMessage || 'Unable to load this form.'}</div>
   }
+  if (!workspace.template || !workspace.caseForm || !workspace.caseSummary || !workspace.permissions) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">This form's data is incomplete and can't be displayed. Please refresh, or contact support if the problem continues.</div>
+  }
 
   const selectedComments = (workspace.comments || []).filter((item) => !selectedField || item.fieldName === selectedField.fieldName || item.sectionKey === selectedField.sectionKey && item.scope === 'section')
 
@@ -936,7 +943,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                 <StatusBadge status={workspace.caseForm.status} />
                 {locked && <StatusBadge status="locked"><Lock className="mr-1 h-3 w-3" />Locked</StatusBadge>}
               </div>
-              <p className="text-xs text-slate-500">Edition {workspace.template.version || 'Current'} · Case {workspace.caseSummary.caseNumber} · {permissions.mode.replaceAll('_', ' ')} review</p>
+              <p className="text-xs text-slate-500">Edition {workspace.template.version || 'Current'} · Case {workspace.caseSummary.caseNumber} · {(permissions.mode || 'review').replaceAll('_', ' ')} review</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -950,10 +957,10 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               onClick={downloadDraftPdf}
               disabled={busy === 'download-draft' || busy === 'auto-save'}
               className="flex items-center gap-1 rounded-md border border-emerald-400 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-              title="Saves the current section and downloads a fillable PDF with all filled values"
+              title="Saves all pending field edits and downloads a fillable official USCIS PDF with all values pre-filled"
             >
               <Save className="h-3.5 w-3.5" />
-              {busy === 'download-draft' ? 'Preparing...' : 'Save & Download Draft PDF'}
+              {busy === 'download-draft' ? 'Preparing...' : 'Save & Download Fillable PDF'}
             </button>
             <button type="button" onClick={refreshForm} disabled={!canEdit || busy === 'refresh'} className="flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5 ${busy === 'refresh' ? 'animate-spin' : ''}`} />Refresh</button>
             {permissions.canApprove && !locked && <button type="button" onClick={() => decideForm('approve')} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"><ShieldCheck className="h-4 w-4" />Approve Form</button>}
@@ -1138,8 +1145,45 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                 )
               })}
             </Document>
+          ) : templatePdfError ? (
+            pageNumbers.length ? (
+              pageNumbers.map((pageNumber) => {
+                const dims = pageDimensionsByNumber.get(pageNumber) || {}
+                const { total, filled } = pageCompletion(pageNumber)
+                const renderWidth = renderWidthForPage(dims)
+                return (
+                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: renderWidth }}>
+                    <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold text-slate-600">
+                      <span>Page {pageNumber}</span>
+                      <span className={filled === total && total > 0 ? 'text-blue-700' : 'text-slate-500'}>{total ? `${filled} of ${total} fields filled` : 'No fillable fields on this page'}</span>
+                    </div>
+                    <PdfFormPage
+                      pageNumber={pageNumber}
+                      pdfPageWidth={dims.width || 612}
+                      pdfPageHeight={dims.height || 792}
+                      renderWidth={renderWidth}
+                      fields={fieldsByPage.get(pageNumber) || []}
+                      values={values}
+                      validationErrors={validationErrors}
+                      canEdit={canEdit}
+                      selectedFieldName={selectedFieldName}
+                      editingFieldName={editingFieldName}
+                      onSelectField={selectField}
+                      onStartEdit={startEditField}
+                      onChangeField={updateField}
+                      onBlurField={blurEditingField}
+                      onCommitField={commitEditingField}
+                      registerPageRef={registerPageRef}
+                      showBackground={false}
+                    />
+                  </div>
+                )
+              })
+            ) : (
+              <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">No field layout is available for this form yet.</div>
+            )
           ) : (
-            !templatePdfError && <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>
+            <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>
           )}
           {selectedField && (
             <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-4 py-2.5">

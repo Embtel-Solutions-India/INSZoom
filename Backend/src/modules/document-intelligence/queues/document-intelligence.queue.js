@@ -154,7 +154,9 @@ async function recoverPendingJobs() {
   }
 }
 
-setImmediate(recoverPendingJobs);
+function startRecovery() {
+  setImmediate(recoverPendingJobs);
+}
 
 function stats() {
   return {
@@ -168,5 +170,6 @@ function stats() {
 module.exports = {
   enqueue,
   recoverPendingJobs,
+  startRecovery,
   stats,
 };

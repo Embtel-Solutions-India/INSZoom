@@ -10,6 +10,15 @@ const searchService = require("../search/search.service");
 const TaskManagementService = require("../case-collaboration/services/TaskManagementService");
 const caseService = require("../cases/case.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const logger = require("../../utils/logger");
+
+// Bounds how many recovered AI jobs run concurrently per recovery tick —
+// mirrors document-intelligence.queue.js's DOCUMENT_INTELLIGENCE_CONCURRENCY
+// pattern rather than introducing a new queue: each of these jobs calls out
+// to an LLM provider and builds a full case context bundle, so dispatching
+// all 20 recovered jobs at once (the old behavior) meant up to 20 concurrent
+// model calls plus their DB/context work competing for the same pool.
+const AI_JOB_RECOVERY_CONCURRENCY = Math.max(1, Number(process.env.AI_JOB_RECOVERY_CONCURRENCY || 3));
 
 const cache = new Map();
 const rateWindows = new Map();
@@ -312,11 +321,57 @@ async function updateProvider(key, payload, user) {
 }
 
 async function recoverQueuedJobs() {
-  const jobs = await AIJob.find({ status: "queued", $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: new Date() } }] }).limit(20);
-  for (const job of jobs) {
-    const user = await User.findById(job.requestedBy);
-    if (user) setImmediate(() => execute(job, user, null).catch(() => null));
+  const candidates = await AIJob.find({ status: "queued", $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: new Date() } }] })
+    .select("_id requestedBy")
+    .limit(20)
+    .lean();
+  let active = 0;
+  let index = 0;
+  await new Promise((resolve) => {
+    const launchNext = () => {
+      if (index >= candidates.length && active === 0) return resolve();
+      while (active < AI_JOB_RECOVERY_CONCURRENCY && index < candidates.length) {
+        const candidate = candidates[index];
+        index += 1;
+        active += 1;
+        recoverOne(candidate).finally(() => {
+          active -= 1;
+          launchNext();
+        });
+      }
+    };
+    launchNext();
+  });
+}
+
+async function recoverOne(candidate) {
+  // Atomic claim: without this, two recovery ticks (this process racing a
+  // second setInterval fire — normally excluded by withJobLock, but that
+  // guard only spans one process — or a second backend instance's own tick,
+  // if this app is ever run as more than one instance) could both match the
+  // same "queued" job from the find() above and both dispatch execute() on
+  // it concurrently. A plain find() + status flip only inside execute()'s own
+  // save() isn't atomic; this findOneAndUpdate is, since it only succeeds if
+  // the job is *still* "queued" at the moment of the write.
+  const job = await AIJob.findOneAndUpdate(
+    { _id: candidate._id, status: "queued" },
+    { $set: { status: "processing" } },
+    { new: true }
+  );
+  if (!job) return; // already claimed by another tick/instance
+  const user = await User.findById(job.requestedBy);
+  if (!user) {
+    // Previously left silently "queued" forever when requestedBy no longer
+    // resolved to a user — an unrecoverable job that got rescanned and
+    // reconsidered on every future tick indefinitely. Terminal "failed"
+    // status (same field/semantics execute()'s own catch block already uses)
+    // stops that.
+    job.status = "failed";
+    job.error = { code: "AI_JOB_USER_NOT_FOUND", message: "Requesting user no longer exists" };
+    await job.save().catch((error) => logger.error("ai_job_recovery_save_failed", { jobId: job._id, error }));
+    return;
   }
+  await execute(job, user, null).catch(() => null);
 }
 
 module.exports = { applyTaskSuggestions, deterministicFindings, listJobs, listProviders, recoverQueuedJobs, review, run, updateProvider, usage };

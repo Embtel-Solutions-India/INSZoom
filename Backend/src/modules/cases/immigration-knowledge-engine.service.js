@@ -313,10 +313,52 @@ class ImmigrationKnowledgeEngineService {
   }
 
   static async assignQuestionnaires(caseData, questionnaires, user, req) {
-    const existing = new Set((caseData.questionnaireReferences || []).filter((item) => item.status !== "returned" && item.active !== false).map((item) => idOf(item.questionnaireId || item.questionnaireTemplateId)));
+    const activeReferences = (caseData.questionnaireReferences || []).filter((item) => item.status !== "returned" && item.active !== false && item.questionnaireId);
+    const existing = new Set(activeReferences.map((item) => idOf(item.questionnaireId || item.questionnaireTemplateId)));
+    // FIX (duplicate checklist accumulation): a regenerated
+    // uscis_question_library questionnaire (see ensureGeneratedForCase) gets
+    // a brand-new _id every time its underlying content changes, so `existing`
+    // never recognizes it as "the same checklist, just updated" - this used
+    // to push a parallel questionnaireReference every time content changed,
+    // so a single case could accumulate several ~900-1000-question "Filing
+    // Intake" checklists over time, all still active, with getForCase simply
+    // serving whichever was sent most recently. Looking up each active
+    // reference's own rootQuestionnaire lets a same-lineage regeneration
+    // retire the old reference before the new one is assigned, exactly like
+    // reconcileConditionalAssignments already does for a no-longer-applicable
+    // checklist above.
+    const generatedTargets = questionnaires.filter(
+      (item) => item.generation?.source === "uscis_question_library" && !existing.has(idOf(item._id))
+    );
+    const priorReferenceByLineage = new Map();
+    if (generatedTargets.length && activeReferences.length) {
+      const referencedQuestionnaires = await Questionnaire.find({ _id: { $in: activeReferences.map((item) => item.questionnaireId) } })
+        .select("rootQuestionnaire generation.source")
+        .lean();
+      const lineageById = new Map(referencedQuestionnaires.map((item) => [idOf(item._id), idOf(item.rootQuestionnaire) || idOf(item._id)]));
+      activeReferences.forEach((reference) => {
+        const lineage = lineageById.get(idOf(reference.questionnaireId));
+        if (lineage) priorReferenceByLineage.set(lineage, reference);
+      });
+    }
     const assigned = [];
     for (const questionnaire of questionnaires) {
       if (existing.has(idOf(questionnaire._id))) continue;
+      if (questionnaire.generation?.source === "uscis_question_library") {
+        const lineage = idOf(questionnaire.rootQuestionnaire) || idOf(questionnaire._id);
+        const priorReference = priorReferenceByLineage.get(lineage);
+        // questionnaireService.assignQuestionnaire() below loads its own fresh
+        // Case document (it's only given caseId, not this caseData instance),
+        // so mutating caseData.questionnaireReferences in memory here would
+        // never actually persist - the deactivation has to land in the DB
+        // directly, before that fresh load happens.
+        if (priorReference) {
+          await Case.updateOne(
+            { _id: caseData._id, "questionnaireReferences._id": priorReference._id },
+            { $set: { "questionnaireReferences.$.active": false } }
+          );
+        }
+      }
       const targetRole = questionnaire.checklistRole || "";
       const result = await questionnaireService.assignQuestionnaire(await Questionnaire.findById(questionnaire._id), {
         caseId: caseData._id,
@@ -444,7 +486,7 @@ class ImmigrationKnowledgeEngineService {
       ...(generatedQuestionnaire ? [generatedQuestionnaire] : []),
     ], (item) => idOf(item._id));
     const questions = questionnaires.length
-      ? await Question.find({ questionnaire: { $in: questionnaires.map((item) => item._id) }, active: { $ne: false } }).lean()
+      ? await Question.find({ questionnaire: { $in: questionnaires.map((item) => item._id) }, active: true }).lean()
       : [];
     const questionnaireRequirements = this.requirementsFromQuestionnaires(questionnaires, questions);
     const formRequirements = this.requirementsFromForms(templates);

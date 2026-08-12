@@ -8,6 +8,10 @@ const INDEXES = [
   { key: { assignedTeamLead: 1, createdAt: -1 }, name: "assignedTeamLead_1_createdAt_-1" },
   { key: { assignedCaseManager: 1, createdAt: -1 }, name: "assignedCaseManager_1_createdAt_-1" },
   { key: { teamId: 1, createdAt: -1 }, name: "teamId_1_createdAt_-1" },
+  { key: { createdAt: -1, _id: -1 }, name: "createdAt_-1__id_-1" },
+  { key: { status: 1, createdAt: -1, _id: -1 }, name: "status_1_createdAt_-1__id_-1" },
+  { key: { stage: 1, createdAt: -1, _id: -1 }, name: "stage_1_createdAt_-1__id_-1" },
+  { key: { visaType: 1, createdAt: -1, _id: -1 }, name: "visaType_1_createdAt_-1__id_-1" },
 ];
 
 async function main() {

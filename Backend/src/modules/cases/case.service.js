@@ -13,6 +13,7 @@ const User = require("../../models/User");
 const Workflow = require("../../models/Workflow");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const CaseHistoryArchive = require("../../models/CaseHistoryArchive");
+const mongoose = require("mongoose");
 const { dashboardCacheBump } = require("../../config/redis");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const { CASE_LIFECYCLE_STAGES, CRM_STAGE_TO_INDEX, STAGE_NAMES } = require("./case.constants");
@@ -28,7 +29,21 @@ const ASSIGNMENT_FIELD_BY_ROLE = {
   case_manager: "assignedCaseManager",
   agent: "assignedAgentUser",
 };
-const SORTABLE_CASE_FIELDS = new Set(["createdAt", "updatedAt", "caseNumber", "clientName", "visaType", "status", "stage", "priority", "filingDeadline", "rfeDeadline"]);
+const SORTABLE_CASE_FIELDS = new Set(["_id", "createdAt", "updatedAt", "caseNumber", "clientName", "visaType", "status", "stage", "priority", "filingDeadline", "rfeDeadline"]);
+const CASE_LIST_POPULATE = [
+  { path: "user", select: "email displayName name role" },
+  { path: "clientProfile", select: "fullName email phone status user companyId" },
+  { path: "beneficiary", select: "fullName email visaType status companyId user" },
+  { path: "petitioner", select: "name displayName fullName email legalName role" },
+  { path: "employer", select: "name legalName status" },
+  { path: "organization", select: "name legalName status" },
+  { path: "companyId", select: "name legalName status" },
+  { path: "assignedCaseManager", select: "name displayName email department phone role" },
+  { path: "primaryOwner", select: "name displayName email department phone role" },
+  { path: "secondaryOwner", select: "name displayName email department phone role" },
+  { path: "assignedTeamLead", select: "name displayName email department phone role" },
+  { path: "createdBy", select: "name displayName email role" },
+];
 
 function isAdmin(user) {
   return user && ADMIN_ROLES.includes(normalizeRole(user.role));
@@ -42,6 +57,12 @@ function sameId(left, right) {
   const leftId = left?._id || left;
   const rightId = right?._id || right;
   return leftId && rightId && leftId.toString() === rightId.toString();
+}
+
+function castObjectId(value) {
+  if (!value || value instanceof mongoose.Types.ObjectId) return value;
+  if (typeof value === "string" && mongoose.Types.ObjectId.isValid(value)) return new mongoose.Types.ObjectId(value);
+  return value;
 }
 
 function canAccessCase(user, caseData) {
@@ -93,18 +114,18 @@ function buildCaseFilterFields(query) {
   if (query.stage) filter.stage = query.stage;
   if (query.priority) filter.priority = query.priority;
   if (query.package) filter.package = query.package;
-  if (query.assignedCaseManager) filter.assignedCaseManager = query.assignedCaseManager;
-  if (query.companyId) filter.companyId = query.companyId;
-  if (query.beneficiary) filter.beneficiary = query.beneficiary;
-  if (query.beneficiaryId) filter.beneficiary = query.beneficiaryId;
-  if (query.clientProfile) filter.clientProfile = query.clientProfile;
-  if (query.clientId) filter.clientProfile = query.clientId;
-  if (query.parentCase) filter.parentCase = query.parentCase;
-  if (query.parentCaseId) filter.parentCase = query.parentCaseId;
+  if (query.assignedCaseManager) filter.assignedCaseManager = castObjectId(query.assignedCaseManager);
+  if (query.companyId) filter.companyId = castObjectId(query.companyId);
+  if (query.beneficiary) filter.beneficiary = castObjectId(query.beneficiary);
+  if (query.beneficiaryId) filter.beneficiary = castObjectId(query.beneficiaryId);
+  if (query.clientProfile) filter.clientProfile = castObjectId(query.clientProfile);
+  if (query.clientId) filter.clientProfile = castObjectId(query.clientId);
+  if (query.parentCase) filter.parentCase = castObjectId(query.parentCase);
+  if (query.parentCaseId) filter.parentCase = castObjectId(query.parentCaseId);
   if (query.caseType) filter.caseType = query.caseType;
   if (query.petitionType) filter.petitionType = query.petitionType;
   if (query.uscisReceiptNumber) filter.uscisReceiptNumber = { $regex: query.uscisReceiptNumber, $options: "i" };
-  if (query.teamId) filter.teamId = query.teamId;
+  if (query.teamId) filter.teamId = castObjectId(query.teamId);
   if (query.paymentStatus) filter["plan.paymentStatus"] = query.paymentStatus;
   // Deep-link-only flags from the case manager analytics panel (see
   // case-manager-analytics.service.js) - not exposed as UI dropdowns, just
@@ -150,15 +171,22 @@ async function resolveCaseSearchFilter(query, user) {
   if (!query.search) return buildCaseFilter(query, user);
   const baseFields = buildCaseFilterFields({ ...query, search: undefined });
   const textFilter = applyCaseRoleFilter({ ...baseFields, $text: { $search: query.search } }, user);
-  const hasTextHit = await Case.exists(textFilter);
-  if (hasTextHit) return textFilter;
+  try {
+    const hasTextHit = await Case.exists(textFilter);
+    if (hasTextHit) return textFilter;
+  } catch (error) {
+    const message = String(error?.message || "");
+    const codeName = String(error?.codeName || "");
+    const noTextIndex = codeName === "IndexNotFound" || /text index required|no text index/i.test(message);
+    if (!noTextIndex) throw error;
+  }
   return buildCaseFilter(query, user);
 }
 
 function buildCaseSort(query = {}) {
-  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "createdAt";
+  const sortBy = SORTABLE_CASE_FIELDS.has(query.sortBy) ? query.sortBy : "_id";
   const direction = String(query.sortOrder || query.order || "desc").toLowerCase() === "asc" ? 1 : -1;
-  return { [sortBy]: direction, _id: direction };
+  return sortBy === "_id" ? { _id: direction } : { [sortBy]: direction, _id: direction };
 }
 
 // Bounds Case's embedded history arrays so a long-lived case's document
@@ -399,20 +427,11 @@ function populateCaseQuery(query) {
 }
 
 function populateCaseListQuery(query) {
-  return query.populate([
-    { path: "user", select: "email displayName name role" },
-    { path: "clientProfile", select: "fullName email phone status user companyId" },
-    { path: "beneficiary", select: "fullName email visaType status companyId user" },
-    { path: "petitioner", select: "name displayName fullName email legalName role" },
-    { path: "employer", select: "name legalName status" },
-    { path: "organization", select: "name legalName status" },
-    { path: "companyId", select: "name legalName status" },
-    { path: "assignedCaseManager", select: "name displayName email department phone role" },
-    { path: "primaryOwner", select: "name displayName email department phone role" },
-    { path: "secondaryOwner", select: "name displayName email department phone role" },
-    { path: "assignedTeamLead", select: "name displayName email department phone role" },
-    { path: "createdBy", select: "name displayName email role" },
-  ]);
+  return query.populate(CASE_LIST_POPULATE);
+}
+
+function populateCaseListDocs(docs) {
+  return Case.populate(docs, CASE_LIST_POPULATE);
 }
 
 function hasQueryValue(value) {
@@ -605,6 +624,7 @@ module.exports = {
   isStaff,
   linkCases,
   populateCaseListQuery,
+  populateCaseListDocs,
   populateCaseQuery,
   reopenCase,
   resolveTeamLeadForCase,

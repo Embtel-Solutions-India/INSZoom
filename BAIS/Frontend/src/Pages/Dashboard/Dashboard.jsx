@@ -896,6 +896,7 @@ export default function Dashboard() {
   const [addonsLoading, setAddonsLoading] = useState(false);
   const [purchasingAddon, setPurchasingAddon] = useState(false);
   const [addonError, setAddonError] = useState("");
+  const [caseLoadError, setCaseLoadError] = useState("");
 
   useEffect(() => {
     document.title = "Dashboard | BAIS Immigration Portal";
@@ -968,6 +969,7 @@ export default function Dashboard() {
     loadCase()
       .then(async (currentCase) => {
         if (cancelled) return;
+        setCaseLoadError("");
         // No case at all → send to intake wizard to create one. Invited
         // employees never go through intake — their case is created by the
         // employer, so an employee with no case yet just sees an empty state.
@@ -979,8 +981,15 @@ export default function Dashboard() {
         // Profile and Documents now surface assigned checklist work.
         // If not assigned yet, or already completed → stay on dashboard
       })
-      .catch(() => {
-        if (!cancelled && !isEmployee) navigate("/dashboard/intake", { replace: true });
+      .catch((error) => {
+        if (cancelled) return;
+        // Previously navigated to /dashboard/intake here on ANY failure —
+        // meaning a transient 504/network error on GET /cases/my (an
+        // existing client's case fetch just failing, not "no case exists")
+        // sent an existing client into the create-a-new-case wizard. A
+        // failed fetch is not evidence there's no case; show a retryable
+        // error on the dashboard instead of guessing and navigating away.
+        setCaseLoadError(error.message || "Unable to load your case right now.");
       });
 
     documentsApi.list()
@@ -1048,6 +1057,18 @@ export default function Dashboard() {
           <p className="text-sm font-semibold text-amber-800">{notice}</p>
           <button onClick={() => setNotice("")} aria-label="Dismiss" className="text-amber-600 hover:text-amber-800 shrink-0">
             <Ic.X />
+          </button>
+        </div>
+      )}
+
+      {caseLoadError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-red-800">{caseLoadError}</p>
+          <button
+            onClick={() => { setCaseLoadError(""); loadCase().catch((error) => setCaseLoadError(error.message || "Unable to load your case right now.")); }}
+            className="text-sm font-bold text-red-700 hover:text-red-900 shrink-0"
+          >
+            Retry
           </button>
         </div>
       )}

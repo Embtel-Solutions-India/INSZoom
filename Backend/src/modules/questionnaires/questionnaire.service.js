@@ -776,6 +776,17 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
   return { responseId, case: caseData, questionnaire };
 }
 
+// FIX (blocking in-memory sort on large questionnaires): every question-list
+// read below filters `active` and sorts by pageKey/sectionKey/order, backed
+// by the questionnaire_1_active_1_pageKey_1_sectionKey_1_order_1 index. That
+// index can only serve the sort directly when every field before order is an
+// EQUALITY match - the old "not equal to false" filter is a range, which
+// breaks the equality-then-sort rule and forced Mongo into a blocking SORT
+// stage over every matching document (explain confirmed FETCH->SORT->IXSCAN,
+// not the index-order scan the compound index was built for). Verified zero
+// Question documents lack the `active` field in production (schema default
+// + questionPayloads below both always set it), so active: true is exactly
+// equivalent to the old filter but lets the index serve the sort directly.
 async function buildResponseState(responseId) {
   const answers = await Answer.find({ responseId }).populate("question").sort({ updatedAt: -1 });
   const answerMap = answers.reduce((map, answer) => {
@@ -783,12 +794,12 @@ async function buildResponseState(responseId) {
     return map;
   }, {});
   const questionnaireId = answers[0]?.questionnaire;
-  const questions = questionnaireId ? await Question.find({ questionnaire: questionnaireId, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 }) : [];
+  const questions = questionnaireId ? await Question.find({ questionnaire: questionnaireId, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }) : [];
   return { answers, answerMap, questions };
 }
 
 async function calculateCompletion(questionnaire, answerMap, user) {
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
   const required = visibleQuestions.filter((question) => question.required);
   const answeredRequired = required.filter((question) => {
@@ -833,7 +844,7 @@ function calculateSectionCompletion(questionnaire, visibleQuestions, answerMap) 
 // the completion stats derived from it - see visibleQuestionsOverride below.
 async function resolveVisibleQuestions(questionnaire, answerMap, user) {
   return (
-    await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 })
+    await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 })
   ).filter((question) => isQuestionVisible(question, answerMap, user));
 }
 
@@ -1116,7 +1127,7 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   const participantId = participant?._id || payload.participantId;
   const responseOwner = participantId || payload.assignedTo || user?._id;
   const responseId = payload.responseId || responseIdFor(questionnaire._id, payload.caseId, responseOwner);
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } });
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: true });
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -1370,7 +1381,7 @@ async function syncFileAnswerFromDocument(caseData, document, user, req) {
         questionnaire: reference.questionnaireId,
         type: "file",
         "metadata.documentType": document.documentType,
-        active: { $ne: false },
+        active: true,
       });
       if (!question) continue;
       const result = await saveAnswers({
@@ -1496,7 +1507,7 @@ async function getVisibleQuestions(questionnaireId, responseId, user) {
     error.status = 404;
     throw error;
   }
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
   const answers = responseId ? await Answer.find({ responseId }) : [];
   const answerMap = answers.reduce((map, answer) => {
     map[answer.questionKey] = answer;
@@ -1962,7 +1973,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     throw error;
   }
   const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, caseData._id, requestedParticipant?._id || caseData.user || user?._id);
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
   const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();
   timer.mark("answer_lookup", { count: answers.length });
@@ -2248,7 +2259,7 @@ async function getUscisMappings(questionnaireId) {
     error.status = 404;
     throw error;
   }
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ sectionKey: 1, order: 1 });
+  const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ sectionKey: 1, order: 1 });
   return questions
     .filter((question) => question.uscisMappings?.length || question.mapping?.uscisFieldPath)
     .map((question) => ({
@@ -2291,7 +2302,7 @@ async function validateAnswers(payload, user) {
   }
   const [answers, questions] = await Promise.all([
     Answer.find({ responseId }),
-    Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).sort({ pageKey: 1, sectionKey: 1, order: 1 }),
+    Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }),
   ]);
   const answerMap = getAnswerMapFromAnswers(answers);
   return {
@@ -2318,7 +2329,7 @@ async function generateDocumentRequestsForResponse(payload, user, req) {
   const responseId = payload.responseId || responseIdFor(questionnaire._id, payload.caseId, payload.userId || user?._id);
   const [answers, questions] = await Promise.all([
     Answer.find({ responseId }),
-    Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }),
+    Question.find({ questionnaire: questionnaire._id, active: true }),
   ]);
   const documentRequests = await generateDocumentRequests({ questionnaire, caseData, answerMap: getAnswerMapFromAnswers(answers), questions, user, req });
   return { responseId, documentRequests };

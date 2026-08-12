@@ -283,7 +283,7 @@ function UploadZone({ docId, category, label, description, required, accept, col
         <p className="text-[0.7rem] text-slate-400">
           {accept.replace(/\./g, "").replace(/,/g, ", ").toUpperCase()}
         </p>
-        <input ref={inputRef} type="file" multiple accept={accept} onChange={handleInput} className="hidden" />
+        <input ref={inputRef} type="file" id={`upload-${docId}`} name={`upload-${docId}`} multiple accept={accept} onChange={handleInput} className="hidden" />
       </div>
 
       {hasFiles && (

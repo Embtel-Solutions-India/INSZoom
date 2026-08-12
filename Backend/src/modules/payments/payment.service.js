@@ -12,6 +12,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const pricingService = require("./pricing.service");
 const paymentGateway = require("./payment.gateway");
 const { normalizePackageName } = require("../../config/packages");
+const logger = require("../../utils/logger");
 
 const FINANCE_ROLES = ["super_admin", "admin"];
 const MANUAL_PAYMENT_ROLES = [...FINANCE_ROLES, "team_lead"];
@@ -864,10 +865,26 @@ async function confirmCheckoutSession(sessionId, user, req) {
     return payment;
   }
 
+  // This is the one confirmed synchronous external API call in the client
+  // portal's request paths — Payments.jsx awaits this on every page load
+  // where paymentStatus is processing/pending. Logged on both outcomes so a
+  // slow/degraded Stripe endpoint shows up as its own measured stage instead
+  // of just "the payments page was slow."
   let session;
+  const stripeCallStartedAt = Date.now();
   try {
     session = await paymentGateway.retrieveCheckoutSession(sessionId);
+    logger.info("stripe_external_call_performance", {
+      operation: "retrieveCheckoutSession",
+      durationMs: Date.now() - stripeCallStartedAt,
+      outcome: "success",
+    });
   } catch (error) {
+    logger.info("stripe_external_call_performance", {
+      operation: "retrieveCheckoutSession",
+      durationMs: Date.now() - stripeCallStartedAt,
+      outcome: "error",
+    });
     addAuditEntry(payment, "checkout_return_retrieve_failed", user, { sessionId, message: error.message }, req);
     await payment.save();
     return payment;

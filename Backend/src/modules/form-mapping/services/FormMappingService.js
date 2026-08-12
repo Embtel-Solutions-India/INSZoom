@@ -49,7 +49,13 @@ class FormMappingService {
     };
     if (version) query.version = version;
     else query.status = "active";
+    // -definition excludes the raw-import blob (7.36MB of a 15.10MB live
+    // I-129 template) that duplicates the normalized formFields/
+    // formStructure/formLayout/sections/validationRules this mapper actually
+    // uses. Nothing in the mapping, render or generation path reads it - see
+    // uscis-form.service.js's TEMPLATE_RENDER_EXCLUDE for the measurements.
     const template = await USCISFormTemplate.findOne(query)
+      .select("-definition")
       .sort({ activeFlag: -1, editionDate: -1, effectiveDate: -1, updatedAt: -1 })
       .lean();
     if (!template) {

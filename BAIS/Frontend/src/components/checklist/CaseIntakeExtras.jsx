@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { casesApi, profileApi } from "../../services/api";
+import { profileApi } from "../../services/api";
 
 // Case-specific data collection that used to live on Profile.jsx (moved here
 // per the client-portal overhaul — Profile is identity-only now; anything
@@ -157,7 +157,13 @@ function Select({ label, required, options, ...props }) {
   );
 }
 
-export default function CaseIntakeExtras({ caseId }) {
+// caseData: the already-resolved case object for this checklist, from the
+// Documents page's own useMyCase()/employer case-list resolution — this used
+// to independently re-fetch via casesApi.my() here, which (a) duplicated a
+// 16-populate query the page had already made, uncached, and (b) for an
+// employer viewing a specific sponsored case, casesApi.my() resolves to the
+// wrong case entirely ("my own case", not the caseId being viewed).
+export default function CaseIntakeExtras({ caseId, caseData: providedCaseData }) {
   const [caseData, setCaseData] = useState(null);
   const [dynamicCaseInformation, setDynamicCaseInformation] = useState({});
   const [i907, setI907] = useState(emptyI907);
@@ -167,11 +173,10 @@ export default function CaseIntakeExtras({ caseId }) {
 
   useEffect(() => {
     let mounted = true;
-    Promise.allSettled([profileApi.getIntake(), casesApi.my()]).then(([intakeResult, caseResult]) => {
+    profileApi.getIntake().then((intakeResult) => {
       if (!mounted) return;
-      const intake = intakeResult.status === "fulfilled" ? intakeResult.value?.intake : null;
-      const activeCase = caseResult.status === "fulfilled" ? (caseResult.value?.case || caseResult.value) : intake?.case;
-      const nextCase = activeCase || intake?.case || {};
+      const intake = intakeResult?.intake;
+      const nextCase = providedCaseData || intake?.case || {};
       const client = intake?.client || {};
       setCaseData(nextCase);
       setDynamicCaseInformation(client.dynamicCaseInformation || client.intakeData?.dynamicCaseInformation || {});
@@ -179,7 +184,7 @@ export default function CaseIntakeExtras({ caseId }) {
       setLoading(false);
     }).catch(() => setLoading(false));
     return () => { mounted = false; };
-  }, [caseId]);
+  }, [caseId, providedCaseData]);
 
   useEffect(() => {
     if (!dirty) return undefined;
@@ -218,7 +223,7 @@ export default function CaseIntakeExtras({ caseId }) {
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {caseFields.map(([field, label]) => (
-            <Input key={field} label={label} value={textValue(dynamicCaseInformation[field])} onChange={(e) => updateDynamic(field, e.target.value)} />
+            <Input key={field} id={`case-field-${field}`} name={field} label={label} value={textValue(dynamicCaseInformation[field])} onChange={(e) => updateDynamic(field, e.target.value)} />
           ))}
         </div>
       </section>
@@ -232,38 +237,38 @@ export default function CaseIntakeExtras({ caseId }) {
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Filer identity</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input label="Alien Registration Number (A-Number)" value={textValue(i907.alienRegistrationNumber)} onChange={(e) => updateI907("alienRegistrationNumber", e.target.value)} />
-                <Input label="USCIS Online Account Number" value={textValue(i907.uscisOnlineAccountNumber)} onChange={(e) => updateI907("uscisOnlineAccountNumber", e.target.value)} />
-                <Input label="Company or Organization Named in Related Case" value={textValue(i907.companyOrganizationName)} onChange={(e) => updateI907("companyOrganizationName", e.target.value)} />
-                <Input label="Family Name (Last Name)" required value={textValue(i907.filerFamilyName)} onChange={(e) => updateI907("filerFamilyName", e.target.value)} />
-                <Input label="Given Name (First Name)" required value={textValue(i907.filerGivenName)} onChange={(e) => updateI907("filerGivenName", e.target.value)} />
+                <Input id="i907-alienRegistrationNumber" name="alienRegistrationNumber" label="Alien Registration Number (A-Number)" value={textValue(i907.alienRegistrationNumber)} onChange={(e) => updateI907("alienRegistrationNumber", e.target.value)} />
+                <Input id="i907-uscisOnlineAccountNumber" name="uscisOnlineAccountNumber" label="USCIS Online Account Number" value={textValue(i907.uscisOnlineAccountNumber)} onChange={(e) => updateI907("uscisOnlineAccountNumber", e.target.value)} />
+                <Input id="i907-companyOrganizationName" name="companyOrganizationName" label="Company or Organization Named in Related Case" value={textValue(i907.companyOrganizationName)} onChange={(e) => updateI907("companyOrganizationName", e.target.value)} />
+                <Input id="i907-filerFamilyName" name="filerFamilyName" label="Family Name (Last Name)" required value={textValue(i907.filerFamilyName)} onChange={(e) => updateI907("filerFamilyName", e.target.value)} />
+                <Input id="i907-filerGivenName" name="filerGivenName" label="Given Name (First Name)" required value={textValue(i907.filerGivenName)} onChange={(e) => updateI907("filerGivenName", e.target.value)} />
               </div>
             </div>
 
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Mailing address</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input label="Street Number and Name" required value={textValue(i907.mailingStreet)} onChange={(e) => updateI907("mailingStreet", e.target.value)} />
-                <Input label="Apt/Ste/Flr" value={textValue(i907.mailingApt)} onChange={(e) => updateI907("mailingApt", e.target.value)} />
-                <Input label="City or Town" required value={textValue(i907.mailingCity)} onChange={(e) => updateI907("mailingCity", e.target.value)} />
-                <Input label="State" required value={textValue(i907.mailingState)} onChange={(e) => updateI907("mailingState", e.target.value)} />
-                <Input label="ZIP Code" required value={textValue(i907.mailingZipCode)} onChange={(e) => updateI907("mailingZipCode", e.target.value)} />
-                <Input label="Country" required value={textValue(i907.mailingCountry)} onChange={(e) => updateI907("mailingCountry", e.target.value)} />
+                <Input id="i907-mailingStreet" name="mailingStreet" label="Street Number and Name" required value={textValue(i907.mailingStreet)} onChange={(e) => updateI907("mailingStreet", e.target.value)} />
+                <Input id="i907-mailingApt" name="mailingApt" label="Apt/Ste/Flr" value={textValue(i907.mailingApt)} onChange={(e) => updateI907("mailingApt", e.target.value)} />
+                <Input id="i907-mailingCity" name="mailingCity" label="City or Town" required value={textValue(i907.mailingCity)} onChange={(e) => updateI907("mailingCity", e.target.value)} />
+                <Input id="i907-mailingState" name="mailingState" label="State" required value={textValue(i907.mailingState)} onChange={(e) => updateI907("mailingState", e.target.value)} />
+                <Input id="i907-mailingZipCode" name="mailingZipCode" label="ZIP Code" required value={textValue(i907.mailingZipCode)} onChange={(e) => updateI907("mailingZipCode", e.target.value)} />
+                <Input id="i907-mailingCountry" name="mailingCountry" label="Country" required value={textValue(i907.mailingCountry)} onChange={(e) => updateI907("mailingCountry", e.target.value)} />
               </div>
             </div>
 
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Physical address</p>
               <div className="mb-4 max-w-sm">
-                <Select label="Same as Mailing Address?" required value={textValue(i907.samePhysicalAddress || "Yes")} onChange={(e) => updateI907("samePhysicalAddress", e.target.value)} options={["Yes", "No"]} />
+                <Select id="i907-samePhysicalAddress" name="samePhysicalAddress" label="Same as Mailing Address?" required value={textValue(i907.samePhysicalAddress || "Yes")} onChange={(e) => updateI907("samePhysicalAddress", e.target.value)} options={["Yes", "No"]} />
               </div>
               {i907.samePhysicalAddress === "No" && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <Input label="Street Number and Name" value={textValue(i907.physicalStreet)} onChange={(e) => updateI907("physicalStreet", e.target.value)} />
-                  <Input label="City or Town" value={textValue(i907.physicalCity)} onChange={(e) => updateI907("physicalCity", e.target.value)} />
-                  <Input label="State" value={textValue(i907.physicalState)} onChange={(e) => updateI907("physicalState", e.target.value)} />
-                  <Input label="ZIP Code" value={textValue(i907.physicalZipCode)} onChange={(e) => updateI907("physicalZipCode", e.target.value)} />
-                  <Input label="Country" value={textValue(i907.physicalCountry)} onChange={(e) => updateI907("physicalCountry", e.target.value)} />
+                  <Input id="i907-physicalStreet" name="physicalStreet" label="Street Number and Name" value={textValue(i907.physicalStreet)} onChange={(e) => updateI907("physicalStreet", e.target.value)} />
+                  <Input id="i907-physicalCity" name="physicalCity" label="City or Town" value={textValue(i907.physicalCity)} onChange={(e) => updateI907("physicalCity", e.target.value)} />
+                  <Input id="i907-physicalState" name="physicalState" label="State" value={textValue(i907.physicalState)} onChange={(e) => updateI907("physicalState", e.target.value)} />
+                  <Input id="i907-physicalZipCode" name="physicalZipCode" label="ZIP Code" value={textValue(i907.physicalZipCode)} onChange={(e) => updateI907("physicalZipCode", e.target.value)} />
+                  <Input id="i907-physicalCountry" name="physicalCountry" label="Country" value={textValue(i907.physicalCountry)} onChange={(e) => updateI907("physicalCountry", e.target.value)} />
                 </div>
               )}
             </div>
@@ -271,29 +276,29 @@ export default function CaseIntakeExtras({ caseId }) {
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Related petition or application</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input label="Form Number of Related Petition or Application" required value={textValue(i907.relatedFormNumber)} onChange={(e) => updateI907("relatedFormNumber", e.target.value)} />
-                <Input label="Receipt Number of Related Petition or Application" required value={textValue(i907.relatedReceiptNumber)} onChange={(e) => updateI907("relatedReceiptNumber", e.target.value)} />
-                <Input label="Additional Receipt Number" value={textValue(i907.relatedReceiptNumber2)} onChange={(e) => updateI907("relatedReceiptNumber2", e.target.value)} />
+                <Input id="i907-relatedFormNumber" name="relatedFormNumber" label="Form Number of Related Petition or Application" required value={textValue(i907.relatedFormNumber)} onChange={(e) => updateI907("relatedFormNumber", e.target.value)} />
+                <Input id="i907-relatedReceiptNumber" name="relatedReceiptNumber" label="Receipt Number of Related Petition or Application" required value={textValue(i907.relatedReceiptNumber)} onChange={(e) => updateI907("relatedReceiptNumber", e.target.value)} />
+                <Input id="i907-relatedReceiptNumber2" name="relatedReceiptNumber2" label="Additional Receipt Number" value={textValue(i907.relatedReceiptNumber2)} onChange={(e) => updateI907("relatedReceiptNumber2", e.target.value)} />
               </div>
             </div>
 
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Related case people</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Input label="Petitioner or Applicant Family Name" value={textValue(i907.petitionerFamilyName)} onChange={(e) => updateI907("petitionerFamilyName", e.target.value)} />
-                <Input label="Petitioner or Applicant Given Name" value={textValue(i907.petitionerGivenName)} onChange={(e) => updateI907("petitionerGivenName", e.target.value)} />
-                <Input label="Beneficiary Family Name" required value={textValue(i907.beneficiaryFamilyName)} onChange={(e) => updateI907("beneficiaryFamilyName", e.target.value)} />
-                <Input label="Beneficiary Given Name" required value={textValue(i907.beneficiaryGivenName)} onChange={(e) => updateI907("beneficiaryGivenName", e.target.value)} />
+                <Input id="i907-petitionerFamilyName" name="petitionerFamilyName" label="Petitioner or Applicant Family Name" value={textValue(i907.petitionerFamilyName)} onChange={(e) => updateI907("petitionerFamilyName", e.target.value)} />
+                <Input id="i907-petitionerGivenName" name="petitionerGivenName" label="Petitioner or Applicant Given Name" value={textValue(i907.petitionerGivenName)} onChange={(e) => updateI907("petitionerGivenName", e.target.value)} />
+                <Input id="i907-beneficiaryFamilyName" name="beneficiaryFamilyName" label="Beneficiary Family Name" required value={textValue(i907.beneficiaryFamilyName)} onChange={(e) => updateI907("beneficiaryFamilyName", e.target.value)} />
+                <Input id="i907-beneficiaryGivenName" name="beneficiaryGivenName" label="Beneficiary Given Name" required value={textValue(i907.beneficiaryGivenName)} onChange={(e) => updateI907("beneficiaryGivenName", e.target.value)} />
               </div>
             </div>
 
             <div>
               <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Company point of contact</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input label="Point of Contact Family Name" value={textValue(i907.pointOfContactFamilyName)} onChange={(e) => updateI907("pointOfContactFamilyName", e.target.value)} />
-                <Input label="Point of Contact Given Name" value={textValue(i907.pointOfContactGivenName)} onChange={(e) => updateI907("pointOfContactGivenName", e.target.value)} />
-                <Input label="Position Title" value={textValue(i907.pointOfContactTitle)} onChange={(e) => updateI907("pointOfContactTitle", e.target.value)} />
-                <Input label="Company or Organization EIN" value={textValue(i907.ein)} onChange={(e) => updateI907("ein", e.target.value)} />
+                <Input id="i907-pointOfContactFamilyName" name="pointOfContactFamilyName" label="Point of Contact Family Name" value={textValue(i907.pointOfContactFamilyName)} onChange={(e) => updateI907("pointOfContactFamilyName", e.target.value)} />
+                <Input id="i907-pointOfContactGivenName" name="pointOfContactGivenName" label="Point of Contact Given Name" value={textValue(i907.pointOfContactGivenName)} onChange={(e) => updateI907("pointOfContactGivenName", e.target.value)} />
+                <Input id="i907-pointOfContactTitle" name="pointOfContactTitle" label="Position Title" value={textValue(i907.pointOfContactTitle)} onChange={(e) => updateI907("pointOfContactTitle", e.target.value)} />
+                <Input id="i907-ein" name="ein" label="Company or Organization EIN" value={textValue(i907.ein)} onChange={(e) => updateI907("ein", e.target.value)} />
               </div>
             </div>
           </div>

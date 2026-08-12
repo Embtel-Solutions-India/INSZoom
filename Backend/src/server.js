@@ -1,5 +1,7 @@
 const app = require("./app");
 const connectDB = require("./config/database");
+const { disconnectDB } = connectDB;
+const { withJobLock } = require("./utils/jobLock");
 const env = require("./config/env");
 const http = require("http");
 const logger = require("./utils/logger");
@@ -31,16 +33,24 @@ function scheduleInitialRun(run, delayMs) {
   return handle;
 }
 
+// Every recurring job below is wrapped in withJobLock() so a slow tick (e.g.
+// a query stalled on contention) can never overlap with the next setInterval
+// fire — the lock is claimed atomically in MongoDB, so this holds even if the
+// backend is ever run as more than one instance. ttlMs is set to a multiple
+// of the job's own interval so a crashed run self-heals instead of wedging
+// the job forever.
+
 function startWorkflowMaintenance() {
   const intervalMs = Number(process.env.WORKFLOW_MAINTENANCE_INTERVAL_MS || 5 * 60 * 1000);
   const initialDelayMs = Number(process.env.WORKFLOW_MAINTENANCE_INITIAL_DELAY_MS || 15 * 1000);
-  const run = async () => {
-    await Promise.all([
-      workflowService.checkSlaBreaches(),
-      workflowService.processScheduledWorkflows(),
-      workflowService.retryFailedActions(),
-    ]).catch((error) => logger.error("workflow_maintenance_failed", { error }));
-  };
+  const run = () =>
+    withJobLock("workflow-maintenance", intervalMs * 3, async () => {
+      await Promise.all([
+        workflowService.checkSlaBreaches(),
+        workflowService.processScheduledWorkflows(),
+        workflowService.retryFailedActions(),
+      ]);
+    }).catch((error) => logger.error("workflow_maintenance_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -48,12 +58,13 @@ function startWorkflowMaintenance() {
 function startNotificationMaintenance() {
   const intervalMs = Number(process.env.NOTIFICATION_MAINTENANCE_INTERVAL_MS || 60 * 1000);
   const initialDelayMs = Number(process.env.NOTIFICATION_MAINTENANCE_INITIAL_DELAY_MS || 20 * 1000);
-  const run = async () => {
-    await Promise.all([
-      notificationService.processScheduled(100),
-      notificationService.retryFailed(100),
-    ]).catch((error) => logger.error("notification_maintenance_failed", { error }));
-  };
+  const run = () =>
+    withJobLock("notification-maintenance", intervalMs * 3, async () => {
+      await Promise.all([
+        notificationService.processScheduled(100),
+        notificationService.retryFailed(100),
+      ]);
+    }).catch((error) => logger.error("notification_maintenance_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -61,9 +72,9 @@ function startNotificationMaintenance() {
 function startAppointmentMaintenance() {
   const intervalMs = Number(process.env.APPOINTMENT_REMINDER_INTERVAL_MS || 60 * 1000);
   const initialDelayMs = Number(process.env.APPOINTMENT_REMINDER_INITIAL_DELAY_MS || 25 * 1000);
-  const run = async () => {
-    await appointmentService.sendDueReminders().catch((error) => logger.error("appointment_reminder_processing_failed", { error }));
-  };
+  const run = () =>
+    withJobLock("appointment-reminders", intervalMs * 3, () => appointmentService.sendDueReminders())
+      .catch((error) => logger.error("appointment_reminder_processing_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -71,11 +82,10 @@ function startAppointmentMaintenance() {
 function startPaymentMaintenance() {
   const intervalMs = Number(process.env.PAYMENT_RECONCILIATION_INTERVAL_MS || 2 * 60 * 1000);
   const initialDelayMs = Number(process.env.PAYMENT_RECONCILIATION_INITIAL_DELAY_MS || 30 * 1000);
-  const run = async () => {
-    await paymentService.reconcilePendingPayments(
-      Number(process.env.PAYMENT_RECONCILIATION_BATCH_SIZE || 50)
+  const run = () =>
+    withJobLock("payment-reconciliation", intervalMs * 3, () =>
+      paymentService.reconcilePendingPayments(Number(process.env.PAYMENT_RECONCILIATION_BATCH_SIZE || 50))
     ).catch((error) => logger.error("payment_reconciliation_failed", { error }));
-  };
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -83,9 +93,9 @@ function startPaymentMaintenance() {
 function startReminderGeneration() {
   const intervalMs = Number(process.env.REMINDER_GENERATION_INTERVAL_MS || 60 * 60 * 1000);
   const initialDelayMs = Number(process.env.REMINDER_GENERATION_INITIAL_DELAY_MS || 35 * 1000);
-  const run = async () => {
-    await reminderGenerationService.runAll().catch((error) => logger.error("reminder_generation_failed", { error }));
-  };
+  const run = () =>
+    withJobLock("reminder-generation", intervalMs * 3, () => reminderGenerationService.runAll())
+      .catch((error) => logger.error("reminder_generation_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -93,9 +103,9 @@ function startReminderGeneration() {
 function startAIMaintenance() {
   const intervalMs = Number(process.env.AI_JOB_RECOVERY_INTERVAL_MS || 60 * 1000);
   const initialDelayMs = Number(process.env.AI_JOB_RECOVERY_INITIAL_DELAY_MS || 40 * 1000);
-  const run = async () => {
-    await aiOrchestrationService.recoverQueuedJobs().catch((error) => logger.error("ai_job_recovery_failed", { error }));
-  };
+  const run = () =>
+    withJobLock("ai-job-recovery", intervalMs * 3, () => aiOrchestrationService.recoverQueuedJobs())
+      .catch((error) => logger.error("ai_job_recovery_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -106,23 +116,24 @@ function startEodReportMaintenance() {
   const generationHour = Math.min(Math.max(Number(process.env.EOD_REPORT_GENERATION_HOUR_IST || 6), 0), 23);
   const backfillDays = Math.min(Math.max(Number(process.env.EOD_REPORT_BACKFILL_DAYS || 7), 1), 31);
   let lastSuccessfulRun = "";
-  const run = async () => {
-    const now = new Date();
-    const istNow = new Date(now.getTime() + 330 * 60 * 1000);
-    if (istNow.getUTCHours() < generationHour) return;
-    const runKey = istNow.toISOString().slice(0, 10);
-    if (lastSuccessfulRun === runKey) return;
-    try {
-      for (let daysAgo = backfillDays; daysAgo >= 1; daysAgo -= 1) {
-        await reportService.generateAutomaticEodReports({
-          reportDate: reportService.startOfIstDay(now, -daysAgo),
-        });
+  const run = () =>
+    withJobLock("eod-report-maintenance", intervalMs * 3, async () => {
+      const now = new Date();
+      const istNow = new Date(now.getTime() + 330 * 60 * 1000);
+      if (istNow.getUTCHours() < generationHour) return;
+      const runKey = istNow.toISOString().slice(0, 10);
+      if (lastSuccessfulRun === runKey) return;
+      try {
+        for (let daysAgo = backfillDays; daysAgo >= 1; daysAgo -= 1) {
+          await reportService.generateAutomaticEodReports({
+            reportDate: reportService.startOfIstDay(now, -daysAgo),
+          });
+        }
+        lastSuccessfulRun = runKey;
+      } catch (error) {
+        logger.error("automatic_eod_report_generation_failed", { error });
       }
-      lastSuccessfulRun = runKey;
-    } catch (error) {
-      logger.error("automatic_eod_report_generation_failed", { error });
-    }
-  };
+    });
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -179,6 +190,9 @@ connectDB()
     });
     server.listen(env.port, () => {
       logger.info("shared_backend_started", { port: env.port, nodeEnv: env.nodeEnv });
+      if (process.env.DOCUMENT_INTELLIGENCE_RECOVERY_ON_STARTUP !== "false") {
+        require("./modules/document-intelligence/queues/document-intelligence.queue").startRecovery();
+      }
     });
     const shutdown = () => {
       clearInterval(workflowMaintenance);
@@ -189,7 +203,11 @@ connectDB()
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
-      server.close(() => process.exit(0));
+      server.close(() => {
+        disconnectDB()
+          .catch((error) => logger.error("mongodb_disconnect_failed", { error }))
+          .finally(() => process.exit(0));
+      });
     };
     process.on("SIGTERM", shutdown);
     process.on("SIGINT", shutdown);

@@ -54,6 +54,14 @@ async function refreshAccessToken() {
   return data.accessToken;
 }
 
+// No request timeout existed here at all — a backend request stuck behind
+// MongoDB connection-pool contention (or a slow downstream call like Stripe)
+// would hang the fetch indefinitely, which is exactly what "page takes 10+
+// minutes to load" looks like client-side: not an error, just a spinner that
+// never resolves. This bounds every request so a stuck backend surfaces as a
+// clear, retriable error instead of an infinite wait.
+const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 25000;
+
 async function request(path, options = {}, retry = true) {
   const headers = { ...options.headers };
 
@@ -78,8 +86,19 @@ async function request(path, options = {}, retry = true) {
 
   let res;
   try {
-    res = await fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: "include" });
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+      signal: options.signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
   } catch (networkError) {
+    if (networkError.name === "TimeoutError" || networkError.name === "AbortError") {
+      const error = new Error("The server took too long to respond. Please try again.");
+      error.cause = networkError;
+      error.isTimeout = true;
+      throw error;
+    }
     // A raw TypeError("Failed to fetch") means the request never reached the
     // server at all (offline, backend down/restarting, DNS/CORS blocked) -
     // surfacing that literal browser message to the user is meaningless,

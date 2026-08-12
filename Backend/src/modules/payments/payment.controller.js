@@ -48,7 +48,24 @@ exports.getPaymentSummary = async (req, res, next) => {
       });
     }
     const payment = await paymentService.getOrCreateClientPayment(req.user, caseData, req);
-    res.json(payment);
+    // The client portal's Payments page only ever reads a handful of top-level
+    // fields plus a few per-transaction display fields (see Payments.jsx) —
+    // auditHistory/webhookEvents/replayProtection/reconciliation/
+    // processingLock and each transaction's raw providerResponse are
+    // internal bookkeeping never rendered here, just extra payload weight on
+    // every load/15s poll. getOrCreateClientPayment itself is left returning
+    // the full document unchanged (createPartialCheckoutSession, the other
+    // caller, reads internal fields off it) — only this response is trimmed.
+    const summary = payment.toObject({ virtuals: true });
+    delete summary.auditHistory;
+    delete summary.webhookEvents;
+    delete summary.replayProtection;
+    delete summary.reconciliation;
+    delete summary.processingLock;
+    if (Array.isArray(summary.transactions)) {
+      summary.transactions = summary.transactions.map(({ providerResponse, ...rest }) => rest);
+    }
+    res.json(summary);
   } catch (error) {
     next(error);
   }

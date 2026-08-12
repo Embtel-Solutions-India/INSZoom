@@ -13,12 +13,43 @@ export function BlockEmployeeRoute() {
 }
 
 export default function ProtectedRoute() {
-  const { user, authLoading } = useAuth();
+  const { user, authStatus, retryAuth } = useAuth();
 
-  if (authLoading) {
+  if (authStatus === "loading") {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
         <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
+      </div>
+    );
+  }
+
+  // A backend/network failure verifying the session is NOT the same thing as
+  // being logged out — showing the login/signup prompt here (as this used to)
+  // told a user with a perfectly valid session to log back in just because
+  // /auth/me hit a transient 504. This never navigates away and never
+  // touches the stored token; retrying just re-attempts verification in place.
+  if (authStatus === "error") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
+        <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-8">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-slate-400">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v4m0 4h.01M4.93 4.93l14.14 14.14M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-3">
+          We're having trouble connecting
+        </h1>
+        <p className="text-slate-500 text-base max-w-md mb-8">
+          This isn't a sign you've been logged out — we just couldn't reach the server to confirm your session. Please try again in a moment.
+        </p>
+        <button
+          type="button"
+          onClick={retryAuth}
+          className="px-6 py-3.5 bg-linear-to-r from-[#1D9E75] to-teal-600 text-white font-bold text-base rounded-xl
+            shadow-md shadow-emerald-200 hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 active:scale-95"
+        >
+          Retry
+        </button>
       </div>
     );
   }

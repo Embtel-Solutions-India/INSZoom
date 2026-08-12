@@ -37,7 +37,7 @@ export function AutofillButton({ documentType, caseId, disabled, onUploaded }) {
 
   return (
     <>
-      <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={handleFile} />
+      <input ref={inputRef} type="file" id={`autofill-${documentType}`} name={`autofill-${documentType}`} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" className="hidden" onChange={handleFile} />
       <button
         type="button"
         disabled={disabled || uploading}
@@ -76,6 +76,8 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
   if (!columns.length) {
     return (
       <textarea
+        id={question.key}
+        name={question.key}
         className={`${INPUT_CLASS} min-h-28`}
         disabled={disabled}
         value={typeof value === "string" ? value : JSON.stringify(value || [], null, 2)}
@@ -95,6 +97,8 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
                 <label key={fieldKey} className="space-y-1 text-xs font-bold text-slate-500">
                   {column.label || titleFromKey(fieldKey)}
                   <input
+                    id={`${question.key}-${rowIndex}-${fieldKey}`}
+                    name={`${question.key}.${rowIndex}.${fieldKey}`}
                     className={INPUT_CLASS}
                     type={column.type === "date" ? "date" : column.type === "number" ? "number" : "text"}
                     value={row?.[fieldKey] || ""}
@@ -129,12 +133,12 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
   const options = normalizeOptions(question.options);
 
   if (type === "textarea" || type === "rich_text") {
-    return <textarea className={`${INPUT_CLASS} min-h-28 resize-y`} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
+    return <textarea id={question.key} name={question.key} className={`${INPUT_CLASS} min-h-28 resize-y`} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
   }
 
   if (type === "select") {
     return (
-      <select className={INPUT_CLASS} disabled={disabled} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+      <select id={question.key} name={question.key} className={INPUT_CLASS} disabled={disabled} value={value || ""} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select an option</option>
         {options.map((option) => (
           <option key={String(option.value)} value={option.value}>
@@ -153,6 +157,8 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
           <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
             <input
               type="checkbox"
+              id={`${question.key}-${option.value}`}
+              name={question.key}
               disabled={disabled}
               checked={current.includes(option.value)}
               onChange={(event) => onChange(event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value))}
@@ -194,6 +200,8 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
             <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
               <input
                 type="checkbox"
+                id={`${question.key}-${option.value}`}
+                name={question.key}
                 disabled={disabled}
                 checked={current.includes(option.value)}
                 onChange={(event) => onChange(event.target.checked ? [...current, option.value] : current.filter((item) => item !== option.value))}
@@ -206,7 +214,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
     }
     return (
       <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
-        <input type="checkbox" disabled={disabled} checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
+        <input type="checkbox" id={question.key} name={question.key} disabled={disabled} checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
         Confirm
       </label>
     );
@@ -220,6 +228,8 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
         {["line1", "line2", "city", "state", "postalCode", "country"].map((field) => (
           <input
             key={field}
+            id={`${question.key}-${field}`}
+            name={`${question.key}.${field}`}
             className={INPUT_CLASS}
             disabled={disabled}
             value={current[field] || ""}
@@ -235,7 +245,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
     const multiple = question?.metadata?.requestedType === "file-multiple" || question?.metadata?.multiple || question?.fileConstraints?.maxFiles > 1;
     return (
       <div className="space-y-2">
-        <input className={INPUT_CLASS} type="file" multiple={multiple} disabled={disabled} onChange={(event) => onFileChange(Array.from(event.target.files || []))} />
+        <input id={question.key} name={question.key} className={INPUT_CLASS} type="file" multiple={multiple} disabled={disabled} onChange={(event) => onFileChange(Array.from(event.target.files || []))} />
         {Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-slate-500">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
         {saving && <p className="text-xs font-extrabold text-emerald-600">Uploading files...</p>}
       </div>
@@ -258,5 +268,5 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
     date: "date",
   }[type] || "text";
 
-  return <input className={INPUT_CLASS} type={inputType} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
+  return <input id={question.key} name={question.key} className={INPUT_CLASS} type={inputType} disabled={disabled} value={value || ""} placeholder={question.placeholder || ""} onChange={(event) => onChange(event.target.value)} />;
 }

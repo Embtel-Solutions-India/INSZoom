@@ -316,14 +316,36 @@ exports.getCaseConfig = async (req, res, next) => {
 };
 
 exports.getMyCase = async (req, res, next) => {
+  // Stage breakdown for the endpoint that was 504-ing in production: mongo_query
+  // isolates the populate fan-out's actual DB time (vs. pool-checkout wait,
+  // already visible separately via mongodb_pool_checkout_wait) from
+  // serialization time, so a future slowdown here shows which stage grew
+  // instead of just "the request was slow." Never sent to the client — logged
+  // server-side only, via timer.done()/mark(), same as cases_list_performance.
+  const timer = createPerfTimer("cases_my_performance", { requestId: req.requestId, userId: req.user?._id });
   try {
     const filter = caseService.buildCaseFilter({}, req.user);
-    const caseData = await caseService.populateCaseQuery(Case.findOne(filter).sort({ createdAt: -1 }));
-    if (!caseData) return res.json(null);
+    timer.mark("filter_resolved");
+    // .lean(): this is a pure read (serializeCaseForUser/summarizeCase only
+    // ever read from it, never .save() it) feeding a 16-path populate, which
+    // is already a heavy connection-pool draw per request (see
+    // mongodb_pool_checkout_wait in prod logs) — lean() skips Mongoose
+    // document hydration/casting on all 17 documents involved, shortening how
+    // long each of those pool connections is held. Case has no schema
+    // virtuals, so this changes no field in the response.
+    const caseData = await caseService.populateCaseQuery(Case.findOne(filter).sort({ createdAt: -1 }).lean());
+    timer.mark("mongo_query_completed", { found: Boolean(caseData) });
+    if (!caseData) {
+      timer.done({ found: false });
+      return res.json(null);
+    }
     const payload = caseService.serializeCaseForUser(caseData, req.user);
     payload.caseSummary = caseService.summarizeCase(caseData);
+    timer.mark("serialization_completed");
+    timer.done({ found: true });
     res.json(payload);
   } catch (error) {
+    timer.done({ error: true });
     handleError(error, next);
   }
 };
@@ -477,16 +499,33 @@ exports.getCases = async (req, res, next) => {
 
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      caseService.populateCaseListQuery(
-        Case.find(filter).sort(sort).skip(skip).limit(limit).lean({ virtuals: true })
-      ),
+      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }], { allowDiskUse: true }).toArray()
+        .then((docs) => caseService.populateCaseListDocs(docs)),
     ]);
     timer.mark("case_query_completed", { total, count: cases.length });
 
+    const totalPages = Math.ceil(total / limit);
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
     timer.mark("case_serialization_completed", { count: serializedCases.length });
-    res.json({ success: true, count: serializedCases.length, total, page, pages: Math.ceil(total / limit), cases: serializedCases, summaries, data: serializedCases });
+    res.json({
+      success: true,
+      count: serializedCases.length,
+      total,
+      page,
+      pages: totalPages,
+      cases: serializedCases,
+      summaries,
+      data: serializedCases,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    });
     timer.done({ success: true });
   } catch (error) {
     timer.done({ success: false, errorName: error.name, errorCode: error.code });

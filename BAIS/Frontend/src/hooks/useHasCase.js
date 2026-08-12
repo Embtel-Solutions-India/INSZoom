@@ -21,15 +21,19 @@ export default function useHasCase() {
   const userId = user?._id || user?.id;
   const employee = isEmployeeAccount(user);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["hasCase", userId],
     queryFn: () => casesApi.my(),
     enabled: Boolean(userId) && !employee,
     staleTime: 5 * 60 * 1000,
   });
 
-  if (authLoading) return { hasCase: false, loading: true };
-  if (!userId) return { hasCase: false, loading: false };
-  if (employee) return { hasCase: true, loading: false };
-  return { hasCase: Boolean(data && (data._id || data.id)), loading: isLoading };
+  if (authLoading) return { hasCase: false, loading: true, isError: false };
+  if (!userId) return { hasCase: false, loading: false, isError: false };
+  if (employee) return { hasCase: true, loading: false, isError: false };
+  // isError was previously indistinguishable from "confirmed, no case" here
+  // (React Query leaves `data` undefined on error same as while loading) —
+  // a transient failure fetching /cases/my would silently look identical to
+  // a brand-new client with no case yet to every consumer of this hook.
+  return { hasCase: Boolean(data && (data._id || data.id)), loading: isLoading, isError };
 }

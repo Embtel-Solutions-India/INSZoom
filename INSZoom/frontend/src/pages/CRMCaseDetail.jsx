@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, lazy, useState, useEffect, useCallback, useRef, Component } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi } from '../services/api'
-import USCISFormRenderer from '../components/uscis/USCISFormRenderer'
-import PetitionTab from './petition/PetitionTab'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import { useAuth } from '../contexts/AuthContext'
@@ -38,6 +36,47 @@ import {
   Loader2,
   XCircle
 } from 'lucide-react'
+
+const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
+const PetitionTab = lazy(() => import('./petition/PetitionTab'))
+
+// Scoped to the forms tab (not the top-level App.jsx ErrorBoundary, which
+// reloads the whole page) so a render exception inside USCISFormRenderer -
+// e.g. an unexpected workspace shape - surfaces a visible message and a way
+// back to the form list instead of blanking/crashing the entire case page.
+class FormRendererErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('USCIS form renderer crashed:', error, errorInfo)
+  }
+
+  componentDidUpdate(prevProps) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card border-red-200 bg-red-50 p-6 text-red-700">
+          <p className="font-semibold">This form couldn't be displayed.</p>
+          <p className="mt-1 text-sm">{this.state.error?.message || 'An unexpected error occurred while rendering the form.'}</p>
+          <button type="button" onClick={this.props.onBack} className="btn-secondary mt-3">Back to forms</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const USCIS_STATUSES = [
   'draft', 'ready_to_file', 'filed', 'delivered', 'receipt_issued',
@@ -300,21 +339,22 @@ const CRMCaseDetail = () => {
   const [caseData, setCaseData] = useState(null)
   // Same SSOT questionnaire resolution the client portal uses (server-side
   // visa-type matching — no H-1B/L-1A detection lives on this frontend).
-  const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer')
-  const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee')
-  const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan')
+  const overviewActive = activeTab === 'overview'
+  const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer', { enabled: overviewActive })
+  const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: overviewActive })
+  const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: overviewActive })
   // Server-computed checklist completeness (calculateDetailedProgress, via
   // listCaseChecklists) — the same numbers BAIS's client portal shows, matched
   // by responseId to the questionnaires resolved above.
   const [checklistsProgress, setChecklistsProgress] = useState([])
   useEffect(() => {
-    if (!caseData?._id) { setChecklistsProgress([]); return }
+    if (!overviewActive || !caseData?._id) { setChecklistsProgress([]); return }
     let mounted = true
     questionnairesApi.listCaseChecklists(caseData._id).then((response) => {
       if (mounted) setChecklistsProgress(response.data?.data?.checklists || [])
     }).catch(() => { if (mounted) setChecklistsProgress([]) })
     return () => { mounted = false }
-  }, [caseData?._id])
+  }, [caseData?._id, overviewActive])
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId].filter(Boolean)
   const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
   // Scoped to upload (file-type) questions only — c.progress mixes in
@@ -348,6 +388,7 @@ const CRMCaseDetail = () => {
   const [showCaseDocumentUpload, setShowCaseDocumentUpload] = useState(false)
   const [intakeBundle, setIntakeBundle] = useState(null)
   const [caseForms, setCaseForms] = useState([])
+  const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
   const [eligibility, setEligibility] = useState(null)
@@ -388,6 +429,14 @@ const CRMCaseDetail = () => {
   const canRecordPayment = ['super_admin', 'admin', 'team_lead'].includes(normalizedRole)
 
   useEffect(() => {
+    setFetched({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
+    setDocuments([])
+    setCaseForms([])
+    setSelectedCaseForm(null)
+    setEligibility(null)
+    setPayments([])
+    setLetters([])
+    setTracking(emptyTracking)
     fetchCaseDetail()
     fetchUsers()
   }, [id])
@@ -534,9 +583,19 @@ const CRMCaseDetail = () => {
       setTabLoading(prev => ({ ...prev, forms: true }))
       const response = await uscisFormsApi.caseForms(id)
       setCaseForms(response.data.forms || [])
+      setFormsError('')
       setFetched(prev => ({ ...prev, forms: true }))
     } catch (error) {
       console.error('Error fetching case forms:', error)
+      // FIX: this used to setCaseForms([]) on ANY failure - a genuine 500/
+      // database-unavailable response then looked pixel-identical to "this
+      // case really has zero USCIS forms" (renderEmptyState below), which is
+      // actively misleading during a real outage. Track the failure
+      // separately and leave caseForms as whatever was last successfully
+      // loaded (if anything) instead of wiping it out from under the user.
+      const data = error.response?.data || {}
+      setFormsError(data.message || error.message || 'Unable to load USCIS forms.')
+      setFetched(prev => ({ ...prev, forms: false }))
     } finally {
       setTabLoading(prev => ({ ...prev, forms: false }))
     }
@@ -556,8 +615,8 @@ const CRMCaseDetail = () => {
     } catch (error) {
       const data = error.response?.data || {}
       const issues = data.issues?.length ? ` ${data.issues.map(item => item.message).join(' ')}` : ''
-      const details = data.details ? ` ${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}` : ''
-      setFormActionMessage(`${data.message || error.message || 'Unable to generate USCIS forms'}${issues}${details}`)
+      // data.details is an internal readiness metrics object — never user-facing
+      setFormActionMessage(`${data.message || error.message || 'Unable to generate USCIS forms'}${issues}`)
     } finally {
       setTabLoading(prev => ({ ...prev, forms: false }))
     }
@@ -667,14 +726,17 @@ const CRMCaseDetail = () => {
     }
   }
 
+  useEffect(() => {
+    if (!id) return
+    if (activeTab === 'documents' && !fetched.documents) fetchDocuments()
+    if (activeTab === 'forms' && !fetched.forms) fetchCaseForms()
+    if (activeTab === 'strategy' && !fetched.strategy) fetchEligibility()
+    if (activeTab === 'letters' && !fetched.letters) fetchLetters()
+    if (activeTab === 'tracking' && !fetched.tracking) fetchTracking()
+  }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchEligibility, fetchLetters, fetchTracking])
+
   const handleTabChange = (tab) => {
     setActiveTab(tab)
-    if (tab === 'documents' && !fetched.documents) fetchDocuments()
-    if (tab === 'forms' && !fetched.forms) fetchCaseForms()
-    if (tab === 'strategy' && !fetched.strategy) fetchEligibility()
-    if (tab === 'payments') fetchPayments(true)
-    if (tab === 'letters' && !fetched.letters) fetchLetters()
-    if (tab === 'tracking' && !fetched.tracking) fetchTracking()
   }
 
   const handleAssign = async (e) => {
@@ -1952,7 +2014,15 @@ const CRMCaseDetail = () => {
                 const status = getChecklistStatus(item)
                 const completed = ['uploaded', 'submitted', 'approved', 'received', 'complete', 'completed'].includes(status)
                 return (
-                  <div key={`${item.name || item.title || index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                  // FIX (duplicate React key): checklistItems is a Mongoose
+                  // subdocument array (Case.checklistItems, `_id: true` in
+                  // checklistItemSchema) - each item already has a stable,
+                  // unique _id. The old key used item.name, which broke as
+                  // soon as two items shared a display name (e.g. two
+                  // "Copy of I-94 (Arrival-Departure record)" requests) -
+                  // that's a real, valid case (a document requested for more
+                  // than one participant/role), not a data bug to work around.
+                  <div key={item._id || `${item.documentType || item.name || "item"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
                     <div className="min-w-0">
                       <p className="font-medium text-gray-900 truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
                       <p className="text-xs text-gray-500">{item.required === false ? 'Optional' : 'Required'}</p>
@@ -2059,12 +2129,16 @@ const CRMCaseDetail = () => {
 
       {activeTab === 'forms' && (
         selectedCaseForm ? (
-          <USCISFormRenderer
-            caseId={id}
-            caseForm={selectedCaseForm}
-            onClose={() => setSelectedCaseForm(null)}
-            onSaved={() => fetchCaseForms(true)}
-          />
+          <FormRendererErrorBoundary resetKey={selectedCaseForm._id} onBack={() => setSelectedCaseForm(null)}>
+            <Suspense fallback={renderSkeleton()}>
+              <USCISFormRenderer
+                caseId={id}
+                caseForm={selectedCaseForm}
+                onClose={() => setSelectedCaseForm(null)}
+                onSaved={() => fetchCaseForms(true)}
+              />
+            </Suspense>
+          </FormRendererErrorBoundary>
         ) : (
           <div className="card">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
@@ -2094,8 +2168,25 @@ const CRMCaseDetail = () => {
                 {(caseData.knowledgePlan.configurationIssues || []).map((issue) => issue.message).join(' ')}
               </div>
             )}
+            {formsError && caseForms.length > 0 && (
+              <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <span>Showing the last successfully loaded forms — refreshing failed: {formsError}</span>
+                <button onClick={() => fetchCaseForms(true)} className="shrink-0 btn-secondary text-xs">Retry</button>
+              </div>
+            )}
             {tabLoading.forms ? (
               renderSkeleton()
+            ) : formsError && caseForms.length === 0 ? (
+              // FIX: a database/API failure must never render identically to
+              // "this case genuinely has zero USCIS forms" - it gets its own
+              // state with a Retry action instead of falling into
+              // renderEmptyState below.
+              <div className="text-center py-8">
+                <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-300" />
+                <p className="text-red-600 font-medium">Unable to load USCIS forms.</p>
+                <p className="mt-1 text-sm text-gray-500">{formsError}</p>
+                <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm mt-4">Retry</button>
+              </div>
             ) : caseForms.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -2150,7 +2241,9 @@ const CRMCaseDetail = () => {
       )}
 
       {activeTab === 'petition' && (
-        <PetitionTab caseId={id} />
+        <Suspense fallback={renderSkeleton()}>
+          <PetitionTab caseId={id} />
+        </Suspense>
       )}
 
       {activeTab === 'payments' && (
