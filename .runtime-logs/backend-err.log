@@ -1,1 +1,0 @@
-{"timestamp":"2026-08-12T20:32:48.304Z","level":"fatal","message":"failed_to_start_shared_backend","error":{"name":"Error","message":"querySrv ETIMEOUT _mongodb._tcp.cluster0.eqpju6f.mongodb.net","code":"ETIMEOUT","stack":"Error: querySrv ETIMEOUT _mongodb._tcp.cluster0.eqpju6f.mongodb.net\n    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17)"}}
