@@ -1,52 +1,53 @@
 /**
- * Bootstrap Production Users — IDEMPOTENT
- * Run: node src/scripts/bootstrap_production_users.js  (from Backend/)
+ * Verify production users that were provisioned in MongoDB.
  *
- * - Skips any email that already exists in the DB (never overwrites)
- * - isDemoData: false — these are real users, not demo data
- * - Password is passed as plaintext — User model's pre-save bcrypt hook
- *   (env.bcryptRounds) hashes it. Do NOT manually hash — that causes
- *   double-hashing and login will always fail.
+ * This script deliberately does not contain user names, email addresses, or
+ * passwords. It never creates, updates, or resets an account. Existing
+ * passwords remain in MongoDB as bcrypt hashes created by User#save().
+ *
+ * Usage from Backend/:
+ *   $env.PRODUCTION_USER_EMAILS = "user@example.com,admin@example.com"
+ *   node src/scripts/bootstrap_production_users.js
  */
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const env = require("../config/env");
 
-const USERS = [
-  // ── INSZoom CRM — super_admin ─────────────────────────────
-  { name: "Alka", displayName: "Alka", email: "alka@bayareaimmigrationservices.com", password: "Alka@bais786", role: "super_admin", department: "Management", isEmailVerified: true, isActive: true, isDemoData: false },
-  // ── INSZoom CRM — admin ───────────────────────────────────
-  { name: "Kritagya", displayName: "Kritagya", email: "kritagya@bayareaimmigrationservices.com", password: "Kritagya@675", role: "admin", department: "Operations", isEmailVerified: true, isActive: true, isDemoData: false },
-  { name: "Rahul", displayName: "Rahul", email: "rahul@bayareaimmigrationservices.com", password: "Rahul@bais586", role: "admin", department: "Operations", isEmailVerified: true, isActive: true, isDemoData: false },
-  // ── INSZoom CRM — team_lead ───────────────────────────────
-  { name: "Akash", displayName: "Akash", email: "akash@bayareaimmigrationservices.com", password: "Akash@bais223", role: "team_lead", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
-  // ── INSZoom CRM — case_manager ────────────────────────────
-  { name: "Vasu", displayName: "Vasu", email: "vasu@bayareaimmigrationservices.com", password: "Vasu@bais567", role: "case_manager", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
-  { name: "Saksham", displayName: "Saksham", email: "saksham@bayareaimmigrationservices.com", password: "Saksham@bais987", role: "case_manager", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
-  { name: "Bhavya", displayName: "Bhavya", email: "madaan@bayareaimmigrationservices.com", password: "Madaan@bais123", role: "team_lead", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
-];
+const emails = String(process.env.PRODUCTION_USER_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
 
 async function run() {
-  await mongoose.connect(env.mongoUri);
-  console.log("Connected:", env.mongoUri.replace(/:\/\/([^:]+):[^@]+@/, "://$1:****@"));
-  for (const u of USERS) {
-    const existing = await User.findOne({ email: u.email.toLowerCase() });
-    if (existing) {
-      console.log(`  SKIP    — ${u.email} [${existing.role}]`);
-      continue;
-    }
-    const doc = new User(u); // new + save so the pre-save bcrypt hook fires
-    await doc.save();
-    console.log(`  CREATED — ${u.email} [${u.role}]`);
+  if (!emails.length) {
+    throw new Error("Set PRODUCTION_USER_EMAILS to the existing MongoDB account emails before running this verifier.");
   }
-  console.log("Done.");
+
+  await mongoose.connect(env.mongoUri);
+  const users = await User.find({ email: { $in: emails } }).select("+password email role isActive");
+  const found = new Map(users.map((user) => [user.email, user]));
+  const missing = emails.filter((email) => !found.has(email));
+  const invalidPasswordHashes = users
+    .filter((user) => !/^\$2[aby]?\$\d{2}\$/.test(user.password || ""))
+    .map((user) => user.email);
+
+  if (missing.length || invalidPasswordHashes.length) {
+    const details = [];
+    if (missing.length) details.push(`missing accounts: ${missing.join(", ")}`);
+    if (invalidPasswordHashes.length) details.push(`accounts without bcrypt password hashes: ${invalidPasswordHashes.join(", ")}`);
+    throw new Error(details.join("; "));
+  }
+
+  users.forEach((user) => {
+    console.log(`Verified ${user.email} [${user.role}] active=${Boolean(user.isActive)} password=bcrypt`);
+  });
 }
 
 run()
   .then(() => mongoose.disconnect())
   .then(() => process.exit(0))
   .catch(async (error) => {
-    console.error("Bootstrap failed:", error.message);
+    console.error("Production user verification failed:", error.message);
     await mongoose.disconnect().catch(() => {});
     process.exit(1);
   });

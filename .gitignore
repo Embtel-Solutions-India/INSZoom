@@ -4,3 +4,18 @@ node_modules/
 .VSCodeCounter/
 H0_I-129_template_seed_prompt.md
 ImmigrationCRM.code-workspace
+
+# Local Forms/PDF test artifacts
+/draft-i129-test.pdf
+**/*-draft*.pdf
+**/*-test*.pdf
+
+# Runtime-generated application data
+/.runtime-logs/
+/Backend/storage/
+/Backend/uploads/
+/uploads/
+
+# Browser test output
+**/e2e/screenshots/
+**/test-results/
