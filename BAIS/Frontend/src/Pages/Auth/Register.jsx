@@ -83,6 +83,7 @@ function Field({ icon, type = "text", placeholder, value, onChange, rightEl, nam
       </span>
       <input
         type={type}
+        id={name}
         name={name}
         placeholder={placeholder}
         value={value}
@@ -318,17 +319,17 @@ export default function Register() {
               </div>
             </div>
 
-            <Field icon={<MailIcon />} type="email" placeholder="Email Address"
+            <Field icon={<MailIcon />} type="email" name="email" placeholder="Email Address"
               value={form.email} onChange={set("email")} autoComplete="email" />
 
             <Field
-              icon={<LockIcon />} type="password"
+              icon={<LockIcon />} type="password" name="password"
               placeholder="Password" value={form.password} onChange={set("password")}
               autoComplete="new-password"
             />
 
             <Field
-              icon={<LockIcon />} type="password"
+              icon={<LockIcon />} type="password" name="confirmPassword"
               placeholder="Confirm Password" value={form.confirmPassword} onChange={set("confirmPassword")}
               autoComplete="new-password"
             />

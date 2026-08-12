@@ -7,7 +7,8 @@ import { questionnairesApi } from '../services/api'
 // own useCaseQuestionnaire hook (BAIS/Frontend/src/hooks/useCaseQuestionnaire.js).
 // Kept read-focused for the admin/case-manager case view (no saveAnswer) since
 // this app only needs to display live answers today, not collect them.
-export default function useCaseQuestionnaire(caseId, targetRole) {
+export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
+  const enabled = options.enabled !== false
   const [state, setState] = useState({
     questionnaire: null,
     documentQuestions: [],
@@ -18,7 +19,7 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
   })
 
   const load = useCallback(async () => {
-    if (!caseId) {
+    if (!enabled || !caseId) {
       setState((prev) => ({ ...prev, loading: false }))
       return
     }
@@ -38,7 +39,7 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
     } catch (error) {
       setState((prev) => ({ ...prev, loading: false, error: error.response?.data?.message || error.message || 'Failed to load questionnaire' }))
     }
-  }, [caseId, targetRole])
+  }, [caseId, targetRole, enabled])
 
   useEffect(() => {
     load()

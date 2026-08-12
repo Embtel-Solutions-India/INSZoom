@@ -201,7 +201,7 @@ async function processPassportDates(now = new Date()) {
   const beneficiaries = await Beneficiary.find({
     status: "active",
     passportExpirationDate: { $exists: true, $nin: [null, ""] },
-  }).select("user fullName passportExpirationDate assignedCaseManager caseIds").limit(5000);
+  }).select("user fullName passportExpirationDate assignedCaseManager caseIds").limit(5000).lean();
   let generated = 0;
   for (const beneficiary of beneficiaries) {
     const days = daysUntil(beneficiary.passportExpirationDate, now);

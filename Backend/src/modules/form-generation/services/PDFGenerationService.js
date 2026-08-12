@@ -6,6 +6,7 @@ const PDFRenderer = require("./PDFRenderer");
 const PDFValidationService = require("./PDFValidationService");
 const notificationService = require("../../notifications/notification.service");
 const workflowService = require("../../workflows/workflow.service");
+const logger = require("../../../utils/logger");
 
 class PDFGenerationService {
   static userId(user) {
@@ -26,8 +27,15 @@ class PDFGenerationService {
     }).catch(() => null);
   }
 
-  static async loadCaseForm(caseFormId) {
-    const caseForm = await CaseForm.findById(caseFormId).populate("formTemplateId");
+  static async loadCaseForm(caseFormId, options = {}) {
+    // Excludes the raw-import `definition` blob - 7.36MB of the 15.10MB live
+    // I-129 template, duplicating data already held in the normalized
+    // formFields/formStructure/formLayout fields, and read by nothing in the
+    // render or generation path. See uscis-form.service.js's
+    // TEMPLATE_RENDER_EXCLUDE for the measurements behind this.
+    let query = CaseForm.findById(caseFormId).populate({ path: "formTemplateId", select: "-definition" });
+    if (options.readOnly) query = query.read("secondaryPreferred");
+    const caseForm = await query;
     if (!caseForm) {
       const error = new Error("Case form not found");
       error.status = 404;
@@ -78,7 +86,7 @@ class PDFGenerationService {
       internalOnly: true,
       source: "shared",
       metadata: { caseFormId: caseForm._id, formCode: caseForm.formCode, ...payload.metadata },
-    }, user, req).catch(() => null)));
+    }, user, req).catch((error) => logger.warn("pdf_generation_notification_failed", { caseFormId: caseForm._id, userId, action: payload.title, error }))));
   }
 
   static async validate(caseFormId, user, req) {
@@ -230,6 +238,7 @@ class PDFGenerationService {
     ];
     const document = await this.createGeneratedDocument(caseForm, rendered.buffer, user, validationResults, rendered.renderReport, options.watermark || (caseForm.status === "locked" || caseForm.status === "ready_for_pdf" ? "FINAL" : "ATTORNEY REVIEW"));
     await require("../../integrations/google-drive.service").syncDocument(document).catch(async (error) => {
+      logger.warn("pdf_generation_drive_sync_failed", { caseFormId: caseForm._id, documentId: document._id, error });
       document.googleDrive = { ...(document.googleDrive || {}), syncStatus: "failed", lastError: error.message, lastAttemptAt: new Date() };
       await document.save();
     });
@@ -280,8 +289,8 @@ class PDFGenerationService {
       documentId: document._id,
       formCode: caseForm.formCode,
       versionNumber,
-    }, user, req).catch(() => null);
-    await require("../../cases/case-lifecycle-orchestrator.service").recalculate(caseForm.caseId, user, req, "uscis_pdf_generated").catch(() => null);
+    }, user, req).catch((error) => logger.warn("pdf_generation_workflow_trigger_failed", { caseFormId: caseForm._id, documentId: document._id, error }));
+    await require("../../cases/case-lifecycle-orchestrator.service").recalculate(caseForm.caseId, user, req, "uscis_pdf_generated").catch((error) => logger.warn("pdf_generation_lifecycle_recalculate_failed", { caseFormId: caseForm._id, caseId: caseForm.caseId, error }));
     return { caseForm, document, validationResults, renderReport: rendered.renderReport };
   }
 

@@ -9,7 +9,7 @@ const MailIcon = () => (
   </svg>
 );
 
-function Field({ icon, type = "text", placeholder, value, onChange, autoComplete }) {
+function Field({ icon, type = "text", name, placeholder, value, onChange, autoComplete }) {
   return (
     <div className="relative flex items-center w-full mb-4">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
@@ -17,6 +17,8 @@ function Field({ icon, type = "text", placeholder, value, onChange, autoComplete
       </span>
       <input
         type={type}
+        id={name}
+        name={name}
         placeholder={placeholder}
         value={value}
         onChange={onChange}
@@ -81,7 +83,7 @@ export default function ForgotPassword() {
               Enter the email address on your account and we'll send you a link to reset your password.
             </p>
 
-            <Field icon={<MailIcon />} type="email" placeholder="Email address"
+            <Field icon={<MailIcon />} type="email" name="email" placeholder="Email address"
               value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={handleKey} autoComplete="email" />
 
             {error && (

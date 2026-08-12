@@ -68,7 +68,7 @@ export default function DocumentUploadControl({ docId, category, accept = ".pdf,
           )}
         </p>
         <p className="text-[0.65rem] text-slate-400">{accept.replace(/\./g, "").replace(/,/g, ", ").toUpperCase()}</p>
-        <input ref={inputRef} type="file" multiple accept={accept} capture="environment" onChange={handleInput} className="hidden" disabled={disabled} />
+        <input ref={inputRef} type="file" id={`upload-${docId}`} name={`upload-${docId}`} multiple accept={accept} capture="environment" onChange={handleInput} className="hidden" disabled={disabled} />
       </div>
 
       {error && <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-600">{error}</p>}

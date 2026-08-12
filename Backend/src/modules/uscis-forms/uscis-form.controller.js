@@ -1,5 +1,6 @@
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
+const logger = require("../../utils/logger");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const { createCrudController } = require("../../utils/crudFactory");
 const uscisFormService = require("./uscis-form.service");
@@ -141,10 +142,26 @@ async function importDefinition(req, res, next) {
 }
 
 async function getCaseForms(req, res, next) {
+  // TEMPORARY diagnostic logging - added to catch the actual browser-
+  // triggered failure behind a reported intermittent 503 on this endpoint
+  // (list-endpoint 503, see plan doc / ISSUE-001). Logs only requestId, PID,
+  // caseId, user id/role, and elapsed ms - never tokens, passwords, or any
+  // case PII. Remove once the browser reproduction is resolved either way.
+  const startedAt = Date.now();
+  logger.info("uscis_forms_list_request_start", {
+    requestId: req.requestId, pid: process.pid, caseId: req.params.caseId, userId: req.user?._id, role: req.user?.role,
+  });
   try {
     const forms = await uscisFormService.listCaseForms(req.params.caseId, req.user, req);
+    logger.info("uscis_forms_list_request_success", {
+      requestId: req.requestId, pid: process.pid, caseId: req.params.caseId, elapsedMs: Date.now() - startedAt, formCount: forms.length,
+    });
     res.json({ success: true, forms, data: forms });
   } catch (error) {
+    logger.error("uscis_forms_list_request_failed", {
+      requestId: req.requestId, pid: process.pid, caseId: req.params.caseId, elapsedMs: Date.now() - startedAt,
+      errorName: error.name, errorCode: error.code, errorCodeName: error.codeName, errorMessage: error.message,
+    });
     next(error);
   }
 }
@@ -153,8 +170,18 @@ async function getAllCaseForms(req, res, next) {
   try {
     const query = {};
     if (req.query.caseId) query.caseId = req.query.caseId;
-    const forms = await CaseForm.find(query).populate("formTemplateId").sort({ updatedAt: -1 }).lean();
-    res.json({ success: true, forms, caseForms: forms, data: forms });
+    // Unfiltered, this lists every CaseForm in the DB. A full
+    // `.populate("formTemplateId")` embeds each template's entire
+    // formFields array (~1000 entries with coordinates/mapping/history for
+    // a form like I-129) into every single row - across ~100 rows that
+    // response body's JSON.stringify exceeded V8's max string length and
+    // crashed the request with a 500 (confirmed live). This list view only
+    // needs enough to identify the template, not its full field schema.
+    const forms = await CaseForm.find(query)
+      .populate({ path: "formTemplateId", select: "formCode title version status activeFlag officialStatus" })
+      .sort({ updatedAt: -1 })
+      .lean();
+    res.json({ success: true, data: forms });
   } catch (error) {
     next(error);
   }
@@ -265,7 +292,7 @@ async function compareCaseForm(req, res, next) {
 
 async function openInteractiveForm(req, res, next) {
   try {
-    const workspace = await interactiveFormReviewService.open(req.params.caseId, req.params.formId, req.user, req);
+    const workspace = await interactiveFormReviewService.open(req.params.caseId, req.params.formId, req.user, req, { track: false, readOnlyOpen: true });
     res.json({ success: true, ...workspace });
   } catch (error) {
     next(error);

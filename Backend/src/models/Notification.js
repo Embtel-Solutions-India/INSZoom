@@ -113,6 +113,17 @@ notificationSchema.index({ taskId: 1, createdAt: -1 });
 notificationSchema.index({ type: 1, priority: 1, createdAt: -1 });
 notificationSchema.index({ category: 1, createdAt: -1 });
 notificationSchema.index({ scheduledFor: 1, queueStatus: 1 });
+// Supports notification.service.js retryFailed(): filters on delivery.status ($in)
+// and delivery.nextRetryAt ($lte) with no prior index — that combination was a
+// guaranteed COLLSCAN and the confirmed cause of the 1,128,456ms outlier query
+// observed in production perf logs. deletedAt/retryCount are left as
+// post-filters on the (now small) index-scanned candidate set rather than
+// folded into a partialFilterExpression: MongoDB's partial-index spec only
+// supports $exists:true, not $exists:false (verified via explain() locally —
+// a $exists:false partialFilterExpression fails createIndexes with "Expression
+// not supported in partial index: $not", which silently never built the index
+// at all on the first attempt at this fix).
+notificationSchema.index({ "delivery.status": 1, "delivery.nextRetryAt": 1 });
 notificationSchema.index({ title: "text", message: "text", "metadata.summary": "text" });
 notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0, sparse: true });
 

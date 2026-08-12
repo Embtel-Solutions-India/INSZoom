@@ -16,6 +16,18 @@ const { perfMiddleware } = require("./utils/perfTimer");
 
 const app = express();
 
+// Almost every real deployment target for this app (Render/Railway/Heroku-
+// style PaaS, or a self-managed Nginx in front of Node) terminates TLS at a
+// reverse proxy one hop in front of this process. Without this, Express never
+// sees the connection as secure (req.secure is always false, req.protocol is
+// always "http"), and req.ip resolves to the proxy's address instead of the
+// client's for every request, including rate-limiting below. Only enabled in
+// production so local dev (no proxy in front) behaves exactly as before;
+// override TRUST_PROXY_HOPS if the real topology has a different hop count.
+if (env.nodeEnv === "production") {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
+}
+
 // Firebase's redirect-flow internals still rely on window.opener in some
 // browsers; helmet's default same-origin COOP blocks that. same-origin-allow-popups
 // keeps the isolation benefit while letting those popups/openers communicate.

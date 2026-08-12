@@ -83,6 +83,28 @@ class IntelligentQuestionnaireService {
       status: "published",
       isActive: true,
     });
+    // FIX (unbounded duplication): any edit to a QuestionLibraryItem or USCIS
+    // form template touched by this visa type changes sourceFingerprint, so
+    // the exact-match lookup above misses and this function used to always
+    // fall through to creating an entirely new ~900-1000-question
+    // Questionnaire (+ all its Questions) with latestVersion:true, while the
+    // previous generation for the same visa type stayed latestVersion:true
+    // forever too - every content tweak left one more full duplicate live,
+    // and every one of them was equally eligible to be picked up as "the"
+    // H-1B questionnaire by latestVersion-based lookups (getQuestionnaireForCase's
+    // fallback, resolveCaseQuestionnaires) with no deterministic tie-break.
+    // Treating a fingerprint miss as a version bump of the PRIOR generation
+    // for this same visaType - instead of an unrelated new lineage - keeps
+    // exactly one latestVersion:true generated questionnaire per visa type,
+    // the same invariant createNewVersion() already maintains for
+    // manually-authored questionnaires.
+    const previousGeneration = !questionnaire
+      ? await Questionnaire.findOne({
+          "generation.source": "uscis_question_library",
+          visaType: caseData.visaType,
+          latestVersion: true,
+        }).sort({ version: -1 })
+      : null;
     const sectionMap = new Map();
     items.forEach((item) => {
       if (!sectionMap.has(item.sectionKey)) {
@@ -102,7 +124,9 @@ class IntelligentQuestionnaireService {
       key: `uscis_library_${sourceFingerprint.slice(0, 20)}`,
       title: `${caseData.visaType || "Immigration"} Filing Intake`,
       description: "Questions required by the assigned USCIS form editions.",
-      version: 1,
+      version: previousGeneration ? previousGeneration.version + 1 : 1,
+      parentVersion: previousGeneration?._id,
+      rootQuestionnaire: previousGeneration?.rootQuestionnaire || previousGeneration?._id,
       visaType: caseData.visaType,
       visaTypes,
       caseTypes: unique([caseData.caseType]),
@@ -162,8 +186,12 @@ class IntelligentQuestionnaireService {
     if (!questionnaire) {
       try {
         questionnaire = await Questionnaire.create(questionnairePayload);
-        questionnaire.rootQuestionnaire = questionnaire._id;
+        questionnaire.rootQuestionnaire = questionnaire.rootQuestionnaire || questionnaire._id;
         await questionnaire.save();
+        if (previousGeneration) {
+          previousGeneration.latestVersion = false;
+          await previousGeneration.save();
+        }
       } catch (error) {
         if (error.code !== 11000) throw error;
         questionnaire = await Questionnaire.findOne({ "generation.fingerprint": sourceFingerprint });
@@ -230,6 +258,14 @@ class IntelligentQuestionnaireService {
         roles: ["client", "case_manager", "team_lead", "attorney", "paralegal", "admin", "super_admin"],
         portals: ["client", "admin"],
       },
+      // Explicit rather than relying on the schema default: this goes
+      // through bulkWrite's $setOnInsert below, not Question.create(), so it
+      // never passes through the document construction path that would
+      // otherwise fill in the default - and questionnaire.service.js's
+      // question-list reads now query `active: true` as a strict equality
+      // (see buildResponseState) to keep that indexed sort non-blocking.
+      active: true,
+      isActive: true,
       createdBy: user?._id,
       updatedBy: user?._id,
     }));

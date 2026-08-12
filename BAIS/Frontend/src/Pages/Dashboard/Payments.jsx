@@ -70,11 +70,21 @@ export default function Payments() {
   const socket = useSocket();
   const payingRef = useRef(false); // hard guard against double-submit
   const confirmedSessionsRef = useRef(new Set());
+  const loadInFlightRef = useRef(false); // avoid piling up concurrent polls if one call is slow
 
   const loadPayment = useCallback(async () => {
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
     try {
       setErrorMessage("");
-      let summary = await paymentsApi.summary();
+      const summary = await paymentsApi.summary();
+      // Show what we already have immediately instead of holding the page on
+      // a full-screen spinner through the Stripe confirm round-trip below —
+      // that call can be slow (Stripe SDK retries up to its own timeout), and
+      // the already-fetched summary is correct to show either way; confirm
+      // just patches it in-place once Stripe actually responds.
+      setPayment(summary);
+      setLoading(false);
       const shouldConfirm = refreshRequested || ["processing", "pending"].includes(summary?.paymentStatus);
       const pendingTransaction = [...(summary?.transactions || [])]
         .reverse()
@@ -83,13 +93,14 @@ export default function Payments() {
       if (shouldConfirm && pendingTransaction?.stripeSessionId && !confirmedSessionsRef.current.has(pendingTransaction.stripeSessionId)) {
         confirmedSessionsRef.current.add(pendingTransaction.stripeSessionId);
         await paymentsApi.confirmCheckoutSession(pendingTransaction.stripeSessionId).catch(() => null);
-        summary = await paymentsApi.summary();
+        const confirmedSummary = await paymentsApi.summary();
+        setPayment(confirmedSummary);
       }
-      setPayment(summary);
     } catch (error) {
       setErrorMessage(error.message || "Unable to load payment details.");
     } finally {
       setLoading(false);
+      loadInFlightRef.current = false;
     }
   }, [refreshRequested]);
 

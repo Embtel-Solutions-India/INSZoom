@@ -26,6 +26,19 @@ const env = {
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES || process.env.JWT_EXPIRE || "7d",
   jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES || "7d",
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
+  // The refresh cookie's SameSite policy depends on whether the deployed
+  // frontend and backend share a registrable domain (subdomains are fine
+  // with "lax") or are genuinely cross-site (a different domain entirely,
+  // e.g. separate hosting platforms with no custom domain configured — "lax"
+  // cookies are withheld on cross-site fetch/XHR, only sent on top-level
+  // navigation). No production origin is recorded anywhere in this repo, so
+  // this can't be determined from source — defaulting to the current "lax"
+  // behavior preserves existing behavior; set REFRESH_COOKIE_SAMESITE=none
+  // once the actual topology is confirmed (see refreshCookieDiagnostics in
+  // auth.controller.js for log-based confirmation). "none" always implies
+  // secure:true regardless of NODE_ENV, since browsers reject SameSite=None
+  // cookies that aren't Secure.
+  refreshCookieSameSite: (process.env.REFRESH_COOKIE_SAMESITE || "lax").toLowerCase(),
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 12),
   storage: {
     provider: process.env.STORAGE_PROVIDER || "local",

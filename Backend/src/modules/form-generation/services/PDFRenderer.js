@@ -94,6 +94,24 @@ class PDFRenderer {
     const { PDFDocument, PDFName, PDFBool } = this.loadPdfLib();
     const pdf = await this.loadTemplatePdf(template, PDFDocument);
     const form = pdf.getForm();
+    // Confirmed root cause of 2 historical "generated" CaseForm records that
+    // turned out to be 883-byte, 1-page, 0-field stubs: the template asset
+    // they were rendered from (since deleted/replaced) apparently exposed no
+    // real AcroForm fields, and nothing here treated that as fatal - the
+    // render "succeeded" against a template that was never actually usable.
+    // loadTemplatePdf() already re-normalizes via qpdf when a freshly-loaded
+    // template exposes 0 fields but formFields metadata says it should have
+    // some; this is the backstop for when even that doesn't recover a real,
+    // fillable template - fail loudly instead of persisting a blank stub.
+    const expectedFieldCount = (template.formFields || []).length;
+    if (expectedFieldCount > 0 && form.getFields().length === 0) {
+      const error = new Error(
+        `Template PDF for ${template.formCode || template.formNumber || "this form"} exposes 0 AcroForm fields after normalization, but ${expectedFieldCount} were expected from its formFields metadata - refusing to render a blank/broken PDF. Re-import or repair this template's PDF asset.`
+      );
+      error.status = 422;
+      error.code = "TEMPLATE_PDF_NO_FIELDS";
+      throw error;
+    }
     const { mappedFields, missingMappings } = PDFFieldMapper.mapFields(caseForm, template);
     const unmappedPdfFields = [];
     const failedFieldWrites = [];

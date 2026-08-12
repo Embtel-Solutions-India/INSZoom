@@ -99,7 +99,7 @@ export default function AdminLogin() {
                 Admin Email
               </label>
               <input
-                type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                type="email" id="admin-login-email" name="email" value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@bais.com" autoComplete="email" required
                 className="w-full px-4 py-3 text-sm bg-slate-800 border border-slate-700 rounded-xl
                   text-white placeholder-slate-500 outline-none
@@ -114,7 +114,7 @@ export default function AdminLogin() {
               </label>
               <div className="relative">
                 <input
-                  type={showPw ? "text" : "password"} value={password}
+                  type={showPw ? "text" : "password"} id="admin-login-password" name="password" value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••" autoComplete="current-password" required
                   className="w-full px-4 py-3 pr-12 text-sm bg-slate-800 border border-slate-700 rounded-xl

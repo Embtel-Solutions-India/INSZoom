@@ -291,6 +291,15 @@ uscisFormTemplateSchema.pre("validate", function syncDefinitionCompatibility(nex
   next();
 });
 
+// Matches listRegistry's default sort ({formCode:1, editionDate:-1,
+// version:-1}) exactly. Without it, listing forms with no (or a partial)
+// filter forces Mongo into an in-memory sort of full documents - each one
+// embeds hundreds of formFields entries plus formStructure/mappingConfiguration,
+// so even this collection's 7 rows blow the 32MB sort buffer
+// ("Sort exceeded memory limit... Pass allowDiskUse:true", confirmed via
+// GET /uscis-forms/registry returning 500). An index lets Mongo satisfy the
+// sort from the index keys alone, without touching the heavy document bodies.
+uscisFormTemplateSchema.index({ formCode: 1, editionDate: -1, version: -1 });
 uscisFormTemplateSchema.index({ formCode: 1, version: 1 }, { unique: true });
 uscisFormTemplateSchema.index({ formNumber: 1, version: 1 });
 uscisFormTemplateSchema.index({ registryId: 1 }, { unique: true, sparse: true });

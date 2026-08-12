@@ -13,6 +13,33 @@ const workflowService = require("../workflows/workflow.service");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
 const { createPerfTimer } = require("../../utils/perfTimer");
 const { isUscisUseOnly } = require("../uscis-form-import/services/FieldLabelEnrichmentService");
+const { isDatabaseUnavailableError } = require("../../middleware/errorHandler");
+const logger = require("../../utils/logger");
+
+const ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS = Number(process.env.ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS || 3000);
+// Server-side execution budget for renderCaseForm's CaseForm read. Same
+// caveat as interactive-form-review.service.js's WORKSPACE_READ_TIMEOUT_MS:
+// maxTimeMS bounds SERVER execution only and cannot cut short a stalled
+// connection (the observed failures are MongoNetworkTimeoutError, governed by
+// socketTimeoutMS in config/database.js).
+const RENDER_READ_TIMEOUT_MS = Number(process.env.RENDER_READ_TIMEOUT_MS || 5000);
+
+// `definition` is the raw import blob USCISFormImporterService writes
+// alongside the normalized fields (USCISFormImporterService.js ~line 327):
+// definition.fields/formStructure/layout/sections/validation/indexes/
+// dependencies are populated from the SAME scanResult values as the
+// top-level formFields/formStructure/formLayout/sections/validationRules/
+// fieldIndexes/fieldDependencies. Measured on the live I-129 template: the
+// document is 15.10MB, of which `definition` is 7.36MB (48.8%) and ~5.04MB
+// of that is verified-identical duplicate. Nothing on the render/workspace/
+// generation path reads it (grepped uscis-form.service, interactive-form-
+// review.service, FormMappingService, PDFRenderer, PDFFieldMapper), yet it
+// was being shipped on every fetch - the dominant cost of the 30-40s
+// workspace requests against the degraded primary. Excluded here only;
+// the uscis-form-import module still reads the full document for its own
+// endpoints (it uses definition.groups/definition.pages as fallbacks), and
+// no data is deleted or migrated.
+const TEMPLATE_RENDER_EXCLUDE = "-definition";
 
 const TEMPLATE_CACHE_TTL_MS = Number(process.env.USCIS_TEMPLATE_CACHE_TTL_MS || 5 * 60 * 1000);
 const templateCache = {
@@ -36,8 +63,18 @@ async function activeTemplatesCached() {
   if (templateCache.activeTemplates && templateCache.activeTemplatesExpiresAt > now) {
     return templateCache.activeTemplates.map(cloneTemplate);
   }
+  // FIX (GET /api/uscis-forms/case/:caseId observed taking ~90-101s): live
+  // replSetGetStatus/hello confirmed the primary (shard-00-02) is currently
+  // reachable from other replica members but not reliably from this app's
+  // network path - every read that must go to the primary pays for that.
+  // This is a read-only, cached (TEMPLATE_CACHE_TTL_MS) lookup of template
+  // metadata, not a write - a few hundred ms of replication lag reading it
+  // from a secondary instead is immaterial, and empirically avoids the
+  // stalled-primary path entirely (verified: ~8.6s on primary vs ~0.1-0.6s
+  // with this on the same live cluster).
   const templates = await USCISFormTemplate.find({ status: "active", activeFlag: { $ne: false }, officialStatus: { $ne: "deprecated" } })
     .select("_id formCode formNumber version editionDate activeMappingVersion mappingVersion activeMappingVersionId latestMappingVersionId validationVersion renderingVersion visaTypes supportedVisaCategories assignmentRules activeFlag officialStatus status title")
+    .read("secondaryPreferred")
     .lean();
   templateCache.activeTemplates = templates;
   templateCache.activeTemplatesExpiresAt = now + TEMPLATE_CACHE_TTL_MS;
@@ -210,8 +247,36 @@ async function writeAuditLog(action, caseForm, user, changes, req) {
   }).catch(() => {});
 }
 
-async function getAccessibleCase(caseId, user) {
-  const caseData = await Case.findById(caseId);
+// options.allowStaleFallback: ONLY safe for read-only callers that make no
+// writes based on caseData (verified for listCaseForms - ensureAssignedForms
+// is invoked there with metadataOnly:true, which returns before any write).
+// Every other call site must leave this unset and stay strictly primary-
+// consistent, since canAccessCase()'s decision is read from fields
+// (assignedCaseManager/assignedTeamLead/primaryOwner/secondaryOwner/teamId/
+// participants) that get written on case reassignment - a stale secondary
+// read could pass authorization for a user whose access was just revoked.
+// The primary read still gets a bounded timeout regardless, so a degraded
+// primary fails fast (~3s) instead of hanging the old 45-90s.
+async function getAccessibleCase(caseId, user, options = {}) {
+  // TEMPORARY diagnostic logging - see uscis-form.controller.js's
+  // getCaseForms for the rationale/removal note. PII-safe: caseId + requestId
+  // + timing + error classification only.
+  const t0 = Date.now();
+  let caseData;
+  try {
+    caseData = await Case.findById(caseId).maxTimeMS(ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS);
+    logger.info("uscis_forms_getAccessibleCase_primary_ok", { requestId: options.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - t0 });
+  } catch (error) {
+    logger.error("uscis_forms_getAccessibleCase_primary_failed", {
+      requestId: options.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - t0,
+      errorName: error.name, errorCode: error.code, errorCodeName: error.codeName,
+      allowStaleFallback: Boolean(options.allowStaleFallback), classifiedAsDatabaseUnavailable: isDatabaseUnavailableError(error),
+    });
+    if (!options.allowStaleFallback || !isDatabaseUnavailableError(error)) throw error;
+    const tFallback = Date.now();
+    caseData = await Case.findById(caseId).read("secondaryPreferred");
+    logger.info("uscis_forms_getAccessibleCase_secondary_fallback_ok", { requestId: options.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tFallback });
+  }
   if (!caseData) {
     const error = new Error("Case not found");
     error.statusCode = 404;
@@ -296,10 +361,17 @@ function hasAttorneyOnRecord(caseData) {
 // the OCR-autofill path (document-intelligence.service.js) and would be
 // empty/stale for a case whose dependents were entered by hand.
 async function resolveH1bDependents(caseData) {
+  // Defense in depth: the metadataOnly (listCaseForms) path no longer calls
+  // this function at all (see ensureAssignedForms's reordered early return).
+  // This read is only reached from the actual form-assignment/reconciliation
+  // path now. It decides whether to ALSO assign I-539/I-539A templates, not
+  // an authorization decision and never written back itself - a stale read
+  // here means "assign the dependent forms a beat later than the Answer was
+  // saved," not a security exposure - so secondaryPreferred is safe.
   const answers = await Answer.find({
     caseId: caseData._id,
     questionKey: { $in: ["employee_immigrationHistory_hasH4Dependents", "employee_dependents"] },
-  }).lean();
+  }).read("secondaryPreferred").lean();
   const hasFlag = answers.find((item) => item.questionKey === "employee_immigrationHistory_hasH4Dependents")?.value;
   const dependentsValue = answers.find((item) => item.questionKey === "employee_dependents")?.value;
   const dependents = Array.isArray(dependentsValue) ? dependentsValue : [];
@@ -414,6 +486,19 @@ async function latestTemplatesByAssignmentRules(caseData) {
 }
 
 async function ensureAssignedForms(caseData, user, req, options = {}) {
+  // metadataOnly: skip all DB writes - used by listCaseForms (GET path) so a
+  // simple tab-open does not mutate CaseForm documents. Moved to the very
+  // first line: this used to sit AFTER latestTemplatesByAssignmentRules()/
+  // resolveConditionalTemplates() ran unconditionally, so a metadataOnly call
+  // still paid for both (their result was then thrown away by this same
+  // return). resolveConditionalTemplates() -> resolveH1bDependents() does an
+  // unguarded, no-read-preference, no-timeout Answer.find() - confirmed
+  // present and executing on every listCaseForms request via live line-
+  // number verification against the running process. Since listCaseForms
+  // never uses ensureAssignedForms's return value in the metadataOnly case,
+  // the correct fix is to not call either resolver at all here, not just to
+  // make them faster.
+  if (options.metadataOnly) return [];
   const templates = options.templates || await latestTemplatesByAssignmentRules(caseData);
   const { conditions } = await resolveConditionalTemplates(caseData);
   await reconcileConditionalForms(caseData, user, req, conditions);
@@ -752,11 +837,31 @@ function buildRenderModel(template, values, progress, user, caseForm) {
 }
 
 async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
-  const caseData = await getAccessibleCase(caseId, user);
-  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate("formTemplateId");
+  const readOnlyOpen = Boolean(options.readOnlyOpen);
+  const caseData = await getAccessibleCase(caseId, user, { allowStaleFallback: readOnlyOpen, requestId: req?.requestId });
+  // Deliberately NOT routed to a secondary: this exact document is mutated
+  // (fieldValues/filledData/completion/syncState) and saved at the end of this
+  // same function, so a stale read here would overwrite concurrent edits.
+  let caseFormQuery = CaseForm.findOne({ _id: caseFormId, caseId })
+    .populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE })
+    .maxTimeMS(RENDER_READ_TIMEOUT_MS);
+  if (readOnlyOpen) caseFormQuery = caseFormQuery.read("secondaryPreferred");
+  const caseForm = await caseFormQuery;
   if (!caseForm) {
     const error = new Error("Case form not found");
     error.statusCode = 404;
+    throw error;
+  }
+  if (!caseForm.formTemplateId) {
+    // populate() silently resolves to null when formTemplateId points at a
+    // template that no longer exists (e.g. a stale duplicate removed by a
+    // later re-seed/import) - confirmed against real data, 2 of 99 seeded
+    // case forms in this DB are in this state. Left unguarded, this threw an
+    // uncaught TypeError ("Cannot read properties of null (reading
+    // 'toObject')"), a 500 with no way for the frontend to explain what went
+    // wrong instead of a clear, actionable error.
+    const error = new Error("This case form's USCIS template is missing or was removed - it needs to be re-assigned before it can be opened");
+    error.statusCode = 409;
     throw error;
   }
   let template = caseForm.formTemplateId.toObject();
@@ -766,29 +871,37 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
   );
   template = FormMappingService.applyMappingGraph(template, lockedMapping);
   const context = options.caseFormOnly ? null : await buildBindingContext(caseData, user, req);
+  // Out-parameter so an in-process caller (interactive-form-review's open())
+  // can reuse the canonical profile this already built, instead of calling
+  // CanonicalProfileService.get() a second time for the same case. Kept off
+  // the return value on purpose - that object is serialized straight to the
+  // client by the /render endpoint.
+  if (options.captureContext) options.captureContext.canonicalState = context?.canonicalState || null;
   const values = options.caseFormOnly
     ? deepMerge(caseForm.filledData || {}, expandFlatValues(caseForm.fieldValues || {}))
     : mergeFieldValues(template, caseForm, context);
   const progress = calculateCompletion(template, values);
-  if (!options.caseFormOnly) caseForm.sourceAttribution = buildSourceAttribution(template, values, caseForm.sourceAttribution, context);
+  if (!options.caseFormOnly && !readOnlyOpen) caseForm.sourceAttribution = buildSourceAttribution(template, values, caseForm.sourceAttribution, context);
   const renderModel = buildRenderModel(template, values, progress, user, caseForm);
-  caseForm.fieldValues = values;
-  caseForm.filledData = values;
-  caseForm.completion = progress.completion;
-  caseForm.sectionProgress = progress.sectionProgress;
-  caseForm.validationErrors = progress.validationErrors;
-  if (context?.canonicalState?.version) {
-    caseForm.syncState = {
-      ...(caseForm.syncState?.toObject?.() || caseForm.syncState || {}),
-      canonicalVersion: context.canonicalState.version,
-      stale: false,
-      requiresRegeneration: false,
-      lastSyncedAt: new Date(),
-    };
+  if (!readOnlyOpen) {
+    caseForm.fieldValues = values;
+    caseForm.filledData = values;
+    caseForm.completion = progress.completion;
+    caseForm.sectionProgress = progress.sectionProgress;
+    caseForm.validationErrors = progress.validationErrors;
+    if (context?.canonicalState?.version) {
+      caseForm.syncState = {
+        ...(caseForm.syncState?.toObject?.() || caseForm.syncState || {}),
+        canonicalVersion: context.canonicalState.version,
+        stale: false,
+        requiresRegeneration: false,
+        lastSyncedAt: new Date(),
+      };
+    }
+    addAuditEntry(caseForm, "form_opened", user, { caseId, formCode: caseForm.formCode }, req);
+    await caseForm.save();
+    await writeAuditLog("form_opened", caseForm, user, { caseId, formCode: caseForm.formCode }, req);
   }
-  addAuditEntry(caseForm, "form_opened", user, { caseId, formCode: caseForm.formCode }, req);
-  await caseForm.save();
-  await writeAuditLog("form_opened", caseForm, user, { caseId, formCode: caseForm.formCode }, req);
   return {
     caseForm,
     template: {
@@ -818,7 +931,7 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
 
 async function validateCaseForm(caseId, caseFormId, user) {
   await getAccessibleCase(caseId, user);
-  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate("formTemplateId");
+  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
   if (!caseForm) throw Object.assign(new Error("Case form not found"), { statusCode: 404 });
   const progress = calculateCompletion(caseForm.formTemplateId, caseForm.fieldValues || caseForm.filledData || {});
   caseForm.completion = progress.completion;
@@ -867,9 +980,51 @@ async function markCaseFormsStale(caseId, reason = "master_case_data_changed", c
 }
 
 async function listCaseForms(caseId, user, req) {
-  const caseData = await getAccessibleCase(caseId, user);
+  // metadataOnly:true below means ensureAssignedForms never writes based on
+  // caseData in this call path, so a stale-secondary read (only reached if
+  // the primary itself is unavailable/timed out) can't authorize a write off
+  // out-of-date case-assignment data - see getAccessibleCase's own comment.
+  const caseData = await getAccessibleCase(caseId, user, { allowStaleFallback: true, requestId: req?.requestId });
+  const tAssign = Date.now();
   await ensureAssignedForms(caseData, user, req, { metadataOnly: true });
-  const forms = await CaseForm.find({ caseId }).populate("formTemplateId").sort({ updatedAt: -1 }).lean();
+  logger.info("uscis_forms_list_ensureAssignedForms_ok", { requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tAssign });
+  // Same secondaryPreferred rationale as activeTemplatesCached() above - this
+  // is the exact query confirmed (via mongodb_query_performance /
+  // mongodb_connection_closed logging) to be the one stalling on the
+  // currently-flaky primary path; a display-only list read doesn't need
+  // strict primary consistency.
+  //
+  // Projected to exactly what the Forms-tab list view renders (CRMCaseDetail.jsx's
+  // caseForms.map) - formCode/formVersion/status/completion/timestamps/
+  // generatedPdfDocument plus the template's title. Previously this had no
+  // .select() at all, so every load shipped the case's full filledData/
+  // fieldValues/sourceAttribution/auditHistory/versions/comments (real SSNs,
+  // passport numbers, alien numbers, employer financials) to the browser even
+  // though none of it is ever displayed here - both a PII-minimization issue
+  // and, combined with the read-preference note above, the reason this
+  // endpoint needed to stay strictly primary-consistent rather than tolerate
+  // any staleness.
+  const tCaseForms = Date.now();
+  let forms;
+  try {
+    forms = await CaseForm.find({ caseId })
+      .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument")
+      // populate() queries formTemplateId (uscisformtemplates) as a genuinely
+      // separate operation - it does not inherit the outer query's read()
+      // setting, and this is exactly the collection that also stalled on the
+      // primary in testing, so it needs the same override explicitly.
+      .populate({ path: "formTemplateId", select: "formCode title version editionDate", options: { strictPopulate: false, read: "secondaryPreferred" } })
+      .sort({ updatedAt: -1 })
+      .read("secondaryPreferred")
+      .lean();
+    logger.info("uscis_forms_list_caseform_find_ok", { requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tCaseForms, formCount: forms.length });
+  } catch (error) {
+    logger.error("uscis_forms_list_caseform_find_failed", {
+      requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tCaseForms,
+      errorName: error.name, errorCode: error.code, errorCodeName: error.codeName,
+    });
+    throw error;
+  }
   return forms;
 }
 
@@ -983,7 +1138,7 @@ async function createCaseForm(caseId, payload, user, req) {
 
 async function saveCaseForm(caseId, caseFormId, payload, user, req, action = "save_draft") {
   await getAccessibleCase(caseId, user);
-  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate("formTemplateId");
+  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
   if (!caseForm) {
     const error = new Error("Case form not found");
     error.statusCode = 404;
@@ -1013,7 +1168,7 @@ async function saveCaseForm(caseId, caseFormId, payload, user, req, action = "sa
 
 async function reviewCaseForm(caseId, caseFormId, payload, user, req) {
   await getAccessibleCase(caseId, user);
-  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate("formTemplateId");
+  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
   if (!caseForm) {
     const error = new Error("Case form not found");
     error.statusCode = 404;
@@ -1068,6 +1223,7 @@ async function reviewCaseForm(caseId, caseFormId, payload, user, req) {
 }
 
 module.exports = {
+  TEMPLATE_RENDER_EXCLUDE,
   buildSections,
   calculateCompletion,
   compareCaseForm,

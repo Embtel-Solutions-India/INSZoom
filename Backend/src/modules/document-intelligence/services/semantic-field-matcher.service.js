@@ -16,7 +16,7 @@ async function answerCatalogFor(caseData) {
   const targets = await questionnaireService.resolveCaseQuestionnaires(caseData._id);
   if (!targets.length) return [];
   const questionnaireIds = targets.map((target) => target.questionnaire._id);
-  const questions = await Question.find({ questionnaire: { $in: questionnaireIds }, active: { $ne: false } }).select("key label sectionKey questionnaire");
+  const questions = await Question.find({ questionnaire: { $in: questionnaireIds }, active: true }).select("key label sectionKey questionnaire");
   return questions.map((question) => ({
     targetSystem: "answer",
     targetPath: question.key,

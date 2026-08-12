@@ -23,8 +23,8 @@ router.use("/canonical", require("../modules/canonical/routes/canonicalRoutes"))
 router.use("/uscis-forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/uscis/forms", require("../modules/uscis-form-import/routes/uscisFormImportRoutes"));
 router.use("/uscis", require("../modules/uscis-lifecycle/routes/uscisLifecycleRoutes"));
-router.use("/forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/forms", require("../modules/form-generation/routes/formGenerationRoutes"));
+router.use("/forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/leaderboard", require("../modules/leaderboard/leaderboard.routes"));
 router.use("/", require("../modules/case-collaboration/routes/collaborationRoutes"));
 router.use("/cases", require("../modules/cases/case.routes"));

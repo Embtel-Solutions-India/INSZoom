@@ -23,7 +23,7 @@ const USERS = [
   // ── INSZoom CRM — case_manager ────────────────────────────
   { name: "Vasu", displayName: "Vasu", email: "vasu@bayareaimmigrationservices.com", password: "Vasu@bais567", role: "case_manager", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
   { name: "Saksham", displayName: "Saksham", email: "saksham@bayareaimmigrationservices.com", password: "Saksham@bais987", role: "case_manager", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
-  { name: "Madaan", displayName: "Madaan", email: "madaan@bayareaimmigrationservices.com", password: "Madaan@bais265", role: "case_manager", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
+  { name: "Bhavya", displayName: "Bhavya", email: "madaan@bayareaimmigrationservices.com", password: "Madaan@bais123", role: "team_lead", department: "Case Management", isEmailVerified: true, isActive: true, isDemoData: false },
 ];
 
 async function run() {

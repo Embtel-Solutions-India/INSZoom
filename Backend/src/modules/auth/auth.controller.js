@@ -7,18 +7,34 @@ const clientInviteService = require("./clientInvite.service");
 const firebaseService = require("./firebase.service");
 const emailService = require("../email/email.service");
 const env = require("../../config/env");
+const logger = require("../../utils/logger");
 const { invalidateUserCache } = require("../../config/redis");
 
 const REFRESH_COOKIE_NAME = "refresh_token";
 const REFRESH_COOKIE_PATH = "/api/auth";
 
 function refreshCookieOptions() {
+  // SameSite=None is rejected by browsers unless Secure is also set,
+  // regardless of NODE_ENV — see env.refreshCookieSameSite's comment.
+  const sameSite = env.refreshCookieSameSite;
   return {
     httpOnly: true,
-    secure: env.nodeEnv === "production",
-    sameSite: "lax",
+    secure: sameSite === "none" ? true : env.nodeEnv === "production",
+    sameSite,
     path: REFRESH_COOKIE_PATH,
   };
+}
+
+// Safe, non-sensitive diagnostics for confirming the actual production
+// cookie topology from logs — never logs the token/cookie value itself, only
+// whether one was present and where the request said it came from.
+function logRefreshCookieDiagnostics(event, req) {
+  logger.info("refresh_cookie_diagnostics", {
+    event,
+    origin: req.headers?.origin || null,
+    cookiePresent: Boolean(req.cookies?.[REFRESH_COOKIE_NAME]),
+    sameSiteConfigured: env.refreshCookieSameSite,
+  });
 }
 
 function setRefreshCookie(res, refreshToken) {
@@ -79,6 +95,7 @@ async function googleToken(req, res, next) {
 
 async function refresh(req, res, next) {
   try {
+    logRefreshCookieDiagnostics("refresh_attempt", req);
     const incomingRefreshToken = req.body.refreshToken || req.cookies?.[REFRESH_COOKIE_NAME];
     if (!incomingRefreshToken) return res.status(401).json({ success: false, message: "Refresh token required" });
     const result = await authService.refresh(incomingRefreshToken, req);

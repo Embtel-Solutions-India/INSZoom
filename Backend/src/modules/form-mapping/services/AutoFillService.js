@@ -192,7 +192,7 @@ class AutoFillService {
     const existingCaseForm = await this.findCaseForm(caseId, formType);
     let template;
     if (existingCaseForm?.formTemplateId) {
-      template = await existingCaseForm.populate("formTemplateId").then((item) => item.formTemplateId.toObject());
+      template = await existingCaseForm.populate({ path: "formTemplateId", select: "-definition" }).then((item) => item.formTemplateId.toObject());
       const lockedMapping = await FormMappingService.loadMappingVersion(
         template,
         existingCaseForm.formVersionLock?.mappingVersionId || existingCaseForm.mappingVersionId,
@@ -380,7 +380,7 @@ class AutoFillService {
       error.status = 404;
       throw error;
     }
-    const template = await caseForm.populate("formTemplateId").then((item) => item.formTemplateId.toObject());
+    const template = await caseForm.populate({ path: "formTemplateId", select: "-definition" }).then((item) => item.formTemplateId.toObject());
     caseForm.versions = [...(caseForm.versions || []), this.snapshotVersion(caseForm)];
     const filledData = this.clone(caseForm.filledData, {});
     const fieldValues = this.clone(caseForm.fieldValues, {});

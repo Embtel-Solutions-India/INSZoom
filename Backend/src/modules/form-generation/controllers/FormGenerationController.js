@@ -71,11 +71,7 @@ exports.regenerate = async (req, res) => {
 // remain interactive so an attorney can make final adjustments and sign.
 exports.draftPdf = async (req, res) => {
   try {
-    const caseForm = await require("../../../models/CaseForm")
-      .findById(req.params.caseFormId)
-      .populate("formTemplateId");
-    if (!caseForm) return handle(res, Object.assign(new Error("Case form not found"), { status: 404 }));
-    if (!caseForm.formTemplateId) return handle(res, Object.assign(new Error("Form template not found"), { status: 404 }));
+    const caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: true });
 
     const PDFRenderer = require("../services/PDFRenderer");
     const rendered = await PDFRenderer.render({

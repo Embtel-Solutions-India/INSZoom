@@ -10,7 +10,7 @@ const LockIcon = () => (
   </svg>
 );
 
-function Field({ icon, type = "text", placeholder, value, onChange, autoComplete }) {
+function Field({ icon, type = "text", name, placeholder, value, onChange, autoComplete }) {
   return (
     <div className="relative flex items-center w-full mb-4">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
@@ -18,6 +18,8 @@ function Field({ icon, type = "text", placeholder, value, onChange, autoComplete
       </span>
       <input
         type={type}
+        id={name}
+        name={name}
         placeholder={placeholder}
         value={value}
         onChange={onChange}
@@ -114,9 +116,9 @@ export default function AcceptInvite() {
               {invite?.name ? `Welcome, ${invite.name}. ` : ""}Set a password for <span className="font-semibold text-slate-700">{invite?.email}</span> to activate your account and get started.
             </p>
 
-            <Field icon={<LockIcon />} type="password" placeholder="Password"
+            <Field icon={<LockIcon />} type="password" name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            <Field icon={<LockIcon />} type="password" placeholder="Confirm Password"
+            <Field icon={<LockIcon />} type="password" name="confirmPassword" placeholder="Confirm Password"
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (

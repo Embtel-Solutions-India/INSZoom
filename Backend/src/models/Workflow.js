@@ -122,5 +122,14 @@ workflowSchema.index({ dueAt: 1, status: 1 });
 workflowSchema.index({ assignedTo: 1, status: 1, dueAt: 1 });
 workflowSchema.index({ companyId: 1, status: 1 });
 workflowSchema.index({ "recurrence.nextRunAt": 1, status: 1 });
+// Supports workflow.service.js processScheduledWorkflows(): filters on
+// top-level status:"waiting" + executions.scheduledFor ($lte) — none of the
+// indexes above cover a bare status query since they all require a different
+// leading field (caseId/companyId/dueAt/etc) first.
+workflowSchema.index({ status: 1, "executions.scheduledFor": 1 });
+// Supports retryFailedActions(): filters on the nested executions.status
+// ("retrying") + executions.nextRetryAt ($lte), previously unindexed —
+// same COLLSCAN shape as the notifications retryFailed bug.
+workflowSchema.index({ "executions.status": 1, "executions.nextRetryAt": 1 });
 
 module.exports = mongoose.model("Workflow", workflowSchema);

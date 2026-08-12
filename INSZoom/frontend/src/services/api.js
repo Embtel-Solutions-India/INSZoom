@@ -82,6 +82,25 @@ export const notificationsApi = {
   unregisterDevice: (token) => api.delete('/notifications/unregister-device', { data: { token } }),
 };
 
+// Requests made with responseType: 'blob' (PDF previews/downloads) get their
+// error body decoded as a Blob by axios instead of JSON, even though the
+// backend always sends JSON error bodies. Left unpatched, error.response.data
+// is a Blob for these requests, so error.response.data.code/.message are
+// always undefined - the 401 handler below can never detect TOKEN_EXPIRED
+// (forcing a hard logout instead of a silent refresh) and every caller's
+// `error.response?.data?.message` extraction silently loses the real backend
+// error text. Re-hydrating the Blob back into the parsed JSON body here fixes
+// both without touching every call site.
+export const rehydrateBlobErrorBody = async (error) => {
+  const data = error.response?.data
+  if (!(data instanceof Blob) || !data.type?.includes('json')) return
+  try {
+    error.response.data = JSON.parse(await data.text())
+  } catch {
+    // Not actually JSON - leave as-is.
+  }
+}
+
 // Handle response errors
 api.interceptors.response.use(
   (response) => response,
@@ -89,6 +108,7 @@ api.interceptors.response.use(
     if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
       error.userMessage = 'The server is taking too long to respond. Please try again.'
     }
+    await rehydrateBlobErrorBody(error)
     const originalRequest = error.config
     if (error.response?.status === 401 && !originalRequest?._retry) {
       if (error.response?.data?.code === 'TOKEN_EXPIRED' && localStorage.getItem('refreshToken')) {

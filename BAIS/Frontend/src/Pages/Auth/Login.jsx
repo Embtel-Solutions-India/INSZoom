@@ -195,6 +195,7 @@ export default function Login() {
           <FieldWrap icon={<MailIcon />}>
             <input
               type="email"
+              id="login-email"
               name="email"
               placeholder="Email address"
               value={email}
@@ -212,6 +213,7 @@ export default function Login() {
           <FieldWrap icon={<LockIcon />}>
             <input
               type="password"
+              id="login-password"
               name="password"
               placeholder="Password"
               value={password}

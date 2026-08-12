@@ -497,11 +497,17 @@ async function syncCalendar(user, provider) {
 }
 
 async function sendDueReminders(now = new Date()) {
+  // Previously unbounded — a backlog (e.g. a run of failed ticks) could pull
+  // an unbounded set of appointments into memory as full Mongoose documents.
+  // Bounded per tick like the other maintenance jobs; already-sent reminders
+  // are marked reminders.sent=true and stop matching, so a backlog larger
+  // than one batch just finishes over the following ticks rather than being
+  // dropped.
   const appointments = await Appointment.find({
     status: { $in: ["scheduled", "confirmed", "pending"] },
     "reminders.remindAt": { $lte: now },
     "reminders.sent": false,
-  });
+  }).limit(200);
   let sent = 0;
   for (const appointment of appointments) {
     let changed = false;

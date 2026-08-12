@@ -27,12 +27,48 @@ function detectPlatform() {
   return navigator.userAgentData?.platform || navigator.platform || "Unknown";
 }
 
+// Push notifications are an enhancement, never a gate — every function below
+// resolves to null on any failure instead of throwing, so a caller that
+// forgets to .catch() still can't break login/dashboard/documents/profile/
+// payments/messages. This flag additionally stops re-attempting the
+// registration/subscribe dance again for the rest of this page load once it's
+// failed once (e.g. "no active Service Worker") — there's nothing about
+// calling it again with the same browser state that would make it succeed,
+// so retrying on every login/session-rehydrate within one page load was pure
+// wasted work (and console noise) for a browser/deployment where it just
+// doesn't work. A fresh page load (e.g. after a deployment that fixes the
+// service worker) gets a clean attempt again.
+let disabledThisPageLoad = false;
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 export async function registerServiceWorker() {
   if (!browserSupportsMessaging()) return null;
   try {
-    return await navigator.serviceWorker.register(SW_PATH);
+    await navigator.serviceWorker.register(SW_PATH);
+    // register() resolving only means the registration exists, not that a
+    // worker is actually controlling the page yet (first install, or right
+    // after an update, there's a window with a registration but nothing
+    // "active") — getToken() below needs an active worker, and calling it
+    // too early is exactly what produces FCM's "no active Service Worker"
+    // error. .ready resolves once one is actually active — bounded with a
+    // timeout so a service worker that never activates can't leave this
+    // hanging indefinitely (harmless since nothing awaits it blockingly, but
+    // it should still resolve to a clear "unavailable" instead of dangling).
+    const registration = await withTimeout(navigator.serviceWorker.ready, 10000);
+    if (!registration) {
+      console.warn("Notification service worker never became active; disabling push for this page load.");
+      disabledThisPageLoad = true;
+    }
+    return registration;
   } catch (error) {
     console.warn("Notification service worker registration failed:", error.message);
+    disabledThisPageLoad = true;
     return null;
   }
 }
@@ -40,7 +76,7 @@ export async function registerServiceWorker() {
 // Only prompts when permission hasn't been decided yet — never re-prompts
 // once the user has granted or denied it, and never throws on denial.
 export async function requestPermissionAndGetToken() {
-  if (!browserSupportsMessaging()) return null;
+  if (!browserSupportsMessaging() || disabledThisPageLoad) return null;
 
   if (Notification.permission === "denied") return null;
   if (Notification.permission === "default") {
@@ -56,7 +92,12 @@ export async function requestPermissionAndGetToken() {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
     return token || null;
   } catch (error) {
+    // "no active Service Worker" and similar PushManager.subscribe() failures
+    // land here — logged once, then this browser/session stops retrying
+    // (see disabledThisPageLoad above) instead of repeating the same failing
+    // subscribe attempt on every subsequent login/session-rehydrate.
     console.warn("Unable to obtain FCM token:", error.message);
+    disabledThisPageLoad = true;
     return null;
   }
 }

@@ -33,6 +33,12 @@ frontend/.vite/
 coverage/
 frontend/coverage/
 .nyc_output/
+test-results/
+frontend/test-results/
+playwright-report/
+frontend/playwright-report/
+blob-report/
+frontend/blob-report/
 
 # Tool caches
 .eslintcache

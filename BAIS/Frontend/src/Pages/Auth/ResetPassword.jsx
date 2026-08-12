@@ -9,7 +9,7 @@ const LockIcon = () => (
   </svg>
 );
 
-function Field({ icon, type = "text", placeholder, value, onChange, autoComplete }) {
+function Field({ icon, type = "text", name, placeholder, value, onChange, autoComplete }) {
   return (
     <div className="relative flex items-center w-full mb-4">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
@@ -17,6 +17,8 @@ function Field({ icon, type = "text", placeholder, value, onChange, autoComplete
       </span>
       <input
         type={type}
+        id={name}
+        name={name}
         placeholder={placeholder}
         value={value}
         onChange={onChange}
@@ -111,9 +113,9 @@ export default function ResetPassword() {
             <h1 className="text-xl font-bold text-slate-900 mb-1">Set a new password</h1>
             <p className="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
 
-            <Field icon={<LockIcon />} type="password" placeholder="New password"
+            <Field icon={<LockIcon />} type="password" name="newPassword" placeholder="New password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            <Field icon={<LockIcon />} type="password" placeholder="Confirm new password"
+            <Field icon={<LockIcon />} type="password" name="confirmNewPassword" placeholder="Confirm new password"
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (

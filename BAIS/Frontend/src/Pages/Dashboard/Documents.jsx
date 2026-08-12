@@ -203,7 +203,7 @@ export default function Documents() {
   }, [visibleChecklists, activeRole]);
   const effectiveRole = activeRole || allowedRoles?.[0] || loginRole;
 
-  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads } = useDocumentChecklist({ caseId: activeCaseId });
+  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments } = useDocumentChecklist({ caseId: activeCaseId });
 
   // Legacy single-role path — inert (caseId withheld, no fetch) once the new
   // architecture takes over for this case.
@@ -344,6 +344,14 @@ export default function Documents() {
     ? [showEmployer && employerQA, showBusinessPlan && bizPlanQA, showEmployeeInline && employeeQA].filter(Boolean)
     : [legacyQA];
   const combinedStatus = combineQaStatus(activeQAs);
+  // FIX (blank/stuck-loading bug): sections.length === 0 used to render the
+  // exact same "Complete your eligibility assessment" message whether the
+  // questionnaire fetch was still in flight, had failed outright (network/
+  // 500/timeout), or the case genuinely had zero applicable questions —
+  // indistinguishable to the user as "nothing happened." questionnaireLoading/
+  // questionnaireError let the empty-state block below tell those apart.
+  const questionnaireLoading = activeQAs.some((qa) => qa.loading);
+  const questionnaireError = activeQAs.map((qa) => qa.error).find(Boolean);
   // FIX (unsaved-changes guard, AC-S5): true whenever any active
   // questionnaire has a field edited but not yet committed via Save
   // progress/Submit — read by the beforeunload/popstate guards below.
@@ -583,11 +591,26 @@ export default function Documents() {
 
   const roleLabel = (targetRole) => visibleChecklists.find((item) => item.targetRole === targetRole)?.title || titleFromKey(targetRole);
 
-  // Employer account, no specific case chosen — never guess which of their
-  // (possibly many) sponsored cases to show; send them to the dashboard to
-  // pick one instead (the dedicated Employer Workspace page is gone — this
-  // page is the only home for employer/employee checklists now).
+  // Employer account, no specific case chosen. This used to redirect to
+  // /dashboard unconditionally and immediately (before employerMeQuery had
+  // even resolved), so every employer landing on the bare /dashboard/documents
+  // URL — which is exactly where Navbar/Dashboard/Home's "My Documents"/
+  // "Upload Documents" links all point — got bounced straight back out,
+  // regardless of how many cases they actually had. Now: wait for the case
+  // list first, and if there's exactly one sponsored case (the common case),
+  // resolve straight to it instead of making the user pick from a list of one.
+  // Only genuinely ambiguous (2+ cases) accounts still go to /dashboard to choose.
   if (useEmployerCaseResolution && !routeCaseId) {
+    if (employerMeQuery.isLoading) {
+      return (
+        <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
+          <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
+        </div>
+      );
+    }
+    if (employerCases.length === 1) {
+      return <Navigate to={`/dashboard/documents/${employerCases[0]._id}`} replace />;
+    }
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -840,7 +863,36 @@ export default function Documents() {
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{combinedStatus.statusMessage}</div>
           )}
 
-          {sections.length === 0 && (
+          {documentsLoadError && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+              <span>We couldn't load your uploaded documents. Anything you've already uploaded is still safe.</span>
+              <button type="button" onClick={reloadDocuments} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50">
+                Try again
+              </button>
+            </div>
+          )}
+
+          {sections.length === 0 && questionnaireLoading && (
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8">
+              <div className="h-8 w-8 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" aria-label="Loading your checklist" />
+            </div>
+          )}
+
+          {sections.length === 0 && !questionnaireLoading && questionnaireError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
+              <p className="font-semibold">We couldn't load your checklist.</p>
+              <p className="mt-1 text-red-600">{questionnaireError}</p>
+              <button
+                type="button"
+                onClick={() => activeQAs.forEach((qa) => qa.refetch())}
+                className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          {sections.length === 0 && !questionnaireLoading && !questionnaireError && (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
               Complete your eligibility assessment to see your case-specific checklist.
             </div>
@@ -897,7 +949,7 @@ export default function Documents() {
           {/* Case-specific data collection (moved off Profile — see
               components/checklist/CaseIntakeExtras.jsx) — not shown to an
               employee viewing only their own section. */}
-          {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} />}
+          {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} caseData={activeCase} />}
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4">
             <div>

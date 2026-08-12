@@ -5,9 +5,22 @@ import { initializeNotifications, unregisterCurrentDevice } from "../services/no
 
 const AuthContext = createContext(null);
 
+// Explicit states rather than a bare boolean+user pair: "backend temporarily
+// unreachable" and "genuinely not logged in" used to collapse into the same
+// thing (user=null), which meant a 504 from /auth/me looked IDENTICAL to a
+// real logged-out session — ProtectedRoute would show the login/signup
+// prompt either way. They now stay distinguishable end-to-end:
+//   loading         - initial check in flight, or a fresh login just submitted
+//   authenticated   - user is confirmed and available
+//   unauthenticated - confirmed no valid session (no token, or a real 401)
+//   error           - backend/network failure verifying the session; the
+//                     token (if any) is left untouched, since this is NOT
+//                     evidence the user is logged out
+const AUTH_STATUS = { LOADING: "loading", AUTHENTICATED: "authenticated", UNAUTHENTICATED: "unauthenticated", ERROR: "error" };
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authStatus, setAuthStatus] = useState(AUTH_STATUS.LOADING);
   // Set exactly once, right after a Google signInWithRedirect flow lands
   // back on the page - Login/Register consume it to navigate (role-based,
   // same as the old popup flow's inline `navigate()`) and then clear it.
@@ -19,6 +32,40 @@ export function AuthProvider({ children }) {
   const clearSession = useCallback(() => {
     tokenStore.clear();
     setUser(null);
+    setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
+  }, []);
+
+  // Re-verifies against /auth/me without ever downgrading a backend/network
+  // failure into "logged out" — used on mount and as the retry action
+  // ProtectedRoute's error screen offers the user directly.
+  const verifySession = useCallback(async () => {
+    const access = tokenStore.getAccess();
+    if (!access) {
+      setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
+      return;
+    }
+    setAuthStatus((current) => (current === AUTH_STATUS.AUTHENTICATED ? current : AUTH_STATUS.LOADING));
+    try {
+      // features (feature-flag server defaults) only comes back from /auth/me,
+      // not login/signup/acceptInvite — attaching it here means a flag flip
+      // takes effect on next refresh, matching the flag module's contract.
+      const { user: u, features } = await authApi.me();
+      setUser(u ? { ...u, features } : u);
+      setAuthStatus(AUTH_STATUS.AUTHENTICATED);
+    } catch (err) {
+      if (err?.status === 401) {
+        // A real 401 means the token is genuinely invalid — api.js has
+        // already cleared it and fired bais:session-expired by this point;
+        // this just mirrors that into local state.
+        setUser(null);
+        setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
+      } else {
+        // Network error, 5xx, a 504 from backend/DB contention — NOT proof
+        // the user is logged out. Leave the token alone; ProtectedRoute
+        // shows a retry screen instead of bouncing to the login prompt.
+        setAuthStatus(AUTH_STATUS.ERROR);
+      }
+    }
   }, []);
 
   const clearGoogleRedirectUser = useCallback(() => setGoogleRedirectUser(null), []);
@@ -52,8 +99,8 @@ export function AuthProvider({ children }) {
           const data = await authApi.googleToken(idToken);
           tokenStore.set(data.accessToken);
           setUser(data.user);
+          setAuthStatus(AUTH_STATUS.AUTHENTICATED);
           setGoogleRedirectUser(data.user);
-          setAuthLoading(false);
           return;
         }
       } catch (err) {
@@ -63,21 +110,9 @@ export function AuthProvider({ children }) {
         console.error("Google redirect sign-in failed:", err);
         setGoogleAuthError("Unable to complete Google sign-in. Please try again or use email login.");
       }
-      const access = tokenStore.getAccess();
-      if (!access) {
-        setAuthLoading(false);
-        return;
-      }
-      authApi
-        .me()
-        // features (feature-flag server defaults) only comes back from /auth/me,
-        // not login/signup/acceptInvite — attaching it here means a flag flip
-        // takes effect on next refresh, matching the flag module's contract.
-        .then(({ user: u, features }) => setUser(u ? { ...u, features } : u))
-        .catch(clearSession)
-        .finally(() => setAuthLoading(false));
+      await verifySession();
     })();
-  }, [clearSession]);
+  }, [verifySession]);
 
   // Listen for global session-expired events (triggered by api.js on 401)
   useEffect(() => {
@@ -99,12 +134,14 @@ export function AuthProvider({ children }) {
     const data = await authApi.register(name, email, password, referralCode, phone, accountType);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    setAuthStatus(AUTH_STATUS.AUTHENTICATED);
   }, []);
 
   const login = useCallback(async (email, password) => {
     const data = await authApi.login(email, password);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    setAuthStatus(AUTH_STATUS.AUTHENTICATED);
     return data.user;
   }, []);
 
@@ -114,6 +151,7 @@ export function AuthProvider({ children }) {
     const data = await authApi.acceptInvite(token, password, confirmPassword);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    setAuthStatus(AUTH_STATUS.AUTHENTICATED);
     return data.user;
   }, []);
 
@@ -138,8 +176,8 @@ export function AuthProvider({ children }) {
       const data = await authApi.googleToken(idToken);
       tokenStore.set(data.accessToken);
       setUser(data.user);
+      setAuthStatus(AUTH_STATUS.AUTHENTICATED);
       setGoogleRedirectUser(data.user);
-      setAuthLoading(false);
       return;
     }
     await signInWithRedirect(auth, googleProvider);
@@ -148,7 +186,7 @@ export function AuthProvider({ children }) {
   // Called by OAuthCallback page (passport redirect flow — kept for compatibility)
   const setUserFromOAuth = useCallback((userData) => {
     setUser(userData);
-    setAuthLoading(false);
+    setAuthStatus(AUTH_STATUS.AUTHENTICATED);
   }, []);
 
   // Merge a partial user update (e.g. the response from PUT /auth/updatedetails)
@@ -160,11 +198,12 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      user, authStatus, authLoading: authStatus === AUTH_STATUS.LOADING, retryAuth: verifySession,
+      signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     }),
     [
-      user, authLoading, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      user, authStatus, verifySession, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     ]
   );

@@ -1,8 +1,13 @@
 const logger = require("./logger");
-const env = require("../config/env");
 
+// Previously this returned false outright whenever NODE_ENV === "production"
+// (same bug already fixed in config/database.js's query profiler) — meaning
+// request_performance, and every createPerfTimer() stage breakdown, was
+// silently never logged in production at all. That's the opposite of what's
+// needed to diagnose a production 504: it's now always on, opt-out only via
+// PERF_LOGS=false, matching the query profiler's contract.
 function enabled() {
-  return env.nodeEnv !== "production" && process.env.PERF_LOGS !== "false";
+  return process.env.PERF_LOGS !== "false";
 }
 
 function createPerfTimer(name, base = {}) {

@@ -38,7 +38,6 @@ export const SocketProvider = ({ children }) => {
       // through this context's `token` state — without this, the socket
       // would keep retrying with a now-invalid token until a full page reload.
       auth: (callback) => callback({ token: localStorage.getItem('token') || token }),
-      transports: ['websocket', 'polling'],
       reconnection: true,
     })
     socketRef.current = socket

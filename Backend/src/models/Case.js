@@ -849,6 +849,10 @@ caseSchema.pre("validate", function syncLegacyFields(next) {
 });
 
 caseSchema.index({ user: 1, createdAt: -1 });
+caseSchema.index({ createdAt: -1, _id: -1 });
+caseSchema.index({ status: 1, createdAt: -1, _id: -1 });
+caseSchema.index({ stage: 1, createdAt: -1, _id: -1 });
+caseSchema.index({ visaType: 1, createdAt: -1, _id: -1 });
 caseSchema.index({ employeeUser: 1, createdAt: -1 });
 caseSchema.index({ "participants._id": 1, "participants.role": 1, "participants.status": 1 });
 caseSchema.index({ "participants.userId": 1, "participants.status": 1, updatedAt: -1 });

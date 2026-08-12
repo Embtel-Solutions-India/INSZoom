@@ -9,6 +9,7 @@ const caseService = require("./case.service");
 const beneficiaryService = require("../beneficiaries/beneficiary.service");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
+const { isDatabaseUnavailableError } = require("../../middleware/errorHandler");
 
 const TERMINAL_STATUSES = new Set(["closed", "archived", "cancelled", "rejected"]);
 const FORM_GENERATED_STATUSES = new Set(["ai_filled", "draft", "in_review", "under_review", "needs_revision", "approved", "ready_for_pdf", "generated", "locked", "filed"]);
@@ -372,13 +373,43 @@ class CaseLifecycleOrchestrator {
 
   static async generateForms(caseId, user, req) {
     const startedAt = Date.now();
-    const caseData = await Case.findById(caseId);
+    let caseData;
+    let primaryReadError = null;
+    try {
+      caseData = await Case.findById(caseId).maxTimeMS(Number(process.env.GENERATE_FORMS_CASE_READ_TIMEOUT_MS || 5000));
+    } catch (error) {
+      primaryReadError = error;
+      if (!isDatabaseUnavailableError(error)) throw error;
+      caseData = await Case.findById(caseId).read("secondaryPreferred");
+    }
     if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(user, caseData)) throw Object.assign(new Error("Not authorized to generate forms for this case"), { status: 403 });
     if (!caseData.assignedCaseManager && !["super_admin", "admin"].includes(user?.role)) throw Object.assign(new Error("Assign a primary case manager before generating forms"), { status: 409 });
     const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
     const uscisFormService = require("../uscis-forms/uscis-form.service");
     const AutoFillService = require("../form-mapping/services/AutoFillService");
+    const existingForms = await CaseForm.find({ caseId })
+      .populate({ path: "formTemplateId", select: "_id formCode version status activeFlag" })
+      .read("secondaryPreferred");
+    const usableExistingForms = existingForms.filter((form) => form.formTemplateId && form.status !== "archived");
+    if (usableExistingForms.length) {
+      require("../../utils/logger").info("uscis_form_generation_idempotent_existing", {
+        caseId,
+        existingCount: usableExistingForms.length,
+        durationMs: Date.now() - startedAt,
+        requestId: req?.requestId,
+      });
+      return {
+        created: [],
+        existing: usableExistingForms,
+        generated: [],
+        failed: [],
+        blockingIssues: [],
+        workflow: null,
+        message: "USCIS forms are already assigned for this case. Existing forms were reused.",
+      };
+    }
+    if (primaryReadError) throw primaryReadError;
     const readiness = await this.metrics(caseData);
     const blockingIssues = [];
     if (!readiness.questionnaireComplete) throw Object.assign(new Error("Submit the case questionnaire before filing."), { status: 409, code: "QUESTIONNAIRE_INCOMPLETE", details: { readiness } });

@@ -396,12 +396,16 @@ export default function Messages() {
     return () => clearInterval(id);
   }, []);
 
+  const threadsInFlightRef = useRef(false); // mount effect, socket connect/message:new handlers, and the manual refresh button can all call this independently
+
   const loadThreads = useCallback(async () => {
+    if (threadsInFlightRef.current) return;
+    threadsInFlightRef.current = true;
     try {
       const res = await messagesApi.getThreads();
       setThreads(res.threads || []);
     } catch { /* silently fail */ }
-    finally { setLoading(false); }
+    finally { setLoading(false); threadsInFlightRef.current = false; }
   }, []);
 
   useEffect(() => { loadThreads(); }, [loadThreads]);
@@ -422,8 +426,15 @@ export default function Messages() {
   // spinner + jump to bottom is expected) from a background re-sync of the
   // thread already on screen (merge in place, no spinner, no forced scroll —
   // see mergeMessagesById and the scroll effect below).
+  const silentLoadInFlightRef = useRef(new Set()); // avoid piling up concurrent silent polls per-thread if one call is slow
+
   const loadMessages = useCallback(async (threadId, { silent = false } = {}) => {
-    if (!silent) setMsgLoading(true);
+    if (silent) {
+      if (silentLoadInFlightRef.current.has(threadId)) return;
+      silentLoadInFlightRef.current.add(threadId);
+    } else {
+      setMsgLoading(true);
+    }
     try {
       const res = await messagesApi.getMessages(threadId, { limit: 30 });
       setMessages((prev) => (silent ? mergeMessagesById(prev, res.messages || []) : (res.messages || [])));
@@ -434,7 +445,10 @@ export default function Messages() {
         ? { ...t, unreadClient: 0, unreadManager: 0 }
         : t));
     } catch { /* silently fail */ }
-    finally { if (!silent) setMsgLoading(false); }
+    finally {
+      if (silent) silentLoadInFlightRef.current.delete(threadId);
+      else setMsgLoading(false);
+    }
   }, []);
 
   // Loads the next page of older history and prepends it, compensating
@@ -896,7 +910,7 @@ export default function Messages() {
                 {isAdmin && (
                   <div className="px-4 pt-2 flex items-center gap-2">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input type="checkbox" checked={internalNote} onChange={(e) => setInternalNote(e.target.checked)}
+                      <input type="checkbox" id="messages-internal-note" name="internalNote" checked={internalNote} onChange={(e) => setInternalNote(e.target.checked)}
                         className="accent-amber-500 w-4 h-4" />
                       <span className="text-xs font-bold text-amber-600 flex items-center gap-1">
                         <Ic.Lock /> Internal Note (not visible to client)
@@ -927,6 +941,8 @@ export default function Messages() {
                 <div className={`px-4 py-3 border-t flex items-end gap-2
                   ${internalNote ? "border-amber-200 bg-amber-50/30" : "border-slate-100 bg-slate-50/60"}`}>
                   <textarea
+                    id="messages-body"
+                    name="messageBody"
                     value={body}
                     onChange={(e) => {
                       setBody(e.target.value);
@@ -949,7 +965,7 @@ export default function Messages() {
                       <Ic.Send />
                     </button>
                   </div>
-                  <input ref={fileRef} type="file" multiple className="hidden"
+                  <input ref={fileRef} type="file" id="messages-attachments" name="attachments" multiple className="hidden"
                     onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files)])} />
                 </div>
               </>
