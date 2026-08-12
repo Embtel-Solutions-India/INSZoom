@@ -16,8 +16,8 @@ import { test, expect } from '@playwright/test'
 // test still exercises via the real "Forms" tab load, has never shown this
 // issue all session). Each ID below is a real, verified CaseForm in this
 // dev DB (confirmed to have a live template + case) - not fabricated.
-const CASE_MANAGER_EMAIL = 'casemanager@inszoom.com'
-const CASE_MANAGER_PASSWORD = 'CaseManager123'
+const CASE_MANAGER_EMAIL = process.env.CASE_MANAGER_EMAIL || ''
+const CASE_MANAGER_PASSWORD = process.env.CASE_MANAGER_PASSWORD || ''
 
 const CASE_ID_BY_FORM_CODE = {
   'I-129': '6a720bec10a0b7740072d8ab',
@@ -30,6 +30,8 @@ const CASE_ID_BY_FORM_CODE = {
 }
 
 async function loginAsCaseManager(page) {
+  expect(CASE_MANAGER_EMAIL, 'CASE_MANAGER_EMAIL must be provided for this authenticated E2E test').toBeTruthy()
+  expect(CASE_MANAGER_PASSWORD, 'CASE_MANAGER_PASSWORD must be provided for this authenticated E2E test').toBeTruthy()
   await page.goto('/login')
   await page.getByPlaceholder('Username').fill(CASE_MANAGER_EMAIL)
   await page.getByPlaceholder('Password').fill(CASE_MANAGER_PASSWORD)

@@ -5,15 +5,6 @@ import { useAuth } from '../contexts/AuthContext'
 import loginBackground from '../assets/admin-login-liberty.png'
 import loginBackgroundWebp from '../assets/admin-login-liberty.webp'
 
-// Dev-only quick-login shortcuts for the seeded dummy accounts
-// (Backend/src/seeds/seedUsers.js) — never shown in a production build.
-const DEV_ACCOUNTS = [
-  { label: 'Team Lead', email: 'teamlead@inszoom.com', password: 'TeamLead123' },
-  { label: 'Case Manager', email: 'casemanager@inszoom.com', password: 'CaseManager123' },
-  { label: 'Super Admin', email: 'superadmin@inszoom.com', password: 'SuperAdmin123' },
-  { label: 'Admin', email: 'admin@inszoom.com', password: 'Admin123' },
-]
-
 // Edge/IE inject their own native reveal-password icon on type="password"
 // inputs (the ::-ms-reveal pseudo-element) - it renders next to our own
 // Eye/EyeOff toggle button, doesn't match the app's theme, and duplicates
@@ -52,12 +43,6 @@ const Login = () => {
   const handleSubmit = (e) => {
     e.preventDefault()
     attemptLogin(email, password)
-  }
-
-  const handleQuickLogin = (account) => {
-    setEmail(account.email)
-    setPassword(account.password)
-    attemptLogin(account.email, account.password)
   }
 
   return (
@@ -165,25 +150,6 @@ const Login = () => {
                 {loading ? 'Signing in...' : 'Login'}
               </button>
             </form>
-
-            {import.meta.env.DEV && (
-              <div className="mt-7 border-t border-dashed border-[#d9e2f0] pt-6">
-                <p className="mb-3 text-center text-[0.7rem] font-black uppercase tracking-[0.18em] text-[#9aa8bd]">Dev Quick Login</p>
-                <div className="grid grid-cols-2 gap-2.5">
-                  {DEV_ACCOUNTS.map((account) => (
-                    <button
-                      key={account.email}
-                      type="button"
-                      disabled={loading}
-                      onClick={() => handleQuickLogin(account)}
-                      className="rounded-lg border border-[#dce3ee] bg-white px-3 py-2.5 text-sm font-bold text-[#2563eb] transition hover:border-[#2563eb] hover:bg-[#eaf1ff] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {account.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="my-9 h-px bg-gradient-to-r from-transparent via-[#d9e2f0] to-transparent" />
 
