@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -18,53 +18,48 @@ jobs:
         with:
           node-version: 22
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
+      - name: Deploy INSZoom
+        run: |
+          set -e
 
-            echo "Connected to EC2 successfully"
-            echo "Hostname: $(hostname)"
-            echo "User: $(whoami)"
+          echo "================================="
+          echo "Starting INSZoom deployment"
+          echo "================================="
 
-            echo "================================="
-            echo "Updating INSZoom source code"
-            echo "================================="
+          cd /home/ubuntu/INSZoom
 
-            cd /home/ubuntu/INSZoom
+          echo "================================="
+          echo "Updating INSZoom source code"
+          echo "================================="
 
-            git fetch origin
-            git checkout cicd
-            git reset --hard origin/cicd
+          git fetch origin
+          git checkout cicd
+          git reset --hard origin/cicd
 
-            echo "================================="
-            echo "Building Client Frontend"
-            echo "================================="
+          echo "================================="
+          echo "Building Client Frontend"
+          echo "================================="
 
-            cd /home/ubuntu/INSZoom/BAIS/Frontend
-            npm ci
-            npm run build
+          cd /home/ubuntu/INSZoom/BAIS/Frontend
+          npm ci
+          npm run build
 
-            echo "================================="
-            echo "Building Admin Frontend"
-            echo "================================="
+          echo "================================="
+          echo "Building Admin Frontend"
+          echo "================================="
 
-            cd /home/ubuntu/INSZoom/INSZoom/frontend
-            npm ci
-            npm run build
+          cd /home/ubuntu/INSZoom/INSZoom/frontend
+          npm ci
+          npm run build
 
-            echo "================================="
-            echo "Deploying Backend"
-            echo "================================="
+          echo "================================="
+          echo "Deploying Backend"
+          echo "================================="
 
-            cd /home/ubuntu/INSZoom/Backend
-            npm ci
-            pm2 restart inszoom-backend
+          cd /home/ubuntu/INSZoom/Backend
+          npm ci
+          pm2 restart inszoom-backend
 
-            echo "================================="
-            echo "Deployment completed"
-            echo "================================="
+          echo "================================="
+          echo "Deployment completed"
+          echo "================================="
