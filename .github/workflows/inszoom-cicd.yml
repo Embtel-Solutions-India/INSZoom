@@ -1,0 +1,70 @@
+name: INSZoom CI/CD
+
+on:
+  push:
+    branches:
+      - cicd
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+       - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "Connected to EC2 successfully"
+            echo "Hostname: $(hostname)"
+            echo "User: $(whoami)"
+
+            echo "================================="
+            echo "Updating INSZoom source code"
+            echo "================================="
+
+            cd /home/ubuntu/INSZoom
+
+            git fetch origin
+            git checkout cicd
+            git reset --hard origin/cicd
+
+            echo "================================="
+            echo "Building Client Frontend"
+            echo "================================="
+
+            cd /home/ubuntu/INSZoom/BAIS/Frontend
+            npm ci
+            npm run build
+
+            echo "================================="
+            echo "Building Admin Frontend"
+            echo "================================="
+
+            cd /home/ubuntu/INSZoom/INSZoom/frontend
+            npm ci
+            npm run build
+
+            echo "================================="
+            echo "Deploying Backend"
+            echo "================================="
+
+            cd /home/ubuntu/INSZoom/Backend
+            npm ci
+            pm2 restart inszoom-backend
+
+            echo "================================="
+            echo "Deployment completed"
+            echo "================================="
