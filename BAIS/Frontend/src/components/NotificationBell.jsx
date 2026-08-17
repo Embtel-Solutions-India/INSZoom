@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { notificationsApi } from "../services/api";
-import { onForegroundMessage } from "../services/notificationService";
+import { onForegroundMessage, requestPermissionAndGetToken } from "../services/notificationService";
 
 const TYPE_STYLES = {
   case: "bg-blue-100 text-blue-700",
@@ -30,7 +30,25 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
+  const [pushPermission, setPushPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+  const [enablingPush, setEnablingPush] = useState(false);
   const dropRef = useRef(null);
+
+  // User-driven only — this button click is the ONLY place the browser's
+  // permission prompt fires from; nothing here runs automatically on
+  // mount/login (see notificationService.js's initializeNotifications,
+  // which only silently re-registers an already-granted permission).
+  const enablePush = async () => {
+    setEnablingPush(true);
+    try {
+      await requestPermissionAndGetToken();
+    } finally {
+      setPushPermission(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+      setEnablingPush(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -145,6 +163,19 @@ export default function NotificationBell() {
               </button>
             )}
           </div>
+
+          {pushPermission === "default" && (
+            <div className="px-5 py-3 border-b border-slate-100 bg-emerald-50/60 flex items-center justify-between gap-3">
+              <p className="text-xs text-slate-600 leading-snug">Get notified instantly, even when this tab isn't open.</p>
+              <button
+                onClick={enablePush}
+                disabled={enablingPush}
+                className="shrink-0 text-[0.65rem] font-bold text-white bg-[#1D9E75] hover:bg-[#0F6E56] px-3 py-1.5 rounded-lg uppercase tracking-wide disabled:opacity-60 cursor-pointer"
+              >
+                {enablingPush ? "Enabling…" : "Enable"}
+              </button>
+            </div>
+          )}
 
           <div className="max-h-[400px] overflow-y-auto">
             {items.length === 0 ? (

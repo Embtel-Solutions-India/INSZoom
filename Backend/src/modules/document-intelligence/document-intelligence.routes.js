@@ -4,6 +4,11 @@ const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const upload = require("../uploads/upload.middleware");
 const ctrl = require("./controllers/document-intelligence.controller");
+// Provider registration lives in document-intelligence.service.js, not here —
+// that module (not this routes file) is the actual common dependency of
+// every path that resolves the registry: the HTTP controller above, AND the
+// async queue processor (processors/document-intelligence.processor.js),
+// which requires the service directly and never touches this routes file.
 
 const readerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const uploadRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user"];

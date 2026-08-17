@@ -27,7 +27,13 @@ async function generateStructuredJson(options = {}) {
   return { ...result, __provider: resolved.name };
 }
 
-register("gemini", require("../services/gemini.service"));
+// Gemini OCR has been removed as the document-intelligence provider (Gemini
+// itself is untouched and still used by the general-purpose `ai` module —
+// see modules/ai/ai-provider.registry.js — this registry is document-
+// intelligence-specific). No provider is registered here right now, so
+// resolve()/generateStructuredJson() correctly throw the existing
+// DOCUMENT_PROVIDER_UNAVAILABLE (503) for every classify/extract call until
+// a Google Document AI provider is registered here in a future phase.
 
 module.exports = {
   generateStructuredJson,

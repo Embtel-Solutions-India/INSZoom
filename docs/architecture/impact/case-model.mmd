@@ -1,0 +1,36 @@
+%%{init: {'theme':'dark'}}%%
+%% Change-impact graph: Backend/src/models/Case.js
+%% Case is the highest-centrality model in the schema (127 declared indexes -- more than any
+%% other model by a wide margin -- and the most populate/reference targets found across the audit).
+flowchart TD
+  CASE["Case.js\n(127 declared indexes -- 64/collection is Mongo's hard limit;\ndocumentChecklist/checklistItems duplicated in full;\ntimeline/auditHistory capped in ONE module only)"]
+
+  CASE --> CASE_SVC[case.service.js\n17 populate paths, no ObjectId.isValid guard on lookup]
+  CASE --> CASE_CTRL[case.controller.js\ngetCases/getCase/getDashboardStats/getNeedsAttention/\nsaveAssessment (no canAccessCase)/addUSCISFormReference (no canAccessCase)]
+  CASE --> ORCHESTRATOR[case-lifecycle-orchestrator.service.js\ngenerateForms — idempotent, PASS]
+  CASE --> COLLAB[case-collaboration/services/CollaborationService.js\n+ TimelineService.js — pushes to timeline/auditHistory with NO cap]
+  CASE --> CANONICAL[CanonicalProfileService.js\nrebuild loads+saves its own copy — VersionError risk documented in-code]
+  CASE --> ELIG_SVC[EligibilityEngineService.js — P0 IDOR, no canAccessCase]
+  CASE --> AUTOFILL_SVC[AutoFillService.js — P0 IDOR, no user param]
+  CASE --> WORKFLOW_SVC[workflow.service.js — ensureWorkflowsForEvent, N+1 per trigger]
+  CASE --> IMMIG_LIFECYCLE[immigration-lifecycle/services/ImmigrationTimelineService.js\npushes to timeline with NO cap]
+
+  CASE_SVC --> CLIENT_MODEL[(Client — populated with NO select)]
+  CASE_SVC --> USER_MODEL[(User)]
+  CASE_SVC --> BENEFICIARY_MODEL[(Beneficiary)]
+
+  CASEFORM_MODEL[(CaseForm)] -.->|"caseId ref"| CASE
+  QUESTIONNAIRE_MODEL[(Questionnaire)] -.->|"caseId-scoped responseId hash"| CASE
+  ANSWER_MODEL[(Answer)] -.->|"caseId ref"| CASE
+  DOCUMENT_MODEL[(Document)] -.->|"caseId ref"| CASE
+  PAYMENT_MODEL[(Payment)] -.->|"caseId ref"| CASE
+  NOTIFICATION_MODEL[(Notification)] -.->|"caseId-adjacent"| CASE
+
+  FRONTEND_INSZ["INSZoom: CRMCases.jsx, CRMCaseDetail.jsx,\nDashboard.jsx, USCISForms.jsx"] -.->|"11 distinct HTTP_REQUEST edges traced this session"| CASE_CTRL
+  FRONTEND_BAIS["BAIS: Dashboard.jsx, Documents.jsx,\npostLoginDest.js"] -.->|"casesApi.my/workflow/addons/generateForms"| CASE_CTRL
+
+  SCORE["Blast-radius score (methodology: count of distinct\nservices + controllers + models + frontend pages\nconfirmed touching Case this session):\nServices: 9 | Frontend pages: 7 | Direct model refs: 6+\n=> CRITICAL. Any schema change to Case risks all 9\nservices, both frontends' case-detail/dashboard/forms\nflows, and the already-broken 64-index ceiling."]
+  CASE -.-> SCORE
+
+  classDef critical fill:#7a1f1f,stroke:#ff6b6b,color:#fff
+  class CASE,SCORE critical

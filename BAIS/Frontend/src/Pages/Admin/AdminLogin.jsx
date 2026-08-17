@@ -58,6 +58,7 @@ export default function AdminLogin() {
     } catch (err) {
       setError(err.message || "Invalid credentials. Please check your email and password.");
     } finally {
+      setPassword("");
       setLoading(false);
     }
   };

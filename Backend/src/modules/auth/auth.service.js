@@ -19,7 +19,6 @@ function authPayload(user, accessToken, refreshToken, options = {}) {
     user: userPayload,
     token: accessToken,
     accessToken,
-    refreshToken,
   };
 }
 
@@ -45,7 +44,13 @@ async function issueTokens(user, req, options = {}) {
   const accessToken = tokenService.generateAccessToken(user);
   const refreshToken = tokenService.generateRefreshToken(user);
   await sessionService.createSession(user, refreshToken, req);
-  return authPayload(user, accessToken, refreshToken, options);
+  // authPayload() deliberately omits refreshToken (see auth.security.test.js
+  // — it must never appear in a JSON response body). Callers still need the
+  // real value to set the httpOnly cookie, so it's attached here, on the
+  // object issueTokens() itself returns — every controller that calls this
+  // must strip `refreshToken` back off before res.json()'ing the rest (see
+  // splitRefreshToken() in auth.controller.js).
+  return { ...authPayload(user, accessToken, refreshToken, options), refreshToken };
 }
 
 async function registerClient(payload, req) {

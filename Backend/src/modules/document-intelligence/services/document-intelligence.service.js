@@ -16,6 +16,32 @@ const extractor = require("../extractors/document-extractor.service");
 const analysisRepository = require("../repositories/document-analysis.repository");
 const repository = require("../repositories/document-intelligence.repository");
 const logger = require("../../../utils/logger");
+
+// Registers the Google Document AI provider under the same key
+// DOCUMENT_INTELLIGENCE_PROVIDER=google_document_ai already resolves to.
+// This lives here rather than in document-intelligence.routes.js because
+// THIS module — not the routes file — is the actual shared dependency of
+// every path that resolves the registry: the HTTP controller requires this
+// service directly, and so does the async queue processor
+// (processors/document-intelligence.processor.js), which never touches the
+// routes file at all. Registering only from routes.js meant the queue path
+// happened to work only because Express loads all route files (and
+// therefore that side effect) before the server starts accepting requests —
+// true in the running app, but not for any other consumer (a script, a
+// test, a future worker process) that requires this service without going
+// through the full app bootstrap. This only wires up a function reference —
+// no client is constructed and no network call is made here, so a missing/
+// invalid Google config can't crash startup; it only surfaces (as a
+// controlled 503) the first time an actual classify/extract call resolves
+// this provider.
+try {
+  require("../providers/document-intelligence-provider.registry").register(
+    "google_document_ai",
+    require("../providers/google-document-ai.provider")
+  );
+} catch (error) {
+  logger.error("google_document_ai_provider_registration_failed", { error });
+}
 const { EVIDENCE_CATEGORIES, confidenceBand, normalizeDocumentType } = require("../schemas/document-intelligence.schema");
 const { aggregateConfidence, toFieldExtractions } = require("../validators/extraction.validator");
 const { mappingsFor } = require("../config/field-mapping.registry");

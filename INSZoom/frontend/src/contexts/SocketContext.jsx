@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
+import { getAccessToken } from '../services/api'
 
 const SocketContext = createContext()
 
@@ -31,14 +32,13 @@ export const SocketProvider = ({ children }) => {
     }
 
     const socket = io(SOCKET_URL, {
-      // A function (not a static object) so every reconnection attempt reads
-      // the current token from storage, not just the one captured when this
-      // effect first ran. The axios response interceptor in services/api.js
-      // silently rotates the token into localStorage on a 401 without going
-      // through this context's `token` state — without this, the socket
-      // would keep retrying with a now-invalid token until a full page reload.
-      auth: (callback) => callback({ token: localStorage.getItem('token') || token }),
+      // Read the current in-memory access token on every reconnect.
+      auth: (callback) => callback({ token: getAccessToken() || token }),
       reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 10000,
+      randomizationFactor: 0.5,
     })
     socketRef.current = socket
 

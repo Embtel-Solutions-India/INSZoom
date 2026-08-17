@@ -94,7 +94,7 @@ export default function Login() {
       } else {
         setError("Unable to log in. Please check your credentials and try again.");
       }
-    } finally { setLoading(false); }
+    } finally { setPassword(""); setLoading(false); }
   };
 
   const handleResendInvite = async () => {
@@ -131,8 +131,6 @@ export default function Login() {
       setGoogleLoading(false);
     }
   };
-
-  const handleKey = (e) => { if (e.key === "Enter") handleLogin(); };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#f3f4f6] font-[Inter,system-ui,sans-serif]">
@@ -192,6 +190,7 @@ export default function Login() {
           </div>
 
           {/* Email */}
+          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
           <FieldWrap icon={<MailIcon />}>
             <input
               type="email"
@@ -200,7 +199,6 @@ export default function Login() {
               placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={handleKey}
               autoComplete="email"
               className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
                 border border-slate-200 rounded-xl bg-white outline-none
@@ -218,7 +216,6 @@ export default function Login() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={handleKey}
               autoComplete="current-password"
               className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
                 border border-slate-200 rounded-xl bg-white outline-none
@@ -266,7 +263,7 @@ export default function Login() {
 
           {/* Login button */}
           <button
-            onClick={handleLogin}
+            type="submit"
             disabled={loading || googleLoading}
             className="w-full py-3 mb-3 bg-[#1D9E75] hover:bg-[#0F6E56]
               text-white text-sm font-bold rounded-xl
@@ -275,9 +272,11 @@ export default function Login() {
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
+          </form>
 
           {/* Sign up */}
           <button
+            type="button"
             onClick={() => navigate("/signup")}
             className="w-full py-3 bg-white border border-slate-200 text-slate-700
               text-sm font-semibold rounded-xl hover:bg-slate-50 hover:border-slate-300

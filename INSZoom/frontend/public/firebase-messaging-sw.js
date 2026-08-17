@@ -1,17 +1,28 @@
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-messaging-compat.js");
 
+// Values below are the public Firebase Web config (apiKey/appId/etc are
+// project identifiers, not secrets — see Firebase's own docs) for INSZoom's
+// own Web App registration (a different appId from BAIS's) in the same
+// shared white-cedar-504623-u1 project. A service worker in /public is
+// served as a static file, not run through Vite's env-var pipeline, so
+// these can't be injected from import.meta.env at build time — they're
+// kept in sync with INSZoom/frontend/.env's VITE_FIREBASE_* values by hand.
 firebase.initializeApp({
-  apiKey: "AIzaSyCSHRE5bTfzYvl_WUC-PVAPevSUFDK2jWw",
-  authDomain: "react-oauth-7883c.firebaseapp.com",
-  projectId: "react-oauth-7883c",
-  storageBucket: "react-oauth-7883c.firebasestorage.app",
-  messagingSenderId: "1048148448884",
-  appId: "1:1048148448884:web:731dd818b1ed1046676321",
+  apiKey: "AIzaSyBgLRH9QGJaQfKyLdPG1hp6bKwDcMqPsIU",
+  authDomain: "white-cedar-504623-u1.firebaseapp.com",
+  projectId: "white-cedar-504623-u1",
+  storageBucket: "white-cedar-504623-u1.firebasestorage.app",
+  messagingSenderId: "839144138598",
+  appId: "1:839144138598:web:6c21c955aff3aa003acaa7",
 });
 
 const messaging = firebase.messaging();
 
+// Fires only when no INSZoom tab is focused (foreground messages are
+// handled in-app instead — see notificationService.js's
+// onForegroundMessage, used by NotificationContext.jsx — so the same
+// notification is never shown twice).
 messaging.onBackgroundMessage((payload) => {
   const link = payload.data?.link || payload.fcmOptions?.link || "/";
   self.registration.showNotification(payload.notification?.title || "New notification", {
@@ -21,9 +32,6 @@ messaging.onBackgroundMessage((payload) => {
   });
 });
 
-// Clicking the OS-level notification focuses an already-open app tab if one
-// exists, otherwise opens a new one — then navigates to the notification's
-// actionUrl either way.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const link = event.notification.data?.link || "/";

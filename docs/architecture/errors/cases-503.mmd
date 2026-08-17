@@ -1,0 +1,42 @@
+%%{init: {'theme':'dark'}}%%
+%% CONFIRMED_RUNTIME this session: GET /api/cases and GET /api/cases/dashboard/team-lead both
+%% reproduced at 503 after ~30.2s. Forward path traced AND reverse-impact (auth) path checked and
+%% ruled out -- both shown so the diagram proves the elimination, not just the conclusion.
+sequenceDiagram
+    participant FE as INSZoom Dashboard.jsx:998 /<br/>CRMCases.jsx:104
+    participant RTR as case.routes.js:16-17
+    participant AUTH as authenticate.js
+    participant CTRL as case.controller.js<br/>getCases / getDashboardStats
+    participant SVC as case.service.js
+    participant POOL as Mongoose connection pool<br/>(maxPoolSize=50)
+    participant DB as MongoDB Atlas
+
+    FE->>RTR: GET /api/cases?page=1&limit=20<br/>GET /api/cases/dashboard/team-lead
+    RTR->>AUTH: authenticate(req)
+
+    rect rgb(40, 40, 40)
+    Note over AUTH,DB: REVERSE-IMPACT CHECK (ruled out):<br/>if the DB died HERE, authenticate.js:34-39<br/>catches it locally and ALWAYS returns 401 --<br/>never 503. A 503 response proves the auth<br/>lookup was NOT where this failed.
+    AUTH->>DB: User.findById (cache-aside, Redis unset -> live read)
+    DB-->>AUTH: user doc (healthy, ~50ms)
+    end
+
+    AUTH->>CTRL: permission granted, proceed
+    CTRL->>SVC: resolveCaseSearchFilter / buildCaseSort
+    SVC->>CTRL: filter + sort ready (0ms, in-memory)
+    CTRL->>POOL: Promise.all([Case.countDocuments, Case.collection.aggregate])<br/>+ 12-17 populate paths (case.service.js:33-46, :407-427)
+    POOL->>DB: checkout connection
+
+    rect rgb(60, 20, 20)
+    Note over POOL,DB: CONFIRMED_RUNTIME: connection was silently dead.<br/>Server log: mongodb_connection_closed reason:"error"<br/>(NOT "idle"/"poolClosed") fired immediately before failure.
+    DB--xPOOL: socketTimeoutMS=15000ms elapses, no response
+    POOL->>DB: retryReads default: ONE automatic retry
+    DB--xPOOL: 2nd attempt also stalls, 15000ms elapses
+    Note over POOL,CTRL: 15000 x 2 = 30,000ms --<br/>measured: 30,220ms and 30,159ms
+    POOL-->>SVC: MongoNetworkTimeoutError
+    end
+
+    SVC-->>CTRL: propagate error
+    CTRL-->>RTR: errorHandler.js:11-30<br/>isDatabaseUnavailableError() MATCHES<br/>(exact error-name allowlist, correctly classified)
+    RTR-->>FE: 503 { errorCode: "DATABASE_UNAVAILABLE" }<br/>"database is temporarily unavailable"
+
+    Note over FE,DB: RULED OUT as a cause: MongoDB itself.<br/>Direct probe same session: connect 673ms, ping 50ms,<br/>93 cases total. Contributing factor: 12-17 populate<br/>paths per request = 12-17x the exposure to hitting<br/>ONE dead connection, vs. a single-query endpoint's 1x.

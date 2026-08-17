@@ -79,30 +79,15 @@ export const NotificationProvider = ({ children }) => {
       const response = await api.get('/messages/unread-count')
       setUnreadMessageCount(normalizeCountResponse(response.data))
     } catch (error) {
-      try {
-        const response = await api.get('/messages', { params: { isRead: false } })
-        const messages = Array.isArray(response.data?.messages)
-          ? response.data.messages
-          : Array.isArray(response.data)
-            ? response.data
-            : []
-        const currentUserId = user?._id || user?.id
-        const unread = messages.filter((m) => {
-          const sentByMe = (m.senderId?._id || m.senderId) === currentUserId
-          const readByMe = (m.readBy || []).some(
-            (r) => (r.userId?._id || r.userId) === currentUserId
-          )
-          return !sentByMe && !readByMe
-        })
-        setUnreadMessageCount(unread.length)
-      } catch (fallbackError) {
-        logFetchError('Unable to fetch unread message count', fallbackError)
-        setUnreadMessageCount((current) => Number.isFinite(Number(current)) ? current : 0)
-      }
+      // Never replace a bounded count request with a full message listing.
+      // That fallback amplified transient pool pressure into another large
+      // query on every authenticated page and every polling tick.
+      logFetchError('Unable to fetch unread message count', error)
+      setUnreadMessageCount((current) => Number.isFinite(Number(current)) ? current : 0)
     } finally {
       inFlightRef.current.unreadMessages = false
     }
-  }, [token, user])
+  }, [token])
 
   const markAsRead = useCallback(async (notificationId) => {
     try {
@@ -141,14 +126,12 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     if (!token) return
 
-    fetchNotifications()
     fetchUnreadCount()
     fetchUnreadMessageCount()
 
     // Poll notifications + unread count every 30 seconds to keep the bell live
     const interval = setInterval(() => {
       if (document.visibilityState === 'hidden') return
-      fetchNotifications()
       fetchUnreadCount()
     }, 30000) // poll every 30 seconds
 

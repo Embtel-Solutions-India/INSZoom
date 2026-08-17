@@ -116,6 +116,7 @@ export default function AcceptInvite() {
               {invite?.name ? `Welcome, ${invite.name}. ` : ""}Set a password for <span className="font-semibold text-slate-700">{invite?.email}</span> to activate your account and get started.
             </p>
 
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <Field icon={<LockIcon />} type="password" name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             <Field icon={<LockIcon />} type="password" name="confirmPassword" placeholder="Confirm Password"
@@ -127,11 +128,12 @@ export default function AcceptInvite() {
               </div>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting}
+            <button type="submit" disabled={submitting}
               className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {submitting ? "Activating…" : "Activate Account"}
             </button>
+            </form>
           </>
         )}
       </div>

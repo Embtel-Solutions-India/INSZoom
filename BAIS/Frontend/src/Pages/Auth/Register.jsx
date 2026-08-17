@@ -307,6 +307,7 @@ export default function Register() {
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">Create your account</h1>
             <p className="text-sm text-slate-500 mb-6">Join thousands of clients on their Bay Area immigration journey</p>
 
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             {/* Name + Phone row — stacks on very small screens */}
             <div className="flex flex-col sm:flex-row gap-0 sm:gap-4">
               <div className="flex-1">
@@ -361,7 +362,7 @@ export default function Register() {
             </div>
 
             {/* Google */}
-            <button onClick={handleGoogle} disabled={loading || googleLoading}
+            <button type="button" onClick={handleGoogle} disabled={loading || googleLoading}
               className="flex items-center justify-center gap-2.5 w-full py-3 mb-3
                 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700
                 hover:bg-slate-50 hover:border-slate-300 hover:shadow-md
@@ -375,13 +376,14 @@ export default function Register() {
             </button>
 
             {/* Submit */}
-            <button onClick={handleSubmit} disabled={loading || googleLoading}
+            <button type="submit" disabled={loading || googleLoading}
               className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56]
                 text-white text-sm font-bold rounded-xl
                 shadow-sm shadow-emerald-200 hover:shadow-md
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {loading ? "Creating account…" : "Create Account"}
             </button>
+            </form>
 
             {/* Invited-but-passwordless employee tried to sign up with their
                 invited email — guide them to activation instead of a dead
@@ -414,7 +416,7 @@ export default function Register() {
             )}
 
             {/* Login redirect */}
-            <button onClick={() => navigate("/login")}
+            <button type="button" onClick={() => navigate("/login")}
               className="w-full py-3 bg-white border border-slate-200 text-slate-700
                 text-sm font-semibold rounded-xl hover:bg-slate-50 hover:border-slate-300
                 transition-all duration-200 cursor-pointer">

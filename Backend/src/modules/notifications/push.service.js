@@ -1,78 +1,91 @@
-const { getFirebaseAdmin } = require("../auth/firebase.service");
+// Firebase Cloud Messaging delivery. This is the ONLY place that talks to a
+// push delivery provider — other business modules (cases, documents,
+// payments, ...) must never import this directly; they go through
+// notification.service.js's createNotification(), which calls sendToUser()
+// for the "push" channel (see dispatchPushChannel there — the one call site
+// into this module).
+const firebaseAdmin = require("../../config/firebase-admin");
 const deviceTokenService = require("./device-token.service");
 
-// Error codes Firebase Admin returns for a token that will never succeed
-// again (uninstalled app, revoked permission, stale registration) — these
-// are the ones we auto-clean, per "remove invalid tokens automatically".
-// Anything else (rate limits, transient network errors) is left alone so a
-// temporary blip doesn't wipe out a still-good token.
+const PUSH_NOT_CONFIGURED = "Push notifications are temporarily unavailable (delivery provider not configured)";
+
 const DEAD_TOKEN_CODES = new Set([
   "messaging/registration-token-not-registered",
   "messaging/invalid-registration-token",
   "messaging/invalid-argument",
 ]);
 
+function stringifyDataValues(data = {}) {
+  // FCM's `data` payload requires every value to be a string.
+  const entries = Object.entries(data).filter(([, value]) => value !== undefined && value !== null);
+  return Object.fromEntries(entries.map(([key, value]) => [key, String(value)]));
+}
+
 function buildMessage(payload = {}) {
-  const { title, body, link, data = {} } = payload;
   return {
-    notification: { title, body },
-    data: Object.fromEntries(Object.entries({ ...data, link }).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])),
-    webpush: link ? { fcmOptions: { link } } : undefined,
+    notification: { title: payload.title, body: payload.body },
+    // `link` goes into `data` (not just webpush.fcmOptions below) because
+    // the foreground handler (onMessage, consumed by NotificationBell.jsx's
+    // onForegroundMessage) and the service worker's onBackgroundMessage both
+    // read payload.data.link to reconstruct/route the notification —
+    // fcmOptions.link is only the browser's native default-click target for
+    // when no notificationclick handler runs.
+    data: stringifyDataValues({ ...payload.data, link: payload.link }),
+    ...(payload.link ? { webpush: { fcmOptions: { link: payload.link } } } : {}),
   };
 }
 
-// This module is the ONLY place that talks to admin.messaging() — other
-// business modules (cases, documents, payments, ...) must never import it
-// directly; they go through notification.service.js's createNotification(),
-// which calls sendToUser() for the "push" channel.
+async function deactivateDeadTokens(tokens, errorCodes) {
+  await Promise.all(
+    tokens
+      .filter((_, index) => DEAD_TOKEN_CODES.has(errorCodes[index]))
+      .map((token) => deviceTokenService.deactivateToken(token).catch(() => null))
+  );
+}
 
-async function sendToToken(token, payload) {
+async function sendToToken(token, payload = {}) {
   if (!token) return { sent: false, error: "No token provided" };
+  if (!firebaseAdmin.isConfigured()) return { sent: false, skipped: PUSH_NOT_CONFIGURED };
   try {
-    const admin = getFirebaseAdmin();
-    const messageId = await admin.messaging().send({ token, ...buildMessage(payload) });
-    return { sent: true, messageId };
+    const messaging = firebaseAdmin.getMessaging();
+    await messaging.send({ token, ...buildMessage(payload) });
+    return { sent: true };
   } catch (error) {
-    if (DEAD_TOKEN_CODES.has(error.code)) {
-      await deviceTokenService.deactivateToken(token).catch(() => {});
-    }
+    if (DEAD_TOKEN_CODES.has(error.code)) await deviceTokenService.deactivateToken(token).catch(() => null);
     return { sent: false, error: error.message, code: error.code };
   }
 }
 
-async function sendMulticast(tokens, payload) {
+async function sendMulticast(tokens, payload = {}) {
   const validTokens = [...new Set((tokens || []).filter(Boolean))];
   if (!validTokens.length) return { successCount: 0, failureCount: 0, responses: [] };
+  if (!firebaseAdmin.isConfigured()) return { successCount: 0, failureCount: validTokens.length, skipped: PUSH_NOT_CONFIGURED };
   try {
-    const admin = getFirebaseAdmin();
-    const result = await admin.messaging().sendEachForMulticast({ tokens: validTokens, ...buildMessage(payload) });
-    await Promise.all(
-      result.responses.map((response, index) => {
-        if (!response.success && DEAD_TOKEN_CODES.has(response.error?.code)) {
-          return deviceTokenService.deactivateToken(validTokens[index]).catch(() => {});
-        }
-        return null;
-      })
+    const messaging = firebaseAdmin.getMessaging();
+    const response = await messaging.sendEachForMulticast({ tokens: validTokens, ...buildMessage(payload) });
+    await deactivateDeadTokens(
+      validTokens,
+      response.responses.map((entry) => (entry.success ? null : entry.error?.code))
     );
-    return result;
+    return { successCount: response.successCount, failureCount: response.failureCount, responses: response.responses };
   } catch (error) {
     return { successCount: 0, failureCount: validTokens.length, error: error.message };
   }
 }
 
-async function sendToUser(userId, payload) {
+async function sendToUser(userId, payload = {}) {
   if (!userId) return { successCount: 0, failureCount: 0, skipped: "No userId" };
-  const tokens = (await deviceTokenService.tokensForUser(userId)).map((doc) => doc.token);
-  if (!tokens.length) return { successCount: 0, failureCount: 0, skipped: "No registered devices" };
-  return sendMulticast(tokens, payload);
+  if (!firebaseAdmin.isConfigured()) return { successCount: 0, failureCount: 0, skipped: PUSH_NOT_CONFIGURED };
+  const tokens = await deviceTokenService.tokensForUser(userId);
+  return sendMulticast(tokens.map((entry) => entry.token), payload);
 }
 
-async function sendToUsers(userIds, payload) {
+async function sendToUsers(userIds, payload = {}) {
   const uniqueIds = [...new Set((userIds || []).filter(Boolean).map(String))];
   if (!uniqueIds.length) return { successCount: 0, failureCount: 0, skipped: "No userIds" };
-  const tokens = (await deviceTokenService.tokensForUsers(uniqueIds)).map((doc) => doc.token);
-  if (!tokens.length) return { successCount: 0, failureCount: 0, skipped: "No registered devices" };
-  return sendMulticast(tokens, payload);
+  if (!firebaseAdmin.isConfigured()) return { successCount: 0, failureCount: 0, skipped: PUSH_NOT_CONFIGURED };
+  const tokenDocs = await deviceTokenService.tokensForUsers(uniqueIds);
+  return sendMulticast(tokenDocs.map((entry) => entry.token), payload);
 }
 
 module.exports = { sendToToken, sendMulticast, sendToUser, sendToUsers };
