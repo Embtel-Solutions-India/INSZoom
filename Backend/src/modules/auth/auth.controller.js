@@ -133,6 +133,37 @@ function googleStateCookieOptions() {
   };
 }
 
+// Last line of defense: env.js's production boot guard is supposed to make
+// an unsafe clientUrl unreachable whenever NODE_ENV is genuinely
+// "production" (it throws at startup otherwise), and oauthRedirectUri has
+// no localhost fallback in production either — but if NODE_ENV is
+// misreported to the live process, or a future change weakens either
+// guard, this stops the OAuth flow from ever redirecting a browser to
+// env.clientUrl, or sending env.google.oauthRedirectUri to Google, anyway.
+// Only reachable via googleOAuthStart/googleOAuthCallback below — nothing
+// past this point may redirect using either value unless this returns true.
+function ensureSafeOAuthConfig(res) {
+  if (env.nodeEnv === "production" && (!env.clientUrlSafe || !env.google.oauthRedirectUriSafe)) {
+    logger.fatal("google_oauth_unsafe_config_blocked", {
+      nodeEnv: env.nodeEnv,
+      clientUrl: env.clientUrl,
+      clientUrlSafe: env.clientUrlSafe,
+      oauthRedirectUri: env.google.oauthRedirectUri,
+      oauthRedirectUriSafe: env.google.oauthRedirectUriSafe,
+    });
+    res.status(503).json({
+      success: false,
+      message: "Sign-in is temporarily unavailable. Please try again shortly or contact support.",
+      code: "CLIENT_URL_MISCONFIGURED",
+    });
+    return false;
+  }
+  return true;
+}
+
+// Only reachable once ensureSafeOAuthConfig has confirmed env.clientUrl is
+// safe to redirect a browser to (see its call sites in googleOAuthStart/
+// googleOAuthCallback below).
 function googleCallbackRedirectUrl(params) {
   const url = new URL("/auth/callback", env.clientUrl);
   Object.entries(params).forEach(([key, value]) => {
@@ -142,6 +173,7 @@ function googleCallbackRedirectUrl(params) {
 }
 
 function googleOAuthStart(req, res) {
+  if (!ensureSafeOAuthConfig(res)) return;
   if (!googleOAuthService.isConfigured()) {
     logger.warn("google_oauth_start_not_configured", {});
     return res.redirect(googleCallbackRedirectUrl({ error: "google_not_configured" }));
@@ -158,6 +190,7 @@ function googleOAuthStart(req, res) {
 }
 
 async function googleOAuthCallback(req, res) {
+  if (!ensureSafeOAuthConfig(res)) return;
   const expectedState = req.cookies?.[GOOGLE_STATE_COOKIE];
   res.clearCookie(GOOGLE_STATE_COOKIE, googleStateCookieOptions());
   try {
