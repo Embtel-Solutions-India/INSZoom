@@ -1,0 +1,112 @@
+%%{init: {'theme':'dark'}}%%
+%% Full-system structural graph -- concrete modules from this session's audit, not conceptual boxes.
+%% Red = confirmed P0/P1 defect. Blue = confirmed live (runtime) evidence this session.
+flowchart TD
+
+  subgraph PORTALS["Frontends"]
+    direction LR
+    subgraph INSZ["INSZoom -- Admin Portal"]
+      direction TB
+      IZ_LOGIN[Login.jsx]
+      IZ_DASH["Dashboard.jsx<br/>GET /cases/dashboard/team-lead"]
+      IZ_CASES["CRMCases.jsx<br/>GET /cases (unvalidated URL params)"]
+      IZ_CASEDETAIL[CRMCaseDetail.jsx]
+      IZ_FORMS["USCISForms.jsx +<br/>USCISFormRenderer.jsx"]
+    end
+    subgraph BAIS["BAIS -- Client Portal"]
+      direction TB
+      B_LOGIN[Login.jsx]
+      B_DASH[Dashboard.jsx]
+      B_DOCS["Documents.jsx<br/>(questionnaire + checklist + OCR)"]
+      B_REVIEW["DocumentReview.jsx<br/>(staff-only OCR queue)"]
+    end
+  end
+
+  APIROUTER["Express Router<br/>routes/index.js -- 29 mounts, 350 routes"]
+  PORTALS -->|"fetch (25s timeout) / axios (120s timeout)"| APIROUTER
+
+  APIROUTER --> AUTHMW["authenticate.js<br/>JWT verify + User.findById"]
+  AUTHMW --> RBACMW["authorizePermissions.js /<br/>authorizeRoles.js"]
+
+  subgraph CONTROLLERS["Controllers"]
+    direction LR
+    C_AUTH[auth.controller.js]
+    C_CASE[case.controller.js]
+    C_COLLAB[CollaborationController.js]
+    C_FORMS["uscis-form.controller.js +<br/>FormGenerationController.js"]
+    C_AUTOFILL["AutoFillController.js<br/>(no user param -- P0 IDOR)"]
+    C_ELIG["EligibilityController.js<br/>(no canAccessCase -- P0 IDOR)"]
+    C_DI[document-intelligence.controller.js]
+    C_PAY[payment.controller.js]
+    C_QUEST[questionnaire.controller.js]
+  end
+  RBACMW --> CONTROLLERS
+
+  subgraph SERVICES["Services"]
+    direction LR
+    S_AUTH["auth.service.js +<br/>session.service.js"]
+    S_CASE["case.service.js<br/>(12-17 populate paths/req)"]
+    S_ORCH[case-lifecycle-orchestrator.service.js]
+    S_FORMS["uscis-form.service.js +<br/>interactive-form-review.service.js"]
+    S_PDF["PDFGenerationService.js -&gt;<br/>PDFRenderer.js -&gt; PDFFieldMapper.js"]
+    S_AUTOFILL["AutoFillService.js<br/>(P0 IDOR)"]
+    S_ELIG["EligibilityEngineService.js<br/>(P0 IDOR)"]
+    S_FILING["FilingPackageService.js<br/>(P0 IDOR -- missing requireCaseFormAccess)"]
+    S_DI[document-intelligence.service.js]
+    S_CANON["CanonicalMergeService.js +<br/>CanonicalProfileService.js"]
+    S_PAY["payment.service.js +<br/>payment.gateway.js"]
+    S_QUEST[questionnaire.service.js]
+    S_NOTIF[notification.service.js]
+    S_WORKFLOW[workflow.service.js]
+  end
+  CONTROLLERS --> SERVICES
+
+  subgraph ASYNC["Background jobs / queues"]
+    direction LR
+    Q_DI["document-intelligence.queue.js<br/>(startRecovery, post-listen only -- PASS)"]
+    Q_JOBS["7x withJobLock jobs:<br/>workflow/notification/appointment/<br/>payment/reminder/AI/EOD maintenance"]
+    Q_USCIS["USCISMonitoringJob<br/>(NOT wrapped in withJobLock)"]
+  end
+  SERVICES --> ASYNC
+
+  subgraph EXTERNAL["External integrations"]
+    direction LR
+    E_GEMINI["Gemini<br/>(no fetch timeout)"]
+    E_STRIPE["Stripe<br/>(explicit timeout + retries -- best hardened)"]
+    E_FIREBASE["Firebase Admin<br/>(partial-config -&gt; ambiguous 401)"]
+    E_USCIS["USCIS.gov scanner<br/>(hostname-allowlisted, background only)"]
+    E_DRIVE["Google Drive<br/>(unconfigured -&gt; typed no-op)"]
+  end
+  S_DI --> E_GEMINI
+  S_PAY --> E_STRIPE
+  S_AUTH --> E_FIREBASE
+  Q_USCIS --> E_USCIS
+  S_DI --> E_DRIVE
+
+  subgraph STORAGE["File storage"]
+    STORE_LOCAL["storage.service.js<br/>local filesystem ONLY<br/>(S3 creds set but dead code)"]
+  end
+  S_PDF --> STORAGE
+  S_DI --> STORAGE
+
+  subgraph MONGO["MongoDB Atlas -- cluster0.eqpju6f (shared/free tier)"]
+    direction LR
+    DB_CASE[("cases<br/>127 declared indexes,<br/>64/collection is the hard limit")]
+    DB_USER[("users")]
+    DB_SESSION[("authsessions<br/>default __v, no lock -- P1 race")]
+    DB_CASEFORM[("caseforms<br/>versions[] uncapped")]
+    DB_TEMPLATE[("uscisformtemplates<br/>~16MB/doc, 7 live rows")]
+    DB_Q[("questionnaires / answers")]
+    DB_DOC[("documents / documentextractions")]
+    DB_PAY[("payments")]
+    DB_NOTIF[("notifications")]
+    DB_LOCK[("joblocks")]
+  end
+  SERVICES --> MONGO
+
+  classDef p0 fill:#7a1f1f,stroke:#ff6b6b,color:#fff
+  classDef runtime fill:#1f4d7a,stroke:#6bb3ff,color:#fff
+  classDef good fill:#1f4d2f,stroke:#6bff8f,color:#fff
+  class C_AUTOFILL,C_ELIG,S_AUTOFILL,S_ELIG,S_FILING,DB_CASE p0
+  class IZ_DASH,IZ_CASES,DB_SESSION runtime
+  class E_STRIPE good

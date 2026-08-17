@@ -140,8 +140,10 @@ function startEodReportMaintenance() {
 
 connectDB()
   .then(() => {
-    questionnaireService.ensureDefaultVisaTemplates(undefined, undefined, { force: process.env.SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP === "true" })
-      .catch((error) => logger.error("questionnaire_template_initialization_failed", { error }));
+    if (process.env.SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP === "true") {
+      questionnaireService.ensureDefaultVisaTemplates(undefined, undefined, { force: true })
+        .catch((error) => logger.error("questionnaire_template_initialization_failed", { error }));
+    }
     const seedI129 = require("./modules/uscis-form-import/seeds/i129.seed");
     const seedI129F = require("./modules/uscis-form-import/seeds/i129f.seed");
     const seedI130 = require("./modules/uscis-form-import/seeds/i130.seed");
@@ -169,7 +171,9 @@ connectDB()
         }
       }
     };
-    scheduleInitialRun(runUscisSeeds, Number(process.env.USCIS_TEMPLATE_SEED_INITIAL_DELAY_MS || 5 * 1000));
+    if (process.env.USCIS_TEMPLATE_SEED_ON_STARTUP === "true") {
+      scheduleInitialRun(runUscisSeeds, Number(process.env.USCIS_TEMPLATE_SEED_INITIAL_DELAY_MS || 5 * 1000));
+    }
     const server = http.createServer(app);
     realtimeGateway.init(server, { origins: env.clientOrigins });
     const workflowMaintenance = startWorkflowMaintenance();

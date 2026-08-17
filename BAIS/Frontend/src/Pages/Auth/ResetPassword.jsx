@@ -113,6 +113,7 @@ export default function ResetPassword() {
             <h1 className="text-xl font-bold text-slate-900 mb-1">Set a new password</h1>
             <p className="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
 
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <Field icon={<LockIcon />} type="password" name="newPassword" placeholder="New password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             <Field icon={<LockIcon />} type="password" name="confirmNewPassword" placeholder="Confirm new password"
@@ -124,11 +125,12 @@ export default function ResetPassword() {
               </div>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting}
+            <button type="submit" disabled={submitting}
               className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {submitting ? "Resetting…" : "Reset Password"}
             </button>
+            </form>
           </>
         )}
       </div>

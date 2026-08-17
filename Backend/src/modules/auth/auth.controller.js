@@ -1,10 +1,11 @@
+const crypto = require("crypto");
 const authService = require("./auth.service");
 const sessionService = require("./session.service");
 const passwordResetService = require("./passwordReset.service");
 const emailVerificationService = require("./emailVerification.service");
 const employeeInviteService = require("./employeeInvite.service");
 const clientInviteService = require("./clientInvite.service");
-const firebaseService = require("./firebase.service");
+const googleOAuthService = require("./google-oauth.service");
 const emailService = require("../email/email.service");
 const env = require("../../config/env");
 const logger = require("../../utils/logger");
@@ -48,12 +49,23 @@ function clearRefreshCookie(res) {
   res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions());
 }
 
+// issueTokens()/refresh() attach the real refresh token onto their returned
+// object so the cookie can actually be set — but it must never reach the
+// client in the response body (see auth.security.test.js). Every call site
+// that both sets the cookie AND res.json()'s the rest of the result goes
+// through this so the token is never accidentally spread into a response.
+function splitRefreshToken(result) {
+  const { refreshToken, ...responseBody } = result;
+  return { refreshToken, responseBody };
+}
+
 async function register(req, res, next) {
   try {
     const result = await authService.registerClient(req.body, req);
     res.locals.authUserId = result.user?._id;
-    setRefreshCookie(res, result.refreshToken);
-    res.status(201).json(result);
+    const { refreshToken, responseBody } = splitRefreshToken(result);
+    setRefreshCookie(res, refreshToken);
+    res.status(201).json(responseBody);
   } catch (error) {
     next(error);
   }
@@ -73,23 +85,114 @@ async function login(req, res, next) {
   try {
     const result = await authService.login(req.body.email, req.body.password, req);
     res.locals.authUserId = result.user?._id;
-    setRefreshCookie(res, result.refreshToken);
-    res.json(result);
+    const { refreshToken, responseBody } = splitRefreshToken(result);
+    setRefreshCookie(res, refreshToken);
+    res.json(responseBody);
   } catch (error) {
     next(error);
   }
 }
 
+// Firebase-based Google ID-token verification was removed (Firebase Auth is
+// no longer part of this app). This endpoint is kept — same route, same
+// request contract ({ idToken }) — so the frontend's "Continue with Google"
+// button still has a real backend to call rather than a 404, but it cannot
+// complete sign-in until a replacement verifier (Google Identity Services +
+// google-auth-library, verifying against GOOGLE_OAUTH_CLIENT_ID) is wired up
+// in a future phase. authService.loginWithVerifiedIdentity(identity, req) is
+// unaffected and ready to receive whatever verified identity that future
+// verifier produces — it was never Firebase-specific.
 async function googleToken(req, res, next) {
   try {
-    if (!req.body.idToken) return res.status(400).json({ success: false, message: "Firebase ID token required" });
-    const identity = await firebaseService.verifyIdToken(req.body.idToken);
-    const result = await authService.loginWithVerifiedIdentity(identity, req);
-    res.locals.authUserId = result.user?._id;
-    setRefreshCookie(res, result.refreshToken);
-    res.json(result);
+    if (!req.body.idToken) return res.status(400).json({ success: false, message: "Google ID token required" });
+    const error = new Error("Google sign-in is temporarily unavailable. Please use email login.");
+    error.status = 503;
+    error.code = "GOOGLE_AUTH_NOT_CONFIGURED";
+    throw error;
   } catch (error) {
     next(error);
+  }
+}
+
+// ── Google OAuth (authorization-code redirect flow) ─────────────────────
+// GOOGLE_CLIENT_ID/SECRET stay backend-only throughout this flow: the
+// browser only ever sees the Google-hosted consent screen and this app's
+// own /auth/callback query params (accessToken/userId/email/displayName/
+// role — the exact contract OAuthCallback.jsx already parses). The
+// short-lived state cookie below is CSRF protection for the callback, not a
+// session token, and is cleared as soon as it's checked.
+const GOOGLE_STATE_COOKIE = "google_oauth_state";
+const GOOGLE_STATE_COOKIE_PATH = "/api/auth/google";
+
+function googleStateCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: env.nodeEnv === "production",
+    sameSite: "lax",
+    path: GOOGLE_STATE_COOKIE_PATH,
+  };
+}
+
+function googleCallbackRedirectUrl(params) {
+  const url = new URL("/auth/callback", env.clientUrl);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  });
+  return url.toString();
+}
+
+function googleOAuthStart(req, res) {
+  if (!googleOAuthService.isConfigured()) {
+    logger.warn("google_oauth_start_not_configured", {});
+    return res.redirect(googleCallbackRedirectUrl({ error: "google_not_configured" }));
+  }
+  try {
+    const state = crypto.randomBytes(24).toString("hex");
+    res.cookie(GOOGLE_STATE_COOKIE, state, { ...googleStateCookieOptions(), maxAge: 5 * 60 * 1000 });
+    const authUrl = googleOAuthService.buildAuthUrl(state);
+    res.redirect(authUrl);
+  } catch (error) {
+    logger.error("google_oauth_start_failed", { error });
+    res.redirect(googleCallbackRedirectUrl({ error: "google_not_configured" }));
+  }
+}
+
+async function googleOAuthCallback(req, res) {
+  const expectedState = req.cookies?.[GOOGLE_STATE_COOKIE];
+  res.clearCookie(GOOGLE_STATE_COOKIE, googleStateCookieOptions());
+  try {
+    // A user who clicks "Cancel"/denies consent on Google's own screen comes
+    // back here with ?error=access_denied rather than a code — not a server
+    // failure, just an abandoned login.
+    if (req.query.error) {
+      return res.redirect(googleCallbackRedirectUrl({ error: "google_cancelled" }));
+    }
+    const { code, state } = req.query;
+    if (!code || !state || !expectedState || state !== expectedState) {
+      return res.redirect(googleCallbackRedirectUrl({ error: "invalid_state" }));
+    }
+    const identity = await googleOAuthService.exchangeCodeForIdentity(code);
+    const result = await authService.loginWithVerifiedIdentity(identity, req);
+    res.locals.authUserId = result.user?._id;
+    res.locals.authUserRole = result.user?.role;
+    setRefreshCookie(res, result.refreshToken);
+    res.redirect(
+      googleCallbackRedirectUrl({
+        accessToken: result.accessToken,
+        userId: result.user?._id,
+        email: result.user?.email,
+        displayName: result.user?.displayName || result.user?.name,
+        role: result.user?.role,
+      })
+    );
+  } catch (error) {
+    // Never let a Google/network failure here reach the default Express
+    // error handler (which would render a JSON 500 page instead of landing
+    // the browser back on the app) — always resolve to a redirect, and
+    // never include error.message (could echo back provider details) in
+    // the query string the browser ends up with.
+    logger.error("google_oauth_callback_failed", { error, code: error.code });
+    res.redirect(googleCallbackRedirectUrl({ error: "google_auth_failed" }));
   }
 }
 
@@ -99,8 +202,9 @@ async function refresh(req, res, next) {
     const incomingRefreshToken = req.body.refreshToken || req.cookies?.[REFRESH_COOKIE_NAME];
     if (!incomingRefreshToken) return res.status(401).json({ success: false, message: "Refresh token required" });
     const result = await authService.refresh(incomingRefreshToken, req);
-    setRefreshCookie(res, result.refreshToken);
-    res.json(result);
+    const { refreshToken, responseBody } = splitRefreshToken(result);
+    setRefreshCookie(res, refreshToken);
+    res.json(responseBody);
   } catch (error) {
     next(error);
   }
@@ -273,8 +377,9 @@ async function acceptInvite(req, res, next) {
     if (!user) return res.status(400).json({ success: false, message: "Invalid or expired invitation link" });
     const result = await authService.issueTokens(user, req, { message: "Account activated successfully" });
     res.locals.authUserId = user._id;
-    setRefreshCookie(res, result.refreshToken);
-    res.json(result);
+    const { refreshToken, responseBody } = splitRefreshToken(result);
+    setRefreshCookie(res, refreshToken);
+    res.json(responseBody);
   } catch (error) {
     next(error);
   }
@@ -284,6 +389,8 @@ module.exports = {
   register,
   registerStaff,
   googleToken,
+  googleOAuthStart,
+  googleOAuthCallback,
   login,
   refresh,
   logout,

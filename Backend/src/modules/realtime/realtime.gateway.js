@@ -9,6 +9,10 @@ const onlineUsers = new Map();
 function init(httpServer, options = {}) {
   const { Server } = require("socket.io");
   const User = require("../../models/User");
+  const Case = require("../../models/Case");
+  const Conversation = require("../../models/Conversation");
+  const mongoose = require("mongoose");
+  const caseService = require("../cases/case.service");
   const { verifyAccessToken } = require("../auth/token.service");
   io = new Server(httpServer, {
     cors: {
@@ -57,11 +61,27 @@ function init(httpServer, options = {}) {
     socket.on("role:join", () => {
       if (role) socket.join(`role:${role}`);
     });
-    socket.on("conversation:join", (conversationId) => {
-      if (conversationId) socket.join(`conversation:${conversationId}`);
+    socket.on("conversation:join", async (conversationId, callback) => {
+      try {
+        if (!mongoose.Types.ObjectId.isValid(conversationId)) throw new Error("Invalid conversation");
+        const conversation = await Conversation.findById(conversationId).select("_id caseId participants type deletedAt").lean();
+        if (!conversation || conversation.deletedAt) throw new Error("Conversation not found");
+        const currentUser = socket.data.user;
+        const isParticipant = (conversation.participants || []).some((participant) => participant.user?.toString() === currentUser._id.toString());
+        let allowed = isParticipant;
+        if (conversation.caseId) {
+          const caseData = await Case.findById(conversation.caseId).lean();
+          allowed = Boolean(caseData && caseService.canAccessCase(currentUser, caseData));
+        }
+        if (!allowed) throw new Error("Conversation access denied");
+        socket.join(`conversation:${conversation._id}`);
+        if (typeof callback === "function") callback({ ok: true });
+      } catch (error) {
+        if (typeof callback === "function") callback({ ok: false, code: "CONVERSATION_ACCESS_DENIED" });
+      }
     });
     socket.on("conversation:leave", (conversationId) => {
-      if (conversationId) socket.leave(`conversation:${conversationId}`);
+      if (mongoose.Types.ObjectId.isValid(conversationId)) socket.leave(`conversation:${conversationId}`);
     });
 
     socket.on("disconnect", async () => {

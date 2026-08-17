@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { auth, googleProvider, signInWithRedirect, signInWithPopup, getRedirectResult, redirectWillLoseState } from "../firebase";
-import { authApi, tokenStore } from "../services/api";
+import { authApi, tokenStore, API_BASE_URL } from "../services/api";
 import { initializeNotifications, unregisterCurrentDevice } from "../services/notificationService";
 
 const AuthContext = createContext(null);
@@ -21,11 +20,14 @@ const AUTH_STATUS = { LOADING: "loading", AUTHENTICATED: "authenticated", UNAUTH
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState(AUTH_STATUS.LOADING);
-  // Set exactly once, right after a Google signInWithRedirect flow lands
-  // back on the page - Login/Register consume it to navigate (role-based,
-  // same as the old popup flow's inline `navigate()`) and then clear it.
-  // Kept separate from `user` so this doesn't also re-fire on ordinary
-  // email/password logins, which already navigate themselves.
+  // Previously set once a Google sign-in flow completed, so Login/Register
+  // could navigate (role-based) without re-firing on ordinary email/password
+  // logins. Firebase Auth (the same-page signInWithRedirect() flow this was
+  // built for) is removed. The current Google sign-in flow is a full
+  // backend-mediated redirect that lands on /auth/callback (OAuthCallback.jsx
+  // -> setUserFromOAuth) instead of returning to this page, so nothing sets
+  // this today either — kept only because Login.jsx/Register.jsx still read
+  // it defensively.
   const [googleRedirectUser, setGoogleRedirectUser] = useState(null);
   const [googleAuthError, setGoogleAuthError] = useState("");
 
@@ -71,47 +73,17 @@ export function AuthProvider({ children }) {
   const clearGoogleRedirectUser = useCallback(() => setGoogleRedirectUser(null), []);
   const clearGoogleAuthError = useCallback(() => setGoogleAuthError(""), []);
 
-  // getRedirectResult() only ever returns Google's real result on the FIRST
-  // call after a redirect completes - every call after that resolves to
-  // null, even within the same page load. React.StrictMode (main.jsx)
-  // double-invokes effects in dev (mount -> cleanup -> mount again), which
-  // races two calls to it: whichever call actually receives the real result
-  // may belong to the invocation whose cleanup already fired, so its
-  // now-stale `cancelled` guard would silently drop a successful sign-in,
-  // and the second invocation finds nothing left to consume. This ref
-  // ensures the redirect check + token exchange runs exactly once per
-  // provider lifetime regardless of how many times the effect fires.
-  const redirectCheckStarted = useRef(false);
-
-  // On mount: first check whether we just landed back from a Google
-  // signInWithRedirect round-trip, THEN fall back to the normal
-  // localStorage-token rehydration. Both paths share the same authLoading
-  // gate so ProtectedRoute never flashes "please log in" while the
-  // redirect-result exchange is still in flight.
+  // Firebase's signInWithRedirect round-trip (and its getRedirectResult()
+  // mount-time check) was removed along with Firebase Auth. This effect is
+  // now just the plain localStorage-token rehydration every other page load
+  // already did — kept as its own effect (rather than inlined) so a future
+  // Google-sign-in replacement has an obvious place to add its own
+  // mount-time credential check without disturbing this.
+  const mountCheckStarted = useRef(false);
   useEffect(() => {
-    if (redirectCheckStarted.current) return;
-    redirectCheckStarted.current = true;
-    (async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          const idToken = await result.user.getIdToken();
-          const data = await authApi.googleToken(idToken);
-          tokenStore.set(data.accessToken);
-          setUser(data.user);
-          setAuthStatus(AUTH_STATUS.AUTHENTICATED);
-          setGoogleRedirectUser(data.user);
-          return;
-        }
-      } catch (err) {
-        // Real config/account errors (e.g. unauthorized-domain, disabled
-        // user) - NOT the common case, which is getRedirectResult simply
-        // resolving to null on every ordinary page load.
-        console.error("Google redirect sign-in failed:", err);
-        setGoogleAuthError("Unable to complete Google sign-in. Please try again or use email login.");
-      }
-      await verifySession();
-    })();
+    if (mountCheckStarted.current) return;
+    mountCheckStarted.current = true;
+    verifySession();
   }, [verifySession]);
 
   // Listen for global session-expired events (triggered by api.js on 401)
@@ -161,26 +133,14 @@ export function AuthProvider({ children }) {
     await authApi.logout().catch(() => {});
   }, [clearSession]);
 
-  // Edge deletes the pending-redirect state during signInWithRedirect's
-  // navigation chain through the firebaseapp.com auth handler (confirmed via
-  // diagnostic capture) - getRedirectResult() then always resolves to null
-  // on return, silently stranding the user back on /login. For Edge (and,
-  // on a less-confirmed bet, Safari/iOS - see firebase.js's authDomain
-  // comment) this uses signInWithPopup instead, which resolves inline
-  // without a navigation chain. Everyone else keeps using
-  // signInWithRedirect, picked up by the getRedirectResult effect above.
+  // Backend-mediated OAuth authorization-code flow: this is a full-page
+  // navigation to the backend's /auth/google, which redirects to Google,
+  // then back to the backend's /auth/google/callback, which finally
+  // redirects the browser to this app's /auth/callback with the session
+  // already established (see OAuthCallback.jsx + setUserFromOAuth above).
+  // This function never resolves on success — the page navigates away.
   const loginWithGoogle = useCallback(async () => {
-    if (redirectWillLoseState()) {
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      const data = await authApi.googleToken(idToken);
-      tokenStore.set(data.accessToken);
-      setUser(data.user);
-      setAuthStatus(AUTH_STATUS.AUTHENTICATED);
-      setGoogleRedirectUser(data.user);
-      return;
-    }
-    await signInWithRedirect(auth, googleProvider);
+    window.location.href = `${API_BASE_URL}/auth/google`;
   }, []);
 
   // Called by OAuthCallback page (passport redirect flow — kept for compatibility)

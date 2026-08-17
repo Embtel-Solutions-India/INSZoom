@@ -28,12 +28,10 @@ if (env.nodeEnv === "production") {
   app.set("trust proxy", Number(process.env.TRUST_PROXY_HOPS || 1));
 }
 
-// Firebase's redirect-flow internals still rely on window.opener in some
-// browsers; helmet's default same-origin COOP blocks that. same-origin-allow-popups
-// keeps the isolation benefit while letting those popups/openers communicate.
-app.use(helmet({
-  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-}));
+// Firebase Auth (which needed same-origin-allow-popups for its popup/redirect
+// window.opener flow) has been removed — back to Helmet's stricter default
+// COOP. Re-relax this only if a future OAuth popup flow proves it's needed.
+app.use(helmet());
 app.use(compression());
 app.use(requestContext);
 app.use(perfMiddleware);
@@ -52,7 +50,10 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 }));
-app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev", {
+app.use(morgan(env.nodeEnv === "production" ? ":method :safe-url :status :res[content-length] :response-time ms" : "dev", {
+  tokens: {
+    "safe-url": (req) => String(req.originalUrl || req.url || "").split("?")[0],
+  },
   stream: { write: (message) => logger.info("http_access", { message: message.trim() }) },
 }));
 app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.handleStripeWebhook);

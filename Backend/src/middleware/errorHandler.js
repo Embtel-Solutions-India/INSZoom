@@ -50,14 +50,6 @@ function errorHandler(error, req, res, next) {
   }
   const status = error.status || error.statusCode || 500;
 
-  // TEMP DIAGNOSTIC — prints the true stack for 5xx while DEBUG_ERRORS=true.
-  // Safe to leave in; only fires on real errors and only when the flag is set.
-  if (process.env.DEBUG_ERRORS === "true" && status >= 500) {
-    console.error("=== 5XX STACK ===", req.method, req.originalUrl);
-    console.error(error && error.stack ? error.stack : error);
-    console.error("=================");
-  }
-
   const exposeMessage = status < 500 || process.env.EXPOSE_INTERNAL_ERRORS === "true";
   const payload = {
     success: false,

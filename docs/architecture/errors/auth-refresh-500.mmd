@@ -1,0 +1,39 @@
+%%{init: {'theme':'dark'}}%%
+%% CONFIRMED_STATIC mechanism (session.service.js:30-42) for the live-captured POST /api/auth/refresh
+%% 500. Shown as two racing callers because a TOCTOU race is a sequence problem, not a flowchart one.
+sequenceDiagram
+    participant B as Browser<br/>(AuthContext.jsx:65)
+    participant CallA as Refresh Call A
+    participant CallB as Refresh Call B<br/>(racing, same still-valid token)
+    participant SVC as session.service.js
+    participant DB as AuthSession collection<br/>(default Mongoose __v versioning,<br/>no optimisticConcurrency override)
+
+    B->>CallA: POST /api/auth/refresh
+    B->>CallB: POST /api/auth/refresh<br/>(near-simultaneous)
+
+    CallA->>SVC: findActiveSession(token)
+    CallB->>SVC: findActiveSession(token)
+    SVC->>DB: read session doc
+    DB-->>SVC: session (__v: 0) -- BOTH calls get this SAME row,<br/>because neither has revoked it yet
+
+    CallA->>SVC: rotateSession(session, newTokenA)
+    SVC->>DB: AuthSession.create(replacementA)
+    DB-->>SVC: replacementA created
+    SVC->>DB: session.revokedAt = now; session.save()
+    DB-->>SVC: OK -- update filter matched __v:0, now __v:1
+
+    CallB->>SVC: rotateSession(session, newTokenB)
+    SVC->>DB: AuthSession.create(replacementB)
+    DB-->>SVC: replacementB created<br/>(valid, but never returned to any client -- ORPHANED)
+    SVC->>DB: session.revokedAt = now; session.save()
+    Note over DB: filter still carries __v:0 (Call B's in-memory<br/>copy is now stale) -- 0 documents match
+    DB--xSVC: VersionError: "No matching document<br/>found for id ... version 0"
+
+    SVC-->>CallB: throw VersionError
+    Note over CallB: errorHandler.js's isDatabaseUnavailableError()<br/>checks only 7 Mongo driver error NAMES + code 50 --<br/>"VersionError" is not among them
+    CallB-->>B: HTTP 500 Internal Server Error<br/>(exact symptom captured in DevTools)
+
+    SVC-->>CallA: { accessToken, refreshToken: newTokenA }
+    CallA-->>B: HTTP 200 OK
+
+    Note over B,DB: Net effect per occurrence: one caller silently<br/>succeeds, one gets an opaque 500, and one valid<br/>AuthSession (replacementB) is permanently orphaned.

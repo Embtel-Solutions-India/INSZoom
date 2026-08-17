@@ -1,0 +1,65 @@
+%%{init: {'theme':'dark'}}%%
+%% Generic authenticated-request lifecycle, grounded in real middleware/controller/service names,
+%% with the two CONFIRMED live failure modes (Cases 503, auth-refresh 500) shown as concrete branches
+%% off the same generic path -- not hypothetical, both reproduced this session.
+sequenceDiagram
+    participant FE as React Frontend<br/>(BAIS or INSZoom)
+    participant API as api.js<br/>(fetch / axios client)
+    participant RTR as Express Router<br/>routes/index.js (29 mounts)
+    participant AUTH as authenticate.js<br/>(JWT verify + User.findById)
+    participant RBAC as authorizePermissions.js /<br/>authorizeRoles.js
+    participant CTRL as Controller<br/>(e.g. case.controller.js)
+    participant SVC as Service<br/>(e.g. case.service.js)
+    participant MDL as Mongoose Model<br/>(e.g. Case, AuthSession)
+    participant DB as MongoDB Atlas<br/>cluster0.eqpju6f (shared/free tier)
+
+    FE->>API: user action
+    API->>RTR: HTTP GET/POST /api/...
+    RTR->>AUTH: authenticate(req)
+
+    alt Token missing/expired
+        AUTH-->>FE: 401 { code: "TOKEN_EXPIRED" }
+        Note over FE,API: Both frontends correctly retry once<br/>after silent refresh (confirmed match)
+    else Token valid
+        AUTH->>MDL: User.findById (Redis cache-aside,<br/>currently no-op: REDIS_URL unset)
+        MDL->>DB: read
+        DB-->>MDL: user doc
+        AUTH->>RBAC: check role/permission
+        alt Permission denied
+            RBAC-->>FE: 403 Forbidden
+        else Permission granted
+            RBAC->>CTRL: execute handler
+            CTRL->>SVC: business operation
+            SVC->>MDL: query/update
+            MDL->>DB: pool checkout + operation
+
+            rect rgb(60, 20, 20)
+            Note over MDL,DB: CONFIRMED_RUNTIME this session:<br/>pooled connection silently dead<br/>(mongodb_connection_closed reason:"error")
+            DB--xMDL: socketTimeoutMS (15000ms) elapses
+            MDL->>DB: retryReads automatic retry
+            DB--xMDL: 2nd attempt also stalls (15000ms)
+            Note over MDL,SVC: 15000 x 2 = ~30,000ms<br/>measured live: 30,159-30,220ms
+            MDL-->>SVC: MongoNetworkTimeoutError
+            SVC-->>CTRL: propagate
+            CTRL-->>RTR: errorHandler.js: isDatabaseUnavailableError()<br/>MATCHES -- correctly classified
+            RTR-->>FE: 503 DATABASE_UNAVAILABLE<br/>(GET /api/cases, GET /api/cases/dashboard/team-lead)
+            end
+
+            rect rgb(20, 30, 60)
+            Note over SVC,MDL: DIFFERENT root cause -- POST /api/auth/refresh<br/>two concurrent calls share one still-valid token
+            SVC->>MDL: AuthSession.create(replacement) [Call A]
+            SVC->>MDL: AuthSession.create(replacement) [Call B, racing]
+            SVC->>MDL: session.save() [Call A] -- succeeds, __v 0->1
+            SVC->>MDL: session.save() [Call B] -- FAILS, filter still __v:0
+            MDL-->>SVC: VersionError (NOT in errorHandler's<br/>DATABASE_UNAVAILABLE allowlist)
+            SVC-->>CTRL: propagate
+            CTRL-->>RTR: errorHandler.js falls through to<br/>generic 500 default (line 51)
+            RTR-->>FE: 500 Internal Server Error<br/>(matches user's captured screenshot)
+            end
+
+            MDL-->>SVC: (happy path) data
+            SVC-->>CTRL: result
+            CTRL-->>RTR: JSON response
+            RTR-->>FE: 200 OK
+        end
+    end

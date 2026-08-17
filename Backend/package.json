@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
+    "@google-cloud/documentai": "^10.0.0",
     "@google/genai": "^2.10.0",
     "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
@@ -46,7 +47,8 @@
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
     "file-type": "^22.0.1",
-    "firebase-admin": "^13.8.0",
+    "firebase-admin": "^14.2.0",
+    "google-auth-library": "^10.7.0",
     "helmet": "^7.1.0",
     "html-to-docx": "^1.8.0",
     "ioredis": "^5.11.1",

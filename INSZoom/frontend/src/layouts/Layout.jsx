@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
+import { requestPermissionAndGetToken } from '../services/notificationService'
 import {
   LayoutDashboard,
   Briefcase,
@@ -32,13 +33,31 @@ import {
 
 const Layout = () => {
   const { user, logout, hasRole, getSidebarMenuItems } = useAuth()
-  const { notifications, unreadCount, unreadMessageCount, markAsRead, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, unreadMessageCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
+  const [pushPermission, setPushPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  )
+  const [enablingPush, setEnablingPush] = useState(false)
   const notificationRef = useRef(null)
+
+  // User-driven only — this button click is the ONLY place the browser's
+  // permission prompt fires from; nothing here runs automatically on
+  // mount/login (see notificationService.js's initializeNotifications,
+  // which only silently re-registers an already-granted permission).
+  const enablePush = async () => {
+    setEnablingPush(true)
+    try {
+      await requestPermissionAndGetToken()
+    } finally {
+      setPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+      setEnablingPush(false)
+    }
+  }
 
   const snapshotDate = new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -225,7 +244,11 @@ const Layout = () => {
               {/* Notifications */}
               <div className="relative" ref={notificationRef}>
                 <button
-                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                  onClick={() => {
+                    const nextOpen = !notificationsOpen
+                    setNotificationsOpen(nextOpen)
+                    if (nextOpen) fetchNotifications()
+                  }}
                   className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                   <Bell className="w-5 h-5" />
@@ -250,6 +273,19 @@ const Layout = () => {
                         </button>
                       )}
                     </div>
+
+                    {pushPermission === 'default' && (
+                      <div className="px-4 py-2.5 border-b border-gray-200 bg-primary-50/60 flex items-center justify-between gap-3">
+                        <p className="text-xs text-gray-600 leading-snug">Get notified instantly, even when this tab isn't open.</p>
+                        <button
+                          onClick={enablePush}
+                          disabled={enablingPush}
+                          className="shrink-0 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-md disabled:opacity-60"
+                        >
+                          {enablingPush ? 'Enabling…' : 'Enable'}
+                        </button>
+                      </div>
+                    )}
 
                     {/* Notification list */}
                     {notifications.length === 0 ? (
