@@ -14,6 +14,8 @@ function installQueryProfiler() {
   queryProfilerInstalled = true;
   const defaultThresholdMs = env.nodeEnv === "production" ? 500 : 25;
   const thresholdMs = Number(process.env.PERF_QUERY_LOG_THRESHOLD_MS || defaultThresholdMs);
+  const includeQueryDetails = process.env.PERF_LOG_QUERY_DETAILS === "true"
+    && env.nodeEnv !== "production";
   const originalExec = mongoose.Query.prototype.exec;
   mongoose.Query.prototype.exec = async function profiledExec(...args) {
     const startedAt = Date.now();
@@ -22,14 +24,17 @@ function installQueryProfiler() {
     } finally {
       const durationMs = Date.now() - startedAt;
       if (durationMs >= thresholdMs) {
-        logger.info("mongodb_query_performance", {
+        const metadata = {
           collection: this.model?.collection?.name,
           op: this.op,
           durationMs,
-          filter: this.getFilter?.(),
-          fields: this._fields,
-          options: this.getOptions?.(),
-        });
+        };
+        if (includeQueryDetails) {
+          metadata.filterKeys = Object.keys(this.getFilter?.() || {});
+          metadata.fieldKeys = Object.keys(this._fields || {});
+          metadata.optionKeys = Object.keys(this.getOptions?.() || {});
+        }
+        logger.info("mongodb_query_performance", metadata);
       }
     }
   };

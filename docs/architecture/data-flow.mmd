@@ -1,0 +1,66 @@
+%%{init: {'theme':'dark'}}%%
+%% Layer 2 -- operational/data-flow graph. Client -> OCR -> canonical merge -> questionnaire ->
+%% form mapping -> PDF -> storage -> staff review -> filing. Grounded in real service names;
+%% confirmed gaps overlaid in red rather than shown as a clean idealized pipeline.
+flowchart TD
+
+  CLIENT["Client uploads document<br/>(passport / resume / employer letter / paystub)"]
+
+  subgraph DI["Document Intelligence"]
+    direction TB
+    DI_UPLOAD[document.controller.js: upload]
+    DI_QUEUE[document-intelligence.queue.js]
+    DI_CLASSIFY["classifyWithRetry()<br/>document-intelligence.service.js"]
+    DI_GEMINI{{"Gemini<br/>(only registered provider,<br/>no fetch timeout, no Express<br/>request timeout)"}}
+    DI_EXTRACT["Field extraction<br/>-&gt; DocumentExtraction<br/>(full payload re-embedded per<br/>re-extraction, uncapped array)"]
+    DI_MAPPING["field-mapping.registry.js<br/>ONLY passport + resume have a<br/>deterministic mapping"]
+    DI_UPLOAD --> DI_QUEUE --> DI_CLASSIFY --> DI_GEMINI
+    DI_GEMINI --> DI_EXTRACT --> DI_MAPPING
+  end
+  CLIENT --> DI_UPLOAD
+
+  subgraph QUESTIONNAIRE["Questionnaire Engine"]
+    direction TB
+    Q_UI["BAIS Documents.jsx<br/>(questionnaire + checklist)"]
+    Q_SVC["questionnaire.service.js<br/>responseId = hash(questionnaireId+caseId+userId)<br/>-- fresh-per-client guarantee CONFIRMED"]
+    Q_ANSWER[("Answer<br/>atomic findOneAndUpdate")]
+    Q_UI --> Q_SVC --> Q_ANSWER
+  end
+
+  subgraph CANONICAL["Canonical Data Layer"]
+    direction TB
+    CANON_MERGE["CanonicalMergeService.js<br/>SOURCE_PRIORITY:<br/>staff-approved answer = 500<br/>ocr_verified = 450 | ocr = 350<br/>questionnaire (submitted) = 300"]
+    CANON_GAP["GAP: unverified OCR (350) can<br/>outrank a client's own SUBMITTED-<br/>but-not-yet-staff-approved answer (300)"]
+    CANON_PROFILE["Canonical merged profile<br/>(identity / employer / address /<br/>passport / visa classification)"]
+    CANON_MERGE --> CANON_GAP
+    CANON_MERGE --> CANON_PROFILE
+  end
+  DI_MAPPING --> CANON_MERGE
+  Q_ANSWER --> CANON_MERGE
+
+  subgraph FORMENGINE["USCIS Form Engine"]
+    direction TB
+    FE_ASSIGN["ensureAssignedForms()<br/>idempotent, metadataOnly-safe -- CONFIRMED"]
+    FE_AUTOFILL["AutoFillService.js<br/>ONLY I-129 / I-129F / I-130 mapped --<br/>I-134 / I-539 / I-539A / I-907 = ZERO mappings"]
+    FE_CASEFORM[("CaseForm.fieldValues/filledData<br/>versions[] uncapped, full-payload<br/>snapshot per regeneration")]
+    FE_PDFMAP["PDFFieldMapper.js<br/>checkbox: plain JS truthiness,<br/>no type coercion on manual overrides"]
+    FE_PDFRENDER["PDFRenderer.js -&gt; pdf-lib<br/>I-129 VERIFIED: 980 fields,<br/>349/351 written, 311/311 fidelity"]
+    FE_ASSIGN --> FE_AUTOFILL --> FE_CASEFORM --> FE_PDFMAP --> FE_PDFRENDER
+  end
+  CANON_PROFILE --> FE_ASSIGN
+
+  STORAGE[("storage.service.js<br/>local filesystem only")]
+  FE_PDFRENDER --> STORAGE
+
+  STAFF_REVIEW["INSZoom staff review<br/>(USCISFormRenderer.jsx workspace)"]
+  STORAGE --> STAFF_REVIEW
+  FILING["Filing package -&gt; USCIS"]
+  STAFF_REVIEW --> FILING
+
+  NO_REVIEW["INSZoom: NO documentIntelligenceApi<br/>at all -- zero OCR review surface,<br/>despite reviewerRoles being granted<br/>server-side"]
+  DI_EXTRACT -.->|"gap: staff cannot review here"| NO_REVIEW
+
+  classDef gap fill:#7a1f1f,stroke:#ff6b6b,color:#fff
+  classDef verified fill:#1f4d2f,stroke:#6bff8f,color:#fff
+  class CANON_GAP,NO_REVIEW,FE_AUTOFILL gap
+  class FE_PDFRENDER,Q_SVC verified

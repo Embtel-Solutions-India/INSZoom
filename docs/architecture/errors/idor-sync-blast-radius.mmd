@@ -1,0 +1,35 @@
+%%{init: {'theme':'dark'}}%%
+%% Confirmed STATIC exposure graph (P0 cluster) -- the "failure" here is a silent authorization
+%% bypass, not an HTTP error code, so it's shown as an attacker-reachability graph.
+flowchart TD
+
+  ATTACKER(["Any authenticated user<br/>(role requirement varies per route, see labels)"])
+
+  subgraph DEAD["Dead code -- NOT currently mounted, but P0 if ever wired in"]
+    direction TB
+    SYNC["sync.routes.js<br/>authenticate ONLY, zero role/permission/ownership check"]
+    SYNC --> S1["GET /sync/clients<br/>Client.find({}).limit(500) -- ALL tenants"]
+    SYNC --> S2["GET /sync/cases<br/>Case.find({}).limit(500) -- ALL cases"]
+    SYNC --> S3["GET /sync/cases/:caseId/full<br/>case + ALL docs/messages/payments,<br/>any caseId, no ownership check"]
+    SYNC --> S4["PUT /sync/cases/:caseId/status<br/>Case.findByIdAndUpdate, any caseId"]
+  end
+
+  subgraph LIVE["Live, mounted, reachable TODAY"]
+    direction TB
+    ELIG["POST /api/eligibility/evaluate<br/>GET /api/eligibility/:caseId/results<br/>gate: authorizePermissions('cases:read') ONLY"]
+    ELIG --> E1["READ + WRITE any case's<br/>eligibility.* / assessmentMatchPercentage<br/>(EligibilityEngineService.js has zero<br/>canAccessCase references)"]
+
+    PKGGEN["POST /api/forms/packages/generate<br/>gate: authorizeRoles + forms:update ONLY<br/>(missing requireCaseFormAccess --<br/>every sibling route in this file has it)"]
+    PKGGEN --> P1["Assemble + return ALL generated<br/>USCIS PDFs + approved evidence<br/>for ANY caseId in the request body<br/>(SSNs, A-numbers, passport #s,<br/>employer financials)"]
+
+    AUTOFILL["10 routes: /api/cases/:caseId/forms/:formType/*<br/>AutoFillService.js -- no user param<br/>passed in AT ALL, any route in the file"]
+    AUTOFILL --> A1["Auto-fill, override fields, rollback<br/>versions, reset data on ANY case"]
+  end
+
+  ATTACKER --> DEAD
+  ATTACKER --> LIVE
+
+  classDef p0 fill:#7a1f1f,stroke:#ff6b6b,color:#fff
+  classDef dead fill:#2a2a2a,stroke:#888,color:#ccc
+  class ELIG,PKGGEN,AUTOFILL,E1,P1,A1 p0
+  class SYNC,S1,S2,S3,S4 dead

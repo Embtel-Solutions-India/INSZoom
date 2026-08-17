@@ -240,7 +240,12 @@ exports.translateMessage = async (req, res, next) => {
 exports.getUnreadCount = async (req, res, next) => {
   try {
     const filter = await messageService.buildConversationFilter(req.user);
-    const conversations = await Conversation.find(filter);
+    // The badge only needs the per-user counters. Avoid hydrating complete
+    // conversations (participants, audit history, integrations, etc.) on
+    // every authenticated page and polling tick.
+    const conversations = await Conversation.find(filter)
+      .select("participants unreadClient unreadManager")
+      .lean();
     const userId = req.user._id.toString();
     const total = conversations.reduce((sum, conversation) => {
       const participant = (conversation.participants || []).find((item) => item.user?.toString() === userId);

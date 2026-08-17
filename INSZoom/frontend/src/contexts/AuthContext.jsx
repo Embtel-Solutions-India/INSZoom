@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import api from '../services/api'
+import api, { setAccessToken } from '../services/api'
 import * as permissionUtils from '../utils/permissions'
 import { initializeNotifications, unregisterCurrentDevice } from '../services/notificationService'
 
@@ -15,28 +15,17 @@ export const useAuth = () => {
 
 
 export const AuthProvider = ({ children }) => {
-  // Restore the user synchronously from localStorage so there is no "null gap"
-  // on refresh that would cause ProtectedRoute to bounce back to /login.
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('user')
-    if (!savedUser) return null
-    try {
-      return JSON.parse(savedUser)
-    } catch {
-      localStorage.removeItem('user')
-      return null
-    }
-  })
+  const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [token, setToken] = useState(localStorage.getItem('token'))
+  const [token, setToken] = useState(null)
   useEffect(() => { if (user) initializeNotifications().catch(() => {}); }, [user]);
   const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
 
   const clearSession = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refreshToken')
+    // Access and refresh tokens are intentionally never persisted in browser storage.
     localStorage.removeItem('loginTime')
     localStorage.removeItem('user')
+    setAccessToken(null)
     setToken(null)
     setUser(null)
   }
@@ -68,22 +57,20 @@ export const AuthProvider = ({ children }) => {
             return
           }
           setUser(response.data.user)
-          // Refresh the cached user so the next reload restores up-to-date data
-          localStorage.setItem('user', JSON.stringify(response.data.user))
         } catch (error) {
           clearSession()
         }
       } else {
-        // Try to restore user from localStorage
-        const savedUser = localStorage.getItem('user')
-        if (savedUser) {
-          try {
-            const parsedUser = JSON.parse(savedUser)
-            if (permissionUtils.canAccessAdminPortal(parsedUser)) setUser(parsedUser)
-            else clearSession()
-          } catch (error) {
-            localStorage.removeItem('user')
+        try {
+          const response = await api.post('/auth/refresh', {})
+          const renewedToken = response.data?.accessToken
+          if (renewedToken) {
+            setAccessToken(renewedToken)
+            setToken(renewedToken)
+            return
           }
+        } catch {
+          clearSession()
         }
       }
       setLoading(false)
@@ -108,7 +95,7 @@ export const AuthProvider = ({ children }) => {
   const login = useCallback(async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password })
-      const { token: newToken, accessToken, refreshToken, user: userData } = response.data
+      const { token: newToken, accessToken, user: userData } = response.data
       if (!permissionUtils.canAccessAdminPortal(userData)) {
         return {
           success: false,
@@ -117,11 +104,9 @@ export const AuthProvider = ({ children }) => {
       }
       
       // Store token and login timestamp
-      localStorage.setItem('token', accessToken || newToken)
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken)
       localStorage.setItem('loginTime', Date.now().toString())
-      localStorage.setItem('user', JSON.stringify(userData))
       
+      setAccessToken(accessToken || newToken)
       setToken(accessToken || newToken)
       setUser(userData)
       return { success: true }
@@ -134,8 +119,9 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const logout = useCallback(async () => {
+    await unregisterCurrentDevice().catch(() => {})
     try {
-      await api.post('/auth/logout', { refreshToken: localStorage.getItem('refreshToken') }, {
+      await api.post('/auth/logout', {}, {
         headers: { Authorization: `Bearer ${token}` }
       })
     } catch (error) {

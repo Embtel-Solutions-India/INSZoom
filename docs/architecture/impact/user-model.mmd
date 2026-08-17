@@ -1,0 +1,27 @@
+%%{init: {'theme':'dark'}}%%
+%% Change-impact graph: Backend/src/models/User.js
+%% Second-highest centrality: every authenticated request touches User via authenticate.js.
+flowchart TD
+  USER["User.js\n(password select:false; loginHistory capped at 20;\ntokenVersion drives session invalidation)"]
+
+  USER --> AUTHENTICATE["authenticate.js\nEVERY authenticated request re-derives req.user\n(Redis cache-aside, 60s TTL when REDIS_URL is set --\ncurrently UNSET, so every request is a live findById)"]
+  USER --> AUTH_SVC[auth.service.js\nlogin/register/changePassword/refresh]
+  USER --> CASE_SVC[case.service.js\ncanAccessCase — correctly scoped per-role]
+  USER --> CLIENT_SVC[client.service.js]
+  USER --> BENEFICIARY_SVC["beneficiary.service.js\ncanAccessBeneficiary — STAFF_ROLES blanket fallback\n(any case_manager/team_lead, no per-assignment scope)"]
+  USER --> COMPANY_SVC["company.service.js — same blanket-staff pattern"]
+  USER --> USER_SVC["user.service.js\ncanViewUser/canModifyUser — case_manager/team_lead can\nview ANY lower-ranked user's full profile system-wide"]
+  USER --> RBAC["rbac.service.js / roleHierarchy.js / permissions.registry.js"]
+  USER --> NOTIFICATION_SVC[notification.service.js — recipient $or filter]
+  USER --> MESSAGE_SVC[message.service.js]
+  USER --> WORKFLOW_SVC[workflow.service.js]
+
+  USER -.->|"14 dangling ref:'Team' declarations across 13 models\n(User.js:29 included) — Team model never registered"| TEAM_GAP["MissingSchemaError risk\nif any of these paths is ever .populate()'d"]
+
+  FRONTEND_BOTH["Both frontends: AuthContext.jsx,\nProtectedRoute, every authenticated page"] -.->|"every request carries a Bearer token\nresolved back to this model"| AUTHENTICATE
+
+  SCORE["Blast-radius score: fan-in from EVERY authenticated\nendpoint in the system (350 routes, ~337 require\nauthenticate) plus 14 dangling Team refs.\n=> CRITICAL. A change here (e.g. renaming a role\nvalue, changing tokenVersion semantics) has the\nwidest possible reach of any model in the schema."]
+  USER -.-> SCORE
+
+  classDef critical fill:#7a1f1f,stroke:#ff6b6b,color:#fff
+  class USER,SCORE,TEAM_GAP critical

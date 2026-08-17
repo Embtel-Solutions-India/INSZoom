@@ -1,38 +1,44 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:7000/api";
+export const API_BASE_URL = BASE_URL;
 
-const TOKEN_KEY = "bais_access_token";
 // Non-sensitive marker only ("do we have a session to try refreshing?") — the
 // actual refresh token lives in an httpOnly cookie the backend sets on
 // login/refresh, so JS never has access to it.
 const HAS_SESSION_KEY = "bais_has_session";
+const LEGACY_TOKEN_KEY = "bais_access_token";
+// Remove tokens written by older builds during the first load after upgrade.
+localStorage.removeItem(LEGACY_TOKEN_KEY);
 
 export const tokenStore = {
   getAccess: () => {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = accessToken;
     if (!token) return null;
     try {
       const encodedPayload = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
       const payload = JSON.parse(atob(encodedPayload));
       if (payload.exp && payload.exp * 1000 <= Date.now()) {
-        localStorage.removeItem(TOKEN_KEY);
+        accessToken = null;
         return null;
       }
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
+      accessToken = null;
       return null;
     }
     return token;
   },
   hasSession: () => localStorage.getItem(HAS_SESSION_KEY) === "1",
   set: (access) => {
-    localStorage.setItem(TOKEN_KEY, access);
+    accessToken = access || null;
     localStorage.setItem(HAS_SESSION_KEY, "1");
   },
   clear: () => {
-    localStorage.removeItem(TOKEN_KEY);
+    accessToken = null;
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
     localStorage.removeItem(HAS_SESSION_KEY);
   },
 };
+
+let accessToken = null;
 
 let refreshPromise = null;
 

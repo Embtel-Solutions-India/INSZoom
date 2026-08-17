@@ -37,6 +37,7 @@ const Login = () => {
       setError(result.message)
     }
 
+    setPassword('')
     setLoading(false)
   }
 

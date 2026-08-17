@@ -2,6 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7000/api',
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   },
@@ -9,26 +10,31 @@ const api = axios.create({
 })
 
 let refreshPromise = null
+let accessToken = null
+// Remove bearer tokens written by older releases during migration.
+localStorage.removeItem('token')
+localStorage.removeItem('refreshToken')
+
+export const setAccessToken = (token) => {
+  accessToken = token || null
+}
+
+export const getAccessToken = () => accessToken
 
 const clearStoredSession = () => {
-  localStorage.removeItem('token')
-  localStorage.removeItem('refreshToken')
+  accessToken = null
   localStorage.removeItem('loginTime')
   localStorage.removeItem('user')
 }
 
 const refreshAccessToken = async () => {
-  const refreshToken = localStorage.getItem('refreshToken')
-  if (!refreshToken) throw new Error('No refresh token')
+  const response = await axios.post(`${api.defaults.baseURL}/auth/refresh`, {}, { withCredentials: true })
+  const { accessToken: nextAccessToken } = response.data || {}
+  if (!nextAccessToken) throw new Error('Refresh failed')
 
-  const response = await axios.post(`${api.defaults.baseURL}/auth/refresh`, { refreshToken })
-  const { accessToken, refreshToken: newRefreshToken } = response.data || {}
-  if (!accessToken) throw new Error('Refresh failed')
-
-  localStorage.setItem('token', accessToken)
-  if (newRefreshToken) localStorage.setItem('refreshToken', newRefreshToken)
+  accessToken = nextAccessToken
   localStorage.setItem('loginTime', Date.now().toString())
-  return accessToken
+  return nextAccessToken
 }
 
 const shortGetCache = new Map()
@@ -54,7 +60,7 @@ const cachedGet = (url, config = {}, ttlMs = 5000) => {
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = accessToken
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -111,7 +117,7 @@ api.interceptors.response.use(
     await rehydrateBlobErrorBody(error)
     const originalRequest = error.config
     if (error.response?.status === 401 && !originalRequest?._retry) {
-      if (error.response?.data?.code === 'TOKEN_EXPIRED' && localStorage.getItem('refreshToken')) {
+      if (error.response?.data?.code === 'TOKEN_EXPIRED') {
         originalRequest._retry = true
         try {
           if (!refreshPromise) {

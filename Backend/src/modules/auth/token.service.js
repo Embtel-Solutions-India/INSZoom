@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const env = require("../../config/env");
 
 function generateAccessToken(user) {
@@ -18,6 +19,13 @@ function generateRefreshToken(user) {
     {
       userId: user._id.toString(),
       tokenVersion: user.tokenVersion || 0,
+      // jwt.sign's auto-added `iat` only has 1-second resolution, and this
+      // payload is otherwise identical on every call for the same user —
+      // two refreshes within the same second (e.g. two open tabs refreshing
+      // near-simultaneously) would sign the byte-identical token, colliding
+      // on AuthSession's unique refreshTokenHash index. A random jti makes
+      // every issued refresh token unique regardless of timing.
+      jti: crypto.randomBytes(16).toString("hex"),
     },
     env.jwtRefreshSecret,
     { expiresIn: env.jwtRefreshExpires }

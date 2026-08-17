@@ -1,138 +1,121 @@
-import { getToken, onMessage } from "firebase/messaging";
-import { messaging } from "../firebase";
-import { notificationsApi } from "./api";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getMessaging, getToken, onMessage, isSupported } from "firebase/messaging";
 
+// Public Firebase Web config — apiKey/appId/etc identify the project, they
+// are not secrets (Firebase's security boundary is server-side rules/App
+// Check, not hiding these values). Never add FIREBASE_PRIVATE_KEY or any
+// service-account field here — those stay backend-only (see
+// Backend/src/config/firebase-admin.js).
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-const SW_PATH = "/firebase-messaging-sw.js";
-// Remembers which token we've already POSTed to the backend this browser,
-// so re-running initializeNotifications() on every login/session-rehydrate
-// doesn't spam identical requests (the backend upsert is harmless either
-// way — this is purely to keep network traffic quiet).
+
 const LAST_REGISTERED_KEY = "bais_fcm_token_registered";
 
-function browserSupportsMessaging() {
-  return typeof window !== "undefined" && "serviceWorker" in navigator && "Notification" in window && Boolean(messaging);
+function firebaseConfigured() {
+  return Boolean(
+    firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.messagingSenderId && firebaseConfig.appId && VAPID_KEY
+  );
 }
 
-function detectBrowser() {
-  const ua = navigator.userAgent || "";
-  if (ua.includes("Edg/")) return "Edge";
-  if (ua.includes("Chrome/") && !ua.includes("Edg/")) return "Chrome";
-  if (ua.includes("Firefox/")) return "Firefox";
-  if (ua.includes("Safari/") && !ua.includes("Chrome/")) return "Safari";
-  return "Unknown";
+function getFirebaseApp() {
+  if (!firebaseConfigured()) return null;
+  return getApps().length ? getApp() : initializeApp(firebaseConfig);
 }
 
-function detectPlatform() {
-  return navigator.userAgentData?.platform || navigator.platform || "Unknown";
+let messagingInstancePromise = null;
+async function getMessagingInstance() {
+  if (messagingInstancePromise) return messagingInstancePromise;
+  messagingInstancePromise = (async () => {
+    const app = getFirebaseApp();
+    if (!app) return null;
+    if (!(await isSupported().catch(() => false))) return null;
+    return getMessaging(app);
+  })();
+  return messagingInstancePromise;
 }
 
-// Push notifications are an enhancement, never a gate — every function below
-// resolves to null on any failure instead of throwing, so a caller that
-// forgets to .catch() still can't break login/dashboard/documents/profile/
-// payments/messages. This flag additionally stops re-attempting the
-// registration/subscribe dance again for the rest of this page load once it's
-// failed once (e.g. "no active Service Worker") — there's nothing about
-// calling it again with the same browser state that would make it succeed,
-// so retrying on every login/session-rehydrate within one page load was pure
-// wasted work (and console noise) for a browser/deployment where it just
-// doesn't work. A fresh page load (e.g. after a deployment that fixes the
-// service worker) gets a clean attempt again.
-let disabledThisPageLoad = false;
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
-  ]);
-}
-
+let swRegistrationPromise = null;
 export async function registerServiceWorker() {
-  if (!browserSupportsMessaging()) return null;
-  try {
-    await navigator.serviceWorker.register(SW_PATH);
-    // register() resolving only means the registration exists, not that a
-    // worker is actually controlling the page yet (first install, or right
-    // after an update, there's a window with a registration but nothing
-    // "active") — getToken() below needs an active worker, and calling it
-    // too early is exactly what produces FCM's "no active Service Worker"
-    // error. .ready resolves once one is actually active — bounded with a
-    // timeout so a service worker that never activates can't leave this
-    // hanging indefinitely (harmless since nothing awaits it blockingly, but
-    // it should still resolve to a clear "unavailable" instead of dangling).
-    const registration = await withTimeout(navigator.serviceWorker.ready, 10000);
-    if (!registration) {
-      console.warn("Notification service worker never became active; disabling push for this page load.");
-      disabledThisPageLoad = true;
-    }
-    return registration;
-  } catch (error) {
-    console.warn("Notification service worker registration failed:", error.message);
-    disabledThisPageLoad = true;
-    return null;
+  if (!("serviceWorker" in navigator) || !firebaseConfigured()) return null;
+  if (!swRegistrationPromise) {
+    swRegistrationPromise = navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(() => null);
   }
+  return swRegistrationPromise;
 }
 
-// Only prompts when permission hasn't been decided yet — never re-prompts
-// once the user has granted or denied it, and never throws on denial.
-export async function requestPermissionAndGetToken() {
-  if (!browserSupportsMessaging() || disabledThisPageLoad) return null;
-
-  if (Notification.permission === "denied") return null;
-  if (Notification.permission === "default") {
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return null;
-  }
-  if (Notification.permission !== "granted") return null;
-
-  const registration = await registerServiceWorker();
-  if (!registration) return null;
-
+async function getTokenIfPermissionGranted() {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return null;
+  const [registration, messaging] = await Promise.all([registerServiceWorker(), getMessagingInstance()]);
+  if (!registration || !messaging) return null;
   try {
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-    return token || null;
-  } catch (error) {
-    // "no active Service Worker" and similar PushManager.subscribe() failures
-    // land here — logged once, then this browser/session stops retrying
-    // (see disabledThisPageLoad above) instead of repeating the same failing
-    // subscribe attempt on every subsequent login/session-rehydrate.
-    console.warn("Unable to obtain FCM token:", error.message);
-    disabledThisPageLoad = true;
+    return await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+  } catch {
     return null;
   }
 }
 
 export async function sendTokenToBackend(token) {
   if (!token) return null;
-  try {
-    await notificationsApi.registerDevice(token, { browser: detectBrowser(), platform: detectPlatform() });
-    localStorage.setItem(LAST_REGISTERED_KEY, token);
-    return token;
-  } catch (error) {
-    console.warn("Unable to register device token:", error.message);
-    return null;
-  }
+  const { notificationsApi } = await import("./api");
+  await notificationsApi.registerDevice(token, { browser: navigator.userAgent, platform: navigator.platform });
+  localStorage.setItem(LAST_REGISTERED_KEY, token);
+  return token;
 }
 
-// The single entry point called after login/session-rehydrate — safe to
-// call repeatedly (no-ops gracefully on unsupported browsers or denied
-// permission, and skips the network call if this exact token was already
-// sent this browser).
+// Called on every login/mount (AuthContext.jsx) — must NEVER itself trigger
+// the browser's permission prompt. Only proceeds if permission was already
+// granted in a past visit (e.g. re-registers a rotated token); if the user
+// hasn't decided yet ("default") or denied it, this silently resolves to
+// null. The actual prompt only fires from requestPermissionAndGetToken(),
+// which must be wired to an explicit user action (a button/toggle).
 export async function initializeNotifications() {
-  const token = await requestPermissionAndGetToken();
+  const token = await getTokenIfPermissionGranted();
   if (!token) return null;
-  if (localStorage.getItem(LAST_REGISTERED_KEY) === token) return token;
   return sendTokenToBackend(token);
 }
 
+// USER-DRIVEN ONLY — call this from a click handler (an "Enable
+// notifications" action), never from a mount effect or page load.
+export async function requestPermissionAndGetToken() {
+  if (typeof Notification === "undefined" || !firebaseConfigured()) return null;
+  if (Notification.permission === "default") {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return null;
+  } else if (Notification.permission !== "granted") {
+    return null;
+  }
+  const token = await getTokenIfPermissionGranted();
+  if (!token) return null;
+  return sendTokenToBackend(token);
+}
+
+// Returns an unsubscribe function synchronously (NotificationBell.jsx relies
+// on this from a useEffect cleanup) even though Firebase Messaging itself
+// only resolves asynchronously.
 export function onForegroundMessage(callback) {
-  if (!browserSupportsMessaging()) return () => {};
-  return onMessage(messaging, callback);
+  let unsubscribed = false;
+  let detach = () => {};
+  getMessagingInstance().then((messaging) => {
+    if (!messaging || unsubscribed) return;
+    detach = onMessage(messaging, callback);
+  });
+  return () => {
+    unsubscribed = true;
+    detach();
+  };
 }
 
 export async function unregisterCurrentDevice() {
   const token = localStorage.getItem(LAST_REGISTERED_KEY);
   localStorage.removeItem(LAST_REGISTERED_KEY);
   if (!token) return;
+  const { notificationsApi } = await import("./api");
   await notificationsApi.unregisterDevice(token).catch(() => {});
 }

@@ -3,6 +3,10 @@ require("dotenv").config();
 const nodeEnv = process.env.NODE_ENV || "development";
 const jwtAccessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET;
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+const configuredOrigins = (process.env.CLIENT_URLS || process.env.ALLOWED_ORIGINS || process.env.CLIENT_URL || "http://localhost:5173,http://localhost:3002")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 if (nodeEnv === "production") {
   const missing = [
@@ -10,6 +14,10 @@ if (nodeEnv === "production") {
     ["JWT_ACCESS_SECRET", jwtAccessSecret],
     ["JWT_REFRESH_SECRET", jwtRefreshSecret],
   ].filter(([, value]) => !value).map(([key]) => key);
+  if (!process.env.CLIENT_URLS && !process.env.ALLOWED_ORIGINS && !process.env.CLIENT_URL) missing.push("CLIENT_URLS");
+  if (configuredOrigins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) {
+    missing.push("production CLIENT_URLS must contain HTTPS non-local origins only");
+  }
   if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(", ")}`);
 }
 
@@ -17,10 +25,7 @@ const env = {
   nodeEnv,
   port: process.env.PORT || 7000,
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/immigration_crm",
-  clientOrigins: (process.env.CLIENT_URLS || process.env.ALLOWED_ORIGINS || process.env.CLIENT_URL || "http://localhost:5173,http://localhost:3002")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+  clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",
   jwtRefreshSecret: jwtRefreshSecret || "dev-refresh-secret-change-me",
   jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES || process.env.JWT_EXPIRE || "7d",
@@ -52,6 +57,23 @@ const env = {
   documentIntelligence: {
     provider: process.env.DOCUMENT_INTELLIGENCE_PROVIDER || "gemini",
     configured: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
+  },
+  // Frontend origin to send the browser back to once the backend has
+  // finished a redirect-based auth flow (e.g. Google OAuth's callback) — the
+  // first entry in CLIENT_URLS/CLIENT_URL, same source of truth CORS itself
+  // already reads, so this never drifts from the actual allowed frontend.
+  clientUrl: process.env.CLIENT_URL || configuredOrigins[0] || "http://localhost:5173",
+  google: {
+    // Client ID/secret for the "Continue with Google" OAuth login button
+    // (authorization-code flow) — distinct from the GOOGLE_SERVICE_ACCOUNT_*
+    // credentials used by the Document AI provider. The client secret is
+    // read here only; it must never be sent to the frontend.
+    oauthClientId: process.env.GOOGLE_CLIENT_ID || "",
+    oauthClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    oauthRedirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
+    get oauthConfigured() {
+      return Boolean(this.oauthClientId && this.oauthClientSecret && this.oauthRedirectUri);
+    },
   },
   adminEmails: (process.env.ADMIN_EMAILS || "")
     .split(",")

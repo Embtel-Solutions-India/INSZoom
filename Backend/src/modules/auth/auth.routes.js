@@ -29,6 +29,10 @@ router.post(
 
 router.post("/login", [emailRule, body("password").notEmpty()], validate, auditAuth("auth.login"), ctrl.login);
 router.post("/google-token", [body("idToken").notEmpty()], validate, auditAuth("auth.google_token"), ctrl.googleToken);
+// "Continue with Google" — authorization-code redirect flow. GET (not POST):
+// this is a full-page browser navigation to Google, not an API call.
+router.get("/google", auditAuth("auth.google_oauth_start"), ctrl.googleOAuthStart);
+router.get("/google/callback", auditAuth("auth.google_oauth_callback"), ctrl.googleOAuthCallback);
 router.post("/refresh", auditAuth("auth.refresh"), ctrl.refresh);
 router.post("/logout", authenticate, auditAuth("auth.logout"), ctrl.logout);
 router.post("/logout-all", authenticate, auditAuth("auth.logout_all"), ctrl.logoutAll);
