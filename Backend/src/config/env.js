@@ -8,6 +8,17 @@ const configuredOrigins = (process.env.CLIENT_URLS || process.env.ALLOWED_ORIGIN
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+// Shared by the production boot guard below AND the runtime clientUrlSafe/
+// oauthRedirectUriSafe flags further down — one definition of "unsafe" for
+// any URL a production request could redirect a real browser to. Empty,
+// non-HTTPS, or containing localhost/127.0.0.1 are all unsafe; this is
+// checked against both bare origins (CORS) and full URLs (OAuth callback),
+// since it only ever inspects the scheme prefix and host substring, not
+// origin-vs-path shape.
+function isUnsafeOrigin(value) {
+  return !value || !/^https:\/\//i.test(value) || /localhost|127\.0\.0\.1/i.test(value);
+}
+
 if (nodeEnv === "production") {
   const missing = [
     ["MONGODB_URI", process.env.MONGODB_URI],
@@ -15,11 +26,28 @@ if (nodeEnv === "production") {
     ["JWT_REFRESH_SECRET", jwtRefreshSecret],
   ].filter(([, value]) => !value).map(([key]) => key);
   if (!process.env.CLIENT_URLS && !process.env.ALLOWED_ORIGINS && !process.env.CLIENT_URL) missing.push("CLIENT_URLS");
-  if (configuredOrigins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) {
+  if (configuredOrigins.some(isUnsafeOrigin)) {
     missing.push("production CLIENT_URLS must contain HTTPS non-local origins only");
   }
   if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(", ")}`);
 }
+
+// Frontend origin to send the browser back to once the backend has finished
+// a redirect-based auth flow (e.g. Google OAuth's callback) — the first
+// entry in CLIENT_URLS/CLIENT_URL, same source of truth CORS itself already
+// reads, so this never drifts from the actual allowed frontend. The
+// localhost default only applies outside production: in production, an
+// unset value must never silently resolve to a plausible-looking wrong
+// host — see clientUrlSafe below, which auth.controller.js's OAuth flow
+// checks before ever redirecting a browser here.
+const clientUrl = process.env.CLIENT_URL || configuredOrigins[0] || (nodeEnv === "production" ? "" : "http://localhost:5173");
+
+// The backend's own Google OAuth callback URL, sent to Google as part of
+// the authorization request. Independent of clientUrl — either can be
+// unsafe on its own (e.g. GOOGLE_OAUTH_REDIRECT_URI explicitly left as a
+// localhost value in a production deploy while CLIENT_URL is correctly set,
+// or vice versa) so each gets its own *Safe flag rather than sharing one.
+const oauthRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || (nodeEnv === "production" ? "" : "http://localhost:7000/api/auth/google/callback");
 
 const env = {
   nodeEnv,
@@ -58,11 +86,14 @@ const env = {
     provider: process.env.DOCUMENT_INTELLIGENCE_PROVIDER || "gemini",
     configured: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
   },
-  // Frontend origin to send the browser back to once the backend has
-  // finished a redirect-based auth flow (e.g. Google OAuth's callback) — the
-  // first entry in CLIENT_URLS/CLIENT_URL, same source of truth CORS itself
-  // already reads, so this never drifts from the actual allowed frontend.
-  clientUrl: process.env.CLIENT_URL || configuredOrigins[0] || "http://localhost:5173",
+  clientUrl,
+  // True unless we are genuinely running in production with a clientUrl
+  // that is missing or resolves to a non-HTTPS/local origin — computed once
+  // at boot from the same values CORS (clientOrigins) already trusts, so it
+  // can never drift out of sync. auth.controller.js's OAuth redirect flow
+  // must refuse to redirect at all when this is false rather than send a
+  // real user's browser to a dead localhost URL (see ensureSafeOAuthConfig).
+  clientUrlSafe: nodeEnv !== "production" || !isUnsafeOrigin(clientUrl),
   google: {
     // Client ID/secret for the "Continue with Google" OAuth login button
     // (authorization-code flow) — distinct from the GOOGLE_SERVICE_ACCOUNT_*
@@ -70,7 +101,11 @@ const env = {
     // read here only; it must never be sent to the frontend.
     oauthClientId: process.env.GOOGLE_CLIENT_ID || "",
     oauthClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-    oauthRedirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI || "",
+    oauthRedirectUri,
+    // Same idea as clientUrlSafe, but for the URL sent to Google itself —
+    // independently unsafe if GOOGLE_OAUTH_REDIRECT_URI is missing OR
+    // explicitly set to a localhost/non-HTTPS value in production.
+    oauthRedirectUriSafe: nodeEnv !== "production" || !isUnsafeOrigin(oauthRedirectUri),
     get oauthConfigured() {
       return Boolean(this.oauthClientId && this.oauthClientSecret && this.oauthRedirectUri);
     },
