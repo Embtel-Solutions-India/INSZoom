@@ -34,7 +34,10 @@
     "phase0:verify": "node src/scripts/phase0Verify.js",
     "test:phase0-golden": "node --test src/modules/form-generation/tests/phase0.golden.manual.js",
     "phase1:reconcile": "node src/scripts/phase1Reconcile.js",
-    "phase1:verify": "node src/scripts/phase1Verify.js"
+    "phase1:verify": "node src/scripts/phase1Verify.js",
+    "phase2:verify": "node src/scripts/phase2Verify.js",
+    "phase3:verify": "node src/scripts/phase3Verify.js",
+    "phase4:verify": "node src/scripts/phase4Verify.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

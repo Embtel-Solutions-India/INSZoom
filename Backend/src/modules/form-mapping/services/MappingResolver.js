@@ -187,6 +187,44 @@ class MappingResolver {
         return String(value ?? "").toUpperCase();
       case "lowercase":
         return String(value ?? "").toLowerCase();
+      // Phase 4 (§I.3) - semantic-type format transforms. Each is opt-in per crosswalk edge
+      // (transform.type must be set explicitly) - see docs/forms/PHASE4_BASELINE.md for which
+      // real I-129 fields were and were NOT wired to these, and why: the standard USCIS-citation
+      // dashed/prefixed formats below do not fit every widget's own validationRules (confirmed
+      // empirically, not assumed - see the ledger). Only wire an edge to one of these after
+      // checking that field's own maxLength/regex accepts the formatted output.
+      case "ssn":
+        // xxx-xx-xxxx. Only reformats a clean 9-digit value; anything else (already dashed,
+        // partial, non-numeric) passes through unchanged rather than producing a malformed value.
+        if (typeof value === "string") {
+          const digits = value.replace(/\D/g, "");
+          if (digits.length === 9) return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+        }
+        return value;
+      case "alienNumber":
+        // A-xxxxxxxxx (9-digit number, A- prefix added if absent). Do not wire this to a widget
+        // whose own pre-printed "A-"/maxLength can't accommodate the added prefix (e.g. I-129's
+        // Line1_AlienNumber/Line10_AlienNumber - confirmed via their real validationRules
+        // (`^A?\d{7,9}$`, maxLength 9) - a prefixed value would overflow and fail their own
+        // validation; those stay MANUAL_ENTRY, see the ledger).
+        if (typeof value === "string") {
+          const digits = value.replace(/\D/g, "");
+          if (digits.length === 9) return `A-${digits}`;
+          if (digits.length > 0) return `A-${digits.padStart(9, "0")}`;
+        }
+        return value;
+      case "uscisReceiptNumber":
+        // XXX-xx-xxx-xxxxxx - already formatted at the source in every confirmed case; pass through.
+        return value;
+      case "phone":
+        // (xxx) xxx-xxxx. Confirmed to fit real I-129 phone widgets (maxLength 15, regex allows
+        // digits/+/()/-/space/period) before being wired to any edge - see the ledger.
+        if (typeof value === "string") {
+          const digits = value.replace(/\D/g, "");
+          if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+          if (digits.length === 11 && digits[0] === "1") return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+        }
+        return value;
       case "direct":
       case undefined:
       case "":

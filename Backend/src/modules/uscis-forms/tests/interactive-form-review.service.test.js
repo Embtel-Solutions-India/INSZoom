@@ -60,6 +60,69 @@ test("field review view includes canonical comparison, evidence, and conflicts",
   assert.equal(view.documents[0].originalName, "passport.pdf");
 });
 
+test("Phase 3 §I.2: buildFieldView surfaces a CONFLICT sync state and both conflict values", () => {
+  const field = { fieldName: "part1.lastName", label: "Last Name" };
+  const caseForm = {
+    fieldValues: { "part1.lastName": "Smith" },
+    sourceAttribution: {
+      "part1.lastName": {
+        source: "canonical",
+        sourceField: "person.lastName",
+        syncState: "CONFLICT",
+        conflictCanonicalValue: "Johnson",
+        conflictManualValue: "Smith",
+      },
+    },
+    manualOverrides: { "part1.lastName": { value: "Smith" } },
+    fieldReviews: {},
+    fieldHistory: [],
+  };
+  const view = InteractiveFormReviewService.buildFieldView(field, caseForm, { profile: {}, conflicts: [] }, []);
+  assert.equal(view.syncState, "CONFLICT");
+  assert.deepEqual(view.conflictValues, { canonicalValue: "Johnson", manualValue: "Smith" });
+});
+
+test("Phase 3 §I.2: buildFieldView reports MANUAL_OVERRIDE/SYNCED from an explicit syncState marker", () => {
+  const field = { fieldName: "part1.firstName", label: "First Name" };
+  const manualOverrideForm = {
+    fieldValues: { "part1.firstName": "Ada" },
+    sourceAttribution: { "part1.firstName": { syncState: "MANUAL_OVERRIDE" } },
+    manualOverrides: {},
+    fieldReviews: {},
+    fieldHistory: [],
+  };
+  const syncedForm = {
+    fieldValues: { "part1.firstName": "Ada" },
+    sourceAttribution: { "part1.firstName": { syncState: "SYNCED" } },
+    manualOverrides: {},
+    fieldReviews: {},
+    fieldHistory: [],
+  };
+  assert.equal(InteractiveFormReviewService.buildFieldView(field, manualOverrideForm, {}, []).syncState, "MANUAL_OVERRIDE");
+  assert.equal(InteractiveFormReviewService.buildFieldView(field, syncedForm, {}, []).syncState, "SYNCED");
+  assert.equal(InteractiveFormReviewService.buildFieldView(field, syncedForm, {}, []).conflictValues, undefined);
+});
+
+test("Phase 3 §I.2: buildFieldView falls back to MANUAL_OVERRIDE for a pre-Phase-2 CaseForm with no syncState marker", () => {
+  const field = { fieldName: "part1.middleName", label: "Middle Name" };
+  const preExistingOverrideForm = {
+    fieldValues: { "part1.middleName": "Lovelace" },
+    sourceAttribution: { "part1.middleName": { source: "AttorneyOverride" } }, // no syncState key at all
+    manualOverrides: { "part1.middleName": { value: "Lovelace" } },
+    fieldReviews: {},
+    fieldHistory: [],
+  };
+  const neverOverriddenForm = {
+    fieldValues: { "part1.middleName": "Lovelace" },
+    sourceAttribution: {},
+    manualOverrides: {},
+    fieldReviews: {},
+    fieldHistory: [],
+  };
+  assert.equal(InteractiveFormReviewService.buildFieldView(field, preExistingOverrideForm, {}, []).syncState, "MANUAL_OVERRIDE");
+  assert.equal(InteractiveFormReviewService.buildFieldView(field, neverOverriddenForm, {}, []).syncState, "SYNCED");
+});
+
 test("CaseForm supports the complete interactive review lifecycle", () => {
   const statusEnum = CaseForm.schema.path("status").enumValues;
   // updated: attorney_review status removed (attorney collaboration descoped) —

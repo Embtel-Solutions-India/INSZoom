@@ -237,6 +237,10 @@ export const uscisFormsApi = {
   refreshWorkspace: (caseId, formId, payload = {}) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/refresh`, payload),
   resetWorkspace: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/reset`, payload),
   resolveWorkspaceConflict: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/conflict`, payload),
+  // Phase 3: resolves a Phase-2 per-field sync-state CONFLICT (sourceAttribution[fieldName].syncState) -
+  // a different endpoint from resolveWorkspaceConflict above, which handles the older canonical-merge
+  // conflict type (canonicalState.conflicts). payload: {fieldName, sectionKey, direction: "canonical"|"manual", reason?}.
+  resolveFieldConflict: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/field/resolve-conflict`, payload),
   rollbackWorkspaceField: (caseId, formId, historyId) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/history/${historyId}/rollback`),
   addWorkspaceComment: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/comments`, payload),
   resolveWorkspaceComment: (caseId, formId, commentId) => api.patch(`/uscis-forms/case/${caseId}/${formId}/workspace/comments/${commentId}/resolve`),

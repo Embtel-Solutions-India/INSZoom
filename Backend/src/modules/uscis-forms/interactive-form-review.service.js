@@ -10,6 +10,8 @@ const AutoFillService = require("../form-mapping/services/AutoFillService");
 const FormMappingService = require("../form-mapping/services/FormMappingService");
 const MappingResolver = require("../form-mapping/services/MappingResolver");
 const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
+const ReverseIndexService = require("../form-mapping/services/ReverseIndexService");
+const SyncStateService = require("../form-mapping/services/SyncStateService");
 const notificationService = require("../notifications/notification.service");
 const uscisFormService = require("./uscis-form.service");
 
@@ -272,6 +274,19 @@ class InteractiveFormReviewService {
     const canonicalValue = sourcePath ? MappingResolver.resolvePath(canonicalState?.profile || {}, String(sourcePath).replace(/^canonical\./, "")) : undefined;
     const history = (caseForm.fieldHistory || []).filter((entry) => entry.fieldName === fieldName).slice(-25).reverse();
     const conflicts = (canonicalState?.conflicts || []).filter((conflict) => [conflict.path, conflict.field, conflict.fieldName].includes(sourcePath) || [conflict.path, conflict.field, conflict.fieldName].includes(fieldName));
+    // Phase 3 (§I.2): surfaces Phase 2's per-field sync state (SyncStateService,
+    // stored in sourceAttribution[fieldName].syncState) into the workspace
+    // response. Backwards-compat fallback for a CaseForm saved before Phase 2
+    // ever ran (no syncState marker written yet): MANUAL_OVERRIDE if
+    // manualOverrides has an entry, SYNCED otherwise - the same default
+    // SyncStateService.getSyncState itself would not apply here, since that
+    // helper defaults an absent marker straight to SYNCED regardless of
+    // manualOverrides; the CM-facing badge should still show "Manual" for a
+    // pre-Phase-2 override even though no syncState was ever recorded for it.
+    const syncState = attribution.syncState || (caseForm.manualOverrides?.[fieldName] ? SyncStateService.MANUAL_OVERRIDE : SyncStateService.SYNCED);
+    const conflictValues = syncState === SyncStateService.CONFLICT
+      ? { canonicalValue: attribution.conflictCanonicalValue, manualValue: attribution.conflictManualValue }
+      : undefined;
     return {
       ...field,
       value: MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName),
@@ -286,6 +301,8 @@ class InteractiveFormReviewService {
       review: caseForm.fieldReviews?.[fieldName],
       history,
       conflicts,
+      syncState,
+      conflictValues,
       documents: this.sourceDocumentsForField(fieldName, attribution, documents),
     };
   }
@@ -664,6 +681,83 @@ class InteractiveFormReviewService {
     await updated.save();
     await this.audit("CONFLICT_RESOLVED", updated, user, req, { fieldName, resolution: payload.resolution, value });
     return updated;
+  }
+
+  // Phase 3 (§I.4) - resolves a Phase-2 per-field sync-state CONFLICT
+  // (sourceAttribution[fieldName].syncState === "CONFLICT", set by
+  // AutoFillService.overrideField's fan-out when a sibling field already
+  // carried its own independent manual override - see SyncStateService.js).
+  // Deliberately separate from resolveConflict() above, which resolves a
+  // DIFFERENT, older conflict type: multiple candidate SOURCES disagreeing on
+  // one canonical field (canonicalState.conflicts, from CanonicalMergeService/
+  // CanonicalProfileService.rebuild). Never picks a side itself - the CM's
+  // explicit direction ("canonical" or "manual") is required.
+  static async resolveFieldConflict(caseId, caseFormId, payload, user, req) {
+    const { caseForm } = await this.load(caseId, caseFormId, user);
+    this.assertEditable(caseForm, user);
+    const fieldName = payload.fieldName || payload.fieldId;
+    if (!fieldName) throw error("fieldName is required", 400);
+    const direction = payload.direction;
+    if (!["canonical", "manual"].includes(direction)) throw error('direction must be "canonical" or "manual"', 400);
+
+    const attribution = caseForm.sourceAttribution?.[fieldName] || {};
+    if (attribution.syncState !== SyncStateService.CONFLICT) throw error("This field is not in conflict", 409);
+
+    const previousValue = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
+    const sourcePath = attribution.sourceField;
+    let newValue;
+
+    if (direction === "canonical") {
+      newValue = attribution.conflictCanonicalValue;
+      // applyStaffEdit is idempotent - canonical already holds this exact
+      // value (it's what created the conflict in the first place), so this
+      // call reconfirms it as the staff-locked value rather than mutating
+      // anything. Only meaningful for a reverseSync-eligible field (one that
+      // has a sourcePath at all); a field with no sourcePath can still reach
+      // CONFLICT via a hand-authored sourceAttribution entry, so this stays
+      // defensive rather than assuming sourcePath is always present.
+      if (sourcePath) {
+        await CanonicalProfileService.applyStaffEdit(caseId, [{ path: sourcePath, value: newValue, reason: "conflict_resolved_canonical", sourceFormId: caseForm._id }], user, req);
+      }
+      const filledData = caseForm.filledData || {};
+      MappingResolver.setPath(filledData, fieldName, newValue);
+      caseForm.set("filledData", filledData);
+      const fieldValues = { ...(caseForm.fieldValues || {}) };
+      fieldValues[fieldName] = newValue;
+      caseForm.set("fieldValues", fieldValues);
+      SyncStateService.setSynced(caseForm, fieldName);
+    } else {
+      newValue = attribution.conflictManualValue ?? previousValue;
+      SyncStateService.setManualOverride(caseForm, fieldName);
+      // Re-confirm the CM's kept value as the staff-locked canonical value
+      // ONLY when this field is itself reverseSync-eligible - a derived/
+      // composite or form-only field's "manual" resolution stays exactly
+      // what it already was: a CaseForm-only override, never guessed back
+      // into canonical (same rule overrideField itself follows).
+      if (sourcePath) {
+        const reverseIndex = await ReverseIndexService.buildFormReverseIndex(caseForm.formCode);
+        const reverseSyncEligible = [...reverseIndex.values()].flat().some((entry) => entry.pdfField === fieldName && entry.reverseSync);
+        if (reverseSyncEligible) {
+          await CanonicalProfileService.applyStaffEdit(caseId, [{ path: sourcePath, value: newValue, reason: "conflict_resolved_manual", sourceFormId: caseForm._id }], user, req);
+        }
+      }
+    }
+
+    this.pushFieldHistory(caseForm, {
+      fieldName,
+      sectionKey: payload.sectionKey,
+      action: "conflict_resolved",
+      previousValue,
+      newValue,
+      reason: payload.reason || `Conflict resolved: ${direction === "canonical" ? "used canonical value" : "kept manual edit"}`,
+      source: "ConflictResolution",
+      metadata: { direction },
+    }, user);
+    caseForm.lastModifiedBy = this.userId(user);
+    caseForm.lastModifiedAt = new Date();
+    await caseForm.save();
+    await this.audit("FIELD_CONFLICT_RESOLVED", caseForm, user, req, { fieldName, direction, value: newValue });
+    return caseForm;
   }
 
   static async addComment(caseId, caseFormId, payload, user, req) {
