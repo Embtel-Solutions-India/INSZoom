@@ -19,6 +19,13 @@ function isUnsafeOrigin(value) {
   return !value || !/^https:\/\//i.test(value) || /localhost|127\.0\.0\.1/i.test(value);
 }
 
+// Admin Portal local-dev client, explicitly permitted to call the production
+// backend's CORS-protected endpoints (e.g. /api/auth/refresh) for testing
+// against real data. This is the only origin exempted from the production
+// HTTPS/non-local guard below — it affects CORS admission only and never
+// touches clientUrl/oauthRedirectUri, which keep their existing safety checks.
+const CORS_LOCAL_DEV_EXCEPTIONS = ["http://localhost:3002","http://localhost:5173"];
+
 if (nodeEnv === "production") {
   const missing = [
     ["MONGODB_URI", process.env.MONGODB_URI],
@@ -26,7 +33,7 @@ if (nodeEnv === "production") {
     ["JWT_REFRESH_SECRET", jwtRefreshSecret],
   ].filter(([, value]) => !value).map(([key]) => key);
   if (!process.env.CLIENT_URLS && !process.env.ALLOWED_ORIGINS && !process.env.CLIENT_URL) missing.push("CLIENT_URLS");
-  if (configuredOrigins.some(isUnsafeOrigin)) {
+  if (configuredOrigins.some((origin) => isUnsafeOrigin(origin) && !CORS_LOCAL_DEV_EXCEPTIONS.includes(origin))) {
     missing.push("production CLIENT_URLS must contain HTTPS non-local origins only");
   }
   if (missing.length) throw new Error(`Missing required production configuration: ${missing.join(", ")}`);
@@ -48,6 +55,27 @@ const clientUrl = process.env.CLIENT_URL || configuredOrigins[0] || (nodeEnv ===
 // localhost value in a production deploy while CLIENT_URL is correctly set,
 // or vice versa) so each gets its own *Safe flag rather than sharing one.
 const oauthRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || (nodeEnv === "production" ? "" : "http://localhost:7000/api/auth/google/callback");
+
+// File-storage config — storage.service.js's single provider switch reads
+// all of this via env.storage rather than process.env directly, so both the
+// "local" and "s3" branches share one source of truth. LOCAL_STORAGE_PATH/
+// MAX_UPLOAD_SIZE_BYTES are this codebase's original names; UPLOAD_DIR/
+// MAX_FILE_SIZE are accepted as a second name so an operator who only set
+// the newer names doesn't silently keep hitting the old default.
+const storageProvider = process.env.STORAGE_PROVIDER || "local";
+const localStoragePath = process.env.LOCAL_STORAGE_PATH || process.env.UPLOAD_DIR || "";
+const maxUploadSizeBytes = Number(process.env.MAX_UPLOAD_SIZE_BYTES || process.env.MAX_FILE_SIZE || 10 * 1024 * 1024);
+
+if (storageProvider === "s3") {
+  // Fail fast at boot, not on the first upload — a missing key/bucket/region
+  // shouldn't surface as a confusing runtime error deep inside a request.
+  const missingS3 = [
+    ["AWS_S3_BUCKET", process.env.AWS_S3_BUCKET],
+    ["AWS_ACCESS_KEY_ID", process.env.AWS_ACCESS_KEY_ID],
+    ["AWS_SECRET_ACCESS_KEY", process.env.AWS_SECRET_ACCESS_KEY],
+  ].filter(([, value]) => !value).map(([key]) => key);
+  if (missingS3.length) throw new Error(`STORAGE_PROVIDER=s3 requires: ${missingS3.join(", ")}`);
+}
 
 const env = {
   nodeEnv,
@@ -74,9 +102,25 @@ const env = {
   refreshCookieSameSite: (process.env.REFRESH_COOKIE_SAMESITE || "lax").toLowerCase(),
   bcryptRounds: Number(process.env.BCRYPT_ROUNDS || 12),
   storage: {
-    provider: process.env.STORAGE_PROVIDER || "local",
-    localPath: process.env.LOCAL_STORAGE_PATH,
+    provider: storageProvider,
+    localPath: localStoragePath,
+    maxUploadSizeBytes,
     encryptionKeyConfigured: Boolean(process.env.STORAGE_ENCRYPTION_KEY),
+    aws: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+      region: process.env.AWS_REGION || "us-east-1",
+      bucket: process.env.AWS_S3_BUCKET || "",
+      // Optional — only set for S3-compatible non-AWS providers (MinIO,
+      // R2, etc). Left undefined for real AWS so the SDK uses its own
+      // regional endpoint resolution.
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+      // Server-side encryption applied on every PutObject, independent of
+      // (and in addition to) the app-level AES-256-GCM envelope above when
+      // STORAGE_ENCRYPTION_KEY is set — defense in depth, not a replacement.
+      sse: process.env.S3_SSE || "AES256",
+    },
   },
   stripe: {
     configured: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET),
