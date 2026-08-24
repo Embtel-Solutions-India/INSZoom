@@ -49,3 +49,32 @@ test("MappingResolver executes stored transform objects", () => {
   assert.equal(fullName.value, "Jane Q Doe");
   assert.equal(date.value, "01/02/1990");
 });
+
+// Phase 4 (§I.3) - new semantic-type format transforms.
+test("MappingResolver.applyTransform formats ssn as xxx-xx-xxxx from a clean 9-digit value", () => {
+  assert.equal(MappingResolver.applyTransform("123456789", { transform: { type: "ssn" } }), "123-45-6789");
+  assert.equal(MappingResolver.applyTransform("123-45-6789", { transform: { type: "ssn" } }), "123-45-6789");
+});
+
+test("MappingResolver.applyTransform leaves a non-9-digit ssn value untouched rather than producing a malformed one", () => {
+  assert.equal(MappingResolver.applyTransform("12345", { transform: { type: "ssn" } }), "12345");
+  assert.equal(MappingResolver.applyTransform(undefined, { transform: { type: "ssn" } }), undefined);
+});
+
+test("MappingResolver.applyTransform formats alienNumber as A-xxxxxxxxx, adding the prefix if absent", () => {
+  assert.equal(MappingResolver.applyTransform("123456789", { transform: { type: "alienNumber" } }), "A-123456789");
+  assert.equal(MappingResolver.applyTransform("A123456789", { transform: { type: "alienNumber" } }), "A-123456789");
+});
+
+test("MappingResolver.applyTransform formats phone as (xxx) xxx-xxxx, including an 11-digit leading-1 value", () => {
+  assert.equal(MappingResolver.applyTransform("5551234567", { transform: { type: "phone" } }), "(555) 123-4567");
+  assert.equal(MappingResolver.applyTransform("15551234567", { transform: { type: "phone" } }), "(555) 123-4567");
+});
+
+test("MappingResolver.applyTransform passes uscisReceiptNumber through unchanged", () => {
+  assert.equal(MappingResolver.applyTransform("EAC1234567890", { transform: { type: "uscisReceiptNumber" } }), "EAC1234567890");
+});
+
+test("MappingResolver.applyTransform date/dateFormat regression check (pre-existing, unmodified)", () => {
+  assert.equal(MappingResolver.applyTransform("1990-01-15", { transform: { type: "date", format: "mm/dd/yyyy" } }), "01/15/1990");
+});

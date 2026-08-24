@@ -66,6 +66,13 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 const PAGE_RENDER_WIDTH = 900
 const MIN_PAGE_RENDER_WIDTH = 612
 
+// Phase 3 (§I.5) - autosave retry backoff. 3 retries after the first attempt (500ms, 1s, 2s),
+// matching the delays the task spec calls for. A field stays in dirtyFieldsRef until it actually
+// succeeds - a failed/retrying save is never quietly dropped, and the existing before-unload guard
+// (dirtyFieldsRef.current.size, further down this file) already covers both states for free.
+const AUTOSAVE_RETRY_DELAYS_MS = [500, 1000, 2000]
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const getByPath = (source, path) => {
   if (!source || !path) return undefined
   const nested = String(path).split('.').reduce((current, part) => (current == null ? undefined : current[part]), source)
@@ -249,10 +256,21 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
 // deliberately has no entry in statusTone (StatusBadge's own fallback for an
 // unrecognized key - 'border-slate-200 bg-slate-100 text-slate-700' - IS the
 // neutral/empty look, not a new palette).
+// Phase 3 (§I.3): prefers the explicit Phase-2 sync state (field.syncState -
+// SyncStateService's SYNCED/MANUAL_OVERRIDE/CONFLICT, surfaced by
+// buildFieldView) over the older manualOverride/conflicts-derived tone below,
+// without dropping either existing check. field.conflicts (canonical-merge
+// candidate conflicts, a DIFFERENT, older concept - see the sidebar's two
+// separate badges lower in this file) and syncState === 'CONFLICT' (Phase
+// 2/3's per-field sync conflict) can both be true independently, so both are
+// still checked; either alone still yields the same red 'needs_revision'
+// overlay tone, since only one tone can render per field box.
 function fieldFillTone(field, value, errors) {
   if (errors?.length) return 'rejected'
-  if (field.conflicts?.length) return 'needs_revision'
+  if (field.syncState === 'CONFLICT' || field.conflicts?.length) return 'needs_revision'
   if (!hasValue(value)) return null
+  if (field.syncState === 'MANUAL_OVERRIDE') return 'manual_override'
+  if (field.syncState === 'SYNCED') return 'auto_filled'
   return field.manualOverride ? 'manual_override' : 'auto_filled'
 }
 
@@ -312,7 +330,9 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
     <button
       type="button"
       id={`uscis-field-${field.fieldName}`}
-      title={field.label || field.fieldLabel}
+      title={field.syncState === 'CONFLICT' && field.conflictValues
+        ? `${field.label || field.fieldLabel} — Conflict: canonical "${displayValue(field.conflictValues.canonicalValue)}" vs your edit "${displayValue(field.conflictValues.manualValue)}"`
+        : field.label || field.fieldLabel}
       onClick={async () => {
         const selectedOk = await onSelect()
         if (selectedOk !== false && canEdit) onStartEdit()
@@ -550,18 +570,27 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     else pageRefs.current.delete(pageNumber)
   }, [])
 
+  // Phase 3 (§I.5): retries a single field's save up to AUTOSAVE_RETRY_DELAYS_MS.length times with
+  // exponential backoff before giving up. savePendingChanges' own try/catch (below) is unchanged -
+  // it still sees exactly one thrown error after all retries are exhausted, and still sets the
+  // existing 'error' state (already styled as "Save failed" - see the header badge) for that.
   const saveFieldByName = useCallback(async (fieldName, value, reason = 'Interactive USCIS form review') => {
     const field = allFields.find((item) => item.fieldName === fieldName)
     if (!field || !canEdit) return
-    await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, {
-      fieldName: field.fieldName,
-      sectionKey: field.sectionKey,
-      value,
-      reason,
-    })
-    lastSaved.current = setByPath(lastSaved.current, field.fieldName, value)
-    dirtyFieldsRef.current.delete(field.fieldName)
-    setDirtyCount(dirtyFieldsRef.current.size)
+    const payload = { fieldName: field.fieldName, sectionKey: field.sectionKey, value, reason }
+    for (let attempt = 0; attempt <= AUTOSAVE_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        if (attempt > 0) setSaveState('retrying')
+        await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, payload)
+        lastSaved.current = setByPath(lastSaved.current, field.fieldName, value)
+        dirtyFieldsRef.current.delete(field.fieldName)
+        setDirtyCount(dirtyFieldsRef.current.size)
+        return
+      } catch (err) {
+        if (attempt === AUTOSAVE_RETRY_DELAYS_MS.length) throw err
+        await wait(AUTOSAVE_RETRY_DELAYS_MS[attempt])
+      }
+    }
   }, [allFields, canEdit, caseId, caseForm._id])
 
   const savePendingChanges = useCallback(async (reason = 'Auto-save before action', options = {}) => {
@@ -782,6 +811,19 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     action('reset', () => uscisFormsApi.resetWorkspace(caseId, caseForm._id, { fieldName: selectedField.fieldName }), 'Field reset to the latest canonical value')
   }
 
+  // Phase 3 (§I.4) - resolves the NEWER per-field sync-state CONFLICT via the dedicated
+  // resolve-conflict endpoint. Deliberately separate from useCanonicalValue below, which resolves
+  // the OLDER canonical-merge conflict type through a different endpoint entirely.
+  const resolveFieldConflict = async (direction) => {
+    if (!selectedField) return
+    if (!(await savePendingChanges('Auto-save before conflict resolution'))) return
+    action(`conflict:${selectedField.fieldName}`, () => uscisFormsApi.resolveFieldConflict(caseId, caseForm._id, {
+      fieldName: selectedField.fieldName,
+      sectionKey: selectedField.sectionKey,
+      direction,
+    }), direction === 'canonical' ? 'Updated to the canonical value' : 'Your edit was confirmed')
+  }
+
   const useCanonicalValue = async () => {
     if (!selectedField) return
     if (!(await savePendingChanges('Auto-save before conflict resolution'))) return
@@ -947,9 +989,24 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${saveState === 'saving' ? 'bg-blue-50 text-blue-700' : saveState === 'error' ? 'bg-red-50 text-red-700' : saveState === 'dirty' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-              {saveState === 'saving' ? 'Saving...' : saveState === 'dirty' ? `${dirtyCount || 1} unsaved` : saveState === 'error' ? 'Save failed' : 'Saved ✓'}
-            </span>
+            {/* Phase 3 (§I.5): 'retrying' is new (amber, mirrors 'dirty''s tone - a save is in
+                progress, just not on the first attempt); 'error' is unchanged in appearance but is
+                now a button - clicking it retries via savePendingChanges, which naturally retries
+                whatever is still in dirtyFieldsRef (a failed save is never cleared from it). */}
+            {saveState === 'error' ? (
+              <button
+                type="button"
+                onClick={() => savePendingChanges('Manual retry after save failure')}
+                className="rounded-full bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                title="Click to retry the failed save"
+              >
+                ⚠ Save failed — click to retry
+              </button>
+            ) : (
+              <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${saveState === 'saving' ? 'bg-blue-50 text-blue-700' : saveState === 'retrying' ? 'bg-amber-50 text-amber-700' : saveState === 'dirty' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                {saveState === 'saving' ? 'Saving...' : saveState === 'retrying' ? 'Retrying save…' : saveState === 'dirty' ? `${dirtyCount || 1} unsaved` : 'Saved ✓'}
+              </span>
+            )}
             <button type="button" onClick={undo} disabled={!undoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Undo</button>
             <button type="button" onClick={redo} disabled={!redoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Redo</button>
             <button
@@ -1189,7 +1246,15 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-4 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={selectedField.review?.status || selectedField.verificationStatus} />
-                {selectedField.manualOverride && <StatusBadge status="manual_override">Manual</StatusBadge>}
+                {/* Phase 3 (§I.3): prefers the explicit syncState when present; falls back to the
+                    older manualOverride check only for a hypothetical response with no syncState
+                    at all (buildFieldView always computes one now, so this fallback is dormant in
+                    practice, not dead code removed - see docs/forms/PHASE3_BASELINE.md). */}
+                {(selectedField.syncState === 'MANUAL_OVERRIDE' || (!selectedField.syncState && selectedField.manualOverride)) && <StatusBadge status="manual_override">Manual</StatusBadge>}
+                {selectedField.syncState === 'CONFLICT' && <StatusBadge status="needs_revision">Field Conflict</StatusBadge>}
+                {/* Older, distinct concept: multiple candidate SOURCES disagreeing on this
+                    canonical field (CanonicalMergeService/rebuild), independent of the Phase 2/3
+                    per-field sync conflict above - both can be true at once, so both render. */}
                 {selectedField.conflicts?.length > 0 && <StatusBadge status="needs_revision">Conflict</StatusBadge>}
                 <span className="text-[11px] text-slate-500">{selectedField.source || 'Unmapped source'}</span>
                 {busy === `field:${selectedField.fieldName}` && <span className="text-[11px] text-blue-700">Saving…</span>}
@@ -1242,6 +1307,27 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                         <p className="flex items-center gap-1 text-xs font-bold text-amber-900"><AlertTriangle className="h-4 w-4" />Source conflict</p>
                         <p className="mt-1 text-[11px] text-amber-800">Compare the canonical value and current form value before verifying this field.</p>
                         {canEdit && <button type="button" onClick={useCanonicalValue} className="mt-2 rounded-md border border-amber-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900">Use canonical value</button>}
+                      </div>
+                    )}
+                    {/* Phase 3 (§I.4) - resolves a DIFFERENT, newer conflict than the "Source
+                        conflict" panel above: this field's own manual override disagrees with a
+                        fan-out that just tried to re-fill it from canonical (SyncStateService's
+                        CONFLICT state). Deliberately never auto-picks a side - both buttons call
+                        the backend explicitly with the CM's chosen direction. */}
+                    {selectedField.syncState === 'CONFLICT' && (
+                      <div className="rounded-lg border border-red-300 bg-red-50 p-3">
+                        <p className="flex items-center gap-1 text-xs font-bold text-red-900"><AlertTriangle className="h-4 w-4" />Conflict detected</p>
+                        <p className="mt-1 text-[11px] text-red-800">A canonical update tried to refresh this field, but it already has your own manual edit. Choose which value should win.</p>
+                        <dl className="mt-2 grid grid-cols-[70px_1fr] gap-y-1 text-[11px]">
+                          <dt className="text-red-700">Canonical</dt><dd className="break-all font-semibold text-red-950">{displayValue(selectedField.conflictValues?.canonicalValue)}</dd>
+                          <dt className="text-red-700">Your edit</dt><dd className="break-all font-semibold text-red-950">{displayValue(selectedField.conflictValues?.manualValue)}</dd>
+                        </dl>
+                        {canEdit && (
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <button type="button" onClick={() => resolveFieldConflict('canonical')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Use canonical value</button>
+                            <button type="button" onClick={() => resolveFieldConflict('manual')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Keep my edit</button>
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">

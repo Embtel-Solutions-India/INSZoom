@@ -155,7 +155,7 @@ const MAPPED_EDGES = [
   { fieldName: "form1[0].#subform[0].P1_Line3_State[0]", source: "raw.questionnaireAnswers.employer_company_address_state.value", note: "Item 3, mailing address state." },
   { fieldName: "form1[0].#subform[0].P1_Line3_ZipCode[0]", source: "raw.questionnaireAnswers.employer_company_address_zipCode.value", note: "Item 3, mailing address ZIP." },
   { fieldName: "form1[0].#subform[0].P1_Line3_Country[0]", source: "raw.questionnaireAnswers.employer_company_address_country.value", note: "Item 3, mailing address country." },
-  { fieldName: "form1[0].#subform[0].Line2_DaytimePhoneNumber1_Part8[0]", source: "raw.questionnaireAnswers.employer_company_daytimePhone.value", note: "Item 4, daytime phone." },
+  { fieldName: "form1[0].#subform[0].Line2_DaytimePhoneNumber1_Part8[0]", source: "raw.questionnaireAnswers.employer_company_daytimePhone.value", transform: { type: "phone" }, note: "Item 4, daytime phone. Phase 4 (§I.3): (xxx) xxx-xxxx - confirmed to fit this widget's real validationRules (maxLength 15, regex allows digits/()/-/space) before wiring." },
 
   // --- Part 2: Information About This Petition (page 2) ---
   { fieldName: "form1[0].#subform[1].Part2_ClassificationSymbol[0]", source: "case.visaType", note: "Item 1, requested classification symbol. case.visaType is always the literal string 'H-1B' for a case this template is assigned to (visaTypes:['H-1B']) - used directly rather than inventing a separate static-value mechanism (FormMappingService.applyMappingGraph does not forward a custom staticValue field from a graph edge, and that file is out of scope to modify per §3f/§8)." },

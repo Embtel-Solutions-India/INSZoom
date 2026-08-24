@@ -81,7 +81,17 @@ function inferTextSemanticType(name = "", field) {
   const value = String(name).toLowerCase();
   if (/signature|sign here|sig_/.test(value)) return "signature";
   if (/initial/.test(value)) return "initial";
-  if (/date|dob|birth|expiry|expires|issued|from|to/.test(value)) return "date";
+  // P1-002 (docs/forms/issues/P1-002-semantictype-inference-false-positives.md): the previous
+  // regex `/date|dob|birth|expiry|expires|issued|from|to/` had two independent defects, both
+  // removed here rather than patched with exceptions:
+  // (1) bare "to"/"from" matched as unanchored substrings inside unrelated words - "CityTown"
+  //     ("ci-ty-TO-wn"), "PassportorTravDoc" ("passpor-TO-rtravdoc") - not real date indicators.
+  // (2) "birth" alone matched every birth-related field, not just date-of-birth - CountryOfBirth/
+  //     CityTownOfBirth/ProvinceOrStateOfBirth are place names, not dates. Every confirmed true
+  //     date-of-birth field name in this codebase (DateofBirth, DateOfBirth) already contains
+  //     "date" and is still caught by that term alone - "birth" was never actually load-bearing
+  //     for a real date field, only a source of false positives for place-of-birth fields.
+  if (/date|dob|expiry|expires|issued/.test(value)) return "date";
   if (/email|e-mail/.test(value)) return "email";
   if (/phone|telephone|tel|mobile|cell|fax/.test(value)) return "phone";
   if (/currency|amount|fee|salary|wage|income|cost|price|dollar|\$/.test(value)) return "currency";
@@ -780,3 +790,6 @@ class PDFFieldScannerService {
 }
 
 module.exports = PDFFieldScannerService;
+// Exposed for unit testing only (P1-002) - inferTextSemanticType is otherwise a private,
+// module-scoped function with no reason to be part of the class's real public API.
+module.exports.inferTextSemanticType = inferTextSemanticType;

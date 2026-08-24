@@ -389,6 +389,15 @@ async function resolveInteractiveConflict(req, res, next) {
   }
 }
 
+async function resolveInteractiveFieldConflict(req, res, next) {
+  try {
+    const form = await interactiveFormReviewService.resolveFieldConflict(req.params.caseId, req.params.formId, req.body, req.user, req);
+    res.json({ success: true, form, data: form });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function addInteractiveComment(req, res, next) {
   try {
     const comment = await interactiveFormReviewService.addComment(req.params.caseId, req.params.formId, req.body, req.user, req);
@@ -459,6 +468,7 @@ module.exports = {
   renderCaseForm,
   resetInteractiveForm,
   resolveInteractiveConflict,
+  resolveInteractiveFieldConflict,
   resolveInteractiveComment,
   reviewCaseForm,
   reviewInteractiveField,

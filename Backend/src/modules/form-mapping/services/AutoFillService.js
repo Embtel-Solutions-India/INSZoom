@@ -1,8 +1,12 @@
 const AuditLog = require("../../../models/AuditLog");
+const Case = require("../../../models/Case");
 const CaseForm = require("../../../models/CaseForm");
+const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
 const CanonicalDataService = require("./CanonicalDataService");
 const FormMappingService = require("./FormMappingService");
 const MappingResolver = require("./MappingResolver");
+const ReverseIndexService = require("./ReverseIndexService");
+const SyncStateService = require("./SyncStateService");
 const ValidationService = require("./ValidationService");
 
 class AutoFillService {
@@ -307,6 +311,22 @@ class AutoFillService {
     return preview.validation;
   }
 
+  // Resolves whether fieldId round-trips to a direct, atomic canonical field
+  // (ReverseIndexService's reverseSync:true) for this form. Returns
+  // {canonicalSourcePath, reverseSyncEligible} - canonicalSourcePath is null
+  // for a form-only (unmapped) field; reverseSyncEligible is false for both
+  // an unmapped field and a mapped-but-derived one (e.g. person.fullName).
+  // Uses ReverseIndexService's existing public API only - no crosswalk
+  // parsing, no new ReverseIndexService surface.
+  static async resolveReverseSync(formType, fieldId) {
+    const reverseIndex = await ReverseIndexService.buildFormReverseIndex(formType);
+    for (const [sourcePath, entries] of reverseIndex) {
+      const match = entries.find((entry) => entry.pdfField === fieldId);
+      if (match) return { canonicalSourcePath: sourcePath, reverseSyncEligible: match.reverseSync };
+    }
+    return { canonicalSourcePath: null, reverseSyncEligible: false };
+  }
+
   static async overrideField(caseId, formType, fieldId, value, user, req, reason) {
     const caseForm = await this.findCaseForm(caseId, formType);
     if (!caseForm) {
@@ -315,6 +335,33 @@ class AutoFillService {
       throw error;
     }
     const previousValue = MappingResolver.resolvePath(caseForm.filledData || {}, fieldId);
+
+    // Canonical write happens FIRST, before any CaseForm mutation below, so a
+    // stale/conflicting edit (STALE_FORM_REVISION) throws before this
+    // CaseForm is touched at all - never a half-applied override.
+    // CanonicalProfileService.applyStaffEdit remains the ONLY place that
+    // mutates Case.canonicalProfile; overrideField only decides whether to
+    // call it (reverseSync-eligible direct mappings only - see
+    // resolveReverseSync above) and fans its result out to sibling PDF
+    // fields on THIS form afterward. A derived/composite field (e.g.
+    // person.fullName, reverseSync:false) or a form-only field never reaches
+    // this branch - guessing a reverse transform for those would silently
+    // corrupt canonical data, so they fall through to the unchanged
+    // CaseForm-only write below, exactly as before this phase.
+    const { canonicalSourcePath, reverseSyncEligible } = await this.resolveReverseSync(formType, fieldId);
+    let canonicalVersionChanged = false;
+    if (reverseSyncEligible) {
+      const caseBeforeEdit = await Case.findById(caseId).select("canonicalProfile.version").lean();
+      const versionBefore = caseBeforeEdit?.canonicalProfile?.version || 0;
+      const canonicalResult = await CanonicalProfileService.applyStaffEdit(
+        caseId,
+        [{ path: canonicalSourcePath, value, reason, sourceFormId: caseForm._id }],
+        user,
+        req
+      );
+      canonicalVersionChanged = canonicalResult.version !== versionBefore;
+    }
+
     const filledData = caseForm.filledData || {};
     MappingResolver.setPath(filledData, fieldId, value);
     caseForm.set("filledData", filledData);
@@ -343,6 +390,12 @@ class AutoFillService {
       validationStatus: "manual_override",
     };
     caseForm.set("sourceAttribution", sourceAttribution);
+    // §I.4: every override marks its own field MANUAL_OVERRIDE, regardless of
+    // reverseSync eligibility - a case manager's explicit edit is a manual
+    // override on this form whether or not it also happens to flow back to
+    // canonical. Stored in sourceAttribution[fieldId].syncState (see
+    // SyncStateService's header comment for why not CaseForm.syncState).
+    SyncStateService.setManualOverride(caseForm, fieldId);
 
     const manualOverrides = { ...(caseForm.manualOverrides || {}) };
     manualOverrides[fieldId] = {
@@ -361,6 +414,60 @@ class AutoFillService {
     });
     await caseForm.save();
     await this.audit("FIELD_OVERRIDDEN", caseForm, user, req, { fieldId, previousValue, value, reason });
+
+    // Fan out the new canonical value to this form's OTHER PDF fields sharing
+    // the same source (e.g. person.lastName -> 3 I-129 fields) by reusing
+    // the normal regenerate path, not a parallel re-implementation.
+    // mergeMappedFields' isReviewedOrManual check (unchanged) skips
+    // re-writing fieldId itself - it was just manually overridden above -
+    // so only the untouched siblings pick up the fresh canonical value.
+    // Skipped when applyStaffEdit no-op'd (idempotent re-submit) to avoid an
+    // unnecessary regenerate/version bump; skipped entirely for a
+    // reverseSync:false or form-only field, which never reaches this point
+    // with reverseSyncEligible true.
+    if (reverseSyncEligible && canonicalVersionChanged) {
+      // §I.4: re-evaluate sync state on every sibling field sharing this
+      // canonical source, using the manualOverrides snapshot from BEFORE
+      // generate() ran (generate()'s own isReviewedOrManual check already
+      // left an untouched sibling's stored value exactly as it was - this
+      // only adds the sync-state marker on top, never overwrites a value).
+      const siblingEntries = (await ReverseIndexService.buildFormReverseIndex(formType)).get(canonicalSourcePath) || [];
+      const priorManualOverrides = manualOverrides;
+      const regenerated = await this.generate(caseId, formType, user, req, { regenerate: true });
+      const finalForm = regenerated.caseForm;
+
+      let conflictDetected = false;
+      siblingEntries.forEach(({ pdfField }) => {
+        if (pdfField === fieldId) {
+          SyncStateService.setManualOverride(finalForm, pdfField);
+          return;
+        }
+        const priorOverride = priorManualOverrides[pdfField];
+        if (priorOverride) {
+          // This sibling already had its OWN manual override on this form -
+          // generate() correctly left its value untouched, but canonical now
+          // disagrees. Staff-wins at the canonical layer does not extend to
+          // silently overwriting a DIFFERENT field's own manual override -
+          // surface a conflict instead.
+          SyncStateService.setConflict(finalForm, pdfField, value, priorOverride.value);
+          conflictDetected = true;
+        } else {
+          SyncStateService.setSynced(finalForm, pdfField);
+        }
+      });
+
+      if (conflictDetected) {
+        finalForm.auditHistory.push({
+          action: "CONFLICT_DETECTED",
+          changes: { canonicalSourcePath, canonicalValue: value, siblingFields: siblingEntries.map((entry) => entry.pdfField) },
+          performedBy: this.getUserId(user),
+          ...this.requestMeta(req),
+        });
+      }
+      await finalForm.save();
+      return finalForm;
+    }
+
     return caseForm;
   }
 

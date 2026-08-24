@@ -35,6 +35,11 @@ router.post("/case/:caseId/:formId/workspace/lock", authenticate, authorizePermi
 router.post("/case/:caseId/:formId/workspace/refresh", authenticate, authorizePermissions("forms:update"), ctrl.refreshInteractiveForm);
 router.post("/case/:caseId/:formId/workspace/reset", authenticate, authorizePermissions("forms:update"), ctrl.resetInteractiveForm);
 router.post("/case/:caseId/:formId/workspace/conflict", authenticate, authorizePermissions("forms:update"), ctrl.resolveInteractiveConflict);
+// Phase 3 (§I.4): resolves a Phase-2 per-field sync-state CONFLICT
+// (sourceAttribution[fieldName].syncState) - deliberately a separate route
+// from /workspace/conflict above, which resolves the older canonical-merge
+// conflict type. Same auth chain as saveInteractiveField (PATCH .../field).
+router.post("/case/:caseId/:formId/workspace/field/resolve-conflict", authenticate, authorizePermissions("forms:update"), ctrl.resolveInteractiveFieldConflict);
 router.post("/case/:caseId/:formId/workspace/history/:historyId/rollback", authenticate, authorizePermissions("forms:update"), ctrl.rollbackInteractiveField);
 router.get("/case/:caseId/:formId/workspace/validation", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveValidation);
 router.get("/case/:caseId/:formId/workspace/comments", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveComments);
