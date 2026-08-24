@@ -33,6 +33,9 @@ temp/
 coverage/
 .nyc_output/
 
+# Phase 0 forms telemetry (per-run JSON, additive/flag-gated - see docs/forms/PHASE0_BASELINE.md)
+telemetry/
+
 # Build output
 dist/
 build/

@@ -1,0 +1,2603 @@
+{
+  "visaKey": "k3",
+  "formCode": "I-130",
+  "approvalStatus": "fallback_stamped_ready_for_pdf",
+  "filledData": {
+    "page1": {
+      "form10PageSet0Page10Pdf417BarCode10": "I-130|04/01/24|1",
+      "form10PageSet0Page11Pdf417BarCode10": "I-130|04/01/24|2",
+      "form10PageSet0Page12Pdf417BarCode10": "I-130|04/01/24|3",
+      "form10PageSet0Page13Pdf417BarCode10": "I-130|04/01/24|4",
+      "form10PageSet0Page14Pdf417BarCode10": "I-130|04/01/24|5",
+      "form10PageSet0Page15Pdf417BarCode10": "I-130|04/01/24|6",
+      "form10PageSet0Page16Pdf417BarCode10": "I-130|04/01/24|7",
+      "form10PageSet0Page17Pdf417BarCode10": "I-130|04/01/24|8",
+      "form10PageSet0Page18Pdf417BarCode10": "I-130|04/01/24|9",
+      "form10PageSet0Page19Pdf417BarCode10": "I-130|04/01/24|10",
+      "form10PageSet0Page110Pdf417BarCode10": "I-130|04/01/24|11",
+      "form10PageSet0Page111Pdf417BarCode10": "I-130|04/01/24|12",
+      "form10Subform0CheckBox10": false
+    },
+    "part1": {
+      "form10Subform0Part1Line1Spouse0": false,
+      "form10Subform0Part1Line1Siblings0": false,
+      "form10Subform0Part1Line1Parent0": false,
+      "form10Subform0Part1Line1Child0": false,
+      "form10Subform0Part1Line2InWedlock0": false,
+      "form10Subform0Part1Line2AdoptedChild0": false,
+      "form10Subform0Part1Line2Stepchild0": false,
+      "form10Subform0Part1Line2OutOfWedlock0": false,
+      "form10Subform0Part1Line3Yes0": false,
+      "form10Subform0Part1Line4No0": false,
+      "form10Subform0Part1Line4Yes0": false,
+      "form10Subform0Part1Line3No0": false
+    },
+    "part2": {
+      "form10Subform1Part2Line9Male0": false,
+      "form10Subform1Part2Line9Female0": false,
+      "form10Subform1Part2Line11Yes0": false,
+      "form10Subform1Part2Line11No0": false,
+      "form10Subform1Part2Line10Unit0": false,
+      "form10Subform1Part2Line10Unit1": false,
+      "form10Subform1Part2Line10Unit2": false,
+      "form10Subform1Part2Line14Unit0": false,
+      "form10Subform1Part2Line14Unit1": false,
+      "form10Subform1Part2Line14Unit2": false,
+      "form10Subform1Part2Line12Unit0": false,
+      "form10Subform1Part2Line12Unit1": false,
+      "form10Subform1Part2Line12Unit2": false,
+      "form10Subform1Part2Line17Widowed0": false,
+      "form10Subform1Part2Line17Annulled0": false,
+      "form10Subform1Part2Line17Separated0": false,
+      "form10Subform1Part2Line17Single0": false,
+      "form10Subform1Part2Line17Married0": false,
+      "form10Subform1Part2Line17Divorced0": false,
+      "form10Subform1Part2Line13BDateTo0": "PRESENT",
+      "form10Subform2Part2Line36UsCitizen0": false,
+      "form10Subform2Part2Line36Lpr0": false,
+      "form10Subform2Part2Line23ACheckbox0": false,
+      "form10Subform2Part2Line23BCheckbox0": false,
+      "form10Subform2Part2Line23CCheckbox0": false,
+      "form10Subform2Part2Line36Yes0": false,
+      "form10Subform2Part2Line36No0": false,
+      "form10Subform2Part2Line26Male0": false,
+      "form10Subform2Part2Line26Female0": false,
+      "form10Subform2Part2Line32Male0": false,
+      "form10Subform2Part2Line32Female0": false,
+      "form10Subform3Part2Line41No0": false,
+      "form10Subform3Part2Line41Yes0": false,
+      "form10Subform3Part2Line41Unit0": false,
+      "form10Subform3Part2Line41Unit1": false,
+      "form10Subform3Part2Line41Unit2": false,
+      "form10Subform3Part2Line45Unit0": false,
+      "form10Subform3Part2Line45Unit1": false,
+      "form10Subform3Part2Line45Unit2": false,
+      "form10Subform3Part2Line43BDateTo0": "PRESENT"
+    },
+    "part3": {
+      "form10Subform3Part3Line1Ethnicity0": false,
+      "form10Subform3Part3Line1Ethnicity1": false,
+      "form10Subform3Part3Line2RaceBlack0": false,
+      "form10Subform3Part3Line2RaceAmericanIndianAlaskaNative0": false,
+      "form10Subform3Part3Line2RaceWhite0": false,
+      "form10Subform3Part3Line2RaceAsian0": false,
+      "form10Subform3Part3Line2RaceNativeHawaiianOtherPacificIslander0": false,
+      "form10Subform3Part3Line5EyeColor0": false,
+      "form10Subform3Part3Line5EyeColor1": false,
+      "form10Subform3Part3Line5EyeColor2": false,
+      "form10Subform3Part3Line5EyeColor3": false,
+      "form10Subform3Part3Line5EyeColor4": false,
+      "form10Subform3Part3Line5EyeColor5": false,
+      "form10Subform3Part3Line5EyeColor6": false,
+      "form10Subform3Part3Line5EyeColor7": false,
+      "form10Subform3Part3Line5EyeColor8": false,
+      "form10Subform4Part3Line6HairColor0": false,
+      "form10Subform4Part3Line6HairColor1": false,
+      "form10Subform4Part3Line6HairColor2": false,
+      "form10Subform4Part3Line6HairColor3": false,
+      "form10Subform4Part3Line6HairColor4": false,
+      "form10Subform4Part3Line6HairColor5": false,
+      "form10Subform4Part3Line6HairColor6": false,
+      "form10Subform4Part3Line6HairColor7": false,
+      "form10Subform4Part3Line6HairColor8": false
+    },
+    "part4": {
+      "form10Subform4Part4Line12BUnit0": false,
+      "form10Subform4Part4Line12BUnit1": false,
+      "form10Subform4Part4Line12BUnit2": false,
+      "form10Subform4Part4Line13Unit0": false,
+      "form10Subform4Part4Line13Unit1": false,
+      "form10Subform4Part4Line13Unit2": false,
+      "form10Subform4Part4Line11Unit0": false,
+      "form10Subform4Part4Line11Unit1": false,
+      "form10Subform4Part4Line11Unit2": false,
+      "form10Subform4Part4Line9Male0": false,
+      "form10Subform4Part4Line9Female0": false,
+      "form10Subform4Part4Line10Yes0": false,
+      "form10Subform4Part4Line10No0": false,
+      "form10Subform4Part4Line10Unknown0": false,
+      "form10Subform5Part4Line18MaritalStatus0": false,
+      "form10Subform5Part4Line18MaritalStatus1": false,
+      "form10Subform5Part4Line18MaritalStatus2": false,
+      "form10Subform5Part4Line18MaritalStatus3": false,
+      "form10Subform5Part4Line18MaritalStatus4": false,
+      "form10Subform5Part4Line18MaritalStatus5": false,
+      "form10Subform5Part4Line16EmailAddress0": "k3-petitioner.phase0-golden@example.com",
+      "form10Subform6Part4Line20Yes0": false,
+      "form10Subform6Part4Line20No0": false,
+      "form10Subform6Part4Line21AClassOfAdmission0": [
+        ""
+      ],
+      "form10Subform6Part4Line26Unit0": false,
+      "form10Subform6Part4Line26Unit1": false,
+      "form10Subform6Part4Line26Unit2": false,
+      "form10Subform6Part4Line28No0": false,
+      "form10Subform6Part4Line28Yes0": false,
+      "form10Subform6Part4Line54Removal0": false,
+      "form10Subform6Part4Line54Exclusion0": false,
+      "form10Subform6Part4Line54Rescission0": false,
+      "form10Subform6Part4Line54JudicialProceedings0": false,
+      "form10Subform7Part4Line56Unit0": false,
+      "form10Subform7Part4Line56Unit1": false,
+      "form10Subform7Part4Line56Unit2": false,
+      "form10Subform7Part4Line57Unit0": false,
+      "form10Subform7Part4Line57Unit1": false,
+      "form10Subform7Part4Line57Unit2": false,
+      "form10Subform7Part4Line1Yes0": false,
+      "form10Subform7Part4Line1No0": false
+    },
+    "part6": {
+      "form10Subform8Part6Line5Email0": "k3-petitioner.phase0-golden@example.com",
+      "form10Subform8Part6Line1Checkbox0": false,
+      "form10Subform8Part6Line1Checkbox1": false,
+      "form10Subform8Part6Line2Checkbox0": false
+    },
+    "part7": {
+      "form10Subform9Part7Line3Unit0": false,
+      "form10Subform9Part7Line3Unit1": false,
+      "form10Subform9Part7Line3Unit2": false,
+      "form10Subform9Part7Line5Email0": "k3-petitioner.phase0-golden@example.com"
+    },
+    "part8": {
+      "form10Subform9Part8Line3Unit0": false,
+      "form10Subform9Part8Line3Unit1": false,
+      "form10Subform9Part8Line3Unit2": false,
+      "form10Subform10Part8Line6Email0": "k3-petitioner.phase0-golden@example.com",
+      "form10Subform10Part8Line7Checkbox0": false,
+      "form10Subform10Part8Line7Checkbox1": false,
+      "form10Subform10Part8Line7BCheckbox0": false,
+      "form10Subform10Part8Line7BCheckbox1": false
+    }
+  },
+  "pdfFieldValues": {
+    "form1[0].#pageSet[0].Page1[0].PDF417BarCode1[0]": "I-130|04/01/24|1",
+    "form1[0].#pageSet[0].Page1[1].PDF417BarCode1[0]": "I-130|04/01/24|2",
+    "form1[0].#pageSet[0].Page1[2].PDF417BarCode1[0]": "I-130|04/01/24|3",
+    "form1[0].#pageSet[0].Page1[3].PDF417BarCode1[0]": "I-130|04/01/24|4",
+    "form1[0].#pageSet[0].Page1[4].PDF417BarCode1[0]": "I-130|04/01/24|5",
+    "form1[0].#pageSet[0].Page1[5].PDF417BarCode1[0]": "I-130|04/01/24|6",
+    "form1[0].#pageSet[0].Page1[6].PDF417BarCode1[0]": "I-130|04/01/24|7",
+    "form1[0].#pageSet[0].Page1[7].PDF417BarCode1[0]": "I-130|04/01/24|8",
+    "form1[0].#pageSet[0].Page1[8].PDF417BarCode1[0]": "I-130|04/01/24|9",
+    "form1[0].#pageSet[0].Page1[9].PDF417BarCode1[0]": "I-130|04/01/24|10",
+    "form1[0].#pageSet[0].Page1[10].PDF417BarCode1[0]": "I-130|04/01/24|11",
+    "form1[0].#pageSet[0].Page1[11].PDF417BarCode1[0]": "I-130|04/01/24|12",
+    "form1[0].#subform[0].CheckBox1[0]": false,
+    "form1[0].#subform[0].Pt1Line1_Spouse[0]": false,
+    "form1[0].#subform[0].Pt1Line1_Siblings[0]": false,
+    "form1[0].#subform[0].Pt1Line1_Parent[0]": false,
+    "form1[0].#subform[0].Pt1Line1_Child[0]": false,
+    "form1[0].#subform[0].Pt1Line2_InWedlock[0]": false,
+    "form1[0].#subform[0].Pt1Line2_AdoptedChild[0]": false,
+    "form1[0].#subform[0].Pt1Line2_Stepchild[0]": false,
+    "form1[0].#subform[0].Pt1Line2_OutOfWedlock[0]": false,
+    "form1[0].#subform[0].Pt1Line3_Yes[0]": false,
+    "form1[0].#subform[0].Pt1Line4_No[0]": false,
+    "form1[0].#subform[0].Pt1Line4_Yes[0]": false,
+    "form1[0].#subform[0].Pt1Line3_No[0]": false,
+    "form1[0].#subform[1].Pt2Line9_Male[0]": false,
+    "form1[0].#subform[1].Pt2Line9_Female[0]": false,
+    "form1[0].#subform[1].Pt2Line11_Yes[0]": false,
+    "form1[0].#subform[1].Pt2Line11_No[0]": false,
+    "form1[0].#subform[1].Pt2Line10_Unit[0]": false,
+    "form1[0].#subform[1].Pt2Line10_Unit[1]": false,
+    "form1[0].#subform[1].Pt2Line10_Unit[2]": false,
+    "form1[0].#subform[1].Pt2Line14_Unit[0]": false,
+    "form1[0].#subform[1].Pt2Line14_Unit[1]": false,
+    "form1[0].#subform[1].Pt2Line14_Unit[2]": false,
+    "form1[0].#subform[1].Pt2Line12_Unit[0]": false,
+    "form1[0].#subform[1].Pt2Line12_Unit[1]": false,
+    "form1[0].#subform[1].Pt2Line12_Unit[2]": false,
+    "form1[0].#subform[1].Pt2Line17_Widowed[0]": false,
+    "form1[0].#subform[1].Pt2Line17_Annulled[0]": false,
+    "form1[0].#subform[1].Pt2Line17_Separated[0]": false,
+    "form1[0].#subform[1].Pt2Line17_Single[0]": false,
+    "form1[0].#subform[1].Pt2Line17_Married[0]": false,
+    "form1[0].#subform[1].Pt2Line17_Divorced[0]": false,
+    "form1[0].#subform[1].Pt2Line13b_DateTo[0]": "PRESENT",
+    "form1[0].#subform[2].Pt2Line36_USCitizen[0]": false,
+    "form1[0].#subform[2].Pt2Line36_LPR[0]": false,
+    "form1[0].#subform[2].Pt2Line23a_checkbox[0]": false,
+    "form1[0].#subform[2].Pt2Line23b_checkbox[0]": false,
+    "form1[0].#subform[2].Pt2Line23c_checkbox[0]": false,
+    "form1[0].#subform[2].Pt2Line36_Yes[0]": false,
+    "form1[0].#subform[2].Pt2Line36_No[0]": false,
+    "form1[0].#subform[2].Pt2Line26_Male[0]": false,
+    "form1[0].#subform[2].Pt2Line26_Female[0]": false,
+    "form1[0].#subform[2].Pt2Line32_Male[0]": false,
+    "form1[0].#subform[2].Pt2Line32_Female[0]": false,
+    "form1[0].#subform[3].Pt2Line41_No[0]": false,
+    "form1[0].#subform[3].Pt2Line41_Yes[0]": false,
+    "form1[0].#subform[3].Pt2Line41_Unit[0]": false,
+    "form1[0].#subform[3].Pt2Line41_Unit[1]": false,
+    "form1[0].#subform[3].Pt2Line41_Unit[2]": false,
+    "form1[0].#subform[3].Pt2Line45_Unit[0]": false,
+    "form1[0].#subform[3].Pt2Line45_Unit[1]": false,
+    "form1[0].#subform[3].Pt2Line45_Unit[2]": false,
+    "form1[0].#subform[3].Pt3Line1_Ethnicity[0]": false,
+    "form1[0].#subform[3].Pt3Line1_Ethnicity[1]": false,
+    "form1[0].#subform[3].Pt3Line2_Race_Black[0]": false,
+    "form1[0].#subform[3].Pt3Line2_Race_AmericanIndianAlaskaNative[0]": false,
+    "form1[0].#subform[3].Pt3Line2_Race_White[0]": false,
+    "form1[0].#subform[3].Pt3Line2_Race_Asian[0]": false,
+    "form1[0].#subform[3].Pt3Line2_Race_NativeHawaiianOtherPacificIslander[0]": false,
+    "form1[0].#subform[3].Pt2Line43b_DateTo[0]": "PRESENT",
+    "form1[0].#subform[3].Pt3Line5_EyeColor[0]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[1]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[2]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[3]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[4]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[5]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[6]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[7]": false,
+    "form1[0].#subform[3].Pt3Line5_EyeColor[8]": false,
+    "form1[0].#subform[4].Pt4Line12b_Unit[0]": false,
+    "form1[0].#subform[4].Pt4Line12b_Unit[1]": false,
+    "form1[0].#subform[4].Pt4Line12b_Unit[2]": false,
+    "form1[0].#subform[4].Pt4Line13_Unit[0]": false,
+    "form1[0].#subform[4].Pt4Line13_Unit[1]": false,
+    "form1[0].#subform[4].Pt4Line13_Unit[2]": false,
+    "form1[0].#subform[4].Pt4Line11_Unit[0]": false,
+    "form1[0].#subform[4].Pt4Line11_Unit[1]": false,
+    "form1[0].#subform[4].Pt4Line11_Unit[2]": false,
+    "form1[0].#subform[4].Pt4Line9_Male[0]": false,
+    "form1[0].#subform[4].Pt4Line9_Female[0]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[0]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[1]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[2]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[3]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[4]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[5]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[6]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[7]": false,
+    "form1[0].#subform[4].Pt3Line6_HairColor[8]": false,
+    "form1[0].#subform[4].Pt4Line10_Yes[0]": false,
+    "form1[0].#subform[4].Pt4Line10_No[0]": false,
+    "form1[0].#subform[4].Pt4Line10_Unknown[0]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[0]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[1]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[2]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[3]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[4]": false,
+    "form1[0].#subform[5].Pt4Line18_MaritalStatus[5]": false,
+    "form1[0].#subform[5].Pt4Line16_EmailAddress[0]": "k3-petitioner.phase0-golden@example.com",
+    "form1[0].#subform[6].Pt4Line20_Yes[0]": false,
+    "form1[0].#subform[6].Pt4Line20_No[0]": false,
+    "form1[0].#subform[6].Pt4Line21a_ClassOfAdmission[0]": [
+      ""
+    ],
+    "form1[0].#subform[6].Pt4Line26_Unit[0]": false,
+    "form1[0].#subform[6].Pt4Line26_Unit[1]": false,
+    "form1[0].#subform[6].Pt4Line26_Unit[2]": false,
+    "form1[0].#subform[6].Pt4Line28_No[0]": false,
+    "form1[0].#subform[6].Pt4Line28_Yes[0]": false,
+    "form1[0].#subform[6].Pt4Line54_Removal[0]": false,
+    "form1[0].#subform[6].Pt4Line54_Exclusion[0]": false,
+    "form1[0].#subform[6].Pt4Line54_Rescission[0]": false,
+    "form1[0].#subform[6].Pt4Line54_JudicialProceedings[0]": false,
+    "form1[0].#subform[7].Pt4Line56_Unit[0]": false,
+    "form1[0].#subform[7].Pt4Line56_Unit[1]": false,
+    "form1[0].#subform[7].Pt4Line56_Unit[2]": false,
+    "form1[0].#subform[7].Pt4Line57_Unit[0]": false,
+    "form1[0].#subform[7].Pt4Line57_Unit[1]": false,
+    "form1[0].#subform[7].Pt4Line57_Unit[2]": false,
+    "form1[0].#subform[7].Part4Line1_Yes[0]": false,
+    "form1[0].#subform[7].Part4Line1_No[0]": false,
+    "form1[0].#subform[8].Pt6Line5_Email[0]": "k3-petitioner.phase0-golden@example.com",
+    "form1[0].#subform[8].Pt6Line1Checkbox[0]": false,
+    "form1[0].#subform[8].Pt6Line1Checkbox[1]": false,
+    "form1[0].#subform[8].Pt6Line2_Checkbox[0]": false,
+    "form1[0].#subform[9].Pt7Line3_Unit[0]": false,
+    "form1[0].#subform[9].Pt7Line3_Unit[1]": false,
+    "form1[0].#subform[9].Pt7Line3_Unit[2]": false,
+    "form1[0].#subform[9].Pt7Line5_Email[0]": "k3-petitioner.phase0-golden@example.com",
+    "form1[0].#subform[9].Pt8Line3_Unit[0]": false,
+    "form1[0].#subform[9].Pt8Line3_Unit[1]": false,
+    "form1[0].#subform[9].Pt8Line3_Unit[2]": false,
+    "form1[0].#subform[10].Pt8Line6_Email[0]": "k3-petitioner.phase0-golden@example.com",
+    "form1[0].#subform[10].Pt8Line7_Checkbox[0]": false,
+    "form1[0].#subform[10].Pt8Line7_Checkbox[1]": false,
+    "form1[0].#subform[10].Pt8Line7b_Checkbox[0]": false,
+    "form1[0].#subform[10].Pt8Line7b_Checkbox[1]": false
+  },
+  "pdfFieldValuesHash": "6e65b8c5def370784bff3326dfa5f2da3ce12c71aae913583db037a9313470a0",
+  "pdfSnapshot": {
+    "pageCount": 12,
+    "fields": [
+      [
+        "form1[0].#pageSet[0].Page1[0].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|1"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[10].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|11"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[11].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|12"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[1].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|2"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[2].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|3"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[3].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|4"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[4].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|5"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[5].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|6"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[6].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|7"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[7].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|8"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[8].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|9"
+      ],
+      [
+        "form1[0].#pageSet[0].Page1[9].PDF417BarCode1[0]",
+        "PDFTextField",
+        "I-130|04/01/24|10"
+      ],
+      [
+        "form1[0].#subform[0].#area[4].Pt2Line1_AlienNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].#area[5].Pt2Line2_USCISOnlineActNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].AttorneyStateBarNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].CheckBox1[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line1_Child[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line1_Parent[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line1_Siblings[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line1_Spouse[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line2_AdoptedChild[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line2_InWedlock[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line2_OutOfWedlock[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line2_Stepchild[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line3_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line3_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line4_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt1Line4_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[0].Pt2Line11_SSN[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].Pt2Line4a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].Pt2Line4b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].Pt2Line4c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].USCISOnlineAcctNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[0].VolagNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line4_DaytimePhoneNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line5_PreparerFaxNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line6_Email[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line7_Checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line7_Checkbox[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line7b_Checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line7b_Checkbox[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line8a_Signature[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[10].Pt8Line8b_DateofSignature[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt2Line1_AlienNumber[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt2Line4a_FamilyName[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt2Line4b_GivenName[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt2Line4c_MiddleName[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line3a_PageNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line3b_PartNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line3c_ItemNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line3d_AdditionalInfo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line4a_PageNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line4b_PartNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line4c_ItemNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line4d_AdditionalInfo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line5a_PageNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line5b_PartNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line5c_ItemNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line5d_AdditionalInfo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line6a_PageNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line6b_PartNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line6c_ItemNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line6d_AdditionalInfo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line7b_PartNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line7c_ItemNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line7d_AdditionalInfo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[11].Pt9Line9a_PageNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_InCareofName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line10_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line11_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line11_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line12_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line13a_DateFrom[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line13b_DateTo[0]",
+        "PDFTextField",
+        "PRESENT"
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line14_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line15a_DateFrom[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line15b_DateTo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line16_NumberofMarriages[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Annulled[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Divorced[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Married[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Separated[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Single[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line17_Widowed[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line5a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line5b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line5c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line6_CityTownOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line7_CountryofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line8_DateofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line9_Female[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[1].Pt2Line9_Male[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line18_DateOfMarriage[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line19a_CityTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line19b_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line19c_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line19d_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line20b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line20c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line21_DateMarriageEnded[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line22a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line22b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line22c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line23_DateMarriageEnded[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line23a_checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line23b_checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line23c_checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line24_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line24_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line24_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line25_DateofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line26_Female[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line26_Male[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line27_CountryofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line28_CityTownOrVillageOfResidence[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line29_CountryOfResidence[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line30a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line30b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line30c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line31_DateofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line32_Female[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line32_Male[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line33_CountryofBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line34_CityTownOrVillageOfResidence[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line35_CountryOfResidence[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line36_LPR[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line36_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line36_USCitizen[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line36_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line37a_CertificateNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line37b_PlaceOfIssuance[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].Pt2Line37c_DateOfIssuance[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[2].PtLine20a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line40_EmployerOrCompName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line40a_ClassOfAdmission[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line40b_DateOfAdmission[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line40d_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line40e_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line41_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line42_Occupation[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line43a_DateFrom[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line43b_DateTo[0]",
+        "PDFTextField",
+        "PRESENT"
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line44_EmployerOrOrgName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line45_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line46_Occupation[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line47a_DateFrom[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt2Line47b_DateTo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line1_Ethnicity[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line1_Ethnicity[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line2_Race_AmericanIndianAlaskaNative[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line2_Race_Asian[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line2_Race_Black[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line2_Race_NativeHawaiianOtherPacificIslander[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line2_Race_White[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line3_HeightFeet[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line3_HeightInches[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line4_Pound1[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line4_Pound2[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line4_Pound3[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[3]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[4]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[5]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[6]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[7]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[3].Pt3Line5_EyeColor[8]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].#area[6].Pt4Line1_AlienNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].#area[7].Pt4Line2_USCISOnlineActNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].P4Line5a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[3]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[4]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[5]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[6]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[7]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt3Line6_HairColor[8]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line10_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line10_Unknown[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line10_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line11_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12a_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12b_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12b_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12b_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12b_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12c_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12d_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line12e_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line13_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line14_DaytimePhoneNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line3_SSN[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line4a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line4b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line4c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line5b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line5c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line7_CityTownOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line8_CountryOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line9_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line9_Female[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[4].Pt4Line9_Male[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line15_MobilePhoneNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line16_EmailAddress[0]",
+        "PDFTextField",
+        "k3-petitioner.phase0-golden@example.com"
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line16a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line16b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line16c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line17_DateMarriageEnded[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line17_DateMarriageEnded[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line17_NumberofMarriages[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[3]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[4]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18_MaritalStatus[5]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line18c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line19_DateOfMarriage[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line20a_CityTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line20b_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line20c_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line20d_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line30a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line30b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line30c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line31_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line32_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line34a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line34b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line34c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line35_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line36_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line37_CountryOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line38a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line38b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line38c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line39_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line40_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line41_CountryOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[5].Pt4Line49_CountryOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].#area[8].Pt4Line21b_ArrivalDeparture[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line20_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line20_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line21a_ClassOfAdmission[0]",
+        "PDFDropdown",
+        [
+          ""
+        ]
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line21c_DateOfArrival[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line21d_DateExpired[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line22_PassportNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line23_TravelDocNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line24_CountryOfIssuance[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line25_ExpDate[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_NameOfCompany[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line26_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line27_DateEmploymentBegan[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line28_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line28_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line42a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line42b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line42c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line43_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line44_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line45_CountryOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line46a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line46b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line46c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line47_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line48_DateOfBirth[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line49_CountryOfBirth[1]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line54_Exclusion[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line54_JudicialProceedings[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line54_Removal[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line54_Rescission[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line55a_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line55b_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[6].Pt4Line56_Date[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Part4Line1_No[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Part4Line1_Yes[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line55a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line55b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line55c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line56_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line57_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line58a_DateFrom[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line58b_DateTo[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line60a_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line60b_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line61a_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line61b_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line61c_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line6a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line6b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line6c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt4Line7_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line2a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line2b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line2c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line3a_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line3b_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line4_DateFiled[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[7].Pt5Line5_Result[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].P5_Line6a_SignatureofApplicant[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt4Line8a_FamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt4Line8b_GivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt4Line8c_MiddleName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt4Line9_Relationship[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line1Checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line1Checkbox[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line1b_Language[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line2_Checkbox[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line2_RepresentativeName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line3_DaytimePhoneNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line4_MobileNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line5_Email[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[8].Pt6Line6b_DateofSignature[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt4Line53_DaytimePhoneNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line1a_InterpreterFamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line1b_InterpreterGivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line2_InterpreterBusinessorOrg[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line3_ZipCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line4_InterpreterDaytimeTelephone[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line5_Email[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line7a_Signature[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7Line7b_DateofSignature[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt7_NameofLanguage[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line1a_PreparerFamilyName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line1b_PreparerGivenName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line2_BusinessName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_AptSteFlrNumber[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_CityOrTown[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_Country[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_PostalCode[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_Province[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_State[0]",
+        "PDFDropdown",
+        []
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_StreetNumberName[0]",
+        "PDFTextField",
+        null
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_Unit[0]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_Unit[1]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_Unit[2]",
+        "PDFCheckBox",
+        false
+      ],
+      [
+        "form1[0].#subform[9].Pt8Line3_ZipCode[0]",
+        "PDFTextField",
+        null
+      ]
+    ]
+  },
+  "pdfSnapshotHash": "f0de5decaa9bd29ebb476abdc7d5034836d34005fa9240b4e746569beca24b0b",
+  "overrideExample": {
+    "fieldId": "form1[0].#subform[0].Pt1Line1_Spouse[0]",
+    "fieldValues": "PHASE0_CHARACTERIZATION_OVERRIDE",
+    "sourceAttribution": {
+      "value": "PHASE0_CHARACTERIZATION_OVERRIDE",
+      "source": "AttorneyOverride",
+      "sourceField": "form1[0].#subform[0].Pt1Line1_Spouse[0]",
+      "confidence": 100,
+      "validationStatus": "manual_override"
+    },
+    "manualOverrides": {
+      "value": "PHASE0_CHARACTERIZATION_OVERRIDE",
+      "reason": "phase0 golden fixture capture",
+      "overriddenBy": "[actor id - redacted, not stable across captures]"
+    }
+  },
+  "counts": {
+    "mappedPdfFields": 147,
+    "templateFieldCount": 450,
+    "fillWarnings": 8
+  }
+}
