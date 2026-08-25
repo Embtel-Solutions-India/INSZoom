@@ -50,10 +50,15 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 }));
+// Register the custom :safe-url token globally before any format string
+// references it. morgan's options object has no "tokens" key — custom tokens
+// must be registered via morgan.token(), which is the only public API for
+// this. The previous code put the function inside options.tokens, which
+// morgan silently ignores, so the token was never registered. In production
+// mode the format string ":method :safe-url ..." then threw a fatal
+// TypeError on every response because the token function didn't exist.
+morgan.token("safe-url", (req) => String(req.originalUrl || req.url || "").split("?")[0]);
 app.use(morgan(env.nodeEnv === "production" ? ":method :safe-url :status :res[content-length] :response-time ms" : "dev", {
-  tokens: {
-    "safe-url": (req) => String(req.originalUrl || req.url || "").split("?")[0],
-  },
   stream: { write: (message) => logger.info("http_access", { message: message.trim() }) },
 }));
 app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.handleStripeWebhook);

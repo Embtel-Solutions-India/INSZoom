@@ -9,7 +9,11 @@ export const useSocket = () => useContext(SocketContext);
 
 function getSocketUrl() {
   const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:7000/api";
-  return apiUrl.replace(/\/api\/?$/, "");
+  // Strip the "/api" suffix to get the realtime origin. When VITE_API_URL is a
+  // relative base ("/api"), this strips to "" — fall back to the current origin
+  // so the socket connects same-origin and is proxied to the backend. Absolute
+  // URLs (production, or the localhost:7000 default) are returned unchanged.
+  return apiUrl.replace(/\/api\/?$/, "") || window.location.origin;
 }
 
 export function SocketProvider({ children }) {

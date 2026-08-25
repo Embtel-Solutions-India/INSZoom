@@ -16,7 +16,10 @@ export const useSocket = () => {
 // Derive the realtime server origin from the REST API base URL
 // (e.g. "http://localhost:7000/api" -> "http://localhost:7000"), since
 // Socket.IO is attached directly to the shared HTTP server, not under /api.
-const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:7000/api').replace(/\/api\/?$/, '')
+// Strip "/api" to get the realtime origin. A relative base ("/api") strips to
+// "" — fall back to the current origin so the socket connects same-origin and is
+// proxied to the backend. Absolute URLs are returned unchanged.
+const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:7000/api').replace(/\/api\/?$/, '') || window.location.origin
 
 export const SocketProvider = ({ children }) => {
   const { token, user } = useAuth()

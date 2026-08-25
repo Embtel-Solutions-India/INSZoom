@@ -258,6 +258,8 @@ export const formGenerationApi = {
   previewPdf: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
   downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }),
   draftPdf: (caseFormId) => api.get(`/forms/${caseFormId}/draft-pdf`, { responseType: 'blob' }),
+  // Phase 5 - clean, watermark-free filing copy (approved/locked/generated forms only).
+  filingPdf: (caseFormId) => api.get(`/forms/${caseFormId}/filing-pdf`, { responseType: 'blob' }),
 }
 
 export const petitionApi = {
