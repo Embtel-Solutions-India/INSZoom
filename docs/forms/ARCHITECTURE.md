@@ -66,6 +66,43 @@ Draft PDF
 -> `pdf-lib` AcroForm fill
 -> `application/pdf` response.
 
+Filing copy (clean, no watermark) — Phase 5
+-> Frontend "Download filing copy" button (status: approved/ready_for_pdf/locked/generated only)
+-> `formGenerationApi.filingPdf(caseFormId)`
+-> `GET /api/forms/:caseFormId/filing-pdf`
+-> `formGenerationRoutes` (registered immediately after `/:caseFormId/draft-pdf`)
+-> `requireCaseFormAccess`
+-> `FormGenerationController.filingPdf`
+-> `PDFGenerationService.loadCaseForm(..., { readOnly: true })` (returns the CaseForm document
+   directly, not `{ caseForm }` - see the P5-002 ledger entry for a spec drift caught before ship)
+-> status gate: `["approved", "ready_for_pdf", "locked", "generated"]` only - the SAME literal
+   `PDFGenerationService.generate`'s own status gate uses, not an independently-invented list -
+   throws 422 ("This form must be approved before downloading the filing copy.") otherwise
+-> `PDFRenderer.renderFiling({ caseForm, template })`
+   -> `PDFRenderer.render({ ..., watermark: null })`
+      -> `WatermarkService.apply(buffer, null)` → buffer returned UNCHANGED (its own pre-existing
+         `if (!label) return buffer` short-circuit - `WatermarkService.js` itself needed zero changes)
+   -> `PDFFidelityService.verify(buffer, caseForm, template)`
+      -> structural: `%PDF-` magic bytes, page count vs. `template.pdfMetadata.pageCount`, AcroForm
+         field count vs. `template.formFields.length` (±10% tolerance)
+      -> field-level: samples up to 20 non-signature `pdfFieldType:"text"` fields, resolved through
+         `template.formFields[].fieldId` (NOT `caseForm.fieldValues`' own keys directly - those are
+         flat-mapped by fieldId, a distinct namespace from the PDF's fieldName - see P5-001), reads
+         the actual embedded text back via pdf-lib, compares to the expected value
+      -> `valid: false` → throws `PDF_FIDELITY_FAILURE` (422, `error.report` attached) - the buffer
+         is never returned, never stored
+-> `PDFGenerationService.createGeneratedDocument(..., watermark: null)` (same primitive `generate`
+   already uses - no new persistence path invented)
+-> audit: `PDF_FILING_COPY_DOWNLOADED`
+-> `application/pdf` response, filename `{formCode}-FILING-{caseFormId}.pdf`
+
+Guardrail: the filing path does NOT call `PDFGenerationService.generate` and is NOT subject to its
+stale-gate (`syncState.stale`/`requiresRegeneration`) - Phase 2's canonical write-back keeps
+`CaseForm` data current by design, making that gate irrelevant for this path specifically. The
+pre-existing `draftPdf` (stamps `"DRAFT"`) and `generate`+`download` (stamps `"ATTORNEY REVIEW"`/
+`"FINAL"`) paths are unchanged - proven with byte-level page-content-stream evidence in
+`watermark-regression.test.js`, not just status-code checks.
+
 ## Guardrails
 
 - Do not put `uscis-form.routes` before `formGenerationRoutes` on `/api/forms`; generic `/:id` routes will swallow `/draft-pdf`.

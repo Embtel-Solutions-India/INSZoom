@@ -147,6 +147,28 @@ class PDFRenderer {
       },
     };
   }
+
+  // Phase 5 (§D.1/§G) - the clean, watermark-free filing-copy path. Always renders with
+  // `watermark: null` (WatermarkService.apply's own `if (!label) return buffer` short-circuit means
+  // this file never needs to change), then runs PDFFidelityService against the real output bytes
+  // before handing them back - the caller (FormGenerationController.filingPdf) must never store or
+  // serve a buffer this rejects. Deliberately bypasses PDFGenerationService.generate entirely: that
+  // function's stale-gate (§A.3) is irrelevant here because Phase 2's canonical write-back keeps
+  // CaseForm data current by design, and its own status gate is enforced by the controller before
+  // this is ever called.
+  static async renderFiling({ caseForm, template }) {
+    const rendered = await this.render({ caseForm, template, watermark: null, flatten: false });
+    const PDFFidelityService = require("./PDFFidelityService");
+    const fidelityResult = await PDFFidelityService.verify(rendered.buffer, caseForm, template);
+    if (!fidelityResult.valid) {
+      const error = new Error(`PDF fidelity check failed: ${fidelityResult.errors.join("; ")}`);
+      error.status = 422;
+      error.code = "PDF_FIDELITY_FAILURE";
+      error.report = fidelityResult.report;
+      throw error;
+    }
+    return { buffer: rendered.buffer, renderReport: rendered.renderReport, fidelityReport: fidelityResult.report };
+  }
 }
 
 module.exports = PDFRenderer;

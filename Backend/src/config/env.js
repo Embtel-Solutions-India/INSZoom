@@ -84,9 +84,15 @@ const env = {
   clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",
   jwtRefreshSecret: jwtRefreshSecret || "dev-refresh-secret-change-me",
-  jwtAccessExpires: process.env.JWT_ACCESS_EXPIRES || process.env.JWT_EXPIRE || "7d",
-  jwtRefreshExpires: process.env.JWT_REFRESH_EXPIRES || "7d",
+  // jwt.sign throws on an empty or whitespace-only expiresIn. A blank dotenv
+  // assignment (JWT_ACCESS_EXPIRES= or JWT_ACCESS_EXPIRES= ) produces "" or
+  // " " respectively. "" is falsy so || catches it, but " " is truthy and
+  // passes through, then jwt.sign rejects it with a 500. Trimming before the
+  // fallback check catches both cases.
+  jwtAccessExpires: (process.env.JWT_ACCESS_EXPIRES || process.env.JWT_EXPIRE || "").trim() || "7d",
+  jwtRefreshExpires: (process.env.JWT_REFRESH_EXPIRES || "").trim() || "7d",
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
+  
   // The refresh cookie's SameSite policy depends on whether the deployed
   // frontend and backend share a registrable domain (subdomains are fine
   // with "lax") or are genuinely cross-site (a different domain entirely,

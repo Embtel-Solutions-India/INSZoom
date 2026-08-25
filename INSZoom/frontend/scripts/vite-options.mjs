@@ -12,6 +12,11 @@ export function viteOptions(root) {
           target: "http://localhost:7000",
           changeOrigin: true,
         },
+        "/socket.io": {
+          target: "http://localhost:7000",
+          ws: true,
+          changeOrigin: true,
+        },
       },
     },
   };
