@@ -32,6 +32,14 @@ router.use("/cases", require("../modules/form-mapping/routes/autoFillRoutes"));
 router.use("/form-mappings", require("../modules/form-mapping/routes/mappingGraphRoutes"));
 router.use("/case-managers", require("../modules/cases/case-manager.routes"));
 router.use("/employment-workflow", require("../modules/employment-workflow/employment-workflow.routes"));
+// Phase 9 — the sole read/write path for EmployerProfile/EmployeeProfile
+// canonical data (see the models in Backend/src/models/), used by the
+// caseRole=principal/employee/beneficiary child-Case architecture. This is
+// distinct from /employment-workflow above, which is the older, still-live
+// employerUser/employeeUser-on-one-Case architecture — see
+// PHASE_9_COMPLETION_REPORT.md for why both currently coexist.
+router.use("/employer-profile", require("../modules/employer-profile/employer-profile.routes"));
+router.use("/employee-profile", require("../modules/employee-profile/employee-profile.routes"));
 router.use("/family-workflow", require("../modules/family-workflow/family-workflow.routes"));
 router.use("/single-party-filings", require("../modules/single-party-filings/single-party-filing.routes"));
 router.use("/documents", require("../modules/documents/document.routes"));

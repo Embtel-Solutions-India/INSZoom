@@ -779,6 +779,155 @@ const caseSchema = new mongoose.Schema(
     // Unrelated to `legacySource` (sync-origin marker). Consumed only by
     // DELETE /api/admin/demo-data.
     isDemoData: { type: Boolean, default: false, index: true },
+
+    // ─── PHASE 2 ADDITIONS ──────────────────────────────────────────────────
+    // These fields support the new case structure architecture.
+    // ALL are optional with safe defaults. NO existing field is modified.
+    //
+    // NOTE: parent-case linkage already exists as `parentCase` (line 417) —
+    // no separate `parentCaseId` is added here, per the Phase 1 audit finding
+    // that adding a second field for the same concept would be redundant.
+    // `createdBy` (line 406) also already exists as a simple ObjectId ref
+    // User and is left unmodified.
+
+    /**
+     * The structural type of this case.
+     * 'single'            = sole applicant, no children, no employer/employee
+     * 'employer_employee' = employer + N employee child cases
+     * 'family'            = petitioner + one beneficiary child case
+     *
+     * CRITICAL: single cases NEVER have children. childCaseCount MUST be 0 for single.
+     */
+    caseStructure: {
+      type: String,
+      enum: ["single", "employer_employee", "family"],
+      default: null,
+      index: true,
+    },
+
+    /**
+     * The role this case plays within its case structure.
+     * 'single'      = sole applicant case (caseStructure must be 'single')
+     * 'principal'   = employer or petitioner in a multi-person matter
+     * 'employee'    = individual employee child case
+     * 'beneficiary' = beneficiary child case
+     */
+    caseRole: {
+      type: String,
+      enum: ["single", "principal", "employee", "beneficiary"],
+      default: null,
+      index: true,
+    },
+
+    /**
+     * For child cases only: the sequential letter index within the parent matter.
+     * 'A', 'B', 'C' ... 'Z', then 'AA', 'AB', etc.
+     * NULL for single and principal cases.
+     */
+    childIndex: {
+      type: String,
+      default: null,
+    },
+
+    /**
+     * For principal cases only: the total number of child cases in this matter.
+     * 0 for single cases (must never be 1 for single — use 0).
+     * 1 for family cases.
+     * N for employer_employee cases.
+     */
+    childCaseCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /**
+     * Where this case originated.
+     * 'lead_conversion'   = created from an approved Lead via the admin Leads page
+     * 'admin_direct'      = created directly by an Admin without a prior Lead
+     * 'team_lead_direct'  = created directly by a Team Lead without a prior Lead
+     */
+    creationSource: {
+      type: String,
+      enum: ["lead_conversion", "admin_direct", "team_lead_direct"],
+      default: null,
+    },
+
+    /**
+     * The Lead document that was converted to create this case.
+     * Only set when creationSource = 'lead_conversion'.
+     * Null for direct-creation cases.
+     *
+     * Named `leadId` (not `caseLeadId`) — confirmed no existing field of
+     * this name on Case as of this Phase 2 pass.
+     */
+    leadId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lead",
+      default: null,
+    },
+
+    /**
+     * The consultation appointment associated with this case's lead conversion.
+     * Only set when creationSource = 'lead_conversion'.
+     *
+     * Named `consultationId` (not `caseConsultationId`) — confirmed no
+     * existing field of this name on Case as of this Phase 2 pass.
+     */
+    consultationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+      default: null,
+    },
+
+    /**
+     * For employer/employee and family cases: the ObjectId of the EmployerProfile
+     * document that holds shared employer/petitioner canonical data.
+     * NULL for single cases.
+     * Set on the principal case and inherited (referenced) by child cases.
+     */
+    employerProfileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EmployerProfile",
+      default: null,
+    },
+
+    /**
+     * For child cases only: the ObjectId of this child's personal EmployeeProfile
+     * or BeneficiaryProfile (same model, discriminated by type field within it).
+     * NULL for single and principal cases.
+     */
+    personProfileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    /**
+     * Controls how employee/beneficiary data is entered.
+     * 'not_required' = single-person visa, no other parties (never changes)
+     * 'not_set'      = employer/family case, employer has not yet chosen
+     * 'fill_self'    = employer/petitioner will fill employee/beneficiary tabs
+     * 'invite'       = employees/beneficiary will be invited to fill their own data
+     *
+     * CRITICAL: single cases MUST have dataEntryMode = 'not_required'. This must
+     * never be changed for single cases under any circumstance.
+     */
+    dataEntryMode: {
+      type: String,
+      enum: ["not_required", "not_set", "fill_self", "invite"],
+      default: null,
+    },
+
+    /**
+     * For child cases only: true when this child case has been individually
+     * reassigned to a different case manager than the principal case's default.
+     * False means this child inherits the principal's assignment.
+     */
+    assignmentOverridden: {
+      type: Boolean,
+      default: false,
+    },
+    // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }
 );
@@ -895,6 +1044,14 @@ caseSchema.index({ "questionnaireReferences.participantId": 1, "questionnaireRef
 // — falls back to the unanchored regex scan below when $text finds nothing,
 // so substring search still works, just usually via this index instead.
 caseSchema.index({ clientName: "text", clientEmail: "text", caseId: "text", caseNumber: "text", uscisReceiptNumber: "text", petitionType: "text" });
+
+// PHASE 2 ADDITIONS
+caseSchema.index({ caseStructure: 1, status: 1 });
+caseSchema.index({ caseRole: 1, status: 1 });
+caseSchema.index({ employerProfileId: 1 });
+caseSchema.index({ personProfileId: 1 });
+caseSchema.index({ creationSource: 1, createdAt: -1 });
+caseSchema.index({ dataEntryMode: 1, status: 1 });
 
 caseSchema.statics.stageNames = STAGE_NAMES;
 caseSchema.statics.crmStages = CRM_STAGES;

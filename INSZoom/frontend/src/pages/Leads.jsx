@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { leadsApi } from '../services/api'
+import CreateCaseModal from '../components/CreateCaseModal'
 import {
   Inbox,
   Search,
@@ -18,7 +19,22 @@ const TIER_COLORS = {
   D: 'bg-gray-100 text-gray-600',
 }
 
+// The freeform override — kept intentionally separate from the state-machine
+// statuses below, which are only reachable through the lifecycle action
+// buttons in the drawer (confirm/complete/approve/reject), never this dropdown.
 const STATUS_OPTIONS = ['new', 'contacted', 'booked', 'converted', 'closed']
+
+const STATUS_LABELS = {
+  new: 'New',
+  contacted: 'Contacted',
+  booked: 'Consultation Booked',
+  converted: 'Converted',
+  closed: 'Closed',
+  consultation_confirmed: 'Consultation Confirmed',
+  consultation_completed: 'Consultation Completed',
+  approved: 'Approved',
+  rejected: 'Rejected',
+}
 
 const STATUS_COLORS = {
   new: 'bg-amber-100 text-amber-800',
@@ -26,6 +42,10 @@ const STATUS_COLORS = {
   booked: 'bg-green-100 text-green-800',
   converted: 'bg-purple-100 text-purple-800',
   closed: 'bg-gray-100 text-gray-600',
+  consultation_confirmed: 'bg-indigo-100 text-indigo-800',
+  consultation_completed: 'bg-violet-100 text-violet-800',
+  approved: 'bg-emerald-100 text-emerald-800',
+  rejected: 'bg-red-100 text-red-800',
 }
 
 function initials(name) {
@@ -54,6 +74,9 @@ const Leads = () => {
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [noteDraft, setNoteDraft] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [actioning, setActioning] = useState(false)
+  const [showCreateCase, setShowCreateCase] = useState(false)
 
   const hasLoadedOnce = useRef(false)
 
@@ -91,6 +114,7 @@ const Leads = () => {
   const openLead = async (lead) => {
     setSelectedId(lead._id)
     setNoteDraft('')
+    setActionError('')
     if (!lead.seenAt) {
       try {
         const response = await leadsApi.markSeen(lead._id)
@@ -120,6 +144,39 @@ const Leads = () => {
     } catch (error) {
       console.error('Error adding note:', error)
     }
+  }
+
+  // Shared runner for the four lifecycle transitions below — each calls a
+  // state-machine-enforced backend endpoint (see quiz.service.js), so a 409
+  // here means the lead's status changed elsewhere since this drawer opened.
+  const runLeadAction = async (apiCall) => {
+    setActionError('')
+    setActioning(true)
+    try {
+      const response = await apiCall()
+      setLeads((prev) => prev.map((l) => (l._id === response.data.data._id ? response.data.data : l)))
+    } catch (error) {
+      setActionError(error.response?.data?.message || 'Action failed. Please try again.')
+    } finally {
+      setActioning(false)
+    }
+  }
+
+  const handleConfirmConsultation = (id) => runLeadAction(() => leadsApi.confirmConsultation(id))
+  const handleCompleteConsultation = (id) => runLeadAction(() => leadsApi.completeConsultation(id))
+  const handleApprove = (id) => runLeadAction(() => leadsApi.approve(id))
+  const handleReject = (id) => {
+    const reason = window.prompt('Rejection reason (optional):')
+    if (reason === null) return
+    runLeadAction(() => leadsApi.reject(id, reason))
+  }
+
+  const handleCaseCreated = (data) => {
+    setShowCreateCase(false)
+    if (data?.case?.caseNumber) {
+      alert(`Case ${data.case.caseNumber} created. The lead is now marked converted.`)
+    }
+    fetchLeads()
   }
 
   if (loading) {
@@ -241,8 +298,8 @@ const Leads = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full capitalize ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-500'}`}>
-                          {lead.status}
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-500'}`}>
+                          {STATUS_LABELS[lead.status] || lead.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400">{timeAgo(lead.createdAt)}</td>
@@ -264,13 +321,38 @@ const Leads = () => {
           onClose={() => setSelectedId(null)}
           onUpdateStatus={updateStatus}
           onSubmitNote={submitNote}
+          actionError={actionError}
+          actioning={actioning}
+          onConfirmConsultation={handleConfirmConsultation}
+          onCompleteConsultation={handleCompleteConsultation}
+          onApprove={handleApprove}
+          onReject={handleReject}
+          onCreateCase={() => setShowCreateCase(true)}
+        />
+      )}
+
+      {showCreateCase && selectedLead && (
+        <CreateCaseModal
+          onClose={() => setShowCreateCase(false)}
+          onCreated={handleCaseCreated}
+          leadId={selectedLead._id}
+          creationSource="lead_conversion"
+          initialData={{
+            clientName: selectedLead.fullName,
+            clientEmail: selectedLead.email,
+            clientPhone: selectedLead.phone,
+            visaType: selectedLead.visaPathway,
+          }}
         />
       )}
     </div>
   )
 }
 
-function LeadDrawer({ lead, noteDraft, setNoteDraft, onClose, onUpdateStatus, onSubmitNote }) {
+function LeadDrawer({
+  lead, noteDraft, setNoteDraft, onClose, onUpdateStatus, onSubmitNote,
+  actionError, actioning, onConfirmConsultation, onCompleteConsultation, onApprove, onReject, onCreateCase,
+}) {
   const consultation = lead.consultationId && typeof lead.consultationId === 'object' ? lead.consultationId : null
   const evidence = lead.scoreResult?.evidenceStrength?.length
     ? lead.scoreResult.evidenceStrength
@@ -322,16 +404,99 @@ function LeadDrawer({ lead, noteDraft, setNoteDraft, onClose, onUpdateStatus, on
             </div>
           )}
 
-          {/* Status */}
+          {/* Status — the freeform dropdown only covers the 5 legacy statuses;
+              once a lead enters the state-machine pipeline below, its status
+              is shown read-only here and changed only via the action buttons. */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Status</label>
-            <select
-              value={lead.status}
-              onChange={(e) => onUpdateStatus(lead._id, e.target.value)}
-              className="w-full text-sm border border-gray-300 rounded-lg bg-white px-3 py-2.5 text-gray-700 focus:ring-2 focus:ring-primary-500"
-            >
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
-            </select>
+            {STATUS_OPTIONS.includes(lead.status) ? (
+              <select
+                value={lead.status}
+                onChange={(e) => onUpdateStatus(lead._id, e.target.value)}
+                className="w-full text-sm border border-gray-300 rounded-lg bg-white px-3 py-2.5 text-gray-700 focus:ring-2 focus:ring-primary-500"
+              >
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+              </select>
+            ) : (
+              <span className={`inline-block px-2.5 py-1.5 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-500'}`}>
+                {STATUS_LABELS[lead.status] || lead.status}
+              </span>
+            )}
+          </div>
+
+          {/* Case pipeline — state-machine-enforced transitions */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Case pipeline</label>
+            {actionError && (
+              <div className="mb-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{actionError}</div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {['new', 'booked'].includes(lead.status) && (
+                <button
+                  disabled={actioning}
+                  onClick={() => onConfirmConsultation(lead._id)}
+                  className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold"
+                >
+                  Confirm Consultation
+                </button>
+              )}
+              {lead.status === 'consultation_confirmed' && (
+                <>
+                  <button
+                    disabled={actioning}
+                    onClick={() => onCompleteConsultation(lead._id)}
+                    className="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-bold"
+                  >
+                    Mark Completed
+                  </button>
+                  <button
+                    disabled={actioning}
+                    onClick={() => onReject(lead._id)}
+                    className="px-3 py-2 rounded-lg bg-white border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+              {lead.status === 'consultation_completed' && (
+                <>
+                  <button
+                    disabled={actioning}
+                    onClick={() => onApprove(lead._id)}
+                    className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    disabled={actioning}
+                    onClick={() => onReject(lead._id)}
+                    className="px-3 py-2 rounded-lg bg-white border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
+                  >
+                    Reject
+                  </button>
+                </>
+              )}
+              {lead.status === 'approved' && (
+                <button
+                  disabled={actioning}
+                  onClick={onCreateCase}
+                  className="px-3 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white text-xs font-bold"
+                >
+                  Create Case
+                </button>
+              )}
+              {lead.status === 'converted' && (
+                <p className="text-xs text-gray-500">This lead has been converted to a case.</p>
+              )}
+              {lead.status === 'rejected' && (
+                <p className="text-xs text-gray-500">
+                  Rejected{lead.approval?.rejectionReason ? `: ${lead.approval.rejectionReason}` : '.'}
+                </p>
+              )}
+              {!['new', 'booked', 'consultation_confirmed', 'consultation_completed', 'approved', 'converted', 'rejected'].includes(lead.status) && (
+                <p className="text-xs text-gray-400">No pipeline action available from this status.</p>
+              )}
+            </div>
           </div>
 
           {/* Profile answers (from the quiz) */}

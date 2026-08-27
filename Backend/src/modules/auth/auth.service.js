@@ -1,5 +1,6 @@
 const User = require("../../models/User");
 const Client = require("../../models/Client");
+const Case = require("../../models/Case");
 const Referral = require("../../models/Referral");
 const tokenService = require("./token.service");
 const sessionService = require("./session.service");
@@ -199,6 +200,87 @@ async function login(email, password, req) {
   return issueTokens(user, req, { message: "Login successful" });
 }
 
+/**
+ * PHASE 3 addition — authenticates a client using their human-readable
+ * Case ID (e.g. 'B001') and password instead of email. Returns the exact
+ * same shape as login() (via issueTokens/authPayload) so the controller's
+ * post-resolution logic (token issuance, cookie setting, response) works
+ * identically for both paths.
+ *
+ * Every security check below (lockout, pending-invite, failed-attempt
+ * recording, login history) is copied verbatim from login() — this must
+ * never have weaker security behavior than the email path. The only
+ * difference is how the User document is found: by resolving a Case's
+ * `user` field first, since a Case ID is not itself a User identifier.
+ *
+ * Read-only with respect to Case data — only ever reads the Case to find
+ * the linked User; never writes to it.
+ *
+ * Does NOT modify login() — that function is completely untouched.
+ */
+async function loginWithCaseId(caseNumber, password, req) {
+  const caseDoc = await Case.findOne({ caseNumber }).select("caseNumber user");
+  // Case not found and "case has no linked user" both fall through to the
+  // same generic, non-disclosing error as an unknown email would — never
+  // reveal which part of the lookup failed.
+  const linkedUserId = caseDoc?.user;
+  if (!caseDoc || !linkedUserId) {
+    const error = new Error("Invalid Case ID or password");
+    error.status = 401;
+    throw error;
+  }
+
+  const user = await User.findById(linkedUserId).select("+password");
+  if (!user) {
+    const error = new Error("Invalid Case ID or password");
+    error.status = 401;
+    throw error;
+  }
+  if (user.isLocked && user.isLocked()) {
+    const error = new Error("Account temporarily locked due to failed login attempts");
+    error.status = 423;
+    throw error;
+  }
+  if (isPendingInvite(user)) {
+    const error = new Error("This account hasn't been activated yet. Check your email for an invitation, or request a new one.");
+    error.status = 401;
+    error.code = "PENDING_INVITE";
+    throw error;
+  }
+  const passwordMatches = await user.comparePassword(password);
+  if (!passwordMatches) {
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+    if (user.failedLoginAttempts >= 5) user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    user.loginHistory = [...(user.loginHistory || []).slice(-19), {
+      loggedInAt: new Date(),
+      ipAddress: req?.ip,
+      userAgent: req?.headers?.["user-agent"],
+      success: false,
+    }];
+    await user.save();
+    const error = new Error("Invalid Case ID or password");
+    error.status = 401;
+    throw error;
+  }
+  if (!user.isActive) {
+    const error = new Error("Account deactivated");
+    error.status = 403;
+    throw error;
+  }
+
+  user.lastLogin = new Date();
+  user.failedLoginAttempts = 0;
+  user.lockedUntil = undefined;
+  user.loginHistory = [...(user.loginHistory || []).slice(-19), {
+    loggedInAt: new Date(),
+    ipAddress: req?.ip,
+    userAgent: req?.headers?.["user-agent"],
+    success: true,
+  }];
+  await user.save();
+  return issueTokens(user, req, { message: "Login successful" });
+}
+
 async function loginWithVerifiedIdentity(identity, req) {
   const email = identity.email?.toLowerCase();
   if (!email) {
@@ -283,6 +365,7 @@ module.exports = {
   registerClient,
   registerStaff,
   login,
+  loginWithCaseId,
   loginWithVerifiedIdentity,
   refresh,
   changePassword,

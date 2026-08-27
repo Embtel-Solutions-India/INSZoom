@@ -147,6 +147,8 @@ const NOTIFICATION_TYPES = [
   "consultation_booked",
   "consultation_rescheduled",
   "consultation_cancelled",
+  // ── Phase 6 lead lifecycle (eligibility-quiz/quiz.service.js) ──
+  "lead_approved",
 ];
 
 const PRIORITIES = ["low", "medium", "high", "urgent"];

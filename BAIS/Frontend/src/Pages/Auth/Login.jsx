@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
-import { resolvePostLoginDest } from "../../utils/postLoginDest";
+import PasswordField from "../../components/auth/PasswordField";
 
 export default function Login() {
   const [email,       setEmail]       = useState("");
@@ -27,20 +27,15 @@ export default function Login() {
   // signInWithRedirect leaves this page and comes back to it after Google
   // completes - pick up the result here instead of inline in handleGoogle,
   // mirroring exactly where the old popup flow's `navigate()` call was.
-  // resolvePostLoginDest sends INSZoom staff roles (super_admin/admin/
-  // team_lead/case_manager) to the INSZoom portal instead of the BAIS
-  // client dashboard, and for clients checks whether a case already exists
-  // so a brand-new Google signup lands directly on /dashboard/intake
-  // instead of flashing /dashboard first.
+  // PHASE 3: routing is now decided exclusively by AuthGate
+  // (src/components/AuthGate.jsx) via GET /api/auth/session-context — this
+  // just lands the session on a protected route and lets AuthGate take it
+  // from there (staff → INSZoom, client with no case → /onboarding/intake,
+  // etc.).
   useEffect(() => {
     if (!googleRedirectUser) return;
-    const redirectingUser = googleRedirectUser;
     clearGoogleRedirectUser();
-    (async () => {
-      const dest = await resolvePostLoginDest(redirectingUser);
-      if (dest.external) window.location.href = dest.url; // cross-app navigation - navigate() can't leave this origin
-      else navigate(dest.url, { replace: true });
-    })();
+    navigate("/dashboard", { replace: true });
   }, [googleRedirectUser, navigate, clearGoogleRedirectUser]);
 
   useEffect(() => {
@@ -52,20 +47,11 @@ export default function Login() {
 
   // Catches every other way this page can end up with an authenticated user
   // in context - not just the Google path above, but also a bookmarked/
-  // back-navigated visit to /login while already signed in (email/password
-  // login has no role gate the way INSZoom's does, and previously this
-  // guard only handled staff, leaving an already-logged-in client stuck on
-  // the login form instead of being sent on to /dashboard).
+  // back-navigated visit to /login while already signed in. PHASE 3:
+  // AuthGate handles routing — just navigate to any protected route.
   useEffect(() => {
     if (!user || authLoading) return;
-    let cancelled = false;
-    (async () => {
-      const dest = await resolvePostLoginDest(user);
-      if (cancelled) return;
-      if (dest.external) window.location.href = dest.url;
-      else navigate(dest.url, { replace: true });
-    })();
-    return () => { cancelled = true; };
+    navigate("/dashboard", { replace: true });
   }, [user, authLoading, navigate]);
 
   const handleLogin = async () => {
@@ -208,21 +194,14 @@ export default function Login() {
           </FieldWrap>
 
           {/* Password */}
-          <FieldWrap icon={<LockIcon />}>
-            <input
-              type="password"
-              id="login-password"
-              name="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-                border border-slate-200 rounded-xl bg-white outline-none
-                hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-                transition-all duration-150"
-            />
-          </FieldWrap>
+          <PasswordField
+            icon={<LockIcon />}
+            name="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
 
           {/* Forgot */}
           <div className="text-right mb-5 -mt-1">

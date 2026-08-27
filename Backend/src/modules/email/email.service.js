@@ -20,6 +20,8 @@ const TEMPLATES = {
   "consultation-reschedule": require("./templates/consultation-reschedule"),
   "consultation-cancel": require("./templates/consultation-cancel"),
   "consultation-host-notify": require("./templates/consultation-host-notify"),
+  "lead-approved": require("./templates/lead-approved"),
+  "lead-rejected": require("./templates/lead-rejected"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully

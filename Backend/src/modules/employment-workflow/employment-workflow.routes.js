@@ -16,7 +16,7 @@ router.put("/company", authenticate, authorizeRoles("employer", "client"), autho
 router.post(
   "/cases",
   authenticate,
-  authorizeRoles("employer", "client"),
+  authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),
   authorizePermissions("cases:create"),
   body("employeeEmail").optional().isEmail().normalizeEmail(),
   body("employee.email").optional().isEmail().normalizeEmail(),

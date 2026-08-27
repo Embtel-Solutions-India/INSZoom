@@ -8,6 +8,8 @@ const leadService = require("../leads/lead.service");
 const Settings = require("../../models/Settings");
 const Case = require("../../models/Case");
 const caseService = require("../cases/case.service");
+const emailService = require("../email/email.service");
+const notificationService = require("../notifications/notification.service");
 const { VISA_PATHWAYS } = require("./quiz.config");
 
 function badRequest(message) {
@@ -186,6 +188,13 @@ function notFoundError(message) {
   return error;
 }
 
+function invalidTransitionError(fromStatus, action) {
+  const error = new Error(`Cannot ${action} from lead status "${fromStatus}"`);
+  error.status = 409;
+  error.code = "INVALID_TRANSITION";
+  return error;
+}
+
 // Shared-team-inbox semantics: the first admin to open a lead clears its
 // "new/unseen" state for every admin, matching how this app's other
 // notification "read" state works (not a per-admin read receipt).
@@ -244,7 +253,101 @@ async function addLeadNote(id, text, user, req) {
   return repopulateLead(lead);
 }
 
+// The four functions below enforce the Phase 6 lead state machine
+// (new/booked -> consultation_confirmed -> consultation_completed ->
+// approved -> [converted, handled entirely by POST /api/cases] with
+// rejected as a terminal branch off either consultation status). Unlike
+// updateLeadStatus (an unrestricted admin override, left untouched above),
+// each of these only permits its one specific transition.
+
+async function confirmConsultation(id, user, req) {
+  const lead = await Lead.findById(id);
+  if (!lead) throw notFoundError("Lead not found");
+  if (!["new", "booked"].includes(lead.status)) {
+    throw invalidTransitionError(lead.status, "confirm consultation");
+  }
+  lead.status = "consultation_confirmed";
+  lead.consultation = lead.consultation || {};
+  lead.consultation.confirmedAt = new Date();
+  lead.consultation.scheduledBy = user?._id;
+  await lead.save();
+  await require("../audit/audit.service").recordAuditEvent({
+    req, action: "lead.consultation_confirm", entityType: "Lead", entityId: String(lead._id), severity: "low",
+  });
+  emailService.sendTemplateEmail("consultation-confirmation", {
+    to: lead.email,
+    data: { fullName: lead.fullName },
+  }).catch(() => {});
+  return repopulateLead(lead);
+}
+
+async function completeConsultation(id, notes, req) {
+  const lead = await Lead.findById(id);
+  if (!lead) throw notFoundError("Lead not found");
+  if (lead.status !== "consultation_confirmed") {
+    throw invalidTransitionError(lead.status, "mark consultation complete");
+  }
+  lead.status = "consultation_completed";
+  lead.consultation = lead.consultation || {};
+  lead.consultation.completedAt = new Date();
+  if (notes) lead.consultation.notes = notes;
+  await lead.save();
+  await require("../audit/audit.service").recordAuditEvent({
+    req, action: "lead.consultation_complete", entityType: "Lead", entityId: String(lead._id), severity: "low",
+  });
+  return repopulateLead(lead);
+}
+
+async function approveLead(id, user, req) {
+  const lead = await Lead.findById(id);
+  if (!lead) throw notFoundError("Lead not found");
+  if (lead.status !== "consultation_completed") {
+    throw invalidTransitionError(lead.status, "approve");
+  }
+  lead.status = "approved";
+  lead.approval = lead.approval || {};
+  lead.approval.approvedAt = new Date();
+  lead.approval.approvedBy = user?._id;
+  await lead.save();
+  await require("../audit/audit.service").recordAuditEvent({
+    req, action: "lead.approve", entityType: "Lead", entityId: String(lead._id), severity: "low",
+  });
+  emailService.sendTemplateEmail("lead-approved", {
+    to: lead.email,
+    data: { fullName: lead.fullName },
+  }).catch(() => {});
+  notificationService.createForRoles(["super_admin", "admin", "team_lead"], {
+    type: "lead_approved",
+    title: "Lead approved — ready for case creation",
+    message: `${lead.fullName || lead.email} is approved and ready to convert to a case.`,
+    link: "/leads",
+  }, user, req).catch(() => {});
+  return repopulateLead(lead);
+}
+
+async function rejectLead(id, rejectionReason, req) {
+  const lead = await Lead.findById(id);
+  if (!lead) throw notFoundError("Lead not found");
+  if (!["consultation_confirmed", "consultation_completed"].includes(lead.status)) {
+    throw invalidTransitionError(lead.status, "reject");
+  }
+  lead.status = "rejected";
+  lead.approval = lead.approval || {};
+  lead.approval.rejectedAt = new Date();
+  lead.approval.rejectionReason = rejectionReason || "";
+  await lead.save();
+  await require("../audit/audit.service").recordAuditEvent({
+    req, action: "lead.reject", entityType: "Lead", entityId: String(lead._id), severity: "low", metadata: { rejectionReason },
+  });
+  emailService.sendTemplateEmail("lead-rejected", {
+    to: lead.email,
+    data: { fullName: lead.fullName },
+  }).catch(() => {});
+  return repopulateLead(lead);
+}
+
 module.exports = {
   getDefinitionPayload, listVisaPathways, submit, listLeads, getLead,
   markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
+  confirmConsultation, completeConsultation, approveLead, rejectLead,
 };

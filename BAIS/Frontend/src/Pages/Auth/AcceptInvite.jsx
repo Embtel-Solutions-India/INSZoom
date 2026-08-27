@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
+import PasswordField from "../../components/auth/PasswordField";
 
 const LockIcon = () => (
   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -9,30 +10,6 @@ const LockIcon = () => (
       d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
   </svg>
 );
-
-function Field({ icon, type = "text", name, placeholder, value, onChange, autoComplete }) {
-  return (
-    <div className="relative flex items-center w-full mb-4">
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
-        {icon}
-      </span>
-      <input
-        type={type}
-        id={name}
-        name={name}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        autoComplete={autoComplete}
-        className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-          border border-slate-200 rounded-xl bg-white outline-none box-border
-          hover:border-slate-300
-          focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-          transition-all duration-150"
-      />
-    </div>
-  );
-}
 
 export default function AcceptInvite() {
   const navigate = useNavigate();
@@ -116,10 +93,19 @@ export default function AcceptInvite() {
               {invite?.name ? `Welcome, ${invite.name}. ` : ""}Set a password for <span className="font-semibold text-slate-700">{invite?.email}</span> to activate your account and get started.
             </p>
 
+            {invite?.caseNumber && (
+              <div className="mb-5">
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Case ID</label>
+                <div className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
+                  {invite.caseNumber}
+                </div>
+              </div>
+            )}
+
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            <Field icon={<LockIcon />} type="password" name="password" placeholder="Password"
+            <PasswordField icon={<LockIcon />} name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            <Field icon={<LockIcon />} type="password" name="confirmPassword" placeholder="Confirm Password"
+            <PasswordField icon={<LockIcon />} name="confirmPassword" placeholder="Confirm Password"
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (

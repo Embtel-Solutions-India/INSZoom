@@ -20,7 +20,8 @@ async function getInviteDetails(token) {
     inviteTokenExpiresAt: { $gt: new Date() },
   }).select("+inviteTokenHash");
   if (!user) return null;
-  return { name: user.name || user.displayName || "", email: user.email };
+  const caseData = await Case.findOne({ employeeUser: user._id }).select("caseNumber").sort({ createdAt: -1 });
+  return { name: user.name || user.displayName || "", email: user.email, caseNumber: caseData?.caseNumber || null };
 }
 
 async function acceptInvite(token, newPassword) {
@@ -35,6 +36,8 @@ async function acceptInvite(token, newPassword) {
   user.inviteTokenExpiresAt = undefined;
   user.isActive = true;
   user.isEmailVerified = true;
+  // Phase 8 fix — see matching comment in clientInvite.service.js.
+  user.mustSetPassword = false;
   await user.save();
   await invalidateUserCache(user._id);
 

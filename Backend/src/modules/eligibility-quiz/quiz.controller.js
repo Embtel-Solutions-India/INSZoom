@@ -85,4 +85,43 @@ async function addLeadNote(req, res, next) {
   }
 }
 
-module.exports = { getDefinition, getVisas, submit, listLeads, getLead, markLeadSeen, updateLeadStatus, assignLead, addLeadNote };
+async function confirmConsultation(req, res, next) {
+  try {
+    const data = await quizService.confirmConsultation(req.params.id, req.user, req);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function completeConsultation(req, res, next) {
+  try {
+    const data = await quizService.completeConsultation(req.params.id, req.body?.notes, req);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function approveLead(req, res, next) {
+  try {
+    const data = await quizService.approveLead(req.params.id, req.user, req);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function rejectLead(req, res, next) {
+  try {
+    const data = await quizService.rejectLead(req.params.id, req.body?.rejectionReason, req);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  getDefinition, getVisas, submit, listLeads, getLead, markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
+  confirmConsultation, completeConsultation, approveLead, rejectLead,
+};

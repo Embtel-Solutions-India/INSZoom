@@ -159,6 +159,15 @@ export const casesApi = {
   addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
   assignCaseManager: (id, caseManagerId, notes, extra = {}) =>
     api.put(`/cases/${id}/assign-case-manager`, { caseManagerId, notes, ...extra }),
+  // Phase 7 — assigning a principal/single case cascades to its non-overridden
+  // child cases server-side; assigning a child case directly (e.g. from that
+  // child's own detail page) marks it individually overridden. Same two
+  // endpoints serve both the "assign" and "assign-override" use cases from
+  // the Phase 7 spec — see case.controller.js's cascadeAssignmentToChildren.
+  assignTeamLead: (id, teamLeadId, notes) =>
+    api.put(`/cases/${id}/assign-team-lead`, { teamLeadId, notes }),
+  getRelated: (id) => api.get(`/cases/${id}/related`),
+  getTeamLeadDashboard: (params = {}) => api.get('/cases/dashboard/team-lead', { params }),
   addDocumentReference: (id, documentId) =>
     api.post(`/cases/${id}/document-references`, { documentId }),
   addUSCISFormReference: (id, payload) =>
@@ -176,6 +185,7 @@ export const casesApi = {
 
 export const usersApi = {
   caseManagers: () => api.get('/users/case-managers'),
+  assignable: (role, params = {}) => api.get('/users/assignable', { params: { role, ...params } }),
 }
 
 export const lifecycleApi = {
@@ -292,6 +302,12 @@ export const leadsApi = {
   markSeen: (id) => api.post(`/eligibility-quiz/leads/${id}/seen`, {}),
   updateStatus: (id, status) => api.patch(`/eligibility-quiz/leads/${id}/status`, { status }),
   addNote: (id, text) => api.post(`/eligibility-quiz/leads/${id}/notes`, { text }),
+  // State-machine-enforced lifecycle transitions (Phase 6) — each permits
+  // exactly one transition server-side, unlike the freeform updateStatus above.
+  confirmConsultation: (id) => api.patch(`/eligibility-quiz/leads/${id}/confirm-consultation`, {}),
+  completeConsultation: (id, notes) => api.patch(`/eligibility-quiz/leads/${id}/complete-consultation`, { notes }),
+  approve: (id) => api.patch(`/eligibility-quiz/leads/${id}/approve`, {}),
+  reject: (id, rejectionReason) => api.patch(`/eligibility-quiz/leads/${id}/reject`, { rejectionReason }),
 }
 
 export const eligibilityApi = {

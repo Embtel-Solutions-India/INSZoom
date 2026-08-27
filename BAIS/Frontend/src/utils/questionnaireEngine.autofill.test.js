@@ -66,8 +66,8 @@ describe("AUTOFILL_SOURCES / matchingAutofillSources (Phase H2b)", () => {
     expect(matchingAutofillSources(questions)).toContain("employee_drivers_license_or_state_id");
   });
 
-  it("returns no sources for a section with no matching real H-1B keys", () => {
+  it("matches the LCA document type on employer company and workforce fields", () => {
     const questions = [question("employer_company_naicsCode"), question("employer_workforce_totalUsEmployees")];
-    expect(matchingAutofillSources(questions)).toEqual([]);
+    expect(matchingAutofillSources(questions)).toEqual(["certified_lca_eta9035"]);
   });
 });

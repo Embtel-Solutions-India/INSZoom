@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { consultationApi } from "../../services/api";
 import EligibilityShell from "../../components/eligibility/EligibilityShell";
@@ -12,7 +12,15 @@ import { localDateKey } from "../../utils/localDateKey";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function BookConsultation() {
-  const { leadId } = useParams();
+  // PHASE 4: the existing public quiz flow (EligibilityResults.jsx) links
+  // here as /consultation/book/:leadId — a URL param, unchanged. The new
+  // logged-in intake flow (Intake.jsx) links here as
+  // /consultation/book?leadId=... — a query param, since it navigates
+  // directly rather than via a route with its own :leadId segment. Both are
+  // supported; the URL param wins if somehow both are present.
+  const { leadId: paramLeadId } = useParams();
+  const [searchParams] = useSearchParams();
+  const leadId = paramLeadId || searchParams.get("leadId") || undefined;
   const location = useLocation();
   const prefill = location.state?.contact || {};
 

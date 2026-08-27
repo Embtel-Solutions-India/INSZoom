@@ -4,6 +4,9 @@ const Case = require("../../models/Case");
 const CaseAssignmentEvent = require("../../models/CaseAssignmentEvent");
 const Client = require("../../models/Client");
 const Conversation = require("../../models/Conversation");
+const EmployeeProfile = require("../../models/EmployeeProfile");
+const EmployerProfile = require("../../models/EmployerProfile");
+const Lead = require("../../models/Lead");
 const Questionnaire = require("../../models/Questionnaire");
 const User = require("../../models/User");
 const { resolveDocumentRequirements } = require("../document-requirements/document-requirement.resolver");
@@ -23,7 +26,10 @@ const storageService = require("../uploads/storage.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const emailService = require("../email/email.service");
 const clientInviteService = require("../auth/clientInvite.service");
+const { generateOpaqueToken, hashToken } = require("../auth/password.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
+const CaseNumberService = require("../../services/CaseNumberService");
+const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 
 const checklistAllowedMimeTypes = new Set([
@@ -55,6 +61,8 @@ const PREMIUM_PROCESSING_ADDON = {
 
 const I907_QUESTIONNAIRE_KEY = "i907_premium_processing_profile";
 const CASE_PLAN_STATUSES = new Set(["not_started", "pending", "failed"]);
+const PHASE5_CASE_CREATE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
+const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 const PREMIUM_PROCESSING_ELIGIBLE_TYPES = new Set([
   "h-1b",
@@ -81,6 +89,67 @@ const PREMIUM_PROCESSING_ELIGIBLE_TYPES = new Set([
 
 function normalizePetitionType(value = "") {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function cleanString(value) {
+  return String(value || "").trim();
+}
+
+function cleanEmail(value) {
+  return cleanString(value).toLowerCase();
+}
+
+function resolveCreationSource(input, userRole) {
+  const requested = cleanString(input);
+  if (requested) return requested;
+  return normalizeRole(userRole) === "team_lead" ? "team_lead_direct" : "admin_direct";
+}
+
+function resolveChildCaseCount(caseStructure, input) {
+  if (caseStructure === "single") return 0;
+  if (caseStructure === "family") return 1;
+  const parsed = Number.parseInt(input, 10);
+  return Math.max(1, Number.isFinite(parsed) ? parsed : 1);
+}
+
+function resolveDataEntryMode(caseStructure, input) {
+  if (caseStructure === "single") return "not_required";
+  if (["fill_self", "invite", "not_set"].includes(input)) return input;
+  return "not_set";
+}
+
+function centsFromPrice(input) {
+  if (input === undefined || input === null || input === "") return 0;
+  const numeric = Number(input);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return Math.round(numeric > 10000 ? numeric : numeric * 100);
+}
+
+function publicCaseSummary(caseData) {
+  return {
+    _id: caseData._id,
+    caseNumber: caseData.caseNumber,
+    caseStructure: caseData.caseStructure,
+    caseRole: caseData.caseRole,
+    childIndex: caseData.childIndex,
+    visaType: caseData.visaType,
+  };
+}
+
+async function cleanupPhase5Create(created) {
+  await Promise.allSettled([
+    created.employeeProfileIds.length ? EmployeeProfile.deleteMany({ _id: { $in: created.employeeProfileIds } }) : null,
+    created.employerProfileIds.length ? EmployerProfile.deleteMany({ _id: { $in: created.employerProfileIds } }) : null,
+    created.caseIds.length ? Case.deleteMany({ _id: { $in: created.caseIds } }) : null,
+    created.userIds.length ? User.deleteMany({ _id: { $in: created.userIds } }) : null,
+  ].filter(Boolean));
+
+  for (const snapshot of created.updatedUsers) {
+    const update = {};
+    if (Object.keys(snapshot.set || {}).length) update.$set = snapshot.set;
+    if (Object.keys(snapshot.unset || {}).length) update.$unset = snapshot.unset;
+    await User.findByIdAndUpdate(snapshot._id, update).catch(() => null);
+  }
 }
 
 function supportsPremiumProcessing(caseData) {
@@ -210,6 +279,30 @@ async function recordReassignment(caseData, role, previousAssignedTo, assignedTo
     }, actor, req).catch(() => {});
     realtimeGateway.emitToUser(previousAssignedTo, "case:unassigned", { _id: caseData._id, caseNumber: caseData.caseNumber, assignmentRole: role });
   }
+}
+
+// Phase 7 — cascades a principal case's team-lead/case-manager assignment
+// down to its child cases, skipping any child that has been individually
+// overridden (assignmentOverridden: true — set automatically below whenever
+// a child case is the direct target of assignCaseManager/assignTeamLead,
+// which is how /assign-override-style behavior is achieved without a
+// separate endpoint: this same controller pair already handles any case by
+// id, so "assign this one child directly" and "assign-override" are the same
+// action). Runs after the principal's own caseData.save() has committed, and
+// a cascade failure never rolls back that already-committed assignment.
+// Split into two updateMany calls (rather than one aggregation-pipeline
+// update) so the conditional pending_assignment -> assigned transition below
+// doesn't depend on MongoDB 4.2+ pipeline-update support.
+async function cascadeAssignmentToChildren(principalCase, fieldSet) {
+  const childFilter = { parentCase: principalCase._id, assignmentOverridden: { $ne: true } };
+  const [pendingResult, otherResult] = await Promise.all([
+    Case.updateMany(
+      { ...childFilter, status: "pending_assignment" },
+      { $set: { ...fieldSet, status: "assigned", "workflow.status": "assigned" } }
+    ),
+    Case.updateMany({ ...childFilter, status: { $ne: "pending_assignment" } }, { $set: fieldSet }),
+  ]);
+  return (pendingResult.modifiedCount || 0) + (otherResult.modifiedCount || 0);
 }
 
 async function notifyAssignee(userId, caseData, role, actor, req) {
@@ -636,72 +729,407 @@ exports.getRecentActivity = async (req, res, next) => {
 
 exports.createCase = async (req, res, next) => {
   try {
-    const caseNumber = req.body.caseNumber || req.body.caseId || generateCaseNumber(req.body.legacySource === "BAIS" ? "BAIS" : "INS");
-    // Document/questionnaire requirements are no longer hardcoded per visa type here:
-    // ImmigrationKnowledgeEngineService.orchestrate() (invoked below via
-    // lifecycleOrchestrator.initializeCase) derives them generically from each
-    // active Questionnaire's assignmentRules.visaTypes, for every visa type.
-    const checklist = [...(req.body.checklistItems || req.body.documentChecklist || [])];
     const requesterRole = normalizeRole(req.user.role);
-    const primaryApplicant = req.body.primaryApplicant || req.body.assessmentAnswers?.primaryApplicant;
-    const packageInput = req.body.package || req.body.packageName || req.body.primaryPackage || req.body.plan?.tier;
+    if (!PHASE5_CASE_CREATE_ROLES.has(requesterRole)) {
+      return res.status(403).json({
+        success: false,
+        code: "FORBIDDEN",
+        message: "Case creation requires admin or team_lead role",
+      });
+    }
+
+    const {
+      assignedCaseManager,
+      caseDetails,
+      childCaseCount,
+      clientName,
+      clientEmail,
+      clientPhone,
+      creationSource: requestedCreationSource,
+      dataEntryMode,
+      employerCompletionMode,
+      employerEmail,
+      employerName,
+      extension,
+      leadId,
+      packageName,
+      price,
+      visaType,
+    } = req.body;
+
+    const trimmedClientName = cleanString(clientName);
+    const email = cleanEmail(clientEmail);
+    const trimmedVisaType = cleanString(visaType);
+    if (!trimmedClientName || !email || !trimmedVisaType) {
+      return res.status(400).json({
+        success: false,
+        code: "VALIDATION_ERROR",
+        message: "clientName, clientEmail, and visaType are required",
+      });
+    }
+
+    const creationSource = resolveCreationSource(requestedCreationSource, requesterRole);
+    if (!["lead_conversion", "admin_direct", "team_lead_direct"].includes(creationSource)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_CREATION_SOURCE",
+        message: "creationSource must be lead_conversion, admin_direct, or team_lead_direct",
+      });
+    }
+    if (creationSource === "lead_conversion" && !leadId) {
+      return res.status(400).json({
+        success: false,
+        code: "LEAD_REQUIRED",
+        message: "leadId is required when creationSource is lead_conversion",
+      });
+    }
+
+    const sourceLead = leadId ? await Lead.findById(leadId) : null;
+    if (creationSource === "lead_conversion" && !sourceLead) {
+      return res.status(404).json({ success: false, code: "LEAD_NOT_FOUND", message: "Lead not found" });
+    }
+    if (sourceLead?.convertedCaseId) {
+      return res.status(409).json({
+        success: false,
+        code: "LEAD_ALREADY_CONVERTED",
+        message: "This lead has already been converted to a case",
+      });
+    }
+
+    const caseStructure = getCaseStructure(trimmedVisaType);
+    if (!caseStructure) {
+      return res.status(400).json({
+        success: false,
+        code: "UNKNOWN_VISA_TYPE",
+        message: `Visa type '${trimmedVisaType}' is not recognized. Add it to config/visaCategories.js`,
+      });
+    }
+
+    const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
+    const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
+    const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;
     const normalizedPackage = packageInput ? normalizePackageName(packageInput) : "";
     if (packageInput && !normalizedPackage) {
       return res.status(400).json({ success: false, message: `Package must be one of: ${PACKAGE_NAMES.join(", ")}` });
     }
-    const teamLead = await caseService.resolveTeamLeadForCase(req.body);
-    const newCase = await Case.create({
-      ...req.body,
-      // Never let a client-supplied body flag a real case as demo data (the
-      // only other writers of this field are Backend/src/seeds/*, which pass
-      // it explicitly rather than spreading req.body).
-      isDemoData: false,
-      caseId: req.body.caseId || caseNumber,
-      caseNumber,
-      clientPortalId: req.body.clientPortalId || caseNumber,
-      user: req.body.user || req.body.userId || (["client", "user"].includes(requesterRole) ? req.user._id : undefined),
-      employerUser: req.body.employerUser || req.body.employerUserId || (requesterRole === "employer" || primaryApplicant === "employer" ? req.user._id : undefined),
-      employeeUser: req.body.employeeUser || req.body.employeeUserId || (requesterRole === "employee" || primaryApplicant === "employee" ? req.user._id : undefined),
-      createdBy: req.user._id,
-      lastModifiedBy: req.user._id,
-      clientProfile: req.body.clientProfile || req.body.clientId,
-      beneficiary: req.body.beneficiary || req.body.beneficiaryId,
-      petitioner: req.body.petitioner || req.body.petitionerId,
-      petitionerModel: req.body.petitionerModel || (req.body.petitioner || req.body.petitionerId ? "User" : ""),
-      employer: req.body.employer || req.body.employerId || req.body.companyId,
-      organization: req.body.organization || req.body.organizationId || req.body.companyId,
-      parentCase: req.body.parentCase || req.body.parentCaseId,
-      clientName: req.body.clientName || req.user.displayName || req.user.name,
-      clientEmail: req.body.clientEmail || req.user.email,
-      package: normalizedPackage,
-      primaryPackage: normalizedPackage || req.body.primaryPackage,
-      plan: {
-        ...(req.body.plan || {}),
-        tier: normalizedPackage || "",
-      },
-      checklistItems: checklist,
-      documentChecklist: checklist,
-      status: req.body.status || (req.body.assignedCaseManager ? "assigned" : "pending_assignment"),
-      assignedTeamLead: req.body.assignedTeamLead || teamLead?._id,
-      teamId: req.body.teamId || teamLead?.teamId,
-      assignedAgent: req.body.assignedCaseManager ? (req.user.displayName || req.user.name || "Immigration CRM") : "Team Lead Queue",
-      agentEmail: req.body.assignedCaseManager ? req.user.email : undefined,
-      assignedAgentUser: req.body.assignedCaseManager ? req.user._id : undefined,
-      primaryOwner: req.body.primaryOwner || req.body.assignedCaseManager,
-      assignedCaseManager: req.body.assignedCaseManager,
-      legacySource: req.body.legacySource || "shared",
-    });
 
-    await caseService.hydrateCaseRelationships(newCase, req.user, req);
-    caseService.setStage(newCase, req.body.stage || "intake", req.user, "Case created");
-    await workflowService.caseCreated(newCase, req.user);
-    caseService.addAuditEntry(newCase, "create", "Case created", req.user, { caseNumber }, req);
-    await newCase.save();
-    await caseService.writeAuditLog("create", newCase, req.user, req.body, req);
-    const lifecycle = await lifecycleOrchestrator.initializeCase(newCase, req.user, req);
+    const existingUser = await User.findOne({ email }).select("+password +inviteTokenHash");
+    if (existingUser && normalizeRole(existingUser.role) !== "client") {
+      return res.status(409).json({
+        success: false,
+        code: "EMAIL_OWNED_BY_NON_CLIENT",
+        message: "This email address belongs to a non-client account",
+      });
+    }
+    if (existingUser?.primaryCaseId || (existingUser?.caseIds || []).length) {
+      return res.status(409).json({
+        success: false,
+        code: "CLIENT_ALREADY_HAS_CASE",
+        message: "This client account is already linked to a case",
+      });
+    }
+
+    const principalCaseNumber = await CaseNumberService.nextPrincipalCaseNumber();
+    const childCaseNumbers = Array.from({ length: resolvedChildCaseCount }, (_, index) => (
+      CaseNumberService.childCaseNumber(principalCaseNumber, index)
+    ));
+
+    const created = {
+      caseIds: [],
+      employerProfileIds: [],
+      employeeProfileIds: [],
+      userIds: [],
+      updatedUsers: [],
+    };
+
+    let setupToken = null;
+    let clientUser = null;
+    let principalCase = null;
+    let childCases = [];
+
+    try {
+      const selectedAt = normalizedPackage ? new Date() : undefined;
+      const checklist = await resolveDocumentRequirements(trimmedVisaType);
+      const teamLead = await caseService.resolveTeamLeadForCase(req.body);
+      const amount = centsFromPrice(price);
+      const trimmedCaseDetails = cleanString(caseDetails);
+      const trimmedEmployerName = cleanString(employerName);
+      const trimmedEmployerEmail = cleanEmail(employerEmail);
+      const assignmentMode = employerCompletionMode === "invite_employees"
+        ? "invite_employees"
+        : employerCompletionMode === "employer_completes"
+          ? "employer_completes"
+          : "";
+      const status = assignedCaseManager ? "assigned" : "pending_assignment";
+      const commonCaseData = {
+        isDemoData: false,
+        createdBy: req.user._id,
+        lastModifiedBy: req.user._id,
+        clientName: trimmedClientName,
+        clientEmail: email,
+        visaType: trimmedVisaType,
+        visaCategory: trimmedVisaType,
+        caseType: "immigration",
+        petitionType: trimmedVisaType,
+        petitionSubType: extension ? cleanString(extension) : undefined,
+        package: normalizedPackage,
+        primaryPackage: normalizedPackage || undefined,
+        plan: {
+          tier: normalizedPackage,
+          selectedAt,
+          paymentStatus: "not_started",
+          amount,
+          currency: "USD",
+        },
+        checklistItems: checklist,
+        documentChecklist: checklist,
+        creationSource,
+        leadId: creationSource === "lead_conversion" ? leadId : null,
+        consultationId: sourceLead?.consultation?.appointmentId || sourceLead?.consultationId || undefined,
+        status,
+        assignedTeamLead: req.body.assignedTeamLead || teamLead?._id,
+        teamId: req.body.teamId || teamLead?.teamId,
+        assignedAgent: assignedCaseManager ? (req.user.displayName || req.user.name || "Immigration CRM") : "Team Lead Queue",
+        agentEmail: assignedCaseManager ? req.user.email : undefined,
+        assignedAgentUser: assignedCaseManager ? req.user._id : undefined,
+        primaryOwner: assignedCaseManager || undefined,
+        assignedCaseManager: assignedCaseManager || undefined,
+        internalNotes: trimmedCaseDetails ? [{
+          author: req.user._id,
+          note: trimmedCaseDetails,
+          category: "general",
+          visibility: "team",
+        }] : [],
+        legacySource: "INSZoom",
+      };
+
+      [principalCase] = await Case.create([{
+        ...commonCaseData,
+        caseId: principalCaseNumber,
+        caseNumber: principalCaseNumber,
+        clientPortalId: principalCaseNumber,
+        caseStructure,
+        caseRole: caseStructure === "single" ? "single" : "principal",
+        childCaseCount: resolvedChildCaseCount,
+        childIndex: null,
+        dataEntryMode: resolvedDataEntryMode,
+        petitionerName: trimmedEmployerName || undefined,
+        questionnaireData: {
+          masterData: {
+            ...(assignmentMode ? {
+              employeeQuestionnaireAssignment: {
+                mode: assignmentMode,
+                selectedAt: new Date(),
+                selectedBy: req.user._id,
+              },
+            } : {}),
+            ...((trimmedEmployerName || trimmedEmployerEmail) ? {
+              employer: {
+                company: {
+                  fullName: trimmedEmployerName,
+                  email: trimmedEmployerEmail,
+                },
+              },
+            } : {}),
+          },
+        },
+      }]);
+      created.caseIds.push(principalCase._id);
+
+      if (existingUser) {
+        created.updatedUsers.push({
+          _id: existingUser._id,
+          set: {
+            primaryCaseId: existingUser.primaryCaseId || null,
+            caseIds: existingUser.caseIds || [],
+            leadId: existingUser.leadId || null,
+            mustSetPassword: existingUser.mustSetPassword || false,
+            caseRole: existingUser.caseRole || null,
+            principalCaseId: existingUser.principalCaseId || null,
+            isActive: existingUser.isActive,
+            isEmailVerified: existingUser.isEmailVerified,
+            inviteTokenExpiresAt: existingUser.inviteTokenExpiresAt || null,
+            ...(existingUser.inviteTokenHash ? { inviteTokenHash: existingUser.inviteTokenHash } : {}),
+          },
+          unset: existingUser.inviteTokenHash ? {} : { inviteTokenHash: "" },
+        });
+        clientUser = existingUser;
+        clientUser.name = clientUser.name || trimmedClientName;
+        clientUser.displayName = clientUser.displayName || trimmedClientName;
+        if (clientPhone && !clientUser.phone) clientUser.phone = cleanString(clientPhone);
+      } else {
+        setupToken = generateOpaqueToken();
+        const referralCode = await generateUniqueReferralCode(User);
+        [clientUser] = await User.create([{
+          email,
+          name: trimmedClientName,
+          displayName: trimmedClientName,
+          phone: clientPhone ? cleanString(clientPhone) : undefined,
+          role: "client",
+          referralCode,
+          isActive: false,
+          isEmailVerified: false,
+          mustSetPassword: true,
+          inviteTokenHash: hashToken(setupToken),
+          inviteTokenExpiresAt: new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS),
+          primaryCaseId: principalCase._id,
+          caseIds: [principalCase._id],
+          caseRole: caseStructure === "single" ? "single" : "principal",
+          principalCaseId: null,
+          leadId: sourceLead?._id || undefined,
+        }]);
+        created.userIds.push(clientUser._id);
+      }
+
+      if (existingUser) {
+        if (!clientUser.password && !clientUser.inviteTokenHash) {
+          setupToken = generateOpaqueToken();
+          clientUser.inviteTokenHash = hashToken(setupToken);
+          clientUser.inviteTokenExpiresAt = new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS);
+          clientUser.mustSetPassword = true;
+          clientUser.isActive = false;
+          clientUser.isEmailVerified = false;
+        }
+        clientUser.primaryCaseId = principalCase._id;
+        clientUser.caseIds = [principalCase._id];
+        clientUser.caseRole = caseStructure === "single" ? "single" : "principal";
+        clientUser.principalCaseId = null;
+        if (sourceLead?._id) clientUser.leadId = sourceLead._id;
+        await clientUser.save();
+      }
+
+      principalCase.user = clientUser._id;
+      if (caseStructure === "employer_employee") {
+        principalCase.employerUser = clientUser._id;
+        principalCase.employeeInvite = assignmentMode === "invite_employees" ? {
+          status: "not_sent",
+          invitedBy: req.user._id,
+        } : undefined;
+        principalCase.employerEmployeeWorkflow = assignmentMode ? {
+          employerStatus: "not_started",
+          employeeStatus: assignmentMode === "invite_employees" ? "not_invited" : "in_progress",
+          caseManagerStatus: assignmentMode === "invite_employees" ? "waiting_for_employee" : "waiting_for_employer",
+        } : undefined;
+      }
+      if (caseStructure === "family") {
+        principalCase.petitionerUser = clientUser._id;
+        principalCase.familyWorkflow = {
+          petitionerStatus: "not_started",
+          beneficiaryStatus: "not_invited",
+          caseManagerStatus: "new_case",
+        };
+      }
+
+      let employerProfile = null;
+      if (caseStructure !== "single") {
+        [employerProfile] = await EmployerProfile.create([{
+          principalCaseId: principalCase._id,
+          canonicalData: {
+            legalName: { value: trimmedEmployerName || null, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id },
+            contact: {
+              email: { value: trimmedEmployerEmail || null, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id },
+            },
+          },
+          updatedAt: new Date(),
+          updatedBy: req.user._id,
+        }]);
+        created.employerProfileIds.push(employerProfile._id);
+        principalCase.employerProfileId = employerProfile._id;
+      }
+
+      for (let index = 0; index < resolvedChildCaseCount; index += 1) {
+        const childIndex = CaseNumberService.indexToSuffix(index);
+        const childRole = caseStructure === "family" ? "beneficiary" : "employee";
+        const [childCase] = await Case.create([{
+          ...commonCaseData,
+          caseId: childCaseNumbers[index],
+          caseNumber: childCaseNumbers[index],
+          clientPortalId: childCaseNumbers[index],
+          user: clientUser._id,
+          parentCase: principalCase._id,
+          caseStructure,
+          caseRole: childRole,
+          childIndex,
+          childCaseCount: 0,
+          employerProfileId: employerProfile?._id || null,
+          dataEntryMode: resolvedDataEntryMode,
+          assignmentOverridden: false,
+        }]);
+        created.caseIds.push(childCase._id);
+
+        const [personProfile] = await EmployeeProfile.create([{
+          caseId: childCase._id,
+          principalCaseId: principalCase._id,
+          profileType: childRole,
+          updatedAt: new Date(),
+          updatedBy: req.user._id,
+        }]);
+        created.employeeProfileIds.push(personProfile._id);
+        childCase.personProfileId = personProfile._id;
+        await childCase.save();
+        childCases.push(childCase);
+      }
+
+      principalCase.childCases = childCases.map((childCase) => childCase._id);
+      clientUser.caseIds = [principalCase._id, ...childCases.map((childCase) => childCase._id)];
+      await clientUser.save();
+      await principalCase.save();
+    } catch (createError) {
+      await cleanupPhase5Create(created);
+      throw createError;
+    }
+
+    if (creationSource === "lead_conversion" && sourceLead) {
+      sourceLead.status = "converted";
+      sourceLead.convertedCaseId = principalCase._id;
+      await sourceLead.save();
+    }
+
+    await caseService.hydrateCaseRelationships(principalCase, req.user, req);
+    caseService.setStage(principalCase, "intake", req.user, "Case created by staff");
+    await workflowService.caseCreated(principalCase, req.user);
+    caseService.addAuditEntry(principalCase, "create", "Case family created by staff via INSZoom portal", req.user, {
+      caseNumber: principalCase.caseNumber,
+      caseStructure,
+      childCaseCount: resolvedChildCaseCount,
+      creationSource,
+    }, req);
+    await principalCase.save();
+    await caseService.writeAuditLog("create", principalCase, req.user, req.body, req);
+
+    const lifecycle = await lifecycleOrchestrator.initializeCase(principalCase, req.user, req);
+
+    if (setupToken) {
+      await notificationService.createNotification({
+        userId: clientUser._id,
+        type: "case_created",
+        category: "case",
+        title: "Your Immigration Case Is Ready",
+        message: `${principalCase.caseNumber} - ${principalCase.visaType}`,
+        caseId: principalCase._id,
+        link: "/accept-invite",
+        priority: "medium",
+        source: "shared",
+        emailTemplate: "client-portal-invitation",
+        emailTo: email,
+        emailData: {
+          clientName: trimmedClientName,
+          caseNumber: principalCase.caseNumber,
+          token: setupToken,
+        },
+      }, req.user, req).catch(() => null);
+    }
+
     res.status(201).json({
       success: true,
       message: "Case created",
+      principalCase: publicCaseSummary(lifecycle.case || principalCase),
+      childCases: childCases.map(publicCaseSummary),
+      clientUser: {
+        _id: clientUser._id,
+        email: clientUser.email,
+        mustSetPassword: clientUser.mustSetPassword,
+      },
       case: lifecycle.case,
       caseSummary: caseService.summarizeCase(lifecycle.case),
       workflow: lifecycle.progress,
@@ -912,6 +1340,14 @@ exports.assignCaseManager = async (req, res, next) => {
     caseService.assignUser(caseData, "case_manager", assignee, req.user, req.body.notes);
     if (req.user.role === "team_lead" && !caseData.assignedTeamLead) caseService.assignUser(caseData, "team_lead", req.user._id, req.user, "Assigned by team lead");
 
+    // Phase 7 — a child case (caseRole employee/beneficiary) being assigned
+    // directly, rather than via cascade from its principal, is by definition
+    // an individual override: mark it so a later principal-level assignment
+    // skips this child instead of stomping the override.
+    if (["employee", "beneficiary"].includes(caseData.caseRole)) {
+      caseData.assignmentOverridden = true;
+    }
+
     // Team Lead can set priority and add an internal note as part of the
     // same assignment action, atomically with the assignment itself.
     if (req.body.priority && caseData.priority !== req.body.priority) {
@@ -930,8 +1366,23 @@ exports.assignCaseManager = async (req, res, next) => {
     await recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req);
     await caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req);
     await notifyAssignee(assignee, caseData, "case_manager", req.user, req);
+
+    // Phase 7 — cascade to non-overridden children after the principal's own
+    // assignment has committed; a cascade failure must not roll back or fail
+    // the request that already succeeded for the principal case itself.
+    let childrenCascaded = 0;
+    if (caseData.caseRole === "principal") {
+      childrenCascaded = await cascadeAssignmentToChildren(caseData, {
+        assignedCaseManager: assignee,
+        primaryOwner: assignee,
+      }).catch((cascadeErr) => {
+        console.error("[assignCaseManager] Cascade to children failed (non-fatal):", cascadeErr.message);
+        return 0;
+      });
+    }
+
     const lifecycle = await lifecycleOrchestrator.onAssignment(caseData, req.user, req);
-    res.json({ success: true, case: lifecycle.case, workflow: lifecycle.progress });
+    res.json({ success: true, case: lifecycle.case, workflow: lifecycle.progress, childrenCascaded });
   } catch (error) {
     handleError(error, next);
   }
@@ -945,12 +1396,29 @@ exports.assignTeamLead = async (req, res, next) => {
     const teamLeadId = req.body.teamLeadId || req.body.assignedTeamLead || req.user._id;
     const previousTeamLeadId = caseData.assignedTeamLead;
     caseService.assignUser(caseData, "team_lead", teamLeadId, req.user, req.body.notes);
+
+    // Phase 7 — see the matching comment in assignCaseManager above.
+    if (["employee", "beneficiary"].includes(caseData.caseRole)) {
+      caseData.assignmentOverridden = true;
+    }
+
     await caseData.save();
     await syncCaseMessagingAssignment(caseData);
     await recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req);
     await caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req);
     await notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req);
-    res.json({ success: true, case: caseData });
+
+    let childrenCascaded = 0;
+    if (caseData.caseRole === "principal") {
+      childrenCascaded = await cascadeAssignmentToChildren(caseData, {
+        assignedTeamLead: teamLeadId,
+      }).catch((cascadeErr) => {
+        console.error("[assignTeamLead] Cascade to children failed (non-fatal):", cascadeErr.message);
+        return 0;
+      });
+    }
+
+    res.json({ success: true, case: caseData, childrenCascaded });
   } catch (error) {
     handleError(error, next);
   }
@@ -1010,13 +1478,268 @@ exports.getAssignmentHistory = async (req, res, next) => {
   }
 };
 
+// ── Phase 9 — data entry mode, employee invite, remove employee ──────────
+// These three endpoints operate on the caseRole=principal/employee/
+// beneficiary child-Case architecture Phase 5 creates at case-creation
+// time. See PHASE_9_COMPLETION_REPORT.md for how this coexists with the
+// older employerUser/employeeUser/employment-workflow architecture that
+// Documents.jsx historically used.
+
+const PHASE9_STAFF_ROLES = new Set(["super_admin", "admin", "team_lead"]);
+
+/**
+ * PATCH /api/cases/:principalId/data-entry-mode
+ * INVARIANT 3: the client may set this exactly once (not_set -> fill_self|
+ * invite). Only staff may reset it back to not_set afterward.
+ */
+exports.setDataEntryMode = async (req, res, next) => {
+  try {
+    const { principalId } = req.params;
+    const { mode, reset } = req.body || {};
+
+    const caseDoc = await Case.findById(principalId);
+    if (!caseDoc) return res.status(404).json({ success: false, message: "Case not found" });
+
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
+
+    // Single-person visas never need a data entry mode selection.
+    if (caseDoc.dataEntryMode === "not_required") {
+      return res.status(403).json({
+        success: false,
+        code: "NOT_APPLICABLE",
+        message: "Single-person visas do not require a data entry mode selection",
+      });
+    }
+
+    if (reset) {
+      if (!isStaff) return res.status(403).json({ success: false, message: "Only staff may reset the data entry mode" });
+      caseDoc.dataEntryMode = "not_set";
+      await caseDoc.save();
+      return res.status(200).json({ success: true, message: "Data entry mode reset to not_set", dataEntryMode: "not_set" });
+    }
+
+    if (!isStaff && String(caseDoc.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to set data entry mode for this case" });
+    }
+
+    if (caseDoc.dataEntryMode !== "not_set") {
+      return res.status(409).json({
+        success: false,
+        code: "DATA_ENTRY_MODE_ALREADY_SET",
+        message: `Data entry mode is already set to '${caseDoc.dataEntryMode}'. Contact your case manager to change this.`,
+        currentMode: caseDoc.dataEntryMode,
+      });
+    }
+
+    if (!["fill_self", "invite"].includes(mode)) {
+      return res.status(400).json({ success: false, code: "INVALID_MODE", message: "mode must be 'fill_self' or 'invite'" });
+    }
+
+    caseDoc.dataEntryMode = mode;
+    await caseDoc.save();
+    await caseService.writeAuditLog("set_data_entry_mode", caseDoc, req.user, { mode }, req);
+
+    return res.status(200).json({ success: true, message: `Data entry mode set to '${mode}'`, dataEntryMode: mode });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * POST /api/cases/:principalId/invite-employee
+ *
+ * INVARIANT 4: the child Case already exists (created in Phase 5) — this
+ * endpoint creates a stub User for it and sends the setup email, exactly
+ * like the Phase 5/8 principal-account flow, but never creates a Case.
+ * Reuses the same token mechanism (generateOpaqueToken/hashToken,
+ * mustSetPassword/inviteTokenHash/inviteTokenExpiresAt) and the same
+ * shared /accept-invite acceptance endpoint from Phase 8 — nothing new is
+ * built for token issuance or acceptance.
+ */
+exports.inviteEmployee = async (req, res, next) => {
+  try {
+    const { principalId } = req.params;
+    const { childCaseId, employeeEmail, employeeName } = req.body || {};
+
+    if (!childCaseId || !employeeEmail || !employeeName) {
+      return res.status(400).json({ success: false, message: "childCaseId, employeeEmail, and employeeName are required" });
+    }
+
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
+    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to invite employees for this case" });
+    }
+
+    // Never parse caseNumber — resolve the child strictly via parentCase.
+    const childCase = await Case.findOne({ _id: childCaseId, parentCase: principal._id });
+    if (!childCase) {
+      return res.status(404).json({ success: false, message: "Child case not found or does not belong to this principal case" });
+    }
+    if (!["employee", "beneficiary"].includes(childCase.caseRole)) {
+      return res.status(400).json({ success: false, message: "This case is not a child (employee/beneficiary) case" });
+    }
+
+    if (principal.dataEntryMode !== "invite") {
+      return res.status(409).json({
+        success: false,
+        code: "WRONG_DATA_ENTRY_MODE",
+        message: `Cannot send invite — data entry mode is '${principal.dataEntryMode}'. Must be 'invite'.`,
+      });
+    }
+
+    // Already invited: the child case's `user` no longer matches the
+    // employer's own account, meaning ownership was already transferred.
+    if (childCase.user && String(childCase.user) !== String(principal.user)) {
+      return res.status(409).json({ success: false, code: "ALREADY_INVITED", message: "This employee has already been invited." });
+    }
+
+    const normalizedEmail = String(employeeEmail).trim().toLowerCase();
+    const trimmedName = String(employeeName).trim();
+    const setupToken = generateOpaqueToken();
+
+    const [employeeUser] = await User.create([{
+      email: normalizedEmail,
+      name: trimmedName,
+      displayName: trimmedName,
+      role: childCase.caseRole, // 'employee' | 'beneficiary'
+      isActive: false,
+      isEmailVerified: false,
+      mustSetPassword: true,
+      inviteTokenHash: hashToken(setupToken),
+      inviteTokenExpiresAt: new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS),
+      primaryCaseId: childCase._id,
+      caseIds: [childCase._id],
+      caseRole: childCase.caseRole,
+      principalCaseId: principal._id,
+    }]);
+
+    // Transfer the child case off the employer's account onto the new
+    // employee account. From this point the employer has no access path
+    // to this child's EmployeeProfile — canAccess() in
+    // employee-profile.service.js checks the requester's own caseIds,
+    // which no longer includes this case.
+    const previousOwnerId = childCase.user;
+    childCase.user = employeeUser._id;
+    childCase.clientName = trimmedName;
+    childCase.clientEmail = normalizedEmail;
+    await childCase.save();
+    if (previousOwnerId) {
+      await User.updateOne({ _id: previousOwnerId }, { $pull: { caseIds: childCase._id } });
+    }
+
+    const now = new Date();
+    await EmployeeProfile.updateOne(
+      { caseId: childCase._id },
+      {
+        $set: {
+          "canonicalData.firstName.value": trimmedName.split(" ")[0] || trimmedName,
+          "canonicalData.firstName.source": "import",
+          "canonicalData.firstName.updatedAt": now,
+          "canonicalData.firstName.updatedBy": req.user._id,
+          "canonicalData.email.value": normalizedEmail,
+          "canonicalData.email.source": "import",
+          "canonicalData.email.updatedAt": now,
+          "canonicalData.email.updatedBy": req.user._id,
+          updatedAt: now,
+        },
+      }
+    );
+
+    await caseService.writeAuditLog("invite_employee", childCase, req.user, { employeeEmail: normalizedEmail }, req);
+
+    await notificationService.createNotification({
+      userId: employeeUser._id,
+      type: "case_created",
+      category: "case",
+      title: "You've Been Invited to Complete Your Immigration Case",
+      message: `${childCase.caseNumber} - ${childCase.visaType}`,
+      caseId: childCase._id,
+      link: "/accept-invite",
+      priority: "medium",
+      source: "shared",
+      emailTemplate: "employee-case-invitation",
+      emailTo: normalizedEmail,
+      emailData: {
+        employeeName: trimmedName,
+        employerName: principal.clientName,
+        caseNumber: childCase.caseNumber,
+        token: setupToken,
+      },
+    }, req.user, req).catch(() => null);
+
+    return res.status(200).json({
+      success: true,
+      message: `Invitation sent to ${normalizedEmail}`,
+      childCaseId: childCase._id,
+      childCaseNumber: childCase.caseNumber,
+      inviteStatus: "pending",
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * PATCH /api/cases/:caseId/remove-employee
+ * INVARIANT 5: soft-delete only. status -> 'removed'; EmployeeProfile,
+ * documents, and the invited User account (if any) are left untouched.
+ */
+exports.removeEmployee = async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const childCase = await Case.findById(caseId);
+    if (!childCase) return res.status(404).json({ success: false, message: "Case not found" });
+
+    if (!["employee", "beneficiary"].includes(childCase.caseRole)) {
+      return res.status(400).json({
+        success: false,
+        code: "CANNOT_REMOVE_PRINCIPAL",
+        message: "Only child cases (employee or beneficiary) can be removed",
+      });
+    }
+    if (childCase.status === "removed") {
+      return res.status(409).json({ success: false, code: "ALREADY_REMOVED", message: "This case has already been removed" });
+    }
+
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
+    if (!isStaff) {
+      const principal = childCase.parentCase ? await Case.findById(childCase.parentCase).select("user") : null;
+      if (!principal || String(principal.user) !== String(req.user._id)) {
+        return res.status(403).json({ success: false, message: "Not authorized to remove this employee" });
+      }
+    }
+
+    childCase.previousStatus = childCase.status;
+    childCase.status = "removed";
+    await childCase.save();
+    await caseService.writeAuditLog("remove_employee", childCase, req.user, {}, req);
+
+    return res.status(200).json({
+      success: true,
+      message: "Employee removed. All data has been preserved.",
+      caseId: childCase._id,
+      status: "removed",
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
 exports.getTeamLeadDashboard = async (req, res, next) => {
   try {
     const teamFilter = req.user.role === "team_lead"
       ? { $or: [{ assignedTeamLead: req.user._id }, ...(req.user.teamId ? [{ teamId: req.user.teamId }] : [])] }
       : {};
+    // Phase 7: the pending-assignment queue (unassignedCases/agingCases) must
+    // only ever surface principal/single cases — a child case (caseRole
+    // employee/beneficiary) is assigned by cascade from its principal, never
+    // independently, so it must never appear here as its own queue item.
+    const queueRoleFilter = { caseRole: { $in: ["principal", "single"] } };
     const [unassignedCases, assignedCases, priorityCases, agingCases, workload] = await Promise.all([
-      Case.find({ ...teamFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] } })
+      Case.find({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] } })
         .populate("companyId", "name legalName")
         .populate("beneficiary", "firstName lastName fullName email")
         .select("caseNumber clientName clientEmail visaType visaCategory priority status package plan companyId beneficiary journeyProgress createdAt questionnaireData")
@@ -1024,7 +1747,7 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
         .limit(25),
       Case.countDocuments({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } }),
       Case.find({ ...teamFilter, priority: { $in: ["high", "urgent", "Premium Processing"] }, status: { $nin: ["closed", "archived"] } }).sort({ updatedAt: -1 }).limit(25),
-      Case.countDocuments({ ...teamFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] }, createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+      Case.countDocuments({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] }, createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
       Case.aggregate([
         { $match: { ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } } },
         { $group: { _id: "$assignedCaseManager", totalCases: { $sum: 1 }, activeCases: { $sum: { $cond: [{ $ne: ["$status", "pending_assignment"] }, 1, 0] } }, pendingCases: { $sum: { $cond: [{ $eq: ["$status", "pending_assignment"] }, 1, 0] } } } },

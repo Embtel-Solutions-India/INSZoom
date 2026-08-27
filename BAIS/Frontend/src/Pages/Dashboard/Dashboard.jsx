@@ -20,12 +20,6 @@ const daysAgo = (iso) => {
   return Math.max(0, Math.floor((Date.now() - new Date(iso)) / 86400000));
 };
 
-const daysUntil = (iso) => {
-  if (!iso) return null;
-  const d = Math.ceil((new Date(iso) - Date.now()) / 86400000);
-  return d;
-};
-
 /* ── Icons ──────────────────────────────────────────────────────────────────── */
 const Ic = {
   User:     () => <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>,
@@ -85,37 +79,6 @@ const normalizeCaseStage = (caseData) => {
   const key = String(caseData?.stage || caseData?.status || "").toLowerCase();
   return CRM_STAGE_INDEX[key] ?? 0;
 };
-
-/* ── Announcements ──────────────────────────────────────────────────────────── */
-const ANNOUNCEMENTS = [
-  {
-    id: 1,
-    title: "F-1 Visa Interview Slots Now Available",
-    body: "US Embassy Mumbai has released new interview slots for June–July 2025. Book early to secure your preferred date.",
-    date: "Apr 15, 2025",
-    tag: "Visa Update",
-    tagColor: "bg-blue-100 text-blue-700",
-    urgent: false,
-  },
-  {
-    id: 2,
-    title: "New USCIS Processing Time Updates",
-    body: "USCIS has revised estimated processing times for H-1B petitions to 3–5 months for standard processing.",
-    date: "Apr 10, 2025",
-    tag: "Policy Update",
-    tagColor: "bg-violet-100 text-violet-700",
-    urgent: false,
-  },
-  {
-    id: 3,
-    title: "Document Checklist Reminder",
-    body: "Ensure all required documents are uploaded before your assigned deadline to avoid processing delays.",
-    date: "Today",
-    tag: "Action Required",
-    tagColor: "bg-red-100 text-red-700",
-    urgent: true,
-  },
-];
 
 /* ── Circular Progress ──────────────────────────────────────────────────────── */
 function CircularProgress({ pct, size = 72, stroke = 7, color = "#1D9E75", children }) {
@@ -393,81 +356,6 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
 }
 
 /* ── Key Dates ──────────────────────────────────────────────────────────────── */
-function KeyDates({ startedDate }) {
-  const dates = [
-    {
-      label: "Document Submission",
-      date:  new Date(Date.now() + 7 * 86400000).toISOString(),
-      note:  "Upload all required documents",
-      urgency: "high",
-    },
-    {
-      label: "DS-160 Filing Deadline",
-      date:  new Date(Date.now() + 30 * 86400000).toISOString(),
-      note:  "Online visa application form",
-      urgency: "medium",
-    },
-    {
-      label: "Visa Fee Payment",
-      date:  new Date(Date.now() + 45 * 86400000).toISOString(),
-      note:  "MRV fee must be paid before interview",
-      urgency: "low",
-    },
-    {
-      label: "Estimated Case Completion",
-      date:  new Date(Date.now() + 90 * 86400000).toISOString(),
-      note:  "Subject to USCIS processing times",
-      urgency: "future",
-    },
-  ];
-
-  
-
-  const urgencyStyles = {
-    high:   { bar: "bg-red-400",    badge: "bg-red-50 text-red-600 border-red-200",    dot: "bg-red-400"    },
-    medium: { bar: "bg-amber-400",  badge: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-400" },
-    low:    { bar: "bg-blue-400",   badge: "bg-blue-50 text-blue-600 border-blue-200",  dot: "bg-blue-400"   },
-    future: { bar: "bg-slate-300",  badge: "bg-slate-50 text-slate-500 border-slate-200", dot: "bg-slate-300" },
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-          <Ic.Calendar />
-        </div>
-        <div>
-          <h3 className="font-extrabold text-slate-800 text-sm">Key Dates & Deadlines</h3>
-          <p className="text-xs text-slate-400">Case started {fmtDate(startedDate)}</p>
-        </div>
-      </div>
-
-      <ul className="divide-y divide-slate-100">
-        {dates.map((d, i) => {
-          const days = daysUntil(d.date);
-          const s    = urgencyStyles[d.urgency];
-          return (
-            <li key={i} className="px-5 py-3.5 flex items-start gap-3">
-              <div className={`w-1 self-stretch rounded-full shrink-0 ${s.bar}`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-sm font-semibold text-slate-700">{d.label}</p>
-                  {days !== null && days >= 0 && (
-                    <span className={`text-[0.62rem] font-bold px-2 py-0.5 rounded-full border ${s.badge}`}>
-                      {days === 0 ? "Today" : days === 1 ? "Tomorrow" : `${days}d`}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 mt-0.5">{d.note}</p>
-                <p className="text-xs font-semibold text-slate-600 mt-1">{fmtDate(d.date)}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
 function PaymentSummaryCard({ plan }) {
     if (!plan) return null;
 
@@ -523,14 +411,6 @@ function PaymentSummaryCard({ plan }) {
 
 /* ── Activity Feed ──────────────────────────────────────────────────────────── */
 function ActivityFeed({ caseData, profileSavedAt }) {
-  let items = [
-    { time: "2 hours ago",   text: "Your profile was reviewed by the case team",       type: "info"    },
-    { time: "Yesterday",     text: "Reminder: Document deadline is in 7 days",         type: "warn"    },
-    { time: "2 days ago",    text: "Profile setup completed successfully",              type: "success" },
-    { time: "3 days ago",    text: "New case opened — F-1 Student Visa application",   type: "info"    },
-    { time: "3 days ago",    text: "Welcome to the BAIS Immigration Client Portal",    type: "success" },
-  ];
-
   const timeAgo = (iso) => {
     if (!iso) return "Just now";
     const diff = Date.now() - new Date(iso).getTime();
@@ -553,7 +433,7 @@ function ActivityFeed({ caseData, profileSavedAt }) {
       type: event.type === "questionnaire" || event.type === "assignment" ? "success" : event.type === "deadline" ? "warn" : "info",
     }));
 
-  items = timelineItems.length ? timelineItems : [
+  const items = timelineItems.length ? timelineItems : [
     caseData ? {
       time: timeAgo(caseData.updatedAt || caseData.createdAt),
       text: `Case status is ${String(caseData.status || "active").replace(/_/g, " ")} at ${CASE_STAGES[normalizeCaseStage(caseData)]?.label || "Intake"}.`,
@@ -595,6 +475,12 @@ function ActivityFeed({ caseData, profileSavedAt }) {
   );
 }
 
+function agentInitials(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return "?";
+  return trimmed.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
 /* ── Case Info Card ─────────────────────────────────────────────────────────── */
 function CaseInfo({ caseData, profileData }) {
   return (
@@ -631,7 +517,7 @@ function CaseInfo({ caseData, profileData }) {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
             flex items-center justify-center text-white font-extrabold text-sm shrink-0">
-            PS
+            {agentInitials(caseData.assignedAgent)}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-800">{caseData.assignedAgent}</p>
@@ -650,34 +536,6 @@ function CaseInfo({ caseData, profileData }) {
             <Ic.Phone /> Call
           </a>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Announcements ──────────────────────────────────────────────────────────── */
-function Announcements() {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
-          <Ic.Info />
-        </div>
-        <h3 className="font-extrabold text-slate-800 text-sm">Notices & Announcements</h3>
-      </div>
-      <div className="divide-y divide-slate-100">
-        {ANNOUNCEMENTS.map((a) => (
-          <div key={a.id} className={`px-5 py-4 ${a.urgent ? "bg-red-50/40" : ""}`}>
-            <div className="flex items-start justify-between gap-3 mb-1">
-              <p className="text-sm font-bold text-slate-800 leading-snug">{a.title}</p>
-              <span className={`text-[0.62rem] font-bold px-2 py-0.5 rounded-full border shrink-0 ${a.tagColor} border-current/20`}>
-                {a.tag}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed">{a.body}</p>
-            <p className="text-[0.65rem] text-slate-400 mt-2 font-medium">{a.date}</p>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -966,20 +824,16 @@ export default function Dashboard() {
       })
       .catch(() => {});
 
+    // PHASE 3 ARCHITECTURE CHANGE: routing based on case existence has been
+    // moved to AuthGate (src/components/AuthGate.jsx). Dashboard.jsx renders
+    // only once AuthGate has already confirmed the user has a case — it
+    // should not redirect away from itself. loadCase() below still runs to
+    // fetch the actual case/profile/workflow data this page displays; only
+    // the no-case redirect that used to live in its .then() is removed.
     loadCase()
-      .then(async (currentCase) => {
+      .then(() => {
         if (cancelled) return;
         setCaseLoadError("");
-        // No case at all → send to intake wizard to create one. Invited
-        // employees never go through intake — their case is created by the
-        // employer, so an employee with no case yet just sees an empty state.
-        if (!currentCase?._id && !isEmployee) {
-          navigate("/dashboard/intake", { replace: true });
-          return;
-        }
-        // Case exists → check questionnaire status
-        // Profile and Documents now surface assigned checklist work.
-        // If not assigned yet, or already completed → stay on dashboard
       })
       .catch((error) => {
         if (cancelled) return;
@@ -1263,11 +1117,6 @@ export default function Dashboard() {
           <CaseProgressTracker currentStage={activeCaseData.currentStage} visaType={activeCaseData.visaType} journeyProgress={activeCaseData.journeyProgress} />
         </div>
 
-        {/* The checklist itself lives only on the Documents page now — see
-            Pages/Dashboard/Documents.jsx. Key dates is a genuine dashboard
-            widget (not checklist content), so it stays. */}
-        <KeyDates startedDate={activeCaseData.createdAt || activeCaseData.startedDate} />
-
         {/* ── Expert Letters + Attorney Review ── */}
         {(activeCaseData.expertLetters?.length > 0 || activeCaseData.attorneyReview?.required) && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1282,9 +1131,6 @@ export default function Dashboard() {
           <CaseInfo caseData={activeCaseData} profileData={profileData} />
           {!isEmployee && <PaymentSummaryCard plan={activeCaseData?.plan} />}
         </div>
-
-        {/* ── Announcements ── */}
-        <Announcements />
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-400 pb-4">

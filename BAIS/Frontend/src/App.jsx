@@ -1,7 +1,7 @@
 import { Suspense, lazy } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import MainLayout from "./layout/MainLayout";
-import ProtectedRoute, { BlockEmployeeRoute } from "./components/ProtectedRoute";
+import AuthGate from "./components/AuthGate";
 import BlockIfHasCase from "./components/eligibility/BlockIfHasCase";
 import PageLoader from "./components/PageLoader";
 
@@ -33,6 +33,7 @@ const EligibilityQuiz = lazy(() => import("./Pages/Eligibility/EligibilityQuiz")
 const EligibilityResults = lazy(() => import("./Pages/Eligibility/EligibilityResults"));
 const BookConsultation = lazy(() => import("./Pages/Consultation/BookConsultation"));
 const ManageBooking = lazy(() => import("./Pages/Consultation/ManageBooking"));
+const LegacyHolding = lazy(() => import("./Pages/Auth/LegacyHolding"));
 
 export default function App() {
   return (
@@ -63,22 +64,25 @@ export default function App() {
           <Route path="/consultation/book/:leadId?" element={<BookConsultation />} />
           <Route path="/consultation/booking/:token" element={<ManageBooking />} />
 
-          {/* Protected: must be logged in. An invited-employee account's
-              whole world is its own case's checklist — /dashboard,
-              /dashboard/profile, and /dashboard/messages are wrapped in
-              BlockEmployeeRoute alongside the rest so an employee can only
-              ever land on /dashboard/documents (see ProtectedRoute.jsx). */}
-          <Route element={<ProtectedRoute />}>
-            <Route element={<BlockEmployeeRoute />}>
-              <Route path="/dashboard"           element={<Dashboard />} />
-              <Route path="/dashboard/profile"   element={<Profile />} />
-              <Route path="/dashboard/messages"  element={<Messages />} />
-              <Route path="/dashboard/plan"      element={<PlanSelection />} />
-              <Route path="/dashboard/filing-type" element={<FilingTypeSelection />} />
-              <Route path="/dashboard/payments" element={<Payments />} />
-              <Route path="/dashboard/payments/success" element={<PaymentSuccess />} />
-              <Route path="/dashboard/payments/cancel" element={<PaymentCancel />} />
-            </Route>
+          {/* PHASE 3: routing based on auth + case status is now decided
+              exclusively by AuthGate (src/components/AuthGate.jsx), which
+              calls GET /api/auth/session-context. It supersedes both
+              ProtectedRoute (auth check) and BlockEmployeeRoute (confines an
+              invited employee to /dashboard/documents) for every route
+              listed here — AuthGate itself redirects an employee-role
+              session to /dashboard/documents, so nesting BlockEmployeeRoute
+              on top would be redundant. ProtectedRoute/BlockEmployeeRoute
+              are left defined in components/ProtectedRoute.jsx (not removed
+              as files) but are no longer used in this route tree. */}
+          <Route element={<AuthGate />}>
+            <Route path="/dashboard"           element={<Dashboard />} />
+            <Route path="/dashboard/profile"   element={<Profile />} />
+            <Route path="/dashboard/messages"  element={<Messages />} />
+            <Route path="/dashboard/plan"      element={<PlanSelection />} />
+            <Route path="/dashboard/filing-type" element={<FilingTypeSelection />} />
+            <Route path="/dashboard/payments" element={<Payments />} />
+            <Route path="/dashboard/payments/success" element={<PaymentSuccess />} />
+            <Route path="/dashboard/payments/cancel" element={<PaymentCancel />} />
 
             <Route path="/dashboard/documents" element={<Documents />} />
             {/* Optional caseId — lets an employer account open one specific
@@ -90,20 +94,26 @@ export default function App() {
           </Route>
         </Route>
 
-        {/* Standalone, no MainLayout/navbar — but still requires login, so
-            ProtectedRoute is reused here on its own (outside MainLayout)
-            rather than skipped. Also employee-blocked: intake is a new-case
-            flow, not part of an invited employee's world. */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<BlockEmployeeRoute />}>
-            <Route path="/dashboard/intake" element={<Intake />} />
-          </Route>
+        {/* Standalone, no MainLayout/navbar — still requires login and
+            case-status routing, both now owned by AuthGate (see above). */}
+        <Route element={<AuthGate />}>
+          <Route path="/onboarding/intake" element={<Intake />} />
         </Route>
+        {/* Legacy URL — Register.jsx (brand-new signup) and Offers.jsx (a
+            "continue" CTA) still navigate here directly by habit/comment
+            ("can't have a case yet"). Forwards to the one canonical,
+            AuthGate-aware intake route above rather than duplicating
+            <Intake/> under two paths with two different routing checks. */}
+        <Route path="/dashboard/intake" element={<Navigate to="/onboarding/intake" replace />} />
+
+        {/* Public — reachable even for an unauthenticated or errored
+            session, per Phase 3 Part E. Deliberately outside AuthGate. */}
+        <Route path="/legacy-holding" element={<LegacyHolding />} />
 
         {/* Standalone, no MainLayout/navbar — the quiz is a full-screen
-            questionnaire flow, same reasoning as /dashboard/intake above.
+            questionnaire flow, same reasoning as /onboarding/intake above.
             BlockIfHasCase has no auth dependency of its own (unlike
-            ProtectedRoute), so it's reused here exactly as it was inside
+            AuthGate), so it's reused here exactly as it was inside
             MainLayout — just outside the layout wrapper now. */}
         <Route element={<BlockIfHasCase />}>
           <Route path="/eligibility/quiz" element={<EligibilityQuiz />} />

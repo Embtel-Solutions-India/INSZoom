@@ -4,13 +4,25 @@ import { X } from 'lucide-react'
 
 const VISA_TYPE_OPTIONS = [
   { value: 'h1b', label: 'H-1B' },
+  { value: 'h1b1', label: 'H-1B1' },
   { value: 'l1a', label: 'L-1A' },
   { value: 'l1b', label: 'L-1B' },
   { value: 'o1a', label: 'O-1A' },
   { value: 'o1b', label: 'O-1B' },
+  { value: 'o2', label: 'O-2' },
+  { value: 'p1a', label: 'P-1A' },
+  { value: 'p1b', label: 'P-1B' },
+  { value: 'p2', label: 'P-2' },
+  { value: 'p3', label: 'P-3' },
   { value: 'tn', label: 'TN' },
   { value: 'e1', label: 'E-1' },
   { value: 'e2', label: 'E-2' },
+  { value: 'e3', label: 'E-3' },
+  { value: 'r1', label: 'R-1' },
+  { value: 'k1', label: 'K-1' },
+  { value: 'k3', label: 'K-3' },
+  { value: 'i539cos', label: 'I-539-COS' },
+  { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
@@ -24,7 +36,7 @@ const PACKAGE_OPTIONS = [
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
 
-const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'l1a', 'l1b', 'o1a', 'o1b', 'tn', 'e1', 'e2'])
+const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1'])
 
 const initialForm = {
   clientName: '',
@@ -39,12 +51,34 @@ const initialForm = {
   caseDetails: '',
 }
 
-// Available to both case managers and team leads (see case.routes.js's
-// POST /cases/create-with-client — authorizeRoles includes both). A team
-// lead assigning here picks from the same case-manager roster as a case
-// manager would; there is no separate team-lead-only behavior.
-const CreateCaseModal = ({ onClose, onCreated }) => {
-  const [form, setForm] = useState(initialForm)
+const normalizeInitialVisaType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return ''
+  const match = VISA_TYPE_OPTIONS.find((opt) => (
+    opt.value.toLowerCase() === normalized ||
+    opt.label.toLowerCase() === normalized
+  ))
+  return match?.value || ''
+}
+
+const buildInitialForm = (initialData) => ({
+  ...initialForm,
+  clientName: initialData?.clientName || '',
+  clientEmail: initialData?.clientEmail || '',
+  clientPhone: initialData?.clientPhone || '',
+  visaType: normalizeInitialVisaType(initialData?.visaType),
+})
+
+// Available to admins and team leads through POST /cases. A team lead assigning
+// here picks from the same case-manager roster as an admin would.
+const CreateCaseModal = ({
+  onClose,
+  onCreated,
+  initialData = null,
+  leadId = null,
+  creationSource = 'admin_direct',
+}) => {
+  const [form, setForm] = useState(() => buildInitialForm(initialData))
   const [caseManagers, setCaseManagers] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -73,8 +107,13 @@ const CreateCaseModal = ({ onClose, onCreated }) => {
         clientName: form.clientName.trim(),
         clientEmail: form.clientEmail.trim(),
         visaType: visaTypeLabel,
+        childCaseCount: showEmployerFields ? Number(initialData?.childCaseCount || 1) : 0,
+        creationSource,
       }
+      if (leadId) payload.leadId = leadId
       if (form.clientPhone.trim()) payload.clientPhone = form.clientPhone.trim()
+      if (initialData?.extension) payload.extension = initialData.extension
+      if (initialData?.packageId) payload.packageId = initialData.packageId
       if (form.packageName) payload.packageName = form.packageName
       if (form.assignedCaseManager) payload.assignedCaseManager = form.assignedCaseManager
       if (form.caseDetails.trim()) payload.caseDetails = form.caseDetails.trim()
@@ -84,8 +123,12 @@ const CreateCaseModal = ({ onClose, onCreated }) => {
         if (form.employerCompletionMode) payload.employerCompletionMode = form.employerCompletionMode
       }
 
-      const res = await casesApi.createWithClient(payload)
-      onCreated?.(res.data)
+      const res = await casesApi.create(payload)
+      const result = res.data || {}
+      onCreated?.({
+        ...result,
+        case: result.case || result.principalCase,
+      })
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create case. Please try again.')
     } finally {

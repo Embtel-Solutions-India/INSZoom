@@ -2,7 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
-import { getPostLoginDest, resolvePostLoginDest } from "../../utils/postLoginDest";
+import PasswordField from "../../components/auth/PasswordField";
+
+const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
 
 /* ── Icons ── */
 const UserIcon = () => (
@@ -157,20 +160,14 @@ export default function Register() {
   // signInWithRedirect leaves this page and comes back to it after Google
   // completes - pick up the result here instead of inline in handleGoogle,
   // mirroring exactly where the old popup flow's `navigate()` call was.
-  // Someone can legitimately land on Google auth from the Register page
-  // despite already having an account (e.g. clicked the wrong button), so
-  // this still runs the real case-check via resolvePostLoginDest rather
-  // than assuming "new user" - only handleSubmit's plain email signup below
-  // can safely skip straight to /dashboard/intake.
+  // PHASE 3: routing is now decided exclusively by AuthGate
+  // (src/components/AuthGate.jsx) via GET /api/auth/session-context — this
+  // just lands the session on a protected route (AuthGate handles staff vs.
+  // client vs. no-case routing from there), rather than assuming "new user."
   useEffect(() => {
     if (!googleRedirectUser) return;
-    const redirectingUser = googleRedirectUser;
     clearGoogleRedirectUser();
-    (async () => {
-      const dest = await resolvePostLoginDest(redirectingUser);
-      if (dest.external) window.location.href = dest.url; // cross-app navigation - navigate() can't leave this origin
-      else navigate(dest.url, { replace: true });
-    })();
+    navigate("/dashboard", { replace: true });
   }, [googleRedirectUser, navigate, clearGoogleRedirectUser]);
 
   useEffect(() => {
@@ -186,10 +183,11 @@ export default function Register() {
   // this effect would fire the instant signup() sets `user` - well before
   // that pause elapses - cutting the confirmation message short. Staff have
   // no such pause to protect, so this branch is safe to resolve immediately.
+  // PHASE 3: inlines the same STAFF_ROLES check AuthGate itself uses,
+  // since postLoginDest.js's getPostLoginDest is deprecated.
   useEffect(() => {
     if (!user || authLoading) return;
-    const dest = getPostLoginDest(user);
-    if (dest.external) window.location.href = dest.url;
+    if (STAFF_ROLES.includes(user.role)) window.location.href = INSZOOM_URL;
   }, [user, authLoading]);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
@@ -323,14 +321,14 @@ export default function Register() {
             <Field icon={<MailIcon />} type="email" name="email" placeholder="Email Address"
               value={form.email} onChange={set("email")} autoComplete="email" />
 
-            <Field
-              icon={<LockIcon />} type="password" name="password"
+            <PasswordField
+              icon={<LockIcon />} name="password"
               placeholder="Password" value={form.password} onChange={set("password")}
               autoComplete="new-password"
             />
 
-            <Field
-              icon={<LockIcon />} type="password" name="confirmPassword"
+            <PasswordField
+              icon={<LockIcon />} name="confirmPassword"
               placeholder="Confirm Password" value={form.confirmPassword} onChange={set("confirmPassword")}
               autoComplete="new-password"
             />

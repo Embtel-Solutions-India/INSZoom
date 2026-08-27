@@ -22,9 +22,18 @@ router.get("/", authenticate, authorizePermissions("cases:read"), ctrl.getCases)
 router.post(
   "/",
   authenticate,
+  authorizeRoles("super_admin", "admin", "team_lead"),
   authorizePermissions("cases:create"),
+  body("clientName").trim().notEmpty().withMessage("Client name is required"),
+  body("clientEmail").isEmail().normalizeEmail().withMessage("Valid client email is required"),
   body("visaType").notEmpty().withMessage("Visa type is required"),
-  body("clientEmail").optional().isEmail().withMessage("Valid client email is required"),
+  body("childCaseCount").optional({ checkFalsy: true }).isInt({ min: 0 }).withMessage("childCaseCount must be a non-negative integer"),
+  body("creationSource").optional({ checkFalsy: true }).isIn(["lead_conversion", "admin_direct", "team_lead_direct"]).withMessage("Invalid creationSource"),
+  body("leadId").optional({ checkFalsy: true }).isMongoId().withMessage("leadId must be a valid ID"),
+  body("packageName").optional({ checkFalsy: true }).isIn(PACKAGE_NAMES).withMessage(`Package must be one of: ${PACKAGE_NAMES.join(", ")}`),
+  body("assignedCaseManager").optional({ checkFalsy: true }).isMongoId().withMessage("assignedCaseManager must be a valid ID"),
+  body("employerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid employer email is required"),
+  body("dataEntryMode").optional({ checkFalsy: true }).isIn(["not_required", "not_set", "fill_self", "invite"]).withMessage("Invalid dataEntryMode"),
   validate,
   ctrl.createCase
 );
@@ -91,6 +100,16 @@ router.post(
   ctrl.assignCaseManager
 );
 router.get("/:id/assignment-history", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:read"), ctrl.getAssignmentHistory);
+
+// Phase 9 — data entry mode / employee invite / remove employee, for the
+// caseRole=principal/employee/beneficiary child-Case architecture. Mixed
+// staff+client audience (the employer client themselves, plus staff) —
+// access is enforced inside each controller function, matching the pattern
+// already used by /my, /:id/external-notes, and /:id/submit-questionnaire
+// above rather than the staff-only authorizeRoles/authorizePermissions gates.
+router.patch("/:principalId/data-entry-mode", authenticate, ctrl.setDataEntryMode);
+router.post("/:principalId/invite-employee", authenticate, ctrl.inviteEmployee);
+router.patch("/:caseId/remove-employee", authenticate, ctrl.removeEmployee);
 router.put("/:id/assign-beneficiary", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("beneficiaryId").notEmpty(), validate, ctrl.assignBeneficiary);
 router.put("/:id/assign-company", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("companyId").notEmpty(), validate, ctrl.assignCompany);
 router.put("/:id/assign-client", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("clientId").notEmpty(), validate, ctrl.assignClient);

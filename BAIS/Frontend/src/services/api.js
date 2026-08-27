@@ -179,6 +179,10 @@ export const authApi = {
   googleToken: (idToken) => api.post("/auth/google-token", { idToken }),
   logout: () => api.post("/auth/logout", {}),
   me: () => api.get("/auth/me"),
+  // PHASE 3: single source of truth for post-auth routing (see
+  // components/AuthGate.jsx) — resolves the parsed JSON body directly, same
+  // as every other api.* call (this client is a fetch wrapper, not axios).
+  sessionContext: () => api.get("/auth/session-context"),
   // Pre-case applicant-type choice (individual vs. employer sponsoring
   // employees) — changeable at any time from PlanSelection or Profile.
   updateApplicantType: (applicantType) => api.put("/auth/updatedetails", { applicantType }),
@@ -353,6 +357,19 @@ export const appointmentsApi = {
 export const leadsApi = {
   create: (payload) => api.post("/leads/public", payload),
 
+  // ── Phase 4 ──
+  // Public, pre-login quiz-shaped lead creation. Not currently called from
+  // any page — EligibilityQuiz.jsx deliberately stays on the pre-existing
+  // eligibilityQuizApi.submit() → POST /api/eligibility-quiz/submit path
+  // (see that file's own comment). Added so the backend capability the
+  // Phase 4 spec asked for exists and is callable, for a future caller.
+  createLead: (payload) => api.post("/leads", payload),
+  // Authenticated — creates a Lead from a logged-in client's completed
+  // intake questionnaire and sets User.leadId server-side. Response is the
+  // parsed JSON body directly (api.js is a fetch wrapper, not axios — see
+  // request()'s implementation), so callers read res.leadId, not res.data.leadId.
+  createLeadFromIntake: (payload) => api.post("/leads/from-intake", payload),
+
   // ── Admin Leads Inbox (Phase 1) ──
   list: (params = {}) => {
     const q = new URLSearchParams(params).toString();
@@ -455,6 +472,33 @@ export const casesApi = {
   // Assessment
   saveAssessment: (caseId, payload) =>
     api.put(`/cases/${caseId}/assessment`, payload),
+
+  // Phase 9 — caseRole=principal/employee/beneficiary child-Case
+  // architecture. Distinct from employmentWorkflowApi above, which is the
+  // older employerUser/employeeUser-on-one-Case architecture.
+  getRelated: (id) => api.get(`/cases/${id}/related`),
+  setDataEntryMode: (principalId, mode) =>
+    api.patch(`/cases/${principalId}/data-entry-mode`, { mode }),
+  inviteEmployee: (principalId, data) =>
+    api.post(`/cases/${principalId}/invite-employee`, data),
+  removeEmployee: (caseId) => api.patch(`/cases/${caseId}/remove-employee`),
+};
+
+// ── Employer / Employee canonical profiles (Phase 9) ───────────────────
+// The sole read/write path for EmployerProfile/EmployeeProfile — see
+// Backend/src/modules/employer-profile/ and employee-profile/. `fields` is
+// a flat map of dot-paths into canonicalData, e.g. { legalName: "Acme Corp",
+// "address.city": "San Francisco" }.
+export const employerProfileApi = {
+  get: (principalCaseId) => api.get(`/employer-profile/${principalCaseId}`),
+  upsert: (principalCaseId, fields, source = "questionnaire") =>
+    api.post(`/employer-profile/${principalCaseId}`, { fields, source }),
+};
+
+export const employeeProfileApi = {
+  get: (caseId) => api.get(`/employee-profile/${caseId}`),
+  upsert: (caseId, fields, source = "questionnaire") =>
+    api.post(`/employee-profile/${caseId}`, { fields, source }),
 };
 
 // ── Single-party filings (COS / Extension / EAD / Reinstatement) ──────
