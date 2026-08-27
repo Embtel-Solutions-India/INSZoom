@@ -16,7 +16,7 @@ async function createClientInviteToken(user) {
   return token;
 }
 
-// Returns { name, email } for a valid non-expired token, or null.
+// Returns { name, email, caseNumber } for a valid non-expired token, or null.
 // Used by GET /auth/invite/:token (shared with the employee path).
 async function getClientInviteDetails(token) {
   const user = await User.findOne({
@@ -25,7 +25,8 @@ async function getClientInviteDetails(token) {
     role: "client",
   }).select("+inviteTokenHash");
   if (!user) return null;
-  return { name: user.name || user.displayName || "", email: user.email };
+  const caseData = await Case.findOne({ user: user._id }).select("caseNumber").sort({ createdAt: -1 });
+  return { name: user.name || user.displayName || "", email: user.email, caseNumber: caseData?.caseNumber || null };
 }
 
 // Activates the account: sets password, clears token fields, marks email verified.
@@ -43,6 +44,11 @@ async function acceptClientInvite(token, newPassword) {
   user.inviteTokenExpiresAt = undefined;
   user.isActive = true;
   user.isEmailVerified = true;
+  // Phase 8 fix — this flag gated the client into the onboarding/setup
+  // route (see AuthGate) precisely until this activation step completes;
+  // it was never cleared, so an activated client stayed stuck being routed
+  // back to setup on every subsequent session.
+  user.mustSetPassword = false;
   await user.save();
   await invalidateUserCache(user._id);
   return user;

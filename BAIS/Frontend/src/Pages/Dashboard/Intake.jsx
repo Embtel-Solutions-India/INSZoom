@@ -1,16 +1,30 @@
 ﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { casesApi, tokenStore } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
-import { isEmployeeAccount } from "../../utils/auth";
 import useHasCase from "../../hooks/useHasCase";
-import { IconCheckmark } from "../../utils/iconComponents";
-import {
-  ATTORNEY_REVIEW_PACKAGE,
-  FULL_ATTORNEY_FILING_PACKAGE,
-  SELF_FILING_PACKAGE,
-} from "../../config/pricingCatalog";
+import { leadsApi } from "../../services/api";
+
+// Best-effort "what visa is this prospect interested in" summary for
+// Lead.visaInterest. The quiz branches through several visa-shaped answer
+// keys depending on path (work/student/business/green-card) rather than one
+// canonical field — checked in the same priority order the now-removed
+// buildCasePayloadFromIntake() used to derive its own selectedKey.
+function deriveVisaInterest(answers) {
+  return (
+    answers.workVisaType || answers.studentVisaType || answers.businessPathway
+    || answers.greenCardType || answers.employmentPath || answers.service || ""
+  );
+}
+
+// Best-effort "is this an extension" signal — no single quiz field means
+// this directly, so this checks the handful of answer values that do.
+function deriveExtensionInterest(answers) {
+  if (answers.h1bScenario === "extension") return "H-1B extension";
+  if (answers.service === "renew_replace_conditions" && answers.maintenanceAction === "renew_green_card") return "Green card renewal";
+  if (answers.optType || answers.studentVisaType === "stem_opt") return "STEM OPT extension";
+  return "";
+}
 
 const SERVICE_STEPS = [
   {
@@ -545,318 +559,10 @@ const SERVICE_STEPS = [
     ],
   },
 ];
-const SERVICE_PACKAGES = [
-  {
-    key: SELF_FILING_PACKAGE,
-    planKey: SELF_FILING_PACKAGE,
-    label: SELF_FILING_PACKAGE,
-    price: "$599*",
-    amountCents: 59900,
-    tagline: "Do-it-yourself application preparation",
-    badge: "",
-    features: ["Guided intake", "Required forms checklist", "Document checklist", "Secure portal access", "Virtual PDF application"],
-  },
-  {
-    key: ATTORNEY_REVIEW_PACKAGE,
-    planKey: ATTORNEY_REVIEW_PACKAGE,
-    label: ATTORNEY_REVIEW_PACKAGE,
-    price: "$899*",
-    amountCents: 89900,
-    tagline: "Legal review of your application",
-    badge: "Best Value",
-    features: [`Everything in ${SELF_FILING_PACKAGE}`, "Attorney review", "Live chat support", "Document quality review", "RFE readiness guidance"],
-  },
-  {
-    key: FULL_ATTORNEY_FILING_PACKAGE,
-    planKey: FULL_ATTORNEY_FILING_PACKAGE,
-    label: FULL_ATTORNEY_FILING_PACKAGE,
-    price: "$1,299*",
-    amountCents: 129900,
-    tagline: "Attorney-led legal support when you need it",
-    badge: "Most Support",
-    features: [`Everything in ${ATTORNEY_REVIEW_PACKAGE}`, "Attorney consultations", "Priority case manager", "Application assembled for filing", "Interview preparation kit"],
-  },
-];
-
 function isStepVisible(step, answers) {
   if (step.visibleWhen && !Object.entries(step.visibleWhen).every(([key, value]) => answers[key] === value)) return false;
   if (step.visibleWhenAny && !step.visibleWhenAny.some((rule) => Object.entries(rule).every(([key, value]) => answers[key] === value))) return false;
   return true;
-}
-
-function computeIntakeResult(answers) {
-  if (answers.maintenanceAction === "remove_conditions") {
-    const investor = answers.conditionalResidenceType === "investor_based";
-    return {
-      title: investor ? "Investor Conditional Residence Removal" : "Marriage-Based Conditions Removal",
-      subtitle: investor ? "Commonly prepared using Form I-829 for investor-based conditional residence." : "Commonly prepared using Form I-751: Petition to Remove Conditions on Residence.",
-      summary: "Your answers indicate a conditions-removal workflow with evidence review, residence history, relationship or investment documentation, and attorney review checkpoints.",
-      likelyForms: investor ? ["I-829"] : ["I-751"],
-      category: investor ? "investor-conditions-removal" : "marriage-conditions-removal",
-    };
-  }
-  if (answers.service === "renew_replace_conditions") {
-    const replacement = answers.maintenanceAction && answers.maintenanceAction !== "renew_green_card";
-    return {
-      title: replacement ? "Green Card Replacement or Correction" : "Green Card Renewal Application",
-      subtitle: replacement ? "Commonly prepared using Form I-90 for replacement, correction, or card not received scenarios." : "Commonly prepared using Form I-90: Application to Replace Permanent Resident Card.",
-      summary: "The portal will guide document collection, issue-specific evidence, identity details, and filing preparation for your green card service.",
-      likelyForms: ["I-90"],
-      category: replacement ? "green-card-replacement" : "green-card-renewal",
-    };
-  }
-  if (answers.service === "citizenship") {
-    const needsReview = answers.arrested === "yes" || answers.claimedCitizen === "yes" || answers.marriedToCitizen === "no" || answers.longTrips === "yes";
-    return {
-      title: needsReview ? "Citizenship Application with Attorney Review" : "United States Citizenship Application",
-      subtitle: "Commonly prepared using Form N-400: Application for Naturalization.",
-      summary: "We help organize residence history, travel history, taxes, eligibility checkpoints, document uploads, review notes, and final application preparation.",
-      likelyForms: ["N-400"],
-      category: "citizenship",
-    };
-  }
-  if (answers.petitioner === "fiance") {
-    return {
-      title: "Fiance Visa Application",
-      subtitle: "Commonly prepared using Form I-129F: Petition for Alien Fiance(e).",
-      summary: "The platform guides relationship evidence, intent-to-marry evidence, biographic details, supporting documents, review, and next steps.",
-      likelyForms: ["I-129F"],
-      category: "fiance-visa",
-    };
-  }
-  if (answers.petitioner === "spouse") {
-    const outsideUs = answers.applicantLocation === "outside_us";
-    return {
-      title: outsideUs ? "Petition by Spouse Application" : "Marriage-Based Green Card Application",
-      subtitle: outsideUs
-        ? "Also known as Forms I-130 and I-130A: Petition for Alien Relative with Supplemental Information for Spouse Beneficiary."
-        : "Commonly prepared using Forms I-130, I-130A, I-485, and I-864 for spouse-based adjustment of status.",
-      summary: "Our software and support team guide you through every step to prepare, review, organize, and file your application package.",
-      likelyForms: outsideUs ? ["I-130", "I-130A"] : ["I-130", "I-130A", "I-485", "I-864", "I-765", "I-131"],
-      category: outsideUs ? "marriage-based-consular" : "marriage-based-adjustment",
-    };
-  }
-  if (answers.greenCardType === "family_based") {
-    return {
-      title: "Family-Based Green Card Application",
-      subtitle: "Commonly prepared using Form I-130 and related beneficiary forms.",
-      summary: "We help identify the correct family category, petitioner requirements, supporting documents, and filing pathway.",
-      likelyForms: ["I-130"],
-      category: "family-based",
-    };
-  }
-  if (answers.greenCardType === "employment_based" || answers.service === "work_visa") {
-    const selectedWorkType = answers.workVisaType || answers.employmentPath;
-    const labelMap = {
-      h1b: "H-1B Specialty Occupation Petition",
-      l1a: "L-1A Executive or Manager Transfer",
-      l1b: "L-1B Specialized Knowledge Transfer",
-      o1a: "O-1A Extraordinary Ability Strategy",
-      o1b: "O-1B Arts, Film, or Television Strategy",
-      tn: "TN Professional Visa Strategy",
-      e2: "E-2 Treaty Investor Strategy",
-      e1: "E-1 Treaty Trader Strategy",
-      eb1a: "EB-1A Extraordinary Ability Green Card Strategy",
-      eb2: "EB-2 Employment-Based Green Card Strategy",
-      niw: "EB-2 National Interest Waiver Strategy",
-      eb3: "EB-3 Employment-Based Green Card Strategy",
-      extraordinary_ability: "Extraordinary Ability Immigration Strategy",
-      national_interest: "EB-2 NIW Strategy",
-      executive_transfer: "Executive or Manager Transfer Strategy",
-      temporary_professional: "Temporary Professional Work Visa Strategy",
-      employer_sponsored: "Employer-Sponsored Immigration Strategy",
-    };
-    const formMap = {
-      h1b: ["I-129", "H Supplement"],
-      l1a: ["I-129", "L Supplement"],
-      l1b: ["I-129", "L Supplement"],
-      o1a: ["I-129", "O Supplement"],
-      o1b: ["I-129", "O Supplement"],
-      tn: ["TN Package"],
-      e2: ["DS-160", "E Treaty Package"],
-      e1: ["DS-160", "E Treaty Package"],
-      eb1a: ["I-140"],
-      eb2: ["I-140"],
-      niw: ["I-140"],
-      eb3: ["I-140"],
-      extraordinary_ability: ["I-140", "I-129"],
-      national_interest: ["I-140"],
-      executive_transfer: ["I-129", "I-140"],
-      temporary_professional: ["I-129"],
-      employer_sponsored: ["I-140", "I-129"],
-    };
-    return {
-      title: labelMap[selectedWorkType] || "Employment Immigration Strategy",
-      subtitle: "Potential pathways may include I-129, I-140, PERM-related steps, or supporting visa classifications.",
-      summary: "Your case team will review employer details, qualifications, evidence strength, immigration history, and timing before final strategy selection.",
-      likelyForms: formMap[selectedWorkType] || ["I-129", "I-140"],
-      category: selectedWorkType || "employment-based",
-    };
-  }
-  if (answers.service === "student_exchange") {
-    const typeLabel = {
-      f1: "F-1 Student Visa",
-      j1: "J-1 Exchange Visitor Visa",
-      m1: "M-1 Vocational Student Visa",
-      opt: "OPT Employment Authorization",
-      stem_opt: "STEM OPT Extension",
-      cpt: "CPT Work Authorization Planning",
-    }[answers.studentVisaType] || "Student, Exchange, or Training Visa Support";
-    return {
-      title: typeLabel,
-      subtitle: "Common pathways include F-1, J-1, OPT, STEM OPT, CPT, and related status planning.",
-      summary: "We help organize school documents, SEVIS readiness, program dates, employment authorization evidence, and status-maintenance details.",
-      likelyForms: answers.studentVisaType === "opt" || answers.studentVisaType === "stem_opt" ? ["I-765"] : ["DS-160", "I-20/DS-2019"],
-      category: answers.studentVisaType || "student-exchange",
-    };
-  }
-  if (answers.service === "business_investor") {
-    const pathwayTitle = {
-      eb5: "EB-5 Investor Green Card Strategy",
-      e2: "E-2 Treaty Investor Strategy",
-      l1a: "L-1A New Office or Expansion Strategy",
-      international_entrepreneur: "International Entrepreneur Strategy",
-      startup_founder: "Startup Founder Immigration Strategy",
-      us_expansion: "U.S. Expansion Immigration Strategy",
-    }[answers.businessPathway] || "Business, Investor, or Founder Immigration Strategy";
-    return {
-      title: pathwayTitle,
-      subtitle: "Potential pathways may include E-2, L-1, EB-1C, EB-2 NIW, EB-5, or founder-focused strategies depending on facts.",
-      summary: "We help collect business, investment, ownership, job creation, funding, executive, and evidence data for attorney review.",
-      likelyForms: answers.businessPathway === "eb5" ? ["I-526E", "I-829"] : ["I-129", "I-140", "DS-160"],
-      category: answers.businessPathway || "business-investor",
-    };
-  }
-  if (answers.greenCardType === "diversity_lottery") {
-    return {
-      title: "Diversity Visa Green Card Processing",
-      subtitle: "Guidance for diversity visa selection, document readiness, and consular processing steps.",
-      summary: "We help organize identity documents, civil documents, supporting evidence, timelines, and interview readiness.",
-      likelyForms: ["DS-260"],
-      category: "diversity-visa",
-    };
-  }
-  return {
-    title: "Immigration Case Strategy Review",
-    subtitle: "Your answers point to a custom strategy review before selecting forms.",
-    summary: "Our intake team will help identify the right pathway, required documents, service level, and next steps.",
-    likelyForms: [],
-    category: "strategy-review",
-  };
-}
-
-function getRequiredDocuments(answers, result) {
-  const base = ["Passport biographic page", "Current immigration status evidence", "Government-issued identification"];
-  const documentMap = {
-    "green-card-renewal": ["Green Card front and back", "Recent address history", "USCIS online account information if available"],
-    "green-card-replacement": ["Green Card copy if available", "Police report if lost or stolen", "Evidence supporting correction if applicable"],
-    "marriage-conditions-removal": ["Green Card front and back", "Marriage certificate", "Joint residence evidence", "Joint financial records", "Photos and relationship evidence"],
-    citizenship: ["Green Card front and back", "Tax returns", "Travel history", "Marriage certificate if applying under 3-year rule", "Certified court records if applicable"],
-    "fiance-visa": ["Proof of meeting in person", "Relationship evidence", "Intent to marry statements", "Petitioner proof of status"],
-    "marriage-based-consular": ["Marriage certificate", "Proof of petitioner's status", "Relationship evidence", "Civil documents", "Passport photos"],
-    "marriage-based-adjustment": ["Marriage certificate", "I-94 record", "Proof of lawful entry", "Financial support evidence", "Medical exam planning"],
-    "family-based": ["Proof of qualifying relationship", "Petitioner status evidence", "Civil documents", "Passport photos"],
-    h1b: ["Passport", "Resume", "Degree and transcripts", "Employer support letter", "Job description", "Experience letters"],
-    l1a: ["Passport", "Resume", "Foreign employment proof", "Company relationship documents", "Organizational charts"],
-    l1b: ["Passport", "Resume", "Specialized knowledge evidence", "Foreign employment proof", "Company relationship documents"],
-    o1a: ["Resume", "Awards", "Publications", "Media coverage", "Letters of recommendation", "Evidence of original contributions"],
-    o1b: ["Resume", "Press or reviews", "Contracts", "Awards", "Production credits", "Recommendation letters"],
-    eb2: ["Degrees", "Experience letters", "Employer documents", "PERM or NIW evidence", "Resume"],
-    eb3: ["Degrees or training evidence", "Experience letters", "Employer documents", "PERM evidence", "Resume"],
-    f1: ["Passport", "I-20", "SEVIS payment receipt", "School admission letter", "Financial support evidence"],
-    j1: ["Passport", "DS-2019", "SEVIS payment receipt", "Program sponsor documents", "Financial support evidence"],
-    m1: ["Passport", "I-20", "SEVIS payment receipt", "Vocational program documents", "Financial support evidence"],
-    opt: ["Passport", "I-20 with OPT recommendation", "I-94", "Prior EAD if any", "Graduation evidence"],
-    stem_opt: ["Passport", "STEM OPT I-20", "I-983 training plan", "E-Verify employer details", "Current EAD"],
-    eb5: ["Source of funds evidence", "Investment records", "Bank statements", "Business plan", "Job creation evidence"],
-    e2: ["Treaty nationality proof", "Investment evidence", "Business plan", "Ownership documents", "Source of funds evidence"],
-    startup_founder: ["Incorporation documents", "Funding evidence", "Revenue evidence", "Investor support", "Patents or product evidence"],
-  };
-  return [...new Set([...base, ...(documentMap[result?.category] || documentMap[answers.workVisaType] || documentMap[answers.studentVisaType] || documentMap[answers.businessPathway] || [])])];
-}
-
-function buildCasePayloadFromIntake(answers, result, servicePackage) {
-  const visaTypeMap = {
-    "green-card-renewal": "I-90",
-    "green-card-replacement": "I-90",
-    "marriage-conditions-removal": "I-751",
-    "investor-conditions-removal": "I-829",
-    citizenship: "N-400",
-    "fiance-visa": "K-1",
-    "marriage-based-consular": "I-130",
-    "marriage-based-adjustment": "I-130/I-485",
-    "family-based": "I-130",
-    "diversity-visa": "DV",
-    h1b: "H-1B",
-    l1a: "L-1A",
-    l1b: "L-1B",
-    o1a: "O-1A",
-    o1b: "O-1B",
-    tn: "TN",
-    e2: "E-2",
-    e1: "E-1",
-    eb1a: "EB-1A",
-    eb2: "EB-2",
-    niw: "EB-2 NIW",
-    eb3: "EB-3",
-    eb5: "EB-5",
-    f1: "F-1",
-    j1: "J-1",
-    m1: "M-1",
-    opt: "OPT",
-    stem_opt: "STEM OPT",
-    cpt: "CPT",
-    startup_founder: "Startup Founder",
-    us_expansion: "U.S. Expansion",
-    international_entrepreneur: "International Entrepreneur",
-    employer_sponsored: "Employment-Based",
-    extraordinary_ability: "O-1/EB-1",
-    national_interest: "EB-2 NIW",
-    executive_transfer: "L-1",
-    temporary_professional: "H-1B",
-  };
-  // green_card_or_fiance is one top-level service covering three very
-  // different sub-paths (family/employment/diversity) - the category must
-  // follow the actual greenCardType answer, not default to "family" for all
-  // three, or an employment-based green card case gets mis-tagged as family.
-  const greenCardCategoryMap = {
-    family_based: "family",
-    employment_based: "employment",
-    diversity_lottery: "diversity",
-  };
-  const categoryMap = {
-    green_card_or_fiance: greenCardCategoryMap[answers.greenCardType] || "family",
-    renew_replace_conditions: "permanent_resident_card",
-    citizenship: "naturalization",
-    work_visa: "employment",
-    student_exchange: "student_exchange",
-    business_investor: "business_investor",
-  };
-  const selectedKey = result?.category || answers.workVisaType || answers.studentVisaType || answers.businessPathway || answers.employmentPath;
-  const visaType = visaTypeMap[selectedKey] || result?.likelyForms?.[0] || "Strategy Review";
-  return {
-    visaType,
-    visaCategory: categoryMap[answers.service] || result?.category || "immigration",
-    caseType: result?.category || "immigration",
-    petitionType: result?.title,
-    petitionSubType: selectedKey,
-    package: servicePackage.planKey || servicePackage.key || "",
-    plan: {
-      tier: servicePackage.planKey,
-      selectedAt: new Date().toISOString(),
-      paymentStatus: "not_started",
-      amount: servicePackage.amountCents,
-      currency: "USD",
-    },
-    status: "pending_assignment",
-    stage: "intake",
-    priority: answers.urgency === "immediate" ? "high" : "medium",
-    primaryApplicant: answers.primaryApplicant,
-    assessmentAnswers: answers,
-    assessmentMatchPercentage: 100,
-    notes: result?.summary,
-    legacySource: "BAIS",
-  };
 }
 
 function SelectionCard({ option, selected, onClick }) {
@@ -884,46 +590,33 @@ function SelectionCard({ option, selected, onClick }) {
 function ServiceIntakeQuiz() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { hasCase, loading: hasCaseLoading, isError: hasCaseError } = useHasCase();
+  const { loading: hasCaseLoading, isError: hasCaseError } = useHasCase();
   // Brand-new for every client, every time — no cross-case/cross-user
   // localStorage carryover (that was the root cause of stale pre-populated
   // answers and the "jump straight to the package screen" bug below).
   const [answers, setAnswers] = useState({});
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [selectedPackage, setSelectedPackage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  const [showResult, setShowResult] = useState(false);
+  // Phase 4: submitting/submitError guard the POST /api/leads/from-intake
+  // call the completion handler makes before redirecting to booking.
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const visibleSteps = SERVICE_STEPS.filter((step) => isStepVisible(step, answers));
-  const currentStep = visibleSteps[currentIndex];
-  const isComplete = visibleSteps.length > 0 && visibleSteps.every((step) => answers[step.key]);
-  const result = isComplete && showResult ? computeIntakeResult(answers) : null;
-  const requiredDocuments = result ? getRequiredDocuments(answers, result) : [];
+  // Branching can shrink visibleSteps out from under a stale currentIndex
+  // (e.g. an earlier answer changes, hiding later steps) — clamp at read
+  // time instead of correcting it back into state via an effect.
+  const safeIndex = Math.min(currentIndex, Math.max(visibleSteps.length - 1, 0));
+  const currentStep = visibleSteps[safeIndex];
   const completion = Math.round((visibleSteps.filter((step) => answers[step.key]).length / Math.max(visibleSteps.length, 1)) * 100);
 
   useEffect(() => {
     document.title = "Immigration Intake | BAIS";
   }, []);
 
-  // Invited employees complete only their own checklist (Documents page) —
-  // the visa-selection/plan/checkout intake wizard is not part of their flow.
-  // A client whose case was already opened by staff (INSZoom's "New Case")
-  // has no reason to run the self-registration questionnaire either — send
-  // them straight to their dashboard instead.
-  useEffect(() => {
-    if (isEmployeeAccount(user)) {
-      navigate("/dashboard/documents", { replace: true });
-      return;
-    }
-    if (!hasCaseLoading && hasCase) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [user, navigate, hasCase, hasCaseLoading]);
-
-  useEffect(() => {
-    if (currentIndex > visibleSteps.length - 1) setCurrentIndex(Math.max(visibleSteps.length - 1, 0));
-    if (!isComplete) setShowResult(false);
-  }, [answers, currentIndex, visibleSteps.length, isComplete]);
+  // PHASE 3 ARCHITECTURE CHANGE: routing based on case existence and
+  // employee-account status has been moved to AuthGate
+  // (src/components/AuthGate.jsx). This page renders only once AuthGate has
+  // already confirmed the user is a non-employee client with no case — it
+  // should not redirect away from itself.
 
   const selectAnswer = (key, value) => {
     // Whether the question just answered was actually the LAST visible step
@@ -942,52 +635,44 @@ function ServiceIntakeQuiz() {
       nextAnswers = next;
       return next;
     });
-    setMessage("");
-    setTimeout(() => {
+    setTimeout(async () => {
       const nextSteps = SERVICE_STEPS.filter((step) => isStepVisible(step, nextAnswers));
       const nextComplete = wasOnLastStep && nextSteps.length > 0 && nextSteps.every((step) => nextAnswers[step.key]);
       if (nextComplete) {
-        setShowResult(true);
+        // PHASE 2 ARCHITECTURE CHANGE: Intake no longer shows a package
+        // screen or creates a case. Case creation is a staff action.
+        // PHASE 4: before routing to booking, submit the completed
+        // questionnaire as a Lead (POST /api/leads/from-intake) so the
+        // consultation can be attached to it. The API call must succeed
+        // before navigating away — a failure surfaces an error and keeps
+        // the user here rather than silently losing their answers.
+        await submitIntakeLead(nextAnswers);
         return;
       }
       setCurrentIndex((index) => Math.min(index + 1, nextSteps.length - 1));
     }, 120);
   };
 
-  const restart = () => {
-    setAnswers({});
-    setSelectedPackage("");
-    setCurrentIndex(0);
-    setShowResult(false);
-    setMessage("");
-  };
-
-  const choosePackage = async (servicePackage) => {
-    setSelectedPackage(servicePackage.key);
-    const documentsForCase = getRequiredDocuments(answers, result);
-    const payload = {
-      answers,
-      result,
-      package: servicePackage,
-      requiredDocuments: documentsForCase,
-      completedAt: new Date().toISOString(),
-      source: "dashboard_intake",
-    };
-    localStorage.setItem("bais_intake_selection", JSON.stringify(payload));
-    if (!tokenStore.getAccess()) {
-      navigate(`/signup?source=intake&service=${encodeURIComponent(result?.category || "strategy-review")}&package=${servicePackage.planKey || servicePackage.key}`);
-      return;
-    }
-    setSaving(true);
+  const submitIntakeLead = async (finalAnswers) => {
+    setSubmitting(true);
+    setSubmitError("");
     try {
-      const caseResponse = await casesApi.create(buildCasePayloadFromIntake(answers, result, servicePackage));
-      const createdCase = caseResponse?.case || caseResponse?.data?.case || caseResponse?.data || caseResponse;
-      localStorage.setItem("bais_active_case_id", createdCase?._id || "");
-      navigate("/dashboard", { state: { intakeSelection: payload, caseId: createdCase?._id } });
-    } catch (error) {
-      setMessage(error.message || "Unable to create your case. Please try again or contact support.");
+      const res = await leadsApi.createLeadFromIntake({
+        visaInterest: deriveVisaInterest(finalAnswers),
+        extensionInterest: deriveExtensionInterest(finalAnswers),
+        intakeAnswers: finalAnswers,
+      });
+      // api.js is a fetch wrapper (see services/api.js's request()) — res is
+      // the parsed JSON body directly, not an axios-style { data } envelope.
+      if (res?.success && res?.leadId) {
+        navigate(`/consultation/book?leadId=${res.leadId}`);
+        return;
+      }
+      setSubmitError("Unable to submit your answers. Please try again.");
+    } catch (err) {
+      setSubmitError(err?.message || "Unable to submit your answers. Please try again.");
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
   };
 
@@ -995,89 +680,13 @@ function ServiceIntakeQuiz() {
   // render nothing while that's still resolving instead of flashing the quiz.
   if (hasCaseLoading && user) return null;
 
-  // ── Package/plan screen, shown after the last question ──────────────────
-  if (result) {
+  // Phase 4: the completed questionnaire is being submitted as a Lead —
+  // shown instead of the (now-answered) question screen while in flight.
+  if (submitting) {
     return (
-      <div className="min-h-screen bg-white">
-        <header className="border-b border-slate-100">
-          <div className="mx-auto max-w-3xl px-6 py-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">Recommended starting point</p>
-            <h1 className="text-xl font-bold text-slate-900">{result.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">{result.subtitle}</p>
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-3xl px-6 py-10">
-          {result.likelyForms.length > 0 && (
-            <div className="mb-6 flex flex-wrap gap-1.5">
-              {result.likelyForms.map((form) => (
-                <span key={form} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">{form}</span>
-              ))}
-            </div>
-          )}
-          <p className="text-sm leading-6 text-slate-600">{result.summary}</p>
-
-          {requiredDocuments.length > 0 && (
-            <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
-              <p className="text-[0.65rem] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Likely required documents</p>
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {requiredDocuments.map((documentName) => (
-                  <div key={documentName} className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                    <IconCheckmark size={12} className="text-slate-400 shrink-0" />
-                    {documentName}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <h2 className="mt-10 mb-4 text-sm font-bold text-slate-900">Choose your service level</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {SERVICE_PACKAGES.map((servicePackage) => (
-              <div key={servicePackage.key}
-                className={`relative rounded-2xl border p-5 ${servicePackage.badge ? "border-slate-900" : "border-slate-200"}`}>
-                {servicePackage.badge && (
-                  <span className="absolute -top-2.5 left-5 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    {servicePackage.badge}
-                  </span>
-                )}
-                <h3 className="text-sm font-bold text-slate-900">{servicePackage.label}</h3>
-                <p className="mt-1.5 text-2xl font-bold text-slate-900">{servicePackage.price}</p>
-                <p className="mt-1 text-xs text-slate-500 min-h-8">{servicePackage.tagline}</p>
-                <ul className="mt-4 space-y-1.5">
-                  {servicePackage.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-1.5 text-xs text-slate-600">
-                      <IconCheckmark size={13} className="text-slate-400 shrink-0 mt-0.5" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => choosePackage(servicePackage)}
-                  className="mt-5 w-full rounded-lg bg-slate-900 px-3.5 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 transition"
-                >
-                  {selectedPackage === servicePackage.key && saving ? "Saving…" : "Select"}
-                </button>
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-[0.7rem] text-slate-400">
-            *Packages and pricing do not include required government fees, paid directly to USCIS or the relevant agency upon filing.
-          </p>
-          {message && <p className="mt-3 rounded-lg bg-amber-50 px-3.5 py-2.5 text-xs font-semibold text-amber-700">{message}</p>}
-
-          <div className="mt-8 flex items-center gap-4">
-            <button type="button" onClick={() => { setShowResult(false); setCurrentIndex(Math.max(visibleSteps.length - 1, 0)); }}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-700">
-              ← Back to questions
-            </button>
-            <button type="button" onClick={restart} className="text-xs font-semibold text-slate-400 hover:text-slate-600">
-              Start over
-            </button>
-          </div>
-        </main>
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-slate-900 animate-spin" />
+        <p className="text-sm text-slate-500 font-medium">Saving your answers…</p>
       </div>
     );
   }
@@ -1110,6 +719,12 @@ function ServiceIntakeQuiz() {
         </div>
       )}
 
+      {submitError && (
+        <div className="bg-red-50 border-b border-red-200 px-6 py-2.5 text-center">
+          <p className="text-sm font-semibold text-red-700">{submitError}</p>
+        </div>
+      )}
+
       <main className="flex-1 flex items-center justify-center px-6 py-14">
         <div className="w-full max-w-lg">
           <AnimatePresence mode="wait">
@@ -1138,8 +753,14 @@ function ServiceIntakeQuiz() {
                       // and don't fit this wizard's branching quiz shape, so this
                       // one option navigates away immediately rather than
                       // continuing into SERVICE_STEPS.
+                      // PHASE 2 ARCHITECTURE CHANGE: no longer routes to the
+                      // (removed) filing-type case-creation flow.
+                      // PHASE 4: still submits a Lead (with whatever answers
+                      // exist so far, plus this selection) before routing to
+                      // booking, for the same reason full completion does —
+                      // this is a completion path too, not an opt-out of lead capture.
                       currentStep.key === "service" && option.value === "cos_extension_ead"
-                        ? navigate("/dashboard/filing-type")
+                        ? submitIntakeLead({ ...answers, service: option.value })
                         : selectAnswer(currentStep.key, option.value)
                     )}
                   />
@@ -1157,7 +778,6 @@ function ServiceIntakeQuiz() {
             >
               ← Back
             </button>
-            {message && <p className="text-xs font-semibold text-amber-600">{message}</p>}
           </div>
         </div>
       </main>

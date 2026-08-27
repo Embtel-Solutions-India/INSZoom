@@ -75,6 +75,11 @@ const CASE_STATUSES = [
   "rejected",
   "closed",
   "archived",
+  // Phase 9 addition — soft-delete for one child case within a matter
+  // (see cases/case.controller.js's removeEmployee). Distinct from
+  // "archived", which closes an entire Case (principal or single) via
+  // DELETE /:id.
+  "removed",
 ];
 
 const PRIORITIES = ["Standard Processing", "Premium Processing", "low", "medium", "high", "urgent"];

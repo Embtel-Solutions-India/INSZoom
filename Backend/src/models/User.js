@@ -76,6 +76,86 @@ const userSchema = new mongoose.Schema(
     // Unrelated to `source`/`legacySource` (sync-origin marker). Consumed only
     // by DELETE /api/admin/demo-data.
     isDemoData: { type: Boolean, default: false, index: true },
+
+    // ─── PHASE 2 ADDITIONS ──────────────────────────────────────────────────
+    // Fields added as part of the new case lifecycle architecture.
+    // All are optional and have safe defaults. No existing field is modified.
+
+    /** The primary Case this user is associated with (set after case creation) */
+    primaryCaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Case",
+      default: null,
+    },
+
+    /** All Cases this user is associated with */
+    caseIds: {
+      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Case" }],
+      default: [],
+    },
+
+    /** True for existing accounts that had no case when the Phase 3 migration ran */
+    legacyNoCaseAccount: {
+      type: Boolean,
+      default: false,
+    },
+
+    /**
+     * Migration status set by the Phase 3 account migration script.
+     * 'pending' = not yet processed
+     * 'linked'  = found and linked to an existing case
+     * 'flagged' = no case found, account needs manual review
+     */
+    migrationStatus: {
+      type: String,
+      enum: ["pending", "linked", "flagged"],
+      default: "pending",
+    },
+
+    /**
+     * The Lead this user created (set when an intake questionnaire or quiz
+     * is submitted and creates a Lead record)
+     */
+    leadId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lead",
+      default: null,
+    },
+
+    /**
+     * True when a client account has been created but the client has not yet
+     * set their own password (the account was provisioned by staff)
+     */
+    mustSetPassword: {
+      type: Boolean,
+      default: false,
+    },
+
+    /**
+     * The role this user plays within their case structure.
+     * Set at account creation time during case provisioning.
+     * 'single'       = sole applicant in a single-person visa
+     * 'principal'    = employer or petitioner in a multi-person matter
+     * 'employee'     = individual employee in an employer/employee visa
+     * 'beneficiary'  = beneficiary in a family visa
+     */
+    caseRole: {
+      type: String,
+      enum: ["single", "principal", "employee", "beneficiary"],
+      default: null,
+    },
+
+    /**
+     * For employee and beneficiary accounts: the ObjectId of the principal Case
+     * (the employer or petitioner case) that this user's case belongs to.
+     * Null for single and principal accounts.
+     */
+    principalCaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Case",
+      default: null,
+    },
+    // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }
 );
@@ -132,5 +212,11 @@ userSchema.statics.roles = USER_ROLES;
 userSchema.index({ companyId: 1, isActive: 1 });
 userSchema.index({ teamId: 1, isActive: 1 });
 userSchema.index({ referredBy: 1 });
+
+// PHASE 2 ADDITIONS
+userSchema.index({ primaryCaseId: 1 });
+userSchema.index({ caseIds: 1 });
+userSchema.index({ migrationStatus: 1 });
+userSchema.index({ legacyNoCaseAccount: 1 });
 
 module.exports = mongoose.model("User", userSchema);

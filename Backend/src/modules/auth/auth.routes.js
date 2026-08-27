@@ -27,7 +27,23 @@ router.post(
   ctrl.registerStaff
 );
 
-router.post("/login", [emailRule, body("password").notEmpty()], validate, auditAuth("auth.login"), ctrl.login);
+// PHASE 3: login now accepts EITHER { email, password } (unchanged) OR
+// { caseId, password } (new — a human-readable case number). Exactly one of
+// email/caseId must be present; password is unconditionally required either way.
+const loginRules = [
+  body("email")
+    .if((value, { req }) => !req.body.caseId)
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Valid email is required when caseId is not provided"),
+  body("caseId")
+    .if((value, { req }) => !req.body.email)
+    .notEmpty()
+    .trim()
+    .withMessage("caseId is required when email is not provided"),
+  body("password").notEmpty().withMessage("Password is required"),
+];
+router.post("/login", loginRules, validate, auditAuth("auth.login"), ctrl.login);
 router.post("/google-token", [body("idToken").notEmpty()], validate, auditAuth("auth.google_token"), ctrl.googleToken);
 // "Continue with Google" — authorization-code redirect flow. GET (not POST):
 // this is a full-page browser navigation to Google, not an API call.
@@ -37,6 +53,11 @@ router.post("/refresh", auditAuth("auth.refresh"), ctrl.refresh);
 router.post("/logout", authenticate, auditAuth("auth.logout"), ctrl.logout);
 router.post("/logout-all", authenticate, auditAuth("auth.logout_all"), ctrl.logoutAll);
 router.get("/me", authenticate, ctrl.me);
+// GET /api/auth/session-context
+// Returns the complete routing context for the authenticated user.
+// This is the single source of truth for frontend routing decisions
+// (see BAIS/Frontend/src/components/AuthGate.jsx). Requires a valid JWT.
+router.get("/session-context", authenticate, ctrl.getSessionContext);
 router.put(
   "/change-password",
   authenticate,

@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
 const authenticate = require("../../middleware/authenticate");
+const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const ctrl = require("./single-party-filing.controller");
@@ -14,6 +15,7 @@ router.get("/types", authenticate, ctrl.getFilingTypes);
 router.post(
   "/cases",
   authenticate,
+  authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),
   authorizePermissions("cases:create"),
   body("filingTypeKey").optional().isString(),
   body("fromStatus").optional().isString(),

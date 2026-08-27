@@ -43,4 +43,12 @@ router.patch("/leads/:id/status", authenticate, authorizeRoles(...staffRoles), a
 router.patch("/leads/:id/assign", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.assignLead);
 router.post("/leads/:id/notes", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.addLeadNote);
 
+// Phase 6 — state-machine-enforced lead lifecycle transitions (see quiz.service.js).
+// Each of these permits exactly one transition; contrast with the freeform
+// PATCH /leads/:id/status above, which is an unrestricted admin override.
+router.patch("/leads/:id/confirm-consultation", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.confirmConsultation);
+router.patch("/leads/:id/complete-consultation", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.completeConsultation);
+router.patch("/leads/:id/approve", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.approveLead);
+router.patch("/leads/:id/reject", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:update"), ctrl.rejectLead);
+
 module.exports = router;

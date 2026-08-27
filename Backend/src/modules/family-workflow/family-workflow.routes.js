@@ -14,7 +14,7 @@ router.get("/me", authenticate, authorizeRoles("client", "beneficiary"), ctrl.ge
 router.post(
   "/cases",
   authenticate,
-  authorizeRoles("client"),
+  authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),
   body("beneficiaryEmail").optional().isEmail().normalizeEmail(),
   body("beneficiary.email").optional().isEmail().normalizeEmail(),
   validate,

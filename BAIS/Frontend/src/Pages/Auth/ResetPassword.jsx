@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { authApi } from "../../services/api";
+import PasswordField from "../../components/auth/PasswordField";
 
 const LockIcon = () => (
   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -8,30 +9,6 @@ const LockIcon = () => (
       d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
   </svg>
 );
-
-function Field({ icon, type = "text", name, placeholder, value, onChange, autoComplete }) {
-  return (
-    <div className="relative flex items-center w-full mb-4">
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
-        {icon}
-      </span>
-      <input
-        type={type}
-        id={name}
-        name={name}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        autoComplete={autoComplete}
-        className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-          border border-slate-200 rounded-xl bg-white outline-none box-border
-          hover:border-slate-300
-          focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-          transition-all duration-150"
-      />
-    </div>
-  );
-}
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -114,9 +91,9 @@ export default function ResetPassword() {
             <p className="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            <Field icon={<LockIcon />} type="password" name="newPassword" placeholder="New password"
+            <PasswordField icon={<LockIcon />} name="newPassword" placeholder="New password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-            <Field icon={<LockIcon />} type="password" name="confirmNewPassword" placeholder="Confirm new password"
+            <PasswordField icon={<LockIcon />} name="confirmNewPassword" placeholder="Confirm new password"
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (

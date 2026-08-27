@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const Case = require("../../models/Case");
 const authService = require("./auth.service");
 const sessionService = require("./session.service");
 const passwordResetService = require("./passwordReset.service");
@@ -83,7 +84,12 @@ async function registerStaff(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const result = await authService.login(req.body.email, req.body.password, req);
+    // PHASE 3: dual login path — { caseId, password } (new) or
+    // { email, password } (existing, unchanged). Everything from here down
+    // (token issuance, cookie setting, response body) is identical for both.
+    const result = req.body.caseId
+      ? await authService.loginWithCaseId(String(req.body.caseId).trim().toUpperCase(), req.body.password, req)
+      : await authService.login(req.body.email, req.body.password, req);
     res.locals.authUserId = result.user?._id;
     const { refreshToken, responseBody } = splitRefreshToken(result);
     setRefreshCookie(res, refreshToken);
@@ -277,6 +283,86 @@ function me(req, res) {
   });
 }
 
+/**
+ * GET /api/auth/session-context
+ *
+ * Returns the complete routing context for the authenticated user.
+ * This is the single source of truth for all BAIS frontend routing
+ * decisions (see BAIS/Frontend/src/components/AuthGate.jsx) — nothing else
+ * should independently decide where to route a session based on case status.
+ *
+ * Pure read: never writes to any model.
+ *
+ * Response shape:
+ * {
+ *   success: true,
+ *   userId: string,
+ *   role: string,
+ *   hasCase: boolean,
+ *   caseIds: string[],          // human-readable case numbers, e.g. ['B001']
+ *   activeCase: string | null,  // primaryCaseId's case number, or most recent
+ *   isLegacyNoCaseAccount: boolean,
+ *   leadId: string | null,
+ *   mustSetPassword: boolean,
+ *   caseRole: string | null,
+ * }
+ */
+async function getSessionContext(req, res, next) {
+  try {
+    const user = req.user; // full Mongoose User document, populated by `authenticate`
+
+    if (!["client", "employer", "employee", "beneficiary"].includes(user.role)) {
+      return res.status(200).json({
+        success: true,
+        userId: user._id.toString(),
+        role: user.role,
+        hasCase: false,
+        caseIds: [],
+        activeCase: null,
+        isLegacyNoCaseAccount: false,
+        leadId: null,
+        mustSetPassword: user.mustSetPassword || false,
+        caseRole: user.caseRole || null,
+      });
+    }
+
+    let caseIds = [];
+    let activeCase = null;
+    let hasCase = false;
+
+    if (user.caseIds && user.caseIds.length > 0) {
+      const cases = await Case.find({ _id: { $in: user.caseIds } }, { caseNumber: 1, createdAt: 1 })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      caseIds = cases.map((c) => c.caseNumber).filter(Boolean);
+      hasCase = caseIds.length > 0;
+
+      if (user.primaryCaseId) {
+        const primaryCase = cases.find((c) => c._id.toString() === user.primaryCaseId.toString());
+        activeCase = primaryCase?.caseNumber || caseIds[0] || null;
+      } else {
+        activeCase = caseIds[0] || null;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      userId: user._id.toString(),
+      role: user.role,
+      hasCase,
+      caseIds,
+      activeCase,
+      isLegacyNoCaseAccount: user.legacyNoCaseAccount || false,
+      leadId: user.leadId ? user.leadId.toString() : null,
+      mustSetPassword: user.mustSetPassword || false,
+      caseRole: user.caseRole || null,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function updateDetails(req, res, next) {
   try {
     const allowed = ["name", "displayName", "phone", "department", "specialization", "avatar"];
@@ -429,6 +515,7 @@ module.exports = {
   logout,
   logoutAll,
   me,
+  getSessionContext,
   updateDetails,
   changePassword,
   forgotPassword,

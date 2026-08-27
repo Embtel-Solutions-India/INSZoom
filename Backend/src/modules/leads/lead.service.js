@@ -6,6 +6,7 @@ const telemetryService = require("../telemetry/telemetry.service");
 const crmSyncService = require("../eligibility-quiz/crmSync.service");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
+const CaseNumberService = require("../../services/CaseNumberService");
 
 const STAFF_ROLES = ["super_admin", "admin", "case_manager"];
 
@@ -170,9 +171,100 @@ async function createQuizLead(payload, req) {
   return lead;
 }
 
+// PHASE 4 — shared field-mapping helper for the two new lead-creation paths
+// below. Lead.js (confirmed by reading the model directly) has no
+// `quizAnswers` field — only `profileAnswers` (Mixed, generic) and
+// `criteriaAnswers` (a typed array meant for the scored quiz specifically).
+// Both new endpoints store their raw answers payload in `profileAnswers`,
+// the field that actually exists and is already the generic "raw answers"
+// slot on this model, rather than inventing a new schema field for a Phase 4
+// deliverable that only needs an additive column, not a data-shape change.
+function buildLeadData({ contact, visaInterest, extensionInterest, answers, source }) {
+  return {
+    fullName: clean(contact?.name || contact?.fullName),
+    email: clean(contact?.email).toLowerCase(),
+    phone: clean(contact?.phone),
+    source,
+    status: "new",
+    visaInterest: clean(visaInterest),
+    extensionInterest: clean(extensionInterest),
+    profileAnswers: answers && typeof answers === "object" ? answers : {},
+  };
+}
+
+/**
+ * PHASE 4 — POST /api/leads (public, pre-login quiz-shaped submission).
+ *
+ * INVARIANT: creates exactly one Lead document. Never creates a Case, User,
+ * Client, or any canonical/form data — confirmed by inspection: this
+ * function touches only the Lead collection (via LeadModel.create) and the
+ * shared notifyStaffOfLead() helper (email + in-app notification, no model
+ * writes of its own beyond Notification).
+ *
+ * Deliberately a parallel function rather than a thin wrapper around
+ * createQuizLead(): that function's payload/response contract is tied to
+ * the real scored quiz (profileAnswers/criteriaAnswers/scoreResult with
+ * tier/pathwayString/routing, its own quiz-lead-confirmation email that
+ * reads scoreResult.pathwayString) — see EligibilityQuiz.jsx, which stays
+ * on the pre-existing POST /api/eligibility-quiz/submit path per Step 21's
+ * explicit "leave it unchanged" instruction and is not wired to this new
+ * endpoint. This function's simpler {contact, visaInterest, quizAnswers}
+ * shape has no score to report, so it reuses only the notification
+ * mechanism (notifyStaffOfLead), not the scored-quiz email/CRM-sync/
+ * telemetry side effects that assume a completed, scored quiz.
+ */
+async function createLeadFromQuiz(payload = {}, req) {
+  const leadData = buildLeadData({
+    contact: payload.contact || { name: payload.fullName || payload.name, email: payload.email, phone: payload.phone },
+    visaInterest: payload.visaInterest,
+    extensionInterest: payload.extensionInterest,
+    answers: payload.quizAnswers,
+    source: "quiz",
+  });
+  leadData.leadNumber = await CaseNumberService.nextLeadNumber();
+  leadData.ipHash = payload.ipHash;
+  leadData.userAgent = req?.headers?.["user-agent"];
+
+  const lead = await LeadModel.create(leadData);
+  await notifyStaffOfLead(lead);
+  return lead;
+}
+
+/**
+ * PHASE 4 — POST /api/leads/from-intake (authenticated client, intake
+ * questionnaire submission).
+ *
+ * INVARIANT: creates exactly one Lead document. Never creates a Case, User,
+ * Client, or any canonical/form data. Does NOT itself modify the User
+ * document — the caller (lead.controller.js's createLeadFromIntake) is
+ * responsible for setting req.user.leadId, since that's a property of the
+ * authenticated request, not of lead creation itself.
+ *
+ * The contact email is always the authenticated user's own email — never
+ * taken from the request body — so a client can never create a Lead
+ * attributed to a different address than the account submitting it.
+ */
+async function createLeadFromIntake(payload = {}, user, req) {
+  const leadData = buildLeadData({
+    contact: { name: user.name || user.displayName, email: user.email, phone: user.phone },
+    visaInterest: payload.visaInterest,
+    extensionInterest: payload.extensionInterest,
+    answers: payload.intakeAnswers,
+    source: "intake",
+  });
+  leadData.leadNumber = await CaseNumberService.nextLeadNumber();
+  leadData.userAgent = req?.headers?.["user-agent"];
+
+  const lead = await LeadModel.create(leadData);
+  await notifyStaffOfLead(lead);
+  return lead;
+}
+
 module.exports = {
   LEAD_EMAIL_RECIPIENT,
   buildLeadEmail,
   createLead,
   createQuizLead,
+  createLeadFromQuiz,
+  createLeadFromIntake,
 };

@@ -122,6 +122,14 @@ function buildCaseFilterFields(query) {
   if (query.clientId) filter.clientProfile = castObjectId(query.clientId);
   if (query.parentCase) filter.parentCase = castObjectId(query.parentCase);
   if (query.parentCaseId) filter.parentCase = castObjectId(query.parentCaseId);
+  // Phase 7 addition — lets a queue/list request exclude child cases (e.g.
+  // caseRole=principal,single) so employee/beneficiary children never surface
+  // as independent items in a Team Lead's pending-assignment queue.
+  if (query.caseRole) {
+    const roles = String(query.caseRole).split(",").map((r) => r.trim()).filter(Boolean);
+    if (roles.length) filter.caseRole = roles.length > 1 ? { $in: roles } : roles[0];
+  }
+  if (query.caseStructure) filter.caseStructure = query.caseStructure;
   if (query.caseType) filter.caseType = query.caseType;
   if (query.petitionType) filter.petitionType = query.petitionType;
   if (query.uscisReceiptNumber) filter.uscisReceiptNumber = { $regex: query.uscisReceiptNumber, $options: "i" };
@@ -512,7 +520,16 @@ async function getRelatedRecords(caseData) {
     Task.find({ caseId }).sort({ dueDate: 1 }),
     Workflow.find(buildOrQuery([{ caseId }, { entityId: caseId }, { "context.caseId": caseId }])).sort({ updatedAt: -1 }),
     caseData.parentCase ? Case.findById(caseData.parentCase).select("caseNumber clientName visaType status stage") : null,
-    Case.find({ parentCase: caseId }).select("caseNumber clientName visaType status stage").sort({ createdAt: -1 }),
+    // Phase 7 — also select assignment fields so the child-case list UI can
+    // show who's assigned and whether that assignment was individually
+    // overridden (and would therefore be skipped by a future cascade).
+    // Phase 9 — also select clientEmail/dataEntryMode so the invite panel
+    // can tell "not yet invited" from "invited" (clientEmail is set by
+    // inviteEmployee) without a second round-trip.
+    Case.find({ parentCase: caseId })
+      .select("caseNumber clientName clientEmail visaType status stage caseRole childIndex dataEntryMode assignedCaseManager assignmentOverridden")
+      .populate("assignedCaseManager", "name displayName email")
+      .sort({ childIndex: 1, createdAt: 1 }),
   ]);
   return { documents, messages, notifications, appointments, payments, tasks, workflows, parentCase, childCases };
 }

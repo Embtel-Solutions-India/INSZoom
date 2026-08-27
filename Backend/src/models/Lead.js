@@ -63,7 +63,28 @@ const leadSchema = new mongoose.Schema(
     crmSyncAttempts: { type: Number, default: 0 },
     crmSyncError: String,
 
-    status: { type: String, enum: ["new", "contacted", "booked", "converted", "closed"], default: "new", index: true },
+    // PHASE 2: extended enum — existing values (new, contacted, booked,
+    // converted, closed) are kept unchanged; the consultation-lifecycle and
+    // approval states below are new/additive so existing Lead documents and
+    // any code matching on the original values are unaffected.
+    status: {
+      type: String,
+      enum: [
+        "new",
+        "contacted",
+        "booked",
+        "converted",
+        "closed",
+        "consultation_requested",
+        "consultation_scheduled",
+        "consultation_confirmed",
+        "consultation_completed",
+        "approved",
+        "rejected",
+      ],
+      default: "new",
+      index: true,
+    },
 
     // Admin Leads Inbox — shared-team-inbox semantics: whoever opens it
     // first clears "unseen" for everyone (not a per-admin read receipt),
@@ -79,6 +100,74 @@ const leadSchema = new mongoose.Schema(
 
     ipHash: String,
     userAgent: String,
+
+    // ─── PHASE 2 ADDITIONS TO EXISTING LEAD MODEL ────────────────────────────
+    // `source` already exists as a plain unrestricted string (no enum), so it
+    // already accepts 'intake'/'direct' without a schema change — confirmed
+    // during the Pre-Phase 2 intake/lead-flow investigation.
+
+    /**
+     * Human-readable lead identifier. Format: L-001, L-002, etc.
+     * Generated at creation time using the counters collection.
+     */
+    leadNumber: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: null,
+    },
+
+    /**
+     * The visa type the prospect expressed interest in.
+     * Separate from Case.visaType — this is unvalidated prospect data.
+     */
+    visaInterest: {
+      type: String,
+      default: "",
+    },
+
+    /**
+     * Whether the prospect is interested in an extension.
+     */
+    extensionInterest: {
+      type: String,
+      default: "",
+    },
+
+    /**
+     * Full consultation lifecycle tracking.
+     * Supplements the existing consultationId ref (kept unchanged above).
+     */
+    consultation: {
+      requestedAt: { type: Date, default: null },
+      scheduledAt: { type: Date, default: null },
+      confirmedAt: { type: Date, default: null },
+      completedAt: { type: Date, default: null },
+      scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      notes: { type: String, default: "" },
+      meetingLink: { type: String, default: "" },
+    },
+
+    /**
+     * Admin approval tracking — set when admin approves or rejects the lead.
+     */
+    approval: {
+      approvedAt: { type: Date, default: null },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      rejectedAt: { type: Date, default: null },
+      rejectionReason: { type: String, default: "" },
+    },
+
+    /**
+     * The Case that was created from this lead.
+     * Set when the admin clicks CREATE CASE from the leads page.
+     */
+    convertedCaseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Case",
+      default: null,
+    },
+    // ─── END PHASE 2 ADDITIONS ────────────────────────────────────────────────
   },
   { timestamps: true }
 );

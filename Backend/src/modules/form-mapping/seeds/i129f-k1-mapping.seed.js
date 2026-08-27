@@ -21,6 +21,30 @@ async function resolveSystemActor() {
   return admin || { _id: undefined, role: "super_admin" };
 }
 
+// PHASE 2 — classifies which canonical data store (EmployerProfile,
+// EmployeeProfile, or the Case document itself) each edge's sourcePath
+// reads from. For a family/K-1 case, "petitioner_*" plays the same
+// principal-party role "employer_*" plays in an employer/employee case
+// (both map to EmployerProfile per Step 21's "employer/petitioner canonical
+// data" scope), and "beneficiary_*" plays the same role "employee_*" plays
+// (both map to EmployeeProfile per Step 22's "employee or beneficiary"
+// scope). "case.*" reads the Case document directly. Unclassifiable paths
+// default to 'employee' per the Phase 2 spec.
+function classifyProfileOwner(sourcePath) {
+  if (typeof sourcePath !== "string") return "employee";
+  if (sourcePath.startsWith("case.")) return "case";
+  if (sourcePath.startsWith("company.") || sourcePath.startsWith("organization.") || sourcePath.startsWith("employer.") || sourcePath.startsWith("petitioner.")) return "employer";
+  if (sourcePath.includes(".employer_") || sourcePath.includes(".petitioner_") || sourcePath.includes(".organization_")) return "employer";
+  if (sourcePath.startsWith("beneficiary.") || sourcePath.startsWith("employee.") || sourcePath.startsWith("applicant.")) return "employee";
+  if (sourcePath.includes(".employee_") || sourcePath.includes(".beneficiary_") || sourcePath.includes(".applicant_")) return "employee";
+  if (sourcePath.startsWith("person.") || sourcePath.startsWith("contact.") || sourcePath.startsWith("immigration.")) return "employee";
+  return "employee";
+}
+
+// No edge in this crosswalk needs a TRUE override — see the identical note
+// in i129-h1b-mapping.seed.js.
+const ALLOWS_OCCURRENCE_OVERRIDE = false;
+
 function buildCrosswalkGraph(template) {
   const targetFields = MappingGraphService.getTemplateFields(template);
   const edges = [];
@@ -52,6 +76,8 @@ function buildCrosswalkGraph(template) {
       transform: edge.transform || { type: "direct" },
       condition: edge.condition,
       note: edge.note,
+      profileOwner: classifyProfileOwner(edge.source),
+      allowsOccurrenceOverride: ALLOWS_OCCURRENCE_OVERRIDE,
     });
   });
 

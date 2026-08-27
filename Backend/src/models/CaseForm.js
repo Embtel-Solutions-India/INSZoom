@@ -191,9 +191,51 @@ const caseFormSchema = new mongoose.Schema(
         userAgent: String,
       },
     ],
+
+    // ─── PHASE 2 ADDITIONS ──────────────────────────────────────────────────
+    // `fieldValues` above is Mixed (a plain object, no sub-schema), so it
+    // cannot be given a typed per-field provenance shape without a migration
+    // on existing CaseForm documents — outside this phase's additive-only
+    // scope. Left unchanged. This Map supplements fieldValues instead: keys
+    // are field identifiers matching entries in fieldValues, values carry
+    // the provenance/override metadata AutoFillService's sync engine needs
+    // once it starts consuming USCISMappingVersion's profileOwner/
+    // allowsOccurrenceOverride edge classification (see Case.js and
+    // USCISMappingVersion.js's own Phase 2 additions).
+    fieldValueProvenance: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          source: {
+            type: String,
+            enum: ["canonical", "case_manager_override", "ocr", "questionnaire"],
+            default: "canonical",
+          },
+          mappingId: { type: String, default: null },
+          occurrenceId: { type: String, default: null },
+          allowsOccurrenceOverride: { type: Boolean, default: false },
+          canonicalValue: { type: mongoose.Schema.Types.Mixed, default: null },
+          overriddenAt: { type: Date, default: null },
+          overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+          revision: { type: Number, default: 0 },
+        },
+        { _id: false }
+      ),
+      default: {},
+    },
+    // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }
 );
+
+// PHASE 2 — REFERENCE: documented shape `fieldValues` (Mixed, unchanged
+// above) is expected to hold per field ID, once a migration formalizes it.
+// Documentation only — not enforced by Mongoose, since fieldValues is Mixed.
+// { [fieldId: string]: string | number | boolean | null }
+const FIELD_VALUES_SCHEMA_REFERENCE = Object.freeze({
+  description: "fieldValues is a flat map of fieldId -> filled value (Mixed, unenforced).",
+  perFieldShape: "string | number | boolean | null",
+});
 
 caseFormSchema.index({ caseId: 1, formCode: 1 });
 caseFormSchema.index({ caseId: 1, formTemplateId: 1, participantId: 1 }, { unique: true, sparse: true });
@@ -213,4 +255,11 @@ caseFormSchema.index({ "syncState.requiresRegeneration": 1, updatedAt: -1 });
 caseFormSchema.index({ caseId: 1, updatedAt: -1 });
 caseFormSchema.index({ updatedAt: -1 });
 
-module.exports = mongoose.model("CaseForm", caseFormSchema);
+const CaseForm = mongoose.model("CaseForm", caseFormSchema);
+
+// PHASE 2 — attached as a static, not a change to the module's export shape
+// (every existing caller uses this directly as the Mongoose model), so the
+// documentation is importable without breaking any existing require() call.
+CaseForm.FIELD_VALUES_SCHEMA_REFERENCE = FIELD_VALUES_SCHEMA_REFERENCE;
+
+module.exports = CaseForm;

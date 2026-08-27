@@ -177,56 +177,15 @@ function addTimeline(client, type, title, description, user, metadata = {}) {
 }
 
 async function ensureCaseForCompletedClient(client, data = {}, user, req) {
-  if (!client.completed) return null;
-  const beneficiary = await beneficiaryService.syncFromClient(client, user, req);
-  const existingCase = await Case.findOne({ $or: [{ beneficiary: beneficiary?._id }, { user: client.user }, { clientProfile: client._id }, { clientPortalId: client.clientPortalId }].filter((item) => Object.values(item)[0]) });
-  if (existingCase && beneficiary?._id && !existingCase.beneficiary) {
-    existingCase.beneficiary = beneficiary._id;
-    await existingCase.save();
-  }
-  if (existingCase || !(data.visaType || client.visaType)) return existingCase;
-
-  // Route the auto-created case to a Team Lead the same way the explicit
-  // POST /cases flow does, so it is never created without an owner able to
-  // see it in the Team Lead dashboard's "New Cases Queue".
-  const teamLead = await caseService.resolveTeamLeadForCase(data);
-  const newCase = await Case.create({
-    caseId: generateCaseNumber("BAIS"),
-    caseNumber: generateCaseNumber("CRM"),
-    clientPortalId: client.clientPortalId,
-    user: client.user,
-    clientProfile: client._id,
-    beneficiary: beneficiary?._id,
-    clientName: client.fullName,
-    clientEmail: client.email,
-    visaCategory: data.visaCategory || client.visaCategory || "",
-    visaType: data.visaType || client.visaType,
-    currentStage: 0,
-    stage: "intake",
-    status: "pending_assignment",
-    checklistItems: await resolveDocumentRequirements(data.visaType || client.visaType),
-    assessmentAnswers: client.assessmentAnswers || null,
-    assessmentMatchPercentage: client.assessmentMatchPercentage || 0,
-    plan: {
-      tier: normalizePackageName(data.selectedPlan || client.selectedPlan) || "",
-      selectedAt: data.selectedPlan ? new Date() : client.planSelectedAt,
-      paymentStatus: "not_started",
-    },
-    assignedTeamLead: teamLead?._id,
-    teamId: teamLead?.teamId,
-    stageHistory: [{ stage: 0, stageName: "Intake", crmStage: "intake", enteredAt: new Date(), notes: "Case auto-created on client profile completion" }],
-    assignedAgent: "BAIS Team",
-    agentEmail: "info@bayareaimmigrationservices.com",
-    activityLog: [{ action: "Client Profile Completed", description: "Client completed profile setup. Case opened at Intake stage.", timestamp: new Date() }],
-    legacySource: "BAIS",
-  });
-
-  // Reuse the exact same initialization pipeline as the explicit case
-  // creation flow (POST /cases): beneficiary/lead linkage, lifecycle
-  // recalculation, and the Team Lead in-app notification + email + realtime
-  // push required immediately after a case is created.
-  await require("../cases/case-lifecycle-orchestrator.service").initializeCase(newCase, user, req).catch(() => null);
-  return newCase;
+  // ARCHITECTURE NOTE (Phase Pre-2B): This function previously auto-created a Case
+  // when a client completed their intake profile. Case creation is now a staff-only
+  // action performed through the admin portal. This function is intentionally a no-op.
+  // It will be removed entirely in Phase 4 when the client intake flow is redesigned.
+  console.warn(
+    `[ensureCaseForCompletedClient] Called for client ${client?._id} but case auto-creation ` +
+    `is disabled. No case was created. This is expected behavior post-architecture-change.`
+  );
+  return null;
 }
 
 // Ensures the Case Manager immediately sees that the client has submitted

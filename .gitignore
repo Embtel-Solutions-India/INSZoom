@@ -15,6 +15,7 @@ ImmigrationCRM.code-workspace
 /Backend/storage/
 /Backend/uploads/
 /uploads/
+*.log
 
 # Browser test output
 **/e2e/screenshots/

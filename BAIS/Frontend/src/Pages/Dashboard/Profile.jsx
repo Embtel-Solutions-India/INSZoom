@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { profileApi } from "../../services/api";
+import { authApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
@@ -44,6 +44,14 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [dirty, setDirty] = useState(false);
+
+  // Change Password — separate form/state from the profile fields above;
+  // deliberately not part of `data`/handleSave so a failed password change
+  // never blocks or gets bundled with a profile-fields save.
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   useEffect(() => { document.title = "Profile | BAIS Immigration Portal"; }, []);
 
@@ -105,6 +113,40 @@ export default function Profile() {
     setMessage("");
   };
 
+  const updatePasswordField = (field, value) => {
+    setPasswordForm((current) => ({ ...current, [field]: value }));
+    setPasswordError("");
+    setPasswordMessage("");
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError("");
+    setPasswordMessage("");
+    const { currentPassword, newPassword, confirmNewPassword } = passwordForm;
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setPasswordError("Please fill in all three fields.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      setPasswordMessage("Password changed successfully.");
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmNewPassword: "" });
+    } catch (error) {
+      setPasswordError(error.message || "Unable to change password. Check your current password and try again.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const visaTypes = useMemo(() => {
     const list = VISA_TYPES[data.visaCategory] || [];
     return list.map((item) => (typeof item === "string" ? item : item.type || item.label || item.value)).filter(Boolean);
@@ -136,8 +178,16 @@ export default function Profile() {
             </Field>
           </div>
 
-          <Field label="Email">
-            <input type="email" id="profile-email" name="email" className={inputClass} value={data.email} onChange={(e) => update("email", e.target.value)} />
+          <Field label="Email (username)">
+            <input
+              type="email"
+              id="profile-email"
+              name="email"
+              readOnly
+              disabled
+              className={`${inputClass} bg-slate-50 text-slate-500 cursor-not-allowed`}
+              value={user?.email || data.email}
+            />
           </Field>
 
           <Field label="Phone">
@@ -190,6 +240,62 @@ export default function Profile() {
           >
             {saving ? "Saving…" : "Save changes"}
           </button>
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">Change Password</h2>
+
+          <Field label="Current password">
+            <input
+              type="password"
+              id="password-current"
+              name="currentPassword"
+              autoComplete="current-password"
+              className={inputClass}
+              value={passwordForm.currentPassword}
+              onChange={(e) => updatePasswordField("currentPassword", e.target.value)}
+            />
+          </Field>
+          <Field label="New password">
+            <input
+              type="password"
+              id="password-new"
+              name="newPassword"
+              autoComplete="new-password"
+              className={inputClass}
+              value={passwordForm.newPassword}
+              onChange={(e) => updatePasswordField("newPassword", e.target.value)}
+            />
+          </Field>
+          <Field label="Confirm new password">
+            <input
+              type="password"
+              id="password-confirm"
+              name="confirmNewPassword"
+              autoComplete="new-password"
+              className={inputClass}
+              value={passwordForm.confirmNewPassword}
+              onChange={(e) => updatePasswordField("confirmNewPassword", e.target.value)}
+            />
+          </Field>
+
+          {passwordError && (
+            <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+              {passwordError}
+            </p>
+          )}
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-400">{passwordMessage}</p>
+            <button
+              type="button"
+              onClick={handleChangePassword}
+              disabled={passwordSaving}
+              className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {passwordSaving ? "Changing…" : "Change Password"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

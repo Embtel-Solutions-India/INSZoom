@@ -1,15 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import api from '../services/api'
+import api, { casesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { Search, Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus } from 'lucide-react'
+import { Search, Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import CreateCaseModal from '../components/CreateCaseModal'
 
-// Case managers, team leads, and admins can create a case directly from this
-// portal (see Backend's POST /cases/create-with-client authorizeRoles list).
-const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager']
+// Phase 5 case creation is restricted to admins and team leads.
+const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
+// Phase 7 — who sees the Pending Assignment queue panel. Matches the roles
+// GET /cases/dashboard/team-lead itself scopes to (team leads see their own
+// team's queue; admins see every team's).
+const PENDING_QUEUE_ROLES = ['super_admin', 'admin', 'team_lead']
 
 const CRMCases = () => {
   const navigate = useNavigate()
@@ -44,6 +47,30 @@ const CRMCases = () => {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const limit = 5
 
+  // Phase 7 — Pending Assignment queue, sourced from the team-lead dashboard
+  // endpoint (already scoped to the calling team lead's own cases, or all
+  // cases for admins) and already caseRole-filtered server-side so child
+  // cases never appear here as independent items.
+  const [pendingQueue, setPendingQueue] = useState([])
+  const [pendingQueueLoading, setPendingQueueLoading] = useState(true)
+  const canSeePendingQueue = PENDING_QUEUE_ROLES.includes(user?.role)
+
+  const fetchPendingQueue = async () => {
+    if (!canSeePendingQueue) return
+    try {
+      const response = await casesApi.getTeamLeadDashboard()
+      setPendingQueue(response.data.unassignedCases || response.data.dashboard?.unassignedCases || [])
+    } catch (error) {
+      console.error('Error fetching pending assignment queue:', error)
+    } finally {
+      setPendingQueueLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchPendingQueue()
+  }, [user?.role])
+
   useEffect(() => {
     fetchCases()
   }, [stageFilter, statusFilter, page, appliedSearch])
@@ -70,7 +97,7 @@ const CRMCases = () => {
   // their cases, without needing a manual refresh.
   useEffect(() => {
     if (!connected) return
-    const unsubscribeAssigned = subscribe('case:assigned', () => fetchCases())
+    const unsubscribeAssigned = subscribe('case:assigned', () => { fetchCases(); fetchPendingQueue() })
     const unsubscribeSubmitted = subscribe('case:client_submitted', () => fetchCases())
     return () => {
       unsubscribeAssigned()
@@ -275,6 +302,41 @@ const CRMCases = () => {
           onClose={() => setShowCreateModal(false)}
           onCreated={handleCaseCreated}
         />
+      )}
+
+      {/* Phase 7 — Pending Assignment queue: principal/single cases only,
+          never child cases (enforced server-side by getTeamLeadDashboard). */}
+      {canSeePendingQueue && !pendingQueueLoading && pendingQueue.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+          <div className="px-5 py-3 border-b border-amber-200 flex items-center gap-2">
+            <Inbox className="w-4 h-4 text-amber-700" />
+            <h2 className="text-sm font-bold uppercase tracking-wide text-amber-900">
+              Pending Assignment ({pendingQueue.length})
+            </h2>
+          </div>
+          <div className="divide-y divide-amber-200">
+            {pendingQueue.map((caseItem) => (
+              <div
+                key={caseItem._id}
+                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-amber-100/60"
+                onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
+              >
+                <div className="min-w-0">
+                  <span className="text-sm font-semibold text-gray-900">{caseItem.caseNumber}</span>
+                  <span className="text-sm text-gray-600"> — {caseItem.clientName || 'Unknown'}</span>
+                  <span className="text-xs text-gray-500 ml-2">{resolveDisplayVisa(caseItem)}</span>
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 shrink-0"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Assign Case Manager
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Filters */}

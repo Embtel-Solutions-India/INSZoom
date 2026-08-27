@@ -6,9 +6,11 @@ import { singlePartyFilingsApi } from "../../services/api";
 // Authorization / Reinstatement. Third structural pattern alongside the
 // employer/employee (employment-workflow) and petitioner/beneficiary
 // (family-workflow) two-party paths: exactly ONE checklist, filled by the
-// applicant themselves. No invite, no second-party account, nothing to wait
-// on — selecting a filing type here creates the case and auto-assigns its
-// checklist in a single request.
+// applicant themselves. No invite, no second-party account.
+//
+// PHASE 2 ARCHITECTURE CHANGE: selecting a filing type no longer creates a
+// case directly — it routes the client to book a consultation. Case
+// creation is now an explicit staff action.
 
 const CATEGORY_LABELS = {
   change_of_status: "Change of Status",
@@ -45,8 +47,6 @@ export default function FilingTypeSelection() {
   const [grouped, setGrouped] = useState({ transitions: [], standalone: [], byCategory: {} });
   const [fromStatus, setFromStatus] = useState(CURRENT_STATUS_OPTIONS[0]);
   const [toStatus, setToStatus] = useState(DESIRED_STATUS_OPTIONS[0]);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
     singlePartyFilingsApi
@@ -56,17 +56,10 @@ export default function FilingTypeSelection() {
       .finally(() => setLoading(false));
   }, []);
 
-  const startFiling = async (payload) => {
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const response = await singlePartyFilingsApi.create(payload);
-      const caseId = response.data.case?._id;
-      navigate(caseId ? `/dashboard/documents?caseId=${caseId}` : "/dashboard");
-    } catch (err) {
-      setSubmitError(err.response?.data?.message || err.message || "Failed to start this filing");
-      setSubmitting(false);
-    }
+  const startFiling = () => {
+    // PHASE 2 ARCHITECTURE CHANGE: Filing type selection no longer creates a case.
+    // The user is redirected to book a consultation. Case creation is a staff action.
+    navigate("/consultation/book");
   };
 
   const standaloneByCategory = (grouped.standalone || []).reduce((acc, entry) => {
@@ -85,7 +78,7 @@ export default function FilingTypeSelection() {
           <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Filing type</p>
           <h1 className="text-xl font-bold text-slate-900 mt-1">Change of status, extension, or EAD</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Pick the filing that matches your situation. Selecting one starts your case and assigns your checklist right away.
+            Pick the filing that matches your situation, then book a consultation to get started.
           </p>
         </div>
       </header>
@@ -124,14 +117,13 @@ export default function FilingTypeSelection() {
           </div>
           <button
             type="button"
-            disabled={submitting}
             onClick={() => startFiling({
               fromStatus: fromStatus.startsWith("Other") ? "" : fromStatus,
               toStatus: toStatus.startsWith("Other") ? "" : toStatus,
             })}
             className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
           >
-            {submitting ? "Starting…" : "Start This Filing"}
+            Start This Filing
           </button>
         </section>
       )}
@@ -144,7 +136,6 @@ export default function FilingTypeSelection() {
               <FilingOptionCard
                 key={entry.key}
                 label={entry.label}
-                disabled={submitting}
                 onClick={() => startFiling({ filingTypeKey: entry.key })}
               />
             ))}
@@ -152,7 +143,6 @@ export default function FilingTypeSelection() {
         </section>
       ))}
 
-      {submitError && <p className="text-sm text-red-600">{submitError}</p>}
       </div>
     </div>
   );

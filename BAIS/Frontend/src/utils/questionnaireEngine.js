@@ -81,8 +81,15 @@ export const AUTOFILL_SOURCES = {
     "employee_education_degreeAwardDate", "employee_education_degreeType", "employee_education_hasUsMastersOrHigher",
   ],
   certified_lca_eta9035: [
-    "employer_position_socCode", "employer_position_jobTitle", "employer_position_wageLevel",
-    "employer_position_offeredSalary", "employer_position_employmentStartDate",
+    "employee_personal_firstName", "employee_personal_middleName", "employee_personal_lastName",
+    "employee_personal_dateOfBirth", "employee_personal_gender", "employee_personal_countryOfBirth",
+    "employee_personal_countryOfCitizenship", "employee_personal_alienRegistrationNumber",
+    "employee_personal_passportNumber", "employee_personal_passportExpirationDate",
+    "employer_company_fullName", "employer_company_fein", "employer_company_address_street",
+    "employer_company_address_city", "employer_company_address_state", "employer_company_address_zipCode",
+    "employer_company_daytimePhone", "employer_company_naicsCode", "employer_company_businessType",
+    "employer_workforce_totalUsEmployees", "employer_position_socCode", "employer_position_jobTitle",
+    "employer_position_wageLevel", "employer_position_offeredSalary", "employer_position_employmentStartDate",
   ],
   academic_certificates: [
     "employee_education_degreeType", "employee_education_majorFieldOfStudy",

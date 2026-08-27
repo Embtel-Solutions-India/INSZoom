@@ -15,7 +15,11 @@ const ALLOWED_MIME_TYPES = [
   "application/csv",
 ];
 
-const MAX_FILE_SIZE = Number(process.env.MAX_UPLOAD_SIZE_BYTES || 10 * 1024 * 1024);
+const MAX_FILE_SIZE = Number(
+  process.env.MAX_UPLOAD_SIZE_BYTES ||
+  process.env.MAX_FILE_SIZE ||
+  10 * 1024 * 1024
+);
 
 const upload = multer({
   storage: multer.memoryStorage(),

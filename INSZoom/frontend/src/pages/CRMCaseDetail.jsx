@@ -379,6 +379,11 @@ const CRMCaseDetail = () => {
   const [assignError, setAssignError] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [users, setUsers] = useState([])
+  // Phase 7 — populated only for principal cases (childCaseCount > 0); holds
+  // the child cases returned by GET /cases/:id/related, which — unlike the
+  // parentCase/childCases already embedded on caseData via casesApi.get —
+  // also carries assignedCaseManager and assignmentOverridden per child.
+  const [childCases, setChildCases] = useState(null)
 
   // Tab-specific data and loading states
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
@@ -481,6 +486,16 @@ const CRMCaseDetail = () => {
       const nextCase = response.data.case
       setCaseData(nextCase)
       setIntakeBundle(intakeResponse?.data?.intake || null)
+      if (nextCase.caseRole === 'principal' && nextCase.childCaseCount > 0) {
+        casesApi.getRelated(id)
+          .then((relatedResponse) => setChildCases(relatedResponse.data.childCases || []))
+          .catch((error) => {
+            console.error('Error fetching child cases:', error)
+            setChildCases([])
+          })
+      } else {
+        setChildCases(null)
+      }
       setAddonsLoading(true)
       casesApi.addons(id)
         .then((addonsResponse) => {
@@ -744,17 +759,24 @@ const CRMCaseDetail = () => {
     setAssignError('')
     setAssigning(true)
     try {
+      let response
       if (assignType === 'case_manager') {
-        await casesApi.assignCaseManager(id, assigneeId, 'Assigned from CRM case detail', {
+        response = await casesApi.assignCaseManager(id, assigneeId, 'Assigned from CRM case detail', {
           priority: assignPriority || undefined,
           internalNote: assignInternalNote || undefined,
         })
+      } else if (assignType === 'team_lead') {
+        response = await casesApi.assignTeamLead(id, assigneeId, 'Assigned from CRM case detail')
       }
+      const cascaded = response?.data?.childrenCascaded || 0
       setShowAssignModal(false)
       setAssigneeId('')
       setAssignPriority('')
       setAssignInternalNote('')
       fetchCaseDetail()
+      if (cascaded > 0) {
+        alert(`Assignment also applied to ${cascaded} child case${cascaded === 1 ? '' : 's'}.`)
+      }
     } catch (error) {
       console.error('Error assigning staff:', error)
       setAssignError(error.response?.data?.message || error.message || 'Failed to assign staff. Please try again.')
@@ -933,6 +955,9 @@ const CRMCaseDetail = () => {
         return [{ ...user, name: `${user.name || user.displayName || 'Me'} (assign to myself)` }, ...caseManagers]
       }
       return caseManagers
+    }
+    if (assignType === 'team_lead') {
+      return users.filter(u => u.role === 'team_lead')
     }
     return users
   }
@@ -1340,6 +1365,89 @@ const CRMCaseDetail = () => {
               Assign Case Manager
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Phase 7 — a child case links back to the matter it belongs to */}
+      {['employee', 'beneficiary'].includes(caseData.caseRole) && caseData.parentCase && (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-gray-700">
+            Part of matter <span className="font-semibold">{caseData.parentCase.caseNumber}</span>
+            {caseData.parentCase.clientName ? ` — ${caseData.parentCase.clientName}` : ''}
+            {caseData.assignmentOverridden && (
+              <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                Assignment overridden
+              </span>
+            )}
+          </p>
+          <button
+            onClick={() => navigate(`/crm-cases/${caseData.parentCase._id}`)}
+            className="text-sm font-semibold text-primary-600 hover:text-primary-700 shrink-0"
+          >
+            View matter →
+          </button>
+        </div>
+      )}
+
+      {/* Phase 7 — a principal case shows its child cases and who's assigned
+          to each; overridden children are skipped by any future cascade from
+          this principal's own assignment. */}
+      {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Child Cases ({caseData.childCaseCount})</h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Assigning this matter's case manager applies to every child case below except those marked overridden.
+            </p>
+          </div>
+          {childCases === null ? (
+            <p className="px-5 py-4 text-sm text-gray-400">Loading…</p>
+          ) : childCases.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-gray-400">No child cases yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Manager</th>
+                    <th className="px-5 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {childCases.map((child) => (
+                    <tr key={child._id}>
+                      <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{child.caseNumber}</td>
+                      <td className="px-5 py-3 whitespace-nowrap text-sm text-gray-600">{child.clientName || 'TBD'}</td>
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(child.status)}`}>
+                          {child.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap text-sm text-gray-600">
+                        {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
+                        {child.assignmentOverridden && (
+                          <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                            Overridden
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap text-right">
+                        <button
+                          onClick={() => navigate(`/crm-cases/${child._id}`)}
+                          className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+                        >
+                          View →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -2511,6 +2619,11 @@ const CRMCaseDetail = () => {
               </div>
             )}
             <form onSubmit={handleAssign} className="space-y-4">
+              {caseData.caseRole === 'principal' && (
+                <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  This will also apply to every child case in this matter, except any already individually overridden.
+                </p>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
                 <select
@@ -2519,6 +2632,7 @@ const CRMCaseDetail = () => {
                   className="input-field"
                 >
                   <option value="case_manager">Case Manager</option>
+                  <option value="team_lead">Team Lead</option>
                 </select>
               </div>
               <div>

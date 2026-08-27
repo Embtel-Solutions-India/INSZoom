@@ -31,6 +31,22 @@ import {
 // immediately on selection (so the H2 Autofill preview still works against
 // something already on the server), but are tracked in pendingUploads so
 // commitAll() can await them before batch-saving answers.
+function hasAutofillValue(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
+function normalizeAutofillPrefill(prefill) {
+  if (Array.isArray(prefill)) return prefill;
+  if (!prefill || typeof prefill !== "object") return [];
+  return Object.entries(prefill).map(([key, value]) => ({
+    key,
+    value,
+    targetSystem: "answer",
+    applied: true,
+    conflict: false,
+  }));
+}
+
 export default function useQuestionnaireAnswers(caseId, targetRole, { disabled = false } = {}) {
   const { questionnaire, documentQuestions, fieldQuestions, answers: rawAnswers, responseId, progress: hookProgress, loading, error, refetch } =
     useCaseQuestionnaire(caseId, targetRole);
@@ -134,21 +150,48 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
   const progress = localProgress || hookProgress || {};
   const overallCompletion = clampPercent(progress.completionPercentage ?? progress.percent ?? progress.overall ?? 0);
 
-  const handleAutofillResult = useCallback((documentType, data, autofillError) => {
+  const handleAutofillResult = useCallback(async (documentType, data, autofillError) => {
     if (autofillError) {
       setStatusMessage(autofillError.message || `Unable to process the uploaded ${documentType}.`);
       return;
     }
-    const prefill = data?.prefill || [];
+    const prefill = normalizeAutofillPrefill(data?.prefill);
     const appliedCount = prefill.filter((item) => item.applied).length;
     const conflictCount = prefill.filter((item) => item.conflict).length;
+    const visibleQuestionKeys = new Set(visibleQuestions.map((question) => questionKey(question)));
+    const entries = prefill
+      .filter((item) =>
+        item.targetSystem !== "masterData" &&
+        item.applied !== false &&
+        !item.conflict &&
+        visibleQuestionKeys.has(item.key) &&
+        hasAutofillValue(item.value)
+      )
+      .map((item) => ({ questionKey: item.key, value: item.value }));
+
+    if (entries.length) {
+      setAnswers((previous) => ({
+        ...previous,
+        ...Object.fromEntries(entries.map((entry) => [entry.questionKey, entry.value])),
+      }));
+      if (questionnaire?._id && responseId && caseId && !disabled) {
+        try {
+          await questionnairesApi.saveAnswer(questionnaire._id, { caseId, responseId, answers: entries });
+        } catch (error) {
+          setDirty(true);
+          setStatusMessage("Autofill filled fields, but saving them failed. Please click Save Progress.");
+          return;
+        }
+      }
+    }
+
     setStatusMessage(
       appliedCount || conflictCount
         ? `Applied ${appliedCount} field${appliedCount === 1 ? "" : "s"}${conflictCount ? `; ${conflictCount} need${conflictCount === 1 ? "s" : ""} your review below` : ""}.`
         : `We couldn't find any matching fields in that ${documentType}.`
     );
     refetch();
-  }, [refetch]);
+  }, [caseId, disabled, questionnaire?._id, refetch, responseId, visibleQuestions]);
 
   // No network call, no debounce — just local state + the dirty flag the
   // unsaved-changes guard and commitAll() both read. Replaces the old

@@ -17,6 +17,8 @@ import EmployeeHandoffModal from "../../components/checklist/EmployeeHandoffModa
 import CaseIntakeExtras from "../../components/checklist/CaseIntakeExtras";
 import QuestionInput, { AutofillButton } from "../../components/questionnaire/QuestionInput";
 import PrefillBadge from "../../components/PrefillBadge";
+import PrincipalCaseWorkspace from "../../components/questionnaire/PrincipalCaseWorkspace";
+import EmployeeSelfServiceView from "../../components/questionnaire/EmployeeSelfServiceView";
 import {
   resolveApplicableChecklistRoles,
   EMPLOYER_SHAPE_ROLES,
@@ -701,6 +703,39 @@ export default function Documents() {
   // this popup at all.
   const employerSectionsComplete = employerBusinessPlanSections.length > 0 && !employerBusinessPlanSections.some((section) => section.items.some(itemIsMissingRequired));
   const showHandoffModal = showHandoffJunction && !activeEmployeeMode && employerSectionsComplete && !handoffModalDismissed;
+
+  // Phase 9 — the caseRole=principal/employee/beneficiary child-Case
+  // architecture. Additive: only engages for a genuinely new-architecture
+  // case (caseRole is only ever set by Phase 5's createCase), so every case
+  // still on the older employerUser/employeeUser shape falls through
+  // unchanged to the existing return below. See
+  // PHASE_9_COMPLETION_REPORT.md for why both currently coexist.
+  if (activeCase?.caseRole === "principal") {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Case checklist</p>
+          <h1 className="text-lg font-semibold text-slate-900 mb-6">
+            {visaType ? `${visaType} intake` : "Your case checklist"}
+          </h1>
+          <PrincipalCaseWorkspace activeCase={activeCase} />
+        </div>
+      </div>
+    );
+  }
+  if (["employee", "beneficiary"].includes(activeCase?.caseRole) && activeCase?.parentCase) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Case checklist</p>
+          <h1 className="text-lg font-semibold text-slate-900 mb-6">
+            {visaType ? `${visaType} intake` : "Your case checklist"}
+          </h1>
+          <EmployeeSelfServiceView activeCase={activeCase} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

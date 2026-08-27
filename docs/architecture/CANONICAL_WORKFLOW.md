@@ -150,7 +150,7 @@ For each one:
 ## 5. Reusable agent prompt (paste this to start a work session)
 
 > You are working on **ImmigrationCRM** (BAIS client portal + INSZoom internal CRM +
-> shared Backend, one MongoDB). Read `AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
+> shared Backend, one MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
 > treat the latter as the authoritative end-to-end flow.
 >
 > The canonical flow is: client fills intake → selects package → **Case created with
