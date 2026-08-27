@@ -1,96 +1,233 @@
 name: INSZoom CI/CD
+
 on:
   push:
     branches:
       - main
+
 permissions:
   id-token: write
   contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            BAIS/Frontend/package-lock.json
+            INSZoom/frontend/package-lock.json
+
+      # ==========================================
+      # BAIS FRONTEND
+      # ==========================================
+      - name: Install BAIS Frontend dependencies
+        working-directory: BAIS/Frontend
+        run: npm ci --include=optional
+
+      - name: Build BAIS Frontend
+        working-directory: BAIS/Frontend
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.BAIS_VITE_STRIPE_PUBLISHABLE_KEY }}
+          VITE_API_URL: ${{ secrets.BAIS_VITE_API_URL }}
+          VITE_FIREBASE_VAPID_KEY: ${{ secrets.BAIS_VITE_FIREBASE_VAPID_KEY }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.BAIS_VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.BAIS_VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.BAIS_VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.BAIS_VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.BAIS_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.BAIS_VITE_FIREBASE_APP_ID }}
+        run: npm run build
+
+      - name: Package BAIS Frontend
+        run: |
+          tar -czf /tmp/bais-frontend.tar.gz \
+            -C BAIS/Frontend/dist .
+
+      # ==========================================
+      # ADMIN FRONTEND
+      # ==========================================
+      - name: Install Admin Frontend dependencies
+        working-directory: INSZoom/frontend
+        run: npm ci --include=optional
+
+      - name: Build Admin Frontend
+        working-directory: INSZoom/frontend
+        env:
+          VITE_API_URL: ${{ secrets.ADMIN_VITE_API_URL }}
+          VITE_FIREBASE_VAPID_KEY: ${{ secrets.ADMIN_VITE_FIREBASE_VAPID_KEY }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.ADMIN_VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.ADMIN_VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.ADMIN_VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.ADMIN_VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.ADMIN_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.ADMIN_VITE_FIREBASE_APP_ID }}
+        run: npm run build
+
+      - name: Package Admin Frontend
+        run: |
+          tar -czf /tmp/admin-frontend.tar.gz \
+            -C INSZoom/frontend/dist .
+
+      # ==========================================
+      # AWS OIDC
+      # ==========================================
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::637442130394:role/INSZoom-GitHubActions-Role
           aws-region: us-east-1
           audience: sts.amazonaws.com
+
+      # ==========================================
+      # UPLOAD ARTIFACTS
+      # ==========================================
+      - name: Upload frontend artifacts to S3
+        run: |
+          set -e
+
+          aws s3 cp \
+            /tmp/bais-frontend.tar.gz \
+            s3://inszoom-bucket/inszoom-deploy/bais-frontend.tar.gz
+
+          aws s3 cp \
+            /tmp/admin-frontend.tar.gz \
+            s3://inszoom-bucket/inszoom-deploy/admin-frontend.tar.gz
+
+      # ==========================================
+      # CREATE TEMPORARY DOWNLOAD URLS
+      # ==========================================
+      - name: Generate presigned URLs
+        run: |
+          set -e
+
+          BAIS_URL=$(aws s3 presign \
+            s3://inszoom-bucket/inszoom-deploy/bais-frontend.tar.gz \
+            --expires-in 1800)
+
+          ADMIN_URL=$(aws s3 presign \
+            s3://inszoom-bucket/inszoom-deploy/admin-frontend.tar.gz \
+            --expires-in 1800)
+
+          echo "BAIS_URL=$BAIS_URL" >> "$GITHUB_ENV"
+          echo "ADMIN_URL=$ADMIN_URL" >> "$GITHUB_ENV"
+
+      # ==========================================
+      # DEPLOY THROUGH SSM
+      # ==========================================
       - name: Deploy through SSM
         shell: bash
         run: |
           set -e
+
           INSTANCE_ID="i-02b7b8b1b4991922a"
+
           echo "================================="
           echo "Starting INSZoom deployment"
           echo "================================="
+
+          COMMANDS=$(jq -n \
+            --arg bais_url "$BAIS_URL" \
+            --arg admin_url "$ADMIN_URL" \
+            '[
+              "set -e",
+              "sudo -u ubuntu bash -c '\''mkdir -p /home/ubuntu/INSZoom/deploy-temp'\''",
+              ("sudo -u ubuntu bash -c '\''curl -fL \"" + $bais_url + "\" -o /home/ubuntu/INSZoom/deploy-temp/bais-frontend.tar.gz'\''"),
+              ("sudo -u ubuntu bash -c '\''curl -fL \"" + $admin_url + "\" -o /home/ubuntu/INSZoom/deploy-temp/admin-frontend.tar.gz'\''"),
+              "sudo -u ubuntu bash -c '\''rm -rf /home/ubuntu/INSZoom/BAIS/Frontend/dist && mkdir -p /home/ubuntu/INSZoom/BAIS/Frontend/dist && tar -xzf /home/ubuntu/INSZoom/deploy-temp/bais-frontend.tar.gz -C /home/ubuntu/INSZoom/BAIS/Frontend/dist'\''",
+              "sudo -u ubuntu bash -c '\''rm -rf /home/ubuntu/INSZoom/INSZoom/frontend/dist && mkdir -p /home/ubuntu/INSZoom/INSZoom/frontend/dist && tar -xzf /home/ubuntu/INSZoom/deploy-temp/admin-frontend.tar.gz -C /home/ubuntu/INSZoom/INSZoom/frontend/dist'\''",
+              "sudo -u ubuntu bash -c '\''cd /home/ubuntu/INSZoom/Backend && npm ci --omit=dev && pm2 restart inszoom-backend --update-env'\''",
+              "sudo -u ubuntu bash -c '\''rm -rf /home/ubuntu/INSZoom/deploy-temp'\''"
+            ]')
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "set -e",
-              "sudo -u ubuntu bash -c '\''cd /home/ubuntu/INSZoom && git fetch origin && git reset --hard origin/main'\''",
-              "sudo -u ubuntu bash -c '\''cd /home/ubuntu/INSZoom/INSZoom/frontend && rm -rf node_modules package-lock.json && npm install --include=optional && npm run build'\''",
-              "sudo -u ubuntu bash -c '\''cd /home/ubuntu/INSZoom/Backend && rm -rf node_modules package-lock.json && npm install --include=optional && pm2 restart inszoom-backend --update-env'\''"
-            ]' \
+            --parameters "commands=$COMMANDS" \
+            --timeout-seconds 900 \
             --query "Command.CommandId" \
             --output text)
+
           echo "SSM Command ID: $COMMAND_ID"
           echo "Waiting for SSM deployment..."
+
           ATTEMPTS=0
-          MAX_ATTEMPTS=40
+          MAX_ATTEMPTS=60
+
           while true; do
             ATTEMPTS=$((ATTEMPTS+1))
+
             if [ "$ATTEMPTS" -gt "$MAX_ATTEMPTS" ]; then
               echo "================================="
-              echo "INSZoom deployment TIMED OUT waiting for SSM"
+              echo "INSZoom deployment TIMED OUT"
               echo "================================="
               exit 1
             fi
+
             STATUS=$(aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
               --instance-id "$INSTANCE_ID" \
               --query "Status" \
               --output text)
+
             echo "Current SSM status: $STATUS"
+
             case "$STATUS" in
+
               Success)
                 echo "================================="
                 echo "INSZoom deployment successful"
                 echo "================================="
+
                 aws ssm get-command-invocation \
                   --command-id "$COMMAND_ID" \
                   --instance-id "$INSTANCE_ID" \
                   --query "StandardOutputContent" \
                   --output text
+
                 exit 0
                 ;;
+
               Failed|Cancelled|TimedOut|Cancelling)
                 echo "================================="
                 echo "INSZoom deployment FAILED"
                 echo "================================="
+
                 echo "----- STDOUT -----"
+
                 aws ssm get-command-invocation \
                   --command-id "$COMMAND_ID" \
                   --instance-id "$INSTANCE_ID" \
                   --query "StandardOutputContent" \
                   --output text || true
+
                 echo "----- STDERR -----"
+
                 aws ssm get-command-invocation \
                   --command-id "$COMMAND_ID" \
                   --instance-id "$INSTANCE_ID" \
                   --query "StandardErrorContent" \
                   --output text || true
+
                 exit 1
                 ;;
+
               Pending|InProgress|Delayed)
                 sleep 15
                 ;;
+
               *)
                 echo "Unknown SSM status: $STATUS"
                 sleep 15
                 ;;
+
             esac
           done
