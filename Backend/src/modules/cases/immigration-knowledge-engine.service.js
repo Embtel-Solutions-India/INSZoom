@@ -81,8 +81,39 @@ class ImmigrationKnowledgeEngineService {
     return list.filter(Boolean);
   }
 
+  // F-4 fix: questionnaireApplies() checked visaType/visaCategory/caseType/
+  // petitionType/applicantType/employerType, but never checklistRole against
+  // the actual case being orchestrated - so for an employer/employee (or
+  // petitioner/beneficiary) case family, BOTH roles' full questionnaires
+  // (and, via requirementsFromQuestionnaires -> mergeChecklist, both roles'
+  // FULL document/evidence requirement lists) matched every case in the
+  // family equally. orchestrate() (called from initializeCase right after
+  // every case creation) then merged the wrong role's items - e.g. the
+  // employee's required resume/passport/I-94 - onto the PRINCIPAL
+  // (employer) case's own checklist, re-contaminating what createCase's
+  // per-case role-filtered checklist (case.controller.js) had correctly set
+  // moments earlier. A case with no distinct principal/child role at all
+  // (caseRole "single", or no caseStructure) gets no restriction here -
+  // matching the "empty targetRole = shared" convention used everywhere else
+  // this pattern appears (filterChecklistForRole in case.controller.js).
+  static expectedChecklistRoleForCase(caseData) {
+    if (caseData.caseStructure === "employer_employee") {
+      if (caseData.caseRole === "principal") return "employer";
+      if (caseData.caseRole === "employee") return "employee";
+    }
+    if (caseData.caseStructure === "family") {
+      if (caseData.caseRole === "principal") return "petitioner";
+      if (caseData.caseRole === "beneficiary") return "beneficiary";
+    }
+    return null;
+  }
+
   static questionnaireApplies(questionnaire = {}, caseData = {}) {
     if (!this.hasQuestionnaireScope(questionnaire)) return false;
+    if (questionnaire.checklistRole) {
+      const expectedRole = this.expectedChecklistRoleForCase(caseData);
+      if (expectedRole && questionnaire.checklistRole !== expectedRole) return false;
+    }
     const rules = questionnaire.assignmentRules || {};
     if (rules.required === false) return false;
 

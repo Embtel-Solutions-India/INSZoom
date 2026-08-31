@@ -40,6 +40,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { formGenerationApi, uscisFormsApi } from '../../services/api'
+import { convert as convertPdfFieldChange, extractFieldName, prePopulateFields } from '../../utils/PDFFieldChangeAdapter'
 
 // Must be set in the SAME module that renders <Document>/<Page> (react-pdf's
 // own README warning - module execution order can otherwise silently
@@ -95,6 +96,10 @@ const setByPath = (source, path, value) => {
 const hasValue = (value) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0)
 const sameValue = (left, right) => JSON.stringify(left) === JSON.stringify(right)
 const labelize = (value) => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+const escapeSelector = (value) => {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value)
+  return String(value).replace(/["\\]/g, '\\$&')
+}
 const displayValue = (value) => {
   if (value === undefined || value === null || value === '') return 'Not provided'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
@@ -345,33 +350,135 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
   )
 }
 
+const fieldSourceTone = (field, value, hasError, sessionEdited) => {
+  if (hasError) return 'error'
+  if (sessionEdited) return 'session'
+  if (field?.syncState === 'CONFLICT') return 'conflict'
+  if (field?.syncState === 'MANUAL_OVERRIDE' || field?.manualOverride) return 'override'
+  if (field?.syncState === 'SYNCED' || hasValue(value)) return 'canonical'
+  return ''
+}
+
+const applyNativeFieldValue = (element, value) => {
+  const nextValue = value == null ? '' : value
+  const type = String(element.type || '').toLowerCase()
+  if (type === 'checkbox' || type === 'radio') {
+    const exportValue = element.value && element.value !== 'on' ? element.value : element.getAttribute?.('data-export-value')
+    element.checked = Boolean(nextValue) && (exportValue ? String(nextValue) === String(exportValue) : true)
+    return
+  }
+  element.value = Array.isArray(nextValue) ? nextValue.join(', ') : String(nextValue)
+}
+
+const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit }) => {
+  if (!root) return
+  root.querySelectorAll('input, textarea, select').forEach((element) => {
+    const fieldName = extractFieldName({ target: element })
+    if (!fieldName) return
+    const field = fieldsByName.get(fieldName)
+    const value = getByPath(values, fieldName)
+    const status = fieldSaveStatus[fieldName]
+    const tone = status === 'error'
+      ? 'error'
+      : status === 'saving'
+        ? 'saving'
+        : fieldSourceTone(field, value, Boolean(validationErrors[fieldName]?.length), sessionEditedFields.has(fieldName))
+
+    element.dataset.fieldName = fieldName
+    element.classList.remove('native-field-canonical', 'native-field-override', 'native-field-session', 'native-field-conflict', 'native-field-error', 'native-field-saving', 'native-field-unmapped')
+    if (!field) element.classList.add('native-field-unmapped')
+    if (tone) element.classList.add(`native-field-${tone}`)
+    element.disabled = !canEdit || Boolean(field?.readOnly || field?.readonly)
+    applyNativeFieldValue(element, value)
+  })
+}
+
 // One rasterized USCIS page (the real blank template PDF, via react-pdf)
 // with every in-scope field's overlay positioned on top of it at its real
 // coordinates - this IS the "legit form" look Task 2 asks for, replacing
 // the flat per-field list this component used to render exclusively.
-function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, values, validationErrors, canEdit, selectedFieldName, editingFieldName, onSelectField, onStartEdit, onChangeField, onBlurField, onCommitField, registerPageRef, showBackground = true }) {
+function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, fieldsByName, values, validationErrors, canEdit, selectedFieldName, onSelectField, onNativeFieldInput, onNativeFieldCommit, registerPageRef, showBackground = true, sessionEditedFields, fieldSaveStatus }) {
   const scale = pdfPageWidth ? renderWidth / pdfPageWidth : 1
   const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
+  const pageRef = useRef(null)
+
+  const syncNativeFields = useCallback(() => {
+    applyNativeFieldStateStyles(pageRef.current, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit })
+  }, [canEdit, fieldSaveStatus, fieldsByName, sessionEditedFields, validationErrors, values])
+
+  useEffect(() => {
+    syncNativeFields()
+  }, [syncNativeFields])
+
+  useEffect(() => {
+    const node = pageRef.current
+    if (!node || !showBackground) return undefined
+
+    const handleFocus = (event) => {
+      const fieldName = extractFieldName(event)
+      const field = fieldsByName.get(fieldName)
+      if (field) onSelectField(field)
+    }
+    const handleInput = (event) => onNativeFieldInput(event)
+    const handleChange = (event) => {
+      onNativeFieldInput(event)
+      const targetType = String(event.target?.type || '').toLowerCase()
+      if (targetType === 'checkbox' || targetType === 'radio' || event.target?.tagName === 'SELECT') onNativeFieldCommit(event)
+    }
+    const handleBlur = (event) => onNativeFieldCommit(event)
+
+    node.addEventListener('focusin', handleFocus, true)
+    node.addEventListener('input', handleInput, true)
+    node.addEventListener('change', handleChange, true)
+    node.addEventListener('blur', handleBlur, true)
+    return () => {
+      node.removeEventListener('focusin', handleFocus, true)
+      node.removeEventListener('input', handleInput, true)
+      node.removeEventListener('change', handleChange, true)
+      node.removeEventListener('blur', handleBlur, true)
+    }
+  }, [fieldsByName, onNativeFieldCommit, onNativeFieldInput, onSelectField, showBackground])
   return (
     <div
       id={`uscis-page-${pageNumber}`}
-      ref={(node) => registerPageRef(pageNumber, node)}
-      className="relative mx-auto mb-6 bg-white shadow-md"
+      ref={(node) => {
+        pageRef.current = node
+        registerPageRef(pageNumber, node)
+      }}
+      className="pdf-native-page relative mx-auto mb-6 bg-white shadow-md"
       style={{ width: renderWidth, minHeight: renderHeight }}
     >
+      <style>{`
+        .pdf-native-page .annotationLayer input,
+        .pdf-native-page .annotationLayer textarea,
+        .pdf-native-page .annotationLayer select {
+          border-radius: 2px;
+          outline-offset: 1px;
+          transition: background-color 120ms ease, outline-color 120ms ease;
+        }
+        .pdf-native-page .annotationLayer .native-field-canonical { background-color: rgba(37, 99, 235, 0.10) !important; outline: 1px solid rgba(37, 99, 235, 0.65); }
+        .pdf-native-page .annotationLayer .native-field-override { background-color: rgba(245, 158, 11, 0.15) !important; outline: 1px solid rgba(217, 119, 6, 0.80); }
+        .pdf-native-page .annotationLayer .native-field-session { background-color: rgba(16, 185, 129, 0.13) !important; outline: 2px solid rgba(5, 150, 105, 0.82); }
+        .pdf-native-page .annotationLayer .native-field-conflict { background-color: rgba(251, 191, 36, 0.18) !important; outline: 2px solid rgba(217, 119, 6, 0.85); }
+        .pdf-native-page .annotationLayer .native-field-saving { background-color: rgba(59, 130, 246, 0.16) !important; outline: 2px dashed rgba(37, 99, 235, 0.85); }
+        .pdf-native-page .annotationLayer .native-field-error { background-color: rgba(254, 226, 226, 0.78) !important; outline: 2px solid rgba(220, 38, 38, 0.9); }
+        .pdf-native-page .annotationLayer .native-field-unmapped { outline: 1px dashed rgba(100, 116, 139, 0.55); }
+      `}</style>
       {showBackground ? (
         <Page
           pageNumber={pageNumber}
           width={renderWidth}
-          renderAnnotationLayer={false}
+          renderAnnotationLayer
+          renderForms
           renderTextLayer={false}
+          onRenderSuccess={syncNativeFields}
           loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
           error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {pageNumber}.</div>}
         />
       ) : (
         <div style={{ width: renderWidth, height: renderHeight }} />
       )}
-      <div className="absolute inset-0">
+      {!showBackground && <div className="absolute inset-0">
         {fields.map((field) => (
           <FieldOverlay
             key={field.fieldName}
@@ -381,16 +488,16 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fie
             scale={scale}
             pageHeightPt={pdfPageHeight}
             canEdit={canEdit}
-            editing={editingFieldName === field.fieldName}
+            editing={false}
             selected={selectedFieldName === field.fieldName}
             onSelect={() => onSelectField(field)}
-            onStartEdit={() => onStartEdit(field)}
-            onChange={(nextValue) => onChangeField(field, nextValue)}
-            onBlur={() => onBlurField(field)}
-            onCommit={() => onCommitField(field)}
+            onStartEdit={() => {}}
+            onChange={() => {}}
+            onBlur={() => {}}
+            onCommit={() => {}}
           />
         ))}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -420,6 +527,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const [zoomScale, setZoomScale] = useState(1)
   const [saveState, setSaveState] = useState('saved')
   const [dirtyCount, setDirtyCount] = useState(0)
+  const [fieldSaveStatus, setFieldSaveStatus] = useState({})
+  const [sessionEditedFields, setSessionEditedFields] = useState(() => new Set())
   const [viewerSize, setViewerSize] = useState({ width: PAGE_RENDER_WIDTH, height: 680 })
   const lastSaved = useRef({})
   const valuesRef = useRef({})
@@ -427,6 +536,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const saveStateTimer = useRef(null)
   const pageRefs = useRef(new Map())
   const viewerRef = useRef(null)
+  const pdfDocumentRef = useRef(null)
 
   const loadWorkspace = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -440,6 +550,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       lastSaved.current = structuredClone(nextValues)
       dirtyFieldsRef.current = new Set()
       setDirtyCount(0)
+      setFieldSaveStatus({})
+      setSessionEditedFields(new Set())
       setSaveState('saved')
       setActiveSection((current) => current || next.template?.sections?.[0]?.key || '')
       setErrorMessage('')
@@ -486,6 +598,12 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
 
   const sections = workspace?.template?.sections || []
   const allFields = useMemo(() => sections.flatMap((section) => (section.fields || []).filter((field) => !field.hidden).map((field) => ({ ...field, sectionKey: section.key, sectionTitle: section.title }))), [sections])
+  const fieldsByName = useMemo(() => new Map(allFields.map((field) => [field.fieldName, field])), [allFields])
+  const fieldMetaByName = useMemo(() => Object.fromEntries(allFields.map((field) => [field.fieldName, {
+    sectionKey: field.sectionKey,
+    occurrenceId: field.occurrenceId,
+  }])), [allFields])
+  const knownFieldNames = useMemo(() => allFields.map((field) => field.fieldName), [allFields])
   const selectedField = useMemo(() => allFields.find((field) => field.fieldName === selectedFieldName), [allFields, selectedFieldName])
   const validationErrors = workspace?.caseForm?.validationErrors?.fields || workspace?.validationErrors || {}
   const permissions = workspace?.permissions || {}
@@ -565,10 +683,117 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }, [templateId])
 
+  const handlePdfLoadSuccess = useCallback((pdfDocument) => {
+    pdfDocumentRef.current = pdfDocument
+    setPdfPageCount(pdfDocument.numPages || 0)
+    prePopulateFields(pdfDocument.annotationStorage, valuesRef.current)
+  }, [])
+
+  useEffect(() => {
+    prePopulateFields(pdfDocumentRef.current?.annotationStorage, values)
+  }, [values])
+
   const registerPageRef = useCallback((pageNumber, node) => {
     if (node) pageRefs.current.set(pageNumber, node)
     else pageRefs.current.delete(pageNumber)
   }, [])
+
+  const updateFieldSaveStatus = useCallback((fieldName, status) => {
+    setFieldSaveStatus((current) => ({ ...current, [fieldName]: status }))
+  }, [])
+
+  const persistAdaptedField = useCallback(async (adapted) => {
+    if (!adapted || adapted.error || !canEdit) return false
+    const field = fieldsByName.get(adapted.fieldName)
+    if (!field) return false
+    const value = adapted.value
+    const previous = getByPath(lastSaved.current, adapted.fieldName)
+    if (sameValue(previous, value)) {
+      dirtyFieldsRef.current.delete(adapted.fieldName)
+      setDirtyCount(dirtyFieldsRef.current.size)
+      return true
+    }
+
+    dirtyFieldsRef.current.add(adapted.fieldName)
+    setDirtyCount(dirtyFieldsRef.current.size)
+    setSaveState('saving')
+    updateFieldSaveStatus(adapted.fieldName, 'saving')
+    setErrorMessage('')
+
+    const payload = {
+      fieldName: adapted.fieldName,
+      fieldId: adapted.fieldId,
+      sectionKey: adapted.sectionKey || field.sectionKey,
+      occurrenceId: adapted.occurrenceId,
+      value,
+      reason: adapted.reason,
+    }
+
+    for (let attempt = 0; attempt <= AUTOSAVE_RETRY_DELAYS_MS.length; attempt += 1) {
+      try {
+        if (attempt > 0) setSaveState('retrying')
+        await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, payload)
+        lastSaved.current = setByPath(lastSaved.current, adapted.fieldName, value)
+        dirtyFieldsRef.current.delete(adapted.fieldName)
+        setDirtyCount(dirtyFieldsRef.current.size)
+        setFieldSaveStatus((current) => ({ ...current, [adapted.fieldName]: 'saved' }))
+        setSessionEditedFields((current) => new Set([...current, adapted.fieldName]))
+        setSaveState('saved')
+        setNotice('Saved')
+        if (saveStateTimer.current) clearTimeout(saveStateTimer.current)
+        saveStateTimer.current = setTimeout(() => setSaveState('idle'), 1800)
+        onSaved?.()
+        return true
+      } catch (err) {
+        if (attempt === AUTOSAVE_RETRY_DELAYS_MS.length) {
+          updateFieldSaveStatus(adapted.fieldName, 'error')
+          setSaveState('error')
+          setErrorMessage(err.response?.data?.message || 'Unable to save this PDF field. Please try again.')
+          throw err
+        }
+        await wait(AUTOSAVE_RETRY_DELAYS_MS[attempt])
+      }
+    }
+    return false
+  }, [canEdit, caseId, caseForm._id, fieldsByName, onSaved, updateFieldSaveStatus])
+
+  const adaptPdfChange = useCallback((event, reason = 'Native PDF field edit') => convertPdfFieldChange(event, caseForm._id, valuesRef.current, {
+    fieldMetaByName,
+    knownFieldNames,
+    reason,
+  }), [caseForm._id, fieldMetaByName, knownFieldNames])
+
+  const handleNativeFieldInput = useCallback((event) => {
+    const adapted = adaptPdfChange(event)
+    if (adapted.error) {
+      if (adapted.fieldName) updateFieldSaveStatus(adapted.fieldName, 'error')
+      return
+    }
+    const field = fieldsByName.get(adapted.fieldName)
+    if (!field || !canEdit) return
+    const previousValue = getByPath(valuesRef.current, field.fieldName)
+    if (!sameValue(previousValue, adapted.value)) {
+      setUndoStack((current) => [...current.slice(-49), { fieldName: field.fieldName, value: previousValue, sectionKey: field.sectionKey }])
+      setRedoStack([])
+      dirtyFieldsRef.current.add(field.fieldName)
+      setDirtyCount(dirtyFieldsRef.current.size)
+      setSaveState('dirty')
+      setValues((current) => {
+        const next = setByPath(current, field.fieldName, adapted.value)
+        valuesRef.current = next
+        return next
+      })
+    }
+  }, [adaptPdfChange, canEdit, fieldsByName, updateFieldSaveStatus])
+
+  const handleNativeFieldCommit = useCallback(async (event) => {
+    const adapted = adaptPdfChange(event)
+    if (adapted.error) {
+      if (adapted.fieldName) updateFieldSaveStatus(adapted.fieldName, 'error')
+      return
+    }
+    await persistAdaptedField(adapted)
+  }, [adaptPdfChange, persistAdaptedField, updateFieldSaveStatus])
 
   // Phase 3 (§I.5): retries a single field's save up to AUTOSAVE_RETRY_DELAYS_MS.length times with
   // exponential backoff before giving up. savePendingChanges' own try/catch (below) is unchanged -
@@ -577,21 +802,13 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const saveFieldByName = useCallback(async (fieldName, value, reason = 'Interactive USCIS form review') => {
     const field = allFields.find((item) => item.fieldName === fieldName)
     if (!field || !canEdit) return
-    const payload = { fieldName: field.fieldName, sectionKey: field.sectionKey, value, reason }
-    for (let attempt = 0; attempt <= AUTOSAVE_RETRY_DELAYS_MS.length; attempt += 1) {
-      try {
-        if (attempt > 0) setSaveState('retrying')
-        await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, payload)
-        lastSaved.current = setByPath(lastSaved.current, field.fieldName, value)
-        dirtyFieldsRef.current.delete(field.fieldName)
-        setDirtyCount(dirtyFieldsRef.current.size)
-        return
-      } catch (err) {
-        if (attempt === AUTOSAVE_RETRY_DELAYS_MS.length) throw err
-        await wait(AUTOSAVE_RETRY_DELAYS_MS[attempt])
-      }
-    }
-  }, [allFields, canEdit, caseId, caseForm._id])
+    const adapted = convertPdfFieldChange({ fieldName: field.fieldName, fieldType: field.fieldType, value }, caseForm._id, valuesRef.current, {
+      fieldMetaByName,
+      knownFieldNames,
+      reason,
+    })
+    await persistAdaptedField(adapted)
+  }, [allFields, canEdit, caseForm._id, fieldMetaByName, knownFieldNames, persistAdaptedField])
 
   const savePendingChanges = useCallback(async (reason = 'Auto-save before action', options = {}) => {
     if (!canEdit || !dirtyFieldsRef.current.size) return true
@@ -944,7 +1161,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     setSelectedFieldName(next.fieldName)
     setActiveSection(next.sectionKey)
     setEditingFieldName(canEdit ? next.fieldName : '')
-    document.getElementById(`uscis-field-${CSS.escape(next.fieldName)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    document.getElementById(`uscis-field-${escapeSelector(next.fieldName)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   const handleClose = async () => {
@@ -1205,7 +1422,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               file={templatePdfUrl}
               loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>}
               error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to load the official USCIS PDF - field data is still shown below once pages render.</div>}
-              onLoadSuccess={({ numPages }) => setPdfPageCount(numPages)}
+              onLoadSuccess={handlePdfLoadSuccess}
             >
               {pageNumbers.map((pageNumber) => {
                 const dims = pageDimensionsByNumber.get(pageNumber) || {}
@@ -1223,17 +1440,17 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       pdfPageHeight={dims.height || 792}
                       renderWidth={renderWidth}
                       fields={fieldsByPage.get(pageNumber) || []}
+                      fieldsByName={fieldsByName}
                       values={values}
                       validationErrors={validationErrors}
                       canEdit={canEdit}
                       selectedFieldName={selectedFieldName}
-                      editingFieldName={editingFieldName}
                       onSelectField={selectField}
-                      onStartEdit={startEditField}
-                      onChangeField={updateField}
-                      onBlurField={blurEditingField}
-                      onCommitField={commitEditingField}
+                      onNativeFieldInput={handleNativeFieldInput}
+                      onNativeFieldCommit={handleNativeFieldCommit}
                       registerPageRef={registerPageRef}
+                      sessionEditedFields={sessionEditedFields}
+                      fieldSaveStatus={fieldSaveStatus}
                     />
                   </div>
                 )
@@ -1257,18 +1474,18 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       pdfPageHeight={dims.height || 792}
                       renderWidth={renderWidth}
                       fields={fieldsByPage.get(pageNumber) || []}
+                      fieldsByName={fieldsByName}
                       values={values}
                       validationErrors={validationErrors}
                       canEdit={canEdit}
                       selectedFieldName={selectedFieldName}
-                      editingFieldName={editingFieldName}
                       onSelectField={selectField}
-                      onStartEdit={startEditField}
-                      onChangeField={updateField}
-                      onBlurField={blurEditingField}
-                      onCommitField={commitEditingField}
+                      onNativeFieldInput={handleNativeFieldInput}
+                      onNativeFieldCommit={handleNativeFieldCommit}
                       registerPageRef={registerPageRef}
                       showBackground={false}
+                      sessionEditedFields={sessionEditedFields}
+                      fieldSaveStatus={fieldSaveStatus}
                     />
                   </div>
                 )

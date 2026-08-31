@@ -7,7 +7,7 @@ const validate = require("../../middleware/validate");
 const upload = require("../uploads/upload.middleware");
 const ctrl = require("./document.controller");
 
-const allDocumentRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee"];
+const allDocumentRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee", "beneficiary"];
 const staffRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const reviewRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 

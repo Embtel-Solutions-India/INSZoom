@@ -87,6 +87,31 @@ async function notifyStaffOfLead(lead) {
   realtimeGateway.emitToRole("case_manager", "lead:created", lead);
 }
 
+async function createConsultationLead(payload = {}, req, options = {}) {
+  const visaPathway = clean(payload.visaPathway || payload.visaType || payload.visaInterest || payload.visa);
+  const message = clean(payload.message || payload.note);
+  const lead = await LeadModel.create({
+    fullName: clean(payload.fullName || payload.name),
+    email: clean(payload.email).toLowerCase(),
+    phone: clean(payload.phone),
+    visaPathway,
+    visaInterest: visaPathway,
+    source: clean(payload.source) || "BAIS consultation request",
+    message,
+    status: options.status || "new",
+    leadNumber: await CaseNumberService.nextLeadNumber(),
+    consultationId: options.consultationId || null,
+    consultation: {
+      requestedAt: options.requestedAt || new Date(),
+      scheduledAt: options.scheduledAt || null,
+      notes: message,
+    },
+    userAgent: req?.headers?.["user-agent"],
+  });
+  await notifyStaffOfLead(lead);
+  return lead;
+}
+
 // Backward-compatible entry point for the existing `/leads/public` contract
 // (BAIS appointment/consultation form). Now ALSO persists a `Lead` document
 // (previously this only ever produced a mailto: link and never touched the
@@ -109,18 +134,19 @@ async function createLead(payload = {}, req) {
   const email = buildLeadEmail(leadData);
   leadData.mailtoUrl = email.mailtoUrl;
 
-  const persisted = await LeadModel.create({
+  const persisted = await createConsultationLead({
     fullName: leadData.fullName,
     email: leadData.email,
     phone: leadData.phone,
-    visaPathway: leadData.visaType,
+    visaType: leadData.visaType,
     source: leadData.source,
     message: leadData.message,
-    userAgent: leadData.userAgent,
+  }, req, {
+    status: "new",
+    requestedAt: leadData.createdAt,
   });
-  await notifyStaffOfLead(persisted);
 
-  return { lead: leadData, email };
+  return { lead: { ...leadData, leadId: persisted._id, leadNumber: persisted.leadNumber }, email };
 }
 
 // Full public-quiz lead: persists the complete quiz payload (profile +
@@ -264,6 +290,7 @@ module.exports = {
   LEAD_EMAIL_RECIPIENT,
   buildLeadEmail,
   createLead,
+  createConsultationLead,
   createQuizLead,
   createLeadFromQuiz,
   createLeadFromIntake,

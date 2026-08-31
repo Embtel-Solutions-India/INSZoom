@@ -718,6 +718,7 @@ class InteractiveFormReviewService {
       // defensive rather than assuming sourcePath is always present.
       if (sourcePath) {
         await CanonicalProfileService.applyStaffEdit(caseId, [{ path: sourcePath, value: newValue, reason: "conflict_resolved_canonical", sourceFormId: caseForm._id }], user, req);
+        await AutoFillService.applyFormEditToProfile(caseId, sourcePath, newValue, caseForm, user, "conflict_resolved_canonical");
       }
       const filledData = caseForm.filledData || {};
       MappingResolver.setPath(filledData, fieldName, newValue);
@@ -739,6 +740,7 @@ class InteractiveFormReviewService {
         const reverseSyncEligible = [...reverseIndex.values()].flat().some((entry) => entry.pdfField === fieldName && entry.reverseSync);
         if (reverseSyncEligible) {
           await CanonicalProfileService.applyStaffEdit(caseId, [{ path: sourcePath, value: newValue, reason: "conflict_resolved_manual", sourceFormId: caseForm._id }], user, req);
+          await AutoFillService.applyFormEditToProfile(caseId, sourcePath, newValue, caseForm, user, "conflict_resolved_manual");
         }
       }
     }

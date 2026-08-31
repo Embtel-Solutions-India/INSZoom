@@ -38,7 +38,7 @@ export default function PasswordField({
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="w-full pl-10 pr-12 py-3 text-sm text-slate-800 placeholder-slate-400
+        className="bais-password-input w-full pl-10 pr-12 py-3 text-sm text-slate-800 placeholder-slate-400
           border border-slate-200 rounded-xl bg-white outline-none box-border
           hover:border-slate-300
           focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
@@ -56,6 +56,12 @@ export default function PasswordField({
       >
         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
       </button>
+      <style>{`
+        .bais-password-input::-ms-reveal,
+        .bais-password-input::-ms-clear {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 }

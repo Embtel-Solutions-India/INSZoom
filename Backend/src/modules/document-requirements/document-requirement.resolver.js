@@ -47,6 +47,13 @@ async function requirementsFromCanonicalDb(visaType) {
     status: { $ne: "archived" },
     isActive: { $ne: false },
     latestVersion: { $ne: false },
+    // F-4 fix: immigration-knowledge-engine.service.js's applicableQuestionnaires()
+    // already scopes its own questionnaire query to module "cases"/"clients" -
+    // this resolver had no such filter, so an auto-generated "uscis_forms"-module
+    // reference/definition questionnaire (e.g. IntelligentQuestionnaireService's
+    // regenerated per-case "Filing Intake" composite, hundreds of questions) could
+    // contribute document requirements no real checklist UI ever surfaced.
+    module: { $in: ["cases", "clients"] },
     $or: [
       { visaType: { $in: regexes } },
       { visaTypes: { $in: regexes } },
@@ -83,9 +90,44 @@ async function resolveDocumentRequirements(visaOrProfile, options = {}) {
   return generateConfigChecklist(visaType);
 }
 
+// F-4 fix: DocumentsValidator (CanonicalSectionValidators.js) used to
+// require this case's Document records to cover the visa's ENTIRE
+// employer+employee combined document set - resolveDocumentRequirements
+// returns every role's requirements together (by design, for createCase's
+// per-case-role filtering in case.controller.js), with no role split
+// applied here. For a single case (e.g. the employee child case) that can
+// never be satisfied, since e.g. business_license belongs to the
+// principal/employer case's own Documents, not this one's. Mirrors
+// case.controller.js's filterChecklistForRole exactly: keep an item if it
+// has no targetRole (shared) or its targetRole matches this case's role.
+function expectedDocumentRoleForCase(caseInfo = {}) {
+  if (caseInfo.caseStructure === "employer_employee") {
+    if (caseInfo.caseRole === "principal") return "employer";
+    if (caseInfo.caseRole === "employee") return "employee";
+  }
+  if (caseInfo.caseStructure === "family") {
+    if (caseInfo.caseRole === "principal") return "petitioner";
+    if (caseInfo.caseRole === "beneficiary") return "beneficiary";
+  }
+  return null;
+}
+
 async function resolveDocumentRequirementTypes(profile = {}) {
   const requirements = await resolveDocumentRequirements(profile, { format: "documentTypes" });
-  return requirements.map((item) => (typeof item === "string" ? item : item.documentType || item.name)).filter(Boolean);
+  const expectedRole = expectedDocumentRoleForCase(profile.case || {});
+  const scoped = requirements
+    .filter((item) => typeof item === "string" || !item.targetRole || item.targetRole === expectedRole || !expectedRole)
+    // F-4 fix: every item's own `required` flag (question.required !== false,
+    // set by fileQuestionToRequirement) was being discarded by the final
+    // .map() below, so DocumentsValidator treated every OPTIONAL document
+    // question (most of the H-1B employee checklist's file questions -
+    // academic_certificates, dependent_*, previous_i797_notices, etc.) as
+    // mandatory for canonical completeness, blocking Generate Forms on
+    // documents the real checklist never marked with a REQUIRED badge.
+    // String items (the config-fallback path, no per-item required info)
+    // keep their original all-required semantics.
+    .filter((item) => typeof item === "string" || item.required !== false);
+  return scoped.map((item) => (typeof item === "string" ? item : item.documentType || item.name)).filter(Boolean);
 }
 
 module.exports = {

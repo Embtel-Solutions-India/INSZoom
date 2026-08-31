@@ -22,6 +22,7 @@ const participantService = require("./case-participant.service");
 
 const ADMIN_ROLES = ["super_admin", "admin"];
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const RESTRICTED_PORTAL_ROLES = ["employee", "beneficiary"];
 const ASSIGNMENT_FIELD_BY_ROLE = {
   primary_owner: "primaryOwner",
   secondary_owner: "secondaryOwner",
@@ -59,6 +60,39 @@ function sameId(left, right) {
   return leftId && rightId && leftId.toString() === rightId.toString();
 }
 
+function userCaseIdSet(user) {
+  return new Set([...(user?.caseIds || []), user?.primaryCaseId].filter(Boolean).map(String));
+}
+
+function isRestrictedPortalRole(role) {
+  return RESTRICTED_PORTAL_ROLES.includes(normalizeRole(role));
+}
+
+function canAccessRestrictedChildCase(user, caseData, role = normalizeRole(user?.role)) {
+  if (!user || !caseData || !isRestrictedPortalRole(role)) return false;
+  if (normalizeRole(caseData.caseRole) !== role) return false;
+
+  const ids = userCaseIdSet(user);
+  const ownsCase = ids.has(String(caseData._id)) || sameId(caseData.user, user._id);
+  if (!ownsCase) return false;
+
+  if (user.principalCaseId) {
+    const parentId = caseData.parentCase?._id || caseData.parentCase || caseData.principalCaseId;
+    if (parentId && !sameId(parentId, user.principalCaseId)) return false;
+  }
+  return true;
+}
+
+function buildRestrictedCaseOwnershipFilter(user, role = normalizeRole(user?.role)) {
+  const ids = [...userCaseIdSet(user)].map(castObjectId);
+  if (!ids.length) return { _id: null };
+  return {
+    _id: { $in: ids },
+    caseRole: role,
+    ...(user.principalCaseId ? { parentCase: castObjectId(user.principalCaseId) } : {}),
+  };
+}
+
 function castObjectId(value) {
   if (!value || value instanceof mongoose.Types.ObjectId) return value;
   if (typeof value === "string" && mongoose.Types.ObjectId.isValid(value)) return new mongoose.Types.ObjectId(value);
@@ -68,6 +102,7 @@ function castObjectId(value) {
 function canAccessCase(user, caseData) {
   if (!user || !caseData) return false;
   const role = normalizeRole(user.role);
+  if (isRestrictedPortalRole(role)) return canAccessRestrictedChildCase(user, caseData, role);
   if (isAdmin(user)) return true;
   if (sameId(caseData.user, user._id)) return true;
   if (sameId(caseData.employeeUser, user._id)) return true;
@@ -96,10 +131,10 @@ function applyCaseRoleFilter(filter, user) {
   if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
   else if (role === "team_lead") filter.$and = [...(filter.$and || []), { $or: [{ assignedTeamLead: user._id }, { primaryOwner: user._id }, ...(user.teamId ? [{ teamId: user.teamId }] : [])] }];
   else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
-  else if (role === "employee") filter.$and = [...(filter.$and || []), { $or: [{ employeeUser: user._id }, { user: user._id }, { "employeeInvite.email": user.email }, { "participants.userId": user._id }, { "participants.email": user.email }] }];
+  else if (role === "employee") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
   // employer/employee branches immediately above under separate field names.
-  else if (role === "beneficiary") filter.$and = [...(filter.$and || []), { $or: [{ beneficiaryUser: user._id }, { user: user._id }, { "beneficiaryInvite.email": user.email }, { "participants.userId": user._id }, { "participants.email": user.email }] }];
+  else if (role === "beneficiary") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   else {
     filter.$and = [...(filter.$and || []), { $or: [{ user: user._id }, { clientProfile: user._id }, { petitionerUser: user._id }] }];
   }
@@ -333,7 +368,7 @@ function summarizeCase(caseData) {
 function serializeCaseForUser(caseData, user) {
   const data = caseData?.toObject ? caseData.toObject({ virtuals: true }) : { ...(caseData || {}) };
   const role = normalizeRole(user?.role);
-  if (["client", "user"].includes(role)) {
+  if (["client", "user", ...RESTRICTED_PORTAL_ROLES].includes(role)) {
     delete data.internalNotes;
     delete data.auditHistory;
     delete data.notes;
@@ -341,6 +376,37 @@ function serializeCaseForUser(caseData, user) {
       delete data.knowledgePlan.configurationIssues;
       delete data.knowledgePlan.ruleSources;
     }
+  }
+  if (isRestrictedPortalRole(role)) {
+    [
+      "addons",
+      "assignedAgentUser",
+      "assignedCaseManager",
+      "assignedTeamLead",
+      "assignmentHistory",
+      "childCases",
+      "companyId",
+      "employer",
+      "employerUser",
+      "linkedCases",
+      "organization",
+      "parentCase",
+      "paymentReferences",
+      "petitioner",
+      "petitionerUser",
+      "plan",
+      "primaryOwner",
+      "secondaryOwner",
+      "taskReferences",
+      "teamId",
+      "workflowReferences",
+    ].forEach((field) => delete data[field]);
+    if (Array.isArray(data.timeline)) {
+      data.timeline = data.timeline
+        .filter((event) => !["assignment", "payment", "addon", "internal_note"].includes(String(event.type || "")))
+        .map((event) => ({ type: event.type, title: event.title, description: event.description, createdAt: event.createdAt }));
+    }
+    if (Array.isArray(data.activityLog)) delete data.activityLog;
   }
   return data;
 }
@@ -629,6 +695,8 @@ module.exports = {
   addTimelineEvent,
   assignUser,
   buildCaseFilter,
+  buildRestrictedCaseOwnershipFilter,
+  canAccessRestrictedChildCase,
   resolveCaseSearchFilter,
   buildCaseSort,
   canAccessCase,
@@ -638,6 +706,7 @@ module.exports = {
   getRelatedRecords,
   hydrateCaseRelationships,
   isAdmin,
+  isRestrictedPortalRole,
   isStaff,
   linkCases,
   populateCaseListQuery,

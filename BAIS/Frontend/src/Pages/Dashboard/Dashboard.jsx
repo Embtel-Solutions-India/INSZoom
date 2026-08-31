@@ -777,7 +777,7 @@ export default function Dashboard() {
       timeline: workflow?.timeline || normalizedCase.timeline,
     } : null;
     setCaseData(nextCase);
-    if (nextCase?._id) {
+    if (!isEmployee && nextCase?._id) {
       setAddonsLoading(true);
       casesApi.addons(nextCase._id)
         .then((response) => {
@@ -793,7 +793,7 @@ export default function Dashboard() {
         .finally(() => setAddonsLoading(false));
     }
     return nextCase;
-  }, []);
+  }, [isEmployee]);
 
   const handlePurchaseAddon = async (addonKey) => {
     if (!caseData?._id || purchasingAddon) return;
@@ -850,18 +850,20 @@ export default function Dashboard() {
       .then((docs) => setDocsCount(Array.isArray(docs) ? docs.length : 0))
       .catch(() => {});
 
-    messagesApi.getUnreadCount()
-      .then((r) => setUnreadMessages(r.unreadCount || 0))
-      .catch(() => {});
+    if (!isEmployee) {
+      messagesApi.getUnreadCount()
+        .then((r) => setUnreadMessages(r.unreadCount || 0))
+        .catch(() => {});
 
-    paymentsApi.summary()
-      .then(setPaymentSummary)
-      .catch(() => setPaymentSummary(null));
+      paymentsApi.summary()
+        .then(setPaymentSummary)
+        .catch(() => setPaymentSummary(null));
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [navigate, loadCase]);
+  }, [navigate, loadCase, isEmployee]);
 
   const savedAt = profileData?.updatedAt;
 
@@ -1078,25 +1080,27 @@ export default function Dashboard() {
               />
             </>
           )}
-          <Link to="/dashboard/messages" className="no-underline">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow relative">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-violet-50 text-violet-600 relative">
-                <Ic.Mail />
-                {unreadMessages > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[0.6rem] font-extrabold rounded-full flex items-center justify-center">
-                    {unreadMessages}
-                  </span>
-                )}
+          {!isEmployee && (
+            <Link to="/dashboard/messages" className="no-underline">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow relative">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-violet-50 text-violet-600 relative">
+                  <Ic.Mail />
+                  {unreadMessages > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[0.6rem] font-extrabold rounded-full flex items-center justify-center">
+                      {unreadMessages}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">Messages</p>
+                  <p className="text-2xl font-extrabold text-slate-800 leading-tight mt-0.5">{unreadMessages || "0"}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {unreadMessages > 0 ? `${unreadMessages} unread message${unreadMessages > 1 ? "s" : ""}` : "No new messages"}
+                  </p>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">Messages</p>
-                <p className="text-2xl font-extrabold text-slate-800 leading-tight mt-0.5">{unreadMessages || "0"}</p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {unreadMessages > 0 ? `${unreadMessages} unread message${unreadMessages > 1 ? "s" : ""}` : "No new messages"}
-                </p>
-              </div>
-            </div>
-          </Link>
+            </Link>
+          )}
         </div>
 
         {/* ── Case Progress Tracker ── */}

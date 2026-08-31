@@ -1,36 +1,39 @@
 import { useEffect, useState } from "react";
-import { casesApi, employerProfileApi, employeeProfileApi } from "../../services/api";
-import CanonicalProfileForm from "./CanonicalProfileForm";
-import { EMPLOYER_FIELD_GROUPS, EMPLOYEE_FIELD_GROUPS } from "./canonicalFieldGroups";
+import { casesApi } from "../../services/api";
+import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
+import CaseRoleChecklist, { CaseRoleChecklistView } from "./CaseRoleChecklist";
 import DataEntryModeModal from "./DataEntryModeModal";
 import InvitePanel from "./InvitePanel";
 
-// Top-level orchestrator for a caseRole=principal Case — the Phase 9
-// employer/petitioner questionnaire, the one-time fill-self-vs-invite
-// choice, and (depending on that choice) either the per-employee tabs or
-// the invite panel. Rendered by Documents.jsx only when
-// activeCase.caseRole === 'principal' (a genuinely new-architecture case
-// with real child Cases) — see PHASE_9_COMPLETION_REPORT.md for why this is
-// additive alongside the older employer_employee flow rather than a
-// replacement of it.
+// Top-level orchestrator for a caseRole=principal Case — the employer/
+// petitioner questionnaire (rendered through the SAME card-based
+// ChecklistItemRow UI + OCR autofill the original single-Case
+// employer_employee flow already used, via CaseRoleChecklist — see that
+// file's own comment for why per-Case targeting gives free per-employee data
+// isolation), the one-time fill-self-vs-invite choice, and (depending on
+// that choice) either the per-employee tabs or the invite panel. Rendered by
+// Documents.jsx only when activeCase.caseRole === 'principal' (a genuinely
+// new-architecture case with real child Cases).
 export default function PrincipalCaseWorkspace({ activeCase }) {
   const principalId = activeCase._id;
   const isFamily = activeCase.caseStructure === "family";
+  const employerTargetRole = isFamily ? "petitioner" : "employer";
+  const employeeTargetRole = isFamily ? "beneficiary" : "employee";
 
   const [dataEntryMode, setDataEntryMode] = useState(activeCase.dataEntryMode);
-  const [employerProfile, setEmployerProfile] = useState(null);
   const [children, setChildren] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [activeChildId, setActiveChildId] = useState(null);
 
-  const fetchAll = async () => {
-    setLoading(true);
+  // Called here (not inside CaseRoleChecklist) so this component can also
+  // read employerQa.answers to gate the data-entry-mode modal below, without
+  // fetching the same case+role questionnaire twice.
+  const employerQa = useQuestionnaireAnswers(principalId, employerTargetRole);
+
+  const fetchChildren = async () => {
+    setLoadingChildren(true);
     try {
-      const [profileRes, relatedRes] = await Promise.all([
-        employerProfileApi.get(principalId),
-        casesApi.getRelated(principalId),
-      ]);
-      setEmployerProfile(profileRes?.profile || null);
+      const relatedRes = await casesApi.getRelated(principalId);
       // Invariant 5: a removed child's data is preserved server-side, but it
       // no longer shows as an active tab/invite slot here.
       const activeChildren = (relatedRes?.childCases || []).filter((c) => c.status !== "removed");
@@ -39,28 +42,22 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
     } catch (err) {
       console.error("Failed to load matter data:", err);
     } finally {
-      setLoading(false);
+      setLoadingChildren(false);
     }
   };
 
   useEffect(() => {
-    fetchAll();
+    fetchChildren();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principalId]);
 
-  const employerProfileStarted = Boolean(
-    employerProfile?.canonicalData?.legalName?.value || employerProfile?.canonicalData?.contact?.email?.value
+  const employerHasAnyAnswer = Object.values(employerQa.answers || {}).some(
+    (value) => value !== "" && value !== null && value !== undefined
   );
-  // INVARIANT 6: only shown for employer_employee/family, only while
-  // dataEntryMode is still 'not_set', and only once the employer has
-  // actually entered something (so it doesn't interrupt them mid-questionnaire).
-  const showModeModal = dataEntryMode === "not_set" && employerProfileStarted;
-
-  const handleEmployerSave = async (fields) => {
-    const res = await employerProfileApi.upsert(principalId, fields);
-    setEmployerProfile(res.profile);
-    return res;
-  };
+  // Only shown for employer_employee/family, only while dataEntryMode is
+  // still 'not_set', and only once the employer has actually entered
+  // something (so it doesn't interrupt them the instant the page loads).
+  const showModeModal = dataEntryMode === "not_set" && employerHasAnyAnswer;
 
   const handleModeSelected = (mode) => setDataEntryMode(mode);
 
@@ -68,7 +65,7 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
     if (!window.confirm("Remove this employee from the case? Their information will be preserved, but they'll no longer appear here.")) return;
     try {
       await casesApi.removeEmployee(childId);
-      await fetchAll();
+      await fetchChildren();
     } catch (err) {
       alert(err.message || "Failed to remove employee");
     }
@@ -78,23 +75,18 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
 
   return (
     <div className="space-y-6">
-      <CanonicalProfileForm
-        title={isFamily ? "Petitioner Information" : "Employer Information"}
-        fieldGroups={EMPLOYER_FIELD_GROUPS}
-        profile={employerProfile}
-        onSave={handleEmployerSave}
-      />
+      <CaseRoleChecklistView qa={employerQa} caseId={principalId} />
 
       {showModeModal && (
         <DataEntryModeModal principalCaseId={principalId} isFamily={isFamily} onModeSelected={handleModeSelected} />
       )}
 
-      {loading ? (
+      {loadingChildren ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : (
         <>
           {dataEntryMode === "invite" && (
-            <InvitePanel principalCaseId={principalId} children={children} onChanged={fetchAll} />
+            <InvitePanel principalCaseId={principalId} children={children} onChanged={fetchChildren} />
           )}
 
           {dataEntryMode === "fill_self" && (
@@ -118,57 +110,30 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
                 </div>
               )}
               {activeChild && (
-                <EmployeeTab key={activeChild._id} child={activeChild} onRemove={() => handleRemove(activeChild._id)} />
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleRemove(activeChild._id)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-700"
+                    >
+                      Remove this employee
+                    </button>
+                  </div>
+                  <CaseRoleChecklist key={activeChild._id} caseId={activeChild._id} targetRole={employeeTargetRole} />
+                </div>
               )}
               {!activeChild && <p className="text-sm text-slate-400">No employees on this case yet.</p>}
             </div>
           )}
 
-          {dataEntryMode === "not_set" && !employerProfileStarted && (
+          {dataEntryMode === "not_set" && !employerHasAnyAnswer && (
             <p className="text-sm text-slate-400">
               Complete the {isFamily ? "petitioner" : "employer"} information above to continue.
             </p>
           )}
         </>
       )}
-    </div>
-  );
-}
-
-function EmployeeTab({ child, onRemove }) {
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    employeeProfileApi.get(child._id)
-      .then((res) => { if (!cancelled) setProfile(res?.profile || null); })
-      .catch(() => { if (!cancelled) setProfile(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [child._id]);
-
-  const handleSave = async (fields) => {
-    const res = await employeeProfileApi.upsert(child._id, fields);
-    setProfile(res.profile);
-    return res;
-  };
-
-  if (loading) return <p className="text-sm text-slate-400">Loading…</p>;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <button type="button" onClick={onRemove} className="text-xs font-semibold text-red-600 hover:text-red-700">
-          Remove this employee
-        </button>
-      </div>
-      <CanonicalProfileForm
-        title={child.caseNumber}
-        fieldGroups={EMPLOYEE_FIELD_GROUPS}
-        profile={profile}
-        onSave={handleSave}
-      />
     </div>
   );
 }

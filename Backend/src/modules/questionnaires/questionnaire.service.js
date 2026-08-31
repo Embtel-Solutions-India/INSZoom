@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const Answer = require("../../models/Answer");
 const AuditLog = require("../../models/AuditLog");
 const Case = require("../../models/Case");
+const Document = require("../../models/Document");
 const Question = require("../../models/Question");
 const QuestionLibraryItem = require("../../models/QuestionLibraryItem");
 const Questionnaire = require("../../models/Questionnaire");
@@ -1173,7 +1174,18 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
           dueDate: payload.dueDate,
           value: item.value,
           normalizedValue: item.normalizedValue ?? normalizeAnswerValue(question, item.value),
-          files: item.files || [],
+          // item.files is only ever populated by saveFileAnswer's single-item
+          // call (see below) - the bulk commitAll path (Documents.jsx "Save
+          // progress") resends every current answer as a plain
+          // {questionKey, value} pair with no `files` key at all, for every
+          // question including ones answered by a prior file upload. Falling
+          // back to `|| []` here (the previous behavior) wiped out an
+          // already-uploaded file's metadata the next time the user saved
+          // any OTHER field afterward - found live testing F-4's B003-A case,
+          // where resume/passport answers lost their files array entirely.
+          // Preserve whatever was already on this Answer (from `previous`,
+          // loaded above) when this call didn't touch files at all.
+          files: item.files !== undefined ? item.files : (answerMap[item.questionKey]?.files || []),
           locale: payload.locale || questionnaire.settings?.defaultLocale || "en",
           currentStep: payload.currentStep || "",
           currentPageKey: item.pageKey || payload.currentPageKey,
@@ -1207,6 +1219,9 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     );
     answerMap[item.questionKey] = answer;
     saved.push(answer);
+    if (question.type === "file" && Array.isArray(item.files) && item.files.length && payload.caseId) {
+      await syncDocumentRecordsFromFileAnswer(question, item.files, payload.caseId, user, req);
+    }
   }
   const completion = await calculateCompletion(questionnaire, answerMap, user);
   const detailedProgress = await calculateDetailedProgress(questionnaire, answerMap, user);
@@ -1327,6 +1342,68 @@ async function storeAnswerFiles(files = [], context = {}) {
     });
   }
   return uploaded;
+}
+
+// documentType derivation MUST match document-requirement.resolver.js's
+// fileQuestionToRequirement() exactly - that function is what populates
+// Case.checklistItems/documentChecklist (via createCase), and
+// CaseLifecycleOrchestrator.metrics()'s documentsComplete gate matches a
+// Document's documentType against that same checklist item's documentType
+// (both run through normalizeDocumentKey). A mismatch here would silently
+// leave documentsComplete false even with a real, reviewed Document on file.
+function documentTypeForQuestion(question) {
+  return question.fileConstraints?.requireDocumentCategory || question.metadata?.documentType || question.evidenceCategory || question.key;
+}
+
+// N1 fix (Phase F-4): saveFileAnswer below writes uploaded files ONLY into
+// Answer.files - CaseLifecycleOrchestrator.metrics()'s documentsComplete/
+// documentsReviewed gates read from the Document collection instead (see
+// case-lifecycle-orchestrator.service.js), so a file answered directly
+// through a checklist's own per-question file input (QuestionInput.jsx's
+// type==="file" input -> saveFiles -> saveFileAnswer) never satisfied that
+// gate, even fully uploaded. syncFileAnswerFromDocument (above) already
+// bridges the opposite direction (a Document-model upload -> matching
+// Answer) for whichever upload UI calls POST /documents/*; this is the
+// missing reverse direction for the checklist's own upload inputs, which is
+// the only document-upload surface reachable from the real client
+// questionnaire UI. Idempotent on re-save: matches existing Documents by
+// caseId + documentType + storageKey rather than creating duplicates.
+async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, req) {
+  const documentType = documentTypeForQuestion(question);
+  if (!documentType) return [];
+  const synced = [];
+  for (const file of files) {
+    try {
+      const existing = await Document.findOne({ caseId, documentType, storageKey: file.storageKey });
+      if (existing) {
+        synced.push(existing);
+        continue;
+      }
+      const document = await Document.create({
+        caseId,
+        documentType,
+        category: question.metadata?.category || question.evidenceCategory || "other",
+        originalName: file.originalName,
+        fileName: file.originalName,
+        mimeType: file.mimeType,
+        size: file.size,
+        documentUrl: file.url,
+        storageKey: file.storageKey,
+        status: "uploaded",
+        reviewStatus: "pending",
+        uploadedByUser: user?._id,
+        uploadDate: file.uploadedAt || new Date(),
+      });
+      synced.push(document);
+    } catch (err) {
+      // Best-effort, mirroring syncFileAnswerFromDocument's own contract -
+      // a Document-sync failure must never fail the underlying answer save.
+      logger.warn?.("questionnaire_file_answer_document_sync_failed", {
+        caseId, questionKey: question.key, error: err.message,
+      });
+    }
+  }
+  return synced;
 }
 
 async function saveFileAnswer(payload, files, user, req) {
@@ -2448,6 +2525,8 @@ module.exports = {
   listCaseChecklists,
   resolveVisibleQuestions,
   syncFileAnswerFromDocument,
+  syncDocumentRecordsFromFileAnswer,
+  documentTypeForQuestion,
   removeFileAnswerForDocument,
   getUscisMappings,
   getVisibleQuestions,

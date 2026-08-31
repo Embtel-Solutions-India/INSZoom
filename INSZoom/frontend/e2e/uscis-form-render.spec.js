@@ -14,19 +14,30 @@ import { test, expect } from '@playwright/test'
 // 159.41.196.112:27017 - independent of app code; the per-case route
 // GET /uscis-forms/case/:caseId, which the app itself uses and which this
 // test still exercises via the real "Forms" tab load, has never shown this
-// issue all session). Each ID below is a real, verified CaseForm in this
-// dev DB (confirmed to have a live template + case) - not fabricated.
+// issue all session).
+//
+// Phase 12 fix (P12-M3): every ID below was confirmed stale in F-2/F-4
+// (0 of 7 resolved to a real CaseForm - the dev DB had been reset since this
+// spec last ran). B003-A's I-129 is the first CaseForm this database has
+// ever actually generated (see PHASE_F4_COMPLETION_REPORT.md /
+// docs/forms/PHASE_F4_COMPLETION_REPORT.md) - re-pinned to it directly.
+// The other 6 form codes still have no real CaseForm anywhere in this
+// database (no case has ever been driven through a K-1/I-130/I-539/I-907
+// workflow end-to-end the way B003/B003-A was for H-1B) - left as the prior
+// (stale) IDs rather than guessed at, so this spec fails loudly and
+// specifically on those 6 instead of silently pointing at fabricated data.
+// Re-pin each as its own real CaseForm is generated for that visa type.
 const CASE_MANAGER_EMAIL = process.env.CASE_MANAGER_EMAIL || ''
 const CASE_MANAGER_PASSWORD = process.env.CASE_MANAGER_PASSWORD || ''
 
 const CASE_ID_BY_FORM_CODE = {
-  'I-129': '6a720bec10a0b7740072d8ab',
-  'I-129F': '6a74bfe3bbec82d3647476f7',
-  'I-130': '6a67eb59093e002d62cad815',
-  'I-134': '6a74bfe3bbec82d3647476f7',
-  'I-539': '6a7b860765aadcb329cad887',
-  'I-539A': '6a7b860765aadcb329cad887',
-  'I-907': '6a727ef124b33bd1cd261c46',
+  'I-129': '6a91c30a1afc8b73d9431db9', // B003-A - real, verified (Phase F-4/12)
+  'I-129F': '6a74bfe3bbec82d3647476f7', // STALE - no real CaseForm exists yet
+  'I-130': '6a67eb59093e002d62cad815', // STALE - no real CaseForm exists yet
+  'I-134': '6a74bfe3bbec82d3647476f7', // STALE - no real CaseForm exists yet
+  'I-539': '6a7b860765aadcb329cad887', // STALE - no real CaseForm exists yet
+  'I-539A': '6a7b860765aadcb329cad887', // STALE - no real CaseForm exists yet
+  'I-907': '6a727ef124b33bd1cd261c46', // STALE - no real CaseForm exists yet
 }
 
 async function loginAsCaseManager(page) {

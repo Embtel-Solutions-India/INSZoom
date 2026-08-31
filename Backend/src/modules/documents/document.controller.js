@@ -119,15 +119,7 @@ exports.uploadDocument = async (req, res, next) => {
 exports.createDocument = async (req, res, next) => {
   try {
     if (req.file) return exports.uploadDocument(req, res, next);
-    const document = await Document.create({
-      ...req.body,
-      user: req.body.user || req.body.userId || req.user._id,
-      uploadedByUser: req.user._id,
-      uploadedBy: req.body.uploadedBy || documentService.uploadedByLabel(req.user),
-      legacySource: req.body.legacySource || "INSZoom",
-    });
-    documentService.addAuditEntry(document, "create_metadata", req.user, req.body, req);
-    await document.save();
+    const document = await documentService.createDocumentMetadata({ body: req.body, user: req.user, req });
     await workflowService.documentUploaded(document, req.user);
     await documentService.writeAuditLog("create", document, req.user, req.body, req);
     res.status(201).json({ success: true, document });

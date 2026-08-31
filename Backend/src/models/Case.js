@@ -334,7 +334,15 @@ const participantInviteSchema = new mongoose.Schema(
 
 const participantProgressSchema = new mongoose.Schema(
   {
-    status: { type: String, enum: ["not_started", "not_invited", "invited", "in_progress", "submitted", "needs_info", "approved", "declined", "deleted", "replaced"], default: "not_started", index: true },
+    // "completed" added (F-4 fix): questionnaire.service.js's
+    // applyQuestionnaireCaseSyncAtomic sets this to "completed" once every
+    // required question in a checklist reference is answered (see
+    // nextReferenceStatus, mirroring CaseLifecycleOrchestrator's own
+    // CHECKLIST_DONE_STATUSES set, which already includes "completed"). That
+    // write goes through an atomic updateOne (no document validators run),
+    // so the mismatch silently wrote an enum-invalid value that only
+    // surfaced the next time anything called .save() on the full document.
+    status: { type: String, enum: ["not_started", "not_invited", "invited", "in_progress", "submitted", "completed", "needs_info", "approved", "declined", "deleted", "replaced"], default: "not_started", index: true },
     percent: { type: Number, min: 0, max: 100, default: 0 },
     questionnaire: mongoose.Schema.Types.Mixed,
     checklist: mongoose.Schema.Types.Mixed,

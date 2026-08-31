@@ -244,7 +244,15 @@ const documentSchema = new mongoose.Schema(
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     reviewedAt: Date,
 
-    uploadedBy: { type: String, enum: ["client", "case_manager", "team_lead", "admin", "super_admin", "system"], default: "client" },
+    // "employer"/"employee"/"beneficiary" added (F-4 fix): document.controller.js's
+    // uploadDocument sets uploadedBy from the requesting user's own req.user.role
+    // verbatim (not mapped to a generic bucket), so any of Phase 9's
+    // employer/employee/family-workflow portal roles - all real, valid User.role
+    // values (see caseParticipantSchema.role, which already lists them) - threw
+    // a document-validation error on every real upload. Never caught before
+    // this session because no employer/employee account had ever uploaded
+    // through this endpoint until now.
+    uploadedBy: { type: String, enum: ["client", "employer", "employee", "beneficiary", "case_manager", "team_lead", "admin", "super_admin", "system"], default: "client" },
     uploadedByUser: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uploadDate: { type: Date, default: Date.now, index: true },
 

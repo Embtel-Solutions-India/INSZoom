@@ -6,6 +6,8 @@ import PasswordField from "../../components/auth/PasswordField";
 
 export default function Login() {
   const [email,       setEmail]       = useState("");
+  const [caseId,      setCaseId]      = useState("");
+  const [loginMethod, setLoginMethod] = useState("email");
   const [password,    setPassword]    = useState("");
   const [error,       setError]       = useState("");
   const [loading,     setLoading]     = useState(false);
@@ -55,7 +57,16 @@ export default function Login() {
   }, [user, authLoading, navigate]);
 
   const handleLogin = async () => {
-    if (!email || !password) { setError("Please enter your email and password."); return; }
+    const normalizedCaseId = caseId.trim();
+    const normalizedEmail = email.trim();
+    if (loginMethod === "caseId" && (!normalizedCaseId || !password)) {
+      setError("Please enter your Case ID and password.");
+      return;
+    }
+    if (loginMethod === "email" && (!normalizedEmail || !password)) {
+      setError("Please enter your email and password.");
+      return;
+    }
     setError(""); setPendingInvite(false); setResendSent(false); setLoading(true);
     try {
       // No navigate() here - the already-authenticated-guard effect above
@@ -64,7 +75,11 @@ export default function Login() {
       // race it: this would fire first with a guess, then the guard's async
       // case-check would correct it a beat later, producing exactly the
       // /dashboard-then-/dashboard/intake flash this page is meant to avoid.
-      await login(email, password);
+      await login(
+        loginMethod === "caseId"
+          ? { caseId: normalizedCaseId, password }
+          : { email: normalizedEmail, password }
+      );
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
       if (err.code === "PENDING_INVITE") {
@@ -86,7 +101,7 @@ export default function Login() {
   const handleResendInvite = async () => {
     setResendingInvite(true);
     try {
-      await authApi.resendInvite(email);
+      await authApi.resendInvite(email.trim());
       setResendSent(true);
     } finally {
       setResendingInvite(false);
@@ -171,27 +186,69 @@ export default function Login() {
           {/* Divider */}
           <div className="flex items-center gap-3 mb-5">
             <span className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Or sign in with email</span>
+            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Or sign in with portal credentials</span>
             <span className="flex-1 h-px bg-slate-200" />
           </div>
 
-          {/* Email */}
           <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-          <FieldWrap icon={<MailIcon />}>
-            <input
-              type="email"
-              id="login-email"
-              name="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-                border border-slate-200 rounded-xl bg-white outline-none
-                hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-                transition-all duration-150"
-            />
-          </FieldWrap>
+          <div className="mb-4 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {[
+              { key: "email", label: "Email" },
+              { key: "caseId", label: "Case ID" },
+            ].map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => {
+                  setLoginMethod(option.key);
+                  setError("");
+                  setPendingInvite(false);
+                  setResendSent(false);
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-bold transition ${
+                  loginMethod === option.key
+                    ? "bg-white text-[#0F6E56] shadow-sm"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {loginMethod === "email" ? (
+            <FieldWrap icon={<MailIcon />}>
+              <input
+                type="email"
+                id="login-email"
+                name="email"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
+                  border border-slate-200 rounded-xl bg-white outline-none
+                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
+                  transition-all duration-150"
+              />
+            </FieldWrap>
+          ) : (
+            <FieldWrap icon={<CaseIdIcon />}>
+              <input
+                type="text"
+                id="login-case-id"
+                name="caseId"
+                placeholder="Case ID"
+                value={caseId}
+                onChange={(e) => setCaseId(e.target.value)}
+                autoComplete="username"
+                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
+                  border border-slate-200 rounded-xl bg-white outline-none
+                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
+                  transition-all duration-150"
+              />
+            </FieldWrap>
+          )}
 
           {/* Password */}
           <PasswordField
@@ -351,6 +408,13 @@ function MailIcon() {
   return (
     <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+    </svg>
+  );
+}
+function CaseIdIcon() {
+  return (
+    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" d="M7 7h10M7 12h5m-7 8h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
     </svg>
   );
 }

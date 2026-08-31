@@ -261,6 +261,8 @@ class MappingResolver {
       value,
       source: mapping.source || sourceField.split(".")[0] || "default",
       sourceField,
+      profileOwner: mapping.profileOwner,
+      allowsOccurrenceOverride: mapping.allowsOccurrenceOverride === true,
       confidence: mapping.confidence || this.resolvePath(canonicalData, `${sourceField}.__confidence`) || 100,
       warnings,
     };

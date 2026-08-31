@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { leadsApi } from '../services/api'
 import CreateCaseModal from '../components/CreateCaseModal'
+import CaseCreatedSuccessModal from '../components/CaseCreatedSuccessModal'
 import {
   Inbox,
   Search,
@@ -77,6 +78,7 @@ const Leads = () => {
   const [actionError, setActionError] = useState('')
   const [actioning, setActioning] = useState(false)
   const [showCreateCase, setShowCreateCase] = useState(false)
+  const [createdCaseSuccess, setCreatedCaseSuccess] = useState(null)
 
   const hasLoadedOnce = useRef(false)
 
@@ -173,9 +175,7 @@ const Leads = () => {
 
   const handleCaseCreated = (data) => {
     setShowCreateCase(false)
-    if (data?.case?.caseNumber) {
-      alert(`Case ${data.case.caseNumber} created. The lead is now marked converted.`)
-    }
+    setCreatedCaseSuccess({ caseNumber: data?.case?.caseNumber || '' })
     fetchLeads()
   }
 
@@ -343,6 +343,13 @@ const Leads = () => {
             clientPhone: selectedLead.phone,
             visaType: selectedLead.visaPathway,
           }}
+        />
+      )}
+
+      {createdCaseSuccess && (
+        <CaseCreatedSuccessModal
+          caseNumber={createdCaseSuccess.caseNumber}
+          onClose={() => setCreatedCaseSuccess(null)}
         />
       )}
     </div>

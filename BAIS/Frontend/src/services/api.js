@@ -175,7 +175,12 @@ export const api = {
 export const authApi = {
   register: (displayName, email, password, referralCode, phone, accountType = "client") =>
     api.post("/auth/register", { displayName, email, password, referralCode, phone, accountType }),
-  login: (email, password) => api.post("/auth/login", { email, password }),
+  login: (emailOrPayload, password) => api.post(
+    "/auth/login",
+    typeof emailOrPayload === "object" && emailOrPayload !== null
+      ? emailOrPayload
+      : { email: emailOrPayload, password }
+  ),
   googleToken: (idToken) => api.post("/auth/google-token", { idToken }),
   logout: () => api.post("/auth/logout", {}),
   me: () => api.get("/auth/me"),
@@ -491,6 +496,7 @@ export const casesApi = {
 // "address.city": "San Francisco" }.
 export const employerProfileApi = {
   get: (principalCaseId) => api.get(`/employer-profile/${principalCaseId}`),
+  mySummary: () => api.get("/employer-profile/summary/me"),
   upsert: (principalCaseId, fields, source = "questionnaire") =>
     api.post(`/employer-profile/${principalCaseId}`, { fields, source }),
 };

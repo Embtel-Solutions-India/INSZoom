@@ -40,7 +40,22 @@ export function AuthProvider({ children }) {
   // Re-verifies against /auth/me without ever downgrading a backend/network
   // failure into "logged out" — used on mount and as the retry action
   // ProtectedRoute's error screen offers the user directly.
-  const verifySession = useCallback(async () => {
+  //
+  // Phase 12 fix (P12-C2): a transient /auth/me failure (this dev
+  // environment's remote DB routinely takes 15-45s under load - see
+  // PHASE_F2/F3_COMPLETION_REPORT.md) left `user` at its initial `null`
+  // forever, with no automatic recovery - only ProtectedRoute's manual
+  // "retry" button ever re-ran verifySession(). Navbar renders purely off
+  // `user` (not authStatus), so it showed Login/Sign Up indefinitely for an
+  // actually-valid session, even while other components' own token-bearing
+  // API calls succeeded moments later on their own retry/slower response.
+  // autoRetry (default true) schedules exactly one automatic re-check a few
+  // seconds later on a non-401 failure, so a slow-backend blip self-heals
+  // without the user having to notice and click anything. Explicit manual
+  // retries (ProtectedRoute's button) pass autoRetry:false so a still-down
+  // backend doesn't loop retries silently forever.
+  const verifySessionRef = useRef(null);
+  const verifySession = useCallback(async (autoRetry = true) => {
     const access = tokenStore.getAccess();
     if (!access) {
       setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
@@ -66,9 +81,11 @@ export function AuthProvider({ children }) {
         // the user is logged out. Leave the token alone; ProtectedRoute
         // shows a retry screen instead of bouncing to the login prompt.
         setAuthStatus(AUTH_STATUS.ERROR);
+        if (autoRetry) setTimeout(() => { verifySessionRef.current?.(false); }, 4000);
       }
     }
   }, []);
+  useEffect(() => { verifySessionRef.current = verifySession; }, [verifySession]);
 
   const clearGoogleRedirectUser = useCallback(() => setGoogleRedirectUser(null), []);
   const clearGoogleAuthError = useCallback(() => setGoogleAuthError(""), []);
@@ -109,8 +126,8 @@ export function AuthProvider({ children }) {
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    const data = await authApi.login(email, password);
+  const login = useCallback(async (emailOrPayload, password) => {
+    const data = await authApi.login(emailOrPayload, password);
     tokenStore.set(data.accessToken);
     setUser(data.user);
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);

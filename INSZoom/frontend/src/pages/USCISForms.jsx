@@ -14,12 +14,15 @@ import {
   Eye,
   AlertTriangle
 } from 'lucide-react'
+import InfoModal from '../components/InfoModal'
 
 const USCISForms = () => {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState('templates')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // P12-S2: replaces window.alert() calls previously fired below.
+  const [infoModal, setInfoModal] = useState(null)
 
   // Tab 1: Form Templates
   const [templates, setTemplates] = useState([])
@@ -133,7 +136,7 @@ const USCISForms = () => {
   const handleCheckUpdates = async () => {
     try {
       const response = await api.post('/uscis/forms/scan')
-      alert(response.data.message || 'Form update check completed')
+      setInfoModal({ message: response.data.message || 'Form update check completed' })
       fetchTemplates()
       if (activeTab === 'lifecycle') fetchLifecycle()
     } catch (error) {
@@ -164,7 +167,7 @@ const USCISForms = () => {
   const handleApproveVersion = async (templateId) => {
     try {
       await api.put(`/uscis-forms/${templateId}/approve`)
-      alert('Form version approved successfully')
+      setInfoModal({ message: 'Form version approved successfully' })
       fetchTemplates()
     } catch (error) {
       setError('Failed to approve form version')
@@ -1149,6 +1152,15 @@ const USCISForms = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {infoModal && (
+        <InfoModal
+          title={infoModal.title}
+          message={infoModal.message}
+          variant={infoModal.variant}
+          onClose={() => setInfoModal(null)}
+        />
       )}
     </div>
   )

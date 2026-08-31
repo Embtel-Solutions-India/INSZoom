@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { getRoleDisplayName, getAssignableRoles, canModifyUser, canCreateUserRole } from '../utils/permissions'
+import InfoModal from '../components/InfoModal'
 import {
   Users as UsersIcon,
   Search,
@@ -28,6 +29,8 @@ const Users = () => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // P12-S2: replaces window.alert() calls previously fired below.
+  const [infoModal, setInfoModal] = useState(null)
 
   const assignableRoles = getAssignableRoles(currentUser)
 
@@ -63,7 +66,7 @@ const Users = () => {
 
   const handleCreateUser = () => {
     if (!canCreateUserRole(currentUser, 'case_manager')) {
-      alert('You do not have permission to create users')
+      setInfoModal({ message: 'You do not have permission to create users', variant: 'error' })
       return
     }
     navigate('/users/create')
@@ -71,7 +74,7 @@ const Users = () => {
 
   const handleEditUser = (user) => {
     if (!canModifyUser(currentUser, user)) {
-      alert('You do not have permission to edit this user')
+      setInfoModal({ message: 'You do not have permission to edit this user', variant: 'error' })
       return
     }
     navigate(`/users/${user._id}/edit`)
@@ -79,7 +82,7 @@ const Users = () => {
 
   const handleDeleteUser = (user) => {
     if (!canModifyUser(currentUser, user)) {
-      alert('You do not have permission to delete this user')
+      setInfoModal({ message: 'You do not have permission to delete this user', variant: 'error' })
       return
     }
     setSelectedUser(user)
@@ -94,7 +97,7 @@ const Users = () => {
       fetchUsers()
     } catch (error) {
       console.error('Error deleting user:', error)
-      alert('Failed to delete user')
+      setInfoModal({ message: 'Failed to delete user', variant: 'error' })
     }
   }
 
@@ -297,6 +300,15 @@ const Users = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {infoModal && (
+        <InfoModal
+          title={infoModal.title}
+          message={infoModal.message}
+          variant={infoModal.variant}
+          onClose={() => setInfoModal(null)}
+        />
       )}
     </div>
   )

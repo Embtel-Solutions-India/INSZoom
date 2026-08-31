@@ -69,6 +69,7 @@ export default function BookConsultation() {
       phone: contact.phone,
       startAt: selectedSlot?.startAt,
       note,
+      source: "BAIS scheduled consultation page",
     });
   };
 

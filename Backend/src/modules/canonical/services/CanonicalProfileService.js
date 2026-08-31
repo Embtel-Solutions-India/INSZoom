@@ -303,13 +303,23 @@ class CanonicalProfileService {
   }
 
   static async validate(caseId, user, req, options = {}) {
-    const caseRecord = await Case.findById(caseId);
+    let caseRecord = await Case.findById(caseId);
     if (!caseRecord) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(user, caseRecord)) throw Object.assign(new Error("Not authorized to validate canonical profile"), { status: 403 });
     await this.audit("CANONICAL_VALIDATION_STARTED", caseId, user, req, { options });
-    const state = caseRecord.canonicalProfile?.lastBuiltAt
-      ? caseRecord.canonicalProfile
-      : await this.rebuild(caseId, user, req, { reason: "validation_requested" });
+    let state = caseRecord.canonicalProfile;
+    if (!caseRecord.canonicalProfile?.lastBuiltAt) {
+      state = await this.rebuild(caseId, user, req, { reason: "validation_requested" });
+      // rebuild() above loaded and saved its OWN Case document (bumping
+      // __v). Continuing to mutate/save this method's now-stale caseRecord
+      // would both throw a VersionError and silently overwrite the profile
+      // rebuild() just persisted with this stale, pre-rebuild copy - refetch
+      // once so the rest of this method (and its own save below) operates on
+      // the actual current document. Only needed on this branch - the
+      // already-built branch never touched the document.
+      caseRecord = await Case.findById(caseId);
+      state = caseRecord.canonicalProfile;
+    }
     const validation = await CanonicalValidationService.validate(state, options);
     caseRecord.canonicalProfile = {
       ...(caseRecord.canonicalProfile || state),

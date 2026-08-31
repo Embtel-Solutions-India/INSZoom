@@ -1,7 +1,15 @@
 const AuditLog = require("../../../models/AuditLog");
 const Case = require("../../../models/Case");
 const CaseForm = require("../../../models/CaseForm");
+const EmployeeProfile = require("../../../models/EmployeeProfile");
+const EmployerProfile = require("../../../models/EmployerProfile");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
+const {
+  profilePathForCanonical,
+  ownerForCanonicalPath,
+} = require("../../canonical/config/profileCanonicalMap");
+const employeeProfileService = require("../../employee-profile/employee-profile.service");
+const employerProfileService = require("../../employer-profile/employer-profile.service");
 const CanonicalDataService = require("./CanonicalDataService");
 const FormMappingService = require("./FormMappingService");
 const MappingResolver = require("./MappingResolver");
@@ -327,6 +335,53 @@ class AutoFillService {
     return { canonicalSourcePath: null, reverseSyncEligible: false };
   }
 
+  static async applyFormEditToProfile(caseId, canonicalPath, value, caseForm, user, reason) {
+    const owner = ownerForCanonicalPath(canonicalPath);
+    if (!["employer", "employee"].includes(owner)) return false;
+
+    const caseDoc = await Case.findById(caseId).select("_id caseRole parentCase").lean();
+    if (!caseDoc?.caseRole || caseDoc.caseRole === "single") return false;
+
+    const profilePath = profilePathForCanonical(canonicalPath, owner);
+    if (!profilePath) return false;
+
+    const changeId = `form:${caseForm._id}:${caseForm.versionNumber || 0}:${canonicalPath}:${JSON.stringify(value)}`;
+    const sourceFields = { [profilePath]: canonicalPath };
+    if (owner === "employer") {
+      const principalCaseId = ["employee", "beneficiary"].includes(caseDoc.caseRole) ? caseDoc.parentCase : caseDoc._id;
+      if (!principalCaseId || !(await EmployerProfile.exists({ principalCaseId }))) return false;
+      await employerProfileService.upsertEmployerProfile(
+        principalCaseId,
+        { [profilePath]: value },
+        "form_edit",
+        user,
+        {
+          sourceId: caseForm._id,
+          sourceFields,
+          changeId,
+          reason: reason || "form_edit",
+        }
+      );
+      return true;
+    }
+
+    if (!["employee", "beneficiary"].includes(caseDoc.caseRole)) return false;
+    if (!(await EmployeeProfile.exists({ caseId: caseDoc._id }))) return false;
+    await employeeProfileService.upsertEmployeeProfile(
+      caseDoc._id,
+      { [profilePath]: value },
+      "form_edit",
+      user,
+      {
+        sourceId: caseForm._id,
+        sourceFields,
+        changeId,
+        reason: reason || "form_edit",
+      }
+    );
+    return true;
+  }
+
   static async overrideField(caseId, formType, fieldId, value, user, req, reason) {
     const caseForm = await this.findCaseForm(caseId, formType);
     if (!caseForm) {
@@ -360,6 +415,7 @@ class AutoFillService {
         req
       );
       canonicalVersionChanged = canonicalResult.version !== versionBefore;
+      await this.applyFormEditToProfile(caseId, canonicalSourcePath, value, caseForm, user, reason);
     }
 
     const filledData = caseForm.filledData || {};

@@ -34,4 +34,38 @@ describe("PasswordField", () => {
     expect(screen.getByRole("button", { name: /show password/i })).toBeTruthy();
     expect(handleChange).not.toHaveBeenCalled();
   });
+
+  it("renders one independent visibility toggle per password field", () => {
+    render(
+      <>
+        <PasswordField
+          name="password"
+          placeholder="Password"
+          value="PrimarySecret123"
+          onChange={() => {}}
+          autoComplete="new-password"
+        />
+        <PasswordField
+          name="confirmPassword"
+          placeholder="Confirm Password"
+          value="PrimarySecret123"
+          onChange={() => {}}
+          autoComplete="new-password"
+        />
+      </>
+    );
+
+    const password = screen.getByPlaceholderText("Password");
+    const confirmPassword = screen.getByPlaceholderText("Confirm Password");
+    const toggleButtons = screen.getAllByRole("button", { name: /show password/i });
+
+    expect(toggleButtons).toHaveLength(2);
+    expect(password.getAttribute("type")).toBe("password");
+    expect(confirmPassword.getAttribute("type")).toBe("password");
+
+    fireEvent.click(toggleButtons[0]);
+
+    expect(password.getAttribute("type")).toBe("text");
+    expect(confirmPassword.getAttribute("type")).toBe("password");
+  });
 });
