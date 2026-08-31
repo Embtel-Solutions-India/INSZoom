@@ -10,10 +10,20 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 // render, so React doesn't warn about a cross-component setState-in-render.
 vi.mock('react-pdf', () => ({
   Document: ({ children, onLoadSuccess }) => {
-    useEffect(() => { onLoadSuccess?.({ numPages: 1 }) }, [onLoadSuccess])
+    useEffect(() => { onLoadSuccess?.({ numPages: 1, annotationStorage: { setValue: vi.fn() } }) }, [onLoadSuccess])
     return <div data-testid="pdf-document">{children}</div>
   },
-  Page: ({ pageNumber }) => <div data-testid={`pdf-page-${pageNumber}`} />,
+  Page: ({ pageNumber, onRenderSuccess }) => {
+    useEffect(() => { onRenderSuccess?.({ pageNumber }) }, [onRenderSuccess, pageNumber])
+    return (
+      <div data-testid={`pdf-page-${pageNumber}`}>
+        <div className="annotationLayer">
+          <input title="First Name" name="beneficiary.firstName" defaultValue="" />
+          <input title="Last Name" name="beneficiary.lastName" defaultValue="Smith" />
+        </div>
+      </div>
+    )
+  },
   pdfjs: { GlobalWorkerOptions: {} },
 }))
 vi.mock('react-pdf/dist/Page/AnnotationLayer.css', () => ({}))
@@ -121,7 +131,7 @@ function makeWorkspaceWithField(fieldOverrides = {}) {
 }
 
 describe('USCISFormRenderer', () => {
-  it('renders the form header and field overlay once the workspace and template PDF both load', async () => {
+  it('renders the form header and native PDF field once the workspace and template PDF both load', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspace() })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
@@ -245,9 +255,8 @@ describe('USCISFormRenderer', () => {
       .mockResolvedValueOnce({})
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-    const overlayButton = await screen.findByTitle('Last Name')
-    fireEvent.click(overlayButton)
-    const input = await screen.findByDisplayValue('Smith')
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'Johnson' } })
     fireEvent.blur(input)
 
@@ -263,9 +272,8 @@ describe('USCISFormRenderer', () => {
     saveWorkspaceFieldApi.mockImplementation(() => new Promise(() => {})) // never resolves - save stays in flight
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-    const overlayButton = await screen.findByTitle('Last Name')
-    fireEvent.click(overlayButton)
-    const input = await screen.findByDisplayValue('Smith')
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'Johnson' } })
     fireEvent.blur(input)
     await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))

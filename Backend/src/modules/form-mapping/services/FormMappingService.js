@@ -22,6 +22,8 @@ class FormMappingService {
         transform: edge.transform,
         condition: edge.condition,
         repeatable: edge.repeatable,
+        profileOwner: edge.profileOwner,
+        allowsOccurrenceOverride: edge.allowsOccurrenceOverride === true,
         confidence: edge.confidence,
         status: edge.status,
       });
@@ -135,6 +137,8 @@ class FormMappingService {
         value: result.value,
         source: result.source,
         sourceField: result.sourceField,
+        profileOwner: result.profileOwner,
+        allowsOccurrenceOverride: result.allowsOccurrenceOverride === true,
         confidence: result.confidence,
         generatedAt: new Date(),
         validationStatus: "not_validated",

@@ -24,6 +24,12 @@ import { isEmployeeAccount } from "../utils/auth";
 const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const CLIENT_PORTAL_ROLES = ["client", "user", "employer", "employee", "beneficiary"];
+const RESTRICTED_PORTAL_PATHS = ["/dashboard", "/dashboard/documents", "/dashboard/profile"];
+
+function isAllowedRestrictedPortalPath(pathname) {
+  return RESTRICTED_PORTAL_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 export default function AuthGate() {
   const [status, setStatus] = useState("loading"); // 'loading' | 'ready' | 'unauthenticated' | 'error'
@@ -97,6 +103,17 @@ export default function AuthGate() {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (!CLIENT_PORTAL_ROLES.includes(context.role)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
+        <h1 className="text-2xl font-extrabold text-slate-900 mb-3">Access unavailable</h1>
+        <p className="text-slate-500 text-base max-w-md">
+          This account role is not enabled for the client portal.
+        </p>
+      </div>
+    );
+  }
+
   // Staff roles are handled by the useEffect above (isStaff / INSZOOM_URL) —
   // by this point in the render, `isStaff` is guaranteed false, since the
   // loading branch already returned for that case.
@@ -127,8 +144,8 @@ export default function AuthGate() {
   // same special-casing useHasCase.js already applies elsewhere in this
   // app, so an employee is never routed into onboarding/legacy-holding.
   if (isEmployeeAccount(context)) {
-    if (!location.pathname.startsWith("/dashboard/documents")) {
-      return <Navigate to="/dashboard/documents" replace />;
+    if (!isAllowedRestrictedPortalPath(location.pathname)) {
+      return <Navigate to="/dashboard" replace />;
     }
     return <Outlet />;
   }

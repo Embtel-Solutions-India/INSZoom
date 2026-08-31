@@ -121,11 +121,19 @@ class CaseLifecycleOrchestrator {
     // cases with no tracked references yet).
     const activeQuestionnaireReferences = (caseData.questionnaireReferences || []).filter((reference) => reference.active !== false);
     const CHECKLIST_DONE_STATUSES = new Set(["completed", "submitted", "approved"]);
-    const questionnaireComplete = activeQuestionnaireReferences.length
+    const profileBasedQuestionnaireComplete = Boolean(
+      caseData.caseStructure === "employer_employee"
+      && caseData.caseRole === "principal"
+      && caseData.employerProfileId
+      && caseData.questionnaireData?.lastSubmittedAt
+    );
+    const questionnaireComplete = profileBasedQuestionnaireComplete || (activeQuestionnaireReferences.length
       ? activeQuestionnaireReferences.every((reference) => CHECKLIST_DONE_STATUSES.has(reference.status))
-      : answers.some((answer) => ["submitted", "approved"].includes(answer.status));
+      : answers.some((answer) => ["submitted", "approved"].includes(answer.status)));
     const questionnaireChecklistPercent = activeQuestionnaireReferences.length
-      ? Math.round((activeQuestionnaireReferences.filter((reference) => CHECKLIST_DONE_STATUSES.has(reference.status)).length / activeQuestionnaireReferences.length) * 100)
+      ? (profileBasedQuestionnaireComplete
+        ? 100
+        : Math.round((activeQuestionnaireReferences.filter((reference) => CHECKLIST_DONE_STATUSES.has(reference.status)).length / activeQuestionnaireReferences.length) * 100))
       : (questionnaireComplete ? 100 : 0);
     const documentsComplete = requiredItems.length
       ? satisfiedRequirements.length >= requiredItems.length
@@ -138,7 +146,7 @@ class CaseLifecycleOrchestrator {
     const canonicalValidation = caseData.canonicalProfile?.validation || {};
     const canonicalReady = Number(caseData.canonicalProfile?.version || 0) > 0
       && !(canonicalValidation.errors || []).length
-      && !(caseData.canonicalProfile?.conflicts || []).filter((conflict) => !conflict.resolved).length;
+      && !(caseData.canonicalProfile?.conflicts || []).filter((conflict) => conflict.status === "pending_review").length;
     const formsGenerated = forms.length > 0 && forms.every((form) => FORM_GENERATED_STATUSES.has(form.status));
     const formsApproved = forms.length > 0 && forms.every((form) => FORM_APPROVED_STATUSES.has(form.status));
     const pdfGenerated = forms.length > 0 && forms.every((form) => Boolean(form.generatedPdfDocument) || ["generated", "filed"].includes(form.status));
@@ -185,7 +193,7 @@ class CaseLifecycleOrchestrator {
       canonical: {
         version: caseData.canonicalProfile?.version || 0,
         status: caseData.canonicalProfile?.status || "not_built",
-        conflicts: (caseData.canonicalProfile?.conflicts || []).filter((conflict) => !conflict.resolved).length,
+        conflicts: (caseData.canonicalProfile?.conflicts || []).filter((conflict) => conflict.status === "pending_review").length,
         errors: (canonicalValidation.errors || []).length,
         completeness: canonicalValidation.completeness || 0,
       },
@@ -295,9 +303,41 @@ class CaseLifecycleOrchestrator {
         await current.save();
       }
     }
+    await this.provisionRequiredForms(caseData, user, req);
     const result = await this.recalculate(caseData._id, user, req, "case_initialized");
     await this.notifyCaseCreated(caseData, result, user, req);
     return { ...result, knowledgePlan: knowledge?.knowledgePlan || result.case?.knowledgePlan };
+  }
+
+  // Phase 13 - CaseForms belong to the case, not the questionnaire. As soon
+  // as a case's required form set is determinable (its visaType/petitionType/
+  // plan are known - true immediately at creation, before any client,
+  // questionnaire, or document ever exists), the actual filing case(s)
+  // should already have their USCIS forms assigned, so a case manager can
+  // open and edit the real form right away. For an employer_employee/family
+  // case structure, the principal is a container record (company/petitioner
+  // info) - the real filing case per beneficiary is each child case, exactly
+  // like every other caller of ensureAssignedForms in this codebase
+  // (generateForms, listCaseForms) already treats it. For a "single"
+  // structure, caseData itself is the only, and therefore the filing, case.
+  // Reuses the existing, already-idempotent ensureAssignedForms() -
+  // deliberately not a second/parallel provisioning implementation - and
+  // never throws: a template-configuration problem must not block case
+  // creation or assignment, exactly like the knowledge-engine orchestration
+  // above it, which follows the same catch-and-record-not-rethrow pattern.
+  static async provisionRequiredForms(caseData, user, req) {
+    const uscisFormService = require("../uscis-forms/uscis-form.service");
+    const logger = require("../../utils/logger");
+    const targets = caseData.childCases?.length
+      ? await Case.find({ _id: { $in: caseData.childCases } })
+      : [caseData];
+    for (const target of targets) {
+      try {
+        await uscisFormService.ensureAssignedForms(target, user, req);
+      } catch (error) {
+        logger.error("uscis_form_provisioning_failed", { caseId: String(target._id), error: error.message });
+      }
+    }
   }
 
   // Fires the "case created" notifications required immediately after a case
@@ -367,6 +407,17 @@ class CaseLifecycleOrchestrator {
     // notifyAssignee(), which always runs immediately before onAssignment()
     // is called. Keeping that as the single source of truth avoids sending
     // duplicate "case assigned" notifications for the same event.
+    // Recovery/safety-net provisioning: normally a no-op, since
+    // initializeCase() already provisioned this case's forms at creation -
+    // this only does real work for a case created before that existed, or if
+    // a template newly applies to this case (e.g. assignmentRules changed)
+    // since then. caseData can be EITHER the principal (assignment cascades
+    // to its children, see case.controller.js's cascadeAssignmentToChildren)
+    // or a child assigned directly (assignmentOverridden) - reuses the same
+    // provisionRequiredForms() helper as initializeCase so both shapes
+    // resolve to the correct filing case(s), never the principal itself for
+    // an employer_employee/family case.
+    await this.provisionRequiredForms(caseData, user, req);
     const result = await this.recalculate(caseData._id, user, req, "case_assigned");
     return result;
   }
@@ -392,35 +443,39 @@ class CaseLifecycleOrchestrator {
       .populate({ path: "formTemplateId", select: "_id formCode version status activeFlag" })
       .read("secondaryPreferred");
     const usableExistingForms = existingForms.filter((form) => form.formTemplateId && form.status !== "archived");
-    if (usableExistingForms.length) {
-      require("../../utils/logger").info("uscis_form_generation_idempotent_existing", {
-        caseId,
-        existingCount: usableExistingForms.length,
-        durationMs: Date.now() - startedAt,
-        requestId: req?.requestId,
-      });
-      return {
-        created: [],
-        existing: usableExistingForms,
-        generated: [],
-        failed: [],
-        blockingIssues: [],
-        workflow: null,
-        message: "USCIS forms are already assigned for this case. Existing forms were reused.",
-      };
-    }
-    if (primaryReadError) throw primaryReadError;
+    // CaseForms are provisioned as soon as the case's required form set is
+    // determinable (case creation / assignment - see
+    // CaseLifecycleOrchestrator.provisionRequiredForms), not by this
+    // endpoint. This is exclusively the autofill step now: ensure any
+    // still-missing form (e.g. a newly-conditional one) exists, then
+    // populate every form from whatever canonical data currently exists.
+    // Deliberately not gated on questionnaire/document completion anymore -
+    // AutoFillService leaves any field with no resolvable value untouched
+    // (missingFields) and never overwrites a manually-reviewed/overridden
+    // field, so running this against a partially-answered case is always
+    // safe to repeat once more data arrives. A degraded primary is only
+    // fatal here when there are no usable forms already available to fall
+    // back to acting on.
+    if (!usableExistingForms.length && primaryReadError) throw primaryReadError;
     const readiness = await this.metrics(caseData);
     const blockingIssues = [];
-    if (!readiness.questionnaireComplete) throw Object.assign(new Error("Submit the case questionnaire before filing."), { status: 409, code: "QUESTIONNAIRE_INCOMPLETE", details: { readiness } });
-    if (!readiness.documentsComplete) throw Object.assign(new Error("Upload all required documents before filing."), { status: 409, code: "DOCUMENTS_INCOMPLETE", details: { readiness } });
-    if (!readiness.documents.reviewComplete) throw Object.assign(new Error("Complete case manager document review before filing."), { status: 409, code: "DOCUMENT_REVIEW_INCOMPLETE", details: { readiness } });
     const canonical = await CanonicalProfileService.validate(caseId, user, req, { reason: "generate_uscis_forms" });
+    // hasCanonicalErrors (missing-required-field validation errors from
+    // CanonicalSectionValidators) is a completeness measure - exactly what
+    // this endpoint must no longer gate on now that it can run long before
+    // the questionnaire is finished. hasUnresolvedConflicts is a different,
+    // narrower thing - multiple sources actively disagreeing on the same
+    // field's value (canonicalProfile.conflicts, pending_review) - and stays
+    // blocking: autofilling a form from a value known to conflict with
+    // another source would write bad data into it, unlike simply leaving a
+    // not-yet-answered field blank (which AutoFillService already handles
+    // safely via missingFields).
     const hasUnresolvedConflicts = readiness.canonical.conflicts > 0;
     const hasCanonicalErrors = Array.isArray(canonical.errors) && canonical.errors.length > 0 && readiness.canonical.version > 0;
-    if (hasCanonicalErrors || hasUnresolvedConflicts) {
-      blockingIssues.push({ code: "CANONICAL_NEEDS_REVIEW", message: "Resolve canonical profile errors and conflicts before filing.", validation: canonical });
-      throw Object.assign(new Error("Resolve canonical profile errors and conflicts before filing."), { status: 422, code: "CANONICAL_NEEDS_REVIEW", details: { readiness, validation: canonical, blockingIssues } });
+    if (hasCanonicalErrors) blockingIssues.push({ code: "CANONICAL_INCOMPLETE", message: "The canonical profile is still missing required fields.", validation: canonical });
+    if (hasUnresolvedConflicts) {
+      blockingIssues.push({ code: "CANONICAL_NEEDS_REVIEW", message: "Resolve canonical profile conflicts before filing.", validation: canonical });
+      throw Object.assign(new Error("Resolve canonical profile conflicts before filing."), { status: 422, code: "CANONICAL_NEEDS_REVIEW", details: { readiness, validation: canonical, blockingIssues } });
     }
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req);
     const forms = await CaseForm.find({ caseId });
@@ -458,10 +513,12 @@ class CaseLifecycleOrchestrator {
     });
     return {
       created,
+      existing: usableExistingForms,
       generated,
       failed,
       blockingIssues,
       canonicalValidation: canonical,
+      readiness,
       workflow,
       message: failed.length
         ? `${generated.length} USCIS form(s) auto-filled; ${failed.length} form(s) need attention.`

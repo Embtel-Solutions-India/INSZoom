@@ -62,17 +62,21 @@ const employerDocuments = [
 // has one line ("Academic Certificates with transcripts"), so they're merged
 // here into a single document.
 const employeeDocuments = [
-  { name: "Academic Certificates with transcripts", documentType: "academic_certificates", description: "Education credential documents with transcripts.", required: true, category: "education", targetRole: "employee", status: "requested" },
+  // required:false on these four (academic_certificates, previous_work_experience_letters,
+  // previous_i797_notices, last_3_months_pay_slips) per the Questionnaire System Complete
+  // Fix checklist review — supersedes this file's earlier "verbatim from the authoritative
+  // source" required:true determination for these specific four items.
+  { name: "Academic Certificates with transcripts", documentType: "academic_certificates", description: "Education credential documents with transcripts.", required: false, category: "education", targetRole: "employee", status: "requested" },
   { name: "Copy of educational credential evaluation report", documentType: "credential_evaluation_report", description: "Credential evaluation report for education completed outside the United States.", required: false, category: "education", targetRole: "employee", status: "requested" },
   { name: "Copy of the training/diploma certificates", documentType: "training_diploma_certificates", description: "Training, diploma, or certification documents.", required: false, category: "education", targetRole: "employee", status: "requested" },
   { name: "Copy of the recent updated resume", documentType: "updated_resume", description: "Current resume for the H-1B petition.", required: true, category: "employment", targetRole: "employee", status: "requested" },
-  { name: "Copy of the previous work experience letters", documentType: "previous_work_experience_letters", description: "Experience letters from previous employers.", required: true, category: "employment", targetRole: "employee", status: "requested" },
-  { name: "All I-797 (prior notice/receipt of approvals)", documentType: "previous_i797_notices", description: "Prior USCIS approval or receipt notices.", required: true, category: "immigration", targetRole: "employee", status: "requested" },
+  { name: "Copy of the previous work experience letters", documentType: "previous_work_experience_letters", description: "Experience letters from previous employers.", required: false, category: "employment", targetRole: "employee", status: "requested" },
+  { name: "All I-797 (prior notice/receipt of approvals)", documentType: "previous_i797_notices", description: "Prior USCIS approval or receipt notices.", required: false, category: "immigration", targetRole: "employee", status: "requested" },
   { name: "Copy of I-94 (Arrival-Departure record)", documentType: "employee_i94_copy", description: "Copy of the Arrival-Departure record.", required: true, category: "immigration", targetRole: "employee", status: "requested" },
   { name: "Copy of the passport", documentType: "passport", description: "Biographic passport pages.", required: true, category: "identity", targetRole: "employee", status: "requested" },
   { name: "Copy of SSN, must be signed by bearer (if any)", documentType: "employee_ssn_copy", description: "Social Security card copy, signed by the bearer.", required: false, category: "identity", targetRole: "employee", status: "requested" },
   { name: "Copy of US Driver's license or State Identification card (if any)", documentType: "employee_drivers_license_or_state_id", description: "US Driver's license or State Identification card.", required: false, category: "identity", targetRole: "employee", status: "requested" },
-  { name: "Recent 3 Months payslips", documentType: "last_3_months_pay_slips", description: "Recent pay slips from the last three months.", required: true, category: "employment", targetRole: "employee", status: "requested" },
+  { name: "Recent 3 Months payslips", documentType: "last_3_months_pay_slips", description: "Recent pay slips from the last three months.", required: false, category: "employment", targetRole: "employee", status: "requested" },
 ];
 
 // Verbatim from the authoritative source's "Documents Required from
@@ -390,8 +394,8 @@ function fieldCatalog() {
     { path: "employee.personal.currentUsAddress.state", label: "Current US Address State", section: "employee" },
     { path: "employee.personal.currentUsAddress.zipCode", label: "Current US Address Zip Code", section: "employee" },
     { path: "employee.personal.passportNumber", label: "Passport Number", section: "employee", required: true },
-    { path: "employee.personal.passportIssueDate", label: "Passport Issue Date", section: "employee" },
-    { path: "employee.personal.passportExpirationDate", label: "Passport Expiration Date", section: "employee" },
+    { path: "employee.personal.passportIssueDate", label: "Passport Issue Date", section: "employee", required: true },
+    { path: "employee.personal.passportExpirationDate", label: "Passport Expiration Date", section: "employee", required: true },
     { path: "employee.immigrationStatus.insideUnitedStates", label: "Inside United States", section: "employee" },
     {
       path: "employee.immigrationStatus.dateOfLastArrival",
@@ -477,7 +481,15 @@ function fieldCatalog() {
     // (EMPLOYEE_CANONICAL_PATHS above - personal.*/immigrationStatus.* only,
     // deliberately not education) or, like these, needs its own
     // masterDataPath to avoid the same collision.
-    { path: "employee.education.highestLevel", label: "Highest Education Level", section: "employee", masterDataPath: "employee.education.highestLevel" },
+    {
+      path: "employee.education.highestLevel",
+      label: "Highest Education Level",
+      section: "employee",
+      required: true,
+      type: "select",
+      options: ["Bachelor's", "Master's", "Diploma", "Professional (MD/DDS/LLB)", "Doctorate (PhD)", "Other"],
+      masterDataPath: "employee.education.highestLevel",
+    },
     { path: "employee.education.majorFieldOfStudy", label: "Major Field of Study", section: "employee", masterDataPath: "employee.education.majorFieldOfStudy" },
     { path: "employee.education.hasUsMastersOrHigher", label: "Has US Masters or Higher", section: "employee", masterDataPath: "employee.education.hasUsMastersOrHigher" },
     {

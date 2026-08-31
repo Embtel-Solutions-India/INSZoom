@@ -509,34 +509,48 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
 
   for (const template of templates) {
     if (existingCodes.has(normalizeFormCode(template.formCode))) continue;
-    const caseForm = await CaseForm.create({
-      caseId: caseData._id,
-      formTemplateId: template._id,
-      formCode: template.formCode,
-      formVersion: template.version,
-      formEditionDate: template.editionDate,
-      mappingVersion: template.activeMappingVersion || template.mappingVersion || 0,
-      mappingVersionId: template.activeMappingVersionId || template.latestMappingVersionId,
-      validationVersion: template.validationVersion || 0,
-      renderingVersion: template.renderingVersion || 0,
-      formVersionLock: {
-        formType: template.formCode || template.formNumber,
-        editionDate: template.editionDate,
-        version: template.version,
+    let caseForm;
+    try {
+      caseForm = await CaseForm.create({
+        caseId: caseData._id,
+        formTemplateId: template._id,
+        formCode: template.formCode,
+        formVersion: template.version,
+        formEditionDate: template.editionDate,
         mappingVersion: template.activeMappingVersion || template.mappingVersion || 0,
         mappingVersionId: template.activeMappingVersionId || template.latestMappingVersionId,
         validationVersion: template.validationVersion || 0,
         renderingVersion: template.renderingVersion || 0,
-        formTemplateId: template._id,
-        lockedAt: new Date(),
-        lockedBy: user?._id,
-      },
-      status: "pending",
-      filledData: {},
-      fieldValues: {},
-      lastModifiedBy: user?._id,
-      lastModifiedAt: new Date(),
-    });
+        formVersionLock: {
+          formType: template.formCode || template.formNumber,
+          editionDate: template.editionDate,
+          version: template.version,
+          mappingVersion: template.activeMappingVersion || template.mappingVersion || 0,
+          mappingVersionId: template.activeMappingVersionId || template.latestMappingVersionId,
+          validationVersion: template.validationVersion || 0,
+          renderingVersion: template.renderingVersion || 0,
+          formTemplateId: template._id,
+          lockedAt: new Date(),
+          lockedBy: user?._id,
+        },
+        status: "pending",
+        filledData: {},
+        fieldValues: {},
+        lastModifiedBy: user?._id,
+        lastModifiedAt: new Date(),
+      });
+    } catch (error) {
+      // A concurrent call (e.g. case creation's background provisioning
+      // racing an immediate case-assignment call) can pass the existingCodes
+      // check above at the same time as another caller for the same
+      // (caseId, formTemplateId) pair - CaseForm's own unique index on that
+      // pair rejects the loser with E11000. That's the race resolving
+      // correctly, not a failure: the form now exists either way, so skip it
+      // instead of surfacing a spurious error from what is, from the
+      // caller's perspective, a successful idempotent provisioning call.
+      if (error?.code === 11000) continue;
+      throw error;
+    }
     addAuditEntry(caseForm, "form_assigned", user, { formCode: template.formCode, version: template.version }, req);
     await caseForm.save();
     caseService.addTimelineEvent(caseData, "uscis_form", "USCIS Form Assigned", `${template.formCode} ${template.version} assigned to case`, user, { caseFormId: caseForm._id, formTemplateId: template._id, editionDate: template.editionDate, mappingVersion: template.activeMappingVersion || template.mappingVersion || 0 });

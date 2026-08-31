@@ -1,0 +1,418 @@
+{
+  "runAt": "2026-08-28T23:45:14.408Z",
+  "principalCaseId": "6a91c3091afc8b73d9431da3",
+  "principalCaseNumber": "B003",
+  "childCaseId": "6a91c30a1afc8b73d9431db9",
+  "childCaseNumber": "B003-A",
+  "caseFormId": "6a9211128b7dd5514d33bff7",
+  "crosswalkTotal": 101,
+  "summary": {
+    "resolvable": 72,
+    "unresolvable": 29,
+    "formMatch": 35,
+    "formMismatch": 7,
+    "formMissing": 30
+  },
+  "unresolvedByPrefix": {
+    "raw": 28,
+    "immigration": 1
+  },
+  "failures": [
+    {
+      "fieldName": "form1[0].#subform[0].Line3_CompanyorOrgName[0]",
+      "sourcePath": "company.name",
+      "canonicalValue": "F3 Technology Partners LLC",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].new[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingType.value",
+      "canonicalValue": "H1B Transfer",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].concurrent[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingType.value",
+      "canonicalValue": "H1B Transfer",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].change[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingType.value",
+      "canonicalValue": "H1B Transfer",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].amended[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingType.value",
+      "canonicalValue": "H1B Transfer",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].continuation[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingType.value",
+      "canonicalValue": "H1B Transfer",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[1].Line1_ReceiptNumber[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_personal_latestPriorPetitionNumber.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Line1_Gender_P3[0]",
+      "sourcePath": "person.gender",
+      "canonicalValue": "female",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Line1_Gender_P3[1]",
+      "sourcePath": "person.gender",
+      "canonicalValue": "female",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Line5_SSN[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_personal_socialSecurityNumber.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Part3Line5_ArrivalDeparture[0]",
+      "sourcePath": "immigration.i94.number",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Line5_SEVIS[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_personal_sevisNumber.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Part3Line5_DateofArrival[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationStatus_dateOfLastArrival.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[2].Line11h_DateStatusExpires[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationStatus_currentStatusExpirationDate.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line2_Checkbox[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_hasValidPassport.value",
+      "canonicalValue": "Yes",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line6_Yes[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_inRemovalProceedings.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line6_No[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_inRemovalProceedings.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line7[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_employerFiledGreenCard.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line7[1]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_employerFiledGreenCard.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line8a_Yes[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_heldH1bLastSevenYears.value",
+      "canonicalValue": "Yes",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line8a_No[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_heldH1bLastSevenYears.value",
+      "canonicalValue": "Yes",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line8b_Yes[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_deniedH1bLastSevenYears.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[3].P4Line8b_No[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_immigrationHistory_deniedH1bLastSevenYears.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[13].Line2_BeneficiaryName[0]",
+      "sourcePath": "person.fullName",
+      "canonicalValue": "F3 Corp",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[13].SubHLine4_class[0]",
+      "sourcePath": "case.visaType",
+      "canonicalValue": "H-1B",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[15].ClassHLine5b_PassportorTravDoc[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_capRegistration_passportNumber.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[15].ClassHLine5b_ExpDate[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_capRegistration_passportExpirationDate.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[15].ClassHLine5b_CountryOfIssuance[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_capRegistration_passportCountry.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[13].SubHLine5_ConfirmationNum[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_capRegistration_beneficiaryConfirmationNumber.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].a_no_diploma[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].b_HSDiploma[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].c_some_college[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].d_collegeplus[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].e_AssociateDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].f_BachelorDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].g_MasterDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].h_ProfessionalDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].i_DoctorateDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_highestLevel.value",
+      "canonicalValue": "Master's",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].PartA_q3_Field_of_Study[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_majorFieldOfStudy.value",
+      "canonicalValue": "Information Systems",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].H1BSecALine1a_Yes[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_workforce_isH1bDependentOrWillfulViolator.value",
+      "canonicalValue": "No",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[22].H1BSecALine1a_No[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_workforce_isH1bDependentOrWillfulViolator.value",
+      "canonicalValue": "No",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].WageLevelBox[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_position_wageLevel.value",
+      "canonicalValue": "Level I",
+      "formStatus": "MISMATCH"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].WageLevelBox[1]",
+      "sourcePath": "raw.questionnaireAnswers.employer_position_wageLevel.value",
+      "canonicalValue": "Level I",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].WageLevelBox[2]",
+      "sourcePath": "raw.questionnaireAnswers.employer_position_wageLevel.value",
+      "canonicalValue": "Level I",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].WageLevelBox[3]",
+      "sourcePath": "raw.questionnaireAnswers.employer_position_wageLevel.value",
+      "canonicalValue": "Level I",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].Cap[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingCapType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[23].Cap[1]",
+      "sourcePath": "raw.questionnaireAnswers.employee_filingCapType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[24].H1bSec3Line3a_Name[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_usInstitutionName.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[24].H1bSec3Line3b_DateDegreeAwarded[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_degreeAwardDate.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[24].H1bSec3Line3c_TypeofDegree[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_degreeType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[24].H1bSec3Line3d_StreetName[0]",
+      "sourcePath": "raw.questionnaireAnswers.employee_education_institutionAddress.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].a_L1A[0]",
+      "sourcePath": "case.visaType",
+      "canonicalValue": "H-1B",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].b_L1B[0]",
+      "sourcePath": "case.visaType",
+      "canonicalValue": "H-1B",
+      "formStatus": "MISSING_IN_FORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].LSuppLine3_NameofEmployerAbroad[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_name.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Part3Line2_StreetName[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_address_street.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Part3Line2_City[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_address_city.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Part3Line2_Country[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_address_country.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Part3Line2_Province[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_address_stateProvince.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Part3Line2_PostalCode[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_address_zipPostalCode.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Table2[0].Row1[0].DateFrom_line1[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_employmentStartDate.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[25].Table2[0].Row1[0].DateTo_line1[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_employmentEndDate.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[27].a_Parent[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_relationshipType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[27].b_Branch[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_relationshipType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[27].c_Subsidiary[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_relationshipType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[27].d_Affiliate[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_relationshipType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    },
+    {
+      "fieldName": "form1[0].#subform[27].e_JointVenture[0]",
+      "sourcePath": "raw.questionnaireAnswers.employer_foreignCompany_relationshipType.value",
+      "canonicalValue": null,
+      "formStatus": "NO_CASEFORM"
+    }
+  ]
+}

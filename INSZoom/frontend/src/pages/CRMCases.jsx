@@ -6,6 +6,7 @@ import { useSocket } from '../contexts/SocketContext'
 import { Search, Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import CreateCaseModal from '../components/CreateCaseModal'
+import CaseCreatedSuccessModal from '../components/CaseCreatedSuccessModal'
 
 // Phase 5 case creation is restricted to admins and team leads.
 const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
@@ -45,6 +46,9 @@ const CRMCases = () => {
     hasPreviousPage: false,
   })
   const [showCreateModal, setShowCreateModal] = useState(false)
+  // P12-S2: replaces the browser-native alert() previously shown here — see
+  // handleCaseCreated below.
+  const [createdCaseNumber, setCreatedCaseNumber] = useState(null)
   const limit = 5
 
   // Phase 7 — Pending Assignment queue, sourced from the team-lead dashboard
@@ -175,7 +179,7 @@ const CRMCases = () => {
     setPage(1)
     fetchCases()
     if (data?.case?.caseNumber) {
-      alert(`Case ${data.case.caseNumber} created. An activation email has been sent to the client.`)
+      setCreatedCaseNumber(data.case.caseNumber)
     }
   }
 
@@ -301,6 +305,13 @@ const CRMCases = () => {
         <CreateCaseModal
           onClose={() => setShowCreateModal(false)}
           onCreated={handleCaseCreated}
+        />
+      )}
+
+      {createdCaseNumber && (
+        <CaseCreatedSuccessModal
+          caseNumber={createdCaseNumber}
+          onClose={() => setCreatedCaseNumber(null)}
         />
       )}
 

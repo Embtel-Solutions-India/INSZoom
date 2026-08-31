@@ -17,6 +17,7 @@ const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
 const { evaluateStageGate } = require("./case-gating.config");
 const { createPerfTimer } = require("../../utils/perfTimer");
 const questionnaireService = require("../questionnaires/questionnaire.service");
+const documentService = require("../documents/document.service");
 const messageService = require("../messages/message.service");
 const paymentGateway = require("../payments/payment.gateway");
 const paymentService = require("../payments/payment.service");
@@ -426,7 +427,29 @@ exports.getMyCase = async (req, res, next) => {
     // document hydration/casting on all 17 documents involved, shortening how
     // long each of those pool connections is held. Case has no schema
     // virtuals, so this changes no field in the response.
-    const caseData = await caseService.populateCaseQuery(Case.findOne(filter).sort({ createdAt: -1 }).lean());
+    //
+    // Prefer req.user.primaryCaseId over "most recently created match" when
+    // the filter matches more than one case. This matters specifically for
+    // the employer/employee pre-invite window: createCase intentionally sets
+    // Case.user to the employer's own account on BOTH the principal and every
+    // child case (so "fill self" mode needs no extra wiring, and
+    // inviteEmployee's ALREADY_INVITED check/ownership transfer assumes that
+    // starting state - see inviteEmployee's comment on childCase.user). Before
+    // an employee is invited, an employer's filter above matches both their
+    // principal case and every one of its children, and .sort({createdAt:-1})
+    // always picked the child (created after the principal in the same
+    // request) - the employer's own "my case" endpoint returned their
+    // employee's case, showing the wrong checklist/dashboard state entirely.
+    // primaryCaseId is set once at account creation/invite time and never
+    // repointed at a child case for the original employer account, so it
+    // reliably names "this login's own case" for both an employer and an
+    // invited employee (whose primaryCaseId points at their own child case).
+    let caseData = req.user.primaryCaseId
+      ? await caseService.populateCaseQuery(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean())
+      : null;
+    if (!caseData) {
+      caseData = await caseService.populateCaseQuery(Case.findOne(filter).sort({ createdAt: -1 }).lean());
+    }
     timer.mark("mongo_query_completed", { found: Boolean(caseData) });
     if (!caseData) {
       timer.done({ found: false });
@@ -445,6 +468,9 @@ exports.getMyCase = async (req, res, next) => {
 
 exports.getAvailableAddons = async (req, res, next) => {
   try {
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Not authorized to access case upgrades" });
+    }
     const caseData = await getAuthorizedCase(req, res);
     if (!caseData) return;
     const premiumProcessing = serializePremiumProcessingAddon(caseData);
@@ -460,6 +486,9 @@ exports.getAvailableAddons = async (req, res, next) => {
 
 exports.purchaseAddon = async (req, res, next) => {
   try {
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Not authorized to purchase case upgrades" });
+    }
     const caseData = await getAuthorizedCase(req, res);
     if (!caseData) return;
     const addonKey = req.params.addonKey || req.body.addonKey;
@@ -727,6 +756,25 @@ exports.getRecentActivity = async (req, res, next) => {
   }
 };
 
+// F-3 fix for M2: resolveDocumentRequirements() returns every document
+// requirement for the visa type in one flat list (both the employer/
+// petitioner side and the employee/beneficiary side), each item tagged with
+// targetRole from its source questionnaire's checklistRole (see
+// document-requirement.resolver.js's fileQuestionToRequirement). createCase
+// previously assigned that same unfiltered list as both checklistItems and
+// documentChecklist on every case in the family - principal AND every
+// child - so an employee-role case's own missing-document view (case.service
+// .js's summarizeCase) showed employer-only documents (business license,
+// articles of incorporation, ...) as "missing" for itself. Filtering by the
+// target case's role at creation keeps each case's checklist scoped to only
+// the documents that role is actually responsible for, while still keeping
+// role-agnostic items (targetRole "" - shared/reusable docs with no
+// audience-specific questionnaire) on every case.
+function filterChecklistForRole(checklist, role) {
+  if (!role) return checklist;
+  return checklist.filter((item) => !item.targetRole || item.targetRole === role);
+}
+
 exports.createCase = async (req, res, next) => {
   try {
     const requesterRole = normalizeRole(req.user.role);
@@ -841,6 +889,7 @@ exports.createCase = async (req, res, next) => {
       userIds: [],
       updatedUsers: [],
     };
+    const warnings = [];
 
     let setupToken = null;
     let clientUser = null;
@@ -860,6 +909,12 @@ exports.createCase = async (req, res, next) => {
         : employerCompletionMode === "employer_completes"
           ? "employer_completes"
           : "";
+      if (caseStructure === "employer_employee" && trimmedEmployerEmail && trimmedEmployerEmail === email) {
+        warnings.push({
+          code: "EMPLOYER_EMPLOYEE_EMAIL_MATCH",
+          message: "Employer contact email matches the client/employee email. Keep the employer principal account and employee invite/self-service account separate for H-1B matters.",
+        });
+      }
       const status = assignedCaseManager ? "assigned" : "pending_assignment";
       const commonCaseData = {
         isDemoData: false,
@@ -881,8 +936,6 @@ exports.createCase = async (req, res, next) => {
           amount,
           currency: "USD",
         },
-        checklistItems: checklist,
-        documentChecklist: checklist,
         creationSource,
         leadId: creationSource === "lead_conversion" ? leadId : null,
         consultationId: sourceLead?.consultation?.appointmentId || sourceLead?.consultationId || undefined,
@@ -903,11 +956,15 @@ exports.createCase = async (req, res, next) => {
         legacySource: "INSZoom",
       };
 
+      const principalTargetRole = caseStructure === "family" ? "petitioner" : caseStructure === "employer_employee" ? "employer" : null;
+      const principalChecklist = filterChecklistForRole(checklist, principalTargetRole);
       [principalCase] = await Case.create([{
         ...commonCaseData,
         caseId: principalCaseNumber,
         caseNumber: principalCaseNumber,
         clientPortalId: principalCaseNumber,
+        checklistItems: principalChecklist,
+        documentChecklist: principalChecklist,
         caseStructure,
         caseRole: caseStructure === "single" ? "single" : "principal",
         childCaseCount: resolvedChildCaseCount,
@@ -1040,11 +1097,25 @@ exports.createCase = async (req, res, next) => {
       for (let index = 0; index < resolvedChildCaseCount; index += 1) {
         const childIndex = CaseNumberService.indexToSuffix(index);
         const childRole = caseStructure === "family" ? "beneficiary" : "employee";
+        const childChecklist = filterChecklistForRole(checklist, childRole);
         const [childCase] = await Case.create([{
           ...commonCaseData,
           caseId: childCaseNumbers[index],
           caseNumber: childCaseNumbers[index],
           clientPortalId: childCaseNumbers[index],
+          checklistItems: childChecklist,
+          documentChecklist: childChecklist,
+          // F-3 fix: commonCaseData.clientEmail/clientName carry the EMPLOYER's
+          // own contact info (set above from the request body). Inheriting
+          // them onto the child case made InvitePanel.jsx's `invited =
+          // Boolean(child.clientEmail)` check true from the moment of
+          // creation, before any real employee was ever invited — the
+          // employer could never see the actual "Send Invite" name/email
+          // form, only a permanent, incorrect "Invited" badge showing their
+          // own email. Left blank until inviteEmployee (case.controller.js)
+          // explicitly sets both on acceptance of a real invite.
+          clientEmail: "",
+          clientName: "",
           user: clientUser._id,
           parentCase: principalCase._id,
           caseStructure,
@@ -1097,43 +1168,60 @@ exports.createCase = async (req, res, next) => {
     await principalCase.save();
     await caseService.writeAuditLog("create", principalCase, req.user, req.body, req);
 
-    const lifecycle = await lifecycleOrchestrator.initializeCase(principalCase, req.user, req);
-
-    if (setupToken) {
-      await notificationService.createNotification({
-        userId: clientUser._id,
-        type: "case_created",
-        category: "case",
-        title: "Your Immigration Case Is Ready",
-        message: `${principalCase.caseNumber} - ${principalCase.visaType}`,
-        caseId: principalCase._id,
-        link: "/accept-invite",
-        priority: "medium",
-        source: "shared",
-        emailTemplate: "client-portal-invitation",
-        emailTo: email,
-        emailData: {
-          clientName: trimmedClientName,
-          caseNumber: principalCase.caseNumber,
-          token: setupToken,
-        },
-      }, req.user, req).catch(() => null);
-    }
+    // P12-S1 fix: initializeCase() -> orchestrate() resolves form templates,
+    // rebuilds the canonical profile, and runs IntelligentQuestionnaireService
+    // (an AI-backed questionnaire generation call) — real, unavoidable work,
+    // but none of it is needed to tell the caller "the case now exists".
+    // Awaiting it here before responding was the actual ~2-minute delay
+    // (profiled directly - not email/notification sending, which was
+    // already wrapped in its own .catch(() => null) and is comparatively
+    // fast). The response now returns immediately from data already fully
+    // saved (principalCase/childCases/clientUser); orchestration and the
+    // client-invite notification/email both continue in the background.
+    // The case-detail page (fetched on navigation a moment later) reflects
+    // the fully-orchestrated state by the time a person actually looks at
+    // it — nothing in the synchronous response path depended on it.
+    setImmediate(async () => {
+      try {
+        await lifecycleOrchestrator.initializeCase(principalCase, req.user, req);
+      } catch (err) {
+        require("../../utils/logger").error("create_case_background_orchestration_failed", { caseId: principalCase._id, error: err.message });
+      }
+      if (setupToken) {
+        await notificationService.createNotification({
+          userId: clientUser._id,
+          type: "case_created",
+          category: "case",
+          title: "Your Immigration Case Is Ready",
+          message: `${principalCase.caseNumber} - ${principalCase.visaType}`,
+          caseId: principalCase._id,
+          link: "/accept-invite",
+          priority: "medium",
+          source: "shared",
+          emailTemplate: "client-portal-invitation",
+          emailTo: email,
+          emailData: {
+            clientName: trimmedClientName,
+            caseNumber: principalCase.caseNumber,
+            token: setupToken,
+          },
+        }, req.user, req).catch(() => null);
+      }
+    });
 
     res.status(201).json({
       success: true,
       message: "Case created",
-      principalCase: publicCaseSummary(lifecycle.case || principalCase),
+      principalCase: publicCaseSummary(principalCase),
       childCases: childCases.map(publicCaseSummary),
       clientUser: {
         _id: clientUser._id,
         email: clientUser.email,
         mustSetPassword: clientUser.mustSetPassword,
       },
-      case: lifecycle.case,
-      caseSummary: caseService.summarizeCase(lifecycle.case),
-      workflow: lifecycle.progress,
-      knowledgePlan: lifecycle.knowledgePlan,
+      case: principalCase,
+      caseSummary: caseService.summarizeCase(principalCase),
+      warnings,
     });
   } catch (error) {
     handleError(error, next);
@@ -1598,6 +1686,13 @@ exports.inviteEmployee = async (req, res, next) => {
 
     const normalizedEmail = String(employeeEmail).trim().toLowerCase();
     const trimmedName = String(employeeName).trim();
+    if (normalizedEmail === cleanEmail(principal.clientEmail)) {
+      return res.status(409).json({
+        success: false,
+        code: "EMPLOYEE_EMAIL_MATCHES_EMPLOYER",
+        message: "Use a separate employee email. The employer principal account and employee self-service account must remain separate.",
+      });
+    }
     const setupToken = generateOpaqueToken();
 
     const [employeeUser] = await User.create([{
@@ -1906,6 +2001,21 @@ exports.getRelated = async (req, res, next) => {
   try {
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const related = await caseService.getRelatedRecords(caseData);
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.json({
+        success: true,
+        case: caseService.serializeCaseForUser(caseData, req.user),
+        documents: (related.documents || []).map((document) => documentService.sanitizeDocumentForUser(document, req.user)),
+        messages: related.messages || [],
+        notifications: related.notifications || [],
+        appointments: related.appointments || [],
+        payments: [],
+        tasks: [],
+        workflows: [],
+        parentCase: null,
+        childCases: [],
+      });
+    }
     res.json({ success: true, case: caseData, ...related });
   } catch (error) {
     handleError(error, next);
@@ -1915,6 +2025,10 @@ exports.getRelated = async (req, res, next) => {
 exports.getTimeline = async (req, res, next) => {
   try {
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      const serialized = caseService.serializeCaseForUser(caseData, req.user);
+      return res.json({ success: true, timeline: serialized.timeline || [], activityLog: [], stageHistory: caseData.stageHistory || [], auditHistory: [] });
+    }
     res.json({ success: true, timeline: caseData.timeline, activityLog: caseData.activityLog, stageHistory: caseData.stageHistory, auditHistory: caseData.auditHistory });
   } catch (error) {
     handleError(error, next);
@@ -2200,6 +2314,9 @@ exports.generateCaseChecklist = async (req, res, next) => {
 
 exports.updatePlan = async (req, res, next) => {
   try {
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Not authorized to modify case plan" });
+    }
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) {
@@ -2236,6 +2353,12 @@ exports.saveAssessment = async (req, res, next) => {
   try {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) {
+      return res.status(403).json({ success: false, message: "Not authorized to modify this case" });
+    }
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Not authorized to modify case assessment" });
+    }
     caseData.assessmentAnswers = req.body.assessmentAnswers || {};
     if (req.body.assessmentMatchPercentage !== undefined) caseData.assessmentMatchPercentage = req.body.assessmentMatchPercentage;
     await caseData.save();

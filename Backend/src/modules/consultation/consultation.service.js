@@ -4,6 +4,7 @@ const Appointment = require("../../models/Appointment");
 const CalendarAvailability = require("../../models/CalendarAvailability");
 const Lead = require("../../models/Lead");
 const appointmentService = require("../appointments/appointment.service");
+const leadService = require("../leads/lead.service");
 const entityConfigService = require("../entity-config/entityConfig.service");
 const emailService = require("../email/email.service");
 const notificationService = require("../notifications/notification.service");
@@ -160,7 +161,7 @@ async function notifyHost(appointment, config, lead) {
 // conflict immediately before the write and throws 409 if the slot was
 // taken between the client fetching slots and submitting — there is no
 // separate/duplicate conflict check here.
-async function book({ leadId, name, email, phone, startAt, note }, req) {
+async function book({ leadId, name, email, phone, startAt, note, source, visaType }, req) {
   if (!name || !email || !startAt) throw badRequest("name, email, and startAt are required");
   const config = await resolveConfig();
   if (!config.hostUserId) throw badRequest("Consultation booking is not configured yet — no host is set");
@@ -191,10 +192,31 @@ async function book({ leadId, name, email, phone, startAt, note }, req) {
   if (lead) {
     lead.consultationId = appointment._id;
     lead.status = "booked";
+    lead.consultation = lead.consultation || {};
+    lead.consultation.requestedAt = lead.consultation.requestedAt || new Date();
+    lead.consultation.scheduledAt = appointment.startAt;
+    if (note) lead.consultation.notes = note;
     await lead.save();
     // Mirrors lead.service.js's "lead:created" push (see LeadsInbox) so an
     // already-open admin Leads Inbox reflects the new booking — including
     // the consultation date/time — live, with no manual refresh needed.
+    await lead.populate("consultationId");
+    realtimeGateway.emitToRole("admin", "lead:updated", lead);
+    realtimeGateway.emitToRole("case_manager", "lead:updated", lead);
+  } else {
+    lead = await leadService.createConsultationLead({
+      fullName: name,
+      email,
+      phone,
+      visaType,
+      message: note,
+      source: source || "BAIS scheduled consultation",
+    }, req, {
+      status: "booked",
+      consultationId: appointment._id,
+      requestedAt: new Date(),
+      scheduledAt: appointment.startAt,
+    });
     await lead.populate("consultationId");
     realtimeGateway.emitToRole("admin", "lead:updated", lead);
     realtimeGateway.emitToRole("case_manager", "lead:updated", lead);
@@ -242,7 +264,7 @@ async function book({ leadId, name, email, phone, startAt, note }, req) {
     entityType: "Appointment",
     entityId: String(appointment._id),
     severity: "low",
-    metadata: { leadId: leadId ? String(leadId) : undefined },
+    metadata: { leadId: lead ? String(lead._id) : undefined },
   });
 
   return {
@@ -253,6 +275,7 @@ async function book({ leadId, name, email, phone, startAt, note }, req) {
     publicHostName: config.publicHostName,
     locationType: config.locationType,
     meetingLinkOrPhone: config.locationType === "video" ? config.meetingLink : "phone",
+    leadId: lead ? String(lead._id) : undefined,
   };
 }
 

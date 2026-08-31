@@ -49,6 +49,9 @@ function canUploadForCase(user, caseData) {
   const role = roleOf(user);
   const participant = participantService.participantForUser(caseData, user) || participantService.findParticipant(caseData, { participantId: user.participantId });
   if (participant) return true;
+  if (["employee", "beneficiary"].includes(role)) {
+    return caseService.canAccessRestrictedChildCase(user, caseData, role);
+  }
   if (["client", "user"].includes(role)) return sameId(caseData.user, user._id);
   return ["case_manager", "team_lead"].includes(role);
 }
@@ -216,8 +219,14 @@ function uploadedByLabel(user) {
   const role = roleOf(user);
   if (["super_admin", "admin"].includes(role)) return "admin";
   if (["client", "user"].includes(role)) return "client";
+  if (["employee", "beneficiary"].includes(role)) return role;
   if (["case_manager", "team_lead", "paralegal", "reviewer"].includes(role)) return role;
   return "system";
+}
+
+function resolvedDocumentOwnerId(body, context, user) {
+  if (canModifyDocument(user)) return body.user || body.userId || context.user || user._id;
+  return context.user || user._id;
 }
 
 async function resolveCaseContext(caseId) {
@@ -313,7 +322,7 @@ async function createDocumentFromFile({ file, body, user, req }) {
     error.statusCode = 403;
     throw error;
   }
-  const ownerId = body.user || body.userId || context.user || user._id;
+  const ownerId = resolvedDocumentOwnerId(body, context, user);
   const participantId = body.participantId || context.participantId;
   const security = await fileSecurityService.inspect(file);
   const checksum = storageService.checksum(file.buffer);
@@ -430,6 +439,47 @@ async function createDocumentFromFile({ file, body, user, req }) {
   return document;
 }
 
+async function createDocumentMetadata({ body = {}, user, req }) {
+  const context = await resolveEntityContext(body);
+  if (body.caseId && !context.caseData) {
+    const error = new Error("The specified case could not be found");
+    error.status = 404;
+    error.statusCode = 404;
+    throw error;
+  }
+  if (context.caseData && !canUploadForCase(user, context.caseData)) {
+    const error = new Error("You do not have permission to create documents for this case");
+    error.status = 403;
+    error.statusCode = 403;
+    throw error;
+  }
+  const ownerId = resolvedDocumentOwnerId(body, context, user);
+  const document = await Document.create({
+    ...body,
+    user: ownerId,
+    caseId: body.caseId,
+    participantId: body.participantId || context.participantId,
+    participantRole: body.participantRole || context.participantRole,
+    canonicalProfileId: body.canonicalProfileId || context.canonicalProfileId,
+    client: body.client || body.clientId || context.client,
+    beneficiary: body.beneficiary || body.beneficiaryId || context.beneficiary,
+    clientPortalId: body.clientPortalId || context.clientPortalId,
+    companyId: body.companyId || context.companyId,
+    teamId: body.teamId || context.teamId,
+    category: normalizeCategory(body.category),
+    folderPath: body.folderPath || "/",
+    folderName: body.folderName,
+    tags: normalizeTags(body.tags),
+    uploadedByUser: user._id,
+    uploadedBy: body.uploadedBy || uploadedByLabel(user),
+    legacySource: body.legacySource || "INSZoom",
+    metadata: normalizeMetadata(body.metadata),
+  });
+  addAuditEntry(document, "create_metadata", user, body, req);
+  await document.save();
+  return document;
+}
+
 function uploadSessionChunkKey(uploadId, chunkIndex) {
   return `upload-sessions/${uploadId}/chunks/${String(chunkIndex).padStart(8, "0")}`;
 }
@@ -450,6 +500,19 @@ async function assertUploadSessionAccess(uploadId, user) {
 }
 
 async function createUploadSession(payload, user) {
+  if (payload.caseId) {
+    const caseData = await Case.findById(payload.caseId);
+    if (!caseData) {
+      const error = new Error("The specified case could not be found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!canUploadForCase(user, caseData)) {
+      const error = new Error("You do not have permission to upload documents for this case");
+      error.statusCode = 403;
+      throw error;
+    }
+  }
   const expectedSize = Number(payload.expectedSize || payload.fileSize);
   if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > MAX_UPLOAD_SIZE) {
     const error = new Error(`File size must be between 1 byte and ${MAX_UPLOAD_SIZE} bytes`);
@@ -943,6 +1006,7 @@ module.exports = {
   completeUploadSession,
   createUploadSession,
   createDocumentFromFile,
+  createDocumentMetadata,
   getFolders,
   linkEvidence,
   listDocuments,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { authApi } from "../services/api";
 import { isEmployeeAccount } from "../utils/auth";
 import NotificationBell from "./NotificationBell";
 
@@ -62,17 +63,27 @@ const MsgIcon = () => (
 const NAV_LINKS = [
   { label: "Home",      to: "/"                    },
   { label: "How It Works", to: "/how-it-works"     },
-  { label: "Dashboard", to: "/dashboard",           hideForEmployee: true },
+  { label: "Dashboard", to: "/dashboard"            },
+  { label: "Documents", to: "/dashboard/documents", authOnly: true, employeeOnly: true },
+  { label: "Profile",   to: "/dashboard/profile",   authOnly: true, employeeOnly: true },
   { label: "Offers",    to: "/offers"              },
   { label: "Messages",  to: "/dashboard/messages", authOnly: true, hideForEmployee: true },
   { label: "About Us",  to: "/about"               },
   { label: "Payments",  to: "/dashboard/payments", authOnly: true, hideForEmployee: true },
 ];
 
-function visibleNavLinks(user) {
-  return NAV_LINKS.filter(({ authOnly, roles, hideForEmployee }) =>
-    (!authOnly || !!user) && (!roles || roles.includes(user?.role)) && (!hideForEmployee || !isEmployeeAccount(user))
-  );
+const CASE_REQUIRED_LINKS = new Set(["Dashboard", "Messages", "Payments"]);
+
+function visibleNavLinks(user, hasCase) {
+  const restricted = isEmployeeAccount(user);
+  return NAV_LINKS.filter((link) => {
+    if (restricted) return ["Dashboard", "Documents", "Profile"].includes(link.label);
+    if (CASE_REQUIRED_LINKS.has(link.label) && !hasCase) return false;
+    return (!link.authOnly || !!user)
+      && (!link.roles || link.roles.includes(user?.role))
+      && !link.employeeOnly
+      && (!link.hideForEmployee || !restricted);
+  });
 }
 
 export default function Navbar() {
@@ -82,9 +93,11 @@ export default function Navbar() {
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [dropOpen,  setDropOpen]  = useState(false);
   const [scrolled,  setScrolled]  = useState(false);
+  const [sessionHasCase, setSessionHasCase] = useState(false);
   const dropRef = useRef(null);
 
   const isActive = (to) => location.pathname === to;
+  const hasCase = Boolean(sessionHasCase || isEmployeeAccount(user));
 
   // Shadow on scroll
   useEffect(() => {
@@ -104,6 +117,20 @@ export default function Navbar() {
 
   // Close mobile menu on route change
   useEffect(() => { setMenuOpen(false); setDropOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSessionHasCase(false);
+    if (!user) return () => { cancelled = true; };
+    authApi.sessionContext()
+      .then((context) => {
+        if (!cancelled) setSessionHasCase(Boolean(context?.hasCase));
+      })
+      .catch(() => {
+        if (!cancelled) setSessionHasCase(false);
+      });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const handleLogout = async () => {
     await logout();
@@ -141,7 +168,7 @@ export default function Navbar() {
 
         {/* ── Desktop nav links ── */}
         <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center gap-0.5 xl:gap-1">
-          {visibleNavLinks(user).map(({ label, to }) => (
+          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
             <Link
               key={label}
               to={to}
@@ -205,17 +232,17 @@ export default function Navbar() {
 
                   {/* Menu items */}
                   <div className="py-1.5">
-                    {!isEmployeeAccount(user) && (
-                      <DropItem to="/dashboard/profile" icon={<UserIcon />} label="My Profile"
-                        sub="View & edit your details" />
+                    <DropItem to="/dashboard/profile" icon={<UserIcon />} label="My Profile"
+                      sub="View & edit your details" />
+                    {hasCase && (
+                      <DropItem to="/dashboard/documents" icon={<DocsIcon />} label="My Documents"
+                        sub="Upload & manage files" />
                     )}
-                    <DropItem to="/dashboard/documents" icon={<DocsIcon />} label="My Documents"
-                      sub="Upload & manage files" />
                     {["super_admin", "admin", "team_lead", "case_manager"].includes(user?.role) && (
                       <DropItem to="/dashboard/document-review" icon={<DocsIcon />} label="Document Review"
                         sub="Confirm auto-filled fields" />
                     )}
-                    {!isEmployeeAccount(user) && (
+                    {hasCase && (
                       <DropItem to="/dashboard" icon={<DashIcon />} label="Dashboard"
                         sub="Case overview" />
                     )}
@@ -279,7 +306,7 @@ export default function Navbar() {
           shadow-lg shadow-slate-200/50">
 
           {/* Nav links */}
-          {visibleNavLinks(user).map(({ label, to }) => (
+          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
             <Link
               key={label}
               to={to}
@@ -304,10 +331,8 @@ export default function Navbar() {
                     <p className="text-xs text-slate-400 truncate">{emailShort}</p>
                   </div>
                 </div>
-                {!isEmployeeAccount(user) && (
-                  <MobileItem to="/dashboard/profile" icon={<UserIcon />} label="My Profile" />
-                )}
-                <MobileItem to="/dashboard/documents" icon={<DocsIcon />} label="My Documents" />
+                <MobileItem to="/dashboard/profile" icon={<UserIcon />} label="My Profile" />
+                {hasCase && <MobileItem to="/dashboard/documents" icon={<DocsIcon />} label="My Documents" />}
                 {["super_admin", "admin", "team_lead", "case_manager"].includes(user?.role) && (
                   <MobileItem to="/dashboard/document-review" icon={<DocsIcon />} label="Document Review" />
                 )}

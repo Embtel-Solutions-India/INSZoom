@@ -1,59 +1,23 @@
-import { useEffect, useState } from "react";
-import { employerProfileApi, employeeProfileApi } from "../../services/api";
-import CanonicalProfileForm from "./CanonicalProfileForm";
-import { EMPLOYER_FIELD_GROUPS, EMPLOYEE_FIELD_GROUPS } from "./canonicalFieldGroups";
+import CaseRoleChecklist from "./CaseRoleChecklist";
 
 // Rendered by Documents.jsx for an invited employee/beneficiary's own
 // session (activeCase.caseRole is 'employee' or 'beneficiary', not
-// 'principal'). Shows their own editable questionnaire plus a read-only
-// summary of the employer/petitioner — never anything belonging to a
-// sibling employee, and never write access to the employer's own data
-// (CanonicalProfileForm's readOnly=true here enforces that in the UI; the
-// backend's employer-profile write RBAC enforces it independently either way).
+// 'principal'). Shows only their own checklist, through the same card-based
+// ChecklistItemRow UI + OCR autofill as everywhere else, via
+// CaseRoleChecklist.
+//
+// Deliberately does NOT show the employer/petitioner's checklist, even
+// read-only: an invited employee's account is a "restricted portal role"
+// (see case.service.js's canAccessRestrictedChildCase) explicitly confined
+// to only their own case (caseData.caseRole must equal their own role) —
+// this is an intentional security boundary, not an oversight, and the
+// original spec's "read-only employer summary" requirement was for the
+// EMPLOYER's own fill-self tabs in PrincipalCaseWorkspace.jsx (where the
+// employer legitimately already has access to both), not for an invited
+// employee's separate account.
 export default function EmployeeSelfServiceView({ activeCase }) {
-  const [employerProfile, setEmployerProfile] = useState(null);
-  const [ownProfile, setOwnProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const principalId = activeCase.parentCase?._id || activeCase.parentCase;
   const isFamily = activeCase.caseStructure === "family";
+  const employeeTargetRole = isFamily ? "beneficiary" : "employee";
 
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      principalId ? employerProfileApi.get(principalId).catch(() => null) : null,
-      employeeProfileApi.get(activeCase._id).catch(() => null),
-    ]).then(([employerRes, ownRes]) => {
-      if (cancelled) return;
-      setEmployerProfile(employerRes?.profile || null);
-      setOwnProfile(ownRes?.profile || null);
-    }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [activeCase._id, principalId]);
-
-  const handleSave = async (fields) => {
-    const res = await employeeProfileApi.upsert(activeCase._id, fields);
-    setOwnProfile(res.profile);
-    return res;
-  };
-
-  if (loading) return <p className="text-sm text-slate-400">Loading…</p>;
-
-  return (
-    <div className="space-y-6">
-      <CanonicalProfileForm
-        title={isFamily ? "Petitioner Information" : "Employer Information"}
-        description="Provided by your employer — for your reference only."
-        fieldGroups={EMPLOYER_FIELD_GROUPS}
-        profile={employerProfile}
-        readOnly
-      />
-      <CanonicalProfileForm
-        title="Your Information"
-        fieldGroups={EMPLOYEE_FIELD_GROUPS}
-        profile={ownProfile}
-        onSave={handleSave}
-      />
-    </div>
-  );
+  return <CaseRoleChecklist caseId={activeCase._id} targetRole={employeeTargetRole} />;
 }

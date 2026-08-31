@@ -5,10 +5,16 @@ const Case = require("../../../models/Case");
 const Company = require("../../../models/Company");
 const Document = require("../../../models/Document");
 const DocumentExtraction = require("../../../models/DocumentExtraction");
+const EmployeeProfile = require("../../../models/EmployeeProfile");
+const EmployerProfile = require("../../../models/EmployerProfile");
 const User = require("../../../models/User");
 const MappingResolver = require("../../form-mapping/services/MappingResolver");
 const CanonicalMergeService = require("./CanonicalMergeService");
 const { CASE_SCOPED_CANONICAL_PATHS } = require("../config/fieldScope");
+const {
+  EMPLOYER_PROFILE_TO_CANONICAL,
+  EMPLOYEE_PROFILE_TO_CANONICAL,
+} = require("../config/profileCanonicalMap");
 
 const DATABASE_FIELD_MAP = {
   "beneficiary.firstName": "person.firstName",
@@ -165,7 +171,23 @@ function pushCandidate(candidates, path, value, metadata = {}) {
     verificationStatus: metadata.verificationStatus,
     verificationDate: metadata.verificationDate,
     collectedAt: metadata.collectedAt,
+    profileOwner: metadata.profileOwner,
+    caseScope: metadata.caseScope,
+    revision: metadata.revision,
+    locked: metadata.locked,
+    priority: metadata.priority,
   });
+}
+
+function canonicalFieldAt(profile, fieldPath) {
+  return fieldPath.split(".").reduce((current, key) => current?.[key], profile?.canonicalData);
+}
+
+function profileSourceType(field = {}) {
+  if (field.source === "case_manager_edit" || field.source === "form_edit") return "case_manager_verified";
+  if (field.source === "ocr") return field.locked ? "ocr_verified" : "ocr";
+  if (field.source === "import") return "database";
+  return "questionnaire";
 }
 
 class CanonicalBuilderService {
@@ -176,15 +198,34 @@ class CanonicalBuilderService {
       error.status = 404;
       throw error;
     }
-    const [beneficiary, company, user, answers, documents, extractions] = await Promise.all([
+    const principalCaseId = caseRecord.caseRole === "employee" || caseRecord.caseRole === "beneficiary"
+      ? caseRecord.parentCase
+      : caseRecord._id;
+    // F-4 fix: Answer.find({caseId}) only ever read THIS case's own answers -
+    // for an employer_employee/family case, the principal's questionnaire
+    // (company.name, petitioner.name, ...) and the child's (person.firstName,
+    // passport, ...) are two separate Case documents with two separate
+    // caseId-scoped Answer sets. Building canonical data for either case
+    // alone could therefore never see both halves of a single I-129/I-130
+    // petition at once - company.* was always unresolvable when building
+    // for the child, and person.* always unresolvable when building for the
+    // principal, regardless of any per-field mapping fix. A combined
+    // petition's canonical profile needs the whole case family's answers,
+    // not just whichever single Case document was asked for.
+    const familyCaseIds = caseRecord.caseRole === "principal" || caseRecord.caseStructure === "family"
+      ? [caseRecord._id, ...(caseRecord.childCases || [])]
+      : [principalCaseId, caseRecord._id].filter(Boolean);
+    const [beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile] = await Promise.all([
       caseRecord.beneficiary ? Beneficiary.findById(caseRecord.beneficiary).lean() : null,
       caseRecord.companyId ? Company.findById(caseRecord.companyId).lean() : null,
       caseRecord.user ? User.findById(caseRecord.user).select("-password").lean() : null,
-      Answer.find({ caseId }).sort({ updatedAt: -1 }).populate({ path: "question", select: "mapping questionnaire" }).lean(),
+      Answer.find({ caseId: { $in: familyCaseIds } }).sort({ updatedAt: -1 }).populate({ path: "question", select: "mapping questionnaire" }).lean(),
       Document.find({ caseId, deletedAt: { $exists: false } }).sort({ uploadDate: -1 }).lean(),
       DocumentExtraction.find({ caseId }).sort({ updatedAt: -1 }).lean(),
+      principalCaseId ? EmployerProfile.findOne({ principalCaseId }).lean() : null,
+      ["employee", "beneficiary"].includes(caseRecord.caseRole) ? EmployeeProfile.findOne({ caseId: caseRecord._id }).lean() : null,
     ]);
-    return { caseRecord, beneficiary, company, user, answers, documents, extractions };
+    return { caseRecord, beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile };
   }
 
   static addMappedObjectCandidates(candidates, prefix, sourceObject, sourceId, sourceType = "database") {
@@ -255,6 +296,31 @@ class CanonicalBuilderService {
           verificationDate: field.reviewedAt || field.editedAt,
           collectedAt: field.extractedAt || field.extractionTimestamp || extraction.processingCompletedAt || extraction.updatedAt,
         });
+      });
+    });
+  }
+
+  static addProfileCandidates(candidates, profile, pathMap, profileOwner, caseScope = {}) {
+    if (!profile) return;
+    Object.entries(pathMap).forEach(([profilePath, canonicalPath]) => {
+      const field = canonicalFieldAt(profile, profilePath);
+      if (!field || MappingResolver.isEmpty(field.value)) return;
+      pushCandidate(candidates, canonicalPath, field.value, {
+        sourceType: profileSourceType(field),
+        source: field.source,
+        sourceId: field.sourceId || profile._id,
+        sourceField: field.sourceField || `${profileOwner}.${profilePath}`,
+        confidence: field.source === "case_manager_edit" || field.source === "form_edit" ? 100 : 92,
+        priority: field.source === "case_manager_edit" || field.source === "form_edit" ? 650 : 520,
+        status: field.locked ? "staff_locked" : "selected",
+        verifiedBy: field.updatedBy,
+        verificationStatus: field.source === "case_manager_edit" || field.source === "form_edit" ? "case_manager_verified" : undefined,
+        verificationDate: field.updatedAt,
+        collectedAt: field.updatedAt || profile.updatedAt,
+        profileOwner,
+        caseScope,
+        revision: field.revision,
+        locked: field.locked,
       });
     });
   }
@@ -331,6 +397,16 @@ class CanonicalBuilderService {
     this.addMappedObjectCandidates(candidates, "beneficiary", sources.beneficiary, idOf(sources.beneficiary), "database");
     this.addMappedObjectCandidates(candidates, "case", sources.caseRecord, idOf(sources.caseRecord), "database");
     this.addMappedObjectCandidates(candidates, "company", sources.company, idOf(sources.company), "database");
+    const principalCaseId = sources.caseRecord.caseRole === "employee" || sources.caseRecord.caseRole === "beneficiary"
+      ? sources.caseRecord.parentCase
+      : sources.caseRecord._id;
+    this.addProfileCandidates(candidates, sources.employerProfile, EMPLOYER_PROFILE_TO_CANONICAL, "employer", { principalCaseId: String(principalCaseId || "") });
+    if (sources.employeeProfile) {
+      this.addProfileCandidates(candidates, sources.employeeProfile, EMPLOYEE_PROFILE_TO_CANONICAL, sources.employeeProfile.profileType, {
+        caseId: String(sources.caseRecord._id),
+        principalCaseId: String(sources.caseRecord.parentCase || ""),
+      });
+    }
     if (sources.user) {
       pushCandidate(candidates, "contact.email", sources.user.email, { sourceType: "database", sourceId: sources.user._id, sourceField: "user.email", confidence: 75 });
       pushCandidate(candidates, "person.fullName", sources.user.name || sources.user.displayName, { sourceType: "database", sourceId: sources.user._id, sourceField: "user.name", confidence: 65 });
@@ -338,11 +414,49 @@ class CanonicalBuilderService {
     this.addQuestionnaireCandidates(candidates, sources.answers);
     this.addOcrCandidates(candidates, sources.extractions);
     const merged = CanonicalMergeService.merge(candidates);
+    // F-4: two canonical paths CanonicalSectionValidators.js requires have no
+    // real question anywhere in h1b_employee_checklist to source them from -
+    // not a mapping gap (M4), a genuine content gap. Rather than block on a
+    // question the real checklist never asks, fill in the value the
+    // section's own label already implies, only when there's nothing more
+    // specific on record: the "Current US Address" section is, per its own
+    // name, always United States; a passport is overwhelmingly issued by the
+    // holder's country of citizenship absent any evidence otherwise. Both
+    // conditioned on the address/passport actually being on file - never
+    // invented for a case with no address/passport data at all.
+    if (merged.profile.contact?.address?.city && !merged.profile.contact.address.country) {
+      merged.profile.contact.address.country = "United States";
+    }
+    if (merged.profile.person?.passport?.number && !merged.profile.person.passport.country) {
+      merged.profile.person.passport.country = merged.profile.person.citizenship;
+    }
     const rawCollections = this.buildRawCollections(sources);
     this.addRepeatableCollections(merged.profile, rawCollections);
     merged.profile.beneficiary = rawCollections.beneficiary;
-    merged.profile.petitioner = rawCollections.petitioner;
-    merged.profile.company = rawCollections.company;
+    // Same overwrite bug as company.* (below), plus PetitionerValidator
+    // (CanonicalSectionValidators.js) requires petitioner.name for every
+    // non-family visa unconditionally - for a company-sponsored petition
+    // (employer_employee structure) there is no separate "petitioner" entity
+    // distinct from the company; falling back to the already-resolved
+    // company.name is the correct real-world value, not a workaround.
+    merged.profile.petitioner = { ...(merged.profile.petitioner || {}), ...rawCollections.petitioner };
+    if (!merged.profile.petitioner.name && sources.caseRecord.caseStructure === "employer_employee") {
+      merged.profile.petitioner.name = merged.profile.company?.name;
+    }
+    // F-4 fix (N2): rawCollections.company comes from the OLD Company model
+    // (caseRecord.companyId) - always {} for an employer/employee (Phase 9)
+    // case, which uses EmployerProfile instead and has no Company document at
+    // all. Unconditionally overwriting merged.profile.company with that empty
+    // object discarded whatever addQuestionnaireCandidates/addProfileCandidates
+    // had already merged into company.* from real questionnaire answers (e.g.
+    // company.name from employer_company_fullName, wired in Phase F-3) -
+    // company.name could never resolve for any employer/employee case,
+    // regardless of any question-mapping fix. Spreading instead of replacing
+    // keeps the merged questionnaire-derived fields, while a real Company
+    // document (old single-Case architecture) still takes precedence for
+    // whichever fields IT defines, preserving the original intent for that
+    // case type.
+    merged.profile.company = { ...(merged.profile.company || {}), ...rawCollections.company };
     // NOT `...rawCollections.case` here - that's the entire raw Case
     // document, including its OWN canonicalProfile/canonicalHistory. Since
     // this profile gets saved back onto that same case, spreading the whole
@@ -355,11 +469,19 @@ class CanonicalBuilderService {
     merged.profile.case = merged.profile.case || {};
     merged.profile.case.id = sources.caseRecord._id;
     merged.profile.case.caseId = sources.caseRecord.caseId || sources.caseRecord.caseNumber;
+    // F-4 fix: DocumentsValidator (CanonicalSectionValidators.js) needs to
+    // know which role THIS case represents so it can require only that
+    // role's documents, not the whole visa's combined employer+employee set
+    // against a single case's own Document records.
+    merged.profile.case.caseRole = sources.caseRecord.caseRole;
+    merged.profile.case.caseStructure = sources.caseRecord.caseStructure;
     merged.profile.metadata = {
       caseId,
       beneficiaryId: idOf(sources.beneficiary),
-      companyId: idOf(sources.company),
-      answerCount: sources.answers.length,
+        companyId: idOf(sources.company),
+        employerProfileId: idOf(sources.employerProfile),
+        employeeProfileId: idOf(sources.employeeProfile),
+        answerCount: sources.answers.length,
       documentCount: sources.documents.length,
       extractionCount: sources.extractions.length,
       builtAt: new Date(),
@@ -373,6 +495,8 @@ class CanonicalBuilderService {
         answerIds: sources.answers.map((answer) => [answer._id, answer.updatedAt, answer.status]),
         documentIds: sources.documents.map((document) => [document._id, document.updatedAt, document.reviewStatus]),
         extractionIds: sources.extractions.map((extraction) => [extraction._id, extraction.updatedAt, extraction.reviewStatus]),
+        employerProfileUpdatedAt: sources.employerProfile?.updatedAt,
+        employeeProfileUpdatedAt: sources.employeeProfile?.updatedAt,
       }),
     };
   }

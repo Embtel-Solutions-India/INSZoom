@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
+import InfoModal from '../components/InfoModal'
 import {
   Settings as SettingsIcon,
   Save,
@@ -29,6 +30,8 @@ const Settings = () => {
   const [aiProviders, setAiProviders] = useState([])
   const [aiPrompts, setAiPrompts] = useState([])
   const [aiUsage, setAiUsage] = useState([])
+  // P12-S2: replaces window.alert() calls previously fired below.
+  const [infoModal, setInfoModal] = useState(null)
 
   // Role helper
   const is = (roles) => roles.includes(user?.role)
@@ -63,11 +66,11 @@ const Settings = () => {
     setSaving(true)
     try {
       await api.put('/settings', { [section]: sectionData })
-      alert('Settings saved successfully')
+      setInfoModal({ message: 'Settings saved successfully' })
       await fetchSettings()
     } catch (error) {
       console.error('Error saving settings:', error)
-      alert('Failed to save settings')
+      setInfoModal({ message: 'Failed to save settings', variant: 'error' })
     } finally {
       setSaving(false)
     }
@@ -79,10 +82,10 @@ const Settings = () => {
     try {
       const response = await api.delete('/admin/demo-data', { data: { confirm: 'DELETE_DEMO_DATA' } })
       const deleted = response.data?.deleted || {}
-      alert(`Demo data purged:\n${Object.entries(deleted).map(([k, v]) => `${k}: ${v}`).join('\n')}`)
+      setInfoModal({ title: 'Demo data purged', message: Object.entries(deleted).map(([k, v]) => `${k}: ${v}`).join('\n') })
     } catch (error) {
       console.error('Error purging demo data:', error)
-      alert(error.response?.data?.message || 'Failed to purge demo data')
+      setInfoModal({ message: error.response?.data?.message || 'Failed to purge demo data', variant: 'error' })
     } finally {
       setPurging(false)
     }
@@ -680,6 +683,15 @@ const Settings = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {infoModal && (
+        <InfoModal
+          title={infoModal.title}
+          message={infoModal.message}
+          variant={infoModal.variant}
+          onClose={() => setInfoModal(null)}
+        />
       )}
     </div>
   )

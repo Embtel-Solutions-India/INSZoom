@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import api, { setAccessToken } from '../services/api'
 import * as permissionUtils from '../utils/permissions'
 import { initializeNotifications, unregisterCurrentDevice } from '../services/notificationService'
@@ -18,19 +18,26 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [token, setToken] = useState(null)
+  const authVersionRef = useRef(0)
   useEffect(() => { if (user) initializeNotifications().catch(() => {}); }, [user]);
   const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
 
-  const clearSession = () => {
+  const clearSession = useCallback((expectedAuthVersion = null) => {
+    if (expectedAuthVersion !== null && expectedAuthVersion !== authVersionRef.current) return false
     // Access and refresh tokens are intentionally never persisted in browser storage.
     localStorage.removeItem('loginTime')
     localStorage.removeItem('user')
     setAccessToken(null)
     setToken(null)
     setUser(null)
-  }
+    return true
+  }, [])
 
   useEffect(() => {
+    const authVersion = authVersionRef.current
+    let cancelled = false
+    const isCurrentAuthCheck = () => !cancelled && authVersion === authVersionRef.current
+
     const fetchUser = async () => {
       if (token) {
         // Check if session has expired
@@ -39,10 +46,8 @@ export const AuthProvider = ({ children }) => {
           const elapsed = Date.now() - parseInt(loginTime)
           if (elapsed > SESSION_DURATION) {
             // Session expired, logout
-            clearSession()
-            setToken(null)
-            setUser(null)
-            setLoading(false)
+            clearSession(authVersion)
+            if (isCurrentAuthCheck()) setLoading(false)
             return
           }
         }
@@ -52,28 +57,28 @@ export const AuthProvider = ({ children }) => {
             headers: { Authorization: `Bearer ${token}` }
           })
           if (!permissionUtils.canAccessAdminPortal(response.data.user)) {
-            clearSession()
-            setLoading(false)
+            clearSession(authVersion)
+            if (isCurrentAuthCheck()) setLoading(false)
             return
           }
-          setUser(response.data.user)
+          if (isCurrentAuthCheck()) setUser(response.data.user)
         } catch (error) {
-          clearSession()
+          clearSession(authVersion)
         }
       } else {
         try {
-          const response = await api.post('/auth/refresh', {})
+          const response = await api.post('/auth/refresh', {}, { _skipAuthRedirect: true })
           const renewedToken = response.data?.accessToken
-          if (renewedToken) {
+          if (renewedToken && isCurrentAuthCheck()) {
             setAccessToken(renewedToken)
             setToken(renewedToken)
             return
           }
         } catch {
-          clearSession()
+          clearSession(authVersion)
         }
       }
-      setLoading(false)
+      if (isCurrentAuthCheck()) setLoading(false)
     }
 
     fetchUser()
@@ -89,8 +94,11 @@ export const AuthProvider = ({ children }) => {
       }
     }, 60000) // Check every minute
 
-    return () => clearInterval(sessionCheckInterval)
-  }, [token])
+    return () => {
+      cancelled = true
+      clearInterval(sessionCheckInterval)
+    }
+  }, [token, clearSession])
 
   const login = useCallback(async (email, password) => {
     try {
@@ -106,9 +114,11 @@ export const AuthProvider = ({ children }) => {
       // Store token and login timestamp
       localStorage.setItem('loginTime', Date.now().toString())
       
+      authVersionRef.current += 1
       setAccessToken(accessToken || newToken)
       setToken(accessToken || newToken)
       setUser(userData)
+      setLoading(false)
       return { success: true }
     } catch (error) {
       return {
@@ -119,6 +129,7 @@ export const AuthProvider = ({ children }) => {
   }, [])
 
   const logout = useCallback(async () => {
+    authVersionRef.current += 1
     await unregisterCurrentDevice().catch(() => {})
     try {
       await api.post('/auth/logout', {}, {

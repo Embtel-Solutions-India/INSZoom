@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { authApi, profileApi } from "../../services/api";
+import { authApi, casesApi, employeeProfileApi, profileApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES } from "../../config/visaConfig";
+import { isEmployeeAccount } from "../../utils/auth";
 
 // Identity-only, by design — visa-specific fields, documents, the checklist,
 // and case-specific data (including Premium Processing/I-907) all live on
@@ -37,9 +38,14 @@ function Field({ label, children }) {
 
 const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100";
 
+function canonicalValue(profile, path) {
+  return path.split(".").reduce((current, key) => current?.[key], profile?.canonicalData)?.value || "";
+}
+
 export default function Profile() {
   const { user } = useAuth();
   const [data, setData] = useState(INITIAL);
+  const [activeCaseId, setActiveCaseId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -57,6 +63,30 @@ export default function Profile() {
 
   useEffect(() => {
     let mounted = true;
+    if (isEmployeeAccount(user)) {
+      casesApi.my().then(async (caseResult) => {
+        if (!mounted) return;
+        const activeCase = caseResult?.case || caseResult?.data?.case || caseResult || {};
+        setActiveCaseId(activeCase._id || "");
+        const profileResult = activeCase._id ? await employeeProfileApi.get(activeCase._id).catch(() => null) : null;
+        const profile = profileResult?.profile || {};
+        setData({
+          firstName: canonicalValue(profile, "firstName"),
+          lastName: canonicalValue(profile, "lastName"),
+          email: canonicalValue(profile, "email") || user?.email || "",
+          primaryPhone: canonicalValue(profile, "phone"),
+          address: canonicalValue(profile, "currentAddress.street"),
+          city: canonicalValue(profile, "currentAddress.city"),
+          state: canonicalValue(profile, "currentAddress.state"),
+          zipCode: canonicalValue(profile, "currentAddress.zipCode"),
+          country: canonicalValue(profile, "currentAddress.country"),
+          visaCategory: activeCase.visaCategory || "",
+          visaType: activeCase.visaType || "",
+        });
+        setLoading(false);
+      }).catch(() => setLoading(false));
+      return () => { mounted = false; };
+    }
     // casesApi.my() used to be fetched alongside this and discarded unread —
     // every field this page needs (activeCase below) already comes from
     // getIntake()'s embedded intake.case, so it was a full 16-populate case
@@ -87,7 +117,7 @@ export default function Profile() {
       setLoading(false);
     }).catch(() => setLoading(false));
     return () => { mounted = false; };
-  }, [user?.email]);
+  }, [user]);
 
   // Explicit save only — no autosave. Only this page's own fields are sent;
   // the backend merges partial intake saves (Object.assign onto the client
@@ -97,7 +127,21 @@ export default function Profile() {
     setSaving(true);
     setMessage("");
     try {
-      await profileApi.saveIntake(data, {});
+      if (isEmployeeAccount(user)) {
+        if (!activeCaseId) throw new Error("Unable to resolve your case profile.");
+        await employeeProfileApi.upsert(activeCaseId, {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.primaryPhone,
+          "currentAddress.street": data.address,
+          "currentAddress.city": data.city,
+          "currentAddress.state": data.state,
+          "currentAddress.zipCode": data.zipCode,
+          "currentAddress.country": data.country,
+        });
+      } else {
+        await profileApi.saveIntake(data, {});
+      }
       setMessage("Saved");
       setDirty(false);
     } catch (error) {

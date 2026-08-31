@@ -55,7 +55,19 @@ class PersonalInformationValidator {
 
 class ContactInformationValidator {
   static validate(profile) {
-    const requiredPaths = ["contact.email", "contact.phone"];
+    // F-4 finding: contact.phone was required unconditionally across every
+    // visa type, but for a Phase 9 employer/employee case the invited
+    // employee has no question anywhere that collects their own phone
+    // number (inviteEmployee's own form only takes name+email), and the
+    // real I-129 H-1B crosswalk only ever needs the EMPLOYER's daytime
+    // phone (raw.questionnaireAnswers.employer_company_daytimePhone.value),
+    // never the beneficiary's personal one - confirmed directly against
+    // i129-h1b-crosswalk.js. Blocking on a field the platform has no path
+    // to collect, that the actual form being filed doesn't use, made every
+    // employer/employee case's canonical profile permanently "invalid".
+    // contact.email remains required (always available via the account's
+    // own login email) and phone format is still validated when present.
+    const requiredPaths = ["contact.email"];
     const issues = required(profile, requiredPaths);
     const email = value(profile, "contact.email");
     const phone = value(profile, "contact.phone");

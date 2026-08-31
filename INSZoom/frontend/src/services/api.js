@@ -116,6 +116,9 @@ api.interceptors.response.use(
     }
     await rehydrateBlobErrorBody(error)
     const originalRequest = error.config
+    if (originalRequest?._skipAuthRedirect) {
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401 && !originalRequest?._retry) {
       if (error.response?.data?.code === 'TOKEN_EXPIRED') {
         originalRequest._retry = true

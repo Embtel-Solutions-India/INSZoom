@@ -20,12 +20,22 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
   });
   const saveTimers = useRef({});
 
-  const load = useCallback(async () => {
+  // Phase 12 fix (P12-C1): this is a pure read (GET), so retrying it has no
+  // side-effect risk, unlike saveAnswer below. A single transient failure
+  // here (this dev environment's remote DB routinely takes 15-45s under
+  // load - see PHASE_F2/F3_COMPLETION_REPORT.md) previously surfaced
+  // immediately and permanently as CaseRoleChecklistView's "Unable to load
+  // this checklist" error, with no path back to a working state short of a
+  // manual page reload - even though the checklist data was always
+  // reachable a few seconds later. Two bounded automatic retries (short
+  // backoff) let a slow-but-not-actually-broken backend resolve on its own
+  // before giving up and showing the error state.
+  const load = useCallback(async (attempt = 0) => {
     if (!caseId) {
       setState((prev) => ({ ...prev, loading: false }));
       return;
     }
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState((prev) => ({ ...prev, loading: true, error: attempt > 0 ? prev.error : null }));
     try {
       const params = targetRole ? { targetRole } : {};
       const response = await questionnairesApi.getForCase(caseId, params);
@@ -40,6 +50,10 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
         error: null,
       });
     } catch (error) {
+      if (attempt < 2) {
+        setTimeout(() => load(attempt + 1), 2000 * (attempt + 1));
+        return;
+      }
       setState((prev) => ({ ...prev, loading: false, error: error.message || "Failed to load questionnaire" }));
     }
   }, [caseId, targetRole]);

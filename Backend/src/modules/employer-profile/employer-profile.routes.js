@@ -8,6 +8,7 @@ const ctrl = require("./employer-profile.controller");
 // case.controller.js already uses for client-accessible case routes
 // (canAccessCase), not the staff-only authorizeRoles/authorizePermissions
 // gates used elsewhere in this app.
+router.get("/summary/me", authenticate, ctrl.getMyEmployerProfileSummary);
 router.get("/:principalCaseId", authenticate, ctrl.getEmployerProfile);
 router.post("/:principalCaseId", authenticate, ctrl.upsertEmployerProfile);
 

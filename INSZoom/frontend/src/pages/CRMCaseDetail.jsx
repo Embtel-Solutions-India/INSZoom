@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, useEffect, useCallback, useRef, Component } f
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
+import InfoModal from '../components/InfoModal'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
@@ -34,7 +35,9 @@ import {
   ZoomIn,
   ZoomOut,
   Loader2,
-  XCircle
+  XCircle,
+  Copy,
+  Check
 } from 'lucide-react'
 
 const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
@@ -378,6 +381,10 @@ const CRMCaseDetail = () => {
   const [assignInternalNote, setAssignInternalNote] = useState('')
   const [assignError, setAssignError] = useState('')
   const [assigning, setAssigning] = useState(false)
+  // P12-S2: replaces a window.alert() previously fired here.
+  const [infoModal, setInfoModal] = useState(null)
+  // P12-S3: Case ID copy-to-clipboard feedback (case header).
+  const [caseIdCopied, setCaseIdCopied] = useState(false)
   const [users, setUsers] = useState([])
   // Phase 7 — populated only for principal cases (childCaseCount > 0); holds
   // the child cases returned by GET /cases/:id/related, which — unlike the
@@ -775,7 +782,7 @@ const CRMCaseDetail = () => {
       setAssignInternalNote('')
       fetchCaseDetail()
       if (cascaded > 0) {
-        alert(`Assignment also applied to ${cascaded} child case${cascaded === 1 ? '' : 's'}.`)
+        setInfoModal({ message: `Assignment also applied to ${cascaded} child case${cascaded === 1 ? '' : 's'}.` })
       }
     } catch (error) {
       console.error('Error assigning staff:', error)
@@ -1321,6 +1328,32 @@ const CRMCaseDetail = () => {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 break-words">{caseData.caseNumber}</h1>
             <p className="text-gray-600 mt-1">{caseData.clientName}</p>
+            {/* P12-S3: Case ID + copy button — the admin's fastest path to
+                share the client's BAIS portal login ID, no DB lookup needed. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">
+                  Client Case ID
+                </span>
+                <span className="font-mono text-sm font-bold text-indigo-900">
+                  {caseData.caseNumber}
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(caseData.caseNumber)
+                    setCaseIdCopied(true)
+                    setTimeout(() => setCaseIdCopied(false), 2500)
+                  }}
+                  title="Copy Case ID — share with client for BAIS portal login"
+                  className={`flex items-center rounded p-0.5 transition-colors ${caseIdCopied ? 'text-emerald-600' : 'text-indigo-400 hover:text-indigo-700'}`}
+                >
+                  {caseIdCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+                {caseIdCopied && <span className="text-[11px] font-semibold text-emerald-600">Copied!</span>}
+              </div>
+              <span className="text-xs text-gray-400">Share with client for BAIS portal login</span>
+            </div>
           </div>
           <button
             onClick={() => {
@@ -2831,6 +2864,15 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {infoModal && (
+        <InfoModal
+          title={infoModal.title}
+          message={infoModal.message}
+          variant={infoModal.variant}
+          onClose={() => setInfoModal(null)}
+        />
       )}
     </div>
   )

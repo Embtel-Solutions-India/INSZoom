@@ -59,6 +59,47 @@ export default function CanonicalProfileForm({
     }
   };
 
+  const renderField = ({ path, type = "text", options = [], placeholder }) => {
+    if (type === "textarea") {
+      return (
+        <textarea
+          className={`${inputClass} min-h-28 resize-y`}
+          value={values[path] ?? ""}
+          disabled={readOnly}
+          placeholder={placeholder}
+          onChange={(e) => update(path, e.target.value)}
+        />
+      );
+    }
+    if (type === "select") {
+      return (
+        <select
+          className={inputClass}
+          value={values[path] ?? ""}
+          disabled={readOnly}
+          onChange={(e) => update(path, e.target.value)}
+        >
+          <option value="">{placeholder || "Select"}</option>
+          {options.map((option) => (
+            <option key={option.value || option} value={option.value || option}>
+              {option.label || option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <input
+        type={type}
+        className={inputClass}
+        value={values[path] ?? ""}
+        disabled={readOnly}
+        placeholder={placeholder}
+        onChange={(e) => update(path, e.target.value)}
+      />
+    );
+  };
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
       {title && (
@@ -72,16 +113,11 @@ export default function CanonicalProfileForm({
         <div key={group.label} className="space-y-3">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{group.label}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {group.fields.map(({ path, label, type = "text" }) => (
-              <label key={path} className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
-                <input
-                  type={type}
-                  className={inputClass}
-                  value={values[path] ?? ""}
-                  disabled={readOnly}
-                  onChange={(e) => update(path, e.target.value)}
-                />
+            {group.fields.map((field) => (
+              <label key={field.path} className={`block ${field.span === "full" ? "sm:col-span-2" : ""}`}>
+                <span className="mb-1 block text-xs font-medium text-slate-500">{field.label}</span>
+                {renderField(field)}
+                {field.help && <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">{field.help}</span>}
               </label>
             ))}
           </div>
