@@ -11,7 +11,6 @@ import Layout from './layouts/Layout'
 const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Leaderboard = lazy(() => import('./pages/Leaderboard'))
-const StaffProfile = lazy(() => import('./pages/StaffProfile'))
 const EODReports = lazy(() => import('./pages/EODReports'))
 const Leads = lazy(() => import('./pages/Leads'))
 const CRMCases = lazy(() => import('./pages/CRMCases'))
@@ -19,12 +18,8 @@ const CRMCaseDetail = lazy(() => import('./pages/CRMCaseDetail'))
 const Messaging = lazy(() => import('./pages/Messaging'))
 const PaymentsOverview = lazy(() => import('./pages/PaymentsOverview'))
 const Settings = lazy(() => import('./pages/Settings'))
-const Users = lazy(() => import('./pages/Users'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Documents = lazy(() => import('./pages/Documents'))
-const CreateUser = lazy(() => import('./pages/CreateUser'))
-const EditUser = lazy(() => import('./pages/EditUser'))
-const UserActivity = lazy(() => import('./pages/UserActivity'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const USCISForms = lazy(() => import('./pages/USCISForms'))
 const CaseManagers = lazy(() => import('./pages/CaseManagers'))
@@ -185,46 +180,8 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="users" 
-                element={
-                  <ProtectedRoute module="users">
-                    <Users />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="users/create" 
-                element={
-                  <ProtectedRoute module="users">
-                    <CreateUser />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="users/:id/edit" 
-                element={
-                  <ProtectedRoute module="users">
-                    <EditUser />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="users/:id/activity" 
-                element={
-                  <ProtectedRoute module="users">
-                    <UserActivity />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="staff-profile/:userId" 
-                element={
-                  <ProtectedRoute module="users">
-                    <StaffProfile />
-                  </ProtectedRoute>
-                } 
-              />
+              <Route path="users/*" element={<Navigate to="/dashboard" replace />} />
+              <Route path="staff-profile/:userId" element={<Navigate to="/dashboard" replace />} />
               <Route 
                 path="settings" 
                 element={

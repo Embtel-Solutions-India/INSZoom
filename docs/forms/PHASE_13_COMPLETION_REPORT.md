@@ -62,3 +62,26 @@ Regression (all run against the real pipeline/DB, not mocked):
 - No new canonical-sync/conflict/override mechanism was created — Phase 11's existing one was reused exactly as instructed, with two one-line bug fixes (§2) rather than a rewrite.
 - No `workingPdfS3Key`/`sourcePdfHash`/`currentPdfHash` fields were added to `CaseForm`, and no PDF bytes are written to storage on field save. The field-value-first architecture (JSON authoritative, PDF rendered on demand) is unchanged.
 - RBAC/route middleware was not touched anywhere; `case-lifecycle-routes.test.js` and `interactive-form-review.routes.test.js` (unchanged assertions) still pass.
+
+---
+
+## Phase 13.5 — Interactive Edit Key Normalization (investigated, no code fix needed)
+
+**Date:** 2026-09-01
+**Status:** COMPLETE — no bug found in current code; one stray data artifact removed.
+
+A follow-up "Phase 13.5" prompt asked to fix a raw-XFA-vs-sanitized `CaseForm.fieldValues` key mismatch between `AutoFillService.generate()` and the interactive `saveField()` path (the "F-1 bug" described in `PHASE_12_COMPLETION_REPORT.md`). Investigation (its own mandated Part 0) found this bug does not exist in the current code — the same pattern as Phase 13's own starting prompt turning out to be based on a stale prior state.
+
+**Code trace, all three layers:**
+- `FormMappingService.mapTemplate()` (used by `AutoFillService.generate()`): `fieldId = field.fieldId || field.fieldName` → `fieldValues[fieldId] = value`.
+- `AutoFillService.overrideField()` (what `saveField()` calls): `fieldValues[fieldId] = value` — the identical `fieldId`, no separate transform.
+- `InteractiveFormReviewService.saveField()` rejects any field name that doesn't match `template.formFields[].fieldName`/`fieldId` via `fieldDefinition()` — it cannot write an off-format key even if one were sent.
+- Frontend `PDFFieldChangeAdapter.convert()` returns `fieldId: fieldName` verbatim and separately validates the DOM-extracted PDF field name against the same `knownFieldNames` set before sending it — a mismatched key is rejected client-side (`FIELD_NOT_IN_MAPPING`) and never reaches the server.
+
+All three paths key off the same `field.fieldName`, which the I-129 template itself already stores in the normalized `page1.form10...` dot-path format. There is no dual key-format split anywhere live.
+
+**Live-database confirmation** (real dev DB, the exact CaseForm named in both the Phase 13 and 13.5 prompts, `6a9211128b7dd5514d33bff7` / case `6a91c30a1afc8b73d9431db9`): 375 of 376 `fieldValues` keys were correctly in sanitized format holding real data. Exactly one stray key existed: `form1[0].#subform[0].Line3_CompanyorOrgName[0]` = `"P12_TEST4"`, with provenance `source: "AttorneyOverride"`, `reason: "Native PDF field edit"`, timestamped 2026-08-28T23:42 — a leftover artifact from Phase 12's own manual reproduction test, which that report claimed was cleaned up but wasn't fully. It could only have been written by a direct test call bypassing `saveField()`'s field-name validation, not through any currently-reachable user path.
+
+**Action taken:** removed that one stray key from `fieldValues`, `sourceAttribution`, and `manualOverrides` on that CaseForm (the correct, real `page1.form10Subform0Line3CompanyorOrgName0 = "F3 Technology Partners LLC"` entry was untouched, confirmed before/after). No `normalizeXfaFieldKey.js` utility, no `AutoFillService`/`interactive-form-review.service.js` changes, no migration script, and no new tests were added, since there was no live defect for any of that to fix — adding a shared normalizer that no code path needs would be dead, confusing code. `fieldHistory`/`auditHistory` (the immutable audit trail) were left untouched; only current-state fields were cleaned up.
+
+One incidental note for future cleanup scripts against this collection: a naive `$unset` using a dotted MongoDB update path (e.g. `{'fieldValues.form1[0].#subform[0]...': ''}`) silently no-ops on a flat key that itself contains literal dots — Mongo splits on every `.` and misparses it as a nested path, exactly the pitfall `AutoFillService.overrideField()` already documents inline. The correct approach (used here) is the same one that comment describes: mutate a plain-object copy with bracket deletion, then reassign the whole top-level Mixed field via `.set()`.
