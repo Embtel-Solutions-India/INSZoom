@@ -108,7 +108,11 @@ async function createConsultationLead(payload = {}, req, options = {}) {
     },
     userAgent: req?.headers?.["user-agent"],
   });
-  await notifyStaffOfLead(lead);
+  // Fire-and-forget: notification must never block the HTTP response. The
+  // lead document is already persisted above, so a hung/failed notification
+  // (e.g. Atlas M0 timeout on Settings.findOne inside notifyStaffOfLead)
+  // never loses or delays the lead itself.
+  notifyStaffOfLead(lead).catch(() => {});
   return lead;
 }
 
@@ -160,6 +164,12 @@ async function createQuizLead(payload, req) {
     phone: payload.phone,
     visaPathway: payload.visaPathway,
     source: payload.source || "public_quiz",
+    // Lead.leadNumber has a unique (sparse) index. Every other lead-creation
+    // path here already assigns one via CaseNumberService.nextLeadNumber() -
+    // this was the one path that didn't, so the first-ever quiz submission
+    // wrote leadNumber:null, and every quiz submission after that one hit an
+    // E11000 duplicate-key error on this same index and surfaced as a 500.
+    leadNumber: await CaseNumberService.nextLeadNumber(),
     utm: payload.utm,
     profileAnswers: payload.profileAnswers,
     criteriaAnswers: payload.criteriaAnswers,
@@ -181,7 +191,10 @@ async function createQuizLead(payload, req) {
     },
     source: "shared",
   }).catch(() => null);
-  await notifyStaffOfLead(lead);
+  // Fire-and-forget, same reason as createConsultationLead/createLeadFromQuiz/
+  // createLeadFromIntake below - never block the quiz submit response on the
+  // internal staff notification.
+  notifyStaffOfLead(lead).catch(() => {});
 
   telemetryService.track({
     name: "lead.created",
@@ -252,7 +265,8 @@ async function createLeadFromQuiz(payload = {}, req) {
   leadData.userAgent = req?.headers?.["user-agent"];
 
   const lead = await LeadModel.create(leadData);
-  await notifyStaffOfLead(lead);
+  // Fire-and-forget - see createConsultationLead's comment above for why.
+  notifyStaffOfLead(lead).catch(() => {});
   return lead;
 }
 
@@ -282,7 +296,8 @@ async function createLeadFromIntake(payload = {}, user, req) {
   leadData.userAgent = req?.headers?.["user-agent"];
 
   const lead = await LeadModel.create(leadData);
-  await notifyStaffOfLead(lead);
+  // Fire-and-forget - see createConsultationLead's comment above for why.
+  notifyStaffOfLead(lead).catch(() => {});
   return lead;
 }
 

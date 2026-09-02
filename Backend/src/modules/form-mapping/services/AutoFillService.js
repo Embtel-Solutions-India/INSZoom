@@ -418,7 +418,29 @@ class AutoFillService {
       await this.applyFormEditToProfile(caseId, canonicalSourcePath, value, caseForm, user, reason);
     }
 
-    const filledData = caseForm.filledData || {};
+    // ISSUE-001 (follow-up): must be a DEEP clone, not a shallow copy and
+    // never the live reference - caseForm.filledData is a Mongoose-tracked
+    // Mixed value, and fieldId's own path always has at least one
+    // intermediate segment (e.g. "part3" in "part3.form10...FamilyName0")
+    // that, for any field autofill has already touched, ALREADY EXISTS as a
+    // nested object on caseForm.filledData. A shallow copy (`{ ...obj }`)
+    // only makes a new reference for the TOP level - MappingResolver.setPath
+    // then walks into that SAME shared nested object and mutates it in
+    // place, which means caseForm.filledData itself silently changes too,
+    // before caseForm.set() ever runs its comparison. By the time Mongoose
+    // checks "is this actually different from what's already there", old and
+    // new are the same mutated object and isModified('filledData') comes
+    // back false (confirmed empirically via direct instrumentation) - the
+    // change never gets written to MongoDB even though the in-memory value
+    // looks correct for the rest of this request. this.clone() (the
+    // JSON-round-trip helper already used by mergeMappedFields for exactly
+    // this reason) breaks the shared reference at every nesting level, not
+    // just the top one. PDFFieldMapper.mapFields, the only reader that fills
+    // the actual downloaded/filed PDF, reads exclusively from filledData -
+    // fieldValues is never consulted there - so this was silently keeping
+    // every manual override ever made through this function out of the
+    // filed PDF, regardless of which fieldId key it was stored under.
+    const filledData = this.clone(caseForm.filledData, {});
     MappingResolver.setPath(filledData, fieldId, value);
     caseForm.set("filledData", filledData);
     // fieldValues/sourceAttribution/manualOverrides are FLAT maps keyed by
@@ -431,7 +453,7 @@ class AutoFillService {
     // "Cannot read properties of undefined" reading a bracketed segment).
     // Mutate a plain-object copy with a single bracket assignment instead,
     // then re-set the whole top-level Mixed field - the same safe pattern
-    // already used for filledData just above.
+    // now also used for filledData just above.
     const fieldValues = { ...(caseForm.fieldValues || {}) };
     fieldValues[fieldId] = value;
     caseForm.set("fieldValues", fieldValues);

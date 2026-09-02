@@ -3,11 +3,13 @@
 // (20+ exact field values, checkbox correctness, versioning, template
 // immutability) by calling PDFGenerationService directly - this file proves
 // the layer on top of it that h3 never touches: the actual HTTP
-// routes/controllers a real Download/Draft button hits, including auth, and
+// routes/controllers a real Download button hits, including auth, and
 // two gaps flagged during the pipeline trace that had zero coverage:
-// draft-pdf's own contract (fillable, no Document written) and a real
-// fillability round-trip (modify a field after download and confirm it
-// persists - proof the PDF was not silently flattened).
+// downloadForm's own contract (fillable, no status gate, watermark-free -
+// Forms Download overhaul; this section previously exercised the since-
+// removed draft-pdf route) and a real fillability round-trip (modify a
+// field after download and confirm it persists - proof the PDF was not
+// silently flattened).
 // Connects to the real configured MongoDB, like h3/h0/h1 - the acceptance
 // criteria here (real HTTP response bytes, real auth rejection) are
 // inherently integration-level.
@@ -52,7 +54,7 @@ async function staffAuthHeader() {
   return `Bearer ${generateAccessToken(user)}`;
 }
 
-test("form-generation HTTP pipeline: generate, download, draft-pdf, fillability, and failure-safety against a real I-129 CaseForm", async () => {
+test("form-generation HTTP pipeline: generate, download, download-form, fillability, and failure-safety against a real I-129 CaseForm", async () => {
   const golden = await buildGoldenH1bCase();
   const authorization = await staffAuthHeader();
   try {
@@ -99,28 +101,29 @@ test("form-generation HTTP pipeline: generate, download, draft-pdf, fillability,
     assert.equal(downloadedPdf.getPageCount(), 38, "downloaded PDF must be the full, un-truncated 38-page official I-129");
     assert.equal(downloadedPdf.getForm().getFields().length, 0, "the Download button's flatten:true output must actually be flattened (no interactive fields left)");
 
-    // --- TEST 5 (fillability) + draft-pdf's own contract: draft-pdf is a SEPARATE, always-fillable render that writes no Document ---
-    const docsBeforeDraft = await Document.countDocuments({ caseId: golden.caseId });
-    const draftRes = await fetch(`${baseUrl}/forms/${caseFormId}/draft-pdf`, { headers: { authorization } });
-    assert.equal(draftRes.status, 200);
-    assert.match(draftRes.headers.get("content-type") || "", /application\/pdf/);
-    const draftBuffer = Buffer.from(await draftRes.arrayBuffer());
-    assert.equal(draftBuffer.subarray(0, 5).toString("latin1"), "%PDF-");
-    const docsAfterDraft = await Document.countDocuments({ caseId: golden.caseId });
-    assert.equal(docsAfterDraft, docsBeforeDraft, "draft-pdf must not create a Document record - it is a throwaway working copy, not a stored version");
+    // --- TEST 5 (fillability) + downloadForm's own contract (Forms Download overhaul): the single
+    // official download is always-fillable, watermark-free, and available with no status gate ---
+    const docsBeforeOfficial = await Document.countDocuments({ caseId: golden.caseId });
+    const officialRes = await fetch(`${baseUrl}/forms/${caseFormId}/download-form`, { headers: { authorization } });
+    assert.equal(officialRes.status, 200);
+    assert.match(officialRes.headers.get("content-type") || "", /application\/pdf/);
+    const officialBuffer = Buffer.from(await officialRes.arrayBuffer());
+    assert.equal(officialBuffer.subarray(0, 5).toString("latin1"), "%PDF-");
+    const docsAfterOfficial = await Document.countDocuments({ caseId: golden.caseId });
+    assert.equal(docsAfterOfficial, docsBeforeOfficial + 1, "downloadForm must retain the served bytes as a Document record - the one official copy handed out");
 
-    const draftPdf = await PDFDocument.load(draftBuffer, { ignoreEncryption: true, updateMetadata: false });
-    const draftForm = draftPdf.getForm();
-    assert.ok(draftForm.getFields().length > 0, "draft-pdf must remain fillable (real AcroForm fields), unlike the flattened download");
-    const knownField = draftForm.getTextField("form1[0].#subform[1].Part3_Line2_FamilyName[0]");
-    assert.equal(knownField.getText(), "Lovelace", "draft-pdf must still contain the pre-filled canonical value");
+    const officialPdf = await PDFDocument.load(officialBuffer, { ignoreEncryption: true, updateMetadata: false });
+    const officialForm = officialPdf.getForm();
+    assert.ok(officialForm.getFields().length > 0, "downloadForm must remain fillable (real AcroForm fields), unlike the flattened download");
+    const knownField = officialForm.getTextField("form1[0].#subform[1].Part3_Line2_FamilyName[0]");
+    assert.equal(knownField.getText(), "Lovelace", "downloadForm must still contain the pre-filled canonical value");
 
     // Fillability round-trip: modify the known field, save, reopen, confirm
     // the edit truly persists in a normal PDF viewer/editor sense (pdf-lib
     // round-trip), proving this PDF is genuinely interactive and not a
     // flattened image masquerading as one.
     knownField.setText("MODIFIED_BY_FILLABILITY_TEST");
-    const resavedBuffer = await draftPdf.save();
+    const resavedBuffer = await officialPdf.save();
     const reopened = await PDFDocument.load(resavedBuffer, { ignoreEncryption: true, updateMetadata: false });
     assert.equal(
       reopened.getForm().getTextField("form1[0].#subform[1].Part3_Line2_FamilyName[0]").getText(),

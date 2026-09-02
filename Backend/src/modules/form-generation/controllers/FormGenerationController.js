@@ -64,64 +64,57 @@ exports.regenerate = async (req, res) => {
   }
 };
 
-// Streams a fillable (non-flattened) draft PDF directly to the caller.
-// Does NOT require approved/locked status - usable at any editable stage.
-// Does NOT write a Document record - draft working copies are not stored.
-// The PDF is still a real AcroForm: values are pre-filled but the fields
-// remain interactive so an attorney can make final adjustments and sign.
-exports.draftPdf = async (req, res) => {
+// The single official download path (Forms Download overhaul). Always the
+// real, authentic USCIS PDF with the latest filled values - no watermark,
+// no status gate. Only a locked/filed form skips the pre-download refresh
+// (it's a historical record; its values are final by definition).
+// If canonical data has changed since the last autofill (syncState.stale)
+// and the form is still editable, AutoFillService.generate(regenerate:true)
+// runs first - its own isReviewedOrManual() check (unmodified) leaves every
+// MANUAL_OVERRIDE field exactly as the case manager set it.
+// Persists the served bytes as a Document, same as the filing-copy path it
+// replaces - this is the one real, official copy of this form ever handed
+// out, and the case record should keep it.
+exports.downloadForm = async (req, res) => {
   try {
-    const caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: true });
-
+    const AutoFillService = require("../../form-mapping/services/AutoFillService");
     const PDFRenderer = require("../services/PDFRenderer");
-    const rendered = await PDFRenderer.render({
-      caseForm,
-      template: caseForm.formTemplateId.toObject(),
-      watermark: "DRAFT",
-      flatten: false,
-    });
+    const env = require("../../../config/env");
 
-    const filename = `${caseForm.formCode || "uscis-form"}-DRAFT-${caseForm._id}.pdf`;
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Length", rendered.buffer.length);
-    res.send(rendered.buffer);
-  } catch (error) {
-    handle(res, error);
-  }
-};
+    let caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: false });
+    const isHistorical = caseForm.isLocked || ["locked", "filed"].includes(caseForm.status);
+    const wasStale = Boolean(caseForm.syncState?.stale);
 
-// Phase 5 (§D.3/§I.3) - streams a clean, watermark-free filing copy directly to the caller.
-// Deliberately bypasses PDFGenerationService.generate (and its stale gate - see PDFRenderer.js's
-// renderFiling header comment for why that gate is irrelevant here) and goes straight to
-// PDFRenderer.renderFiling. Only reachable for a form whose review is actually complete - reuses
-// the exact same status list PDFGenerationService.generate's own gate already uses (line ~172 of
-// that file), not a new/independently-invented list.
-// Note: PDFGenerationService.loadCaseForm returns the CaseForm document directly, not
-// `{ caseForm }` - confirmed against draftPdf's own call below and PDFGenerationService.js's
-// source before writing this (see docs/forms/PHASE5_RUN_JOURNAL.md's pre-work drift #1).
-const FILING_COPY_ALLOWED_STATUSES = ["approved", "ready_for_pdf", "locked", "generated"];
-
-exports.filingPdf = async (req, res) => {
-  try {
-    const caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: true });
-    if (!FILING_COPY_ALLOWED_STATUSES.includes(caseForm.status)) {
-      return res.status(422).json({
-        success: false,
-        message: "This form must be approved before downloading the filing copy.",
-      });
+    if (!isHistorical && wasStale) {
+      await AutoFillService.generate(caseForm.caseId, caseForm.formCode, req.user, req, { regenerate: true });
+      caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: true });
     }
 
-    const PDFRenderer = require("../services/PDFRenderer");
-    const { buffer, renderReport, fidelityReport } = await PDFRenderer.renderFiling({
+    // Adobe PDF Services is the default engine for this, the single official
+    // download path (opt-out only, never an automatic silent fallback to
+    // pdf-lib on an Adobe failure - that failure surfaces through the same
+    // catch below as any other rendering error). PDFRenderer.js itself is
+    // unmodified; AdobeFormRenderer mirrors its renderFiling() contract
+    // exactly and reuses the same PDFFieldMapper/PDFFidelityService calls.
+    const engine = env.adobe.fillEnabled ? "adobe" : "pdf-lib";
+    const renderer = env.adobe.fillEnabled ? require("../services/AdobeFormRenderer") : PDFRenderer;
+
+    const { buffer, renderReport, fidelityReport } = await renderer.renderFiling({
       caseForm,
       template: caseForm.formTemplateId.toObject(),
     });
 
     const document = await PDFGenerationService.createGeneratedDocument(caseForm, buffer, req.user, { valid: true }, renderReport, null);
-    await PDFGenerationService.audit("PDF_FILING_COPY_DOWNLOADED", caseForm, req.user, req, { documentId: document._id, fidelityReport });
+    await PDFGenerationService.audit("PDF_OFFICIAL_DOWNLOADED", caseForm, req.user, req, {
+      documentId: document._id,
+      fidelityReport,
+      staleRefreshed: !isHistorical && wasStale,
+      status: caseForm.status,
+      engine,
+    });
 
-    const filename = `${caseForm.formCode || "uscis-form"}-FILING-${caseForm._id}.pdf`;
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `${caseForm.formCode || "uscis-form"}_${String(caseForm.caseId)}_${date}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", buffer.length);

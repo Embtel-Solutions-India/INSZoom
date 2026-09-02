@@ -27,8 +27,9 @@ test("AC8 - generate/download/preview/approve/regenerate endpoints are registere
     ["get", "/:caseFormId/download", controller.download],
     ["post", "/:caseFormId/approve", controller.approve],
     ["post", "/:caseFormId/regenerate", controller.regenerate],
-    // Phase 5 (§I.4) - the new clean filing-copy download route.
-    ["get", "/:caseFormId/filing-pdf", controller.filingPdf],
+    // Forms Download overhaul - the single official, watermark-free, no-status-gate download route
+    // (replaces Phase 5's filing-pdf route and the earlier draft-pdf route).
+    ["get", "/:caseFormId/download-form", controller.downloadForm],
   ];
   expected.forEach(([method, path, handler]) => {
     const match = routes.find((route) => route.path === path && route.methods.includes(method));

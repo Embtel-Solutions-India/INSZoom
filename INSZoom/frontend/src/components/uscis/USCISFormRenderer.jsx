@@ -30,7 +30,6 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Save,
   Search,
   ShieldCheck,
   SkipForward,
@@ -82,6 +81,16 @@ const getByPath = (source, path) => {
 
 const setByPath = (source, path, value) => {
   const next = structuredClone(source || {})
+  // AcroForm field names (e.g. "form1[0].#subform[0].Line1_FamilyName[0]")
+  // contain "[" and are FLAT keys in the values store, never nested paths -
+  // splitting one on "." (below) destroys it. Set directly and return before
+  // any of that logic runs.
+  if (String(path).includes('[')) {
+    next[path] = value
+    return next
+  }
+  // Genuine dotted canonical paths (e.g. "applicant.lastName"): remove any
+  // stale flat key with the same literal name before creating the nested entry.
   if (String(path).includes('.') && Object.prototype.hasOwnProperty.call(next, path)) delete next[path]
   const parts = String(path).split('.')
   let cursor = next
@@ -1104,49 +1113,26 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }
 
-  // Downloads a fillable (non-flattened) draft PDF with all saved field values
-  // pre-populated. Available at any editable status - no approve/lock needed.
-  const downloadDraftPdf = async () => {
-    if (!(await savePendingChanges('Auto-save before draft PDF download'))) return
-    setBusy('download-draft')
+  // The single official download action (Forms Download overhaul). Saves any
+  // pending edits, then fetches the real, authentic, watermark-free USCIS PDF
+  // with all current values - available at any status, not just approved/locked.
+  const downloadOfficialForm = async () => {
+    if (!(await savePendingChanges('Auto-save before downloading official form'))) return
+    setBusy('download-official')
     setErrorMessage('')
     try {
-      const response = await formGenerationApi.draftPdf(caseForm._id)
+      const response = await formGenerationApi.downloadForm(caseForm._id)
       const url = URL.createObjectURL(response.data)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${caseForm.formCode || 'uscis-form'}-DRAFT-${caseForm._id}.pdf`
+      const date = new Date().toISOString().slice(0, 10)
+      link.download = `${caseForm.formCode || 'uscis-form'}_${caseForm.caseId || caseId}_${date}.pdf`
       document.body.appendChild(link)
       link.click()
       link.remove()
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch (error) {
-      setErrorMessage(error.response?.data?.message || 'Unable to download the draft PDF')
-    } finally {
-      setBusy('')
-    }
-  }
-
-  // Phase 5 (§D.6/§I.5) - downloads a CLEAN, watermark-free filing copy. Mirrors
-  // downloadDraftPdf's own manual busy/blob/link pattern exactly (no "actionWithRetry" helper
-  // exists in this file - see docs/forms/PHASE5_RUN_JOURNAL.md pre-work drift #3). Only reachable
-  // when the button below is actually rendered (status approved/ready_for_pdf/locked/generated).
-  const downloadFilingPdf = async () => {
-    if (!(await savePendingChanges('Auto-save before filing copy download'))) return
-    setBusy('download-filing')
-    setErrorMessage('')
-    try {
-      const response = await formGenerationApi.filingPdf(caseForm._id)
-      const url = URL.createObjectURL(response.data)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${caseForm.formCode || 'uscis-form'}-FILING-${caseForm._id}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
-    } catch (error) {
-      setErrorMessage(error.response?.data?.message || 'Unable to download the filing copy')
+      setErrorMessage(error.response?.data?.message || 'Unable to download the official form. Please try again.')
     } finally {
       setBusy('')
     }
@@ -1253,26 +1239,14 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             <button type="button" onClick={redo} disabled={!redoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Redo</button>
             <button
               type="button"
-              onClick={downloadDraftPdf}
-              disabled={busy === 'download-draft' || busy === 'auto-save'}
-              className="flex items-center gap-1 rounded-md border border-emerald-400 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-              title="Saves all pending field edits and downloads a fillable official USCIS PDF with all values pre-filled"
+              onClick={downloadOfficialForm}
+              disabled={busy === 'download-official' || busy === 'auto-save'}
+              className="flex items-center gap-1 rounded-md border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              title="Download the official USCIS PDF with all current field values"
             >
-              <Save className="h-3.5 w-3.5" />
-              {busy === 'download-draft' ? 'Preparing...' : 'Save & Download Fillable PDF'}
+              <Download className="h-3.5 w-3.5" />
+              {busy === 'download-official' ? 'Preparing…' : 'Download Official Form'}
             </button>
-            {['approved', 'ready_for_pdf', 'locked', 'generated'].includes(workspace.caseForm.status) && (
-              <button
-                type="button"
-                onClick={downloadFilingPdf}
-                disabled={busy === 'download-filing'}
-                className="flex items-center gap-1 rounded-md border border-indigo-400 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
-                title="Downloads a clean, watermark-free copy for official filing"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {busy === 'download-filing' ? 'Preparing…' : 'Download filing copy'}
-              </button>
-            )}
             <button type="button" onClick={refreshForm} disabled={!canEdit || busy === 'refresh'} className="flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5 ${busy === 'refresh' ? 'animate-spin' : ''}`} />Refresh</button>
             {permissions.canApprove && !locked && <button type="button" onClick={() => decideForm('approve')} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"><ShieldCheck className="h-4 w-4" />Approve Form</button>}
             {['approved', 'ready_for_pdf', 'locked'].includes(workspace.caseForm.status) && <button type="button" onClick={generatePdf} disabled={busy === 'generate-pdf'} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"><FileCheck2 className="h-4 w-4" />{busy === 'generate-pdf' ? 'Generating…' : 'Generate PDF'}</button>}

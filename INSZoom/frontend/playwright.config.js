@@ -10,6 +10,10 @@ import { defineConfig, devices } from '@playwright/test'
 // different instance.
 export default defineConfig({
   testDir: './e2e',
+  // Golden-path specs log in as throwaway staff accounts this run creates and
+  // destroys, rather than requiring a real person's credentials in the env.
+  globalSetup: './e2e/global-setup.js',
+  globalTeardown: './e2e/global-teardown.js',
   // Generous: the backend's case-detail load fans out to ~16 concurrent
   // DB populate queries, making it disproportionately exposed to
   // intermittent Atlas connectivity blips (observed this session -

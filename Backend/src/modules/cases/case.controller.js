@@ -1079,14 +1079,21 @@ exports.createCase = async (req, res, next) => {
 
       let employerProfile = null;
       if (caseStructure !== "single") {
+        // Only stamp a field with the staff-authoritative "case_manager_edit"
+        // source when a real value was actually supplied here. Stamping an
+        // empty placeholder as staff-authoritative would permanently block
+        // the employer's own questionnaire submission from ever setting it
+        // (canonicalFieldWriter treats case_manager_edit as staff-locked).
+        const canonicalData = {};
+        if (trimmedEmployerName) {
+          canonicalData.legalName = { value: trimmedEmployerName, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id };
+        }
+        if (trimmedEmployerEmail) {
+          canonicalData.contact = { email: { value: trimmedEmployerEmail, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id } };
+        }
         [employerProfile] = await EmployerProfile.create([{
           principalCaseId: principalCase._id,
-          canonicalData: {
-            legalName: { value: trimmedEmployerName || null, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id },
-            contact: {
-              email: { value: trimmedEmployerEmail || null, source: "case_manager_edit", updatedAt: new Date(), updatedBy: req.user._id },
-            },
-          },
+          canonicalData,
           updatedAt: new Date(),
           updatedBy: req.user._id,
         }]);

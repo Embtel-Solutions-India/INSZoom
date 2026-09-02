@@ -9,6 +9,11 @@ const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const caseService = require("../cases/case.service");
 const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
 const FormMappingService = require("../form-mapping/services/FormMappingService");
+// ISSUE-001 addendum: mergeFieldValues below needs the exact same flat-key-
+// first lookup AutoFillService/PDFFieldMapper already use for fieldValues/
+// filledData, keyed by the normalized fieldId - not the raw AcroForm name.
+const AutoFillService = require("../form-mapping/services/AutoFillService");
+const MappingResolver = require("../form-mapping/services/MappingResolver");
 const workflowService = require("../workflows/workflow.service");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
 const { createPerfTimer } = require("../../utils/perfTimer");
@@ -678,7 +683,11 @@ function buildSourceAttribution(template, values, existingAttribution = {}, cont
   const attribution = { ...(existingAttribution || {}) };
   for (const field of (template.formFields || []).map(normalizeField)) {
     const fieldName = field.fieldName;
-    const current = getByPath(values, fieldName);
+    // `values` (from mergeFieldValues) is a genuinely FLAT map keyed by the
+    // literal field.fieldName string - a direct property lookup, not
+    // getByPath's dot-splitting (which would misread the raw AcroForm name's
+    // own literal dots as a nested path and never find anything).
+    const current = values[fieldName];
     if (!hasValue(current) || attribution[fieldName]?.source === "ManualOverride" || attribution[fieldName]?.source === "Attorney") continue;
     const resolved = resolveMappedValue(field, context);
     attribution[fieldName] = {
@@ -708,21 +717,78 @@ function isVisible(definition, values) {
   const condition = definition?.conditionalLogic || definition?.showWhen;
   if (!condition) return true;
   const rules = condition.rules || (condition.field ? [condition] : []);
-  const results = rules.map((rule) => compareCondition(getByPath(values, rule.field), rule.operator || "equals", rule.value));
+  // Same flat-lookup fix as buildSourceAttribution above - rule.field is
+  // another form field's raw name, and `values` is flat-keyed by that exact
+  // string.
+  const results = rules.map((rule) => compareCondition(values[rule.field], rule.operator || "equals", rule.value));
   const nested = (condition.groups || []).map((group) => isVisible({ conditionalLogic: group }, values));
   const all = [...results, ...nested];
   if (!all.length) return true;
   return condition.mode === "any" ? all.some(Boolean) : all.every(Boolean);
 }
 
+// ISSUE-001 addendum (the actual root cause behind "CM edits revert after
+// reopening the form" surviving the earlier fieldId-namespace fix):
+//
+// This used to build `values` by spreading BOTH caseForm.fieldValues (a
+// FLAT map keyed by normalized fieldId, e.g. "part3.form10...Name0") and
+// caseForm.filledData (a NESTED tree keyed the same way but via real object
+// nesting, e.g. filledData.part3.form10...Name0) into one object, then
+// checked/set each field using getByPath/setByPath against field.fieldName -
+// the RAW AcroForm name (e.g. "form1[0].#subform[1].Part3_Line2_Name[0]").
+// getByPath splits that raw name on "." and tries to walk it as a nested
+// path ("form1[0]" -> "#subform[1]" -> ...) - a path that exists in NEITHER
+// representation, so `before` was always undefined and every field was
+// recomputed fresh from canonical data on every single render, discarding
+// whatever was actually stored.
+//
+// Worse: the caller (renderCaseForm) then persists this SAME merged `values`
+// object back into BOTH caseForm.fieldValues and caseForm.filledData
+// (see below), collapsing the two intentionally-different representations
+// into one hybrid blob that carries three copies of the same datum under
+// three different keys (the real flat fieldId key, the real nested fieldId
+// path, and a newly-invented raw-fieldName nested path). On the NEXT
+// non-readOnly render, spreading that already-hybrid fieldValues then that
+// already-hybrid filledData means filledData's own (never-updated-by-a-
+// later-edit) copy of the flat fieldId key wins the collision - silently
+// reverting a case manager's edit back to the last autofilled value, exactly
+// once the form has been opened, edited, then opened again. This is the
+// realistic order of operations for an actual case manager and was not
+// caught by the previous session's proof tests, which only ever edited a
+// freshly-autofilled form that had never been opened yet.
+//
+// The fix: read and write every field by its normalized fieldId, using the
+// SAME two accessors AutoFillService/PDFFieldMapper/interactive-form-review
+// already use for these two stores - AutoFillService.getFieldValue's flat-
+// key-first lookup for fieldValues, MappingResolver.resolvePath's nested
+// lookup for filledData - never the raw fieldName, and never a merged
+// object written back to both stores.
+// Returns { values, newlyComputed } - `values` is flat-keyed by the raw
+// field.fieldName for the existing display/completion consumers below
+// (calculateCompletion, buildSourceAttribution, buildRenderModel, isVisible),
+// none of which persist anything. `newlyComputed` lists only the fields that
+// had no existing value in either store (keyed by canonicalId, the only key
+// the persistence step below is allowed to write under) - the caller must
+// never write the flat `values` object itself back into caseForm.fieldValues
+// or caseForm.filledData.
 function mergeFieldValues(template, caseForm, context) {
-  const values = { ...(caseForm.fieldValues || {}), ...(caseForm.filledData || {}) };
+  const values = {};
+  const newlyComputed = [];
   for (const field of (template.formFields || []).map(normalizeField)) {
-    if (hasValue(getByPath(values, field.fieldName))) continue;
-    const value = mappedValue(field, context);
-    if (hasValue(value)) setByPath(values, field.fieldName, value);
+    const canonicalId = field.fieldId || field.fieldName;
+    let current = AutoFillService.getFieldValue(caseForm.fieldValues || {}, canonicalId);
+    if (!hasValue(current)) current = MappingResolver.resolvePath(caseForm.filledData || {}, canonicalId);
+    if (hasValue(current)) {
+      values[field.fieldName] = current;
+      continue;
+    }
+    const computed = mappedValue(field, context);
+    if (hasValue(computed)) {
+      values[field.fieldName] = computed;
+      newlyComputed.push({ canonicalId, value: computed });
+    }
   }
-  return values;
+  return { values, newlyComputed };
 }
 
 function validateField(field, value) {
@@ -761,7 +827,8 @@ function calculateCompletion(template, values) {
       if (field.hidden) continue;
       if (!isVisible(field, values)) continue;
       totalFields += 1;
-      const value = getByPath(values, field.fieldName);
+      // Flat lookup, same reason as buildSourceAttribution/isVisible above.
+      const value = values[field.fieldName];
       const completed = hasValue(value);
       if (completed) {
         completedFields += 1;
@@ -824,7 +891,7 @@ function buildRenderModel(template, values, progress, user, caseForm) {
         pageNumber: field.pageNumber || pageNumber,
         type: field.fieldType,
         required: Boolean(field.required),
-        hasValue: hasValue(getByPath(values, field.fieldName)),
+        hasValue: hasValue(values[field.fieldName]),
       };
     }
   }
@@ -891,15 +958,29 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
   // the return value on purpose - that object is serialized straight to the
   // client by the /render endpoint.
   if (options.captureContext) options.captureContext.canonicalState = context?.canonicalState || null;
-  const values = options.caseFormOnly
-    ? deepMerge(caseForm.filledData || {}, expandFlatValues(caseForm.fieldValues || {}))
+  const { values, newlyComputed } = options.caseFormOnly
+    ? { values: deepMerge(caseForm.filledData || {}, expandFlatValues(caseForm.fieldValues || {})), newlyComputed: [] }
     : mergeFieldValues(template, caseForm, context);
   const progress = calculateCompletion(template, values);
   if (!options.caseFormOnly && !readOnlyOpen) caseForm.sourceAttribution = buildSourceAttribution(template, values, caseForm.sourceAttribution, context);
   const renderModel = buildRenderModel(template, values, progress, user, caseForm);
   if (!readOnlyOpen) {
-    caseForm.fieldValues = values;
-    caseForm.filledData = values;
+    // ISSUE-001 addendum: persist ONLY the fields mergeFieldValues found no
+    // existing value for anywhere, under the normalized fieldId, in each
+    // store's own correct shape - never assign the raw-fieldName-keyed
+    // `values` view above into fieldValues/filledData. That used to silently
+    // discard every interactive-review edit already stored under the
+    // canonical key the moment the form was opened a second time.
+    if (newlyComputed.length) {
+      const nextFieldValues = { ...(caseForm.fieldValues || {}) };
+      const nextFilledData = AutoFillService.clone(caseForm.filledData, {});
+      newlyComputed.forEach(({ canonicalId, value }) => {
+        nextFieldValues[canonicalId] = value;
+        MappingResolver.setPath(nextFilledData, canonicalId, value);
+      });
+      caseForm.set("fieldValues", nextFieldValues);
+      caseForm.set("filledData", nextFilledData);
+    }
     caseForm.completion = progress.completion;
     caseForm.sectionProgress = progress.sectionProgress;
     caseForm.validationErrors = progress.validationErrors;

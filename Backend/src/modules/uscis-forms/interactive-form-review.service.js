@@ -214,6 +214,24 @@ class InteractiveFormReviewService {
     return (template.formFields || []).find((field) => [field.fieldName, field.fieldId, field.name, field.key].filter(Boolean).includes(fieldName));
   }
 
+  // ISSUE-001: two identifier namespaces exist for the same logical USCIS
+  // field - the normalized fieldId ("page1.form10Subform0Line1Name0", set by
+  // PDFFieldScannerService, dot-only, safely path-traversable) and the raw
+  // AcroForm fieldName ("form1[0].#subform[0].Line1_Name[0]", brackets/hashes,
+  // NOT safely path-traversable). AutoFillService (mergeMappedFields,
+  // overrideField, isReviewedOrManual), PDFFieldMapper (the actual PDF-filling
+  // read path), and ReverseIndexService all key caseForm.fieldValues/
+  // filledData/manualOverrides/sourceAttribution by the normalized fieldId.
+  // The frontend only ever knows the raw fieldName (it's the real PDF widget
+  // name react-pdf/PDFFieldChangeAdapter needs to render/overlay the field),
+  // so every write path in this file must translate incoming raw fieldName
+  // to the normalized fieldId at the boundary - this is that single
+  // translation point. Returns the incoming value unchanged if no field
+  // definition matches (defensive; callers already validate existence).
+  static canonicalFieldId(template, fieldNameOrId) {
+    return this.fieldDefinition(template, fieldNameOrId)?.fieldId || fieldNameOrId;
+  }
+
   static sectionFieldNames(template, sectionKey) {
     return uscisFormService.buildSections(template).find((section) => section.key === sectionKey || section.sectionId === sectionKey)?.fields?.map((field) => field.fieldName) || [];
   }
@@ -269,10 +287,18 @@ class InteractiveFormReviewService {
 
   static buildFieldView(field, caseForm, canonicalState, documents) {
     const fieldName = field.fieldName;
-    const attribution = caseForm.sourceAttribution?.[fieldName] || MappingResolver.resolvePath(caseForm.sourceAttribution || {}, fieldName) || {};
+    // ISSUE-001: field.fieldId is the normalized key AutoFillService/
+    // PDFFieldMapper actually store and read values under (see
+    // canonicalFieldId's header comment). Reads check that key first, falling
+    // back to the raw fieldName only for a CaseForm whose override/attribution
+    // was written before this fix existed.
+    const canonicalId = field.fieldId || fieldName;
+    const attribution = AutoFillService.getMeta(caseForm.sourceAttribution || {}, canonicalId)
+      || AutoFillService.getMeta(caseForm.sourceAttribution || {}, fieldName)
+      || {};
     const sourcePath = attribution.sourceField || field.mapping?.source || field.mapping?.canonicalField || field.mappings?.[0]?.path;
     const canonicalValue = sourcePath ? MappingResolver.resolvePath(canonicalState?.profile || {}, String(sourcePath).replace(/^canonical\./, "")) : undefined;
-    const history = (caseForm.fieldHistory || []).filter((entry) => entry.fieldName === fieldName).slice(-25).reverse();
+    const history = (caseForm.fieldHistory || []).filter((entry) => entry.fieldName === canonicalId || entry.fieldName === fieldName).slice(-25).reverse();
     const conflicts = (canonicalState?.conflicts || []).filter((conflict) => [conflict.path, conflict.field, conflict.fieldName].includes(sourcePath) || [conflict.path, conflict.field, conflict.fieldName].includes(fieldName));
     // Phase 3 (§I.2): surfaces Phase 2's per-field sync state (SyncStateService,
     // stored in sourceAttribution[fieldName].syncState) into the workspace
@@ -283,22 +309,25 @@ class InteractiveFormReviewService {
     // helper defaults an absent marker straight to SYNCED regardless of
     // manualOverrides; the CM-facing badge should still show "Manual" for a
     // pre-Phase-2 override even though no syncState was ever recorded for it.
-    const syncState = attribution.syncState || (caseForm.manualOverrides?.[fieldName] ? SyncStateService.MANUAL_OVERRIDE : SyncStateService.SYNCED);
+    const hasManualOverride = Boolean(caseForm.manualOverrides?.[canonicalId] || caseForm.manualOverrides?.[fieldName]);
+    const syncState = attribution.syncState || (hasManualOverride ? SyncStateService.MANUAL_OVERRIDE : SyncStateService.SYNCED);
     const conflictValues = syncState === SyncStateService.CONFLICT
       ? { canonicalValue: attribution.conflictCanonicalValue, manualValue: attribution.conflictManualValue }
       : undefined;
+    const fieldReview = caseForm.fieldReviews?.[canonicalId] || caseForm.fieldReviews?.[fieldName];
     return {
       ...field,
-      value: MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName),
+      value: AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, canonicalId)
+        ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName),
       canonicalValue,
       source: attribution.source || attribution.canonicalSource || "Unmapped",
       sourceField: sourcePath,
       confidence: attribution.confidence ?? attribution.confidenceScore,
-      verificationStatus: caseForm.fieldReviews?.[fieldName]?.status || attribution.verificationStatus || attribution.validationStatus || "unreviewed",
+      verificationStatus: fieldReview?.status || attribution.verificationStatus || attribution.validationStatus || "unreviewed",
       lastUpdated: attribution.populationTimestamp || attribution.populatedAt || attribution.generatedAt || caseForm.lastModifiedAt,
       mapping: field.mapping || field.mappings || attribution.mappingUsed,
-      manualOverride: caseForm.manualOverrides?.[fieldName],
-      review: caseForm.fieldReviews?.[fieldName],
+      manualOverride: caseForm.manualOverrides?.[canonicalId] || caseForm.manualOverrides?.[fieldName],
+      review: fieldReview,
       history,
       conflicts,
       syncState,
@@ -405,9 +434,21 @@ class InteractiveFormReviewService {
   static async saveField(caseId, caseFormId, payload, user, req) {
     const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
-    const fieldName = payload.fieldName || payload.fieldId;
-    if (!fieldName || !this.fieldDefinition(template, fieldName)) throw error("Unknown USCIS form field", 400);
-    const previousValue = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
+    const rawFieldName = payload.fieldName || payload.fieldId;
+    const fieldDef = this.fieldDefinition(template, rawFieldName);
+    if (!rawFieldName || !fieldDef) throw error("Unknown USCIS form field", 400);
+    // ISSUE-001: overrideField stores under WHATEVER key it's given, so this
+    // must be the normalized fieldId - the same key AutoFillService's own
+    // autofill writes use, PDFFieldMapper reads when filling the actual PDF,
+    // ReverseIndexService's fan-out matches against, and isReviewedOrManual
+    // checks before letting autofill overwrite a field. Passing the raw
+    // AcroForm fieldName here (as this used to) stores the edit under a key
+    // none of those ever read - it shows correctly in this same session's
+    // workspace (this file wrote it, this file reads it back) but never
+    // reaches the filed PDF and is never protected from an autofill refresh.
+    const fieldName = this.canonicalFieldId(template, rawFieldName);
+    const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
+      ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
     if (valuesEqual(previousValue, payload.value)) return caseForm;
     await AutoFillService.overrideField(caseId, caseForm.formCode, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
     const updated = await CaseForm.findById(caseFormId).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
@@ -428,7 +469,7 @@ class InteractiveFormReviewService {
     this.addAudit(updated, "FIELD_EDITED", user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason });
     await updated.save();
     await this.audit("FIELD_EDITED", updated, user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason });
-    await this.notifyCaseTeam(caseData, updated, user, req, "form.field_updated", "USCIS Form Field Updated", `${fieldName} was updated in ${updated.formCode}.`, { metadata: { fieldName } });
+    await this.notifyCaseTeam(caseData, updated, user, req, "form.field_updated", "USCIS Form Field Updated", `${rawFieldName} was updated in ${updated.formCode}.`, { metadata: { fieldName } });
     return updated;
   }
 
@@ -438,12 +479,22 @@ class InteractiveFormReviewService {
     const allowedFields = new Set(this.sectionFieldNames(template, payload.sectionKey));
     const values = payload.fieldValues || {};
     const changed = [];
-    for (const [fieldName, value] of Object.entries(values)) {
-      if (!allowedFields.has(fieldName)) continue;
-      const previousValue = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
+    for (const [rawFieldName, value] of Object.entries(values)) {
+      if (!allowedFields.has(rawFieldName)) continue;
+      // ISSUE-001: same fix as saveField - store under the normalized fieldId
+      // AutoFillService/PDFFieldMapper actually read, not the raw AcroForm
+      // name the frontend sends. fieldValues is also switched from
+      // MappingResolver.setPath (which would split the normalized id's own
+      // dots and create a broken nested structure - fieldValues is meant to
+      // be a FLAT map, unlike filledData) to a plain bracket assignment,
+      // matching exactly how AutoFillService.overrideField writes it.
+      const fieldName = this.canonicalFieldId(template, rawFieldName);
+      const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
+        ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
       if (valuesEqual(previousValue, value)) continue;
       changed.push({ fieldName, previousValue, value });
-      MappingResolver.setPath(caseForm.fieldValues, fieldName, value);
+      caseForm.fieldValues = caseForm.fieldValues || {};
+      caseForm.fieldValues[fieldName] = value;
       MappingResolver.setPath(caseForm.filledData, fieldName, value);
       caseForm.sourceAttribution = caseForm.sourceAttribution || {};
       caseForm.sourceAttribution[fieldName] = {
@@ -472,12 +523,19 @@ class InteractiveFormReviewService {
   }
 
   static async reviewField(caseId, caseFormId, payload, user, req) {
-    const { caseForm } = await this.load(caseId, caseFormId, user);
+    const { caseForm, template } = await this.load(caseId, caseFormId, user);
     if (!this.permissions(user).canReview) throw error("Not authorized to review fields", 403);
     if (caseForm.isLocked) throw error("This form is locked", 409);
-    const fieldName = payload.fieldName || payload.fieldId;
+    const rawFieldName = payload.fieldName || payload.fieldId;
     const status = payload.status;
     if (!["approved", "rejected", "needs_review", "verified"].includes(status)) throw error("Invalid field review status", 400);
+    // ISSUE-001: AutoFillService.reviewField writes fieldReviews[fieldId], and
+    // isReviewedOrManual checks fieldReviews[fieldId].status in ["approved",
+    // "edited"] to decide whether autofill may overwrite this field - both
+    // keyed by the normalized fieldId. Passing the raw fieldName here (as
+    // this used to) meant an "approved" review never actually protected the
+    // field from being silently overwritten on the next autofill refresh.
+    const fieldName = this.canonicalFieldId(template, rawFieldName);
     const updated = await AutoFillService.reviewField(caseId, caseForm.formCode, fieldName, status, payload.comment, user, req);
     updated.sourceAttribution = updated.sourceAttribution || {};
     updated.sourceAttribution[fieldName] = {
@@ -487,7 +545,7 @@ class InteractiveFormReviewService {
       verificationDate: new Date(),
     };
     this.touchReview(updated, user);
-    this.pushFieldHistory(updated, { fieldName, sectionKey: payload.sectionKey, action: `review_${status}`, previousValue: null, newValue: MappingResolver.resolvePath(updated.fieldValues || {}, fieldName), reason: payload.comment, source: "Review" }, user);
+    this.pushFieldHistory(updated, { fieldName, sectionKey: payload.sectionKey, action: `review_${status}`, previousValue: null, newValue: AutoFillService.getFieldValue(updated.fieldValues || {}, fieldName), reason: payload.comment, source: "Review" }, user);
     updated.markModified("sourceAttribution");
     await updated.save();
     return updated;
@@ -587,6 +645,14 @@ class InteractiveFormReviewService {
     this.assertEditable(caseForm, user);
     let fieldIds = payload.fieldIds || [];
     if (payload.sectionKey) fieldIds = this.sectionFieldNames(template, payload.sectionKey);
+    // ISSUE-001: sectionFieldNames returns raw AcroForm fieldNames, and a
+    // caller may also pass raw fieldIds directly - AutoFillService.
+    // repopulateFields/generate's selectedFieldIds filter matches against
+    // mergeMappedFields' own keys, which are normalized fieldIds. Without
+    // this translation, a "refresh just this field/section" request silently
+    // refreshes nothing (mergeMappedFields' `selected.has(fieldId)` never
+    // matches) while still returning 200.
+    fieldIds = fieldIds.map((id) => this.canonicalFieldId(template, id));
     const result = fieldIds.length
       ? await AutoFillService.repopulateFields(caseId, caseForm.formCode, fieldIds, user, req)
       : await AutoFillService.generate(caseId, caseForm.formCode, user, req, { regenerate: true });
@@ -606,13 +672,25 @@ class InteractiveFormReviewService {
   static async reset(caseId, caseFormId, payload, user, req) {
     const { caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
-    let fieldIds = payload.fieldIds || (payload.fieldName ? [payload.fieldName] : []);
-    if (payload.sectionKey) fieldIds = this.sectionFieldNames(template, payload.sectionKey);
-    if (!fieldIds.length) throw error("At least one field is required", 400);
+    let rawFieldIds = payload.fieldIds || (payload.fieldName ? [payload.fieldName] : []);
+    if (payload.sectionKey) rawFieldIds = this.sectionFieldNames(template, payload.sectionKey);
+    if (!rawFieldIds.length) throw error("At least one field is required", 400);
+    // ISSUE-001: resolve each incoming raw AcroForm name to its normalized
+    // fieldId - the key manualOverrides/sourceAttribution/fieldReviews are
+    // actually keyed by (post-fix) and the key repopulateFields' own
+    // selectedFieldIds filter matches against. Both the normalized id AND the
+    // raw name are deleted below, so a field overridden before this fix
+    // (stored under the raw name) is still fully cleared by a reset.
+    const fieldIds = rawFieldIds.map((id) => this.canonicalFieldId(template, id));
     const manualOverrides = clone(caseForm.manualOverrides);
     const sourceAttribution = clone(caseForm.sourceAttribution);
     const fieldReviews = clone(caseForm.fieldReviews);
     fieldIds.forEach((fieldName) => {
+      delete manualOverrides[fieldName];
+      delete sourceAttribution[fieldName];
+      delete fieldReviews[fieldName];
+    });
+    rawFieldIds.forEach((fieldName) => {
       delete manualOverrides[fieldName];
       delete sourceAttribution[fieldName];
       delete fieldReviews[fieldName];
@@ -628,8 +706,8 @@ class InteractiveFormReviewService {
     fieldIds.forEach((fieldName) => this.pushFieldHistory(result.caseForm, {
       fieldName,
       action: "reset_to_autofill",
-      previousValue: MappingResolver.resolvePath(caseForm.fieldValues || {}, fieldName),
-      newValue: MappingResolver.resolvePath(result.caseForm.fieldValues || {}, fieldName),
+      previousValue: AutoFillService.getFieldValue(caseForm.fieldValues || {}, fieldName),
+      newValue: AutoFillService.getFieldValue(result.caseForm.fieldValues || {}, fieldName),
       reason: payload.reason,
       source: "CanonicalProfile",
     }, user));
@@ -651,18 +729,26 @@ class InteractiveFormReviewService {
   }
 
   static async resolveConflict(caseId, caseFormId, payload, user, req) {
-    const { caseForm } = await this.load(caseId, caseFormId, user);
+    const { caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
-    const fieldName = payload.fieldName || payload.fieldId;
+    const rawFieldName = payload.fieldName || payload.fieldId;
+    // ISSUE-001: canonicalFieldId resolved once here so both the saveField
+    // delegation below (which re-resolves it anyway, but fieldDefinition
+    // matches on either name so this is a no-op double-check, not a bug) and
+    // the fieldReviews write use the same key AutoFillService itself uses.
+    const fieldName = this.canonicalFieldId(template, rawFieldName);
     let value = payload.value;
     if (payload.resolution === "canonical") {
       const canonicalState = await CanonicalProfileService.get(caseId, user, req);
-      const attribution = caseForm.sourceAttribution?.[fieldName] || MappingResolver.resolvePath(caseForm.sourceAttribution || {}, fieldName) || {};
+      const attribution = AutoFillService.getMeta(caseForm.sourceAttribution || {}, fieldName)
+        || AutoFillService.getMeta(caseForm.sourceAttribution || {}, rawFieldName)
+        || {};
       const sourcePath = payload.sourceField || attribution.sourceField || attribution.canonicalSource;
       value = MappingResolver.resolvePath(canonicalState.profile || {}, String(sourcePath || "").replace(/^canonical\./, ""));
       if (value === undefined) throw error("Canonical value is unavailable for this field", 422);
     } else if (payload.resolution === "current") {
-      value = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
+      value = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
+        ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
     }
     await this.saveField(caseId, caseFormId, {
       fieldName,
@@ -671,12 +757,20 @@ class InteractiveFormReviewService {
       reason: payload.reason || `Conflict resolved using ${payload.resolution || "manual"} value`,
     }, user, req);
     const updated = await CaseForm.findById(caseFormId);
-    updated.set(`fieldReviews.${fieldName}`, {
+    // Plain bracket assignment, not Mongoose's dotted-string .set() API -
+    // fieldName always contains at least one literal "." (normalized ids are
+    // dot-separated; raw AcroForm names too), which .set() would otherwise
+    // parse as a NESTED path instead of a single Mixed-map key (the exact
+    // failure mode AutoFillService.overrideField's own header comment
+    // documents and avoids the same way).
+    const fieldReviews = { ...(updated.fieldReviews || {}) };
+    fieldReviews[fieldName] = {
       status: "verified",
       comment: payload.reason,
       reviewedBy: this.userId(user),
       reviewedAt: new Date(),
-    });
+    };
+    updated.set("fieldReviews", fieldReviews);
     this.addAudit(updated, "CONFLICT_RESOLVED", user, req, { fieldName, resolution: payload.resolution, value });
     await updated.save();
     await this.audit("CONFLICT_RESOLVED", updated, user, req, { fieldName, resolution: payload.resolution, value });
@@ -693,17 +787,26 @@ class InteractiveFormReviewService {
   // CanonicalProfileService.rebuild). Never picks a side itself - the CM's
   // explicit direction ("canonical" or "manual") is required.
   static async resolveFieldConflict(caseId, caseFormId, payload, user, req) {
-    const { caseForm } = await this.load(caseId, caseFormId, user);
+    const { caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
-    const fieldName = payload.fieldName || payload.fieldId;
-    if (!fieldName) throw error("fieldName is required", 400);
+    const rawFieldName = payload.fieldName || payload.fieldId;
+    if (!rawFieldName) throw error("fieldName is required", 400);
+    // ISSUE-001: the CONFLICT marker this checks for is set by overrideField's
+    // sibling fan-out, keyed by the normalized fieldId (ReverseIndexService's
+    // own pdfField entries are normalized ids too - see reverseIndex matching
+    // below). Resolving to the same key here is what makes this endpoint able
+    // to find a real conflict at all.
+    const fieldName = this.canonicalFieldId(template, rawFieldName);
     const direction = payload.direction;
     if (!["canonical", "manual"].includes(direction)) throw error('direction must be "canonical" or "manual"', 400);
 
-    const attribution = caseForm.sourceAttribution?.[fieldName] || {};
+    const attribution = AutoFillService.getMeta(caseForm.sourceAttribution || {}, fieldName)
+      || AutoFillService.getMeta(caseForm.sourceAttribution || {}, rawFieldName)
+      || {};
     if (attribution.syncState !== SyncStateService.CONFLICT) throw error("This field is not in conflict", 409);
 
-    const previousValue = MappingResolver.resolvePath(caseForm.fieldValues || caseForm.filledData || {}, fieldName);
+    const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
+      ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
     const sourcePath = attribution.sourceField;
     let newValue;
 

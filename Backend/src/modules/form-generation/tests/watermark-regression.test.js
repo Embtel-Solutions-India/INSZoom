@@ -1,9 +1,10 @@
-// Phase 5 (§K-G7) - proves the two PRE-EXISTING watermarked paths still watermark correctly after
-// Phase 5's changes, by byte-level evidence (decoding real page content streams), not just "it
-// looks fine" / status-code checks. draftPdf must still stamp "DRAFT"; the legacy generate path
-// must still stamp "ATTORNEY REVIEW" (pre-lock) or "FINAL" (locked/ready_for_pdf), exactly as
-// before Phase 5 - PDFRenderer.render's own watermark logic and FormGenerationController.draftPdf/
-// generate were NOT modified this phase (only draftPdf's sibling filingPdf was added).
+// Phase 5 (§K-G7) / Forms Download overhaul - proves watermark behavior by byte-level evidence
+// (decoding real page content streams), not just "it looks fine" / status-code checks. The Forms
+// Download overhaul removed draftPdf (which used to stamp "DRAFT") entirely and replaced it with
+// downloadForm, which must NEVER carry any watermark, at any status - the first test below is
+// downloadForm's own no-watermark regression guard, replacing draftPdf's old "still stamps DRAFT"
+// test. The legacy generate path (unaffected by the Forms Download overhaul) must still stamp
+// "ATTORNEY REVIEW" (pre-lock) or "FINAL" (locked/ready_for_pdf), exactly as before.
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { PDFDocument, PDFArray, PDFName, decodePDFRawStream } = require("pdf-lib");
@@ -65,7 +66,7 @@ function mockRes() {
 
 const LABELS = ["DRAFT", "FINAL", "ATTORNEY REVIEW"];
 
-test("draftPdf still stamps DRAFT (byte-level, unaffected by Phase 5)", async (t) => {
+test("downloadForm carries no watermark at all (byte-level, Forms Download overhaul)", async (t) => {
   t.after(async () => { await disconnectTestDB(); });
   await connectTestDB();
   const golden = await buildGoldenH1bCase();
@@ -73,11 +74,11 @@ test("draftPdf still stamps DRAFT (byte-level, unaffected by Phase 5)", async (t
     const { caseForm } = await AutoFillService.generate(golden.caseId, "I-129", golden.user, {});
     const req = { params: { caseFormId: String(caseForm._id) }, user: golden.user, ip: "127.0.0.1", headers: {} };
     const res = mockRes();
-    await controller.draftPdf(req, res);
+    await controller.downloadForm(req, res);
 
     assert.equal(res.statusCode, 200);
     const found = await findWatermarkText(Buffer.from(res.sentBuffer), LABELS);
-    assert.equal(found, "DRAFT", `expected draftPdf's output to be watermarked "DRAFT", found: ${found}`);
+    assert.equal(found, null, `expected downloadForm's output to carry no watermark at all, found: ${found}`);
   } finally {
     await golden.cleanup();
   }

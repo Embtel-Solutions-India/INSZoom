@@ -435,7 +435,15 @@ class CaseLifecycleOrchestrator {
     }
     if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(user, caseData)) throw Object.assign(new Error("Not authorized to generate forms for this case"), { status: 403 });
-    if (!caseData.assignedCaseManager && !["super_admin", "admin"].includes(user?.role)) throw Object.assign(new Error("Assign a primary case manager before generating forms"), { status: 409 });
+    const blockingIssues = [];
+    // Phase: unassigned-case advisory, not a gate. A case manager or team
+    // lead must still be able to review/autofill an unassigned case's forms
+    // (e.g. before assignment happens) - the missing assignment is now
+    // surfaced as a non-blocking advisory instead of refusing the request.
+    // An admin/super_admin never hit this check at all, before or after.
+    if (!caseData.assignedCaseManager && !["super_admin", "admin"].includes(user?.role)) {
+      blockingIssues.push({ code: "NO_CASE_MANAGER", message: "No case manager is assigned to this case yet.", severity: "warning" });
+    }
     const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
     const uscisFormService = require("../uscis-forms/uscis-form.service");
     const AutoFillService = require("../form-mapping/services/AutoFillService");
@@ -457,9 +465,8 @@ class CaseLifecycleOrchestrator {
     // fatal here when there are no usable forms already available to fall
     // back to acting on.
     if (!usableExistingForms.length && primaryReadError) throw primaryReadError;
-    const readiness = await this.metrics(caseData);
-    const blockingIssues = [];
     const canonical = await CanonicalProfileService.validate(caseId, user, req, { reason: "generate_uscis_forms" });
+    const readiness = await this.metrics(caseData);
     // hasCanonicalErrors (missing-required-field validation errors from
     // CanonicalSectionValidators) is a completeness measure - exactly what
     // this endpoint must no longer gate on now that it can run long before
@@ -470,12 +477,26 @@ class CaseLifecycleOrchestrator {
     // another source would write bad data into it, unlike simply leaving a
     // not-yet-answered field blank (which AutoFillService already handles
     // safely via missingFields).
-    const hasUnresolvedConflicts = readiness.canonical.conflicts > 0;
+    // hasUnresolvedConflicts reads canonical.conflictCount - the value
+    // validate() just computed - rather than readiness.canonical.conflicts,
+    // which metrics() reads off the caseData loaded at the top of this
+    // function. This closes a narrow race window: a concurrent
+    // resolveConflict()/rebuild() landing between that earlier
+    // Case.findById and this validate() call would otherwise leave
+    // readiness.canonical.conflicts reporting a count validate() itself
+    // already knows is stale. hasCanonicalErrors keeps readiness.canonical.
+    // version - CanonicalValidationService's return has no version field of
+    // its own (version lives on canonicalProfile, not on a validation
+    // result), and this check is not race-sensitive the same way: a version
+    // of 0 only ever means "never built," which validate()'s own rebuild
+    // branch (triggered by that same never-built state) cannot retroactively
+    // change on caseData's already-loaded copy.
+    const hasUnresolvedConflicts = (canonical.conflictCount || 0) > 0;
     const hasCanonicalErrors = Array.isArray(canonical.errors) && canonical.errors.length > 0 && readiness.canonical.version > 0;
-    if (hasCanonicalErrors) blockingIssues.push({ code: "CANONICAL_INCOMPLETE", message: "The canonical profile is still missing required fields.", validation: canonical });
+    if (hasCanonicalErrors) blockingIssues.push({ code: "CANONICAL_INCOMPLETE", message: "Some fields are still incomplete. They'll appear blank on the form until that information is available.", validation: canonical, severity: "info" });
     if (hasUnresolvedConflicts) {
-      blockingIssues.push({ code: "CANONICAL_NEEDS_REVIEW", message: "Resolve canonical profile conflicts before filing.", validation: canonical });
-      throw Object.assign(new Error("Resolve canonical profile conflicts before filing."), { status: 422, code: "CANONICAL_NEEDS_REVIEW", details: { readiness, validation: canonical, blockingIssues } });
+      blockingIssues.push({ code: "CANONICAL_NEEDS_REVIEW", message: "Resolve canonical profile conflicts before generating forms.", validation: canonical, severity: "error" });
+      throw Object.assign(new Error("Resolve canonical profile conflicts before generating forms."), { status: 422, code: "CANONICAL_NEEDS_REVIEW", details: { readiness, validation: canonical, blockingIssues } });
     }
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req);
     const forms = await CaseForm.find({ caseId });
@@ -511,6 +532,11 @@ class CaseLifecycleOrchestrator {
       durationMs: Date.now() - startedAt,
       requestId: req?.requestId,
     });
+    // Surfaced in the message so the NO_CASE_MANAGER advisory reaches the
+    // frontend's success path (which keys its banner color off whether
+    // `message` starts with "USCIS"/"Filing") without the caller having to
+    // separately inspect blockingIssues just to see this one.
+    const noCaseManagerWarning = blockingIssues.find((item) => item.code === "NO_CASE_MANAGER");
     return {
       created,
       existing: usableExistingForms,
@@ -520,9 +546,9 @@ class CaseLifecycleOrchestrator {
       canonicalValidation: canonical,
       readiness,
       workflow,
-      message: failed.length
+      message: `${failed.length
         ? `${generated.length} USCIS form(s) auto-filled; ${failed.length} form(s) need attention.`
-        : "USCIS forms assigned and auto-filled from the canonical profile.",
+        : "USCIS forms assigned and auto-filled from the canonical profile."}${noCaseManagerWarning ? ` ${noCaseManagerWarning.message}` : ""}`,
     };
   }
 

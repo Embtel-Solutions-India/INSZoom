@@ -15,10 +15,20 @@ const caseService = require("../../cases/case.service");
 const { renderCaseForm } = require("../uscis-form.service");
 
 test("renderCaseForm throws a clear, actionable error (not an uncaught TypeError) when the case form's template was deleted", async (t) => {
-  t.mock.method(Case, "findById", () => Promise.resolve({ _id: "case1" }));
+  // getAccessibleCase chains .maxTimeMS() onto Case.findById() (see
+  // uscis-form.service.js) - a real Mongoose Query supports that chain, so
+  // the mock must too, or the .maxTimeMS() call throws a raw TypeError that
+  // masks the very guard this test exists to verify.
+  t.mock.method(Case, "findById", () => ({
+    maxTimeMS: () => Promise.resolve({ _id: "case1" }),
+  }));
   t.mock.method(caseService, "canAccessCase", () => true);
+  // renderCaseForm also chains .populate().maxTimeMS() on this query - same
+  // reasoning as the Case.findById mock above.
   t.mock.method(CaseForm, "findOne", () => ({
-    populate: () => Promise.resolve({ _id: "caseform1", formTemplateId: null }),
+    populate: () => ({
+      maxTimeMS: () => Promise.resolve({ _id: "caseform1", formTemplateId: null }),
+    }),
   }));
 
   await assert.rejects(

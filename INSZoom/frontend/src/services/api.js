@@ -270,9 +270,9 @@ export const formGenerationApi = {
   regeneratePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/regenerate`, payload),
   previewPdf: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
   downloadPdf: (caseFormId) => api.get(`/forms/${caseFormId}/download`, { responseType: 'blob' }),
-  draftPdf: (caseFormId) => api.get(`/forms/${caseFormId}/draft-pdf`, { responseType: 'blob' }),
-  // Phase 5 - clean, watermark-free filing copy (approved/locked/generated forms only).
-  filingPdf: (caseFormId) => api.get(`/forms/${caseFormId}/filing-pdf`, { responseType: 'blob' }),
+  // The one official download: real, authentic, watermark-free USCIS PDF,
+  // no status gate. Replaces the old draftPdf/filingPdf split.
+  downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
 }
 
 export const petitionApi = {

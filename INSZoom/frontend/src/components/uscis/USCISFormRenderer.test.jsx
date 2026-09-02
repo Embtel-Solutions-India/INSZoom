@@ -33,7 +33,7 @@ const workspaceApi = vi.fn()
 const templatePdfApi = vi.fn()
 const saveWorkspaceFieldApi = vi.fn()
 const resolveFieldConflictApi = vi.fn()
-const filingPdfApi = vi.fn()
+const downloadFormApi = vi.fn()
 vi.mock('../../services/api', () => ({
   uscisFormsApi: {
     workspace: (...args) => workspaceApi(...args),
@@ -43,7 +43,7 @@ vi.mock('../../services/api', () => ({
     resolveFieldConflict: (...args) => resolveFieldConflictApi(...args),
   },
   formGenerationApi: {
-    filingPdf: (...args) => filingPdfApi(...args),
+    downloadForm: (...args) => downloadFormApi(...args),
   },
 }))
 
@@ -57,7 +57,7 @@ afterEach(() => {
 beforeEach(() => {
   saveWorkspaceFieldApi.mockResolvedValue({})
   resolveFieldConflictApi.mockResolvedValue({})
-  filingPdfApi.mockResolvedValue({ data: new Blob(['%PDF-1.4 mock'], { type: 'application/pdf' }) })
+  downloadFormApi.mockResolvedValue({ data: new Blob(['%PDF-1.4 mock'], { type: 'application/pdf' }) })
 })
 
 function makeWorkspace(overrides = {}) {
@@ -285,35 +285,36 @@ describe('USCISFormRenderer', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
-  // Phase 5 (§I.5) - "Download filing copy" button
-  it('renders "Download filing copy" when the form status is approved', async () => {
-    workspaceApi.mockResolvedValue({ data: makeWorkspace({ caseForm: { status: 'approved', isLocked: false, fieldValues: {}, validationErrors: { fields: {} } } }) })
-    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-
-    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-
-    expect(await screen.findByText('Download filing copy')).toBeTruthy()
-  })
-
-  it('does not render "Download filing copy" when the form status is draft', async () => {
+  // Forms Download overhaul - single "Download Official Form" button, no status gate
+  it('renders "Download Official Form" when the form status is draft (no gate)', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspace() }) // default caseForm.status is 'draft'
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    await screen.findByText(/Save & Download Fillable PDF/i)
+    expect(await screen.findByText('Download Official Form')).toBeTruthy()
+    expect(screen.queryByText(/Save & Download Fillable PDF/i)).toBeFalsy()
     expect(screen.queryByText('Download filing copy')).toBeFalsy()
   })
 
-  it('clicking "Download filing copy" calls formGenerationApi.filingPdf with the caseForm id', async () => {
+  it('renders "Download Official Form" when the form is locked (no gate either direction)', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspace({ caseForm: { status: 'locked', isLocked: true, fieldValues: {}, validationErrors: { fields: {} } } }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-    const button = await screen.findByText('Download filing copy')
+
+    expect(await screen.findByText('Download Official Form')).toBeTruthy()
+  })
+
+  it('clicking "Download Official Form" calls formGenerationApi.downloadForm with the caseForm id', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspace({ caseForm: { status: 'locked', isLocked: true, fieldValues: {}, validationErrors: { fields: {} } } }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const button = await screen.findByText('Download Official Form')
     fireEvent.click(button)
 
-    await vi.waitFor(() => expect(filingPdfApi).toHaveBeenCalledTimes(1))
-    expect(filingPdfApi).toHaveBeenCalledWith('cf-1')
+    await vi.waitFor(() => expect(downloadFormApi).toHaveBeenCalledTimes(1))
+    expect(downloadFormApi).toHaveBeenCalledWith('cf-1')
   })
 })
