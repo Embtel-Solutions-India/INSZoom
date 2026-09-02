@@ -58,6 +58,13 @@ export default function ConfirmedScreen({ booking }) {
           Manage booking
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        className="mt-6 text-sm font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+      >
+        Return to home
+      </button>
     </div>
   );
 }

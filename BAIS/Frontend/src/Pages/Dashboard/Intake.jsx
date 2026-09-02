@@ -702,9 +702,11 @@ function ServiceIntakeQuiz() {
             </div>
             <span className="text-sm font-bold text-slate-900">BAIS</span>
           </div>
-          <button type="button" onClick={() => navigate("/dashboard")} className="text-xs font-semibold text-slate-400 hover:text-slate-600">
-            Save &amp; close
-          </button>
+          {/* Intentionally no "Save & close" here - this quiz has no partial-save
+              state to return to, and a mid-quiz exit isn't a booking outcome to
+              offer navigation for yet. Right side of the header stays empty
+              during the quiz. */}
+          <div />
         </div>
         <div className="h-1 bg-slate-100">
           <div className="h-full bg-slate-900 transition-all duration-500 ease-out" style={{ width: `${completion}%` }} />

@@ -87,17 +87,33 @@ function visibleNavLinks(user, hasCase) {
 }
 
 export default function Navbar() {
-  const { user, logout }   = useAuth();
+  const { user, logout, authStatus } = useAuth();
   const location           = useLocation();
   const navigate           = useNavigate();
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [dropOpen,  setDropOpen]  = useState(false);
   const [scrolled,  setScrolled]  = useState(false);
   const [sessionHasCase, setSessionHasCase] = useState(false);
+  // Defaults true (not false) deliberately: while the sessionContext() fetch
+  // below is in flight, we don't yet know whether this user has a case, so
+  // nav-link visibility should not assume "no case" - that would hide
+  // Dashboard/Messages/Payments for the whole duration of every page load,
+  // not just briefly. sessionContext is a UI hint for which tabs to show,
+  // never a security gate (ProtectedRoute/backend routes remain the real
+  // access control), so defaulting optimistic here is safe.
+  const [sessionHasCaseLoading, setSessionHasCaseLoading] = useState(true);
   const dropRef = useRef(null);
 
   const isActive = (to) => location.pathname === to;
-  const hasCase = Boolean(sessionHasCase || isEmployeeAccount(user));
+  const hasCase = Boolean(sessionHasCase || isEmployeeAccount(user) || (user && sessionHasCaseLoading));
+  // Auth-state race (see AuthContext.jsx's own "Phase 12 fix (P12-C2)" comment,
+  // which documents ProtectedRoute having this same problem): `user` is null
+  // both while verifySession() is still in flight (authStatus "loading") and
+  // when it fails due to a slow/unreachable backend (authStatus "error") -
+  // neither means the user is actually logged out. Rendering Login/Sign Up
+  // off `user` alone showed the wrong navbar for the entire loading window on
+  // a slow backend, not just a brief flash.
+  const authResolving = authStatus === "loading" || authStatus === "error";
 
   // Shadow on scroll
   useEffect(() => {
@@ -121,13 +137,17 @@ export default function Navbar() {
   useEffect(() => {
     let cancelled = false;
     setSessionHasCase(false);
-    if (!user) return () => { cancelled = true; };
+    if (!user) {
+      setSessionHasCaseLoading(false);
+      return () => { cancelled = true; };
+    }
+    setSessionHasCaseLoading(true);
     authApi.sessionContext()
       .then((context) => {
-        if (!cancelled) setSessionHasCase(Boolean(context?.hasCase));
+        if (!cancelled) { setSessionHasCase(Boolean(context?.hasCase)); setSessionHasCaseLoading(false); }
       })
       .catch(() => {
-        if (!cancelled) setSessionHasCase(false);
+        if (!cancelled) { setSessionHasCase(false); setSessionHasCaseLoading(false); }
       });
     return () => { cancelled = true; };
   }, [user]);
@@ -185,7 +205,13 @@ export default function Navbar() {
         {/* ── Auth section ── */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
 
-          {user ? (
+          {authResolving ? (
+            /* ── Auth state still resolving (loading, or backend error) ──
+               Neither Login/Sign Up nor the profile dropdown - both would be
+               a guess. A fixed-size placeholder avoids the header jumping
+               once the real state resolves a moment later. */
+            <div className="w-9 h-9" aria-hidden="true" />
+          ) : user ? (
             /* ── Logged in: profile dropdown ── */
             <div className="flex items-center gap-2">
               <NotificationBell />
@@ -318,7 +344,7 @@ export default function Navbar() {
           ))}
 
           <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
-            {user ? (
+            {authResolving ? null : user ? (
               <>
                 {/* User info chip */}
                 <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 rounded-xl mb-1">

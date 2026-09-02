@@ -403,6 +403,7 @@ const CRMCaseDetail = () => {
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
+  const [formsWarning, setFormsWarning] = useState('')
   const [eligibility, setEligibility] = useState(null)
   const [payments, setPayments] = useState([])
   const [letters, setLetters] = useState([])
@@ -627,15 +628,30 @@ const CRMCaseDetail = () => {
     try {
       setTabLoading(prev => ({ ...prev, forms: true }))
       setFormActionMessage('')
+      setFormsWarning('')
       const response = await casesApi.generateForms(id)
       setFetched(prev => ({ ...prev, forms: false }))
       await fetchCaseForms(true)
       const payload = response?.data || {}
+      // blockingIssues carries both real failures (severity 'error', or no
+      // severity at all — the shape older callers already produced) and
+      // non-blocking advisories (severity 'info'/'warning', e.g. no case
+      // manager assigned yet, or fields still incomplete on a new case).
+      // Only the former belongs in the same banner as an actual failure;
+      // the latter goes to formsWarning so it renders as an amber advisory
+      // instead of looking like the request failed.
+      const errorBlockers = (payload.blockingIssues || []).filter(item => !item.severity || item.severity === 'error')
+      const infoBlockers = (payload.blockingIssues || []).filter(item => item.severity === 'info' || item.severity === 'warning')
       const failures = payload.failed?.length ? ` ${payload.failed.map(item => `${item.formCode}: ${item.message}`).join(' ')}` : ''
-      const blockers = payload.blockingIssues?.length ? ` ${payload.blockingIssues.map(item => item.message).join(' ')}` : ''
-      setFormActionMessage(`${payload.message || 'USCIS forms were assigned and auto-filled from the canonical profile.'}${failures}${blockers}`)
+      const errorMessages = errorBlockers.length ? ` ${errorBlockers.map(item => item.message).join(' ')}` : ''
+      setFormActionMessage(`${payload.message || 'USCIS forms were assigned and auto-filled from the canonical profile.'}${failures}${errorMessages}`)
+      if (infoBlockers.length) setFormsWarning(infoBlockers.map(item => item.message).join(' '))
     } catch (error) {
       const data = error.response?.data || {}
+      if (data.code === 'CANONICAL_NEEDS_REVIEW') {
+        setFormActionMessage(data.message || 'Canonical profile conflicts must be resolved before generating forms.')
+        return
+      }
       const issues = data.issues?.length ? ` ${data.issues.map(item => item.message).join(' ')}` : ''
       // data.details is an internal readiness metrics object — never user-facing
       setFormActionMessage(`${data.message || error.message || 'Unable to generate USCIS forms'}${issues}`)
@@ -2300,8 +2316,13 @@ const CRMCaseDetail = () => {
               </div>
             </div>
             {formActionMessage && (
-              <div className={`mb-4 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)/.test(formActionMessage) ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)/.test(formActionMessage) ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
                 {formActionMessage}
+              </div>
+            )}
+            {formsWarning && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {formsWarning}
               </div>
             )}
             {caseData?.knowledgePlan?.status === 'needs_configuration' && (
@@ -2375,7 +2396,16 @@ const CRMCaseDetail = () => {
                 </table>
               </div>
             ) : (
-              renderEmptyState('No USCIS forms assigned for this case')
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-gray-700 font-medium">No USCIS forms yet</p>
+                <p className="mt-1 text-sm text-gray-500 max-w-xs mx-auto">
+                  Click <strong>Generate USCIS Forms</strong> to auto-fill forms from the
+                  available case data. Fields will be blank where information hasn't been
+                  provided yet — fill them in manually, or they'll populate automatically
+                  as the client completes their questionnaire.
+                </p>
+              </div>
             )}
           </div>
         )

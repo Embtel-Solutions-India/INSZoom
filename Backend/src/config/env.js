@@ -166,6 +166,15 @@ const env = {
     .filter(Boolean),
   redisUrl: process.env.REDIS_URL || null,
   qpdfPath: process.env.QPDF_PATH || "qpdf",
+  adobe: {
+    clientId: process.env.ADOBE_PDF_SERVICES_CLIENT_ID || "",
+    clientSecret: process.env.ADOBE_PDF_SERVICES_CLIENT_SECRET || "",
+    baseUrl: process.env.ADOBE_PDF_SERVICES_BASE_URL || "https://pdf-services-ue1.adobe.io",
+    // Default ON - the official download pipeline uses Adobe unless an
+    // operator explicitly opts out. Never an automatic silent fallback to
+    // pdf-lib on failure; this is only a manual, explicit kill-switch.
+    fillEnabled: process.env.ADOBE_PDF_FILL_ENABLED !== "false",
+  },
 };
 
 module.exports = env;

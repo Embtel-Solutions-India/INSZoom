@@ -1,9 +1,11 @@
 // Phase 5 (§I.6) regression gate: `npm run phase5:verify`. Extends phase4:verify with Phase 5's
 // own tests: the fidelity verifier unit tests (correct + tampered), the renderFiling integration
 // test (real seeded case, watermark-absence proof via real page-content-stream decoding), the
-// filingPdf controller tests (200/422 status-gate/422 fidelity-failure), the watermark-regression
-// tests proving draftPdf/generate still stamp correctly, the route-registration check, and the
-// frontend component tests for the new button. Also re-runs Phase 4's own backend suite directly
+// downloadForm controller tests (200 with no status gate / 422 fidelity-failure - Forms Download
+// overhaul renamed this suite from its original filingPdf.test.js), the watermark-regression
+// tests proving downloadForm carries no watermark and generate still stamps correctly, the
+// route-registration check, and the frontend component tests for the new button. Also re-runs
+// Phase 4's own backend suite directly
 // (not via `phase4:verify` as a black box) for the same structural reason phase4Verify.js re-runs
 // Phase 3's suite directly instead of calling phase3:verify - its diff-scope guard only recognizes
 // Phase-4-era files and would fail the instant Phase 5's own legitimately-allowed files exist in
@@ -50,7 +52,7 @@ const PHASE4_BACKEND_TEST_FILES = [
 const PHASE5_BACKEND_TEST_FILES = [
   "src/modules/form-generation/tests/PDFFidelityService.test.js",
   "src/modules/form-generation/tests/PDFRenderer.renderFiling.test.js",
-  "src/modules/form-generation/tests/FormGenerationController.filingPdf.test.js",
+  "src/modules/form-generation/tests/FormGenerationController.downloadForm.test.js",
   "src/modules/form-generation/tests/watermark-regression.test.js",
   "src/modules/form-generation/tests/h3-formGenerationRoutes.test.js",
 ];
