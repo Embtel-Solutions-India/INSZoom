@@ -16,6 +16,7 @@ const crypto = require("crypto");
 const PDFRenderer = require("./PDFRenderer");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const AdobePdfService = require("../../pdf-services/AdobePdfService");
+const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
 
 function classifyField(field) {
   const ctor = field.constructor?.name || "";
@@ -71,7 +72,7 @@ class AdobeFormRenderer {
     // Same mapping call PDFRenderer.render() uses for the pdf-lib path - not
     // a second mapping system. Adobe receives exactly what pdf-lib would
     // have received for the same CaseForm/template.
-    const { mappedFields, missingMappings } = PDFFieldMapper.mapFields(caseForm, template);
+    const { mappedFields, missingMappings, protectedFields } = PDFFieldMapper.mapFields(caseForm, template);
 
     const jsonFormFieldsData = {};
     const skippedFields = [];
@@ -126,7 +127,23 @@ class AdobeFormRenderer {
     });
 
     const uploadBuffer = Buffer.from(await sourcePdf.save());
-    const buffer = await AdobePdfService.fillPdf(uploadBuffer, jsonFormFieldsData);
+    let buffer = await AdobePdfService.fillPdf(uploadBuffer, jsonFormFieldsData);
+
+    // ISSUE-003 follow-up: confirmed empirically against a real production
+    // download that Adobe's setformdata operation returns its output with
+    // the AcroForm's /NeedAppearances flag already set (independent of
+    // anything this app does) - see BarcodeAppearanceGuard.js for the full
+    // mechanism. That flag is document-wide and has no per-field opt-out, so
+    // even an untouched, correctly image-backed barcode field gets rebuilt
+    // as plain text by any viewer that honors it. Re-open Adobe's returned
+    // bytes, bake each barcode field's still-correct appearance into the
+    // page, remove the field, and re-save - same fix as the pdf-lib engine,
+    // applied as a post-process since Adobe is an external black box we
+    // don't control internally.
+    const { PDFDocument: AdobeOutputPDFDocument } = PDFRenderer.loadPdfLib();
+    const adobeOutputDoc = await AdobeOutputPDFDocument.load(buffer, { ignoreEncryption: true, updateMetadata: false });
+    const flattenedBarcodeFields = flattenBarcodeAppearances(adobeOutputDoc.getForm(), template.formCode);
+    buffer = Buffer.from(await adobeOutputDoc.save());
 
     const PDFFidelityService = require("./PDFFidelityService");
     const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template);
@@ -147,6 +164,12 @@ class AdobeFormRenderer {
         unmappedPdfFields,
         failedFieldWrites,
         skippedFields,
+        flattenedBarcodeFields,
+        // Never even reaches jsonFormFieldsData - PDFFieldMapper.mapFields()
+        // already excludes these (see ProtectedFieldPolicy.js) before this
+        // function ever sees mappedFields. Surfaced here only for audit
+        // parity with PDFRenderer.js's renderReport.protectedFields.
+        protectedFields,
         sourceFieldCount: sourceFieldNames.size,
         checksumVerified: checksumResult.verified,
         flattened: false,
