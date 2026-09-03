@@ -136,8 +136,8 @@ export function AuthProvider({ children }) {
 
   // Invited employee sets their own password via the emailed link, then is
   // logged straight in — the employer never sees or sets this password.
-  const acceptInvite = useCallback(async (token, password, confirmPassword) => {
-    const data = await authApi.acceptInvite(token, password, confirmPassword);
+  const acceptInvite = useCallback(async (token, password, confirmPassword, username) => {
+    const data = await authApi.acceptInvite(token, password, confirmPassword, username);
     tokenStore.set(data.accessToken);
     setUser(data.user);
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);

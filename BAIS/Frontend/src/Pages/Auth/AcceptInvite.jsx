@@ -19,6 +19,7 @@ export default function AcceptInvite() {
 
   const [status, setStatus] = useState("checking"); // checking | valid | invalid
   const [invite, setInvite] = useState(null);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -45,7 +46,7 @@ export default function AcceptInvite() {
 
     setSubmitting(true);
     try {
-      await acceptInvite(token, password, confirmPassword);
+      await acceptInvite(token, password, confirmPassword, username.trim() || undefined);
       navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err.message || "Unable to activate your account. The link may have expired.");
@@ -103,6 +104,20 @@ export default function AcceptInvite() {
             )}
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                Username <span className="text-slate-400 font-normal">(optional — defaults to your email prefix)</span>
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. john.doe"
+                autoComplete="username"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <p className="mt-1 text-xs text-slate-400">You can log in with your Case ID, email, or username + password.</p>
+            </div>
             <PasswordField icon={<LockIcon />} name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
             <PasswordField icon={<LockIcon />} name="confirmPassword" placeholder="Confirm Password"

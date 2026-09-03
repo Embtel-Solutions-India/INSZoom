@@ -22,6 +22,24 @@ const TEMPLATES = {
   "consultation-host-notify": require("./templates/consultation-host-notify"),
   "lead-approved": require("./templates/lead-approved"),
   "lead-rejected": require("./templates/lead-rejected"),
+  "document-rejected": require("./templates/document-rejected"),
+  "document-requested": require("./templates/document-requested"),
+  "signature-required": require("./templates/signature-required"),
+  "filing-submitted": require("./templates/filing-submitted"),
+  "receipt-received": require("./templates/receipt-received"),
+  "rfe-received": require("./templates/rfe-received"),
+  "case-approved": require("./templates/case-approved"),
+  "case-denied": require("./templates/case-denied"),
+  "case-stage-changed": require("./templates/case-stage-changed"),
+  "payment-required": require("./templates/payment-required"),
+  "payment-failed": require("./templates/payment-failed"),
+  "case-manager-reassigned": require("./templates/case-manager-reassigned"),
+  "case-closed": require("./templates/case-closed"),
+  "interview-scheduled": require("./templates/interview-scheduled"),
+  "biometrics-scheduled": require("./templates/biometrics-scheduled"),
+  "questionnaire-assigned": require("./templates/questionnaire-assigned"),
+  "additional-info-requested": require("./templates/additional-info-requested"),
+  "case-on-hold": require("./templates/case-on-hold"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully
@@ -32,35 +50,48 @@ function isConfigured() {
 }
 
 function wrapHtml(subjectText, lines = []) {
-  const paragraphs = lines.map((line) => `<p style="margin:0 0 12px;">${line}</p>`).join("");
+  const year = new Date().getFullYear();
+  const paragraphs = lines
+    .map((line) => `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${line}</p>`)
+    .join("");
   return `<!doctype html>
-<html>
-  <body style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f8;padding:24px;margin:0;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;">
-            <tr>
-              <td style="background:#0f766e;padding:20px 28px;">
-                <span style="color:#ffffff;font-size:16px;font-weight:700;">Immigration CRM</span>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px;color:#1f2937;font-size:14px;line-height:1.6;">
-                <h2 style="margin:0 0 16px;font-size:18px;color:#111827;">${subjectText}</h2>
-                ${paragraphs}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:16px 28px;background:#f8fafc;color:#94a3b8;font-size:12px;">
-                This is an automated message from the Immigration CRM platform.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subjectText}</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#0f766e 0%,#14b8a6 100%);padding:28px 36px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">BAIS</span>
+                  <span style="color:#ccfbf1;font-size:12px;font-weight:500;margin-left:8px;letter-spacing:1.5px;text-transform:uppercase;">Immigration Portal</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 36px 28px;">
+            <h1 style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${subjectText}</h1>
+            ${paragraphs}
+          </td>
+        </tr>
+        <tr><td style="padding:0 36px;"><div style="height:1px;background:#e5e7eb;"></div></td></tr>
+        <tr>
+          <td style="padding:20px 36px 28px;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
+              This is an automated message from <strong>BAIS Immigration Portal</strong>. Please do not reply to this email.<br>
+              &copy; ${year} Bay Area Immigration Services. All rights reserved.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
 </html>`;
 }
 

@@ -7,6 +7,7 @@ import PasswordField from "../../components/auth/PasswordField";
 export default function Login() {
   const [email,       setEmail]       = useState("");
   const [caseId,      setCaseId]      = useState("");
+  const [username,    setUsername]    = useState("");
   const [loginMethod, setLoginMethod] = useState("email");
   const [password,    setPassword]    = useState("");
   const [error,       setError]       = useState("");
@@ -59,12 +60,17 @@ export default function Login() {
   const handleLogin = async () => {
     const normalizedCaseId = caseId.trim();
     const normalizedEmail = email.trim();
+    const normalizedUsername = username.trim();
     if (loginMethod === "caseId" && (!normalizedCaseId || !password)) {
       setError("Please enter your Case ID and password.");
       return;
     }
     if (loginMethod === "email" && (!normalizedEmail || !password)) {
       setError("Please enter your email and password.");
+      return;
+    }
+    if (loginMethod === "username" && (!normalizedUsername || !password)) {
+      setError("Please enter your username and password.");
       return;
     }
     setError(""); setPendingInvite(false); setResendSent(false); setLoading(true);
@@ -78,7 +84,9 @@ export default function Login() {
       await login(
         loginMethod === "caseId"
           ? { caseId: normalizedCaseId, password }
-          : { email: normalizedEmail, password }
+          : loginMethod === "username"
+            ? { username: normalizedUsername, password }
+            : { email: normalizedEmail, password }
       );
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
@@ -191,10 +199,11 @@ export default function Login() {
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-          <div className="mb-4 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+          <div className="mb-4 grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1">
             {[
               { key: "email", label: "Email" },
               { key: "caseId", label: "Case ID" },
+              { key: "username", label: "Username" },
             ].map((option) => (
               <button
                 key={option.key}
@@ -232,7 +241,7 @@ export default function Login() {
                   transition-all duration-150"
               />
             </FieldWrap>
-          ) : (
+          ) : loginMethod === "caseId" ? (
             <FieldWrap icon={<CaseIdIcon />}>
               <input
                 type="text"
@@ -241,6 +250,22 @@ export default function Login() {
                 placeholder="Case ID"
                 value={caseId}
                 onChange={(e) => setCaseId(e.target.value)}
+                autoComplete="username"
+                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
+                  border border-slate-200 rounded-xl bg-white outline-none
+                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
+                  transition-all duration-150"
+              />
+            </FieldWrap>
+          ) : (
+            <FieldWrap icon={<CaseIdIcon />}>
+              <input
+                type="text"
+                id="login-username"
+                name="username"
+                placeholder="Username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
                 className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
                   border border-slate-200 rounded-xl bg-white outline-none

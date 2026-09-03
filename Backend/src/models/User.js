@@ -11,6 +11,11 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: false, minlength: 8, select: false },
     name: { type: String, trim: true },
     displayName: { type: String, trim: true },
+    // Optional, chosen (or defaulted to the email prefix) at invite
+    // acceptance - see clientInvite.service.js/employeeInvite.service.js's
+    // acceptClientInvite/acceptInvite. sparse+unique mirrors referralCode's
+    // existing pattern below so accounts with no username never conflict.
+    username: { type: String, trim: true, lowercase: true, sparse: true, unique: true, index: true },
     role: { type: String, enum: USER_ROLES, default: "client", index: true },
     // Pre-case, account-level, client-chosen (PlanSelection / a first-run
     // prompt): whether this client is filing for themselves ("individual") or
@@ -187,6 +192,7 @@ userSchema.methods.toAuthJSON = function () {
     _id: this._id,
     id: this._id,
     email: this.email,
+    username: this.username,
     name: this.name || this.displayName,
     displayName: this.displayName || this.name,
     role: this.role,
