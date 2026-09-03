@@ -77,6 +77,20 @@ if (storageProvider === "s3") {
   if (missingS3.length) throw new Error(`STORAGE_PROVIDER=s3 requires: ${missingS3.join(", ")}`);
 }
 
+// Guard: in production, local storage is forbidden - client immigration
+// documents (passports, petitions, personal data) must never be stored on
+// the application server's own filesystem. Added after a 2026-09 audit found
+// months of orphaned local files (from deleted cases and stale test runs)
+// that had accumulated in Backend/storage and Backend/uploads despite S3
+// already being configured — this fails the boot outright instead of
+// allowing that class of drift to reoccur silently.
+if (storageProvider === "local" && process.env.NODE_ENV === "production") {
+  throw new Error(
+    "STORAGE_PROVIDER=local is not allowed in production. " +
+    "Set STORAGE_PROVIDER=s3 and configure AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION."
+  );
+}
+
 const env = {
   nodeEnv,
   port: process.env.PORT || 7000,

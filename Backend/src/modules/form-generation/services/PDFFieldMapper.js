@@ -1,4 +1,5 @@
 const MappingResolver = require("../../form-mapping/services/MappingResolver");
+const { isProtectedField } = require("./ProtectedFieldPolicy");
 
 class PDFFieldMapper {
   static normalizeTemplateMappings(template = {}) {
@@ -6,12 +7,17 @@ class PDFFieldMapper {
     const fieldMappings = (template.formFields || []).flatMap((field) => {
       const fieldId = field.fieldId || field.fieldName;
       const directPdfField = field.pdfField || field.pdfFieldName || field.pdfMapping?.pdfField;
+      // templateField carries the full scanned field record through to
+      // mapFields()'s protected-field check below (uscisUseOnly/pdfFieldType) -
+      // the richest signal available, since this is where the original
+      // template.formFields entry is still in scope.
       const mappingPdfFields = (field.mappings || []).filter((mapping) => mapping.pdfField).map((mapping) => ({
         caseField: fieldId,
         pdfField: mapping.pdfField,
         type: field.fieldType || field.type,
         valueMap: mapping.valueMap,
         condition: field.showWhen || field.conditionalLogic || mapping.condition,
+        templateField: field,
       }));
       if (directPdfField) {
         mappingPdfFields.unshift({
@@ -20,6 +26,7 @@ class PDFFieldMapper {
           type: field.fieldType || field.type,
           valueMap: field.pdfMapping?.valueMap,
           condition: field.showWhen || field.conditionalLogic,
+          templateField: field,
         });
       }
       return mappingPdfFields;
@@ -40,8 +47,18 @@ class PDFFieldMapper {
     const mappedFields = {};
     const missingMappings = [];
     const skippedFields = [];
+    const protectedFields = [];
 
     this.normalizeTemplateMappings(template).forEach((mapping) => {
+      // Protected fields (USCIS-internal barcodes, signature fields) must
+      // never enter mappedFields at all - this is the first line of defense
+      // (see ProtectedFieldPolicy.js for the full root-cause explanation and
+      // signal priority). Checked before condition/value resolution so a
+      // protected field is never even evaluated as a mapping candidate.
+      if (isProtectedField(mapping.pdfField, template.formCode, mapping.templateField)) {
+        protectedFields.push({ pdfField: mapping.pdfField, caseField: mapping.caseField, fieldType: mapping.type, reason: "protected field — never auto-populated" });
+        return;
+      }
       if (mapping.condition && !MappingResolver.resolveConditionalRule(mapping.condition, { caseForm, filledData }, filledData)) {
         skippedFields.push({ caseField: mapping.caseField, pdfField: mapping.pdfField, reason: "condition_not_met" });
         return;
@@ -59,7 +76,7 @@ class PDFFieldMapper {
       };
     });
 
-    return { mappedFields, missingMappings, skippedFields };
+    return { mappedFields, missingMappings, skippedFields, protectedFields };
   }
 }
 

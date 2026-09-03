@@ -4,6 +4,8 @@ const storageService = require("../../uploads/storage.service");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
+const { isProtectedField } = require("./ProtectedFieldPolicy");
+const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
 
 class PDFRenderer {
   static loadPdfLib() {
@@ -55,7 +57,19 @@ class PDFRenderer {
     return pdf;
   }
 
-  static setFormField(form, mappedField) {
+  // formCode is optional (defaults to no per-form crosswalk patterns being
+  // consulted) - callers that have it should always pass it; see
+  // ProtectedFieldPolicy.js for why this guard exists even though
+  // PDFFieldMapper.mapFields() already filters protected fields out of
+  // mappedFields before this is ever called. This is the LAST line of
+  // defense - it must never be removed on the assumption the mapping layer
+  // alone is sufficient, since a future mapping-layer bug could otherwise
+  // reintroduce exactly the corruption this guard exists to prevent.
+  static setFormField(form, mappedField, formCode) {
+    if (isProtectedField(mappedField.pdfField, formCode)) {
+      mappedField.renderError = "protected field — never auto-populated (blocked at render layer)";
+      return false;
+    }
     let field;
     try {
       field = form.getField(mappedField.pdfField);
@@ -112,16 +126,23 @@ class PDFRenderer {
       error.code = "TEMPLATE_PDF_NO_FIELDS";
       throw error;
     }
-    const { mappedFields, missingMappings } = PDFFieldMapper.mapFields(caseForm, template);
+    const { mappedFields, missingMappings, protectedFields } = PDFFieldMapper.mapFields(caseForm, template);
     const unmappedPdfFields = [];
     const failedFieldWrites = [];
 
     Object.values(mappedFields).forEach((mappedField) => {
-      if (!this.setFormField(form, mappedField)) {
+      if (!this.setFormField(form, mappedField, template.formCode)) {
         unmappedPdfFields.push(mappedField.pdfField);
         if (mappedField.renderError) failedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, message: mappedField.renderError });
       }
     });
+    // ISSUE-003 follow-up: must run BEFORE the flatten()/NeedAppearances
+    // decision below - see BarcodeAppearanceGuard.js for the full root
+    // cause. Bakes each barcode field's own untouched, correct appearance
+    // into the page and removes the field, so neither branch below (a
+    // whole-form flatten, or the NeedAppearances flag telling every viewer
+    // to rebuild every remaining widget's appearance) can ever touch it.
+    const flattenedBarcodeFields = flattenBarcodeAppearances(form, template.formCode);
     if (flatten) {
       form.flatten();
     } else {
@@ -142,6 +163,8 @@ class PDFRenderer {
         missingMappings,
         unmappedPdfFields,
         failedFieldWrites,
+        protectedFields,
+        flattenedBarcodeFields,
         flattened: Boolean(flatten),
         watermark: WatermarkService.normalize(watermark),
       },
