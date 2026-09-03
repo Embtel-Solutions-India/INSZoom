@@ -1,5 +1,6 @@
 const AuditLog = require("../../models/AuditLog");
 const Case = require("../../models/Case");
+const User = require("../../models/User");
 const Payment = require("../../models/Payment");
 const PaymentLedgerEntry = require("../../models/PaymentLedgerEntry");
 const PaymentRequest = require("../../models/PaymentRequest");
@@ -1159,6 +1160,23 @@ async function notifyPayment(payment, actor, eventType, req) {
     caseData?.assignedTeamLead,
   ].filter(Boolean).map(String))];
   const latestTransaction = [...(payment.transactions || [])].reverse().find((transaction) => ["paid", "succeeded", "failed"].includes(transaction.status));
+
+  // Email is client-facing only - staff recipients (assignedCaseManager/
+  // assignedTeamLead, also in `recipients` above) get the in-app
+  // notification but never this email; only the actual payer does.
+  const clientUserId = payment.user ? String(payment.user) : null;
+  const wantsPaymentEmail = clientUserId && (eventType === "payment_created" || payment.paymentStatus === "failed");
+  let clientEmailFields = {};
+  if (wantsPaymentEmail) {
+    const clientUser = await User.findById(clientUserId).select("name displayName email").catch(() => null);
+    if (clientUser?.email) {
+      const amountLabel = typeof payment.totalAmount === "number" ? `$${payment.totalAmount.toFixed(2)}` : undefined;
+      clientEmailFields = payment.paymentStatus === "failed"
+        ? { emailTemplate: "payment-failed", emailTo: clientUser.email, emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: payment.invoiceNumber, amount: amountLabel } }
+        : { emailTemplate: "payment-required", emailTo: clientUser.email, emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: payment.invoiceNumber, amount: amountLabel, dueDate: payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : undefined } };
+    }
+  }
+
   await Promise.all(recipients.map((userId) => notificationService.createNotification({
     userId,
     type: eventType === "payment_refunded" ? "refund_processed" : eventType === "payment_created" ? "invoice_generated" : payment.paymentStatus === "failed" ? "payment_failed" : "payment_received",
@@ -1171,6 +1189,7 @@ async function notifyPayment(payment, actor, eventType, req) {
     priority: payment.paymentStatus === "overdue" ? "high" : "medium",
     metadata: { paymentId: payment._id, eventType },
     dedupeKey: `payment:${payment._id}:${eventType}:${latestTransaction?._id || payment.paymentStatus}:${payment.amountPaid}:${payment.refundedAmount}`,
+    ...(userId === clientUserId ? clientEmailFields : {}),
   }, actor, req)));
 }
 

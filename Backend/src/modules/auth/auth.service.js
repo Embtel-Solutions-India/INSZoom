@@ -281,6 +281,61 @@ async function loginWithCaseId(caseNumber, password, req) {
   return issueTokens(user, req, { message: "Login successful" });
 }
 
+// Mirrors loginWithCaseId's exact lock/pending-invite/password/isActive
+// sequence, minus the Case-lookup indirection (username resolves directly
+// to a User, unlike a Case ID).
+async function loginWithUsername(username, password, req) {
+  const user = await User.findOne({ username: String(username).trim().toLowerCase() }).select("+password");
+  if (!user) {
+    const error = new Error("Invalid username or password");
+    error.status = 401;
+    throw error;
+  }
+  if (user.isLocked && user.isLocked()) {
+    const error = new Error("Account temporarily locked due to failed login attempts");
+    error.status = 423;
+    throw error;
+  }
+  if (isPendingInvite(user)) {
+    const error = new Error("This account hasn't been activated yet. Check your email for an invitation, or request a new one.");
+    error.status = 401;
+    error.code = "PENDING_INVITE";
+    throw error;
+  }
+  const passwordMatches = await user.comparePassword(password);
+  if (!passwordMatches) {
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+    if (user.failedLoginAttempts >= 5) user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    user.loginHistory = [...(user.loginHistory || []).slice(-19), {
+      loggedInAt: new Date(),
+      ipAddress: req?.ip,
+      userAgent: req?.headers?.["user-agent"],
+      success: false,
+    }];
+    await user.save();
+    const error = new Error("Invalid username or password");
+    error.status = 401;
+    throw error;
+  }
+  if (!user.isActive) {
+    const error = new Error("Account deactivated");
+    error.status = 403;
+    throw error;
+  }
+
+  user.lastLogin = new Date();
+  user.failedLoginAttempts = 0;
+  user.lockedUntil = undefined;
+  user.loginHistory = [...(user.loginHistory || []).slice(-19), {
+    loggedInAt: new Date(),
+    ipAddress: req?.ip,
+    userAgent: req?.headers?.["user-agent"],
+    success: true,
+  }];
+  await user.save();
+  return issueTokens(user, req, { message: "Login successful" });
+}
+
 async function loginWithVerifiedIdentity(identity, req) {
   const email = identity.email?.toLowerCase();
   if (!email) {
@@ -366,6 +421,7 @@ module.exports = {
   registerStaff,
   login,
   loginWithCaseId,
+  loginWithUsername,
   loginWithVerifiedIdentity,
   refresh,
   changePassword,

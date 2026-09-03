@@ -27,20 +27,25 @@ router.post(
   ctrl.registerStaff
 );
 
-// PHASE 3: login now accepts EITHER { email, password } (unchanged) OR
-// { caseId, password } (new — a human-readable case number). Exactly one of
-// email/caseId must be present; password is unconditionally required either way.
+// Login accepts { email, password }, { caseId, password } (a human-readable
+// case number), or { username, password } — exactly one identifier must be
+// present; password is unconditionally required either way.
 const loginRules = [
   body("email")
-    .if((value, { req }) => !req.body.caseId)
+    .if((value, { req }) => !req.body.caseId && !req.body.username)
     .isEmail()
     .normalizeEmail()
-    .withMessage("Valid email is required when caseId is not provided"),
+    .withMessage("Valid email is required when caseId and username are not provided"),
   body("caseId")
-    .if((value, { req }) => !req.body.email)
+    .if((value, { req }) => !req.body.email && !req.body.username)
     .notEmpty()
     .trim()
-    .withMessage("caseId is required when email is not provided"),
+    .withMessage("caseId is required when email and username are not provided"),
+  body("username")
+    .if((value, { req }) => !req.body.email && !req.body.caseId)
+    .notEmpty()
+    .trim()
+    .withMessage("username is required when email and caseId are not provided"),
   body("password").notEmpty().withMessage("Password is required"),
 ];
 router.post("/login", loginRules, validate, auditAuth("auth.login"), ctrl.login);
@@ -77,7 +82,13 @@ router.post("/resend-verification", authenticate, ctrl.resendVerification);
 router.get("/invite/:token", ctrl.getInviteDetails);
 router.post(
   "/invite/:token/accept",
-  [body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"), body("confirmPassword").notEmpty()],
+  [
+    body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
+    body("confirmPassword").notEmpty(),
+    body("username").optional({ checkFalsy: true }).trim()
+      .matches(/^[a-zA-Z0-9._-]{3,30}$/)
+      .withMessage("Username must be 3-30 characters: letters, numbers, dots, underscores, hyphens only"),
+  ],
   validate,
   auditAuth("auth.accept_invite"),
   ctrl.acceptInvite

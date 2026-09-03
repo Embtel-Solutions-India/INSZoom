@@ -11,6 +11,14 @@ class NotificationOrchestrator {
   }
 
   static requestCreated(caseData, request, user, req) {
+    const emailFields = caseData.clientEmail
+      ? {
+          channels: ["in_app", "socket", "email"],
+          emailTemplate: "document-requested",
+          emailTo: caseData.clientEmail,
+          emailData: { recipientName: caseData.clientName, caseNumber: caseData.caseNumber, documentCount: 1, documentList: request.name },
+        }
+      : {};
     return this.notifyUser(caseData.user || caseData.clientProfile, {
       type: "document_requested",
       category: "document",
@@ -18,6 +26,7 @@ class NotificationOrchestrator {
       message: `${request.name} was requested for case ${caseData.caseNumber}.`,
       caseId: caseData._id,
       metadata: { requestId: request._id, documentType: request.documentType },
+      ...emailFields,
     }, user, req);
   }
 

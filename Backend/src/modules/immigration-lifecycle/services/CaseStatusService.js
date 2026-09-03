@@ -1,5 +1,7 @@
 const ImmigrationTimelineService = require("./ImmigrationTimelineService");
 const NotificationLifecycleService = require("./NotificationLifecycleService");
+const notificationService = require("../../notifications/notification.service");
+const User = require("../../../models/User");
 
 class CaseStatusService {
   static async updateStatus(caseData, payload, user, req) {
@@ -32,6 +34,33 @@ class CaseStatusService {
     await caseData.save();
     await ImmigrationTimelineService.writeAudit("USCIS_STATUS_UPDATED", caseData, user, statusEvent, req);
     await NotificationLifecycleService.caseStakeholders(caseData, { type: "case_stage_changed", title: "USCIS status updated", message: `${caseData.caseNumber}: ${payload.status}`, caseId: caseData._id, metadata: statusEvent }, user, req);
+
+    // Client-facing email only - caseStakeholders() above already sent the
+    // in-app/socket notification to client + case manager + attorney alike
+    // with one shared payload; email needs client-voiced copy and a single
+    // real recipient address, so it's a separate, additive call (channels:
+    // ["email"] only, to avoid a second duplicate in-app notification for
+    // the client).
+    const clientUserId = caseData.user || caseData.clientProfile;
+    if (clientUserId) {
+      const clientUser = await User.findById(clientUserId).select("name displayName email").catch(() => null);
+      if (clientUser?.email) {
+        await notificationService.createNotification({
+          userId: clientUserId,
+          type: "case_stage_changed",
+          category: "case",
+          title: "Your case status has been updated",
+          message: `${caseData.caseNumber}: ${payload.status}`,
+          caseId: caseData._id,
+          priority: "high",
+          source: "shared",
+          channels: ["email"],
+          emailTemplate: "case-stage-changed",
+          emailTo: clientUser.email,
+          emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: caseData.caseNumber, stage: payload.status, stageName: payload.status },
+        }, user, req).catch(() => null);
+      }
+    }
     return statusEvent;
   }
 }

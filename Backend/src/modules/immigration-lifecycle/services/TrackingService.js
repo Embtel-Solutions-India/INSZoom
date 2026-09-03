@@ -1,7 +1,35 @@
 const mongoose = require("mongoose");
 const Document = require("../../../models/Document");
+const User = require("../../../models/User");
 const ImmigrationTimelineService = require("./ImmigrationTimelineService");
 const NotificationLifecycleService = require("./NotificationLifecycleService");
+const notificationService = require("../../notifications/notification.service");
+
+// Only statuses where this function actually has the real data a template
+// needs (receipt number, filing date, RFE deadline) are mapped to a
+// specific email - biometrics_scheduled/interview_scheduled have templates
+// registered (email.service.js) but no appointment date/location is
+// available at this call site, so they're deliberately left unmapped here
+// rather than emailing a client a notice with blank details.
+function emailForStatus(status, caseData, tracking) {
+  switch (status) {
+    case "receipt_issued":
+      return { template: "receipt-received", data: { receiptNumber: tracking.filing?.receiptNumber, receiptDate: tracking.filing?.deliveryConfirmationDate ? new Date(tracking.filing.deliveryConfirmationDate).toLocaleDateString() : undefined } };
+    case "filed":
+    case "delivered":
+      return { template: "filing-submitted", data: { filingDate: tracking.filing?.filingDate ? new Date(tracking.filing.filingDate).toLocaleDateString() : undefined, filingType: caseData.formCode || caseData.visaType } };
+    case "rfe_issued":
+      return { template: "rfe-received", data: { rfeDeadline: tracking.rfe?.responseDueDate ? new Date(tracking.rfe.responseDueDate).toLocaleDateString() : undefined } };
+    case "approved":
+      return { template: "case-approved", data: {} };
+    case "denied":
+      return { template: "case-denied", data: {} };
+    case "closed":
+      return { template: "case-closed", data: {} };
+    default:
+      return null;
+  }
+}
 
 const STATUS_TO_LIFECYCLE = {
   draft: "prepared",
@@ -153,6 +181,33 @@ async function save(caseData, payload, user, req) {
       caseId: caseData._id,
       metadata: { previousStatus, status: tracking.status },
     }, user, req);
+
+    // Client-facing email, specific to the new status where real data is
+    // available (see emailForStatus above) - additive to the in-app
+    // notification caseStakeholders() already sent to all stakeholders,
+    // channels: ["email"] only so the client doesn't get a duplicate
+    // in-app notification for the same transition.
+    const emailMatch = emailForStatus(tracking.status, caseData, tracking);
+    const clientUserId = caseData.user || caseData.clientProfile;
+    if (emailMatch && clientUserId) {
+      const clientUser = await User.findById(clientUserId).select("name displayName email").catch(() => null);
+      if (clientUser?.email) {
+        await notificationService.createNotification({
+          userId: clientUserId,
+          type: "case_stage_changed",
+          category: "case",
+          title: "Your USCIS case status has been updated",
+          message: `${caseData.caseNumber}: ${tracking.status.replace(/_/g, " ")}`,
+          caseId: caseData._id,
+          priority: tracking.status === "rfe_issued" ? "urgent" : "high",
+          source: "shared",
+          channels: ["email"],
+          emailTemplate: emailMatch.template,
+          emailTo: clientUser.email,
+          emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: caseData.caseNumber, ...emailMatch.data },
+        }, user, req).catch(() => null);
+      }
+    }
   }
   return tracking;
 }

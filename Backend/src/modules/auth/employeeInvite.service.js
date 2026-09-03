@@ -3,6 +3,7 @@ const Case = require("../../models/Case");
 const { generateOpaqueToken, hashToken } = require("./password.service");
 const { invalidateUserCache } = require("../../config/redis");
 const emailService = require("../email/email.service");
+const { resolveUsername } = require("./username.service");
 
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -24,7 +25,7 @@ async function getInviteDetails(token) {
   return { name: user.name || user.displayName || "", email: user.email, caseNumber: caseData?.caseNumber || null };
 }
 
-async function acceptInvite(token, newPassword) {
+async function acceptInvite(token, newPassword, username) {
   const user = await User.findOne({
     inviteTokenHash: hashToken(token),
     inviteTokenExpiresAt: { $gt: new Date() },
@@ -32,6 +33,7 @@ async function acceptInvite(token, newPassword) {
   if (!user) return null;
 
   user.password = newPassword;
+  user.username = await resolveUsername(user, username);
   user.inviteTokenHash = undefined;
   user.inviteTokenExpiresAt = undefined;
   user.isActive = true;
