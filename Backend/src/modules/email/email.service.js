@@ -33,6 +33,7 @@ const TEMPLATES = {
   "case-stage-changed": require("./templates/case-stage-changed"),
   "payment-required": require("./templates/payment-required"),
   "payment-failed": require("./templates/payment-failed"),
+  "case-manager-assigned": require("./templates/case-manager-assigned"),
   "case-manager-reassigned": require("./templates/case-manager-reassigned"),
   "case-closed": require("./templates/case-closed"),
   "interview-scheduled": require("./templates/interview-scheduled"),
