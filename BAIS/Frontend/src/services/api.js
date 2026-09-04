@@ -194,8 +194,8 @@ export const authApi = {
   changePassword: (currentPassword, newPassword) =>
     api.put("/auth/change-password", { currentPassword, newPassword }),
   getInviteDetails: (token) => api.get(`/auth/invite/${token}`),
-  acceptInvite: (token, password, confirmPassword) =>
-    api.post(`/auth/invite/${token}/accept`, { password, confirmPassword }),
+  acceptInvite: (token, password, confirmPassword, username) =>
+    api.post(`/auth/invite/${token}/accept`, { password, confirmPassword, ...(username ? { username } : {}) }),
   forgotPassword: (email) => api.post("/auth/forgot-password", { email }),
   resetPassword: (token, newPassword, confirmPassword) =>
     api.post("/auth/reset-password", { token, newPassword, confirmPassword }),
