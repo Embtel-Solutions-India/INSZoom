@@ -14,7 +14,6 @@ const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
 const notificationService = require("../notifications/notification.service");
-const emailService = require("../email/email.service");
 const questionnaireService = require("../questionnaires/questionnaire.service");
 // Reused as-is (unmodified) — createInviteToken/getInviteDetails are already
 // generic (operate on any User via inviteTokenHash), not employee-specific.
@@ -109,15 +108,25 @@ async function sendBeneficiaryInvite(caseData, { email, name, phone }, actorUser
 
   const inviteToken = await inviteTokenService.createInviteToken(beneficiaryUser);
   const petitionerName = actorUser.name || actorUser.displayName;
-  await emailService.sendTemplateEmail("family-beneficiary-invitation", {
-    to: email,
-    data: { beneficiaryName: name, petitionerName, caseNumber: caseData.caseNumber, token: inviteToken },
-    caseId: caseData._id,
+  // Single unified call (in_app + socket + push + email together) - was
+  // previously two decoupled calls (a direct emailService.sendTemplateEmail
+  // plus a separate no-email notifyUser), which produced two uncoordinated
+  // in-app notifications and left the email send unaudited alongside them.
+  await notificationService.createNotification({
     userId: beneficiaryUser._id,
-    triggeredBy: actorUser._id,
+    type: "case_created",
+    category: "case",
+    title: "You've Been Invited to Complete Your Immigration Case",
+    message: `${caseData.caseNumber} — please activate your account to get started.`,
+    caseId: caseData._id,
+    link: "/accept-invite",
+    priority: "high",
     source: "shared",
-  });
-  await notifyUser(beneficiaryUser._id, { title: "Family Case Information Requested", message: "Please check your email to activate your account and complete your questionnaire.", link: "/dashboard/profile", caseId: caseData._id }, actorUser, req);
+    channels: ["in_app", "socket", "push", "email"],
+    emailTemplate: "family-beneficiary-invitation",
+    emailTo: email,
+    emailData: { beneficiaryName: name, petitionerName, caseNumber: caseData.caseNumber, token: inviteToken },
+  }, actorUser, req).catch(() => null);
 
   return { beneficiaryUser, createdAccount };
 }

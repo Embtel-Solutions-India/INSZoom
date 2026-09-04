@@ -84,12 +84,14 @@ async function registerStaff(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    // PHASE 3: dual login path — { caseId, password } (new) or
-    // { email, password } (existing, unchanged). Everything from here down
-    // (token issuance, cookie setting, response body) is identical for both.
+    // Three-way login path — { caseId, password }, { username, password },
+    // or { email, password } (original, unchanged). Everything from here
+    // down (token issuance, cookie setting, response body) is identical.
     const result = req.body.caseId
       ? await authService.loginWithCaseId(String(req.body.caseId).trim().toUpperCase(), req.body.password, req)
-      : await authService.login(req.body.email, req.body.password, req);
+      : req.body.username
+        ? await authService.loginWithUsername(String(req.body.username).trim(), req.body.password, req)
+        : await authService.login(req.body.email, req.body.password, req);
     res.locals.authUserId = result.user?._id;
     const { refreshToken, responseBody } = splitRefreshToken(result);
     setRefreshCookie(res, refreshToken);
@@ -489,9 +491,10 @@ async function acceptInvite(req, res, next) {
     if (req.body.password !== req.body.confirmPassword) {
       return res.status(400).json({ success: false, message: "Passwords do not match" });
     }
-    let user = await employeeInviteService.acceptInvite(req.params.token, req.body.password);
+    const username = req.body.username?.trim() || undefined;
+    let user = await employeeInviteService.acceptInvite(req.params.token, req.body.password, username);
     if (!user) {
-      user = await clientInviteService.acceptClientInvite(req.params.token, req.body.password);
+      user = await clientInviteService.acceptClientInvite(req.params.token, req.body.password, username);
     }
     if (!user) return res.status(400).json({ success: false, message: "Invalid or expired invitation link" });
     const result = await authService.issueTokens(user, req, { message: "Account activated successfully" });
