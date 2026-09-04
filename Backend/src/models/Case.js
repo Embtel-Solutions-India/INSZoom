@@ -451,6 +451,25 @@ const caseSchema = new mongoose.Schema(
     caseType: { type: String, default: "immigration", index: true },
     petitionType: { type: String, trim: true, index: true },
     petitionSubType: { type: String, trim: true },
+    // Visa-form-mapping registry (VisaFormMapping.js): distinguishes how this
+    // case reaches its outcome (e.g. H-1B can be filed CONSULAR or as a
+    // CHANGE_OF_STATUS) - a dimension visaType alone does not capture.
+    // Optional/additive: absent means no processingPath-gated CONDITIONAL
+    // mapping will match, which is the conservative, correct default.
+    processingPath: { type: String, enum: ["", "CONSULAR", "ADJUSTMENT_OF_STATUS", "CHANGE_OF_STATUS", "EXTENSION_OF_STATUS", "PETITION_ONLY", "EMPLOYMENT_AUTHORIZATION", "TRAVEL_DOCUMENT", "POST_APPROVAL", "NVC", "OTHER"], default: "" },
+    // Case Manager's persisted ADD/NOT_APPLICABLE decision on a CONDITIONAL
+    // VisaFormMapping entry. Absence of an entry for a given mappingId means
+    // "pending" - no PENDING record is ever created.
+    conditionalFormDecisions: [
+      {
+        mappingId: { type: mongoose.Schema.Types.ObjectId, ref: "VisaFormMapping", required: true },
+        formNumber: { type: String, required: true },
+        decision: { type: String, enum: ["ADD", "NOT_APPLICABLE"], required: true },
+        decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        decidedAt: { type: Date, default: Date.now },
+        reason: { type: String, default: "" },
+      },
+    ],
     package: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },
     primaryPackage: { type: String, trim: true },
     addons: [addonSchema],

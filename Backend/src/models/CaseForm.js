@@ -31,6 +31,17 @@ const caseFormSchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
+    // Populated only when this CaseForm was created via the VisaFormMapping
+    // registry path (VisaFormMapping.js / visaFormMapping.service.js).
+    // Unset for CaseForms created via the pre-existing assignmentRules/
+    // hardcoded-conditional path - both remain fully supported.
+    provisioning: {
+      mappingId: { type: mongoose.Schema.Types.ObjectId, ref: "VisaFormMapping" },
+      provisioningType: String,
+      createdReason: String,
+      visaType: String,
+      processingPath: String,
+    },
     filledData: mongoose.Schema.Types.Mixed,
     fieldValues: { type: mongoose.Schema.Types.Mixed, default: {} },
     sourceAttribution: { type: mongoose.Schema.Types.Mixed, default: {} },

@@ -1,9 +1,10 @@
 /**
  * AuthGate — Single routing authority for authenticated sessions.
  *
- * This component wraps all protected client routes. On mount, it calls
- * GET /api/auth/session-context and routes the user to the correct
- * destination based on their role and case status.
+ * This component wraps all protected client routes. It reads sessionContext
+ * (from GET /api/auth/session-context) off AuthContext — fetched once there
+ * alongside /auth/me, not by this component — and routes the user to the
+ * correct destination based on their role and case status.
  *
  * IMPORTANT: This is the ONLY component that should make this routing
  * decision. No other component should independently check hasCase or
@@ -15,10 +16,15 @@
  * - Dashboard.jsx (mount-time redirect)
  * - Intake.jsx (mount-time redirect)
  * - BlockIfHasCase.jsx
+ *
+ * Perf fix: previously ran its own GET /api/auth/session-context on every
+ * mount, independently of Navbar's identical fetch and AuthContext's own
+ * /auth/me call. Now purely a function of AuthContext's shared authStatus/
+ * sessionContext — no fetch, no local loading state of its own.
  */
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { authApi } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
 
 const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
@@ -32,53 +38,20 @@ function isAllowedRestrictedPortalPath(pathname) {
 }
 
 export default function AuthGate() {
-  const [status, setStatus] = useState("loading"); // 'loading' | 'ready' | 'unauthenticated' | 'error'
-  const [context, setContext] = useState(null);
+  const { authStatus, authLoading, sessionContext: context } = useAuth();
   const location = useLocation();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchContext() {
-      try {
-        // api.js is a plain fetch wrapper (see services/api.js's request()) —
-        // authApi.sessionContext() resolves with the parsed JSON body
-        // directly, not an axios-style { data } envelope.
-        const res = await authApi.sessionContext();
-        if (cancelled) return;
-        if (res?.success) {
-          setContext(res);
-          setStatus("ready");
-        } else {
-          setStatus("unauthenticated");
-        }
-      } catch (err) {
-        if (cancelled) return;
-        // Errors thrown by api.js carry `.status` (see request()'s
-        // `error.status = res.status`), not an axios `err.response.status`.
-        if (err?.status === 401) {
-          setStatus("unauthenticated");
-        } else {
-          setStatus("error");
-        }
-      }
-    }
-
-    fetchContext();
-    return () => { cancelled = true; };
-  }, []); // Only run once on mount
 
   // Cross-origin navigation is a side effect and must not run during render
   // (React may invoke the render body more than once, e.g. under Strict
   // Mode) — it belongs in its own effect, gated on the same condition the
   // render body below re-checks to decide what to show meanwhile.
-  const isStaff = status === "ready" && Boolean(context) && STAFF_ROLES.includes(context.role);
+  const isStaff = authStatus === "authenticated" && Boolean(context) && STAFF_ROLES.includes(context.role);
   useEffect(() => {
     if (isStaff) window.location.href = INSZOOM_URL;
   }, [isStaff]);
 
   // ── Loading state (also covers the staff redirect firing above) ─────────
-  if (status === "loading" || isStaff) {
+  if (authLoading || isStaff) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
         <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
@@ -86,8 +59,9 @@ export default function AuthGate() {
     );
   }
 
-  // ── Error state ──────────────────────────────────────────────────────────
-  if (status === "error") {
+  // ── Error state (a session-context-specific failure now surfaces the same
+  //    way an /auth/me failure does — folded together in AuthContext) ──────
+  if (authStatus === "error") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
         <h1 className="text-2xl font-extrabold text-slate-900 mb-3">We're having trouble connecting</h1>
@@ -99,7 +73,7 @@ export default function AuthGate() {
   }
 
   // ── Unauthenticated ──────────────────────────────────────────────────────
-  if (status === "unauthenticated" || !context) {
+  if (authStatus === "unauthenticated" || !context) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

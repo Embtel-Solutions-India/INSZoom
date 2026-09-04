@@ -61,6 +61,16 @@ exports.getMyDocuments = async (req, res, next) => {
   }
 };
 
+exports.getMyDocumentsCount = async (req, res, next) => {
+  try {
+    const filter = await documentService.buildDocumentFilter({ ...req.query, userId: req.user._id }, req.user);
+    const count = await Document.countDocuments(filter);
+    res.json({ success: true, count });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getUserDocuments = async (req, res, next) => {
   try {
     const filter = await documentService.buildDocumentFilter({ ...req.query, userId: req.params.userId }, req.user);

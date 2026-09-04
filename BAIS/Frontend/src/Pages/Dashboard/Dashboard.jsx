@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import InfoPopup from "../../components/InfoPopup";
 import { paymentsApi } from "../../services/api";
 import { VISA_CATEGORIES, VISA_TYPES, VISA_DETAILS } from "../../config/visaConfig";
@@ -6,7 +7,8 @@ import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { isEmployeeAccount } from "../../utils/auth";
-import { profileApi, casesApi, documentsApi, messagesApi } from "../../services/api";
+import { casesApi, documentsApi, messagesApi } from "../../services/api";
+import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import { PLAN_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "../../config/planConfig";
 import useCaseDocumentChecklist from "../../hooks/useCaseDocumentChecklist";
 import { buildCaseCategories } from "../../components/DocumentChecklist";
@@ -213,6 +215,61 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/* ── Loading skeletons (P1 Fix 9) ─────────────────────────────────────────────
+   animate-pulse placeholders shown only during the initial case fetch —
+   replaces what used to be a blank/"Pending"-valued render for that window. */
+function KpiGridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3" aria-hidden="true">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 animate-pulse">
+          <div className="w-12 h-12 rounded-xl bg-slate-100 mb-4" />
+          <div className="h-3 w-16 bg-slate-100 rounded mb-2" />
+          <div className="h-6 w-20 bg-slate-200 rounded mb-2" />
+          <div className="h-2.5 w-24 bg-slate-100 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CaseProgressSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 animate-pulse" aria-hidden="true">
+      <div className="h-4 w-40 bg-slate-200 rounded mb-2" />
+      <div className="h-3 w-56 bg-slate-100 rounded mb-6" />
+      <div className="h-2 w-full bg-slate-100 rounded-full mb-6" />
+      <div className="flex gap-4 overflow-hidden">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex-1 min-w-20">
+            <div className="w-9 h-9 rounded-full bg-slate-100 mb-2" />
+            <div className="h-2.5 w-full bg-slate-100 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActivityFeedSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 animate-pulse" aria-hidden="true">
+      <div className="h-3.5 w-28 bg-slate-200 rounded mb-4" />
+      <div className="space-y-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="h-3 w-3/4 bg-slate-100 rounded mb-2" />
+              <div className="h-2.5 w-1/3 bg-slate-100 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -742,9 +799,6 @@ export default function Dashboard() {
     if (!location.state?.notice) return;
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
-  const [profileData, setProfileData] = useState({});
-  const [profileComplete, setProfileComplete] = useState(false);
-  const [caseData, setCaseData] = useState(null);
   const [paymentSummary, setPaymentSummary] = useState(null);
   const [docsCount, setDocsCount] = useState(0);
   const [unreadMessages, setUnreadMessages] = useState(0);
@@ -754,7 +808,6 @@ export default function Dashboard() {
   const [addonsLoading, setAddonsLoading] = useState(false);
   const [purchasingAddon, setPurchasingAddon] = useState(false);
   const [addonError, setAddonError] = useState("");
-  const [caseLoadError, setCaseLoadError] = useState("");
 
   useEffect(() => {
     document.title = "Dashboard | BAIS Immigration Portal";
@@ -762,50 +815,88 @@ export default function Dashboard() {
 
   const isEmployee = isEmployeeAccount(user);
 
-  const loadCase = useCallback(async () => {
-    const currentCase = await casesApi.my();
-    const normalizedCase = currentCase?.case || currentCase?.data?.case || currentCase;
-    let workflow;
-    if (normalizedCase?._id) {
-      const response = await casesApi.workflow(normalizedCase._id).catch(() => null);
-      workflow = response?.workflow || response?.data?.workflow || response?.data || response;
-    }
-    const nextCase = normalizedCase ? {
+  // Perf fix: previously three sequential/parallel raw fetches
+  // (profileApi.get(), casesApi.my(), then casesApi.workflow() awaited
+  // before addons could even start) rebuilt from scratch on every mount.
+  // useMyCase()/useMyProfile() are the same shared TanStack Query cache
+  // Documents/Messages/PlanSelection/Profile already read from — a page nav
+  // between those and here can now serve this from cache instead of
+  // refetching. The workflow fetch stays its own dependent query (it needs
+  // the case _id first), but is no longer nested inside loadCase's body —
+  // addons (below) fires off the same _id independently instead of waiting
+  // for workflow to resolve first.
+  const { data: profileData = {} } = useMyProfile();
+  const profileComplete = profileData.completed || false;
+
+  const { data: rawCase, error: caseError, isPending: caseIsPending, refetch: refetchCase } = useMyCase();
+  const normalizedCase = rawCase?.case || rawCase?.data?.case || rawCase;
+  const caseId = normalizedCase?._id;
+  const caseLoadError = caseError
+    ? (caseError.message || "Unable to load your case right now.")
+    : "";
+
+  const { data: workflowRaw } = useQuery({
+    queryKey: ["case", "workflow", caseId],
+    queryFn: () => casesApi.workflow(caseId),
+    enabled: Boolean(caseId),
+  });
+  const workflow = workflowRaw?.workflow || workflowRaw?.data?.workflow || workflowRaw?.data || workflowRaw;
+
+  const caseData = useMemo(() => {
+    if (!normalizedCase) return null;
+    return {
       ...normalizedCase,
       currentStage: normalizeCaseStage(normalizedCase),
       journeyProgress: workflow?.progress || normalizedCase.journeyProgress,
       timeline: workflow?.timeline || normalizedCase.timeline,
-    } : null;
-    setCaseData(nextCase);
-    if (!isEmployee && nextCase?._id) {
-      setAddonsLoading(true);
-      casesApi.addons(nextCase._id)
-        .then((response) => {
-          setAvailableAddons(response.addons || []);
-          setPurchasedAddons(response.purchased || nextCase.addons || []);
-          setAddonError("");
-        })
-        .catch((error) => {
-          setAvailableAddons([]);
-          setPurchasedAddons(nextCase.addons || []);
-          setAddonError(error.message || "Unable to load upgrades.");
-        })
-        .finally(() => setAddonsLoading(false));
-    }
-    return nextCase;
-  }, [isEmployee]);
+    };
+  }, [normalizedCase, workflow]);
+
+  // Addons only ever needed the case _id — previously nested inside
+  // loadCase()'s body, so it waited on the (unrelated) workflow fetch to
+  // resolve first. Now fires as soon as caseId is known, independently of
+  // the workflow query above and on its own loading state, same shape as
+  // before (setAddonsLoading/setAvailableAddons/setAddonError).
+  useEffect(() => {
+    if (isEmployee || !caseId) return;
+    let cancelled = false;
+    setAddonsLoading(true);
+    casesApi.addons(caseId)
+      .then((response) => {
+        if (cancelled) return;
+        setAvailableAddons(response.addons || []);
+        setPurchasedAddons(response.purchased || normalizedCase?.addons || []);
+        setAddonError("");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAvailableAddons([]);
+        setPurchasedAddons(normalizedCase?.addons || []);
+        setAddonError(error.message || "Unable to load upgrades.");
+      })
+      .finally(() => { if (!cancelled) setAddonsLoading(false); });
+    return () => { cancelled = true; };
+    // normalizedCase is deliberately excluded — addons only need to reload
+    // when the active case changes (caseId), not on every case-data refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId, isEmployee]);
 
   const handlePurchaseAddon = async (addonKey) => {
-    if (!caseData?._id || purchasingAddon) return;
+    if (!caseId || purchasingAddon) return;
     setPurchasingAddon(true);
     setAddonError("");
     try {
-      const response = await casesApi.purchaseAddon(caseData._id, addonKey);
+      const response = await casesApi.purchaseAddon(caseId, addonKey);
       if (response.checkout?.url) {
         window.location.href = response.checkout.url;
         return;
       }
-      await loadCase();
+      await refetchCase();
+      const refreshed = await casesApi.addons(caseId).catch(() => null);
+      if (refreshed) {
+        setAvailableAddons(refreshed.addons || []);
+        setPurchasedAddons(refreshed.purchased || []);
+      }
     } catch (error) {
       setAddonError(error.message || "Unable to start upgrade checkout.");
     } finally {
@@ -816,38 +907,8 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
 
-    profileApi.get()
-      .then((p) => {
-        if (cancelled) return;
-        setProfileData(p);
-        setProfileComplete(p.completed || false);
-      })
-      .catch(() => {});
-
-    // PHASE 3 ARCHITECTURE CHANGE: routing based on case existence has been
-    // moved to AuthGate (src/components/AuthGate.jsx). Dashboard.jsx renders
-    // only once AuthGate has already confirmed the user has a case — it
-    // should not redirect away from itself. loadCase() below still runs to
-    // fetch the actual case/profile/workflow data this page displays; only
-    // the no-case redirect that used to live in its .then() is removed.
-    loadCase()
-      .then(() => {
-        if (cancelled) return;
-        setCaseLoadError("");
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        // Previously navigated to /dashboard/intake here on ANY failure —
-        // meaning a transient 504/network error on GET /cases/my (an
-        // existing client's case fetch just failing, not "no case exists")
-        // sent an existing client into the create-a-new-case wizard. A
-        // failed fetch is not evidence there's no case; show a retryable
-        // error on the dashboard instead of guessing and navigating away.
-        setCaseLoadError(error.message || "Unable to load your case right now.");
-      });
-
-    documentsApi.list()
-      .then((docs) => setDocsCount(Array.isArray(docs) ? docs.length : 0))
+    documentsApi.count()
+      .then((r) => setDocsCount(r?.count || 0))
       .catch(() => {});
 
     if (!isEmployee) {
@@ -863,7 +924,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, loadCase, isEmployee]);
+  }, [navigate, isEmployee]);
 
   const savedAt = profileData?.updatedAt;
 
@@ -904,6 +965,12 @@ export default function Dashboard() {
   };
 
   const daysActive = daysAgo(savedAt);
+  // Perf fix: first-mount-only loading signal (true until useMyCase resolves
+  // for the first time, false on every later background refetch) — drives
+  // the KPI grid/case progress tracker/activity feed skeletons below instead
+  // of those sections silently rendering their "Pending"/zeroed placeholder
+  // values for the whole duration of the initial fetch.
+  const isInitialCaseLoading = caseIsPending && !caseError;
 
   return (
     <div className="min-h-screen bg-[#f1f5f9]">
@@ -921,7 +988,7 @@ export default function Dashboard() {
         <div className="bg-red-50 border-b border-red-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-red-800">{caseLoadError}</p>
           <button
-            onClick={() => { setCaseLoadError(""); loadCase().catch((error) => setCaseLoadError(error.message || "Unable to load your case right now.")); }}
+            onClick={() => refetchCase()}
             className="text-sm font-bold text-red-700 hover:text-red-900 shrink-0"
           >
             Retry
@@ -988,6 +1055,7 @@ export default function Dashboard() {
         <QuickActions profileComplete={profileComplete} />
 
         {/* ── KPI Cards ── */}
+        {isInitialCaseLoading ? <KpiGridSkeleton /> : (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {/* Row 1: Profile + Documents + Case Stage */}
           <KpiCard
@@ -1030,6 +1098,7 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        )}
 
         {/* ── Visa Info Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1118,7 +1187,9 @@ export default function Dashboard() {
         {isEmployee && <MyTasksCard caseData={caseData} />}
 
         <div id="case-progress">
-          <CaseProgressTracker currentStage={activeCaseData.currentStage} visaType={activeCaseData.visaType} journeyProgress={activeCaseData.journeyProgress} />
+          {isInitialCaseLoading ? <CaseProgressSkeleton /> : (
+            <CaseProgressTracker currentStage={activeCaseData.currentStage} visaType={activeCaseData.visaType} journeyProgress={activeCaseData.journeyProgress} />
+          )}
         </div>
 
         {/* ── Expert Letters + Attorney Review ── */}
@@ -1131,7 +1202,7 @@ export default function Dashboard() {
 
         {/* ── Activity + Case Info ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <ActivityFeed caseData={caseData} profileSavedAt={savedAt} />
+          {isInitialCaseLoading ? <ActivityFeedSkeleton /> : <ActivityFeed caseData={caseData} profileSavedAt={savedAt} />}
           <CaseInfo caseData={activeCaseData} profileData={profileData} />
           {!isEmployee && <PaymentSummaryCard plan={activeCaseData?.plan} />}
         </div>

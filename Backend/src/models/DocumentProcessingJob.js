@@ -27,5 +27,11 @@ const documentProcessingJobSchema = new mongoose.Schema(
 
 documentProcessingJobSchema.index({ status: 1, availableAt: 1 });
 documentProcessingJobSchema.index({ documentId: 1, status: 1 });
+// Recovery query (document-intelligence.queue.js's recoverPendingJobs) filters
+// on { status: $in, attempts: $lt } and sorts by availableAt — the
+// { status: 1, availableAt: 1 } index above only covers status, forcing an
+// in-memory scan of every status match to apply the attempts filter (6s+ on a
+// large stuck backlog). This index covers the full query + sort.
+documentProcessingJobSchema.index({ status: 1, attempts: 1, availableAt: 1 });
 
 module.exports = mongoose.model("DocumentProcessingJob", documentProcessingJobSchema);

@@ -362,6 +362,44 @@ async function notifyAssignee(userId, caseData, role, actor, req) {
     assignmentRole: role,
   });
 }
+
+// `notifyAssignee` above tells the STAFF member being assigned. Separately,
+// the CLIENT needs to know who is now handling their case - a distinct
+// audience, distinct template ("case-manager-assigned" the first time,
+// "case-manager-reassigned" when replacing a prior case manager), and a
+// distinct failure mode (this must never block or roll back an assignment
+// that already succeeded, hence the .catch(() => {}) - same convention as
+// notifyAssignee's own email/notification call).
+async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, previousCaseManagerId, actor, req) {
+  if (!caseData.user) return;
+  const caseManager = await User.findById(caseManagerId).select("name displayName").catch(() => null);
+  const caseManagerName = caseManager?.name || caseManager?.displayName || "your case manager";
+  const isReassignment = Boolean(previousCaseManagerId);
+  const emailTemplate = isReassignment ? "case-manager-reassigned" : "case-manager-assigned";
+  const portalLink = `${process.env.BAIS_FRONTEND_URL || "http://localhost:5173"}/dashboard/case/${caseData._id}`;
+
+  await notificationService.createNotification({
+    userId: caseData.user,
+    type: "case_assigned",
+    category: "case",
+    title: isReassignment ? "Your Case Has a New Case Manager" : "Your Case Manager Has Been Assigned",
+    message: `${caseManagerName} is now managing your case ${caseData.caseNumber || caseData.caseId}.`,
+    caseId: caseData._id,
+    link: `/dashboard/case/${caseData._id}`,
+    priority: "high",
+    source: "shared",
+    channels: ["in_app", "socket", "push", "email"],
+    emailTemplate,
+    emailTo: caseData.clientEmail,
+    emailData: {
+      clientName: caseData.clientName,
+      caseNumber: caseData.caseNumber || caseData.caseId,
+      caseManagerName,
+      portalLink,
+    },
+  }, actor, req).catch(() => {});
+}
+
 exports.checklistUploadMiddleware = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: Number(process.env.MAX_UPLOAD_SIZE_BYTES || 10 * 1024 * 1024), files: 10 },
@@ -445,10 +483,10 @@ exports.getMyCase = async (req, res, next) => {
     // reliably names "this login's own case" for both an employer and an
     // invited employee (whose primaryCaseId points at their own child case).
     let caseData = req.user.primaryCaseId
-      ? await caseService.populateCaseQuery(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean())
+      ? await caseService.populateCaseQueryForClient(Case.findOne({ ...filter, _id: req.user.primaryCaseId }).lean())
       : null;
     if (!caseData) {
-      caseData = await caseService.populateCaseQuery(Case.findOne(filter).sort({ createdAt: -1 }).lean());
+      caseData = await caseService.populateCaseQueryForClient(Case.findOne(filter).sort({ createdAt: -1 }).lean());
     }
     timer.mark("mongo_query_completed", { found: Boolean(caseData) });
     if (!caseData) {
@@ -1461,6 +1499,7 @@ exports.assignCaseManager = async (req, res, next) => {
     await recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req);
     await caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req);
     await notifyAssignee(assignee, caseData, "case_manager", req.user, req);
+    await notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req);
 
     // Phase 7 — cascade to non-overridden children after the principal's own
     // assignment has committed; a cascade failure must not roll back or fail

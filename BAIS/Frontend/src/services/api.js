@@ -240,6 +240,7 @@ export const profileApi = {
 // ── Documents ────────────────────────────────────────
 export const documentsApi = {
   list: () => api.get("/documents/me"),
+  count: () => api.get("/documents/me/count"),
   upload: (file, category, documentType, context = {}) => {
     const fd = new FormData();
     fd.append("file", file);

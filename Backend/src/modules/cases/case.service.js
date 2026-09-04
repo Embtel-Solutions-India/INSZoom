@@ -500,6 +500,25 @@ function populateCaseQuery(query) {
   ]);
 }
 
+// Slimmed variant of populateCaseQuery for client-portal-role requests
+// (GET /cases/my). Omits every populate path that serializeCaseForUser
+// deletes for restricted portal roles (petitioner, employer, organization,
+// companyId, parentCase, childCases, linkedCases.case, assignedCaseManager,
+// primaryOwner, secondaryOwner, assignedTeamLead, internalNotes.author) -
+// those fields are populated then thrown away for this role today. Keeps
+// only what the client portal actually reads: user, clientProfile,
+// beneficiary, createdBy, timeline.createdBy. Staff-facing call sites must
+// keep using populateCaseQuery unchanged.
+function populateCaseQueryForClient(query) {
+  return query.populate([
+    { path: "user", select: "email displayName name role" },
+    { path: "clientProfile" },
+    { path: "beneficiary", select: "fullName email visaType status companyId user passportNumber visaExpirationDate passportExpirationDate" },
+    { path: "createdBy", select: "name displayName email role" },
+    { path: "timeline.createdBy", select: "name displayName role" },
+  ]);
+}
+
 function populateCaseListQuery(query) {
   return query.populate(CASE_LIST_POPULATE);
 }
@@ -712,6 +731,7 @@ module.exports = {
   populateCaseListQuery,
   populateCaseListDocs,
   populateCaseQuery,
+  populateCaseQueryForClient,
   reopenCase,
   resolveTeamLeadForCase,
   serializeCaseForUser,

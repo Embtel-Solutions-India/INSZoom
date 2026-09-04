@@ -577,8 +577,42 @@ class CaseLifecycleOrchestrator {
     return { ...packageResult, workflow };
   }
 
+  // Perf: GET /cases/:id/workflow (this function) previously called
+  // recalculate() unconditionally on every request - a full 5-query
+  // metrics() recompute plus caseData.save() plus a writeAuditLog() write,
+  // even for a plain read seconds after the last one. recalculate() itself
+  // is untouched and still runs exactly as before for every explicit-
+  // trigger caller (document upload, questionnaire submission, case
+  // update, etc.) - only this read path now short-circuits when
+  // lastSyncedAt is fresh, returning the already-computed
+  // caseData.journeyProgress (which recalculate() itself populates,
+  // including journeyProgress.metrics) instead of recomputing it.
   static async get(caseId, user, req) {
-    const result = await this.recalculate(caseId, user, req, "workflow_requested");
+    const caseData = await Case.findById(caseId);
+    if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
+    if (user && !caseService.canAccessCase(user, caseData)) throw Object.assign(new Error("Not authorized to access this case workflow"), { status: 403 });
+
+    const WORKFLOW_CACHE_TTL_MS = 30 * 1000;
+    const age = caseData.lastSyncedAt ? Date.now() - new Date(caseData.lastSyncedAt).getTime() : Infinity;
+    if (age < WORKFLOW_CACHE_TTL_MS) {
+      return {
+        case: {
+          _id: caseData._id,
+          caseNumber: caseData.caseNumber,
+          status: caseData.status,
+          stage: caseData.stage,
+          visaType: caseData.visaType,
+          clientName: caseData.clientName,
+          assignedCaseManager: caseData.assignedCaseManager,
+          assignedTeamLead: caseData.assignedTeamLead,
+        },
+        progress: caseData.journeyProgress,
+        metrics: caseData.journeyProgress?.metrics || null,
+        timeline: (caseData.timeline || []).slice().sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt)),
+      };
+    }
+
+    const result = await this.recalculate(caseData, user, req, "workflow_requested");
     return {
       case: {
         _id: result.case._id,

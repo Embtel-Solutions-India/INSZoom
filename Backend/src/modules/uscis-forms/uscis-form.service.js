@@ -486,6 +486,20 @@ async function latestTemplatesByAssignmentRules(caseData) {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     if (!grouped.has(code)) grouped.set(code, template);
   });
+  // VisaFormMapping registry (§ Provisioning integration of the mapping
+  // plan): a third, independent selection merged the same way conditional
+  // templates already are above - first-match-wins by formCode, so this
+  // never creates a duplicate CaseForm alongside an assignmentRules or
+  // hardcoded-conditional match for the same form. Required lazily (not at
+  // module top-level) to avoid a require cycle, since visaFormMapping
+  // .service.js itself requires this file for findLatestActiveTemplate/
+  // templateAppliesToCase/ensureAssignedForms.
+  const registryTemplates = await require("../form-registry/visaFormMapping.service").registryAutoCreateTemplates(caseData);
+  timer.mark("registry_template_resolution", { count: registryTemplates.length });
+  registryTemplates.forEach((template) => {
+    const code = normalizeFormCode(template.formCode || template.formNumber);
+    if (!grouped.has(code)) grouped.set(code, template);
+  });
   timer.done({ selectedCount: grouped.size });
   return [...grouped.values()];
 }
@@ -543,6 +557,10 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
         fieldValues: {},
         lastModifiedBy: user?._id,
         lastModifiedAt: new Date(),
+        // Set only for CaseForms created via the VisaFormMapping registry
+        // path (see latestTemplatesByAssignmentRules above) - undefined,
+        // as before, for assignmentRules/hardcoded-conditional creations.
+        provisioning: template._visaFormMapping || undefined,
       });
     } catch (error) {
       // A concurrent call (e.g. case creation's background provisioning
@@ -1342,4 +1360,5 @@ module.exports = {
   resolveH1bDependents,
   resolveConditionalTemplates,
   invalidateTemplateCache,
+  findLatestActiveTemplate,
 };

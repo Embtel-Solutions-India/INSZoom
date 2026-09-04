@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "../context/SocketContext";
 import { notificationsApi } from "../services/api";
 import { onForegroundMessage, requestPermissionAndGetToken } from "../services/notificationService";
+
+const NOTIFICATIONS_QUERY_KEY = ["notifications", "my"];
 
 const TYPE_STYLES = {
   case: "bg-blue-100 text-blue-700",
@@ -28,7 +31,18 @@ const fmt = (iso) => {
 export default function NotificationBell() {
   const socket = useSocket();
   const navigate = useNavigate();
-  const [items, setItems] = useState([]);
+  const queryClient = useQueryClient();
+  // Perf fix: previously a raw fetch on every mount with no caching — now
+  // shares one TanStack Query cache entry across page navigations
+  // (staleTime 60s means most nav changes serve this from cache instead of
+  // refetching). The live Socket.IO/FCM push handlers below write straight
+  // into this same cache entry via queryClient.setQueryData instead of a
+  // local setItems, so polling and live push share one source of truth.
+  const { data: items = [] } = useQuery({
+    queryKey: NOTIFICATIONS_QUERY_KEY,
+    queryFn: notificationsApi.my,
+    staleTime: 60_000,
+  });
   const [open, setOpen] = useState(false);
   const [pushPermission, setPushPermission] = useState(
     typeof Notification !== "undefined" ? Notification.permission : "unsupported"
@@ -50,18 +64,11 @@ export default function NotificationBell() {
     }
   };
 
-  const load = async () => {
-    try {
-      const data = await notificationsApi.my();
-      setItems(data);
-    } catch { /* fail silently */ }
-  };
-
   const addLive = (n) => {
-    setItems((prev) => (prev.some((existing) => existing._id === n._id) ? prev : [n, ...prev]));
+    queryClient.setQueryData(NOTIFICATIONS_QUERY_KEY, (prev = []) =>
+      prev.some((existing) => existing._id === n._id) ? prev : [n, ...prev]
+    );
   };
-
-  useEffect(() => { load(); }, []);
 
   useEffect(() => {
     if (socket) {
@@ -120,14 +127,14 @@ export default function NotificationBell() {
   const markRead = async (id) => {
     try {
       await notificationsApi.markRead(id);
-      setItems((prev) => prev.map((n) => n._id === id ? { ...n, read: true } : n));
+      queryClient.setQueryData(NOTIFICATIONS_QUERY_KEY, (prev = []) => prev.map((n) => n._id === id ? { ...n, read: true } : n));
     } catch { /* fail */ }
   };
 
   const markAllRead = async () => {
     try {
       await notificationsApi.markAllRead();
-      setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+      queryClient.setQueryData(NOTIFICATIONS_QUERY_KEY, (prev = []) => prev.map((n) => ({ ...n, read: true })));
     } catch { /* fail */ }
   };
 
