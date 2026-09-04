@@ -16,33 +16,6 @@ function clean(value) {
   return String(value || "").trim();
 }
 
-// Preserved for backward compatibility — some existing/legacy callers may
-// still read `email.mailtoUrl`/`email.subject`/`email.body` off createLead()'s
-// return value; nothing about the response shape changes.
-function buildLeadEmail(lead) {
-  const createdAt = lead.createdAt ? new Date(lead.createdAt).toLocaleString("en-US") : new Date().toLocaleString("en-US");
-  const subject = `New Consultation Lead - ${lead.fullName}`;
-  const body = [
-    "A new consultation lead has been received from the BAIS client portal.",
-    "",
-    `Name: ${lead.fullName}`,
-    `Email: ${lead.email}`,
-    `Phone: ${lead.phone}`,
-    `Visa Type: ${lead.visaType || "Not specified"}`,
-    `Source: ${lead.source || "BAIS appointment form"}`,
-    `Submitted: ${createdAt}`,
-    "",
-    "Message:",
-    lead.message || "No message provided.",
-  ].join("\n");
-
-  return {
-    subject,
-    body,
-    mailtoUrl: `mailto:${LEAD_EMAIL_RECIPIENT}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-  };
-}
-
 async function resolveNotificationRecipient() {
   const settings = await Settings.findOne({ key: "global" }).select("leadNotificationEmail");
   return settings?.leadNotificationEmail || LEAD_EMAIL_RECIPIENT;
@@ -69,19 +42,23 @@ async function notifyStaffOfLead(lead) {
     routing: lead.scoreResult?.routing,
   };
 
-  await emailService.sendTemplateEmail("quiz-lead-internal", { to, data: emailData, source: "shared" }).catch(() => null);
-
   const tierLabel = lead.scoreResult?.tier ? ` (Tier ${lead.scoreResult.tier})` : "";
-  await notificationService.createForRoles(STAFF_ROLES, {
-    type: "lead_created",
-    title: `New lead: ${lead.fullName}${tierLabel}`,
-    message: `${lead.visaPathway || "General inquiry"} — ${lead.email}`,
-    link: "/admin/portal?tab=leads",
-    priority: lead.scoreResult?.tier === "A" ? "high" : "medium",
-    channels: ["in_app", "socket", "push"],
-    metadata: { leadId: String(lead._id), tier: lead.scoreResult?.tier },
-    source: "shared",
-  }).catch(() => null);
+  // Fire both channels concurrently and independently - a slow/failed SMTP
+  // send must never delay or prevent the in-app/push staff notification,
+  // and vice versa. allSettled never rejects, so no .catch() needed per call.
+  await Promise.allSettled([
+    emailService.sendTemplateEmail("quiz-lead-internal", { to, data: emailData, source: "shared" }),
+    notificationService.createForRoles(STAFF_ROLES, {
+      type: "lead_created",
+      title: `New lead: ${lead.fullName}${tierLabel}`,
+      message: `${lead.visaPathway || "General inquiry"} — ${lead.email}`,
+      link: "/admin/portal?tab=leads",
+      priority: lead.scoreResult?.tier === "A" ? "high" : "medium",
+      channels: ["in_app", "socket", "push"],
+      metadata: { leadId: String(lead._id), tier: lead.scoreResult?.tier },
+      source: "shared",
+    }),
+  ]);
 
   realtimeGateway.emitToRole("admin", "lead:created", lead);
   realtimeGateway.emitToRole("case_manager", "lead:created", lead);
@@ -120,8 +97,10 @@ async function createConsultationLead(payload = {}, req, options = {}) {
 // (BAIS appointment/consultation form). Now ALSO persists a `Lead` document
 // (previously this only ever produced a mailto: link and never touched the
 // database) and sends the staff notification via sendTemplateEmail instead
-// of a hardcoded mailto recipient — the response shape callers already rely
-// on (`{lead, email}`) is unchanged.
+// of a hardcoded mailto recipient. The internal notification email is sent
+// entirely server-side (createConsultationLead -> notifyStaffOfLead) - no
+// mailto: link or email content is ever handed back to the caller; the
+// client only needs to know the request succeeded.
 async function createLead(payload = {}, req) {
   const leadData = {
     fullName: clean(payload.fullName || payload.name),
@@ -135,9 +114,6 @@ async function createLead(payload = {}, req) {
     createdAt: new Date(),
   };
 
-  const email = buildLeadEmail(leadData);
-  leadData.mailtoUrl = email.mailtoUrl;
-
   const persisted = await createConsultationLead({
     fullName: leadData.fullName,
     email: leadData.email,
@@ -150,7 +126,7 @@ async function createLead(payload = {}, req) {
     requestedAt: leadData.createdAt,
   });
 
-  return { lead: { ...leadData, leadId: persisted._id, leadNumber: persisted.leadNumber }, email };
+  return { lead: { ...leadData, leadId: persisted._id, leadNumber: persisted.leadNumber } };
 }
 
 // Full public-quiz lead: persists the complete quiz payload (profile +
@@ -180,7 +156,10 @@ async function createQuizLead(payload, req) {
   });
 
   const publicConfig = await entityConfigService.getPublicConfig().catch(() => ({}));
-  await emailService.sendTemplateEmail("quiz-lead-confirmation", {
+  // Fire-and-forget: SMTP round-trip (compounded with Atlas M0 latency) must
+  // never block the quiz submission response - same reasoning as
+  // notifyStaffOfLead below.
+  emailService.sendTemplateEmail("quiz-lead-confirmation", {
     to: lead.email,
     data: {
       fullName: lead.fullName,
@@ -303,7 +282,6 @@ async function createLeadFromIntake(payload = {}, user, req) {
 
 module.exports = {
   LEAD_EMAIL_RECIPIENT,
-  buildLeadEmail,
   createLead,
   createConsultationLead,
   createQuizLead,

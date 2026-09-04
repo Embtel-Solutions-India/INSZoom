@@ -19,7 +19,6 @@ const Messaging = lazy(() => import('./pages/Messaging'))
 const PaymentsOverview = lazy(() => import('./pages/PaymentsOverview'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Companies = lazy(() => import('./pages/Companies'))
-const Documents = lazy(() => import('./pages/Documents'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const USCISForms = lazy(() => import('./pages/USCISForms'))
 const CaseManagers = lazy(() => import('./pages/CaseManagers'))
@@ -105,22 +104,6 @@ function App() {
                 element={
                   <ProtectedRoute module="companies">
                     <Companies />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="documents"
-                element={
-                  <ProtectedRoute module="documents">
-                    <Documents />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="documents/:caseId"
-                element={
-                  <ProtectedRoute module="documents">
-                    <Documents />
                   </ProtectedRoute>
                 }
               />

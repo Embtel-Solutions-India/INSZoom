@@ -131,7 +131,7 @@ async function recoverPendingJobs() {
     const jobs = await DocumentProcessingJob.find({
       status: { $in: ["queued", "retrying", "processing"] },
       attempts: { $lt: Number(process.env.DOCUMENT_INTELLIGENCE_MAX_ATTEMPTS || 3) },
-    }).sort({ availableAt: 1 }).limit(Number(process.env.DOCUMENT_INTELLIGENCE_RECOVERY_LIMIT || 1000)).lean();
+    }).sort({ availableAt: 1 }).limit(Number(process.env.DOCUMENT_INTELLIGENCE_RECOVERY_LIMIT || 50)).lean();
     jobs.forEach((persisted) => {
       const documentKey = String(persisted.documentId);
       if (queuedDocuments.has(documentKey)) return;
@@ -155,7 +155,14 @@ async function recoverPendingJobs() {
 }
 
 function startRecovery() {
-  setImmediate(recoverPendingJobs);
+  // Perf fix: setImmediate (effectively 0ms) fired this scan before the
+  // connection pool had handled a single user request, and on a large stuck
+  // backlog the query itself took 6+ seconds (see the compound index added
+  // in DocumentProcessingJob.js) while competing with startup traffic for
+  // pool connections. Delaying lets the pool stabilize first.
+  const delayMs = Number(process.env.DOCUMENT_INTELLIGENCE_RECOVERY_DELAY_MS || 15_000);
+  const handle = setTimeout(recoverPendingJobs, delayMs);
+  handle.unref?.();
 }
 
 function stats() {

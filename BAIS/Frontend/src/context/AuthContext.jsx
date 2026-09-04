@@ -20,6 +20,14 @@ const AUTH_STATUS = { LOADING: "loading", AUTHENTICATED: "authenticated", UNAUTH
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState(AUTH_STATUS.LOADING);
+  // Perf fix: previously fetched independently by both AuthGate.jsx and
+  // Navbar.jsx (each into its own local useState, with zero sharing) - now
+  // fetched once here alongside /auth/me and shared via context, so
+  // GET /auth/session-context fires once per verifySession() call instead of
+  // once per component. Stores the full response shape (hasCase, caseIds,
+  // activeCase, isLegacyNoCaseAccount, leadId, mustSetPassword, caseRole,
+  // role, userId) since AuthGate depends on nearly all of these fields.
+  const [sessionContext, setSessionContext] = useState(null);
   // Previously set once a Google sign-in flow completed, so Login/Register
   // could navigate (role-based) without re-firing on ordinary email/password
   // logins. Firebase Auth (the same-page signInWithRedirect() flow this was
@@ -34,6 +42,7 @@ export function AuthProvider({ children }) {
   const clearSession = useCallback(() => {
     tokenStore.clear();
     setUser(null);
+    setSessionContext(null);
     setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
   }, []);
 
@@ -66,8 +75,20 @@ export function AuthProvider({ children }) {
       // features (feature-flag server defaults) only comes back from /auth/me,
       // not login/signup/acceptInvite — attaching it here means a flag flip
       // takes effect on next refresh, matching the flag module's contract.
-      const { user: u, features } = await authApi.me();
+      // Fetched alongside session-context (previously a second, separate
+      // round-trip fired independently by both AuthGate and Navbar).
+      const [{ user: u, features }, sessionCtx] = await Promise.all([authApi.me(), authApi.sessionContext()]);
+      if (!sessionCtx?.success) {
+        // Mirrors AuthGate's original fetchContext() behavior: a
+        // non-exception, non-success session-context response is treated as
+        // no valid session, same as it did before this fetch moved here.
+        setUser(null);
+        setSessionContext(null);
+        setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
+        return;
+      }
       setUser(u ? { ...u, features } : u);
+      setSessionContext(sessionCtx);
       setAuthStatus(AUTH_STATUS.AUTHENTICATED);
     } catch (err) {
       if (err?.status === 401) {
@@ -75,11 +96,15 @@ export function AuthProvider({ children }) {
         // already cleared it and fired bais:session-expired by this point;
         // this just mirrors that into local state.
         setUser(null);
+        setSessionContext(null);
         setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
       } else {
         // Network error, 5xx, a 504 from backend/DB contention — NOT proof
         // the user is logged out. Leave the token alone; ProtectedRoute
         // shows a retry screen instead of bouncing to the login prompt.
+        // A session-context-specific failure now surfaces identically to an
+        // /auth/me failure (a deliberate simplification — AuthGate no longer
+        // has its own separate error copy for this case).
         setAuthStatus(AUTH_STATUS.ERROR);
         if (autoRetry) setTimeout(() => { verifySessionRef.current?.(false); }, 4000);
       }
@@ -119,20 +144,36 @@ export function AuthProvider({ children }) {
     initializeNotifications().catch(() => {});
   }, [user?._id]);
 
+  // login/signup/acceptInvite each land the user directly on a protected
+  // route (see Login.jsx's "already-authenticated" navigate effect) as soon
+  // as authStatus flips to AUTHENTICATED. AuthGate now reads sessionContext
+  // from this same context instead of fetching its own copy, so it must
+  // already be populated by the time that flip happens — otherwise AuthGate
+  // sees AUTHENTICATED + sessionContext:null and incorrectly bounces back to
+  // /login. Fetched best-effort (a failure here just leaves sessionContext
+  // null; AuthGate's own "!context" branch already handles that by routing
+  // to /login, no worse than before this fetch existed here).
+  const fetchAndSetSessionContext = useCallback(async () => {
+    const sessionCtx = await authApi.sessionContext().catch(() => null);
+    setSessionContext(sessionCtx?.success ? sessionCtx : null);
+  }, []);
+
   const signup = useCallback(async (name, email, password, referralCode, phone, accountType = "client") => {
     const data = await authApi.register(name, email, password, referralCode, phone, accountType);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
-  }, []);
+  }, [fetchAndSetSessionContext]);
 
   const login = useCallback(async (emailOrPayload, password) => {
     const data = await authApi.login(emailOrPayload, password);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
     return data.user;
-  }, []);
+  }, [fetchAndSetSessionContext]);
 
   // Invited employee sets their own password via the emailed link, then is
   // logged straight in — the employer never sees or sets this password.
@@ -140,9 +181,10 @@ export function AuthProvider({ children }) {
     const data = await authApi.acceptInvite(token, password, confirmPassword);
     tokenStore.set(data.accessToken);
     setUser(data.user);
+    await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
     return data.user;
-  }, []);
+  }, [fetchAndSetSessionContext]);
 
   const logout = useCallback(async () => {
     await unregisterCurrentDevice().catch(() => {});
@@ -160,10 +202,20 @@ export function AuthProvider({ children }) {
     window.location.href = `${API_BASE_URL}/auth/google`;
   }, []);
 
-  // Called by OAuthCallback page (passport redirect flow — kept for compatibility)
+  // Called by OAuthCallback page (passport redirect flow — kept for
+  // compatibility) right after tokenStore.set(accessToken), before its own
+  // navigate("/dashboard"). Sets `user` immediately for a fast paint, but
+  // deliberately does NOT jump straight to AUTHENTICATED — sessionContext
+  // (needed by the AuthGate this navigate lands on) isn't known yet. Routing
+  // through verifySession() here (rather than a bespoke fetch) fetches it via
+  // the exact same /auth/me + /auth/session-context pair every other login
+  // path relies on, and keeps authStatus at LOADING for that window so
+  // AuthGate shows its spinner instead of reading a still-null sessionContext
+  // as "not logged in" and bouncing back to /login.
   const setUserFromOAuth = useCallback((userData) => {
     setUser(userData);
-    setAuthStatus(AUTH_STATUS.AUTHENTICATED);
+    setAuthStatus(AUTH_STATUS.LOADING);
+    verifySessionRef.current?.(false);
   }, []);
 
   // Merge a partial user update (e.g. the response from PUT /auth/updatedetails)
@@ -176,11 +228,12 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user, authStatus, authLoading: authStatus === AUTH_STATUS.LOADING, retryAuth: verifySession,
+      sessionContext,
       signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     }),
     [
-      user, authStatus, verifySession, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      user, authStatus, verifySession, sessionContext, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     ]
   );

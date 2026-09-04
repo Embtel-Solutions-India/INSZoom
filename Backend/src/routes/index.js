@@ -29,6 +29,8 @@ router.use("/leaderboard", require("../modules/leaderboard/leaderboard.routes"))
 router.use("/", require("../modules/case-collaboration/routes/collaborationRoutes"));
 router.use("/cases", require("../modules/cases/case.routes"));
 router.use("/cases", require("../modules/form-mapping/routes/autoFillRoutes"));
+router.use("/cases", require("../modules/form-registry/form-registry.routes"));
+router.use("/form-registry", require("../modules/form-registry/registry-lookup.routes"));
 router.use("/form-mappings", require("../modules/form-mapping/routes/mappingGraphRoutes"));
 router.use("/case-managers", require("../modules/cases/case-manager.routes"));
 router.use("/employment-workflow", require("../modules/employment-workflow/employment-workflow.routes"));

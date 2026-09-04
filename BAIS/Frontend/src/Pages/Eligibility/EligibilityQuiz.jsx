@@ -105,7 +105,19 @@ export default function EligibilityQuiz() {
       });
       telemetryApi.track({ name: "quiz.completed", sessionId, properties: { visaPathway: definition.visaPathway } });
       navigate(`/eligibility/results/${res.data.leadId}`, { state: { result: res.data, contact } });
-    } catch {
+    } catch (error) {
+      // The api.js request() wrapper flattens a non-2xx response into a
+      // plain Error with .status/.code set directly (not axios's nested
+      // error.response.data.code) - same shape Login.jsx already checks
+      // via err.code === "PENDING_INVITE".
+      if (error.status === 409 && error.code === "CASE_EXISTS") {
+        // Authenticated client already has a case (e.g. reloaded the quiz
+        // page after already completing it) - send them to their
+        // dashboard instead of showing an error/retry UI for what is
+        // actually a correct, expected state.
+        navigate("/dashboard", { replace: true });
+        return;
+      }
       // submitMutation.error surfaces the retry UI below — answers are untouched
     }
   };

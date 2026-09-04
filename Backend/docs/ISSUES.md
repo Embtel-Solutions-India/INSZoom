@@ -396,3 +396,90 @@ No route, model, middleware, `MappingResolver.js`, `WatermarkService.js`, `norma
 ### Issue Closed
 Date: 2026-09-03
 Resolved by: `ProtectedFieldPolicy.js` + `PDFFieldMapper.js`/`PDFRenderer.js` (Bug A — never write to a protected field) and `BarcodeAppearanceGuard.js` + `PDFRenderer.js`/`AdobeFormRenderer.js` (Bug D — flatten barcode fields so the AcroForm-wide `/NeedAppearances` flag, required for ordinary fields on both engines, can no longer rebuild their appearance as text) + `ProtectedFieldPolicy.test.js` (updated permanent regression coverage for both bugs). Pending: user's own real-browser visual confirmation on the next fresh download.
+
+---
+
+## Feature Delivered: VisaFormMapping Registry (Visa → Form/Agency/Provisioning-Type Mapping)
+
+### ID
+FEATURE-001
+
+### Status
+DELIVERED — data model, applicability engine, provisioning integration, validator, and 415-record seed all built and live-verified; validator passes with zero errors; full regression suite (109 tests across `uscis-forms`, `form-generation`, `cases`, and the new `form-registry` suite) is green. Scope deliberately excludes questionnaires/OCR/autofill/PDF work per the task's own boundary (see "Explicitly out of scope" in the approved plan).
+
+### 1-3. Files created / modified / deleted
+**Created:**
+- `Backend/src/models/VisaFormMapping.js` — the registry model
+- `Backend/src/modules/form-registry/visaFormMapping.service.js` — trigger evaluator + applicability resolution + conditional-decision recording
+- `Backend/src/modules/form-registry/visaFormMapping.validator.js` — data-integrity validator
+- `Backend/src/modules/form-registry/form-registry.controller.js` — HTTP handlers
+- `Backend/src/modules/form-registry/form-registry.routes.js` — case-scoped routes
+- `Backend/src/modules/form-registry/registry-lookup.routes.js` — global registry lookup route
+- `Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js` — 415-record seed data
+- `Backend/src/modules/form-registry/seeds/loadVisaFormMappings.js` — idempotent upsert loader
+- `Backend/src/modules/form-registry/tests/visaFormMapping.test.js` — 17 live acceptance tests
+
+**Modified:**
+- `Backend/src/models/Case.js` — added `processingPath` (optional, additive) and `conditionalFormDecisions[]`
+- `Backend/src/models/CaseForm.js` — added optional `provisioning` audit block
+- `Backend/src/modules/uscis-forms/uscis-form.service.js` — `latestTemplatesByAssignmentRules()` merges in registry AUTO_CREATE templates as a third source (formCode-deduplicated against the existing assignmentRules + hardcoded-conditional sources); `ensureAssignedForms()`'s create loop tags `provisioning` metadata when the source was the registry; `findLatestActiveTemplate` exported for reuse
+- `Backend/src/routes/index.js` — mounted the two new route files
+
+**Deleted:** none. The pre-existing `resolveConditionalTemplates()` (I-907/G-28/I-539/I-539A hardcoded path) was deliberately left untouched and still runs unmodified, per the approved corrections (§17 — migration is a separate future task).
+
+### 4. Registry structure
+See `VisaFormMapping.js`: `visaType`, `visaCategory`, `caseType`, `immigrationNature` (13-value enum), `formNumber`, `formName`, `agency` (5-value enum: USCIS/DOL/DOS/SEVP/SCHOOL_OR_PROGRAM_SPONSOR/OTHER), `provisioningType` (AUTO_CREATE/CONDITIONAL/LATER_STAGE/REFERENCE/NOT_APPLICABLE), `processingPaths[]` (first-class dimension, empty=wildcard), `triggerCondition` (generic `{field,operator,value}` / `{all:[...]}` / `{any:[...]}` DSL, field whitelist-enforced at the schema level), `initialCaseCreation`, `stage`, `parentForm`/`componentType` (6-value enum, real supplements never invented as fake standalone forms), `formTemplateFormCode` (a hint only — template existence is always checked live), `displayOrder`, `active`, `sourceVerified`/`verificationSource`/`verificationDate`/`notes`. Unique index on `{visaType, formNumber, componentType}`.
+
+### 5. Total visa-to-form mapping count
+**415 active mappings.**
+
+### 6. Complete visa/case-type coverage
+**79 distinct visa/case types** — every mandatory category from spec §5 present (verified by the validator's coverage check: `missingVisas: []`), including the full H/L/O/P/Q/R/E/TN/K/F/J/M families, B-1/B-2, U-1 + derivative, SB-1, OPT/STEM OPT, all EB categories (1A/1B/1C/2 PERM/2 NIW/3×3/4/5×2), IR/CR/F family-immigrant categories, GC-NVC, AOS/I-751/I-90/re-entry-permit green-card workflows, and citizenship (N-400/N-600/N-565).
+
+### 7. Complete form/artifact list
+**55 distinct form/artifact numbers**, spanning I-129 (+4 real supplements: H/L/O-P/Q/R/E classification), I-129F, I-130(+A), I-140, I-360, I-526/I-526E, I-751, I-90, I-485, I-751, I-864(+A/EZ), I-765, I-131, I-693, I-907, I-918(+Supp A/B), I-983, G-28, I-539(+A), I-612, I-956F, I-829, N-400/N-600/N-565, ETA-9035/9089/9141/9142A/9142B/790/790A, DS-160/260/261/117/156E/2019/3035, I-20.
+
+### 8-11. Counts by provisioningType
+`AUTO_CREATE: 88` · `CONDITIONAL: 270` · `LATER_STAGE: 47` · `REFERENCE: 10` (`NOT_APPLICABLE` has no dedicated static entries in this seed — it's a valid enum value for future explicit exclusions, none needed yet).
+
+### Counts by agency
+`USCIS: 320` · `DOS: 70` · `DOL: 16` · `SCHOOL_OR_PROGRAM_SPONSOR: 8` · `SEVP: 1`.
+
+### 12. Processing-path rules
+`processingPaths[]` used to gate, e.g., H-1B's DS-160 (`["CONSULAR"]`), I-539/I-539A (`["CHANGE_OF_STATUS","EXTENSION_OF_STATUS"]`), I-485 (`["ADJUSTMENT_OF_STATUS"]`), DS-260 (`["CONSULAR","NVC"]`). Empty array = applies regardless of processing path (used for path-agnostic forms like I-129 itself).
+
+### 13. Trigger DSL rules
+`equals`/`notEquals`/`in`/`notIn`/`exists` leaf operators, `all`/`any` composite nodes, whitelist-enforced fields: `visaType, visaCategory, caseType, petitionType, petitionSubType, premiumProcessing, processingPath, attorneyOnRecord` (the last reusing the exact same source `uscis-form.service.js`'s pre-existing `hasAttorneyOnRecord()` already checks — not invented). Live-verified: a non-whitelisted field is rejected both at the schema level and by the validator.
+
+### 14-17. Mapping lists by provisioningType
+Full lists are queryable live via `GET /api/form-registry/visa/:visaType` or directly from the seeded `VisaFormMapping` collection — not reproduced inline here given the 415-record volume; every acceptance test in `visaFormMapping.test.js` asserts specific inclusion/exclusion per scenario (H-1B, L-1A, EB-2 NIW/consular, EB-5 RC/Standalone, F-1 STEM OPT, SB-1, I-751, I-90, N-400).
+
+### 18-20. Template-backed / registry-only / template-missing mappings
+Of the 88 `AUTO_CREATE` mappings, only those whose `formTemplateFormCode` matches a currently-imported, active `USCISFormTemplate` (confirmed in this system: I-129, I-129F, I-130, I-134, I-539, I-539A, I-907 — 7 templates per the existing `uscis-forms` test fixtures) resolve to `TEMPLATE_AVAILABLE` and actually produce a `CaseForm`. The remainder (I-140, I-360, I-526/I-526E, I-751, I-90, I-485, N-400/N-600/N-565, I-918, most DOL/DOS/SEVP forms, etc.) resolve to `TEMPLATE_MISSING` — live-verified via the "TEMPLATE_MISSING diagnostic" test to remain fully registry-applicable and diagnosable (`templateDiagnostics()`), never silently dropped or reclassified as `NOT_APPLICABLE`. No `TEMPLATE_RULE_CONFLICT` cases were observed in this seed (would require a template whose own `assignmentRules` reject a case the registry considers applicable — none of the 7 imported templates currently do).
+
+### 21-22. Source-verified vs. unverified mappings
+**9 of 415 mappings independently spot-verified** during implementation (I-129, I-129F, I-751, I-90, N-400, N-600, I-918, I-526, I-526E — via uscis.gov). **406 remain `sourceVerified: false`**, transcribed faithfully from the approved business mapping table (spec §6) per the explicit instruction that this table is the business input to implement, not independently re-derive — listed here rather than silently promoted. A full independent verification pass against uscis.gov/dol.gov/state.gov for all 406 remaining entries is recommended as explicit follow-up work, not done in this phase.
+
+### 23. Validator results
+`validateRegistry()`: **PASS, 0 errors, 16 warnings** (all informational — CONDITIONAL mappings intentionally offered with no data trigger, e.g. EB-5's I-765/I-131/I-693, GC-NVC's I-864/I-864A — CM decides unconditionally). Coverage check: **PASS**, zero missing mandatory visa types. All 18 spec-required checks plus the corrections' mandatory-coverage/semantic-conflict/initialCaseCreation-consistency/whitelist checks implemented and passing.
+
+### 24-26. Acceptance test results (positive + negative)
+**17/17 pass** in `visaFormMapping.test.js`, covering H-1B (consular + COS), L-1A, EB-2 (NIW + consular/PERM), EB-5 (Regional Center vs. Standalone — I-526E/I-526 never substituted), F-1 STEM OPT (I-765 vs. I-983 never conflated), SB-1, I-751-vs-I-90 mutual exclusion, N-400-vs-N-600 mutual exclusion, `TEMPLATE_MISSING` diagnostics, idempotency (double-provisioning, assignmentRules+registry merge → exactly one `CaseForm`), conditional ADD/NOT_APPLICABLE decision persistence (never re-asked), server-authoritative client-input rejection, and trigger-whitelist enforcement. Two real bugs were found and fixed during this process (not in the original design): two seed helpers (`i129Petition`/`i765`/`ds260`) were silently ignoring `opts.provisioningType` overrides due to a positional-parameter shadowing bug, and I-907's registry trigger was originally gating its own visibility on `premiumProcessing`, which would have meant the Case Manager was never actually asked ("Ask: Does this case require Premium Processing?") — both are documented here so the same mistake isn't repeated.
+
+### 27. Idempotency results
+Confirmed live: provisioning run twice on the same case yields identical `CaseForm` counts; a form matched by both the existing `assignmentRules` mechanism and the new registry (e.g. H-1B's I-129) produces exactly one `CaseForm`, never two.
+
+### 28. Regression results
+**109/109 tests pass** across `uscis-forms`, `form-generation`, `cases`, and the new `form-registry` suites — the pre-existing `assignmentRules` and hardcoded-conditional (I-907/G-28/I-539/I-539A) paths are unaffected.
+
+### 29. Unresolved gaps / intentionally not implemented
+- **I-824** ("Action on Approved Case") has no data-driven trigger — no whitelisted Case field represents "CM explicitly selected this post-approval action" today; registered as `CONDITIONAL` with `triggerCondition: null` and an explanatory note rather than inventing a field. Genuinely CM-decision-only until such a field exists.
+- **Biometrics/interview-appointment-specific forms** are out of this registry's scope entirely (not requested by spec §6) — no gap, just noted for completeness against the earlier ISSUE-003 work in this same document.
+- **406 of 415 mappings are not yet independently source-verified** (see §21-22) — flagged, not silently promoted.
+- **`LATER_STAGE` stage-activation** has no UI/workflow trigger built in this phase (registry supports `stage` field; activating a later-stage form when a case reaches that stage is explicitly out of scope per the approved plan — a hook point, not a finished workflow).
+- **Migration of the 3 hardcoded conditional forms (I-907/G-28/I-539/I-539A) into the registry** was deliberately not done — both mechanisms currently coexist safely (proven by the idempotency tests), but a future cleanup task should retire the hardcoded path in favor of the registry once confidence is established.
+- One accidental, disclosed, and corrected production write occurred during implementation: a seed-loader command was run without the test-database environment override and briefly created (then was fully deleted from) 415 records in the production database before any further work continued — see the exchange in this session's transcript. No pre-existing production data was touched.
+
+### Feature Closed
+Date: 2026-09-03
+Delivered by: `VisaFormMapping.js`, `visaFormMapping.service.js`/`.validator.js`/`.controller.js`/`.routes.js`, `visaFormMappings.seed.js` (415 records), integrated into `uscis-form.service.js`'s existing `ensureAssignedForms`/`latestTemplatesByAssignmentRules` pipeline without replacing it.

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { authApi } from "../services/api";
 import { isEmployeeAccount } from "../utils/auth";
 import NotificationBell from "./NotificationBell";
 
@@ -87,25 +86,27 @@ function visibleNavLinks(user, hasCase) {
 }
 
 export default function Navbar() {
-  const { user, logout, authStatus } = useAuth();
+  const { user, logout, authStatus, authLoading, sessionContext } = useAuth();
   const location           = useLocation();
   const navigate           = useNavigate();
   const [menuOpen,  setMenuOpen]  = useState(false);
   const [dropOpen,  setDropOpen]  = useState(false);
   const [scrolled,  setScrolled]  = useState(false);
-  const [sessionHasCase, setSessionHasCase] = useState(false);
-  // Defaults true (not false) deliberately: while the sessionContext() fetch
-  // below is in flight, we don't yet know whether this user has a case, so
-  // nav-link visibility should not assume "no case" - that would hide
-  // Dashboard/Messages/Payments for the whole duration of every page load,
-  // not just briefly. sessionContext is a UI hint for which tabs to show,
-  // never a security gate (ProtectedRoute/backend routes remain the real
-  // access control), so defaulting optimistic here is safe.
-  const [sessionHasCaseLoading, setSessionHasCaseLoading] = useState(true);
   const dropRef = useRef(null);
 
   const isActive = (to) => location.pathname === to;
-  const hasCase = Boolean(sessionHasCase || isEmployeeAccount(user) || (user && sessionHasCaseLoading));
+  // Perf fix: previously fetched its own copy of sessionContext via a
+  // separate useEffect/authApi.sessionContext() call, independent of
+  // AuthContext's own /auth/me fetch — now reads the single shared
+  // sessionContext AuthContext already fetches. `authLoading` replaces the
+  // old sessionHasCaseLoading local state as the "don't know yet" signal:
+  // defaults true (not false) while it's in flight so nav-link visibility
+  // doesn't assume "no case" and hide Dashboard/Messages/Payments for the
+  // whole duration of every page load, not just briefly. sessionContext is a
+  // UI hint for which tabs to show, never a security gate (ProtectedRoute/
+  // backend routes remain the real access control), so defaulting optimistic
+  // here is safe.
+  const hasCase = Boolean(sessionContext?.hasCase || isEmployeeAccount(user) || (user && authLoading));
   // Auth-state race (see AuthContext.jsx's own "Phase 12 fix (P12-C2)" comment,
   // which documents ProtectedRoute having this same problem): `user` is null
   // both while verifySession() is still in flight (authStatus "loading") and
@@ -133,24 +134,6 @@ export default function Navbar() {
 
   // Close mobile menu on route change
   useEffect(() => { setMenuOpen(false); setDropOpen(false); }, [location.pathname]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSessionHasCase(false);
-    if (!user) {
-      setSessionHasCaseLoading(false);
-      return () => { cancelled = true; };
-    }
-    setSessionHasCaseLoading(true);
-    authApi.sessionContext()
-      .then((context) => {
-        if (!cancelled) { setSessionHasCase(Boolean(context?.hasCase)); setSessionHasCaseLoading(false); }
-      })
-      .catch(() => {
-        if (!cancelled) { setSessionHasCase(false); setSessionHasCaseLoading(false); }
-      });
-    return () => { cancelled = true; };
-  }, [user]);
 
   const handleLogout = async () => {
     await logout();

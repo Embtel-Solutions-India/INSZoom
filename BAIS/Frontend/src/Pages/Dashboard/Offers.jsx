@@ -127,7 +127,7 @@ export default function Offers() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await leadsApi.create({
+      await leadsApi.create({
         fullName: "Website Contact",
         email,
         phone: "Not provided",
@@ -135,8 +135,8 @@ export default function Offers() {
         message: "Contact request submitted from the Offers page.",
         source: "Offers Page — Contact Request",
       });
-      const mailtoUrl = response?.email?.mailtoUrl || response?.data?.email?.mailtoUrl;
-      if (mailtoUrl) window.location.href = mailtoUrl;
+      // The backend persists the lead and sends the internal notification
+      // email itself - the client never needs an email address/mailto link.
       alert("Thank you! We'll contact you shortly.");
       setEmail("");
     } catch (error) {

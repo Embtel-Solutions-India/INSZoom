@@ -25,10 +25,15 @@ const counterSchema = new mongoose.Schema(
  * This is safe for concurrent requests — no two calls will return the same value.
  */
 counterSchema.statics.nextValue = async function (key) {
+  // maxTimeMS bounds a slow/contended Atlas M0 upsert to a clean, fast
+  // MaxTimeMSExpired error (mapped by errorHandler.js's
+  // isDatabaseUnavailableError to a 503 DATABASE_UNAVAILABLE) instead of
+  // hanging for the full driver timeout (30s+) before every lead/case
+  // creation on this path.
   const doc = await this.findOneAndUpdate(
     { _id: key },
     { $inc: { sequence: 1 } },
-    { new: true, upsert: true }
+    { new: true, upsert: true, maxTimeMS: 5000 }
   );
   return doc.sequence;
 };

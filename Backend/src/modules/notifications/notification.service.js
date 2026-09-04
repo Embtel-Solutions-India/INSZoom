@@ -445,17 +445,50 @@ async function updateNotificationState(notification, action, payload, user, req)
   return notification;
 }
 
+// Perf fix: previously `for (const n of notifications) { ...; await n.save(); }`
+// — up to 100 serial round-trips per tick, each waiting on its own connection
+// pool checkout, on a maintenance job that fires every 60s. deliverRealtime()
+// is a Socket.IO emit (no DB write) so it still runs per-notification, but the
+// status/audit-history update that follows is now a single bulkWrite.
 async function processScheduled(limit = 100, actor, req) {
   const now = new Date();
   const notifications = await Notification.find({ scheduledFor: { $lte: now }, queueStatus: "scheduled", deletedAt: { $exists: false } }).limit(limit);
-  for (const notification of notifications) {
-    notification.queueStatus = "processing";
-    await deliverRealtime(notification);
-    notification.queueStatus = "processed";
-    notification.processedAt = new Date();
-    addAuditEntry(notification, "process_scheduled", actor, {}, req);
-    await notification.save();
-  }
+  if (!notifications.length) return { processedCount: 0 };
+
+  await Promise.allSettled(notifications.map((notification) => deliverRealtime(notification)));
+
+  const processedAt = new Date();
+  await Notification.bulkWrite(
+    notifications.map((notification) => ({
+      updateOne: {
+        filter: { _id: notification._id },
+        update: {
+          // deliverRealtime() above mutated delivery/deliveredAt on each
+          // in-memory doc (marking socket/in_app channels "sent", queuing
+          // email/push/etc.) — these must be persisted alongside
+          // queueStatus/processedAt, same as the original save() did.
+          $set: {
+            queueStatus: "processed",
+            processedAt,
+            delivery: (notification.delivery || []).map((d) => (typeof d.toObject === "function" ? d.toObject() : d)),
+            deliveredAt: notification.deliveredAt,
+          },
+          $push: {
+            auditHistory: {
+              action: "process_scheduled",
+              performedBy: actor?._id,
+              performedAt: processedAt,
+              changes: {},
+              ipAddress: req?.ip,
+              userAgent: req?.headers?.["user-agent"],
+            },
+          },
+        },
+      },
+    })),
+    { ordered: false }
+  );
+
   return { processedCount: notifications.length };
 }
 
@@ -467,18 +500,40 @@ async function retryFailed(limit = 100, actor, req) {
     retryCount: { $lt: 3 },
     deletedAt: { $exists: false },
   }).limit(limit);
-  for (const notification of notifications) {
-    notification.retryCount += 1;
-    notification.delivery = notification.delivery.map((delivery) => {
-      if (["failed", "retrying"].includes(delivery.status)) {
-        const deliveryObject = typeof delivery.toObject === "function" ? delivery.toObject() : delivery;
-        return { ...deliveryObject, status: "queued", attempts: (delivery.attempts || 0) + 1 };
-      }
-      return delivery;
-    });
-    addAuditEntry(notification, "retry", actor, {}, req);
-    await notification.save();
-  }
+  if (!notifications.length) return { processedCount: 0 };
+
+  const performedAt = new Date();
+  await Notification.bulkWrite(
+    notifications.map((notification) => {
+      const nextDelivery = notification.delivery.map((delivery) => {
+        if (["failed", "retrying"].includes(delivery.status)) {
+          const deliveryObject = typeof delivery.toObject === "function" ? delivery.toObject() : delivery;
+          return { ...deliveryObject, status: "queued", attempts: (delivery.attempts || 0) + 1 };
+        }
+        return typeof delivery.toObject === "function" ? delivery.toObject() : delivery;
+      });
+      return {
+        updateOne: {
+          filter: { _id: notification._id },
+          update: {
+            $set: { retryCount: (notification.retryCount || 0) + 1, delivery: nextDelivery },
+            $push: {
+              auditHistory: {
+                action: "retry",
+                performedBy: actor?._id,
+                performedAt,
+                changes: {},
+                ipAddress: req?.ip,
+                userAgent: req?.headers?.["user-agent"],
+              },
+            },
+          },
+        },
+      };
+    }),
+    { ordered: false }
+  );
+
   return { processedCount: notifications.length };
 }
 

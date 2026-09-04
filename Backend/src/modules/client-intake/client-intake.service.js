@@ -424,9 +424,23 @@ async function submitClientIntake({ user, caseId, req }) {
   await caseData.save();
   await caseService.writeAuditLog("client_intake_submitted", caseData, user, { clientId: client._id, progress: client.intakeProgress }, req);
   await writeAudit("submission_completed", "client", client._id, user, { newValue: client.intakeSubmission, changes: client.intakeProgress }, req);
-  await notifySubmission(caseData, client, user, req);
-  await caseWorkflowAutomation.runPostClientSubmission(caseData._id, user, req).catch((error) => {
-    console.error("Post-submission automation failed:", { caseId: caseData._id, message: error.message });
+  // Fire-and-forget: notifySubmission's internal createNotification() chain
+  // (DB writes + SMTP + push) must never block the 201 - the submission
+  // itself is already durably committed by client.save()/caseData.save()
+  // above.
+  notifySubmission(caseData, client, user, req).catch((error) => {
+    console.error("[submitClientIntake] notifySubmission failed (non-fatal):", error?.message);
+  });
+  // setImmediate defers past the current event-loop iteration (i.e. past
+  // res.json()) - same pattern already used for initializeCase in
+  // case.controller.js. runPostClientSubmission's Drive sync/workbook
+  // generation/USCIS form regeneration are heavy and must never block the
+  // response; it was already .catch()-wrapped but still awaited, so a slow
+  // one of the three Promise.all branches still delayed the 201.
+  setImmediate(() => {
+    caseWorkflowAutomation.runPostClientSubmission(caseData._id, user, req).catch((error) => {
+      console.error("[submitClientIntake] Post-submission automation failed (non-fatal):", { caseId: caseData._id, message: error.message });
+    });
   });
   return buildIntakePayload(client, caseData, user);
 }

@@ -18,7 +18,6 @@ exports.createPublicLead = async (req, res, next) => {
       success: true,
       message: "Consultation lead received",
       lead: result.lead,
-      email: result.email,
     });
   } catch (error) {
     next(error);

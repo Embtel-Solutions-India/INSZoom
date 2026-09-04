@@ -20,7 +20,7 @@ function ConsultationForm({ source }) {
     if (!form.name || !form.email || !form.phone) return;
     setError(""); setLoading(true);
     try {
-      const response = await leadsApi.create({
+      await leadsApi.create({
         fullName: form.name,
         email: form.email,
         phone: form.phone,
@@ -28,8 +28,10 @@ function ConsultationForm({ source }) {
         message: form.message,
         source: `${source} — Consultation Request`,
       });
-      const mailtoUrl = response?.email?.mailtoUrl || response?.data?.email?.mailtoUrl;
-      if (mailtoUrl) window.location.href = mailtoUrl;
+      // The backend persists the lead and sends the internal notification
+      // email itself (lead.service.js's createLead -> notifyStaffOfLead) -
+      // the client only ever needs to know the request succeeded, never an
+      // email address or mailto link to act on.
       setSubmitted(true);
     } catch (err) {
       setError(err.message || "Failed to submit. Please try again.");

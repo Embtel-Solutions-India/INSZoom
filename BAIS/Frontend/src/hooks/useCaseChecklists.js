@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { questionnairesApi } from "../services/api";
 
 // Every checklist currently assigned to a case (any visa type, any role) —
@@ -8,29 +8,15 @@ import { questionnairesApi } from "../services/api";
 // what CaseChecklistPanel uses to build one tab per assigned checklistRole
 // instead of a caller hardcoding which roles to check for.
 export default function useCaseChecklists(caseId) {
-  const [checklists, setChecklists] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    if (!caseId) {
-      setChecklists([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["checklists", "case", caseId],
+    queryFn: async () => {
       const response = await questionnairesApi.listCaseChecklists(caseId);
-      setChecklists(response.data?.checklists || []);
-    } catch {
-      setChecklists([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [caseId]);
+      return response.data?.checklists || [];
+    },
+    enabled: Boolean(caseId),
+    staleTime: 2 * 60_000,
+  });
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  return { checklists, loading, refetch: load };
+  return { checklists: caseId ? data || [] : [], loading: Boolean(caseId) && isLoading, refetch };
 }
