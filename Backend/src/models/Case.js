@@ -1058,6 +1058,12 @@ caseSchema.index({ assignedCaseManager: 1, rfeDeadline: 1 });
 caseSchema.index({ assignedCaseManager: 1, updatedAt: -1 });
 caseSchema.index({ companyId: 1, status: 1 });
 caseSchema.index({ teamId: 1, status: 1 });
+// Perf fix: getTeamLeadDashboard's unassigned/aging-queue queries filter on
+// all three of these together (assignedTeamLead/teamId + caseRole + status);
+// neither existing pair-index above covers caseRole, so Mongo fell back to
+// scanning every this-team-lead's-case doc in memory to apply that filter.
+caseSchema.index({ assignedTeamLead: 1, caseRole: 1, status: 1 });
+caseSchema.index({ teamId: 1, caseRole: 1, status: 1 });
 caseSchema.index({ lastSyncedAt: -1 });
 caseSchema.index({ "canonicalProfile.status": 1, "canonicalProfile.lastBuiltAt": -1 });
 caseSchema.index({ visaType: 1, status: 1 });

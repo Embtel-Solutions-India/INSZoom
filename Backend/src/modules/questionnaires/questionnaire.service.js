@@ -1939,44 +1939,64 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
       }
     }
 
-    const existingQuestions = await Question.find({ questionnaire: questionnaire._id });
-    const existingByKey = new Map(existingQuestions.map((question) => [question.key, question]));
-    const definitionKeys = new Set(definition.questions.map((question) => question.key));
+    // Published questionnaires are immutable (assertDraft already enforces this
+    // for every user-facing create/update/delete path - see line ~200). This
+    // reconciliation loop was the one remaining path that bypassed that rule:
+    // it ran unconditionally and could silently rewrite a published
+    // questionnaire's live questions (and add brand-new ones) whenever a code
+    // change to VISA_TEMPLATE_DEFINITIONS ran, potentially affecting
+    // in-progress client responses. Skip reconciliation entirely once
+    // published; a real content change must go through the builder's
+    // create-new-version flow instead.
+    if (questionnaire.status !== "published") {
+      const existingQuestions = await Question.find({ questionnaire: questionnaire._id });
+      const existingByKey = new Map(existingQuestions.map((question) => [question.key, question]));
+      const definitionKeys = new Set(definition.questions.map((question) => question.key));
 
-    for (const question of definition.questions) {
-      const existing = existingByKey.get(question.key);
-      if (!existing) {
-        await Question.create({
-          ...question,
-          questionnaire: questionnaire._id,
-          questionnaireKey: questionnaire.key,
-          questionnaireVersion: questionnaire.version,
-          createdBy: systemUser._id,
-          updatedBy: systemUser._id,
-        });
-        continue;
+      for (const question of definition.questions) {
+        const existing = existingByKey.get(question.key);
+        if (!existing) {
+          await Question.create({
+            ...question,
+            questionnaire: questionnaire._id,
+            questionnaireKey: questionnaire.key,
+            questionnaireVersion: questionnaire.version,
+            createdBy: systemUser._id,
+            updatedBy: systemUser._id,
+          });
+          continue;
+        }
+        const patch = reconcileQuestionFields(existing, question);
+        if (existing.active === false || existing.isActive === false) {
+          patch.active = true;
+          patch.isActive = true;
+        }
+        if (Object.keys(patch).length) {
+          Object.assign(existing, patch, { updatedBy: systemUser._id });
+          await existing.save();
+        }
       }
-      const patch = reconcileQuestionFields(existing, question);
-      if (existing.active === false || existing.isActive === false) {
-        patch.active = true;
-        patch.isActive = true;
-      }
-      if (Object.keys(patch).length) {
-        Object.assign(existing, patch, { updatedBy: systemUser._id });
+
+      // A question the master definition no longer lists is retired, not
+      // deleted — any client answer or admin edit referencing it stays
+      // intact; it simply stops rendering/being required going forward.
+      // Same immutability concern as the reconciliation loop above (it also
+      // mutates and saves a live question), so it stays inside this same
+      // published-status guard rather than running unconditionally.
+      for (const existing of existingQuestions) {
+        if (definitionKeys.has(existing.key)) continue;
+        if (existing.active === false && existing.isActive === false) continue;
+        existing.active = false;
+        existing.isActive = false;
+        existing.updatedBy = systemUser._id;
         await existing.save();
       }
-    }
-
-    // A question the master definition no longer lists is retired, not
-    // deleted — any client answer or admin edit referencing it stays intact;
-    // it simply stops rendering/being required going forward.
-    for (const existing of existingQuestions) {
-      if (definitionKeys.has(existing.key)) continue;
-      if (existing.active === false && existing.isActive === false) continue;
-      existing.active = false;
-      existing.isActive = false;
-      existing.updatedBy = systemUser._id;
-      await existing.save();
+    } else {
+      logger.info("questionnaire_definition_reconcile_skipped_published", {
+        key: definition.key,
+        questionnaireId: String(questionnaire._id),
+        message: "Questionnaire is published (immutable) - skipped question reconciliation. Create a new version via the builder to apply definition changes.",
+      });
     }
 
     results.push(questionnaire);

@@ -1879,25 +1879,40 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
     // employee/beneficiary) is assigned by cascade from its principal, never
     // independently, so it must never appear here as its own queue item.
     const queueRoleFilter = { caseRole: { $in: ["principal", "single"] } };
-    const [unassignedCases, assignedCases, priorityCases, agingCases, workload] = await Promise.all([
+    const [unassignedCases, assignedCases, priorityCases, agingCases, grouped] = await Promise.all([
       Case.find({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] } })
         .populate("companyId", "name legalName")
         .populate("beneficiary", "firstName lastName fullName email")
         .select("caseNumber clientName clientEmail visaType visaCategory priority status package plan companyId beneficiary journeyProgress createdAt questionnaireData")
         .sort({ createdAt: -1 })
-        .limit(25),
-      Case.countDocuments({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } }),
-      Case.find({ ...teamFilter, priority: { $in: ["high", "urgent", "Premium Processing"] }, status: { $nin: ["closed", "archived"] } }).sort({ updatedAt: -1 }).limit(25),
-      Case.countDocuments({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] }, createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }),
+        .limit(25)
+        .maxTimeMS(8000),
+      Case.countDocuments({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } }).maxTimeMS(8000),
+      Case.find({ ...teamFilter, priority: { $in: ["high", "urgent", "Premium Processing"] }, status: { $nin: ["closed", "archived"] } }).sort({ updatedAt: -1 }).limit(25).maxTimeMS(8000),
+      Case.countDocuments({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] }, createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }).maxTimeMS(8000),
+      // Perf fix: $lookup against `users` can't use an index and does a
+      // collection scan on Atlas M0 - replaced with a $group-only aggregate
+      // (index-backed on assignedCaseManager) plus a single separate,
+      // indexed User.find({_id:{$in:...}}) below, instead of joining inside
+      // the aggregate pipeline itself.
       Case.aggregate([
         { $match: { ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } } },
         { $group: { _id: "$assignedCaseManager", totalCases: { $sum: 1 }, activeCases: { $sum: { $cond: [{ $ne: ["$status", "pending_assignment"] }, 1, 0] } }, pendingCases: { $sum: { $cond: [{ $eq: ["$status", "pending_assignment"] }, 1, 0] } } } },
-        { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "caseManager" } },
-        { $unwind: { path: "$caseManager", preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 0, caseManagerId: "$_id", caseManagerName: { $ifNull: ["$caseManager.name", "$caseManager.email"] }, totalCases: 1, activeCases: 1, pendingCases: 1 } },
         { $sort: { activeCases: -1 } },
-      ]),
+      ]).option({ maxTimeMS: 8000 }),
     ]);
+    const cmIds = grouped.map((g) => g._id).filter(Boolean);
+    const cms = cmIds.length
+      ? await User.find({ _id: { $in: cmIds } }).select("name displayName email").maxTimeMS(8000).lean()
+      : [];
+    const cmMap = new Map(cms.map((u) => [String(u._id), u]));
+    const workload = grouped.map((g) => ({
+      caseManagerId: g._id,
+      caseManagerName: g._id ? (cmMap.get(String(g._id))?.name || cmMap.get(String(g._id))?.displayName || cmMap.get(String(g._id))?.email) : null,
+      totalCases: g.totalCases,
+      activeCases: g.activeCases,
+      pendingCases: g.pendingCases,
+    }));
     const payload = {
       newCases: unassignedCases.length,
       unassignedCases: unassignedCases.length,

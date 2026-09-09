@@ -451,8 +451,31 @@ const CRMCaseDetail = () => {
     setLetters([])
     setTracking(emptyTracking)
     fetchCaseDetail()
-    fetchUsers()
   }, [id])
+
+  // Perf fix: /users/assignable used to fire unconditionally on every case
+  // open even though it's only ever needed for the assignment modal or the
+  // tracking tab's RFE "Responsible Case Manager" select. Deferred to first
+  // actual need via ensureUsers() below - watching showAssignModal (rather
+  // than editing every setShowAssignModal(true) call site individually)
+  // guarantees every place that opens the modal is covered, including any
+  // added later.
+  const usersLoaded = useRef(false)
+  const ensureUsers = useCallback(async () => {
+    if (usersLoaded.current || users.length > 0) return
+    usersLoaded.current = true
+    try {
+      const response = await api.get('/users/assignable')
+      setUsers(response.data.users || [])
+    } catch (error) {
+      usersLoaded.current = false
+      console.error('Error fetching users:', error)
+    }
+  }, [users.length])
+
+  useEffect(() => {
+    if (showAssignModal) ensureUsers()
+  }, [showAssignModal, ensureUsers])
 
   // As soon as the client submits (or updates) their profile information
   // against this case, refresh the client info section immediately so the
@@ -519,15 +542,6 @@ const CRMCaseDetail = () => {
       console.error('Error fetching case detail:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchUsers = async () => {
-    try {
-      const response = await api.get('/users/assignable')
-      setUsers(response.data.users || [])
-    } catch (error) {
-      console.error('Error fetching users:', error)
     }
   }
 
@@ -770,8 +784,8 @@ const CRMCaseDetail = () => {
     if (activeTab === 'forms' && !fetched.forms) fetchCaseForms()
     if (activeTab === 'strategy' && !fetched.strategy) fetchEligibility()
     if (activeTab === 'letters' && !fetched.letters) fetchLetters()
-    if (activeTab === 'tracking' && !fetched.tracking) fetchTracking()
-  }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchEligibility, fetchLetters, fetchTracking])
+    if (activeTab === 'tracking' && !fetched.tracking) { fetchTracking(); ensureUsers() }
+  }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchEligibility, fetchLetters, fetchTracking, ensureUsers])
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)

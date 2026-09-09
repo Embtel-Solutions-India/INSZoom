@@ -741,8 +741,27 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     for (let attempt = 0; attempt <= AUTOSAVE_RETRY_DELAYS_MS.length; attempt += 1) {
       try {
         if (attempt > 0) setSaveState('retrying')
-        await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, payload)
+        const response = await uscisFormsApi.saveWorkspaceField(caseId, caseForm._id, payload)
         lastSaved.current = setByPath(lastSaved.current, adapted.fieldName, value)
+        // Perf fix: the server's response is the full, already-saved CaseForm
+        // (interactive-form-review.service.js's saveField -> overrideField),
+        // which can carry MORE than just the field we sent - a reverse-sync
+        // fan-out can update sibling PDF fields sharing the same canonical
+        // source on this same save. Previously the only way to see a sibling
+        // update was a full loadWorkspace() reload; merging the response's
+        // fieldValues here reflects them immediately without one, for the
+        // common case. This is additive only - it never removes a full
+        // reload where one is still explicitly requested (see
+        // savePendingChanges' own reload option, unchanged).
+        const serverForm = response?.data?.form || response?.data?.data
+        if (serverForm?.fieldValues && typeof serverForm.fieldValues === 'object') {
+          Object.entries(serverForm.fieldValues).forEach(([key, fieldValue]) => {
+            if (key === adapted.fieldName) return
+            if (sameValue(getByPath(lastSaved.current, key), fieldValue)) return
+            lastSaved.current = setByPath(lastSaved.current, key, fieldValue)
+            setValues((current) => setByPath(current, key, fieldValue))
+          })
+        }
         dirtyFieldsRef.current.delete(adapted.fieldName)
         setDirtyCount(dirtyFieldsRef.current.size)
         setFieldSaveStatus((current) => ({ ...current, [adapted.fieldName]: 'saved' }))
