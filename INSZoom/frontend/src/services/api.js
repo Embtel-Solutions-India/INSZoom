@@ -208,6 +208,8 @@ export const questionnairesApi = {
   archive: (id) => api.delete(`/questionnaires/${id}`),
   duplicate: (id, payload = {}) => api.post(`/questionnaires/${id}/clone`, payload),
   version: (id) => api.post(`/questionnaires/${id}/version`),
+  publish: (id) => api.post(`/questionnaires/${id}/publish`),
+  reorder: (id, payload) => api.put(`/questionnaires/${id}/reorder`, payload),
   get: (id) => api.get(`/questionnaires/${id}`),
   getForCase: (caseId, params = {}) => cachedGet(`/questionnaires/case/${caseId}`, { params }),
   listCaseChecklists: (caseId) => cachedGet(`/questionnaires/case/${caseId}/checklists`),
@@ -219,6 +221,14 @@ export const questionnairesApi = {
   progress: (id, params = {}) => api.get(`/questionnaires/${id}/progress`, { params }),
   mappings: (id) => api.get(`/questionnaires/${id}/uscis-mappings`),
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
+}
+
+// Public, unauthenticated - the single source of truth for the visa list +
+// categories (Backend/src/modules/eligibility-quiz/quiz.config.js's
+// VISA_PATHWAYS). Reused here instead of a hardcoded copy so the checklist
+// builder's visa picker can never drift out of sync with the backend.
+export const eligibilityQuizApi = {
+  visas: () => api.get('/eligibility-quiz/visas'),
 }
 
 export const documentsApi = {

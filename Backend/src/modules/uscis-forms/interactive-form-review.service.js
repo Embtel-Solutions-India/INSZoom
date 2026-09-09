@@ -450,8 +450,16 @@ class InteractiveFormReviewService {
     const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
       ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
     if (valuesEqual(previousValue, payload.value)) return caseForm;
-    await AutoFillService.overrideField(caseId, caseForm.formCode, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
-    const updated = await CaseForm.findById(caseFormId).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
+    // Perf fix: overrideField already fetches, mutates and saves this exact
+    // CaseForm (returning the live, already-saved document - `caseForm` for
+    // a plain override, or `finalForm` after a sibling-regen fan-out) - the
+    // second `CaseForm.findById(caseFormId).populate(...)` this used to do
+    // here was a byte-for-byte redundant full-document re-fetch. Reuse the
+    // returned document directly; only `formTemplateId` needs populating on
+    // it (findCaseForm/generate don't reliably leave it populated), and that
+    // populate call is far cheaper than re-fetching the whole CaseForm.
+    const updated = await AutoFillService.overrideField(caseId, caseForm.formCode, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
+    await updated.populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
     updated.status = "under_review";
     updated.lastModifiedBy = this.userId(user);
     updated.lastModifiedAt = new Date();
