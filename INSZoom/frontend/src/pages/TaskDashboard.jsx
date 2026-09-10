@@ -84,24 +84,24 @@ const TaskDashboard = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       assigned: 'bg-blue-100 text-blue-800',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getPriorityColor = (priority) => {
     const colors = {
-      low: 'bg-gray-100 text-gray-800',
+      low: 'bg-secondary text-foreground',
       medium: 'bg-blue-100 text-blue-800',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
-    return colors[priority] || 'bg-gray-100 text-gray-800'
+    return colors[priority] || 'bg-secondary text-foreground'
   }
 
   const formatStatus = (status) => {
@@ -109,11 +109,11 @@ const TaskDashboard = () => {
   }
 
   const StatCard = ({ title, value, icon: Icon, color, trend }) => (
-    <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+    <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
           {trend && (
             <div className={`flex items-center text-sm mt-2 ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
               <TrendingUp className="w-4 h-4 mr-1" />
@@ -141,8 +141,8 @@ const TaskDashboard = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Task Dashboard</h1>
-          <p className="text-gray-600 mt-1">Overview of your task management</p>
+          <h1 className="text-2xl font-bold text-foreground">Task Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Overview of your task management</p>
         </div>
         {is(['super_admin', 'admin', 'team_lead', 'case_manager']) && (
           <button
@@ -197,8 +197,8 @@ const TaskDashboard = () => {
 
           {/* Status Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Tasks by Status</h3>
+            <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Tasks by Status</h3>
               <div className="space-y-3">
                 {Object.entries(stats.statusCounts || defaultStats.statusCounts).map(([status, count]) => (
                   <div key={status} className="flex items-center justify-between">
@@ -207,14 +207,14 @@ const TaskDashboard = () => {
                         {formatStatus(status)}
                       </span>
                     </div>
-                    <span className="font-semibold text-gray-900">{count}</span>
+                    <span className="font-semibold text-foreground">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Tasks by Priority</h3>
+            <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Tasks by Priority</h3>
               <div className="space-y-3">
                 {Object.entries(stats.priorityCounts || defaultStats.priorityCounts).map(([priority, count]) => (
                   <div key={priority} className="flex items-center justify-between">
@@ -223,7 +223,7 @@ const TaskDashboard = () => {
                         {priority.charAt(0).toUpperCase() + priority.slice(1)}
                       </span>
                     </div>
-                    <span className="font-semibold text-gray-900">{count}</span>
+                    <span className="font-semibold text-foreground">{count}</span>
                   </div>
                 ))}
               </div>
@@ -236,48 +236,48 @@ const TaskDashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           onClick={() => navigate('/tasks/my-tasks')}
-          className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
         >
           <Users className="w-6 h-6 text-blue-600 mb-2" />
-          <h3 className="font-semibold text-gray-900">My Tasks</h3>
-          <p className="text-sm text-gray-600">View assigned tasks</p>
+          <h3 className="font-semibold text-foreground">My Tasks</h3>
+          <p className="text-sm text-muted-foreground">View assigned tasks</p>
         </button>
 
         {is(['super_admin', 'admin', 'team_lead']) && (
           <button
             onClick={() => navigate('/tasks/team-tasks')}
-            className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:border-blue-500 transition-colors text-left"
+            className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
           >
             <Users className="w-6 h-6 text-blue-600 mb-2" />
-            <h3 className="font-semibold text-gray-900">Team Tasks</h3>
-            <p className="text-sm text-gray-600">View team tasks</p>
+            <h3 className="font-semibold text-foreground">Team Tasks</h3>
+            <p className="text-sm text-muted-foreground">View team tasks</p>
           </button>
         )}
 
         <button
           onClick={() => navigate('/tasks/calendar')}
-          className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
         >
           <Calendar className="w-6 h-6 text-purple-600 mb-2" />
-          <h3 className="font-semibold text-gray-900">Task Calendar</h3>
-          <p className="text-sm text-gray-600">View calendar view</p>
+          <h3 className="font-semibold text-foreground">Task Calendar</h3>
+          <p className="text-sm text-muted-foreground">View calendar view</p>
         </button>
 
         <button
           onClick={() => navigate('/tasks/all')}
-          className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
         >
           <FileText className="w-6 h-6 text-orange-600 mb-2" />
-          <h3 className="font-semibold text-gray-900">All Tasks</h3>
-          <p className="text-sm text-gray-600">View all tasks</p>
+          <h3 className="font-semibold text-foreground">All Tasks</h3>
+          <p className="text-sm text-muted-foreground">View all tasks</p>
         </button>
       </div>
 
       {/* Recent Tasks */}
       {recentTasks.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Tasks</h3>
+            <h3 className="text-lg font-semibold text-foreground">Recent Tasks</h3>
             <button
               onClick={() => navigate('/tasks/all')}
               className="text-blue-600 hover:text-blue-700 flex items-center gap-1 text-sm font-medium"
@@ -290,10 +290,10 @@ const TaskDashboard = () => {
               <div
                 key={task._id}
                 onClick={() => navigate(`/tasks/${task._id}`)}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="flex items-center justify-between p-4 bg-muted rounded-lg hover:bg-secondary transition-colors cursor-pointer"
               >
                 <div className="flex-1">
-                  <h4 className="font-medium text-gray-900">{task.title}</h4>
+                  <h4 className="font-medium text-foreground">{task.title}</h4>
                   <div className="flex items-center gap-2 mt-1">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
                       {task.priority}
@@ -304,10 +304,10 @@ const TaskDashboard = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-muted-foreground">
                     Due: {new Date(task.dueDate).toLocaleDateString()}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {task.assignedTo?.name}
                   </p>
                 </div>

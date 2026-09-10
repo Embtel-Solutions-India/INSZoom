@@ -47,43 +47,43 @@ export default function FilingForm({ pkg, onCancel, onRecordFiling, onRecordRece
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-        <h3 className="text-xl font-bold text-gray-900 mb-4">{alreadyFiled ? 'Filing Details' : 'Record Filing'}</h3>
+      <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <h3 className="text-xl font-bold text-foreground mb-4">{alreadyFiled ? 'Filing Details' : 'Record Filing'}</h3>
 
         {!alreadyFiled ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Method</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Method</label>
               <select value={method} onChange={(e) => setMethod(e.target.value)} className="input-field" disabled={submitting}>
                 {METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
               </select>
             </div>
             {method !== 'online' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Address Used</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Address Used</label>
                 <textarea value={addressUsed} onChange={(e) => setAddressUsed(e.target.value)} className="input-field" placeholder="USCIS lockbox / service center address" disabled={submitting} />
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Shipped Date</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Shipped Date</label>
               <input type="date" value={shippedAt} onChange={(e) => setShippedAt(e.target.value)} className="input-field" disabled={submitting} />
             </div>
             {method !== 'online' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tracking Number</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Tracking Number</label>
                 <input type="text" value={trackingNumber} onChange={(e) => setTrackingNumber(e.target.value)} className="input-field" placeholder="Optional" disabled={submitting} />
               </div>
             )}
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-              <span className="font-medium text-gray-900">{METHODS.find((m) => m.value === pkg.filing?.method)?.label || pkg.filing?.method}</span>
+            <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{METHODS.find((m) => m.value === pkg.filing?.method)?.label || pkg.filing?.method}</span>
               {pkg.filing?.trackingNumber ? ` · ${pkg.filing.trackingNumber}` : ''}
               {pkg.filing?.shippedAt ? ` · shipped ${new Date(pkg.filing.shippedAt).toLocaleDateString()}` : ''}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Number</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Receipt Number</label>
               <input type="text" value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} className="input-field" placeholder="e.g. EAC2612345678" disabled={submitting} />
             </div>
           </div>

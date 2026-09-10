@@ -105,7 +105,7 @@ const Settings = () => {
   }
 
   if (loading) {
-    return <div className="text-gray-600">Loading settings...</div>
+    return <div className="text-muted-foreground">Loading settings...</div>
   }
 
   const tabs = []
@@ -124,12 +124,12 @@ const Settings = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Configure system settings and preferences</p>
+        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <p className="text-muted-foreground mt-1">Configure system settings and preferences</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-border">
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
@@ -139,7 +139,7 @@ const Settings = () => {
               className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
                 activeTab === tab.id
                   ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -156,13 +156,13 @@ const Settings = () => {
             <div className="p-2 bg-blue-100 rounded-lg">
               <SettingsIcon className="w-5 h-5 text-blue-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">General Settings</h3>
+            <h3 className="text-lg font-semibold text-foreground">General Settings</h3>
           </div>
 
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Application Name</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Application Name</label>
                 <input
                   type="text"
                   value={settings?.companyName || ''}
@@ -172,7 +172,7 @@ const Settings = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Timezone</label>
                 <select
                   value={settings?.timezone || 'America/New_York'}
                   onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
@@ -187,7 +187,7 @@ const Settings = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Default Language</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Default Language</label>
                 <select
                   value={settings?.defaultLanguage || 'en'}
                   onChange={(e) => setSettings({ ...settings, defaultLanguage: e.target.value })}
@@ -201,7 +201,7 @@ const Settings = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Date Format</label>
                 <select
                   value={settings?.dateFormat || 'MM/DD/YYYY'}
                   onChange={(e) => setSettings({ ...settings, dateFormat: e.target.value })}
@@ -214,12 +214,12 @@ const Settings = () => {
               </div>
             </div>
 
-            <div className="border-t border-gray-200 pt-6">
+            <div className="border-t border-border pt-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-amber-100 rounded-lg">
                   <Bell className="w-5 h-5 text-amber-600" />
                 </div>
-                <h4 className="text-md font-semibold text-gray-900">Notification Preferences</h4>
+                <h4 className="text-md font-semibold text-foreground">Notification Preferences</h4>
               </div>
 
               <div className="space-y-3">
@@ -231,7 +231,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnNewCase: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnNewCase" className="text-sm text-gray-700">New client submission</label>
+                  <label htmlFor="notifyOnNewCase" className="text-sm text-muted-foreground">New client submission</label>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnPayment: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnPayment" className="text-sm text-gray-700">Payment received</label>
+                  <label htmlFor="notifyOnPayment" className="text-sm text-muted-foreground">Payment received</label>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -253,7 +253,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnPaymentOverdue: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnPaymentOverdue" className="text-sm text-gray-700">Payment overdue</label>
+                  <label htmlFor="notifyOnPaymentOverdue" className="text-sm text-muted-foreground">Payment overdue</label>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -264,7 +264,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnRfeReceived: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnRfeReceived" className="text-sm text-gray-700">RFE received</label>
+                  <label htmlFor="notifyOnRfeReceived" className="text-sm text-muted-foreground">RFE received</label>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -275,7 +275,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnDocumentUpload: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnDocumentUpload" className="text-sm text-gray-700">Document upload</label>
+                  <label htmlFor="notifyOnDocumentUpload" className="text-sm text-muted-foreground">Document upload</label>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -286,7 +286,7 @@ const Settings = () => {
                     onChange={(e) => setSettings({ ...settings, notifyOnEODReport: e.target.checked })}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <label htmlFor="notifyOnEODReport" className="text-sm text-gray-700">EOD report</label>
+                  <label htmlFor="notifyOnEODReport" className="text-sm text-muted-foreground">EOD report</label>
                 </div>
               </div>
             </div>
@@ -323,12 +323,12 @@ const Settings = () => {
             <div className="p-2 bg-purple-100 rounded-lg">
               <Users className="w-5 h-5 text-purple-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Team Settings</h3>
+            <h3 className="text-lg font-semibold text-foreground">Team Settings</h3>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Default Case Assignment Strategy</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Default Case Assignment Strategy</label>
               <select
                 value={settings?.assignmentStrategy || 'manual'}
                 onChange={(e) => setSettings({ ...settings, assignmentStrategy: e.target.value })}
@@ -342,7 +342,7 @@ const Settings = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">SLA: Intake Max Days</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">SLA: Intake Max Days</label>
                 <input
                   type="number"
                   value={settings?.slaIntakeMaxDays || 7}
@@ -376,16 +376,16 @@ const Settings = () => {
           <div className="card">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-2 bg-violet-100 rounded-lg"><Brain className="w-5 h-5 text-violet-600" /></div>
-              <div><h3 className="text-lg font-semibold text-gray-900">AI Providers</h3><p className="text-sm text-gray-500">Credentials remain in environment variables and are never stored here.</p></div>
+              <div><h3 className="text-lg font-semibold text-foreground">AI Providers</h3><p className="text-sm text-muted-foreground">Credentials remain in environment variables and are never stored here.</p></div>
             </div>
             <div className="space-y-4">
               {aiProviders.map((provider) => (
-                <div key={provider.key} className="rounded-xl border border-gray-200 p-4">
+                <div key={provider.key} className="rounded-xl border border-border p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div><p className="font-semibold text-gray-900">{provider.displayName}</p><p className="text-sm text-gray-500">{provider.model} · secret: {provider.apiKeyEnv}</p></div>
+                    <div><p className="font-semibold text-foreground">{provider.displayName}</p><p className="text-sm text-muted-foreground">{provider.model} · secret: {provider.apiKeyEnv}</p></div>
                     <div className="flex items-center gap-3">
                       {provider.isDefault && <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Default</span>}
-                      <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={provider.enabled} onChange={async (event) => {
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={provider.enabled} onChange={async (event) => {
                         const response = await api.put(`/ai/providers/${provider.key}`, { enabled: event.target.checked })
                         setAiProviders((current) => current.map((item) => item.key === provider.key ? response.data.provider : item))
                       }} />Enabled</label>
@@ -397,7 +397,7 @@ const Settings = () => {
                     <input value={provider.limits?.requestsPerMinute || 30} type="number" min="1" onChange={(event) => setAiProviders((current) => current.map((item) => item.key === provider.key ? { ...item, limits: { ...item.limits, requestsPerMinute: Number(event.target.value) } } : item))} className="input-field" placeholder="Requests/minute" />
                   </div>
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={provider.privacy?.sendSensitiveData !== false} onChange={(event) => setAiProviders((current) => current.map((item) => item.key === provider.key ? { ...item, privacy: { ...item.privacy, sendSensitiveData: event.target.checked } } : item))} />Allow sensitive fields for this provider</label>
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground"><input type="checkbox" checked={provider.privacy?.sendSensitiveData !== false} onChange={(event) => setAiProviders((current) => current.map((item) => item.key === provider.key ? { ...item, privacy: { ...item.privacy, sendSensitiveData: event.target.checked } } : item))} />Allow sensitive fields for this provider</label>
                     <button onClick={async () => {
                       const response = await api.put(`/ai/providers/${provider.key}`, {
                         enabled: provider.enabled,
@@ -415,8 +415,8 @@ const Settings = () => {
             </div>
           </div>
           <div className="grid gap-6 xl:grid-cols-2">
-            <div className="card"><h3 className="text-lg font-semibold text-gray-900">Prompt Versions</h3><div className="mt-4 space-y-3">{aiPrompts.map((prompt) => <div key={prompt._id} className="rounded-lg border border-gray-200 p-3"><div className="flex justify-between gap-3"><div><p className="font-semibold text-gray-900">{prompt.name}</p><p className="text-sm text-gray-500">{prompt.key} · version {prompt.version}</p></div><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${prompt.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{prompt.status}</span></div></div>)}</div></div>
-            <div className="card"><h3 className="text-lg font-semibold text-gray-900">Usage & Cost</h3><div className="mt-4 space-y-3">{aiUsage.length ? aiUsage.map((row, index) => <div key={index} className="rounded-lg border border-gray-200 p-3"><p className="font-semibold text-gray-900">{row._id?.provider || 'Unassigned'} · {row._id?.jobType}</p><p className="mt-1 text-sm text-gray-500">{row.requests} requests · {row.totalTokens || 0} tokens · ${(row.estimatedCost || 0).toFixed(4)}</p></div>) : <p className="text-sm text-gray-500">No AI usage recorded yet.</p>}</div></div>
+            <div className="card"><h3 className="text-lg font-semibold text-foreground">Prompt Versions</h3><div className="mt-4 space-y-3">{aiPrompts.map((prompt) => <div key={prompt._id} className="rounded-lg border border-border p-3"><div className="flex justify-between gap-3"><div><p className="font-semibold text-foreground">{prompt.name}</p><p className="text-sm text-muted-foreground">{prompt.key} · version {prompt.version}</p></div><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${prompt.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-secondary text-muted-foreground'}`}>{prompt.status}</span></div></div>)}</div></div>
+            <div className="card"><h3 className="text-lg font-semibold text-foreground">Usage & Cost</h3><div className="mt-4 space-y-3">{aiUsage.length ? aiUsage.map((row, index) => <div key={index} className="rounded-lg border border-border p-3"><p className="font-semibold text-foreground">{row._id?.provider || 'Unassigned'} · {row._id?.jobType}</p><p className="mt-1 text-sm text-muted-foreground">{row.requests} requests · {row.totalTokens || 0} tokens · ${(row.estimatedCost || 0).toFixed(4)}</p></div>) : <p className="text-sm text-muted-foreground">No AI usage recorded yet.</p>}</div></div>
           </div>
         </div>
       )}
@@ -428,23 +428,23 @@ const Settings = () => {
             <div className="p-2 bg-green-100 rounded-lg">
               <Database className="w-5 h-5 text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Integration Settings</h3>
+            <h3 className="text-lg font-semibold text-foreground">Integration Settings</h3>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Client Portal URL</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Client Portal URL</label>
               <input
                 type="text"
                 value={settings?.clientPortalUrl || ''}
                 readOnly
-                className="input-field bg-gray-100 cursor-not-allowed"
+                className="input-field bg-secondary cursor-not-allowed"
               />
-              <p className="text-xs text-gray-500 mt-1">Read-only - configured in environment</p>
+              <p className="text-xs text-muted-foreground mt-1">Read-only - configured in environment</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sync Mode</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Sync Mode</label>
               <select
                 value={settings?.autoSyncEnabled ? 'auto' : 'manual'}
                 onChange={(e) => setSettings({ ...settings, autoSyncEnabled: e.target.value === 'auto' })}
@@ -457,7 +457,7 @@ const Settings = () => {
 
             {settings?.autoSyncEnabled && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Sync Interval (seconds)</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Sync Interval (seconds)</label>
                 <input
                   type="number"
                   value={settings?.syncInterval || 3600}
@@ -468,7 +468,7 @@ const Settings = () => {
               </div>
             )}
 
-            <div className="border-t border-gray-200 pt-6">
+            <div className="border-t border-border pt-6">
               <button
                 onClick={handleTestConnection}
                 disabled={testingConnection}
@@ -516,23 +516,23 @@ const Settings = () => {
             <div className="p-2 bg-red-100 rounded-lg">
               <Shield className="w-5 h-5 text-red-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Security Settings</h3>
+            <h3 className="text-lg font-semibold text-foreground">Security Settings</h3>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">JWT Expiry</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">JWT Expiry</label>
               <input
                 type="text"
                 value={settings?.jwtExpiry || '4d'}
                 readOnly
-                className="input-field bg-gray-100 cursor-not-allowed"
+                className="input-field bg-secondary cursor-not-allowed"
               />
-              <p className="text-xs text-gray-500 mt-1">Read-only - configured in environment</p>
+              <p className="text-xs text-muted-foreground mt-1">Read-only - configured in environment</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Max Login Attempts</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Max Login Attempts</label>
               <input
                 type="number"
                 value={settings?.maxLoginAttempts || 5}
@@ -544,7 +544,7 @@ const Settings = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Session Timeout (seconds)</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Session Timeout (seconds)</label>
               <input
                 type="number"
                 value={settings?.sessionTimeout || 3600}
@@ -568,14 +568,14 @@ const Settings = () => {
               </button>
             </div>
 
-            <div className="border-t border-gray-200 pt-6">
+            <div className="border-t border-border pt-6">
               <div className="flex items-center gap-3 mb-3">
                 <div className="p-2 bg-red-100 rounded-lg">
                   <Trash2 className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <h4 className="text-md font-semibold text-gray-900">Danger Zone</h4>
-                  <p className="text-sm text-gray-500">Removes demo/seed data created by the shared backend's seed scripts. Never touches real client, questionnaire, or form template data.</p>
+                  <h4 className="text-md font-semibold text-foreground">Danger Zone</h4>
+                  <p className="text-sm text-muted-foreground">Removes demo/seed data created by the shared backend's seed scripts. Never touches real client, questionnaire, or form template data.</p>
                 </div>
               </div>
               <button
@@ -598,12 +598,12 @@ const Settings = () => {
             <div className="p-2 bg-cyan-100 rounded-lg">
               <Palette className="w-5 h-5 text-cyan-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">Branding Settings</h3>
+            <h3 className="text-lg font-semibold text-foreground">Branding Settings</h3>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Company Name</label>
               <input
                 type="text"
                 value={settings?.companyName || ''}
@@ -613,7 +613,7 @@ const Settings = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Logo URL</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Logo URL</label>
               <input
                 type="text"
                 value={settings?.companyLogo || ''}
@@ -624,7 +624,7 @@ const Settings = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Firm Address</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Firm Address</label>
               <input
                 type="text"
                 value={settings?.firmAddress || ''}
@@ -632,11 +632,11 @@ const Settings = () => {
                 className="input-field"
                 placeholder="123 Main St, Suite 400, City, ST 00000"
               />
-              <p className="mt-1 text-xs text-gray-500">Shown on the letterhead of generated legal documents (e.g. petition cover letters).</p>
+              <p className="mt-1 text-xs text-muted-foreground">Shown on the letterhead of generated legal documents (e.g. petition cover letters).</p>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Firm Phone</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Firm Phone</label>
               <input
                 type="text"
                 value={settings?.firmPhone || ''}
@@ -647,7 +647,7 @@ const Settings = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Primary Color</label>
               <div className="flex items-center gap-3">
                 <input
                   type="color"

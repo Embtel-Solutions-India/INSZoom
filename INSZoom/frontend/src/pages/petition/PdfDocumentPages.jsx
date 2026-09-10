@@ -63,7 +63,7 @@ export default function PdfDocumentPages({ documentId, width = 816, renderSheet,
 
   if (!blobUrl) {
     return renderSheet(
-      <div className="flex h-[300px] items-center justify-center text-sm text-gray-400">Loading…</div>,
+      <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">Loading…</div>,
       'loading'
     )
   }
@@ -77,7 +77,7 @@ export default function PdfDocumentPages({ documentId, width = 816, renderSheet,
   return (
     <Document
       file={blobUrl}
-      loading={renderSheet(<div className="flex h-[300px] items-center justify-center text-sm text-gray-400">Loading…</div>, 'loading')}
+      loading={renderSheet(<div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">Loading…</div>, 'loading')}
       error={renderSheet(<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render this document.</div>, 'error')}
       onLoadSuccess={({ numPages }) => { setPageCount(numPages); onPageCount?.(numPages) }}
       onLoadError={() => onPageCount?.(1)}

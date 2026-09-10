@@ -66,25 +66,25 @@ export default function LetterSheet({ section, exhibitIndex, isDraft, disabled, 
         )}
         {!disabled && <RichTextToolbar editor={editor} disabled={disabled} />}
         <div className="px-16 py-10">
-          <div className="prose prose-sm max-w-none font-serif text-[15px] leading-relaxed text-gray-900">
+          <div className="prose prose-sm max-w-none font-serif text-[15px] leading-relaxed text-foreground">
             <EditorContent editor={editor} />
           </div>
           {section.type === 'cover_letter' && (
             <div className="mt-6">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Index of Exhibits</p>
-              <p className="mb-3 text-xs text-gray-400">This table is derived from the exhibits below and can't be edited directly — reorder exhibits in the outline to change it.</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Index of Exhibits</p>
+              <p className="mb-3 text-xs text-muted-foreground">This table is derived from the exhibits below and can't be edited directly — reorder exhibits in the outline to change it.</p>
               <table className="w-full border-collapse text-sm">
                 <thead>
-                  <tr className="bg-gray-50">
-                    <th className="border border-gray-200 px-3 py-2 text-left font-semibold">Exhibit</th>
-                    <th className="border border-gray-200 px-3 py-2 text-left font-semibold">Description</th>
+                  <tr className="bg-muted">
+                    <th className="border border-border px-3 py-2 text-left font-semibold">Exhibit</th>
+                    <th className="border border-border px-3 py-2 text-left font-semibold">Description</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(exhibitIndex || []).map((exhibit) => (
                     <tr key={exhibit.key}>
-                      <td className="border border-gray-200 px-3 py-2">Exhibit {exhibit.label}</td>
-                      <td className="border border-gray-200 px-3 py-2">{exhibit.description || exhibit.title}</td>
+                      <td className="border border-border px-3 py-2">Exhibit {exhibit.label}</td>
+                      <td className="border border-border px-3 py-2">{exhibit.description || exhibit.title}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -92,7 +92,7 @@ export default function LetterSheet({ section, exhibitIndex, isDraft, disabled, 
             </div>
           )}
         </div>
-        <div className="border-t border-gray-100 px-16 py-2 text-right text-xs text-gray-400">
+        <div className="border-t border-border px-16 py-2 text-right text-xs text-muted-foreground">
           {saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Not saved — retry' : saveState === 'saved' ? 'All changes saved' : ' '}
         </div>
       </div>

@@ -157,7 +157,7 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
         <div className="bg-red-50 px-5 py-2 text-sm text-red-700">{actionError}</div>
       )}
 
-      <div className="flex min-h-0 flex-1 bg-white">
+      <div className="flex min-h-0 flex-1 bg-card">
         {loading && (
           <div className="flex flex-1 items-center justify-center text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />

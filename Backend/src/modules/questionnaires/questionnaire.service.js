@@ -16,6 +16,7 @@ const workflowService = require("../workflows/workflow.service");
 const logger = require("../../utils/logger");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("./employmentChecklists");
+const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
@@ -840,6 +841,34 @@ function calculateSectionCompletion(questionnaire, visibleQuestions, answerMap) 
     });
 }
 
+// EB1-B beneficiary checklist only: USCIS requires satisfying at least
+// eb1b.MIN_CRITERIA_REQUIRED (2) of the 6 evidentiary criteria sections
+// (A-F) — "satisfied" means at least one answered/uploaded item in that
+// criterion's section, reusing calculateSectionCompletion's existing
+// per-section answeredQuestions count (the same "has a document" signal
+// every other file-question section already relies on) rather than adding a
+// new document/answer lookup. Scoped strictly to this one questionnaire key
+// so no other visa's progress calculation changes — confirmed nothing like
+// this "N of M sections" check existed anywhere in the codebase before
+// (the O-1 criteria comment in employmentChecklists.js flags the identical
+// gap as deliberately deferred there); this is new, narrowly-scoped logic,
+// not an extension of condition-evaluator.js's per-answer rule engine.
+const EB1B_CRITERION_SECTION_KEYS = eb1b.EB1B_CRITERIA.map((criterion) =>
+  `EB-1B Criterion ${criterion.letter}`.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")
+);
+
+function calculateEb1bCriteriaStatus(sectionCompletions) {
+  const metSections = sectionCompletions.filter(
+    (section) => EB1B_CRITERION_SECTION_KEYS.includes(section.key) && section.answeredQuestions > 0
+  );
+  return {
+    criteriaRequired: eb1b.MIN_CRITERIA_REQUIRED,
+    criteriaMet: metSections.length,
+    criteriaSections: metSections.map((section) => section.key),
+    meetsMinimumCriteria: metSections.length >= eb1b.MIN_CRITERIA_REQUIRED,
+  };
+}
+
 // Shared by calculateDetailedProgress's default path and by callers (e.g.
 // listCaseChecklists) that need the visible-question list itself, not just
 // the completion stats derived from it - see visibleQuestionsOverride below.
@@ -876,6 +905,7 @@ async function calculateDetailedProgress(questionnaire, answerMap, user, visible
     totalQuestions: visibleQuestions.length,
     percent: visibleQuestions.length ? Math.round((answeredQuestions.length / visibleQuestions.length) * 100) : 0,
   };
+  const sections = calculateSectionCompletion(questionnaire, visibleQuestions, answerMap);
   return {
     ...completion,
     answeredQuestions: answeredQuestions.length,
@@ -886,7 +916,10 @@ async function calculateDetailedProgress(questionnaire, answerMap, user, visible
     // still missing" list is computed, so every surface renders the same set.
     missingRequired,
     completionPercentage: completion.percent,
-    sections: calculateSectionCompletion(questionnaire, visibleQuestions, answerMap),
+    sections,
+    // Present only for the EB1-B beneficiary checklist — see
+    // calculateEb1bCriteriaStatus above for why this is scoped this way.
+    ...(questionnaire.key === "eb1b_employee_checklist" ? { eb1bCriteria: calculateEb1bCriteriaStatus(sections) } : {}),
   };
 }
 
@@ -1828,11 +1861,23 @@ function reconcileQuestionFields(existingDoc, definitionQuestion) {
 // ENSURE_TTL_MS so normal traffic hits the cached result; a genuine content
 // change (a deploy, or an admin re-seed via the /defaults/seed endpoint)
 // still gets picked up within the TTL without needing a server restart.
+//
+// Bug fix: this used to cache ensureCache.promise for the lifetime of the
+// process — `now` was computed but never compared against `ensureCache.at`,
+// so ENSURE_TTL_MS (referenced only in this comment) didn't actually exist
+// as a constant and no expiry ever happened. In practice this meant any
+// definition added/edited in employmentChecklists.js/singlePartyChecklists.js/
+// familyChecklists.js after the first non-forced call in a running process
+// would never reach the database until either a server restart or someone
+// hit POST /defaults/seed (force:true) — exactly what suppressed the newly
+// added EB1B checklists from appearing on the admin Questionnaire Templates
+// page even though the code was correct. Restored the real TTL below.
+const ENSURE_TTL_MS = 5 * 60 * 1000;
 let ensureCache = { at: 0, promise: null };
 
 async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
   const now = Date.now();
-  if (!force && ensureCache.promise) return ensureCache.promise;
+  if (!force && ensureCache.promise && now - ensureCache.at < ENSURE_TTL_MS) return ensureCache.promise;
   const promise = ensureDefaultVisaTemplatesUncached(user, req).catch((error) => {
     // Don't cache a failure — the next call should retry against the DB.
     ensureCache = { at: 0, promise: null };

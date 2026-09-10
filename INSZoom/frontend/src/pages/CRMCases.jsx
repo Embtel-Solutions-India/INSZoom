@@ -3,10 +3,27 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import api, { casesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { Search, Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox } from 'lucide-react'
+import { Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox, List, LayoutGrid } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import CreateCaseModal from '../components/CreateCaseModal'
 import CaseCreatedSuccessModal from '../components/CaseCreatedSuccessModal'
+import Card from '../components/ui/Card'
+import StatBadge from '../components/ui/StatBadge'
+import SearchInput from '../components/ui/SearchInput'
+import FilterBar, { FilterSelect } from '../components/ui/FilterBar'
+
+// Board view groups the SAME page of cases already fetched via GET /cases
+// (no new API call, no new params) client-side by `status` - a purely
+// presentational second view of existing data, not a new data source.
+// Matches the exact status enum the Status filter dropdown already offers.
+const BOARD_COLUMNS = [
+  { key: 'pending_assignment', label: 'Pending Assignment' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'active', label: 'Active' },
+  { key: 'on_hold', label: 'On Hold' },
+  { key: 'archived', label: 'Archived' },
+  { key: 'closed', label: 'Closed' },
+]
 
 // Phase 5 case creation is restricted to admins and team leads.
 const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
@@ -45,6 +62,7 @@ const CRMCases = () => {
     hasNextPage: false,
     hasPreviousPage: false,
   })
+  const [viewMode, setViewMode] = useState('list') // 'list' | 'board' - presentational only, no data implications
   const [showCreateModal, setShowCreateModal] = useState(false)
   // P12-S2: replaces the browser-native alert() previously shown here — see
   // handleCaseCreated below.
@@ -211,31 +229,9 @@ const CRMCases = () => {
       }, [])
   }
 
-  const getStageColor = (stage) => {
-    const colors = {
-      intake: 'bg-gray-100 text-gray-800',
-      strategy: 'bg-blue-100 text-blue-800',
-      evidence: 'bg-purple-100 text-purple-800',
-      expert_letters: 'bg-pink-100 text-pink-800',
-      review: 'bg-amber-100 text-amber-800',
-      filing: 'bg-green-100 text-green-800',
-      uscis_pending: 'bg-cyan-100 text-cyan-800',
-      approved: 'bg-blue-100 text-blue-800',
-      denied: 'bg-red-100 text-red-800'
-    }
-    return colors[stage] || 'bg-gray-100 text-gray-800'
-  }
-
-  const getStatusColor = (status) => {
-    const colors = {
-      active: 'bg-green-100 text-green-800',
-      assigned: 'bg-green-100 text-green-800',
-      pending_assignment: 'bg-amber-100 text-amber-800',
-      archived: 'bg-gray-100 text-gray-800',
-      closed: 'bg-blue-100 text-blue-800'
-    }
-    return colors[status] || 'bg-gray-100 text-gray-800'
-  }
+  // Stage/status pill colors now come from the shared StatBadge component
+  // (components/ui/StatBadge.jsx), which carries this exact same mapping -
+  // this was the single source of truth Phase 1 consolidated from.
 
   const isAwaitingAssignment = (caseItem) => (
     caseItem.status === 'pending_assignment' || !caseItem.assignedCaseManager
@@ -278,10 +274,24 @@ const CRMCases = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">CRM Cases</h1>
-          <p className="text-gray-600 mt-1">Manage cases imported from Client Portal</p>
+          <h1 className="text-2xl font-bold text-foreground">CRM Cases</h1>
+          <p className="text-muted-foreground mt-1">Manage cases imported from Client Portal</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="hidden sm:flex items-center rounded-lg border border-border bg-card p-0.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'list' ? 'bg-primary-600 text-white' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <List className="w-3.5 h-3.5" /> List
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${viewMode === 'board' ? 'bg-primary-600 text-white' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Board
+            </button>
+          </div>
           {CAN_CREATE_CASE_ROLES.includes(user?.role) && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -318,28 +328,28 @@ const CRMCases = () => {
       {/* Phase 7 — Pending Assignment queue: principal/single cases only,
           never child cases (enforced server-side by getTeamLeadDashboard). */}
       {canSeePendingQueue && !pendingQueueLoading && pendingQueue.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
-          <div className="px-5 py-3 border-b border-amber-200 flex items-center gap-2">
-            <Inbox className="w-4 h-4 text-amber-700" />
-            <h2 className="text-sm font-bold uppercase tracking-wide text-amber-900">
+        <div className="rounded-2xl border border-border bg-muted overflow-hidden">
+          <div className="px-5 py-3 border-b border-border flex items-center gap-2">
+            <Inbox className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
               Pending Assignment ({pendingQueue.length})
             </h2>
           </div>
-          <div className="divide-y divide-amber-200">
+          <div className="divide-y divide-border">
             {pendingQueue.map((caseItem) => (
               <div
                 key={caseItem._id}
-                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-amber-100/60"
+                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-secondary"
                 onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
               >
                 <div className="min-w-0">
-                  <span className="text-sm font-semibold text-gray-900">{caseItem.caseNumber}</span>
-                  <span className="text-sm text-gray-600"> — {caseItem.clientName || 'Unknown'}</span>
-                  <span className="text-xs text-gray-500 ml-2">{resolveDisplayVisa(caseItem)}</span>
+                  <span className="text-sm font-semibold text-foreground">{caseItem.caseNumber}</span>
+                  <span className="text-sm text-muted-foreground"> — {caseItem.clientName || 'Unknown'}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{resolveDisplayVisa(caseItem)}</span>
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700 shrink-0"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700 shrink-0"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   Assign Case Manager
@@ -351,145 +361,191 @@ const CRMCases = () => {
       )}
 
       {/* Filters */}
-      <div className="card">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-4 sm:items-center">
-          <div className="w-full sm:flex-1 sm:min-w-[200px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search cases..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-          <div className="w-full sm:w-auto">
-            <select
-              value={stageFilter}
-              onChange={(e) => handleStageFilter(e.target.value)}
-              className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All Stages</option>
-              <option value="intake">Intake</option>
-              <option value="strategy">Strategy</option>
-              <option value="evidence">Evidence</option>
-              <option value="expert_letters">Expert Letters</option>
-              <option value="review">Review</option>
-              <option value="filing">Filing</option>
-              <option value="uscis_pending">USCIS Pending</option>
-              <option value="approved">Approved</option>
-              <option value="denied">Denied</option>
-            </select>
-          </div>
-          <div className="w-full sm:w-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => handleStatusFilter(e.target.value)}
-              className="w-full sm:w-auto px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="">All Status</option>
-              <option value="pending_assignment">Pending Assignment</option>
-              <option value="assigned">Assigned</option>
-              <option value="active">Active</option>
-              <option value="on_hold">On Hold</option>
-              <option value="archived">Archived</option>
-              <option value="closed">Closed</option>
-            </select>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <FilterBar>
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search cases…"
+            className="w-full sm:flex-1 sm:min-w-[200px]"
+          />
+          <FilterSelect
+            value={stageFilter}
+            onChange={handleStageFilter}
+            className="w-full sm:w-auto"
+            options={[
+              { value: '', label: 'All Stages' },
+              { value: 'intake', label: 'Intake' },
+              { value: 'strategy', label: 'Strategy' },
+              { value: 'evidence', label: 'Evidence' },
+              { value: 'expert_letters', label: 'Expert Letters' },
+              { value: 'review', label: 'Review' },
+              { value: 'filing', label: 'Filing' },
+              { value: 'uscis_pending', label: 'USCIS Pending' },
+              { value: 'approved', label: 'Approved' },
+              { value: 'denied', label: 'Denied' },
+            ]}
+          />
+          <FilterSelect
+            value={statusFilter}
+            onChange={handleStatusFilter}
+            className="w-full sm:w-auto"
+            options={[
+              { value: '', label: 'All Status' },
+              { value: 'pending_assignment', label: 'Pending Assignment' },
+              { value: 'assigned', label: 'Assigned' },
+              { value: 'active', label: 'Active' },
+              { value: 'on_hold', label: 'On Hold' },
+              { value: 'archived', label: 'Archived' },
+              { value: 'closed', label: 'Closed' },
+            ]}
+          />
+        </FilterBar>
+      </Card>
 
       {/* Cases Table */}
       <div className="card !p-0 md:!p-5">
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="text-gray-600">Loading cases...</div>
+            <div className="text-muted-foreground">Loading cases...</div>
           </div>
         ) : error ? (
           <div className="px-6 py-12 text-center text-sm">
-            <p className="font-medium text-red-700">{error}</p>
+            <p className="font-medium text-red-700 dark:text-red-400">{error}</p>
             <button type="button" onClick={retryFetchCases} className="btn-secondary mt-4">
               Try Again
             </button>
           </div>
         ) : cases.length === 0 ? (
-          <div className="px-6 py-12 text-center text-gray-500 text-sm">
+          <div className="px-6 py-12 text-center text-muted-foreground text-sm">
             No cases found. Sync from Client Portal to get started.
+          </div>
+        ) : viewMode === 'board' ? (
+          // Groups this SAME page of already-fetched `cases` by status - no
+          // extra API call. A case whose status isn't one of the known
+          // columns (rare/legacy data) still gets its own column so nothing
+          // silently disappears from the board.
+          <div className="overflow-x-auto pb-2">
+            <div className="flex gap-4 min-w-max">
+              {[
+                ...BOARD_COLUMNS,
+                ...Array.from(new Set(cases.map((c) => c.status).filter((s) => !BOARD_COLUMNS.some((col) => col.key === s))))
+                  .map((s) => ({ key: s, label: (s || 'Unknown').replace(/_/g, ' ') })),
+              ].map((column) => {
+                const columnCases = cases.filter((c) => c.status === column.key)
+                return (
+                  <div key={column.key} className="w-72 shrink-0">
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{column.label}</h3>
+                      <span className="text-xs font-semibold text-muted-foreground">{columnCases.length}</span>
+                    </div>
+                    <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
+                      {columnCases.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border py-6 text-center text-xs text-muted-foreground">No cases</div>
+                      ) : columnCases.map((caseItem) => {
+                        const awaitingAssignment = isAwaitingAssignment(caseItem)
+                        const caseManagerName = caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName
+                        return (
+                          <Card
+                            key={caseItem._id}
+                            className="!p-3 cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1.5">
+                              <span className="text-sm font-semibold text-foreground truncate">{caseItem.caseNumber}</span>
+                              <StatBadge value={caseItem.stage} kind="stage" className="shrink-0" />
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{caseItem.clientName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                              {caseManagerName ? (
+                                <span className="text-[11px] text-muted-foreground truncate">{caseManagerName}</span>
+                              ) : awaitingAssignment ? (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+                                >
+                                  <UserPlus className="w-3 h-3" /> Assign
+                                </button>
+                              ) : <span />}
+                            </div>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         ) : (
           <>
             {/* Mobile: stacked cards (below md) */}
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-border">
               {cases.map((caseItem) => {
                 const awaitingAssignment = isAwaitingAssignment(caseItem)
                 const caseManagerName = caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName
                 const creator = getCreator(caseItem)
                 return (
-                  <div key={caseItem._id} className={`p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40' : ''}`}>
+                  <div key={caseItem._id} className={`p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-gray-900">{caseItem.caseNumber}</span>
+                          <span className="font-semibold text-foreground">{caseItem.caseNumber}</span>
                           {awaitingAssignment && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0 dark:bg-amber-950/40 dark:text-amber-400">
                               <Bell className="h-2.5 w-2.5" />
                               New
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-800 mt-0.5 truncate">{caseItem.clientName}</p>
-                        <p className="text-xs text-gray-500 truncate">{caseItem.clientEmail}</p>
+                        <p className="text-sm text-foreground mt-0.5 truncate">{caseItem.clientName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{caseItem.clientEmail}</p>
                       </div>
-                      <span className={`shrink-0 px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseItem.stage)}`}>
-                        {caseItem.stage?.replace('_', ' ')}
-                      </span>
+                      <StatBadge value={caseItem.stage} kind="stage" className="shrink-0" />
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm text-gray-800 truncate">{resolveDisplayVisa(caseItem)}</p>
-                        <p className="text-xs text-gray-500 capitalize truncate">
+                        <p className="text-sm text-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground capitalize truncate">
                           {getPackageLabel(caseItem)?.replace?.('_', ' ') || getPackageLabel(caseItem)}
                         </p>
                       </div>
-                      <span className={`shrink-0 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(caseItem.status)}`}>
-                        {caseItem.status}
-                      </span>
+                      <StatBadge value={caseItem.status} kind="status" className="shrink-0" />
                     </div>
 
                     <div className="flex items-center justify-between gap-2 pt-1">
                       {caseManagerName ? (
-                        <p className="text-xs text-gray-500 truncate">{caseManagerName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{caseManagerName}</p>
                       ) : (
-                        <span className="text-xs text-amber-700 font-medium">Awaiting assignment</span>
+                        <span className="text-xs text-amber-700 font-medium dark:text-amber-400">Awaiting assignment</span>
                       )}
                       <div className="flex items-center gap-2 shrink-0">
                         {awaitingAssignment && (
                           <button
                             onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
                             title="Assign case manager"
-                            className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100"
+                            className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/40"
                           >
                             <UserPlus className="w-4 h-4" />
                           </button>
                         )}
                         <button
                           onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
-                          className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium"
+                          className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium dark:text-primary-400 dark:hover:text-primary-300"
                         >
                           View <ArrowRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 rounded-lg bg-white/70 px-2 py-1.5 text-xs text-gray-600">
-                      <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                      <span className="font-medium text-gray-700">Created By</span>
+                    <div className="flex items-center gap-2 rounded-lg bg-card/70 px-2 py-1.5 text-xs text-muted-foreground">
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="font-medium text-muted-foreground">Created By</span>
                       <span className="truncate">{creator.name}</span>
-                      {creator.role && <span className="shrink-0 text-gray-400">({formatRole(creator.role)})</span>}
-                      {caseItem.createdAt && <span className="ml-auto shrink-0 text-gray-500">{formatCreatedDate(caseItem.createdAt)}</span>}
+                      {creator.role && <span className="shrink-0 text-muted-foreground">({formatRole(creator.role)})</span>}
+                      {caseItem.createdAt && <span className="ml-auto shrink-0 text-muted-foreground">{formatCreatedDate(caseItem.createdAt)}</span>}
                     </div>
                   </div>
                 )
@@ -510,15 +566,15 @@ const CRMCases = () => {
                 <col className="w-[10%]" />
               </colgroup>
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Number</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visa / Package</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Manager</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <tr className="bg-muted">
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa / Package</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Created By</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -526,12 +582,12 @@ const CRMCases = () => {
                     const awaitingAssignment = isAwaitingAssignment(caseItem)
                     const creator = getCreator(caseItem)
                     return (
-                    <tr key={caseItem._id} className={`border-b hover:bg-gray-50 ${awaitingAssignment ? 'bg-amber-50/40' : ''}`}>
+                    <tr key={caseItem._id} className={`border-b border-border hover:bg-muted ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-medium truncate" title={caseItem.caseNumber}>{caseItem.caseNumber}</span>
                           {awaitingAssignment && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0 dark:bg-amber-950/40 dark:text-amber-400">
                               <Bell className="h-2.5 w-2.5" />
                               New
                             </span>
@@ -540,27 +596,23 @@ const CRMCases = () => {
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="font-medium truncate" title={caseItem.clientName}>{caseItem.clientName}</p>
-                        <p className="text-xs text-gray-500 truncate" title={caseItem.clientEmail}>{caseItem.clientEmail}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={caseItem.clientEmail}>{caseItem.clientEmail}</p>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="truncate" title={resolveDisplayVisa(caseItem)}>{resolveDisplayVisa(caseItem)}</p>
-                        <p className="text-xs text-gray-500 capitalize truncate">{getPackageLabel(caseItem)?.replace?.('_', ' ') || getPackageLabel(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground capitalize truncate">{getPackageLabel(caseItem)?.replace?.('_', ' ') || getPackageLabel(caseItem)}</p>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="font-medium truncate" title={creator.name}>{creator.name}</p>
-                        <p className="text-xs text-gray-500 truncate">
+                        <p className="text-xs text-muted-foreground truncate">
                           {formatRole(creator.role) || 'Creator'}{caseItem.createdAt ? ` - ${formatCreatedDate(caseItem.createdAt)}` : ''}
                         </p>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <span className={`inline-block max-w-full truncate px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseItem.stage)}`}>
-                          {caseItem.stage?.replace('_', ' ')}
-                        </span>
+                        <StatBadge value={caseItem.stage} kind="stage" className="max-w-full truncate" />
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <span className={`inline-block max-w-full truncate px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(caseItem.status)}`}>
-                          {caseItem.status}
-                        </span>
+                        <StatBadge value={caseItem.status} kind="status" className="max-w-full truncate" />
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         {caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName ? (
@@ -568,7 +620,7 @@ const CRMCases = () => {
                             {caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName}
                           </p>
                         ) : (
-                          <span className="text-amber-700 font-medium text-xs">Awaiting assignment</span>
+                          <span className="text-amber-700 font-medium text-xs dark:text-amber-400">Awaiting assignment</span>
                         )}
                       </td>
                       <td className="px-3 py-3 align-top">
@@ -577,14 +629,14 @@ const CRMCases = () => {
                             <button
                               onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
                               title="Assign case manager"
-                              className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 shrink-0"
+                              className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 shrink-0 dark:text-amber-400 dark:hover:bg-amber-950/40"
                             >
                               <UserPlus className="w-4 h-4" />
                             </button>
                           )}
                           <button
                             onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
-                            className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium shrink-0"
+                            className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium shrink-0 dark:text-primary-400 dark:hover:text-primary-300"
                           >
                             View <ArrowRight className="w-3.5 h-3.5" />
                           </button>
@@ -612,7 +664,7 @@ const CRMCases = () => {
           </button>
           {getVisiblePages().map((item, index) => (
             item === 'ellipsis' ? (
-              <span key={`ellipsis-${index}`} className="px-2 text-sm text-gray-500">...</span>
+              <span key={`ellipsis-${index}`} className="px-2 text-sm text-muted-foreground">...</span>
             ) : (
               <button
                 key={item}
@@ -622,7 +674,7 @@ const CRMCases = () => {
                 className={`h-9 min-w-9 rounded-lg px-3 text-sm font-semibold ${
                   item === page
                     ? 'bg-primary-600 text-white'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    : 'border border-border bg-card text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {item}

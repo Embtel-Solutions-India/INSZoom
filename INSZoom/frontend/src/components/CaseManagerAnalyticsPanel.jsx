@@ -31,8 +31,8 @@ const REALTIME_EVENTS = ['case:activity', 'case:assigned', 'case:client_submitte
 
 const SectionHeader = ({ title, sub }) => (
   <div className="mb-3">
-    <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-    {sub && <p className="text-xs text-gray-500">{sub}</p>}
+    <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+    {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
   </div>
 )
 
@@ -41,14 +41,14 @@ const MetricCard = ({ label, value, sub, dot, onClick }) => {
   return (
     <Component
       onClick={onClick}
-      className={`text-left rounded-lg border border-gray-100 bg-white p-3 transition min-w-0 ${onClick ? 'hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-sm cursor-pointer' : ''}`}
+      className={`text-left rounded-lg border border-border bg-card p-3 transition min-w-0 ${onClick ? 'hover:-translate-y-0.5 hover:border-border hover:shadow-sm cursor-pointer' : ''}`}
     >
       <div className="flex items-center gap-1.5 mb-1">
         <span className="stage-dot shrink-0" style={{ backgroundColor: dot }} />
-        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide truncate">{label}</span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{label}</span>
       </div>
-      <p className="text-2xl font-bold text-gray-900 leading-tight truncate">{value}</p>
-      {sub && <p className="text-xs text-gray-500 mt-1 truncate">{sub}</p>}
+      <p className="text-2xl font-bold text-foreground leading-tight truncate">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
     </Component>
   )
 }
@@ -91,7 +91,7 @@ const CaseManagerAnalyticsPanel = () => {
   if (loading) {
     return (
       <div className="card flex items-center justify-center h-40">
-        <span className="text-sm text-gray-500">Loading analytics...</span>
+        <span className="text-sm text-muted-foreground">Loading analytics...</span>
       </div>
     )
   }
@@ -101,7 +101,7 @@ const CaseManagerAnalyticsPanel = () => {
       <div className="card">
         <div className="text-center py-10">
           <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
-          <p className="text-sm text-gray-600 mb-4">{error}</p>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
           <button onClick={() => { setLoading(true); fetchPanel() }} className="btn-primary">Retry</button>
         </div>
       </div>
@@ -111,7 +111,7 @@ const CaseManagerAnalyticsPanel = () => {
   if (!data || data.totalCasesInScope === 0) {
     return (
       <div className="card">
-        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
           <Briefcase className="w-8 h-8 mb-3" />
           <p className="text-sm">No cases assigned</p>
         </div>
@@ -139,8 +139,8 @@ const CaseManagerAnalyticsPanel = () => {
       {/* Panel header: title, live status, shared period toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Case Manager Analytics</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-base font-semibold text-foreground">Case Manager Analytics</h2>
+          <p className="text-xs text-muted-foreground">
             {connected ? 'Live' : 'Connecting…'} · updates automatically as your cases change
           </p>
         </div>
@@ -149,7 +149,7 @@ const CaseManagerAnalyticsPanel = () => {
             <button
               key={p.key}
               onClick={() => setPeriod(p.key)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${period === p.key ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${period === p.key ? 'bg-primary-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-muted'}`}
             >
               {p.label}
             </button>
@@ -158,7 +158,7 @@ const CaseManagerAnalyticsPanel = () => {
       </div>
 
       {/* CASE ANALYTICS */}
-      <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-4 sm:p-5 space-y-5">
+      <section className="rounded-xl border border-border bg-muted/60 p-4 sm:p-5 space-y-5">
         <SectionHeader title="Case Analytics" sub="Where your caseload stands right now" />
 
         {/* KPI strip */}
@@ -189,7 +189,7 @@ const CaseManagerAnalyticsPanel = () => {
 
         {/* Two cards per row: Close outcomes | Activity distribution chart */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="card !bg-white">
+          <div className="card !bg-card">
             <SectionHeader title="Close" sub="Outcomes for the selected period" />
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <MetricCard label="Approved" value={close.approved} dot={STATUS_COLORS.good} />
@@ -198,7 +198,7 @@ const CaseManagerAnalyticsPanel = () => {
             </div>
           </div>
 
-          <div className="card !bg-white">
+          <div className="card !bg-card">
             <SectionHeader title="Activity status" sub="No update in 14+ days is flagged stale" />
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={activityChartData} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
@@ -210,13 +210,13 @@ const CaseManagerAnalyticsPanel = () => {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-            <p className="text-xs text-gray-500 mt-1">{activity.stale} case{activity.stale === 1 ? '' : 's'} stale overall</p>
+            <p className="text-xs text-muted-foreground mt-1">{activity.stale} case{activity.stale === 1 ? '' : 's'} stale overall</p>
           </div>
         </div>
 
         {/* Two cards per row: visa-type breakdown | overdue RFE detail */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="card !bg-white">
+          <div className="card !bg-card">
             <SectionHeader title="Cases by visa type" />
             {byVisaType.length > 0 ? (
               <div className="space-y-2.5">
@@ -226,30 +226,30 @@ const CaseManagerAnalyticsPanel = () => {
                     onClick={() => navigate(`/crm-cases?visaType=${encodeURIComponent(row.visaType)}`)}
                     className="w-full flex items-center gap-3 group"
                   >
-                    <span className="w-24 shrink-0 text-left text-xs text-gray-600 truncate">{row.visaType}</span>
-                    <span className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <span className="w-24 shrink-0 text-left text-xs text-muted-foreground truncate">{row.visaType}</span>
+                    <span className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
                       <span className="block h-full rounded-full bg-primary-600" style={{ width: `${Math.max(8, (row.count / maxVisaCount) * 100)}%` }} />
                     </span>
-                    <span className="w-8 text-right text-xs font-semibold text-gray-700">{row.count}</span>
+                    <span className="w-8 text-right text-xs font-semibold text-muted-foreground">{row.count}</span>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 text-center py-6">No active cases yet</p>
+              <p className="text-xs text-muted-foreground text-center py-6">No active cases yet</p>
             )}
           </div>
 
-          <div className="card !bg-white">
+          <div className="card !bg-card">
             <SectionHeader title="Overdue RFE detail" sub="Most urgent first" />
             {attention.overdueRfe.items.length > 0 ? (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-border">
                 {attention.overdueRfe.items.slice(0, 6).map((item) => (
                   <button
                     key={item.caseId}
                     onClick={() => navigate(`/crm-cases/${item.caseId}`)}
-                    className="w-full flex items-center justify-between py-2 text-left hover:bg-gray-50 rounded-lg px-1"
+                    className="w-full flex items-center justify-between py-2 text-left hover:bg-muted rounded-lg px-1"
                   >
-                    <span className="text-xs font-medium text-gray-800 truncate">{item.caseNumber} · {item.clientName}</span>
+                    <span className="text-xs font-medium text-foreground truncate">{item.caseNumber} · {item.clientName}</span>
                     <span className={`text-xs font-semibold shrink-0 ${item.daysRemaining < 0 ? 'text-red-600' : 'text-amber-600'}`}>
                       {item.daysRemaining < 0 ? `${Math.abs(item.daysRemaining)}d overdue` : `${item.daysRemaining}d left`}
                     </span>
@@ -257,7 +257,7 @@ const CaseManagerAnalyticsPanel = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 text-center py-6">No RFEs due soon</p>
+              <p className="text-xs text-muted-foreground text-center py-6">No RFEs due soon</p>
             )}
           </div>
         </div>
@@ -270,7 +270,7 @@ const CaseManagerAnalyticsPanel = () => {
           <SectionHeader title="Payments" sub="What's come in and what's still owed" />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="card !bg-white">
+          <div className="card !bg-card">
             {hasPaymentsData ? (
               <>
                 <ResponsiveContainer width="100%" height={180}>
@@ -284,7 +284,7 @@ const CaseManagerAnalyticsPanel = () => {
                 </ResponsiveContainer>
               </>
             ) : (
-              <div className="flex h-[180px] items-center justify-center text-sm text-gray-400">No payment activity yet</div>
+              <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">No payment activity yet</div>
             )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">

@@ -337,28 +337,28 @@ const USCISForms = () => {
       review: 'bg-blue-100 text-blue-800',
       active: 'bg-blue-100 text-blue-800',
       retired: 'bg-purple-100 text-purple-800',
-      archived: 'bg-gray-100 text-gray-800',
+      archived: 'bg-secondary text-foreground',
       pending_review: 'bg-amber-100 text-amber-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getCaseFormStatusColor = (status) => {
     const colors = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       ai_filled: 'bg-blue-100 text-blue-800',
       under_review: 'bg-amber-100 text-amber-800',
       approved: 'bg-blue-100 text-blue-800',
       rejected: 'bg-red-100 text-red-800',
       locked: 'bg-purple-100 text-purple-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-600">Loading USCIS forms...</div>
+        <div className="text-muted-foreground">Loading USCIS forms...</div>
       </div>
     )
   }
@@ -367,8 +367,8 @@ const USCISForms = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">USCIS Forms</h1>
-        <p className="text-gray-600 mt-1">Manage USCIS form templates and case forms</p>
+        <h1 className="text-2xl font-bold text-foreground">USCIS Forms</h1>
+        <p className="text-muted-foreground mt-1">Manage USCIS form templates and case forms</p>
       </div>
 
       {error && (
@@ -378,13 +378,13 @@ const USCISForms = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-border">
         <button
           onClick={() => setActiveTab('templates')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'templates'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <FileText className="w-4 h-4 inline mr-2" />
@@ -395,7 +395,7 @@ const USCISForms = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'forms'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <FileText className="w-4 h-4 inline mr-2" />
@@ -406,7 +406,7 @@ const USCISForms = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'lifecycle'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <RefreshCw className="w-4 h-4 inline mr-2" />
@@ -419,14 +419,14 @@ const USCISForms = () => {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {['active', 'draft', 'review', 'retired', 'pendingReviews'].map((key) => (
               <div key={key} className="card">
-                <p className="text-sm text-gray-500 capitalize">{key.replace(/([A-Z])/g, ' $1')}</p>
-                <p className="text-2xl font-bold text-gray-900">{lifecycle.dashboard?.[key] || 0}</p>
+                <p className="text-sm text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1')}</p>
+                <p className="text-2xl font-bold text-foreground">{lifecycle.dashboard?.[key] || 0}</p>
               </div>
             ))}
           </div>
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">USCIS Version Review Dashboard</h3>
+              <h3 className="text-lg font-semibold text-foreground">USCIS Version Review Dashboard</h3>
               {['super_admin', 'admin'].includes(user.role) && (
                 <button onClick={handleCheckUpdates} className="btn-secondary flex items-center gap-2">
                   <RefreshCw className="w-4 h-4" />
@@ -437,18 +437,18 @@ const USCISForms = () => {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Form</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Version</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Edition</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Changes</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Version</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Edition</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Changes</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(lifecycle.forms || []).map((template) => (
-                    <tr key={template._id} className="border-b border-gray-100">
+                    <tr key={template._id} className="border-b border-border">
                       <td className="py-3 px-4 font-medium">{template.formCode}</td>
                       <td className="py-3 px-4">{template.version}</td>
                       <td className="py-3 px-4">{template.editionDate ? new Date(template.editionDate).toLocaleDateString() : 'N/A'}</td>
@@ -479,7 +479,7 @@ const USCISForms = () => {
             </div>
             {comparisonReport && (
               <div className="mt-6 bg-slate-50 rounded-xl p-4">
-                <h4 className="font-semibold text-gray-900 mb-2">
+                <h4 className="font-semibold text-foreground mb-2">
                   Comparison: {selectedLifecycleForm?.formCode} {selectedLifecycleForm?.version}
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -488,7 +488,7 @@ const USCISForms = () => {
                   <div>Renamed: {comparisonReport.fieldDiff?.summary?.renamed || 0}</div>
                   <div>Modified: {comparisonReport.fieldDiff?.summary?.modified || 0}</div>
                 </div>
-                <p className="text-sm text-gray-600 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Migration suggestions: {comparisonReport.migrationSuggestions?.length || 0}
                 </p>
               </div>
@@ -501,7 +501,7 @@ const USCISForms = () => {
       {activeTab === 'templates' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Form Templates</h3>
+            <h3 className="text-lg font-semibold text-foreground">Form Templates</h3>
             <div className="flex gap-2">
               {user.role === 'super_admin' && (
                 <>
@@ -544,18 +544,18 @@ const USCISForms = () => {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Form Code</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Title</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Version</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Last Updated</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form Code</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Title</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Version</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Last Updated</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {templates.map((template) => (
-                  <tr key={template._id} className="border-b border-gray-100">
+                  <tr key={template._id} className="border-b border-border">
                     <td className="py-3 px-4 font-medium">{template.formCode}</td>
                     <td className="py-3 px-4">{template.title}</td>
                     <td className="py-3 px-4">{template.version}</td>
@@ -624,8 +624,8 @@ const USCISForms = () => {
           </div>
 
           {templates.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <p>No form templates found</p>
             </div>
           )}
@@ -636,10 +636,10 @@ const USCISForms = () => {
       {activeTab === 'forms' && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Case Forms</h3>
+            <h3 className="text-lg font-semibold text-foreground">Case Forms</h3>
             <div className="flex gap-2">
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-gray-500" />
+                <Filter className="w-4 h-4 text-muted-foreground" />
                 <select
                   value={filterCaseId}
                   onChange={(e) => setFilterCaseId(e.target.value)}
@@ -666,19 +666,19 @@ const USCISForms = () => {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Case Number</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Form Code</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Form Title</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Version</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Filled Date</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Case Number</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form Code</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form Title</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Version</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filled Date</th>
+                  <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {caseForms.map((caseForm) => (
-                  <tr key={caseForm._id} className="border-b border-gray-100">
+                  <tr key={caseForm._id} className="border-b border-border">
                     <td className="py-3 px-4 font-medium">
                       {cases.find(c => c._id === caseForm.caseId)?.caseNumber || 'N/A'}
                     </td>
@@ -712,8 +712,8 @@ const USCISForms = () => {
           </div>
 
           {caseForms.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <p>No case forms found</p>
             </div>
           )}
@@ -723,19 +723,19 @@ const USCISForms = () => {
       {/* Import PDF Modal */}
       {showImportPdfModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Import Official USCIS PDF</h3>
-                <p className="text-sm text-gray-500">Upload a fillable PDF or import from an official HTTPS URL. Metadata is auto-detected when possible.</p>
+                <h3 className="text-xl font-bold text-foreground">Import Official USCIS PDF</h3>
+                <p className="text-sm text-muted-foreground">Upload a fillable PDF or import from an official HTTPS URL. Metadata is auto-detected when possible.</p>
               </div>
-              <button onClick={() => setShowImportPdfModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => setShowImportPdfModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Form Type</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Form Type</label>
                 <input
                   type="text"
                   value={pdfImportData.formType}
@@ -745,7 +745,7 @@ const USCISForms = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Edition Date</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Edition Date</label>
                 <input
                   type="date"
                   value={pdfImportData.editionDate}
@@ -754,7 +754,7 @@ const USCISForms = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Provider</label>
                 <input
                   type="text"
                   value={pdfImportData.provider}
@@ -764,7 +764,7 @@ const USCISForms = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">PDF Upload</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">PDF Upload</label>
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
@@ -774,7 +774,7 @@ const USCISForms = () => {
               </div>
             </div>
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Official PDF URL</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Official PDF URL</label>
               <input
                 type="url"
                 value={pdfImportData.pdfUrl}
@@ -815,13 +815,13 @@ const USCISForms = () => {
       {/* Import Definition Modal */}
       {showImportDefinitionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-xl font-bold text-gray-900">Import USCIS Form Definition</h3>
-                <p className="text-sm text-gray-500">Paste metadata JSON with sections, fields, mappings, validation, conditions, and repeatable groups.</p>
+                <h3 className="text-xl font-bold text-foreground">Import USCIS Form Definition</h3>
+                <p className="text-sm text-muted-foreground">Paste metadata JSON with sections, fields, mappings, validation, conditions, and repeatable groups.</p>
               </div>
-              <button onClick={() => setShowImportDefinitionModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button onClick={() => setShowImportDefinitionModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -857,17 +857,17 @@ const USCISForms = () => {
       {/* Add Template Modal */}
       {showAddTemplateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Add Form Template</h3>
-              <button onClick={() => setShowAddTemplateModal(false)} className="text-gray-500 hover:text-gray-700">
+              <h3 className="text-xl font-bold text-foreground">Add Form Template</h3>
+              <button onClick={() => setShowAddTemplateModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleCreateTemplate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Form Code</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Form Code</label>
                   <input
                     type="text"
                     value={templateFormData.formCode}
@@ -878,7 +878,7 @@ const USCISForms = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Version</label>
                   <input
                     type="text"
                     value={templateFormData.version}
@@ -890,7 +890,7 @@ const USCISForms = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Title</label>
                 <input
                   type="text"
                   value={templateFormData.title}
@@ -900,7 +900,7 @@ const USCISForms = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                 <textarea
                   value={templateFormData.description}
                   onChange={(e) => setTemplateFormData({ ...templateFormData, description: e.target.value })}
@@ -909,7 +909,7 @@ const USCISForms = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Edition Date</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Edition Date</label>
                   <input
                     type="date"
                     value={templateFormData.editionDate}
@@ -919,7 +919,7 @@ const USCISForms = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Effective Date</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Effective Date</label>
                   <input
                     type="date"
                     value={templateFormData.effectiveDate}
@@ -930,7 +930,7 @@ const USCISForms = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Official PDF URL</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Official PDF URL</label>
                 <input
                   type="url"
                   value={templateFormData.officialPdfUrl}
@@ -955,17 +955,17 @@ const USCISForms = () => {
       {/* Edit Template Modal */}
       {showEditTemplateModal && selectedTemplate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Edit Form Template</h3>
-              <button onClick={() => setShowEditTemplateModal(false)} className="text-gray-500 hover:text-gray-700">
+              <h3 className="text-xl font-bold text-foreground">Edit Form Template</h3>
+              <button onClick={() => setShowEditTemplateModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleUpdateTemplate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Form Code</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Form Code</label>
                   <input
                     type="text"
                     value={templateFormData.formCode}
@@ -975,7 +975,7 @@ const USCISForms = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Version</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Version</label>
                   <input
                     type="text"
                     value={templateFormData.version}
@@ -986,7 +986,7 @@ const USCISForms = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Title</label>
                 <input
                   type="text"
                   value={templateFormData.title}
@@ -996,7 +996,7 @@ const USCISForms = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                 <textarea
                   value={templateFormData.description}
                   onChange={(e) => setTemplateFormData({ ...templateFormData, description: e.target.value })}
@@ -1005,7 +1005,7 @@ const USCISForms = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Edition Date</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Edition Date</label>
                   <input
                     type="date"
                     value={templateFormData.editionDate}
@@ -1015,7 +1015,7 @@ const USCISForms = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Effective Date</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Effective Date</label>
                   <input
                     type="date"
                     value={templateFormData.effectiveDate}
@@ -1026,7 +1026,7 @@ const USCISForms = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Official PDF URL</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Official PDF URL</label>
                 <input
                   type="url"
                   value={templateFormData.officialPdfUrl}
@@ -1051,16 +1051,16 @@ const USCISForms = () => {
       {/* Fill Form Modal */}
       {showFillFormModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Fill Form for Case</h3>
-              <button onClick={() => setShowFillFormModal(false)} className="text-gray-500 hover:text-gray-700">
+              <h3 className="text-xl font-bold text-foreground">Fill Form for Case</h3>
+              <button onClick={() => setShowFillFormModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handleFillForm} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Case</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Select Case</label>
                 <select
                   value={fillFormData.caseId}
                   onChange={(e) => setFillFormData({ ...fillFormData, caseId: e.target.value })}
@@ -1076,7 +1076,7 @@ const USCISForms = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Form Template</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Select Form Template</label>
                 <select
                   value={fillFormData.formTemplateId}
                   onChange={(e) => setFillFormData({ ...fillFormData, formTemplateId: e.target.value })}
@@ -1107,46 +1107,46 @@ const USCISForms = () => {
       {/* View Form Modal */}
       {showViewFormModal && selectedCaseForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Case Form Details</h3>
-              <button onClick={() => setShowViewFormModal(false)} className="text-gray-500 hover:text-gray-700">
+              <h3 className="text-xl font-bold text-foreground">Case Form Details</h3>
+              <button onClick={() => setShowViewFormModal(false)} className="text-muted-foreground hover:text-muted-foreground">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">Form Code</p>
+                  <p className="text-sm text-muted-foreground">Form Code</p>
                   <p className="font-medium">{selectedCaseForm.formCode}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Version</p>
+                  <p className="text-sm text-muted-foreground">Version</p>
                   <p className="font-medium">{selectedCaseForm.formVersion}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Status</p>
+                  <p className="text-sm text-muted-foreground">Status</p>
                   <span className={`badge ${getCaseFormStatusColor(selectedCaseForm.status)}`}>
                     {selectedCaseForm.status.replace('_', ' ')}
                   </span>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Created</p>
+                  <p className="text-sm text-muted-foreground">Created</p>
                   <p className="font-medium">{new Date(selectedCaseForm.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
               {selectedCaseForm.filledData && (
                 <div>
-                  <p className="text-sm font-medium text-gray-900 mb-2">Filled Data</p>
-                  <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
+                  <p className="text-sm font-medium text-foreground mb-2">Filled Data</p>
+                  <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm">
                     {JSON.stringify(selectedCaseForm.filledData, null, 2)}
                   </pre>
                 </div>
               )}
               {selectedCaseForm.reviewComments && (
                 <div>
-                  <p className="text-sm font-medium text-gray-900 mb-2">Review Comments</p>
-                  <p className="text-sm text-gray-600">{selectedCaseForm.reviewComments}</p>
+                  <p className="text-sm font-medium text-foreground mb-2">Review Comments</p>
+                  <p className="text-sm text-muted-foreground">{selectedCaseForm.reviewComments}</p>
                 </div>
               )}
             </div>

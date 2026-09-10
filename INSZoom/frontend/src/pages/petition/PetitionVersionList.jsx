@@ -55,7 +55,7 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-400">
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     )
@@ -65,8 +65,8 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold text-gray-900">Petition</h3>
-          <p className="text-sm text-gray-500">Assemble, review, and file the petition package for this case.</p>
+          <h3 className="text-lg font-bold text-foreground">Petition</h3>
+          <p className="text-sm text-muted-foreground">Assemble, review, and file the petition package for this case.</p>
         </div>
         {canAssemble && (
           <button type="button" onClick={handleAssemble} disabled={assembling} className="btn-primary inline-flex items-center gap-2">
@@ -89,13 +89,13 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
 
       {!packages.length && !error ? (
         <div className="card flex flex-col items-center gap-3 py-16 text-center">
-          <FileStack className="h-10 w-10 text-gray-300" />
-          <p className="text-sm text-gray-500">No petition has been assembled for this case yet.</p>
+          <FileStack className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No petition has been assembled for this case yet.</p>
         </div>
       ) : (
         <div className="card overflow-hidden !p-0">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <thead className="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3">Version</th>
                 <th className="px-4 py-3">Status</th>
@@ -105,19 +105,19 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {packages.map((pkg) => (
-                <tr key={pkg._id} className="cursor-pointer hover:bg-gray-50" onClick={() => onOpen(pkg._id)}>
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                <tr key={pkg._id} className="cursor-pointer hover:bg-muted" onClick={() => onOpen(pkg._id)}>
+                  <td className="px-4 py-3 font-medium text-foreground">
                     v{pkg.versionNumber}
                     {pkg.isCurrent && <span className="ml-2 text-xs font-normal text-blue-600">current</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`badge ${STATUS_BADGE[pkg.status] || 'badge-info'}`}>{pkg.status.replace(/_/g, ' ')}</span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{pkg.sections?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-gray-600">{pkg.exhibitIndex?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-gray-500">{pkg.updatedAt ? new Date(pkg.updatedAt).toLocaleString() : '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{pkg.sections?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{pkg.exhibitIndex?.length ?? 0}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{pkg.updatedAt ? new Date(pkg.updatedAt).toLocaleString() : '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(pkg._id) }} className="btn-secondary !py-1 !px-3 text-xs">
                       Open

@@ -17,7 +17,7 @@ const TIER_COLORS = {
   A: 'bg-green-100 text-green-800',
   B: 'bg-blue-100 text-blue-800',
   C: 'bg-amber-100 text-amber-800',
-  D: 'bg-gray-100 text-gray-600',
+  D: 'bg-secondary text-muted-foreground',
 }
 
 // The freeform override — kept intentionally separate from the state-machine
@@ -42,7 +42,7 @@ const STATUS_COLORS = {
   contacted: 'bg-blue-100 text-blue-800',
   booked: 'bg-green-100 text-green-800',
   converted: 'bg-purple-100 text-purple-800',
-  closed: 'bg-gray-100 text-gray-600',
+  closed: 'bg-secondary text-muted-foreground',
   consultation_confirmed: 'bg-indigo-100 text-indigo-800',
   consultation_completed: 'bg-violet-100 text-violet-800',
   approved: 'bg-emerald-100 text-emerald-800',
@@ -183,8 +183,8 @@ const Leads = () => {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4" />
-          <div className="h-64 bg-gray-200 rounded" />
+          <div className="h-8 bg-muted rounded w-1/4" />
+          <div className="h-64 bg-muted rounded" />
         </div>
       </div>
     )
@@ -195,28 +195,28 @@ const Leads = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-          <p className="text-gray-600 mt-1">{leads.length} total from the public eligibility quiz &middot; {newCount} new</p>
+          <h1 className="text-2xl font-bold text-foreground">Leads</h1>
+          <p className="text-muted-foreground mt-1">{leads.length} total from the public eligibility quiz &middot; {newCount} new</p>
         </div>
       </div>
 
       {/* Search and filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="bg-card rounded-lg shadow p-4 mb-6">
         <div className="flex flex-col lg:flex-row gap-4">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search by name, email, or phone..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
           </div>
           <select
             value={tierFilter}
             onChange={(e) => setTierFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Tiers</option>
             {['A', 'B', 'C', 'D'].map((t) => <option key={t} value={t}>Tier {t}</option>)}
@@ -224,7 +224,7 @@ const Leads = () => {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Status</option>
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
@@ -233,27 +233,27 @@ const Leads = () => {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-card rounded-lg shadow overflow-hidden">
         {filtered.length === 0 ? (
           <div className="p-12 text-center">
-            <Inbox className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No leads found</h3>
-            <p className="text-gray-500">Try adjusting your search or filters</p>
+            <Inbox className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">No leads found</h3>
+            <p className="text-muted-foreground">Try adjusting your search or filters</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-border">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pathway</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Consultation</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Lead</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Tier</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Pathway</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Consultation</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Submitted</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-border">
                 {filtered.map((lead) => {
                   const unseen = !lead.seenAt
                   const consultation = lead.consultationId && typeof lead.consultationId === 'object' ? lead.consultationId : null
@@ -261,7 +261,7 @@ const Leads = () => {
                     <tr
                       key={lead._id}
                       onClick={() => openLead(lead)}
-                      className={`cursor-pointer transition-colors ${unseen ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}`}
+                      className={`cursor-pointer transition-colors ${unseen ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-muted'}`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -270,39 +270,39 @@ const Leads = () => {
                           </div>
                           <div className="ml-3 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900 truncate">{lead.fullName || 'Unknown'}</span>
+                              <span className="text-sm font-medium text-foreground truncate">{lead.fullName || 'Unknown'}</span>
                               {unseen && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white rounded-full">
                                   New
                                 </span>
                               )}
                             </div>
-                            <div className="text-xs text-gray-500 truncate">{lead.email}</div>
+                            <div className="text-xs text-muted-foreground truncate">{lead.email}</div>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${TIER_COLORS[lead.scoreResult?.tier] || 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${TIER_COLORS[lead.scoreResult?.tier] || 'bg-secondary text-muted-foreground'}`}>
                           Tier {lead.scoreResult?.tier || '—'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{lead.visaPathway || '—'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{lead.visaPathway || '—'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                         {consultation?.startAt ? (
                           <div className="flex items-center gap-1.5 text-green-700">
                             <Calendar className="w-3.5 h-3.5" />
                             {new Date(consultation.startAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                           </div>
                         ) : (
-                          <span className="text-gray-400">Not booked</span>
+                          <span className="text-muted-foreground">Not booked</span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-secondary text-muted-foreground'}`}>
                           {STATUS_LABELS[lead.status] || lead.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400">{timeAgo(lead.createdAt)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">{timeAgo(lead.createdAt)}</td>
                     </tr>
                   )
                 })}
@@ -368,15 +368,15 @@ function LeadDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white h-full overflow-y-auto shadow-2xl">
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-5 flex items-start justify-between z-10">
+      <div className="relative w-full max-w-lg bg-card h-full overflow-y-auto shadow-2xl">
+        <div className="sticky top-0 bg-card border-b border-border px-6 py-5 flex items-start justify-between z-10">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
               Tier {lead.scoreResult?.tier || '—'} &middot; {lead.scoreResult?.pathwayString || lead.visaPathway}
             </p>
-            <h3 className="text-lg font-bold text-gray-900">{lead.fullName || 'Unknown'}</h3>
+            <h3 className="text-lg font-bold text-foreground">{lead.fullName || 'Unknown'}</h3>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+          <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-muted-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -384,11 +384,11 @@ function LeadDrawer({
         <div className="p-6 space-y-6">
           {/* Contact */}
           <div className="flex flex-wrap gap-3">
-            <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-100">
+            <a href={`mailto:${lead.email}`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary">
               <Mail className="w-3.5 h-3.5" /> {lead.email}
             </a>
             {lead.phone && (
-              <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-100">
+              <a href={`tel:${lead.phone}`} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-muted border border-border text-xs font-semibold text-muted-foreground hover:bg-secondary">
                 <Phone className="w-3.5 h-3.5" /> {lead.phone}
               </a>
             )}
@@ -398,12 +398,12 @@ function LeadDrawer({
           {consultation && (
             <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3.5">
               <p className="text-xs font-bold uppercase tracking-wider text-green-700 mb-1.5">Consultation booked</p>
-              <p className="text-sm font-semibold text-gray-800">
+              <p className="text-sm font-semibold text-foreground">
                 {consultation.startAt
                   ? new Date(consultation.startAt).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                   : '—'}
               </p>
-              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
                 {consultation.locationType === 'phone' ? <PhoneCall className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
                 {consultation.locationType === 'phone' ? 'Phone call' : 'Video call'}
                 {consultation.status ? ` · ${consultation.status}` : ''}
@@ -415,17 +415,17 @@ function LeadDrawer({
               once a lead enters the state-machine pipeline below, its status
               is shown read-only here and changed only via the action buttons. */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Status</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Status</label>
             {STATUS_OPTIONS.includes(lead.status) ? (
               <select
                 value={lead.status}
                 onChange={(e) => onUpdateStatus(lead._id, e.target.value)}
-                className="w-full text-sm border border-gray-300 rounded-lg bg-white px-3 py-2.5 text-gray-700 focus:ring-2 focus:ring-primary-500"
+                className="w-full text-sm border border-border rounded-lg bg-card px-3 py-2.5 text-muted-foreground focus:ring-2 focus:ring-primary-500"
               >
                 {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
               </select>
             ) : (
-              <span className={`inline-block px-2.5 py-1.5 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-gray-100 text-gray-500'}`}>
+              <span className={`inline-block px-2.5 py-1.5 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-secondary text-muted-foreground'}`}>
                 {STATUS_LABELS[lead.status] || lead.status}
               </span>
             )}
@@ -433,7 +433,7 @@ function LeadDrawer({
 
           {/* Case pipeline — state-machine-enforced transitions */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-1.5">Case pipeline</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Case pipeline</label>
             {actionError && (
               <div className="mb-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{actionError}</div>
             )}
@@ -459,7 +459,7 @@ function LeadDrawer({
                   <button
                     disabled={actioning}
                     onClick={() => onReject(lead._id)}
-                    className="px-3 py-2 rounded-lg bg-white border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
+                    className="px-3 py-2 rounded-lg bg-card border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
                   >
                     Reject
                   </button>
@@ -477,7 +477,7 @@ function LeadDrawer({
                   <button
                     disabled={actioning}
                     onClick={() => onReject(lead._id)}
-                    className="px-3 py-2 rounded-lg bg-white border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
+                    className="px-3 py-2 rounded-lg bg-card border border-red-300 hover:bg-red-50 disabled:opacity-50 text-red-700 text-xs font-bold"
                   >
                     Reject
                   </button>
@@ -493,15 +493,15 @@ function LeadDrawer({
                 </button>
               )}
               {lead.status === 'converted' && (
-                <p className="text-xs text-gray-500">This lead has been converted to a case.</p>
+                <p className="text-xs text-muted-foreground">This lead has been converted to a case.</p>
               )}
               {lead.status === 'rejected' && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   Rejected{lead.approval?.rejectionReason ? `: ${lead.approval.rejectionReason}` : '.'}
                 </p>
               )}
               {!['new', 'booked', 'consultation_confirmed', 'consultation_completed', 'approved', 'converted', 'rejected'].includes(lead.status) && (
-                <p className="text-xs text-gray-400">No pipeline action available from this status.</p>
+                <p className="text-xs text-muted-foreground">No pipeline action available from this status.</p>
               )}
             </div>
           </div>
@@ -509,12 +509,12 @@ function LeadDrawer({
           {/* Profile answers (from the quiz) */}
           {lead.profileAnswers && Object.keys(lead.profileAnswers).length > 0 && (
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Profile</p>
-              <div className="rounded-lg border border-gray-100 divide-y divide-gray-100">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Profile</p>
+              <div className="rounded-lg border border-border divide-y divide-border">
                 {Object.entries(lead.profileAnswers).map(([k, v]) => (
                   <div key={k} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                    <span className="text-gray-500 capitalize">{k.replace(/([A-Z])/g, ' $1')}</span>
-                    <span className="font-semibold text-gray-800">{String(v)}</span>
+                    <span className="text-muted-foreground capitalize">{k.replace(/([A-Z])/g, ' $1')}</span>
+                    <span className="font-semibold text-foreground">{String(v)}</span>
                   </div>
                 ))}
               </div>
@@ -524,18 +524,18 @@ function LeadDrawer({
           {/* Evidence strength */}
           {evidence.length > 0 && (
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Evidence strength</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Evidence strength</p>
               <div className="space-y-2.5">
                 {evidence.map((e) => (
                   <div key={e.key} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 w-36 shrink-0 truncate">{e.key.replace(/_/g, ' ')}</span>
-                    <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <span className="text-xs text-muted-foreground w-36 shrink-0 truncate">{e.key.replace(/_/g, ' ')}</span>
+                    <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${e.value >= 2 ? 'bg-green-500' : e.value === 1 ? 'bg-amber-400' : 'bg-gray-300'}`}
+                        className={`h-full rounded-full ${e.value >= 2 ? 'bg-green-500' : e.value === 1 ? 'bg-amber-400' : 'bg-muted'}`}
                         style={{ width: `${((e.value ?? 0) / 3) * 100}%` }}
                       />
                     </div>
-                    <span className="text-[0.68rem] text-gray-400 w-16 shrink-0">{e.label}</span>
+                    <span className="text-[0.68rem] text-muted-foreground w-16 shrink-0">{e.label}</span>
                   </div>
                 ))}
               </div>
@@ -544,13 +544,13 @@ function LeadDrawer({
 
           {/* Notes */}
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Notes</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Notes</p>
             <div className="space-y-2 mb-3">
-              {(lead.notes || []).length === 0 && <p className="text-xs text-gray-400">No notes yet.</p>}
+              {(lead.notes || []).length === 0 && <p className="text-xs text-muted-foreground">No notes yet.</p>}
               {(lead.notes || []).map((n, i) => (
-                <div key={i} className="rounded-lg bg-gray-50 border border-gray-100 px-3.5 py-2.5">
-                  <p className="text-sm text-gray-700">{n.text}</p>
-                  <p className="text-[0.68rem] text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
+                <div key={i} className="rounded-lg bg-muted border border-border px-3.5 py-2.5">
+                  <p className="text-sm text-muted-foreground">{n.text}</p>
+                  <p className="text-[0.68rem] text-muted-foreground mt-1">{timeAgo(n.createdAt)}</p>
                 </div>
               ))}
             </div>
@@ -560,7 +560,7 @@ function LeadDrawer({
                 onChange={(e) => setNoteDraft(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') onSubmitNote() }}
                 placeholder="Add a note..."
-                className="flex-1 text-sm border border-gray-300 rounded-lg px-3.5 py-2.5 focus:ring-2 focus:ring-primary-500"
+                className="flex-1 text-sm border border-border rounded-lg px-3.5 py-2.5 focus:ring-2 focus:ring-primary-500"
               />
               <button
                 onClick={onSubmitNote}

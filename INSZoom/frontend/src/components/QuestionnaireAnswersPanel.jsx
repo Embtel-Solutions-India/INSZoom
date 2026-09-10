@@ -25,8 +25,8 @@ function sectionTitleFor(questionnaire, sectionKey) {
 function AnswerRow({ label, value }) {
   return (
     <p>
-      <span className="text-gray-500">{label}:</span>{' '}
-      <span className="font-semibold text-gray-900">{value ?? 'Needed'}</span>
+      <span className="text-muted-foreground">{label}:</span>{' '}
+      <span className="font-semibold text-foreground">{value ?? 'Needed'}</span>
     </p>
   )
 }
@@ -36,16 +36,16 @@ function RepeatingGroupRows({ question, rows }) {
   return (
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
       {(rows || []).map((row, index) => (
-        <div key={row?.id || index} className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
-          <p className="font-semibold text-gray-900 mb-1">{question.label} {index + 1}</p>
-          <p className="text-gray-600">
+        <div key={row?.id || index} className="rounded-lg border border-border bg-muted p-3 text-sm">
+          <p className="font-semibold text-foreground mb-1">{question.label} {index + 1}</p>
+          <p className="text-muted-foreground">
             {fields.length
               ? fields.map((field) => row?.[field.key]).filter(Boolean).join(', ') || 'Needed'
               : Object.values(row || {}).filter(Boolean).join(', ') || 'Needed'}
           </p>
         </div>
       ))}
-      {!(rows || []).length && <p className="text-sm text-gray-500">Needed</p>}
+      {!(rows || []).length && <p className="text-sm text-muted-foreground">Needed</p>}
     </div>
   )
 }
@@ -54,7 +54,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
   if (loading) {
     return (
       <div className="card">
-        <p className="text-sm text-gray-500">Loading questionnaire…</p>
+        <p className="text-sm text-muted-foreground">Loading questionnaire…</p>
       </div>
     )
   }
@@ -73,7 +73,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
 
   return (
     <div className="card">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">{title || questionnaire.title}</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-4">{title || questionnaire.title}</h3>
       <div className="space-y-5">
         {sectionOrder.map((sectionKey) => {
           const questions = bySection.get(sectionKey)
@@ -81,7 +81,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
           const plainQuestions = questions.filter((q) => q.type !== 'repeating_group')
           return (
             <div key={sectionKey}>
-              <p className="mb-2 text-sm font-semibold text-gray-900">{sectionTitleFor(questionnaire, sectionKey)}</p>
+              <p className="mb-2 text-sm font-semibold text-foreground">{sectionTitleFor(questionnaire, sectionKey)}</p>
               {plainQuestions.length > 0 && (
                 <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
                   {plainQuestions.map((question) => (

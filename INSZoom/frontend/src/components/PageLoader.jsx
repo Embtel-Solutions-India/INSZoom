@@ -5,7 +5,7 @@
 export default function PageLoader() {
   return (
     <div className="flex items-center justify-center h-screen">
-      <div className="text-gray-600">Loading...</div>
+      <div className="text-muted-foreground">Loading...</div>
     </div>
   )
 }

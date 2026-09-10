@@ -68,7 +68,7 @@ const PetitionCanvas = forwardRef(function PetitionCanvas(
   const draftSectionKeys = new Set((validation?.issues || []).filter((i) => i.code === 'LETTER_DRAFT_UNREVIEWED').map((i) => i.sectionKey))
 
   return (
-    <div className="bg-gray-200 px-6 py-10">
+    <div className="bg-muted px-6 py-10">
       {flatItems.map((item) => (
         <div key={item.key} id={`petition-section-${item.key}`} ref={(el) => { sectionRefs.current[item.key] = el }}>
           {item.__kind === 'exhibits' ? (

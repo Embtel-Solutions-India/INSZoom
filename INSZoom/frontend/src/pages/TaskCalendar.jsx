@@ -88,12 +88,12 @@ const TaskCalendar = () => {
 
   const getPriorityColor = (priority) => {
     const colors = {
-      low: 'border-gray-300 bg-gray-50',
+      low: 'border-border bg-muted',
       medium: 'border-blue-300 bg-blue-50',
       high: 'border-orange-300 bg-orange-50',
       urgent: 'border-red-300 bg-red-50'
     }
-    return colors[priority] || 'border-gray-300 bg-gray-50'
+    return colors[priority] || 'border-border bg-muted'
   }
 
   const getPriorityIcon = (priority) => {
@@ -101,7 +101,7 @@ const TaskCalendar = () => {
       case 'urgent': return <AlertTriangle className="w-3 h-3 text-red-600" />
       case 'high': return <AlertTriangle className="w-3 h-3 text-orange-600" />
       case 'medium': return <Clock className="w-3 h-3 text-blue-600" />
-      default: return <Clock className="w-3 h-3 text-gray-600" />
+      default: return <Clock className="w-3 h-3 text-muted-foreground" />
     }
   }
 
@@ -163,14 +163,14 @@ const TaskCalendar = () => {
           <button
             type="button"
             onClick={() => navigate('/tasks')}
-            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            className="p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
             aria-label="Back to task dashboard"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Task Calendar</h1>
-            <p className="text-gray-600 mt-1">View and manage task deadlines</p>
+            <h1 className="text-2xl font-bold text-foreground">Task Calendar</h1>
+            <p className="text-muted-foreground mt-1">View and manage task deadlines</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -191,21 +191,21 @@ const TaskCalendar = () => {
       )}
 
       {/* Calendar Controls */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="bg-card rounded-xl shadow-sm p-4 border border-border">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <button
               onClick={prevMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-secondary rounded-lg transition-colors"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 className="text-lg font-semibold text-foreground">
               {months[currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
             <button
               onClick={nextMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-secondary rounded-lg transition-colors"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
@@ -218,11 +218,11 @@ const TaskCalendar = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-600" />
+            <Filter className="w-4 h-4 text-muted-foreground" />
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Status</option>
               <option value="pending">Pending</option>
@@ -232,7 +232,7 @@ const TaskCalendar = () => {
             <select
               value={filters.priority}
               onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-              className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Priority</option>
               <option value="urgent">Urgent</option>
@@ -247,7 +247,7 @@ const TaskCalendar = () => {
         <div className="grid grid-cols-7 gap-2">
           {/* Day Headers */}
           {days.map(day => (
-            <div key={day} className="text-center text-sm font-medium text-gray-600 py-2">
+            <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
               {day}
             </div>
           ))}
@@ -268,15 +268,15 @@ const TaskCalendar = () => {
                     ? isCurrentDay 
                       ? 'border-blue-500 bg-blue-50' 
                       : isPast 
-                        ? 'border-gray-200 bg-gray-50' 
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
+                        ? 'border-border bg-muted' 
+                        : 'border-border hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
                     : 'border-transparent bg-transparent'
                   }
                 `}
               >
                 {day && (
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-medium ${isCurrentDay ? 'text-blue-600' : 'text-gray-900'}`}>
+                    <span className={`text-sm font-medium ${isCurrentDay ? 'text-blue-600' : 'text-foreground'}`}>
                       {day}
                     </span>
                   </div>
@@ -304,7 +304,7 @@ const TaskCalendar = () => {
                       </div>
                     ))}
                     {tasksForDate.length > 3 && (
-                      <div className="text-xs text-gray-500 text-center">
+                      <div className="text-xs text-muted-foreground text-center">
                         +{tasksForDate.length - 3} more
                       </div>
                     )}
@@ -318,14 +318,14 @@ const TaskCalendar = () => {
 
       {/* Selected Date Tasks */}
       {selectedDate && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-foreground">
               Tasks for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h3>
             <button
               onClick={() => setSelectedDate(null)}
-              className="text-gray-600 hover:text-gray-900"
+              className="text-muted-foreground hover:text-foreground"
             >
               Close
             </button>
@@ -339,19 +339,19 @@ const TaskCalendar = () => {
                   <div
                     key={task._id}
                     onClick={() => navigate(`/tasks/${task._id}`)}
-                    className="p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    className="p-4 bg-muted rounded-lg hover:bg-secondary transition-colors cursor-pointer"
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-1">
                         {getPriorityIcon(task.priority)}
                       </div>
                       <div className="flex-1">
-                        <h4 className="font-medium text-gray-900">{task.title || 'Untitled task'}</h4>
+                        <h4 className="font-medium text-foreground">{task.title || 'Untitled task'}</h4>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority).replace('border-', '').replace('bg-', 'text-').replace('-50', '-800')}`}>
                             {formatPriority(task.priority)}
                           </span>
-                          <span className="text-sm text-gray-600">{task.assignedTo?.name || task.assignedTo?.displayName || 'Unassigned'}</span>
+                          <span className="text-sm text-muted-foreground">{task.assignedTo?.name || task.assignedTo?.displayName || 'Unassigned'}</span>
                         </div>
                       </div>
                     </div>
@@ -359,31 +359,31 @@ const TaskCalendar = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No tasks for this date</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No tasks for this date</p>
             )
           })()}
         </div>
       )}
 
       {/* Legend */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-        <h4 className="text-sm font-medium text-gray-900 mb-3">Priority Legend</h4>
+      <div className="bg-card rounded-xl shadow-sm p-4 border border-border">
+        <h4 className="text-sm font-medium text-foreground mb-3">Priority Legend</h4>
         <div className="flex flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-sm text-gray-600">Urgent</span>
+            <span className="text-sm text-muted-foreground">Urgent</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-            <span className="text-sm text-gray-600">High</span>
+            <span className="text-sm text-muted-foreground">High</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-            <span className="text-sm text-gray-600">Medium</span>
+            <span className="text-sm text-muted-foreground">Medium</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-gray-500"></div>
-            <span className="text-sm text-gray-600">Low</span>
+            <span className="text-sm text-muted-foreground">Low</span>
           </div>
         </div>
       </div>

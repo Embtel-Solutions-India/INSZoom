@@ -25,6 +25,9 @@ import {
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import CaseManagerAnalyticsPanel from '../components/CaseManagerAnalyticsPanel'
+import Card from '../components/ui/Card'
+import ChartCard from '../components/ui/ChartCard'
+import StatBadge from '../components/ui/StatBadge'
 
 const COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#64748b', '#0ea5e9']
 
@@ -97,7 +100,7 @@ const timeAgo = (date) => {
 }
 
 const EmptyChartState = ({ label = 'No chart data available' }) => (
-  <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+  <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed border-border bg-muted text-sm text-muted-foreground">
     {label}
   </div>
 )
@@ -146,14 +149,14 @@ const AdminPanel = ({
   <div className="space-y-5">
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
       {statCards.map((card, index) => (
-        <div key={index} className="card !p-4">
+        <Card key={index} className="!p-4">
           <div className="flex items-center gap-1.5 mb-2">
             <span className="stage-dot" style={{ backgroundColor: card.dot }} />
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide truncate">{card.title}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{card.title}</p>
           </div>
-          <p className="text-2xl font-bold text-gray-900 leading-tight">{card.value}</p>
-          <p className="text-xs text-gray-500 mt-1 truncate">{card.sub}</p>
-        </div>
+          <p className="text-2xl font-bold text-foreground leading-tight">{card.value}</p>
+          <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
+        </Card>
       ))}
     </div>
 
@@ -161,8 +164,8 @@ const AdminPanel = ({
       {/* Pipeline by stage */}
       <div className="card lg:col-span-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">Pipeline by stage</h3>
-          <span className="text-xs text-gray-400">click a stage to filter</span>
+          <h3 className="text-sm font-semibold text-foreground">Pipeline by stage</h3>
+          <span className="text-xs text-muted-foreground">click a stage to filter</span>
         </div>
         {casesByStageData.length > 0 ? (
           <div className="space-y-3">
@@ -174,15 +177,15 @@ const AdminPanel = ({
               >
                 <span className="flex items-center gap-1.5 w-28 shrink-0 text-left">
                   <span className="stage-dot" style={{ backgroundColor: stageColor(stage.name) }} />
-                  <span className="text-xs text-gray-600 truncate">{stageLabel(stage.name)}</span>
+                  <span className="text-xs text-muted-foreground truncate">{stageLabel(stage.name)}</span>
                 </span>
-                <span className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <span className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
                   <span
                     className="block h-full rounded-full transition-all"
                     style={{ width: `${(stage.value / maxStageValue) * 100}%`, backgroundColor: stageColor(stage.name) }}
                   />
                 </span>
-                <span className="w-8 text-right text-xs font-semibold text-gray-700">{stage.value}</span>
+                <span className="w-8 text-right text-xs font-semibold text-muted-foreground">{stage.value}</span>
               </button>
             ))}
           </div>
@@ -192,10 +195,14 @@ const AdminPanel = ({
       </div>
 
       {/* Cases by category */}
-      <div className="card lg:col-span-4">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Cases by category</h3>
-        {casesByVisaTypeData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={Math.max(180, casesByVisaTypeData.length * 26)}>
+      <div className="lg:col-span-4">
+        <ChartCard
+          title="Cases by category"
+          isEmpty={casesByVisaTypeData.length === 0}
+          emptyLabel="No category data yet"
+          height={Math.max(180, casesByVisaTypeData.length * 26)}
+        >
+          <ResponsiveContainer width="100%" height="100%">
             <BarChart data={casesByVisaTypeData} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
               <XAxis type="number" hide />
               <YAxis dataKey="name" type="category" width={90} tick={{ fontSize: 11, fill: '#4b5563' }} axisLine={false} tickLine={false} />
@@ -203,45 +210,45 @@ const AdminPanel = ({
               <Bar dataKey="value" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={10} />
             </BarChart>
           </ResponsiveContainer>
-        ) : (
-          <EmptyChartState label="No category data yet" />
-        )}
+        </ChartCard>
       </div>
 
       {/* Payment status */}
-      <div className="card lg:col-span-3">
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Payment status</h3>
-        {(paymentStatusData[0].value + paymentStatusData[1].value) > 0 ? (
-          <>
-            <ResponsiveContainer width="100%" height={160}>
-              <PieChart>
-                <Pie
-                  data={paymentStatusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={45}
-                  outerRadius={65}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {paymentStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-1.5 mt-2">
-              {paymentStatusData.map((entry, index) => (
-                <div key={index} className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <span className="stage-dot" style={{ backgroundColor: entry.color }} />
-                  {entry.name} · {entry.value}
-                </div>
-              ))}
-            </div>
-          </>
-        ) : (
-          <EmptyChartState label="No payment data yet" />
+      <div className="lg:col-span-3">
+        <ChartCard
+          title="Payment status"
+          isEmpty={(paymentStatusData[0].value + paymentStatusData[1].value) === 0}
+          emptyLabel="No payment data yet"
+          height={160}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={paymentStatusData}
+                cx="50%"
+                cy="50%"
+                innerRadius={45}
+                outerRadius={65}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {paymentStatusData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        {(paymentStatusData[0].value + paymentStatusData[1].value) > 0 && (
+          <div className="flex flex-col gap-1.5 mt-2 px-1">
+            {paymentStatusData.map((entry, index) => (
+              <div key={index} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="stage-dot" style={{ backgroundColor: entry.color }} />
+                {entry.name} · {entry.value}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -250,8 +257,8 @@ const AdminPanel = ({
       {/* Needs attention */}
       <div className="card lg:col-span-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">Needs attention</h3>
-          <span className="text-xs text-gray-400">{needsAttention.length} to chase</span>
+          <h3 className="text-sm font-semibold text-foreground">Needs attention</h3>
+          <span className="text-xs text-muted-foreground">{needsAttention.length} to chase</span>
         </div>
         {needsAttention.length > 0 ? (
           <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
@@ -259,11 +266,11 @@ const AdminPanel = ({
               <button
                 key={item._id}
                 onClick={() => navigate(`/crm-cases/${item._id}`)}
-                className="w-full text-left border-l-2 pl-3 py-1.5 hover:bg-gray-50 rounded-r-lg transition-colors"
+                className="w-full text-left border-l-2 pl-3 py-1.5 hover:bg-muted rounded-r-lg transition-colors"
                 style={{ borderColor: REASON_COLORS[item.reasons[0]?.color || 'grey'].dot }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-gray-900 truncate">{item.clientName || item.caseNumber}</span>
+                  <span className="text-xs font-semibold text-foreground truncate">{item.clientName || item.caseNumber}</span>
                   <div className="flex gap-1 shrink-0">
                     {item.reasons.map((r, i) => (
                       <span
@@ -276,13 +283,13 @@ const AdminPanel = ({
                     ))}
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-500 truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
-                {item.lastActivity && <p className="text-[11px] text-gray-400 truncate">{item.lastActivity}</p>}
+                <p className="text-[11px] text-muted-foreground truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
+                {item.lastActivity && <p className="text-[11px] text-muted-foreground truncate">{item.lastActivity}</p>}
               </button>
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <AlertTriangle className="w-6 h-6 mb-2" />
             <p className="text-xs">Nothing needs attention right now</p>
           </div>
@@ -292,16 +299,16 @@ const AdminPanel = ({
       {/* Recent activity */}
       <div className="card lg:col-span-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">Recent activity</h3>
-          <span className="text-xs text-gray-400">{connected ? 'Live' : 'Connecting…'} · latest log entries</span>
+          <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
+          <span className="text-xs text-muted-foreground">{connected ? 'Live' : 'Connecting…'} · latest log entries</span>
         </div>
         {recentActivity.length > 0 ? (
-          <div className="divide-y divide-gray-100 max-h-[360px] overflow-y-auto">
+          <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
             {recentActivity.slice(0, 10).map((a) => (
               <button
                 key={a._id}
                 onClick={() => navigate(`/crm-cases/${a.caseId}`)}
-                className="w-full flex items-start gap-3 py-2.5 px-1 text-left hover:bg-gray-50 rounded-lg transition-colors"
+                className="w-full flex items-start gap-3 py-2.5 px-1 text-left hover:bg-muted rounded-lg transition-colors"
               >
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0"
@@ -310,15 +317,15 @@ const AdminPanel = ({
                   {(a.performedBy || 'S').charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-900 truncate">{a.performedBy} · {a.caseNumber}</p>
-                  <p className="text-xs text-gray-500 truncate">{a.description || a.title}</p>
+                  <p className="text-xs font-medium text-foreground truncate">{a.performedBy} · {a.caseNumber}</p>
+                  <p className="text-xs text-muted-foreground truncate">{a.description || a.title}</p>
                 </div>
-                <span className="text-[11px] text-gray-400 shrink-0">{timeAgo(a.performedAt)}</span>
+                <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(a.performedAt)}</span>
               </button>
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <Bell className="w-6 h-6 mb-2" />
             <p className="text-xs">No recent activity yet</p>
           </div>
@@ -329,8 +336,8 @@ const AdminPanel = ({
     {/* Team workload */}
     <div className="card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-900">Team workload</h3>
-        <span className="text-xs text-gray-400">active cases per case manager</span>
+        <h3 className="text-sm font-semibold text-foreground">Team workload</h3>
+        <span className="text-xs text-muted-foreground">active cases per case manager</span>
       </div>
       {teamWorkload.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -341,7 +348,7 @@ const AdminPanel = ({
               <button
                 key={member._id}
                 onClick={() => navigate(`/case-managers/${member._id}`)}
-                className="text-left border border-gray-100 rounded-lg p-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors"
+                className="text-left border border-border rounded-lg p-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors"
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -351,14 +358,14 @@ const AdminPanel = ({
                     >
                       {(member.name || '?').charAt(0)}
                     </span>
-                    <span className="text-xs font-medium text-gray-900 truncate">{member.name}</span>
+                    <span className="text-xs font-medium text-foreground truncate">{member.name}</span>
                   </div>
-                  <span className="text-xs font-bold text-gray-900 shrink-0">{activeCount}</span>
+                  <span className="text-xs font-bold text-foreground shrink-0">{activeCount}</span>
                 </div>
-                <span className="block h-1 rounded-full bg-gray-100 overflow-hidden mb-2">
+                <span className="block h-1 rounded-full bg-secondary overflow-hidden mb-2">
                   <span className="block h-full rounded-full bg-primary-600" style={{ width: `${(activeCount / maxActive) * 100}%` }} />
                 </span>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-[11px] text-muted-foreground">
                   {activeCount} active · {member.completedCasesCount || 0} filed
                 </p>
               </button>
@@ -366,29 +373,29 @@ const AdminPanel = ({
           })}
         </div>
       ) : (
-        <p className="text-xs text-gray-400 text-center py-6">No case manager workload data</p>
+        <p className="text-xs text-muted-foreground text-center py-6">No case manager workload data</p>
       )}
     </div>
 
     {/* Top performers */}
     <div className="card">
-      <h3 className="text-sm font-semibold text-gray-900 mb-4">Top performers</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-4">Top performers</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2.5">
+        <div className="flex items-center justify-between border border-border rounded-lg px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <span className="stage-dot" style={{ backgroundColor: '#2563eb' }} />
+            <span className="stage-dot bg-primary" />
             <div>
-              <p className="text-xs text-gray-500">Top Case Manager</p>
-              <p className="text-sm font-semibold text-gray-900">{stats?.topCaseManager || 'N/A'}</p>
+              <p className="text-xs text-muted-foreground">Top Case Manager</p>
+              <p className="text-sm font-semibold text-foreground">{stats?.topCaseManager || 'N/A'}</p>
             </div>
           </div>
-          <span className="text-xs font-medium text-gray-500">{stats?.topCaseManagerScore || 0} pts</span>
+          <span className="text-xs font-medium text-muted-foreground">{stats?.topCaseManagerScore || 0} pts</span>
         </div>
       </div>
     </div>
 
     <div className="card">
-      <h3 className="text-sm font-semibold text-gray-900 mb-4">Quick actions</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-4">Quick actions</h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <button onClick={() => navigate('/crm-cases')} className="btn-primary flex items-center justify-center gap-2">
           <Briefcase className="w-4 h-4" />
@@ -414,33 +421,33 @@ const CaseManagerPanel = ({ navigate, roleStats }) => {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">My Active Cases</p>
-              <p className="text-3xl font-bold text-gray-900">{roleStats?.activeCases || 0}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">My Active Cases</p>
+              <p className="text-3xl font-bold text-foreground">{roleStats?.activeCases || 0}</p>
             </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
-              <Briefcase className="w-6 h-6 text-white" />
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Pending Review</p>
-              <p className="text-3xl font-bold text-gray-900">{roleStats?.pendingReview || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-              <Clock className="w-6 h-6 text-white" />
+            <div className="p-3 rounded-lg bg-secondary">
+              <Briefcase className="w-6 h-6 text-muted-foreground" />
             </div>
           </div>
         </div>
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Documents Pending Review</p>
-              <p className="text-3xl font-bold text-gray-900">{roleStats?.pendingDocumentReview || 0}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Pending Review</p>
+              <p className="text-3xl font-bold text-foreground">{roleStats?.pendingReview || 0}</p>
             </div>
-            <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600">
-              <FileText className="w-6 h-6 text-white" />
+            <div className="p-3 rounded-lg bg-secondary">
+              <Clock className="w-6 h-6 text-muted-foreground" />
+            </div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Documents Pending Review</p>
+              <p className="text-3xl font-bold text-foreground">{roleStats?.pendingDocumentReview || 0}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-secondary">
+              <FileText className="w-6 h-6 text-muted-foreground" />
             </div>
           </div>
         </div>
@@ -449,13 +456,13 @@ const CaseManagerPanel = ({ navigate, roleStats }) => {
       <CaseManagerAnalyticsPanel />
 
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Cases (By Priority)</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">My Cases (By Priority)</h3>
         <div className="space-y-3">
           {roleStats?.urgentCases?.slice(0, 5).map((caseItem) => (
-            <div key={caseItem._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div key={caseItem._id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
               <div>
-                <p className="font-medium text-gray-900">{caseItem.caseNumber}</p>
-                <p className="text-sm text-gray-600">{caseItem.clientName}</p>
+                <p className="font-medium text-foreground">{caseItem.caseNumber}</p>
+                <p className="text-sm text-muted-foreground">{caseItem.clientName}</p>
               </div>
               <button onClick={() => navigate(`/crm-cases/${caseItem._id}`)} className="btn-secondary text-sm">
                 View
@@ -463,7 +470,7 @@ const CaseManagerPanel = ({ navigate, roleStats }) => {
             </div>
           ))}
           {(!roleStats?.urgentCases || roleStats.urgentCases.length === 0) && (
-            <p className="text-gray-500 text-center py-4">No urgent cases</p>
+            <p className="text-muted-foreground text-center py-4">No urgent cases</p>
           )}
         </div>
       </div>
@@ -481,14 +488,14 @@ const TeamLeadPanel = ({
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {teamStatCards.map((card, index) => (
-          <div key={index} className="card !p-4">
+          <Card key={index} className="!p-4">
             <div className="flex items-center gap-1.5 mb-2">
               <span className="stage-dot" style={{ backgroundColor: card.dot }} />
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide truncate">{card.title}</p>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{card.title}</p>
             </div>
-            <p className="text-2xl font-bold text-gray-900 leading-tight">{card.value}</p>
-            <p className="text-xs text-gray-500 mt-1 truncate">{card.sub}</p>
-          </div>
+            <p className="text-2xl font-bold text-foreground leading-tight">{card.value}</p>
+            <p className="text-xs text-muted-foreground mt-1 truncate">{card.sub}</p>
+          </Card>
         ))}
       </div>
 
@@ -496,8 +503,8 @@ const TeamLeadPanel = ({
         {/* Pipeline by stage */}
         <div className="card lg:col-span-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">Pipeline by stage</h3>
-            <span className="text-xs text-gray-400">click a stage to filter</span>
+            <h3 className="text-sm font-semibold text-foreground">Pipeline by stage</h3>
+            <span className="text-xs text-muted-foreground">click a stage to filter</span>
           </div>
           {casesByStageData.length > 0 ? (
             <div className="space-y-3">
@@ -509,15 +516,15 @@ const TeamLeadPanel = ({
                 >
                   <span className="flex items-center gap-1.5 w-28 shrink-0 text-left">
                     <span className="stage-dot" style={{ backgroundColor: stageColor(stage.name) }} />
-                    <span className="text-xs text-gray-600 truncate">{stageLabel(stage.name)}</span>
+                    <span className="text-xs text-muted-foreground truncate">{stageLabel(stage.name)}</span>
                   </span>
-                  <span className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  <span className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden">
                     <span
                       className="block h-full rounded-full transition-all"
                       style={{ width: `${(stage.value / maxStageValue) * 100}%`, backgroundColor: stageColor(stage.name) }}
                     />
                   </span>
-                  <span className="w-8 text-right text-xs font-semibold text-gray-700">{stage.value}</span>
+                  <span className="w-8 text-right text-xs font-semibold text-muted-foreground">{stage.value}</span>
                 </button>
               ))}
             </div>
@@ -528,7 +535,7 @@ const TeamLeadPanel = ({
 
         {/* Cases by category */}
         <div className="card lg:col-span-4">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Cases by category</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Cases by category</h3>
           {casesByVisaTypeData.length > 0 ? (
             <ResponsiveContainer width="100%" height={Math.max(180, casesByVisaTypeData.length * 26)}>
               <BarChart data={casesByVisaTypeData} layout="vertical" margin={{ left: 8, right: 8, top: 0, bottom: 0 }}>
@@ -545,7 +552,7 @@ const TeamLeadPanel = ({
 
         {/* Payment status */}
         <div className="card lg:col-span-3">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Payment status</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Payment status</h3>
           {(paymentStatusData[0].value + paymentStatusData[1].value) > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
@@ -568,7 +575,7 @@ const TeamLeadPanel = ({
               </ResponsiveContainer>
               <div className="flex flex-col gap-1.5 mt-2">
                 {paymentStatusData.map((entry, index) => (
-                  <div key={index} className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <div key={index} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span className="stage-dot" style={{ backgroundColor: entry.color }} />
                     {entry.name} · {entry.value}
                   </div>
@@ -585,8 +592,8 @@ const TeamLeadPanel = ({
         {/* Needs attention */}
         <div className="card lg:col-span-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">Needs attention</h3>
-            <span className="text-xs text-gray-400">{needsAttention.length} to chase</span>
+            <h3 className="text-sm font-semibold text-foreground">Needs attention</h3>
+            <span className="text-xs text-muted-foreground">{needsAttention.length} to chase</span>
           </div>
           {needsAttention.length > 0 ? (
             <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
@@ -594,11 +601,11 @@ const TeamLeadPanel = ({
                 <button
                   key={item._id}
                   onClick={() => navigate(`/crm-cases/${item._id}`)}
-                  className="w-full text-left border-l-2 pl-3 py-1.5 hover:bg-gray-50 rounded-r-lg transition-colors"
+                  className="w-full text-left border-l-2 pl-3 py-1.5 hover:bg-muted rounded-r-lg transition-colors"
                   style={{ borderColor: REASON_COLORS[item.reasons[0]?.color || 'grey'].dot }}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-gray-900 truncate">{item.clientName || item.caseNumber}</span>
+                    <span className="text-xs font-semibold text-foreground truncate">{item.clientName || item.caseNumber}</span>
                     <div className="flex gap-1 shrink-0">
                       {item.reasons.map((r, i) => (
                         <span
@@ -611,13 +618,13 @@ const TeamLeadPanel = ({
                       ))}
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
-                  {item.lastActivity && <p className="text-[11px] text-gray-400 truncate">{item.lastActivity}</p>}
+                  <p className="text-[11px] text-muted-foreground truncate">{item.caseNumber} · {resolveDisplayVisa(item) || item.visaCategory} · {item.caseManagerName}</p>
+                  {item.lastActivity && <p className="text-[11px] text-muted-foreground truncate">{item.lastActivity}</p>}
                 </button>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
               <AlertTriangle className="w-6 h-6 mb-2" />
               <p className="text-xs">Nothing needs attention right now</p>
             </div>
@@ -627,16 +634,16 @@ const TeamLeadPanel = ({
         {/* Recent activity */}
         <div className="card lg:col-span-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">Recent activity</h3>
-            <span className="text-xs text-gray-400">{connected ? 'Live' : 'Connecting…'} · latest log entries</span>
+            <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
+            <span className="text-xs text-muted-foreground">{connected ? 'Live' : 'Connecting…'} · latest log entries</span>
           </div>
           {recentActivity.length > 0 ? (
-            <div className="divide-y divide-gray-100 max-h-[360px] overflow-y-auto">
+            <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
               {recentActivity.slice(0, 10).map((a) => (
                 <button
                   key={a._id}
                   onClick={() => navigate(`/crm-cases/${a.caseId}`)}
-                  className="w-full flex items-start gap-3 py-2.5 px-1 text-left hover:bg-gray-50 rounded-lg transition-colors"
+                  className="w-full flex items-start gap-3 py-2.5 px-1 text-left hover:bg-muted rounded-lg transition-colors"
                 >
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0"
@@ -645,15 +652,15 @@ const TeamLeadPanel = ({
                     {(a.performedBy || 'S').charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{a.performedBy} · {a.caseNumber}</p>
-                    <p className="text-xs text-gray-500 truncate">{a.description || a.title}</p>
+                    <p className="text-xs font-medium text-foreground truncate">{a.performedBy} · {a.caseNumber}</p>
+                    <p className="text-xs text-muted-foreground truncate">{a.description || a.title}</p>
                   </div>
-                  <span className="text-[11px] text-gray-400 shrink-0">{timeAgo(a.performedAt)}</span>
+                  <span className="text-[11px] text-muted-foreground shrink-0">{timeAgo(a.performedAt)}</span>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
               <Bell className="w-6 h-6 mb-2" />
               <p className="text-xs">No recent activity yet</p>
             </div>
@@ -664,8 +671,8 @@ const TeamLeadPanel = ({
       {/* New Cases Queue */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">New cases queue</h3>
-          <span className="text-xs text-gray-400">
+          <h3 className="text-sm font-semibold text-foreground">New cases queue</h3>
+          <span className="text-xs text-muted-foreground">
             {connected ? 'Live' : 'Connecting…'} · {roleStats?.unassignedCaseList?.length || 0} awaiting assignment
           </span>
         </div>
@@ -673,7 +680,7 @@ const TeamLeadPanel = ({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                <tr className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide border-b border-border">
                   <th className="py-2 pr-4">Case Number</th>
                   <th className="py-2 pr-4">Client</th>
                   <th className="py-2 pr-4">Visa</th>
@@ -686,22 +693,22 @@ const TeamLeadPanel = ({
               </thead>
               <tbody>
                 {roleStats.unassignedCaseList.map((c) => (
-                  <tr key={c._id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-2.5 pr-4 font-medium text-gray-900">{c.caseNumber || c.caseId}</td>
-                    <td className="py-2.5 pr-4 text-gray-700">{c.clientName || c.clientEmail || 'Unknown'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{resolveDisplayVisa(c) || '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-600">{c.plan?.tier || c.package || '—'}</td>
-                    <td className="py-2.5 pr-4 text-gray-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
+                  <tr key={c._id} className="border-b border-border hover:bg-muted">
+                    <td className="py-2.5 pr-4 font-medium text-foreground">{c.caseNumber || c.caseId}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{c.clientName || c.clientEmail || 'Unknown'}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{resolveDisplayVisa(c) || '—'}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{c.plan?.tier || c.package || '—'}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
                     <td className="py-2.5 pr-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         ['high', 'urgent', 'Premium Processing'].includes(c.priority)
-                          ? 'bg-red-50 text-red-700'
-                          : 'bg-gray-100 text-gray-600'
+                          ? 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400'
+                          : 'bg-secondary text-muted-foreground'
                       }`}>
                         {c.priority || 'medium'}
                       </span>
                     </td>
-                    <td className="py-2.5 pr-4 text-gray-600 capitalize">{(c.status || '').replace(/_/g, ' ')}</td>
+                    <td className="py-2.5 pr-4 text-muted-foreground capitalize">{(c.status || '').replace(/_/g, ' ')}</td>
                     <td className="py-2.5 pr-4 text-right">
                       <button
                         onClick={() => navigate(`/crm-cases/${c._id}?assign=case_manager`)}
@@ -716,15 +723,15 @@ const TeamLeadPanel = ({
             </table>
           </div>
         ) : (
-          <p className="text-xs text-gray-400 text-center py-6">No new cases awaiting assignment</p>
+          <p className="text-xs text-muted-foreground text-center py-6">No new cases awaiting assignment</p>
         )}
       </div>
 
       {/* Team workload */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">Team workload</h3>
-          <span className="text-xs text-gray-400">click a case manager for their full caseload</span>
+          <h3 className="text-sm font-semibold text-foreground">Team workload</h3>
+          <span className="text-xs text-muted-foreground">click a case manager for their full caseload</span>
         </div>
         {roleStats?.caseManagerWorkload?.length ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -734,7 +741,7 @@ const TeamLeadPanel = ({
                 <button
                   key={entry.caseManagerId || index}
                   onClick={() => entry.caseManagerId && navigate(`/case-managers/${entry.caseManagerId}`)}
-                  className="text-left border border-gray-100 rounded-lg p-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors"
+                  className="text-left border border-border rounded-lg p-3 hover:border-primary-200 hover:bg-primary-50/30 transition-colors"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
@@ -744,14 +751,14 @@ const TeamLeadPanel = ({
                       >
                         {(entry.caseManagerName || '?').charAt(0)}
                       </span>
-                      <span className="text-xs font-medium text-gray-900 truncate">{entry.caseManagerName || 'Unassigned'}</span>
+                      <span className="text-xs font-medium text-foreground truncate">{entry.caseManagerName || 'Unassigned'}</span>
                     </div>
-                    <span className="text-xs font-bold text-gray-900 shrink-0">{entry.totalCases || 0}</span>
+                    <span className="text-xs font-bold text-foreground shrink-0">{entry.totalCases || 0}</span>
                   </div>
-                  <span className="block h-1 rounded-full bg-gray-100 overflow-hidden mb-2">
+                  <span className="block h-1 rounded-full bg-secondary overflow-hidden mb-2">
                     <span className="block h-full rounded-full bg-primary-600" style={{ width: `${(activeCount / teamMaxActive) * 100}%` }} />
                   </span>
-                  <p className="text-[11px] text-gray-400">
+                  <p className="text-[11px] text-muted-foreground">
                     {activeCount} active · {entry.pendingCases || 0} pending
                   </p>
                 </button>
@@ -759,7 +766,7 @@ const TeamLeadPanel = ({
             })}
           </div>
         ) : (
-          <p className="text-xs text-gray-400 text-center py-6">No workload data</p>
+          <p className="text-xs text-muted-foreground text-center py-6">No workload data</p>
         )}
       </div>
     </div>
@@ -772,60 +779,58 @@ const ClientPanel = ({ navigate, roleStats }) => (
       <div className="card">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-600 mb-1">My Cases</p>
-            <p className="text-3xl font-bold text-gray-900">{roleStats?.myCases || 0}</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">My Cases</p>
+            <p className="text-3xl font-bold text-foreground">{roleStats?.myCases || 0}</p>
           </div>
-          <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
-            <Briefcase className="w-6 h-6 text-white" />
-          </div>
-        </div>
-      </div>
-      <div className="card">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Pending Documents</p>
-            <p className="text-3xl font-bold text-gray-900">{roleStats?.pendingDocuments || 0}</p>
-          </div>
-          <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-            <FileText className="w-6 h-6 text-white" />
+          <div className="p-3 rounded-lg bg-secondary">
+            <Briefcase className="w-6 h-6 text-muted-foreground" />
           </div>
         </div>
       </div>
       <div className="card">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-600 mb-1">Unread Messages</p>
-            <p className="text-3xl font-bold text-gray-900">{roleStats?.unreadMessages || 0}</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Pending Documents</p>
+            <p className="text-3xl font-bold text-foreground">{roleStats?.pendingDocuments || 0}</p>
           </div>
-          <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600">
-            <MessageSquare className="w-6 h-6 text-white" />
+          <div className="p-3 rounded-lg bg-secondary">
+            <FileText className="w-6 h-6 text-muted-foreground" />
+          </div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Unread Messages</p>
+            <p className="text-3xl font-bold text-foreground">{roleStats?.unreadMessages || 0}</p>
+          </div>
+          <div className="p-3 rounded-lg bg-secondary">
+            <MessageSquare className="w-6 h-6 text-muted-foreground" />
           </div>
         </div>
       </div>
     </div>
 
     <div className="card">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">My Cases</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-4">My Cases</h3>
       <div className="space-y-3">
         {roleStats?.myCasesList?.slice(0, 5).map((caseItem) => (
-          <div key={caseItem._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div key={caseItem._id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
             <div>
-              <p className="font-medium text-gray-900">{caseItem.caseNumber}</p>
-              <p className="text-sm text-gray-600">{resolveDisplayVisa(caseItem)} - {caseItem.visaCategory}</p>
+              <p className="font-medium text-foreground">{caseItem.caseNumber}</p>
+              <p className="text-sm text-muted-foreground">{resolveDisplayVisa(caseItem)} - {caseItem.visaCategory}</p>
             </div>
-            <span className={`badge ${caseItem.stage === 'approved' ? 'bg-green-100 text-green-800' : caseItem.stage === 'uscis_pending' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-              {caseItem.stage.replace('_', ' ')}
-            </span>
+            <StatBadge value={caseItem.stage} kind="stage" />
           </div>
         ))}
         {(!roleStats?.myCasesList || roleStats.myCasesList.length === 0) && (
-          <p className="text-gray-500 text-center py-4">No cases found</p>
+          <p className="text-muted-foreground text-center py-4">No cases found</p>
         )}
       </div>
     </div>
 
     <div className="card">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+      <h3 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <button onClick={() => navigate('/crm-cases')} className="btn-primary flex items-center justify-center gap-2">
           <Briefcase className="w-4 h-4" />
@@ -1077,7 +1082,7 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500 text-sm">Loading dashboard...</div>
+        <div className="text-muted-foreground text-sm">Loading dashboard...</div>
       </div>
     )
   }
@@ -1087,9 +1092,9 @@ const Dashboard = () => {
       <div className="space-y-6">
         <div className="card">
           <div className="text-center py-12">
-            <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Unable to load dashboard data</h3>
-            <p className="text-sm text-gray-600">{error}</p>
+            <AlertTriangle className="w-10 h-10 text-amber-500 dark:text-amber-400 mx-auto mb-4" />
+            <h3 className="text-base font-semibold text-foreground mb-2">Unable to load dashboard data</h3>
+            <p className="text-sm text-muted-foreground">{error}</p>
             <button
               onClick={retryCurrentDashboard}
               className="mt-4 btn-primary"
@@ -1106,17 +1111,17 @@ const Dashboard = () => {
     <div className="space-y-6">
       {!is(['super_admin', 'admin']) && (
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500">Welcome back! Here's what's happening today.</p>
+          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Welcome back! Here's what's happening today.</p>
         </div>
       )}
 
       {error && (
         <div className="card">
           <div className="text-center py-12">
-            <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Unable to load dashboard data</h3>
-            <p className="text-sm text-gray-600">{error}</p>
+            <AlertTriangle className="w-10 h-10 text-amber-500 dark:text-amber-400 mx-auto mb-4" />
+            <h3 className="text-base font-semibold text-foreground mb-2">Unable to load dashboard data</h3>
+            <p className="text-sm text-muted-foreground">{error}</p>
           </div>
         </div>
       )}

@@ -109,7 +109,7 @@ const displayStatus = (value = '') => value.replace(/_/g, ' ').replace(/\b\w/g, 
 
 const TrackingField = ({ label, children }) => (
   <label className="block">
-    <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
+    <span className="mb-1 block text-sm font-medium text-muted-foreground">{label}</span>
     {children}
   </label>
 )
@@ -218,7 +218,7 @@ function CaseDocumentViewer({ document, onClose }) {
         )}
         {!loading && !error && blobUrl && isPdf && (
           <div className="flex h-full w-full items-center justify-center">
-            <iframe src={blobUrl} title="Document preview" className="h-full min-h-[72vh] w-full max-w-6xl rounded-lg bg-white shadow-2xl" />
+            <iframe src={blobUrl} title="Document preview" className="h-full min-h-[72vh] w-full max-w-6xl rounded-lg bg-card shadow-2xl" />
           </div>
         )}
         {!loading && !error && blobUrl && isImage && (
@@ -287,13 +287,13 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
         <label>
           <span className="mb-1 block text-xs font-semibold text-blue-900">Document Type</span>
-          <select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="input-field bg-white text-sm">
+          <select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="input-field bg-card text-sm">
             {documentTypeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label>
           <span className="mb-1 block text-xs font-semibold text-blue-900">Category</span>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="input-field bg-white text-sm">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="input-field bg-card text-sm">
             {['identity', 'education', 'employment', 'financial', 'civil', 'immigration', 'business', 'legal', 'government', 'supporting', 'evidence', 'other'].map((value) => (
               <option key={value} value={value}>{displayStatus(value)}</option>
             ))}
@@ -314,9 +314,9 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
       {selectedFiles.length > 0 && (
         <div className="mt-3 space-y-2">
           {selectedFiles.map((file, index) => (
-            <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-sm">
-              <span className="min-w-0 truncate font-medium text-gray-900">{file.name}</span>
-              <span className="shrink-0 text-xs text-gray-500">{formatFileSize(file.size)}</span>
+            <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2 text-sm">
+              <span className="min-w-0 truncate font-medium text-foreground">{file.name}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{formatFileSize(file.size)}</span>
             </div>
           ))}
         </div>
@@ -908,7 +908,7 @@ const CRMCaseDetail = () => {
 
   const getStageColor = (stage) => {
     const colors = {
-      intake: 'bg-gray-100 text-gray-800',
+      intake: 'bg-secondary text-foreground',
       strategy: 'bg-blue-100 text-blue-800',
       evidence: 'bg-purple-100 text-purple-800',
       letters: 'bg-pink-100 text-pink-800',
@@ -918,36 +918,36 @@ const CRMCaseDetail = () => {
       approved: 'bg-blue-100 text-blue-800',
       denied: 'bg-red-100 text-red-800'
     }
-    return colors[stage] || 'bg-gray-100 text-gray-800'
+    return colors[stage] || 'bg-secondary text-foreground'
   }
 
   const getStatusColor = (status) => {
     const colors = {
       active: 'bg-green-100 text-green-800',
-      archived: 'bg-gray-100 text-gray-800',
+      archived: 'bg-secondary text-foreground',
       closed: 'bg-blue-100 text-blue-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getPriorityColor = (priority) => {
     const colors = {
-      low: 'bg-gray-100 text-gray-800',
+      low: 'bg-secondary text-foreground',
       medium: 'bg-blue-100 text-blue-800',
       high: 'bg-amber-100 text-amber-800',
       urgent: 'bg-red-100 text-red-800'
     }
-    return colors[priority] || 'bg-gray-100 text-gray-800'
+    return colors[priority] || 'bg-secondary text-foreground'
   }
 
   const getDocumentReviewColor = (status) => {
     const colors = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       approved: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800',
       needs_revision: 'bg-amber-100 text-amber-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getFormStatusColor = (status) => {
@@ -970,13 +970,13 @@ const CRMCaseDetail = () => {
 
   const getLetterStatusColor = (status) => {
     const colors = {
-      assigned: 'bg-gray-100 text-gray-800',
+      assigned: 'bg-secondary text-foreground',
       draft_generated: 'bg-blue-100 text-blue-800',
       revision_needed: 'bg-red-100 text-red-800',
       signed: 'bg-green-100 text-green-800',
       rejected: 'bg-red-100 text-red-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getFilingReadinessColor = (score) => {
@@ -1053,17 +1053,17 @@ const CRMCaseDetail = () => {
     if (!addons.length && !availablePremium && !addonsLoading) return null
     return (
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Add-ons</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">Add-ons</h3>
         {addonsLoading && (
-          <p className="text-sm font-medium text-gray-500">Checking available add-ons...</p>
+          <p className="text-sm font-medium text-muted-foreground">Checking available add-ons...</p>
         )}
         {!addons.length && availablePremium && (
           <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{availablePremium.form}</p>
-                <h4 className="text-base font-bold text-gray-900">{availablePremium.service}</h4>
-                <p className="mt-1 text-sm text-gray-600">
+                <h4 className="text-base font-bold text-foreground">{availablePremium.service}</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
                   Available upgrade for this existing case. Client can purchase it from the client portal.
                 </p>
                 {!availablePremium.eligibility?.available && (
@@ -1073,21 +1073,21 @@ const CRMCaseDetail = () => {
                 )}
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm sm:text-right">
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-gray-500">Government Fee</p>
-                  <p className="font-bold text-gray-900">{formatCents(availablePremium.governmentFeeCents)}</p>
+                <div className="rounded-lg bg-card px-3 py-2">
+                  <p className="text-muted-foreground">Government Fee</p>
+                  <p className="font-bold text-foreground">{formatCents(availablePremium.governmentFeeCents)}</p>
                 </div>
-                <div className="rounded-lg bg-white px-3 py-2">
-                  <p className="text-gray-500">Attorney Fee</p>
-                  <p className="font-bold text-gray-900">{formatCents(availablePremium.attorneyFeeCents)}</p>
+                <div className="rounded-lg bg-card px-3 py-2">
+                  <p className="text-muted-foreground">Attorney Fee</p>
+                  <p className="font-bold text-foreground">{formatCents(availablePremium.attorneyFeeCents)}</p>
                 </div>
               </div>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
               {(availablePremium.eligibility?.checks || []).map((check) => (
-                <div key={check.key} className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
+                <div key={check.key} className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm">
                   <span className={`h-2.5 w-2.5 rounded-full ${check.passed ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                  <span className={check.passed ? 'font-medium text-gray-700' : 'font-medium text-amber-700'}>{check.label}</span>
+                  <span className={check.passed ? 'font-medium text-muted-foreground' : 'font-medium text-amber-700'}>{check.label}</span>
                 </div>
               ))}
             </div>
@@ -1099,33 +1099,33 @@ const CRMCaseDetail = () => {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{addon.form}</p>
-                  <h4 className="text-base font-bold text-gray-900">{addon.service}</h4>
-                  <p className="mt-1 text-sm text-gray-600">Status: <span className="font-semibold capitalize">{String(addon.status || 'pending').replace(/_/g, ' ')}</span></p>
-                  <p className="text-sm text-gray-600">Assigned To: <span className="font-semibold">{addon.assignedTo?.name || addon.assignedTo?.displayName || 'Not assigned'}</span></p>
+                  <h4 className="text-base font-bold text-foreground">{addon.service}</h4>
+                  <p className="mt-1 text-sm text-muted-foreground">Status: <span className="font-semibold capitalize">{String(addon.status || 'pending').replace(/_/g, ' ')}</span></p>
+                  <p className="text-sm text-muted-foreground">Assigned To: <span className="font-semibold">{addon.assignedTo?.name || addon.assignedTo?.displayName || 'Not assigned'}</span></p>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-sm sm:text-right">
-                  <div className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-gray-500">Government Fee</p>
-                    <p className="font-bold text-gray-900">{formatCents(addon.governmentFeeCents)}</p>
+                  <div className="rounded-lg bg-card px-3 py-2">
+                    <p className="text-muted-foreground">Government Fee</p>
+                    <p className="font-bold text-foreground">{formatCents(addon.governmentFeeCents)}</p>
                     <p className="text-xs font-semibold text-emerald-700 capitalize">{addon.paymentStatus || 'pending'}</p>
                   </div>
-                  <div className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-gray-500">Attorney Fee</p>
-                    <p className="font-bold text-gray-900">{formatCents(addon.attorneyFeeCents)}</p>
+                  <div className="rounded-lg bg-card px-3 py-2">
+                    <p className="text-muted-foreground">Attorney Fee</p>
+                    <p className="font-bold text-foreground">{formatCents(addon.attorneyFeeCents)}</p>
                     <p className="text-xs font-semibold text-emerald-700 capitalize">{addon.paymentStatus || 'pending'}</p>
                   </div>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                 {(addon.requiredDocuments || []).map((document) => (
-                  <div key={document.documentType || document.name} className="rounded-lg border border-emerald-100 bg-white px-3 py-2 text-sm">
-                    <p className="font-semibold text-gray-900">{document.name}</p>
-                    <p className="text-xs text-gray-500 capitalize">{document.status || 'requested'}</p>
+                  <div key={document.documentType || document.name} className="rounded-lg border border-emerald-100 bg-card px-3 py-2 text-sm">
+                    <p className="font-semibold text-foreground">{document.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{document.status || 'requested'}</p>
                   </div>
                 ))}
               </div>
               {addon.intake && (
-                <div className="mt-4 rounded-xl border border-emerald-100 bg-white p-4">
+                <div className="mt-4 rounded-xl border border-emerald-100 bg-card p-4">
                   <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Form I-907 Client Information</p>
                   <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
                     {[
@@ -1164,8 +1164,8 @@ const CRMCaseDetail = () => {
                       ['Company EIN', addon.intake.ein],
                     ].map(([label, value]) => (
                       <p key={label}>
-                        <span className="text-gray-500">{label}:</span>{' '}
-                        <span className="font-semibold text-gray-900">{value || 'Needed'}</span>
+                        <span className="text-muted-foreground">{label}:</span>{' '}
+                        <span className="font-semibold text-foreground">{value || 'Needed'}</span>
                       </p>
                     ))}
                   </div>
@@ -1184,10 +1184,10 @@ const CRMCaseDetail = () => {
       <div className="card">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Request Missing Information</h3>
-            <p className="text-sm text-gray-500">Send employee or employer tasks from this case review.</p>
+            <h3 className="text-lg font-semibold text-foreground">Request Missing Information</h3>
+            <p className="text-sm text-muted-foreground">Send employee or employer tasks from this case review.</p>
           </div>
-          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">
+          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-muted-foreground">
             {requests.filter((request) => request.status !== 'completed').length} open
           </span>
         </div>
@@ -1233,20 +1233,20 @@ const CRMCaseDetail = () => {
           </button>
         </div>
         {infoRequestMessage && (
-          <p className="mt-3 text-sm font-medium text-gray-600">{infoRequestMessage}</p>
+          <p className="mt-3 text-sm font-medium text-muted-foreground">{infoRequestMessage}</p>
         )}
 
         {requests.length > 0 && (
           <div className="mt-5 space-y-2">
             {requests.slice().reverse().slice(0, 5).map((request, index) => (
-              <div key={request._id || index} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <div key={request._id || index} className="rounded-lg border border-border bg-muted px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900">{request.title}</p>
-                  <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold uppercase text-gray-600">
+                  <p className="text-sm font-semibold text-foreground">{request.title}</p>
+                  <span className="rounded-full bg-card px-2 py-1 text-[11px] font-bold uppercase text-muted-foreground">
                     {request.target} · {String(request.status || 'open').replace(/_/g, ' ')}
                   </span>
                 </div>
-                {request.description && <p className="mt-1 text-sm text-gray-500">{request.description}</p>}
+                {request.description && <p className="mt-1 text-sm text-muted-foreground">{request.description}</p>}
               </div>
             ))}
           </div>
@@ -1306,14 +1306,14 @@ const CRMCaseDetail = () => {
   const renderSkeleton = () => (
     <div className="space-y-4">
       {[1, 2, 3].map(i => (
-        <div key={i} className="h-16 bg-gray-200 rounded-lg animate-pulse" />
+        <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
       ))}
     </div>
   )
 
   const renderEmptyState = (message) => (
-    <div className="text-center py-8 text-gray-500">
-      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+    <div className="text-center py-8 text-muted-foreground">
+      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
       <p>{message}</p>
     </div>
   )
@@ -1321,7 +1321,7 @@ const CRMCaseDetail = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-600">Loading case details...</div>
+        <div className="text-muted-foreground">Loading case details...</div>
       </div>
     )
   }
@@ -1329,7 +1329,7 @@ const CRMCaseDetail = () => {
   if (!caseData) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-600">Case not found</div>
+        <div className="text-muted-foreground">Case not found</div>
       </div>
     )
   }
@@ -1349,15 +1349,15 @@ const CRMCaseDetail = () => {
       <div>
         <button
           onClick={() => navigate('/crm-cases')}
-          className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 mb-3"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Cases
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-gray-900 break-words">{caseData.caseNumber}</h1>
-            <p className="text-gray-600 mt-1">{caseData.clientName}</p>
+            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
+            <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
             {/* P12-S3: Case ID + copy button — the admin's fastest path to
                 share the client's BAIS portal login ID, no DB lookup needed. */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1382,7 +1382,7 @@ const CRMCaseDetail = () => {
                 </button>
                 {caseIdCopied && <span className="text-[11px] font-semibold text-emerald-600">Copied!</span>}
               </div>
-              <span className="text-xs text-gray-400">Share with client for BAIS portal login</span>
+              <span className="text-xs text-muted-foreground">Share with client for BAIS portal login</span>
             </div>
           </div>
           <button
@@ -1433,8 +1433,8 @@ const CRMCaseDetail = () => {
 
       {/* Phase 7 — a child case links back to the matter it belongs to */}
       {['employee', 'beneficiary'].includes(caseData.caseRole) && caseData.parentCase && (
-        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 flex items-center justify-between gap-3">
-          <p className="text-sm text-gray-700">
+        <div className="rounded-2xl border border-border bg-muted p-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
             Part of matter <span className="font-semibold">{caseData.parentCase.caseNumber}</span>
             {caseData.parentCase.clientName ? ` — ${caseData.parentCase.clientName}` : ''}
             {caseData.assignmentOverridden && (
@@ -1456,40 +1456,40 @@ const CRMCaseDetail = () => {
           to each; overridden children are skipped by any future cascade from
           this principal's own assignment. */}
       {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Child Cases ({caseData.childCaseCount})</h3>
-            <p className="text-sm text-gray-500 mt-0.5">
+        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="text-lg font-semibold text-foreground">Child Cases ({caseData.childCaseCount})</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">
               Assigning this matter's case manager applies to every child case below except those marked overridden.
             </p>
           </div>
           {childCases === null ? (
-            <p className="px-5 py-4 text-sm text-gray-400">Loading…</p>
+            <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
           ) : childCases.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-gray-400">No child cases yet.</p>
+            <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Manager</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
                     <th className="px-5 py-2"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-border">
                   {childCases.map((child) => (
                     <tr key={child._id}>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{child.caseNumber}</td>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm text-gray-600">{child.clientName || 'TBD'}</td>
+                      <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
+                      <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">{child.clientName || 'TBD'}</td>
                       <td className="px-5 py-3 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(child.status)}`}>
                           {child.status}
                         </span>
                       </td>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">
                         {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
                         {child.assignmentOverridden && (
                           <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
@@ -1515,13 +1515,13 @@ const CRMCaseDetail = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200 overflow-x-auto">
+      <div className="flex gap-2 border-b border-border overflow-x-auto">
         <button
           onClick={() => handleTabChange('overview')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'overview'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <FolderOpen className="w-4 h-4 inline mr-2" />
@@ -1532,7 +1532,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'documents'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <FileText className="w-4 h-4 inline mr-2" />
@@ -1543,7 +1543,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'forms'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Receipt className="w-4 h-4 inline mr-2" />
@@ -1554,7 +1554,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'petition'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Briefcase className="w-4 h-4 inline mr-2" />
@@ -1565,7 +1565,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'tracking'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Clock className="w-4 h-4 inline mr-2" />
@@ -1576,7 +1576,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'strategy'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <TrendingUp className="w-4 h-4 inline mr-2" />
@@ -1587,7 +1587,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'payments'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <DollarSign className="w-4 h-4 inline mr-2" />
@@ -1598,7 +1598,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'letters'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <PenTool className="w-4 h-4 inline mr-2" />
@@ -1609,7 +1609,7 @@ const CRMCaseDetail = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'notes'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <MessageSquare className="w-4 h-4 inline mr-2" />
@@ -1625,7 +1625,7 @@ const CRMCaseDetail = () => {
             <div className="lg:col-span-2 space-y-6">
               <div className="card">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Case Information</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Case Information</h3>
                   <button
                     onClick={() => setShowStageUpdateModal(true)}
                     className="btn-secondary text-sm flex items-center justify-center gap-2 w-full sm:w-auto"
@@ -1636,50 +1636,50 @@ const CRMCaseDetail = () => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="min-w-0">
-                    <p className="text-sm text-gray-500">Client Email</p>
+                    <p className="text-sm text-muted-foreground">Client Email</p>
                     <p className="font-medium break-words">{caseData.clientEmail}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm text-gray-500">Visa Type</p>
+                    <p className="text-sm text-muted-foreground">Visa Type</p>
                     <p className="font-medium break-words">{resolveDisplayVisa(caseData)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Visa Category</p>
+                    <p className="text-sm text-muted-foreground">Visa Category</p>
                     <p className="font-medium">{caseData.visaCategory}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Package</p>
+                    <p className="text-sm text-muted-foreground">Package</p>
                     <p className="font-medium capitalize">{getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}</p>
-                    <p className="text-xs text-gray-500">{formatCurrency(caseData.plan?.amount || caseData.packageAmount)}</p>
+                    <p className="text-xs text-muted-foreground">{formatCurrency(caseData.plan?.amount || caseData.packageAmount)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Documents Sent</p>
+                    <p className="text-sm text-muted-foreground">Documents Sent</p>
                     <p className="font-medium">{getBundleDocuments().length || getUploadedChecklistCount()}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Documents Pending</p>
+                    <p className="text-sm text-muted-foreground">Documents Pending</p>
                     <p className="font-medium">{getPendingChecklistItems().length}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Stage</p>
+                    <p className="text-sm text-muted-foreground">Stage</p>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseData.stage)}`}>
                       {caseData.stage?.replace('_', ' ')}
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Status</p>
+                    <p className="text-sm text-muted-foreground">Status</p>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(caseData.status)}`}>
                       {caseData.status}
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Priority</p>
+                    <p className="text-sm text-muted-foreground">Priority</p>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getPriorityColor(caseData.priority)}`}>
                       {caseData.priority}
                     </span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Created</p>
+                    <p className="text-sm text-muted-foreground">Created</p>
                     <p className="font-medium">{new Date(caseData.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
@@ -1710,12 +1710,12 @@ const CRMCaseDetail = () => {
               />
 
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Client Intake Summary</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Client Intake Summary</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {getClientProfileEntries().map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-gray-50 p-3">
-                      <p className="text-sm text-gray-500">{label}</p>
-                      <p className="font-medium text-gray-900">
+                    <div key={label} className="rounded-lg bg-muted p-3">
+                      <p className="text-sm text-muted-foreground">{label}</p>
+                      <p className="font-medium text-foreground">
                         {label === 'Date of Birth' && value ? new Date(value).toLocaleDateString() : value}
                       </p>
                     </div>
@@ -1734,8 +1734,8 @@ const CRMCaseDetail = () => {
               <div className="card">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Phase 2 Intake Review</h3>
-                    <p className="text-sm text-gray-500">Client profile, questionnaire, documents, submission status, and completion signals.</p>
+                    <h3 className="text-lg font-semibold text-foreground">Phase 2 Intake Review</h3>
+                    <p className="text-sm text-muted-foreground">Client profile, questionnaire, documents, submission status, and completion signals.</p>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
                     getSubmissionStatus() === 'submitted' || getSubmissionStatus() === 'locked'
@@ -1814,8 +1814,8 @@ const CRMCaseDetail = () => {
 
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Document Checklist</h3>
-                  <span className="text-sm text-gray-500">
+                  <h3 className="text-lg font-semibold text-foreground">Document Checklist</h3>
+                  <span className="text-sm text-muted-foreground">
                     {getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending
                   </span>
                 </div>
@@ -1825,10 +1825,10 @@ const CRMCaseDetail = () => {
                       const status = getChecklistStatus(item)
                       const completed = ['uploaded', 'submitted', 'approved', 'received', 'complete', 'completed'].includes(status)
                       return (
-                        <div key={`${item.name || item.title || index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                        <div key={`${item.name || item.title || index}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
                           <div className="min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
-                            <p className="text-xs text-gray-500">{item.required === false ? 'Optional' : 'Required'}</p>
+                            <p className="font-medium text-foreground truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
+                            <p className="text-xs text-muted-foreground">{item.required === false ? 'Optional' : 'Required'}</p>
                           </div>
                           <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${completed ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                             {completed ? 'Sent' : 'Pending'}
@@ -1838,19 +1838,19 @@ const CRMCaseDetail = () => {
                     })}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No checklist has been generated for this case yet.</p>
+                  <p className="text-sm text-muted-foreground">No checklist has been generated for this case yet.</p>
                 )}
               </div>
 
               {/* Filing Readiness Score */}
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Filing Readiness Score</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Filing Readiness Score</h3>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Overall Score</span>
-                    <span className="text-2xl font-bold text-gray-900">{caseData.filingReadinessScore || 0}%</span>
+                    <span className="text-sm text-muted-foreground">Overall Score</span>
+                    <span className="text-2xl font-bold text-foreground">{caseData.filingReadinessScore || 0}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div className="w-full bg-muted rounded-full h-3">
                     <div
                       className={`h-3 rounded-full transition-all ${getFilingReadinessColor(caseData.filingReadinessScore || 0)}`}
                       style={{ width: `${caseData.filingReadinessScore || 0}%` }}
@@ -1863,8 +1863,8 @@ const CRMCaseDetail = () => {
               <div className="card">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900">USCIS Tracking</h3>
-                    <p className="mt-1 text-sm text-gray-500 break-words">
+                    <h3 className="text-lg font-semibold text-foreground">USCIS Tracking</h3>
+                    <p className="mt-1 text-sm text-muted-foreground break-words">
                       {caseData.uscisReceiptNumber
                         ? `Receipt ${caseData.uscisReceiptNumber}`
                         : 'Post-filing tracking begins when this case is filed.'}
@@ -1878,14 +1878,14 @@ const CRMCaseDetail = () => {
 
               {/* Assigned Staff */}
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Assigned Staff</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Assigned Staff</h3>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                     <div className="flex items-center gap-3">
                       <Briefcase className="w-5 h-5 text-blue-600" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">Case Manager</p>
-                        <p className="text-sm text-gray-500">{caseData.assignedCaseManager?.name || 'Unassigned'}</p>
+                        <p className="text-sm font-medium text-foreground">Case Manager</p>
+                        <p className="text-sm text-muted-foreground">{caseData.assignedCaseManager?.name || 'Unassigned'}</p>
                       </div>
                     </div>
                   </div>
@@ -1897,7 +1897,7 @@ const CRMCaseDetail = () => {
             <div className="space-y-6">
               {/* Quick Actions */}
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h3>
                 <div className="space-y-2">
                   <button 
                     className="btn-secondary w-full flex items-center justify-center gap-2"
@@ -1933,8 +1933,8 @@ const CRMCaseDetail = () => {
           <div className="card">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900">Eligibility & Strategy Assistant</h3>
-                <p className="text-sm text-gray-500">Advisory analysis only. Internal review is required before relying on any pathway recommendation.</p>
+                <h3 className="text-lg font-semibold text-foreground">Eligibility & Strategy Assistant</h3>
+                <p className="text-sm text-muted-foreground">Advisory analysis only. Internal review is required before relying on any pathway recommendation.</p>
               </div>
               <button onClick={handleEvaluateEligibility} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0" disabled={tabLoading.strategy}>
                 <TrendingUp className="w-4 h-4" />
@@ -1952,24 +1952,24 @@ const CRMCaseDetail = () => {
                 <div className="bg-blue-50 text-blue-800 rounded-xl p-4 text-sm">{eligibility.disclaimer}</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {(eligibility.recommendations || []).slice(0, 3).map((item) => (
-                    <div key={item.category} className="border border-gray-200 rounded-xl p-4">
+                    <div key={item.category} className="border border-border rounded-xl p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-gray-900">{item.rank}. {item.category}</h4>
+                        <h4 className="font-semibold text-foreground">{item.rank}. {item.category}</h4>
                         <span className="text-2xl font-bold text-blue-600">{item.eligibilityScore}%</span>
                       </div>
-                      <p className="text-sm text-gray-600">{item.label}</p>
-                      <p className="text-xs text-gray-500 mt-2">Confidence: {item.confidence}% · Readiness: {item.caseReadiness}%</p>
-                      <div className="mt-3 text-xs text-gray-700 space-y-1">
+                      <p className="text-sm text-muted-foreground">{item.label}</p>
+                      <p className="text-xs text-muted-foreground mt-2">Confidence: {item.confidence}% · Readiness: {item.caseReadiness}%</p>
+                      <div className="mt-3 text-xs text-muted-foreground space-y-1">
                         {(item.why || []).slice(0, 3).map((reason) => <div key={reason}>✓ {reason}</div>)}
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="border border-gray-200 rounded-xl p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Missing Evidence</h4>
+                  <div className="border border-border rounded-xl p-4">
+                    <h4 className="font-semibold text-foreground mb-3">Missing Evidence</h4>
                     {(eligibility.recommendations?.[0]?.missingEvidence || []).length === 0 ? (
-                      <p className="text-sm text-gray-500">No critical gaps detected for the top advisory pathway.</p>
+                      <p className="text-sm text-muted-foreground">No critical gaps detected for the top advisory pathway.</p>
                     ) : (
                       <div className="space-y-2">
                         {eligibility.recommendations[0].missingEvidence.slice(0, 8).map((gap) => (
@@ -1981,9 +1981,9 @@ const CRMCaseDetail = () => {
                       </div>
                     )}
                   </div>
-                  <div className="border border-gray-200 rounded-xl p-4">
-                    <h4 className="font-semibold text-gray-900 mb-3">Questionnaire Follow-Ups</h4>
-                    <div className="space-y-2 text-sm text-gray-700">
+                  <div className="border border-border rounded-xl p-4">
+                    <h4 className="font-semibold text-foreground mb-3">Questionnaire Follow-Ups</h4>
+                    <div className="space-y-2 text-sm text-muted-foreground">
                       {((eligibility.results || [])[0]?.gaps?.recommendedQuestions || []).slice(0, 6).map((question) => (
                         <div key={question}>• {question}</div>
                       ))}
@@ -2002,8 +2002,8 @@ const CRMCaseDetail = () => {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Post-Filing Case Monitoring</p>
-                <h3 className="mt-1 text-xl font-semibold text-gray-900">USCIS Tracking</h3>
-                <p className="mt-1 text-sm text-gray-500">Government processing details remain separate from case-preparation workflow.</p>
+                <h3 className="mt-1 text-xl font-semibold text-foreground">USCIS Tracking</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Government processing details remain separate from case-preparation workflow.</p>
               </div>
               <div className="flex flex-wrap items-end gap-3">
                 <TrackingField label="Current USCIS Status">
@@ -2031,15 +2031,15 @@ const CRMCaseDetail = () => {
           </div>
 
           {tabLoading.tracking ? (
-            <div className="card py-12 text-center text-gray-500">Loading USCIS tracking…</div>
+            <div className="card py-12 text-center text-muted-foreground">Loading USCIS tracking…</div>
           ) : (
             <>
               <div className="card">
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-lg bg-blue-100 p-2 text-blue-700"><Receipt className="h-5 w-5" /></div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Filing Information</h3>
-                    <p className="text-sm text-gray-500">Submission, delivery, receipt, and fee information.</p>
+                    <h3 className="text-lg font-semibold text-foreground">Filing Information</h3>
+                    <p className="text-sm text-muted-foreground">Submission, delivery, receipt, and fee information.</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -2081,9 +2081,9 @@ const CRMCaseDetail = () => {
                     <input type="number" min="0" step="0.01" value={(Number(tracking.filing.filingFeeCents || 0) / 100).toFixed(2)}
                       onChange={event => updateTracking('filing', 'filingFeeCents', Math.round(Number(event.target.value || 0) * 100))} className="input-field" />
                   </TrackingField>
-                  <label className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3 md:mt-6">
-                    <input type="checkbox" checked={tracking.filing.premiumProcessing} onChange={event => updateTracking('filing', 'premiumProcessing', event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-blue-600" />
-                    <span className="text-sm font-medium text-gray-700">Premium Processing</span>
+                  <label className="flex items-center gap-3 rounded-lg border border-border px-4 py-3 md:mt-6">
+                    <input type="checkbox" checked={tracking.filing.premiumProcessing} onChange={event => updateTracking('filing', 'premiumProcessing', event.target.checked)} className="h-4 w-4 rounded border-border text-blue-600" />
+                    <span className="text-sm font-medium text-muted-foreground">Premium Processing</span>
                   </label>
                 </div>
               </div>
@@ -2092,8 +2092,8 @@ const CRMCaseDetail = () => {
                 <div className="mb-5 flex items-center gap-3">
                   <div className="rounded-lg bg-amber-100 p-2 text-amber-700"><AlertTriangle className="h-5 w-5" /></div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">RFE Management</h3>
-                    <p className="text-sm text-gray-500">Response dates, ownership, review status, and AI-assisted summary.</p>
+                    <h3 className="text-lg font-semibold text-foreground">RFE Management</h3>
+                    <p className="text-sm text-muted-foreground">Response dates, ownership, review status, and AI-assisted summary.</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -2126,33 +2126,33 @@ const CRMCaseDetail = () => {
 
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                 <div className="card">
-                  <h3 className="text-lg font-semibold text-gray-900">USCIS Documents</h3>
-                  <p className="mt-1 text-sm text-gray-500">Receipt, approval, biometrics, interview, RFE, and transfer notices attach automatically after classification.</p>
+                  <h3 className="text-lg font-semibold text-foreground">USCIS Documents</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Receipt, approval, biometrics, interview, RFE, and transfer notices attach automatically after classification.</p>
                   <div className="mt-4 space-y-3">
                     {trackingDocuments.length ? trackingDocuments.map(document => (
-                      <div key={document._id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                      <div key={document._id} className="flex items-center justify-between rounded-lg border border-border p-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-900">{document.originalName}</p>
-                          <p className="text-xs text-gray-500">{displayStatus(document.documentType)} · {new Date(document.createdAt).toLocaleDateString()}</p>
+                          <p className="truncate text-sm font-semibold text-foreground">{document.originalName}</p>
+                          <p className="text-xs text-muted-foreground">{displayStatus(document.documentType)} · {new Date(document.createdAt).toLocaleDateString()}</p>
                         </div>
                         <span className="badge bg-blue-100 text-blue-800">{displayStatus(document.reviewStatus)}</span>
                       </div>
-                    )) : <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">No USCIS notices have been classified for this case yet.</p>}
+                    )) : <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">No USCIS notices have been classified for this case yet.</p>}
                   </div>
                 </div>
 
                 <div className="card">
-                  <h3 className="text-lg font-semibold text-gray-900">Case Timeline</h3>
-                  <p className="mt-1 text-sm text-gray-500">Questionnaire, filing, receipt, RFE, interview, and decision events.</p>
+                  <h3 className="text-lg font-semibold text-foreground">Case Timeline</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">Questionnaire, filing, receipt, RFE, interview, and decision events.</p>
                   <div className="mt-4 max-h-96 space-y-4 overflow-y-auto pr-2">
                     {trackingTimeline.length ? trackingTimeline.map((event, index) => (
                       <div key={event._id || `${event.type}-${index}`} className="relative border-l-2 border-blue-200 pl-4">
                         <span className="absolute -left-[5px] top-1 h-2 w-2 rounded-full bg-blue-500" />
                         <p className="text-xs font-semibold text-blue-700">{new Date(event.createdAt || event.occurredAt).toLocaleDateString()}</p>
-                        <p className="text-sm font-semibold text-gray-900">{event.title || displayStatus(event.type)}</p>
-                        {event.description && <p className="text-xs text-gray-500">{event.description}</p>}
+                        <p className="text-sm font-semibold text-foreground">{event.title || displayStatus(event.type)}</p>
+                        {event.description && <p className="text-xs text-muted-foreground">{event.description}</p>}
                       </div>
-                    )) : <p className="rounded-lg bg-gray-50 p-4 text-sm text-gray-500">No timeline activity recorded yet.</p>}
+                    )) : <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">No timeline activity recorded yet.</p>}
                   </div>
                 </div>
               </div>
@@ -2176,8 +2176,8 @@ const CRMCaseDetail = () => {
         <div className="space-y-6">
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Required Documents</h3>
-            <span className="text-sm text-gray-500">{getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending</span>
+            <h3 className="text-lg font-semibold text-foreground">Required Documents</h3>
+            <span className="text-sm text-muted-foreground">{getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending</span>
           </div>
           {getChecklistItems().length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2193,10 +2193,10 @@ const CRMCaseDetail = () => {
                   // "Copy of I-94 (Arrival-Departure record)" requests) -
                   // that's a real, valid case (a document requested for more
                   // than one participant/role), not a data bug to work around.
-                  <div key={item._id || `${item.documentType || item.name || "item"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                  <div key={item._id || `${item.documentType || item.name || "item"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
-                      <p className="text-xs text-gray-500">{item.required === false ? 'Optional' : 'Required'}</p>
+                      <p className="font-medium text-foreground truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
+                      <p className="text-xs text-muted-foreground">{item.required === false ? 'Optional' : 'Required'}</p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${completed ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                       {completed ? 'Sent' : 'Pending'}
@@ -2213,8 +2213,8 @@ const CRMCaseDetail = () => {
         <div className="card">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Uploaded Documents ({documents.length})</h3>
-              <p className="text-sm text-gray-500">View, upload, and review documents attached to this case.</p>
+              <h3 className="text-lg font-semibold text-foreground">Uploaded Documents ({documents.length})</h3>
+              <p className="text-sm text-muted-foreground">View, upload, and review documents attached to this case.</p>
             </div>
             <button
               type="button"
@@ -2236,18 +2236,18 @@ const CRMCaseDetail = () => {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Filename</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Type</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Uploaded By</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">AI Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Review Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filename</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Uploaded By</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">AI Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Review Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {documents.map((doc) => (
-                    <tr key={doc._id} className="border-b border-gray-100">
+                    <tr key={doc._id} className="border-b border-border">
                       <td className="py-3 px-4">
                         <button type="button" onClick={() => setViewingDocument(doc)} className="max-w-xs truncate text-left font-medium text-blue-700 hover:text-blue-900 hover:underline">
                           {getDocumentName(doc)}
@@ -2314,8 +2314,8 @@ const CRMCaseDetail = () => {
           <div className="card">
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-gray-900">USCIS Forms ({caseForms.length})</h3>
-                <p className="text-sm text-gray-500">Automatically assigned, edition-locked, and populated from canonical case data.</p>
+                <h3 className="text-lg font-semibold text-foreground">USCIS Forms ({caseForms.length})</h3>
+                <p className="text-sm text-muted-foreground">Automatically assigned, edition-locked, and populated from canonical case data.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
@@ -2360,43 +2360,43 @@ const CRMCaseDetail = () => {
               <div className="text-center py-8">
                 <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-300" />
                 <p className="text-red-600 font-medium">Unable to load USCIS forms.</p>
-                <p className="mt-1 text-sm text-gray-500">{formsError}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{formsError}</p>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm mt-4">Retry</button>
               </div>
             ) : caseForms.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Form</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Edition</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Completion</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Last Modified</th>
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Actions</th>
+                    <tr className="border-b border-border">
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Edition</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Completion</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Last Modified</th>
+                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {caseForms.map((form) => (
-                      <tr key={form._id} className="border-b border-gray-100">
+                      <tr key={form._id} className="border-b border-border">
                         <td className="py-3 px-4">
-                          <p className="font-medium text-gray-900">{form.formCode}</p>
-                          <p className="text-xs text-gray-500">{form.formTemplateId?.title}</p>
+                          <p className="font-medium text-foreground">{form.formCode}</p>
+                          <p className="text-xs text-muted-foreground">{form.formTemplateId?.title}</p>
                         </td>
                         <td className="py-3 px-4">{form.formVersion}</td>
                         <td className="py-3 px-4 min-w-[180px]">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                            <div className="flex-1 h-2 bg-muted rounded-full">
                               <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${form.completion?.percent || 0}%` }} />
                             </div>
                             <span className="text-sm font-medium">{form.completion?.percent || 0}%</span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">{form.completion?.missingRequiredFields || 0} required missing</p>
+                          <p className="text-xs text-muted-foreground mt-1">{form.completion?.missingRequiredFields || 0} required missing</p>
                         </td>
                         <td className="py-3 px-4">
                           <span className={`badge ${getFormStatusColor(form.status)}`}>{form.status?.replace('_', ' ')}</span>
                         </td>
-                        <td className="py-3 px-4 text-sm text-gray-600">
+                        <td className="py-3 px-4 text-sm text-muted-foreground">
                           {form.lastModifiedAt || form.updatedAt ? new Date(form.lastModifiedAt || form.updatedAt).toLocaleString() : 'Not started'}
                         </td>
                         <td className="py-3 px-4">
@@ -2411,9 +2411,9 @@ const CRMCaseDetail = () => {
               </div>
             ) : (
               <div className="text-center py-8">
-                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-700 font-medium">No USCIS forms yet</p>
-                <p className="mt-1 text-sm text-gray-500 max-w-xs mx-auto">
+                <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground font-medium">No USCIS forms yet</p>
+                <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">
                   Click <strong>Generate USCIS Forms</strong> to auto-fill forms from the
                   available case data. Fields will be blank where information hasn't been
                   provided yet — fill them in manually, or they'll populate automatically
@@ -2439,7 +2439,7 @@ const CRMCaseDetail = () => {
             payments.map((payment) => (
               <div key={payment._id} className="card">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 break-words">{payment.invoiceNumber}</h3>
+                  <h3 className="text-lg font-semibold text-foreground break-words">{payment.invoiceNumber}</h3>
                   {canRecordPayment && Number(payment.remainingAmount || 0) > 0 && (
                     <button
                       onClick={() => {
@@ -2457,19 +2457,19 @@ const CRMCaseDetail = () => {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                   <div>
-                    <p className="text-sm text-gray-500">Package</p>
+                    <p className="text-sm text-muted-foreground">Package</p>
                     <p className="font-medium capitalize">{payment.package?.replace('_', ' ')}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Total Fee</p>
+                    <p className="text-sm text-muted-foreground">Total Fee</p>
                     <p className="font-medium">{formatPaymentAmount(payment.totalAmount || payment.totalFee, payment.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Paid Amount</p>
+                    <p className="text-sm text-muted-foreground">Paid Amount</p>
                     <p className="font-medium">{formatPaymentAmount(payment.amountPaid || payment.paidAmount, payment.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Remaining</p>
+                    <p className="text-sm text-muted-foreground">Remaining</p>
                     <p className="font-medium">{formatPaymentAmount(payment.remainingAmount, payment.currency)}</p>
                   </div>
                 </div>
@@ -2481,31 +2481,31 @@ const CRMCaseDetail = () => {
 
                 {/* Payment History */}
                 <div className="mb-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Payment History</h4>
+                  <h4 className="font-medium text-foreground mb-2">Payment History</h4>
                   {payment.paymentHistory?.length > 0 ? (
                     <div className="space-y-2">
                       {payment.paymentHistory.map((history, index) => (
-                        <div key={index} className="p-2 bg-gray-50 rounded text-sm">
+                        <div key={index} className="p-2 bg-muted rounded text-sm">
                           <div className="flex justify-between">
                             <span>${history.amount?.toLocaleString()}</span>
                             <span>{formatOptionalDate(history.paymentDate, payment.paymentDate, payment.updatedAt)}</span>
                           </div>
-                          <p className="text-gray-500">{history.paymentMethod} • {history.transactionId}</p>
+                          <p className="text-muted-foreground">{history.paymentMethod} • {history.transactionId}</p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No payment history</p>
+                    <p className="text-sm text-muted-foreground">No payment history</p>
                   )}
                 </div>
 
                 {/* Payment Schedule */}
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-2">Payment Schedule</h4>
+                  <h4 className="font-medium text-foreground mb-2">Payment Schedule</h4>
                   {payment.paymentSchedule?.length > 0 ? (
                     <div className="space-y-2">
                       {payment.paymentSchedule.map((schedule, index) => (
-                        <div key={index} className="p-2 bg-gray-50 rounded text-sm">
+                        <div key={index} className="p-2 bg-muted rounded text-sm">
                           <div className="flex justify-between">
                             <span>Installment {schedule.installment}</span>
                             <span className={`badge ${schedule.status === 'paid' ? 'badge-success' : schedule.status === 'overdue' ? 'badge-danger' : 'badge-info'}`}>
@@ -2520,7 +2520,7 @@ const CRMCaseDetail = () => {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No payment schedule</p>
+                    <p className="text-sm text-muted-foreground">No payment schedule</p>
                   )}
                 </div>
               </div>
@@ -2534,7 +2534,7 @@ const CRMCaseDetail = () => {
       {activeTab === 'letters' && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">Expert Letters ({letters.length})</h3>
+            <h3 className="text-lg font-semibold text-foreground">Expert Letters ({letters.length})</h3>
             {(user.role === 'super_admin' || user.role === 'admin') && (
               <button
                 onClick={() => setShowCreateLetterModal(true)}
@@ -2552,9 +2552,9 @@ const CRMCaseDetail = () => {
               <div key={letter._id} className="card">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h4 className="font-medium text-gray-900">{letter.letterType?.replace('_', ' ')}</h4>
-                    <p className="text-sm text-gray-600">Reviewer: {letter.reviewerId?.name || 'N/A'}</p>
-                    <p className="text-sm text-gray-500">Deadline: {letter.deadline ? new Date(letter.deadline).toLocaleDateString() : 'N/A'}</p>
+                    <h4 className="font-medium text-foreground">{letter.letterType?.replace('_', ' ')}</h4>
+                    <p className="text-sm text-muted-foreground">Reviewer: {letter.reviewerId?.name || 'N/A'}</p>
+                    <p className="text-sm text-muted-foreground">Deadline: {letter.deadline ? new Date(letter.deadline).toLocaleDateString() : 'N/A'}</p>
                   </div>
                   <span className={`badge ${getLetterStatusColor(letter.status)}`}>
                     {letter.status.replace('_', ' ')}
@@ -2562,19 +2562,19 @@ const CRMCaseDetail = () => {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${letter.status === 'assigned' ? 'bg-gray-300' : 'bg-blue-500'}`} />
+                    <div className={`w-3 h-3 rounded-full ${letter.status === 'assigned' ? 'bg-muted' : 'bg-blue-500'}`} />
                     <span>Assigned</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${['draft_generated', 'review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                    <div className={`w-3 h-3 rounded-full ${['draft_generated', 'review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-muted'}`} />
                     <span>Draft Generated</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${['review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                    <div className={`w-3 h-3 rounded-full ${['review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-muted'}`} />
                     <span>Reviewer Review</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${letter.status === 'signed' ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                    <div className={`w-3 h-3 rounded-full ${letter.status === 'signed' ? 'bg-blue-500' : 'bg-muted'}`} />
                     <span>Signed</span>
                   </div>
                 </div>
@@ -2589,7 +2589,7 @@ const CRMCaseDetail = () => {
       {activeTab === 'notes' && (
         <div className="space-y-6">
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Note</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Add Note</h3>
             <div className="space-y-4">
               <textarea
                 value={newNote}
@@ -2605,7 +2605,7 @@ const CRMCaseDetail = () => {
                   onChange={(e) => setIsInternalNote(e.target.checked)}
                   className="w-4 h-4"
                 />
-                <label htmlFor="internal" className="text-sm text-gray-700">Internal note</label>
+                <label htmlFor="internal" className="text-sm text-muted-foreground">Internal note</label>
               </div>
               <button
                 onClick={handleAddNote}
@@ -2618,16 +2618,16 @@ const CRMCaseDetail = () => {
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes & Activity</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Notes & Activity</h3>
             {caseData.internalNotes?.length > 0 ? (
               <div className="space-y-3">
                 {[...caseData.internalNotes].reverse().map((note, index) => (
-                  <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                  <div key={index} className="p-3 bg-muted rounded-lg">
                     <div className="flex items-start gap-2">
-                      {note.isInternal && <Lock className="w-4 h-4 text-gray-500 mt-1" />}
+                      {note.isInternal && <Lock className="w-4 h-4 text-muted-foreground mt-1" />}
                       <div className="flex-1">
-                        <p className="text-sm text-gray-900">{note.note}</p>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-sm text-foreground">{note.note}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
                           {note.author?.name} • {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString()}
                         </p>
                       </div>
@@ -2645,16 +2645,16 @@ const CRMCaseDetail = () => {
       {/* Staff Details Modal */}
       {showStaffDetailsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Staff Assignment</h3>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-foreground mb-4">Staff Assignment</h3>
             <div className="space-y-3 mb-6">
               <div>
-                <p className="text-sm text-gray-500">Case Number</p>
-                <p className="font-medium text-gray-900 break-words">{caseData.caseNumber}</p>
+                <p className="text-sm text-muted-foreground">Case Number</p>
+                <p className="font-medium text-foreground break-words">{caseData.caseNumber}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Current Case Manager</p>
-                <p className="font-medium text-gray-900">
+                <p className="text-sm text-muted-foreground">Current Case Manager</p>
+                <p className="font-medium text-foreground">
                   {caseData.assignedCaseManager?.name || caseData.assignedCaseManager?.displayName || 'Unassigned'}
                 </p>
               </div>
@@ -2687,8 +2687,8 @@ const CRMCaseDetail = () => {
       {/* Assign Staff Modal */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Assign Staff</h3>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-foreground mb-4">Assign Staff</h3>
             {assignError && (
               <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -2697,12 +2697,12 @@ const CRMCaseDetail = () => {
             )}
             <form onSubmit={handleAssign} className="space-y-4">
               {caseData.caseRole === 'principal' && (
-                <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <p className="text-sm text-muted-foreground bg-muted border border-border rounded-lg px-3 py-2">
                   This will also apply to every child case in this matter, except any already individually overridden.
                 </p>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Role</label>
                 <select
                   value={assignType}
                   onChange={(e) => setAssignType(e.target.value)}
@@ -2713,7 +2713,7 @@ const CRMCaseDetail = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Staff Member</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Staff Member</label>
                 <select
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
@@ -2729,7 +2729,7 @@ const CRMCaseDetail = () => {
               {assignType === 'case_manager' && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Priority (optional)</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Priority (optional)</label>
                     <select
                       value={assignPriority}
                       onChange={(e) => setAssignPriority(e.target.value)}
@@ -2745,7 +2745,7 @@ const CRMCaseDetail = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Internal Note (optional)</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Internal Note (optional)</label>
                     <textarea
                       value={assignInternalNote}
                       onChange={(e) => setAssignInternalNote(e.target.value)}
@@ -2782,11 +2782,11 @@ const CRMCaseDetail = () => {
       {/* Stage Update Modal */}
       {showStageUpdateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Update Stage</h3>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-foreground mb-4">Update Stage</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">New Stage</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">New Stage</label>
                 <select
                   value={newStage}
                   onChange={(e) => setNewStage(e.target.value)}
@@ -2814,15 +2814,15 @@ const CRMCaseDetail = () => {
       {/* Record Payment Modal */}
       {showRecordPaymentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Record Payment</h3>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-foreground mb-4">Record Payment</h3>
             <form onSubmit={handleRecordPayment} className="space-y-4">
-              <div className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                <span className="font-medium text-gray-900">{payments.find(payment => payment._id === selectedPaymentId)?.invoiceNumber}</span>
+              <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{payments.find(payment => payment._id === selectedPaymentId)?.invoiceNumber}</span>
                 {' · '}Remaining {formatPaymentAmount(payments.find(payment => payment._id === selectedPaymentId)?.remainingAmount, payments.find(payment => payment._id === selectedPaymentId)?.currency)}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Amount</label>
                 <input
                   type="number"
                   min="0.01"
@@ -2836,7 +2836,7 @@ const CRMCaseDetail = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Payment Method</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
@@ -2853,7 +2853,7 @@ const CRMCaseDetail = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Notes</label>
                 <textarea
                   value={paymentNotes}
                   onChange={(e) => setPaymentNotes(e.target.value)}
@@ -2882,11 +2882,11 @@ const CRMCaseDetail = () => {
       {/* Create Letter Modal */}
       {showCreateLetterModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Create Letter</h3>
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+            <h3 className="text-xl font-bold text-foreground mb-4">Create Letter</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Letter Type</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Letter Type</label>
                 <select
                   value={letterType}
                   onChange={(e) => setLetterType(e.target.value)}

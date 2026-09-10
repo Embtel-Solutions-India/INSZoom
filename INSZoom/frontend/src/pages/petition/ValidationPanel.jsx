@@ -15,10 +15,10 @@ function IssueRow({ issue, onJump }) {
       type="button"
       disabled={!clickable}
       onClick={() => clickable && onJump(issue.sectionKey)}
-      className={`flex w-full items-start gap-2 rounded-md border border-transparent px-2 py-2 text-left text-xs ${clickable ? 'hover:border-gray-200 hover:bg-gray-50' : 'cursor-default'}`}
+      className={`flex w-full items-start gap-2 rounded-md border border-transparent px-2 py-2 text-left text-xs ${clickable ? 'hover:border-border hover:bg-muted' : 'cursor-default'}`}
     >
       <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${tone}`} />
-      <span className="text-gray-700">{issue.message}</span>
+      <span className="text-muted-foreground">{issue.message}</span>
     </button>
   )
 }
@@ -31,8 +31,8 @@ function IssueRow({ issue, onJump }) {
 export default function ValidationPanel({ validation, onJump }) {
   if (!validation) {
     return (
-      <aside className="w-72 shrink-0 border-l border-gray-200 bg-white p-4">
-        <p className="text-xs text-gray-400">Validation not yet available.</p>
+      <aside className="w-72 shrink-0 border-l border-border bg-card p-4">
+        <p className="text-xs text-muted-foreground">Validation not yet available.</p>
       </aside>
     )
   }
@@ -43,7 +43,7 @@ export default function ValidationPanel({ validation, onJump }) {
   const warnings = (validation.issues || []).filter((i) => i.severity === 'warning')
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l border-gray-200 bg-white p-4">
+    <aside className="w-72 shrink-0 overflow-y-auto border-l border-border bg-card p-4">
       <div className={`mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${meta.tone}`}>
         <StatusIcon className="h-4 w-4 shrink-0" />
         {meta.label}
@@ -68,10 +68,10 @@ export default function ValidationPanel({ validation, onJump }) {
       )}
 
       {errors.length === 0 && warnings.length === 0 && (
-        <p className="px-2 text-xs text-gray-400">No issues found.</p>
+        <p className="px-2 text-xs text-muted-foreground">No issues found.</p>
       )}
 
-      <div className="mt-4 flex items-center gap-1.5 border-t border-gray-100 pt-3 text-[0.68rem] text-gray-400">
+      <div className="mt-4 flex items-center gap-1.5 border-t border-border pt-3 text-[0.68rem] text-muted-foreground">
         <ShieldCheck className="h-3.5 w-3.5" />
         Validated {validation.validatedAt ? new Date(validation.validatedAt).toLocaleString() : '—'}
       </div>

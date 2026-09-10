@@ -113,7 +113,7 @@ const PaymentsOverview = () => {
       not_started: 'bg-red-100 text-red-800',
       overdue: 'bg-red-100 text-red-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const formatCurrency = (amount, currency = 'USD') => {
@@ -158,8 +158,8 @@ const PaymentsOverview = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Payments Overview</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-2xl font-bold text-foreground">Payments Overview</h1>
+        <p className="text-muted-foreground mt-1">
           {canViewAnalytics ? 'Track case payments, balances, and revenue' : 'Review case invoices, payments, and outstanding balances'}
         </p>
       </div>
@@ -169,8 +169,8 @@ const PaymentsOverview = () => {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats?.totalRevenue || 0)}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Total Revenue</p>
+              <p className="text-2xl font-bold text-foreground">{formatCurrency(stats?.totalRevenue || 0)}</p>
               <p className="text-sm text-blue-600 mt-1">This month</p>
             </div>
             <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600">
@@ -181,8 +181,8 @@ const PaymentsOverview = () => {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Pending Payments</p>
-              <p className="text-2xl font-bold text-gray-900">{stats?.pendingPayments || 0}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Pending Payments</p>
+              <p className="text-2xl font-bold text-foreground">{stats?.pendingPayments || 0}</p>
               <p className="text-sm text-amber-600 mt-1">{formatCurrency(stats?.pendingAmount || 0)}</p>
             </div>
             <div className="p-3 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
@@ -193,8 +193,8 @@ const PaymentsOverview = () => {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Overdue Payments</p>
-              <p className="text-2xl font-bold text-gray-900">{stats?.overduePayments || 0}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Overdue Payments</p>
+              <p className="text-2xl font-bold text-foreground">{stats?.overduePayments || 0}</p>
               <p className="text-sm text-red-600 mt-1">{formatCurrency(stats?.overdueAmount || 0)}</p>
             </div>
             <div className="p-3 rounded-lg bg-gradient-to-br from-red-500 to-pink-600">
@@ -205,8 +205,8 @@ const PaymentsOverview = () => {
         <div className="card">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600 mb-1">Payment Rate</p>
-              <p className="text-2xl font-bold text-gray-900">{stats?.paymentRate || 0}%</p>
+              <p className="text-sm font-medium text-muted-foreground mb-1">Payment Rate</p>
+              <p className="text-2xl font-bold text-foreground">{stats?.paymentRate || 0}%</p>
               <p className="text-sm text-green-600 mt-1">Collection rate</p>
             </div>
             <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600">
@@ -218,7 +218,7 @@ const PaymentsOverview = () => {
 
       {/* Revenue Chart */}
       {canViewAnalytics && <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Month</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">Revenue by Month</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={revenueData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -235,7 +235,7 @@ const PaymentsOverview = () => {
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search payments..."
@@ -274,27 +274,27 @@ const PaymentsOverview = () => {
 
       {/* Payments Table */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">Case Payment Accounts</h3>
-        <p className="text-sm text-gray-500 mb-4">Each account is linked to its immigration case, invoice, package, and current balance.</p>
+        <h3 className="text-lg font-semibold text-foreground mb-1">Case Payment Accounts</h3>
+        <p className="text-sm text-muted-foreground mb-4">Each account is linked to its immigration case, invoice, package, and current balance.</p>
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="text-gray-600">Loading payments...</div>
+            <div className="text-muted-foreground">Loading payments...</div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Activity Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                <tr className="bg-muted">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Invoice</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Package</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Remaining</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Activity Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -303,14 +303,14 @@ const PaymentsOverview = () => {
                     const caseData = caseFor(payment)
                     const currency = payment.currency || 'USD'
                     return (
-                    <tr key={payment._id} className="border-b hover:bg-gray-50">
+                    <tr key={payment._id} className="border-b hover:bg-muted">
                       <td className="px-6 py-4">
-                        <p className="font-semibold text-gray-900">{caseData?.caseNumber || caseData?.caseId || 'Unlinked case'}</p>
-                        <p className="text-xs text-gray-500">{displayText(caseData?.status || caseData?.stage)}</p>
+                        <p className="font-semibold text-foreground">{caseData?.caseNumber || caseData?.caseId || 'Unlinked case'}</p>
+                        <p className="text-xs text-muted-foreground">{displayText(caseData?.status || caseData?.stage)}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="font-medium text-gray-900">{caseData?.clientName || payment.user?.name || payment.user?.displayName || 'Client unavailable'}</p>
-                        <p className="text-xs text-gray-500">{caseData?.clientEmail || payment.user?.email || ''}</p>
+                        <p className="font-medium text-foreground">{caseData?.clientName || payment.user?.name || payment.user?.displayName || 'Client unavailable'}</p>
+                        <p className="text-xs text-muted-foreground">{caseData?.clientEmail || payment.user?.email || ''}</p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap font-medium">{payment.invoiceNumber || payment.invoices?.[0]?.invoiceNumber || 'Pending invoice'}</td>
                       <td className="px-6 py-4 max-w-[180px]">{displayText(packageFor(payment))}</td>
@@ -336,7 +336,7 @@ const PaymentsOverview = () => {
                   )})
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={10} className="px-6 py-12 text-center text-muted-foreground">
                       No payments found
                     </td>
                   </tr>
@@ -349,13 +349,13 @@ const PaymentsOverview = () => {
 
       {selectedPayment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-card shadow-2xl">
+            <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card px-6 py-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Case Payment Details</h2>
-                <p className="text-sm text-gray-500">{selectedPayment.invoiceNumber || 'Invoice pending'}</p>
+                <h2 className="text-xl font-bold text-foreground">Case Payment Details</h2>
+                <p className="text-sm text-muted-foreground">{selectedPayment.invoiceNumber || 'Invoice pending'}</p>
               </div>
-              <button type="button" onClick={() => setSelectedPayment(null)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" aria-label="Close payment details">
+              <button type="button" onClick={() => setSelectedPayment(null)} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary" aria-label="Close payment details">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -373,9 +373,9 @@ const PaymentsOverview = () => {
                   ['Payment Date', paymentDate(selectedPayment)],
                   ['Next Due Date', formatDate(selectedPayment.nextPaymentDueDate)],
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-                    <p className="mt-1 font-semibold text-gray-900">{value}</p>
+                  <div key={label} className="rounded-xl border border-border bg-muted p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="mt-1 font-semibold text-foreground">{value}</p>
                   </div>
                 ))}
               </div>
@@ -397,17 +397,17 @@ const PaymentsOverview = () => {
 
               {selectedPayment.invoices?.length > 0 && (
                 <div>
-                  <h3 className="mb-3 font-semibold text-gray-900">Invoices</h3>
+                  <h3 className="mb-3 font-semibold text-foreground">Invoices</h3>
                   <div className="space-y-2">
                     {selectedPayment.invoices.map((invoice) => (
-                      <div key={invoice._id || invoice.invoiceNumber} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 text-sm">
+                      <div key={invoice._id || invoice.invoiceNumber} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
                         <div>
-                          <p className="font-semibold text-gray-900">{invoice.invoiceNumber}</p>
-                          <p className="text-gray-500">Issued {formatDate(invoice.issuedAt)} · Due {formatDate(invoice.dueDate)}</p>
+                          <p className="font-semibold text-foreground">{invoice.invoiceNumber}</p>
+                          <p className="text-muted-foreground">Issued {formatDate(invoice.issuedAt)} · Due {formatDate(invoice.dueDate)}</p>
                         </div>
                         <div className="text-right">
                           <p className="font-semibold">{formatCurrency(invoice.total, invoice.currency || selectedPayment.currency)}</p>
-                          <p className="text-gray-500">{displayText(invoice.status)}</p>
+                          <p className="text-muted-foreground">{displayText(invoice.status)}</p>
                         </div>
                       </div>
                     ))}
@@ -415,7 +415,7 @@ const PaymentsOverview = () => {
                 </div>
               )}
 
-              <div className="flex flex-wrap justify-end gap-3 border-t border-gray-200 pt-4">
+              <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-4">
                 <button type="button" onClick={() => setSelectedPayment(null)} className="btn-secondary">Close</button>
                 {selectedCase?._id && (
                   <button

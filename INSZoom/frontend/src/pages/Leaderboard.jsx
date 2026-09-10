@@ -45,13 +45,13 @@ const Leaderboard = () => {
 
   const renderRow = (item, index) => {
     const rankIcon = index === 0 ? <Trophy className="w-5 h-5 text-yellow-500" /> : 
-                    index === 1 ? <Award className="w-5 h-5 text-gray-400" /> :
+                    index === 1 ? <Award className="w-5 h-5 text-muted-foreground" /> :
                     index === 2 ? <Award className="w-5 h-5 text-amber-600" /> :
-                    <span className="text-gray-600">{item.rank}</span>
+                    <span className="text-muted-foreground">{item.rank}</span>
 
     if (role === 'case_manager') {
       return (
-        <tr key={index} className="border-b hover:bg-gray-50">
+        <tr key={index} className="border-b hover:bg-muted">
           <td className="px-6 py-4 whitespace-nowrap">{rankIcon}</td>
           <td className="px-6 py-4 whitespace-nowrap font-medium">{item.name}</td>
           <td className="px-6 py-4 whitespace-nowrap">{item.activeCases}</td>
@@ -68,15 +68,15 @@ const Leaderboard = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Leaderboard</h1>
-        <p className="text-gray-600 mt-1">Track staff performance and rankings</p>
+        <h1 className="text-2xl font-bold text-foreground">Leaderboard</h1>
+        <p className="text-muted-foreground mt-1">Track staff performance and rankings</p>
       </div>
 
       {/* Filters */}
       <div className="card">
         <div className="flex flex-wrap gap-4 items-center">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Role</label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
@@ -86,7 +86,7 @@ const Leaderboard = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Period</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Period</label>
             <select
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
@@ -109,7 +109,7 @@ const Leaderboard = () => {
       {/* Leaderboard Table */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-foreground">
             {getRoleLabel(role)} Leaderboard - {period.replace('_', ' ').toUpperCase()}
           </h3>
           <button
@@ -123,15 +123,15 @@ const Leaderboard = () => {
 
         {loading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="text-gray-600">Loading leaderboard...</div>
+            <div className="text-muted-foreground">Loading leaderboard...</div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full">
               <thead>
-                <tr className="bg-gray-50">
+                <tr className="bg-muted">
                   {getColumns().map((col, index) => (
-                    <th key={index} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th key={index} className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                       {col}
                     </th>
                   ))}
@@ -142,7 +142,7 @@ const Leaderboard = () => {
                   leaderboard.map((item, index) => renderRow(item, index))
                 ) : (
                   <tr>
-                    <td colSpan={getColumns().length} className="px-6 py-12 text-center text-gray-500">
+                    <td colSpan={getColumns().length} className="px-6 py-12 text-center text-muted-foreground">
                       No data available for this period
                     </td>
                   </tr>
