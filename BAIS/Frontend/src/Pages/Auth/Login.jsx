@@ -3,8 +3,21 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
+import ThemeToggle from "../../components/ThemeToggle";
+
+// Presentational-only entry hints — NOT an access decision. Whichever tab is
+// selected renders the same login form and calls the same login() below;
+// the authenticated account's real role (via AuthGate reading
+// GET /api/auth/session-context) is what decides the post-login destination
+// (client portal vs. INSZOOM staff app), never what the user clicked here.
+const ROLE_TABS = [
+  { key: "client", label: "Client", heading: "Welcome back", sub: "Sign in to track your case in the client portal." },
+  { key: "attorney", label: "Attorney", heading: "Attorney sign-in", sub: "Attorney portal access." },
+  { key: "team", label: "Team member", heading: "Team member sign-in", sub: "Sign in with your staff credentials — you'll land on your team dashboard automatically." },
+];
 
 export default function Login() {
+  const [roleTab,      setRoleTab]      = useState("client");
   const [email,       setEmail]       = useState("");
   const [caseId,      setCaseId]      = useState("");
   const [username,    setUsername]    = useState("");
@@ -141,15 +154,17 @@ export default function Login() {
     }
   };
 
+  const activeTab = ROLE_TABS.find((t) => t.key === roleTab) || ROLE_TABS[0];
+
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#f3f4f6] font-[Inter,system-ui,sans-serif]">
+    <div className="min-h-screen flex flex-col md:flex-row bg-background">
 
       {/* ── Left — Form Panel ── */}
       <div
         className={`
           flex-1 flex flex-col justify-center
           px-6 sm:px-12 md:px-14 lg:px-20 py-12
-          bg-white md:rounded-none
+          bg-card
           shadow-xl md:shadow-[2px_0_24px_rgba(0,0,0,0.06)]
           transition-all duration-500
           ${mounted ? "translate-x-0 opacity-100" : "-translate-x-10 opacity-0"}
@@ -158,195 +173,224 @@ export default function Login() {
       >
         <div className="w-full max-w-sm mx-auto">
           {/* Logo */}
-          <div className="flex items-center gap-2.5 mb-8">
-            <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600
-              flex items-center justify-center shadow-sm">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary-foreground" aria-hidden="true">
+                  <path d="M17 7l-10 10M7 7h10v10" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-foreground leading-none">BAIS</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Immigration Portal</p>
+              </div>
             </div>
-            <div>
-              <p className="text-lg font-extrabold text-slate-800 leading-none">BAIS</p>
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Immigration Portal</p>
-            </div>
+            <ThemeToggle />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">Welcome back</h1>
-          <p className="text-sm text-slate-500 mb-7">Sign in to your account to continue</p>
-
-          {/* Google */}
-          <button
-            onClick={handleGoogle}
-            disabled={loading || googleLoading}
-            className="flex items-center justify-center gap-3 w-full py-3 mb-5
-              bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700
-              hover:bg-slate-50 hover:border-slate-300 hover:shadow-md
-              transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
-          >
-            {googleLoading ? "Redirecting to Google…" : (
-              <>
-                <GoogleIcon />
-                Continue with Google
-              </>
-            )}
-          </button>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-5">
-            <span className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Or sign in with portal credentials</span>
-            <span className="flex-1 h-px bg-slate-200" />
-          </div>
-
-          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-          <div className="mb-4 grid grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-1">
-            {[
-              { key: "email", label: "Email" },
-              { key: "caseId", label: "Case ID" },
-              { key: "username", label: "Username" },
-            ].map((option) => (
+          {/* Role entry tabs */}
+          <div className="mb-6 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
+            {ROLE_TABS.map((tab) => (
               <button
-                key={option.key}
+                key={tab.key}
                 type="button"
-                onClick={() => {
-                  setLoginMethod(option.key);
-                  setError("");
-                  setPendingInvite(false);
-                  setResendSent(false);
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-bold transition ${
-                  loginMethod === option.key
-                    ? "bg-white text-[#0F6E56] shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
+                onClick={() => { setRoleTab(tab.key); setError(""); }}
+                className={`rounded-lg px-2 py-2 text-xs sm:text-sm font-bold transition cursor-pointer ${
+                  roleTab === tab.key ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {option.label}
+                {tab.label}
               </button>
             ))}
           </div>
 
-          {loginMethod === "email" ? (
-            <FieldWrap icon={<MailIcon />}>
-              <input
-                type="email"
-                id="login-email"
-                name="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-                  border border-slate-200 rounded-xl bg-white outline-none
-                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-                  transition-all duration-150"
-              />
-            </FieldWrap>
-          ) : loginMethod === "caseId" ? (
-            <FieldWrap icon={<CaseIdIcon />}>
-              <input
-                type="text"
-                id="login-case-id"
-                name="caseId"
-                placeholder="Case ID"
-                value={caseId}
-                onChange={(e) => setCaseId(e.target.value)}
-                autoComplete="username"
-                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-                  border border-slate-200 rounded-xl bg-white outline-none
-                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-                  transition-all duration-150"
-              />
-            </FieldWrap>
+          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-1">{activeTab.heading}</h1>
+          <p className="text-sm text-muted-foreground mb-7">{activeTab.sub}</p>
+
+          {roleTab === "attorney" ? (
+            <div className="rounded-xl border border-dashed border-border bg-secondary px-5 py-8 text-center">
+              <p className="text-sm font-semibold text-foreground mb-1.5">Attorney portal — coming soon</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                A dedicated attorney workspace isn't live yet. In the meantime, attorneys can access case
+                details through the team member sign-in.
+              </p>
+            </div>
           ) : (
-            <FieldWrap icon={<CaseIdIcon />}>
-              <input
-                type="text"
-                id="login-username"
-                name="username"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                className="w-full pl-10 pr-4 py-3 text-sm text-slate-800 placeholder-slate-400
-                  border border-slate-200 rounded-xl bg-white outline-none
-                  hover:border-slate-300 focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
-                  transition-all duration-150"
-              />
-            </FieldWrap>
-          )}
+            <>
+              {/* Google */}
+              <button
+                onClick={handleGoogle}
+                disabled={loading || googleLoading}
+                className="flex items-center justify-center gap-3 w-full py-3 mb-5
+                  bg-card border border-border rounded-xl text-sm font-semibold text-foreground
+                  hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              >
+                {googleLoading ? "Redirecting to Google…" : (
+                  <>
+                    <GoogleIcon />
+                    Continue with Google
+                  </>
+                )}
+              </button>
 
-          {/* Password */}
-          <PasswordField
-            icon={<LockIcon />}
-            name="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+              {/* Divider */}
+              <div className="flex items-center gap-3 mb-5">
+                <span className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Or sign in with portal credentials</span>
+                <span className="flex-1 h-px bg-border" />
+              </div>
 
-          {/* Forgot */}
-          <div className="text-right mb-5 -mt-1">
-            <Link to="/forgot-password" className="text-xs text-[#1a7abf] hover:underline font-medium">
-              Forgot password?
-            </Link>
-          </div>
-
-          {/* Invited-but-passwordless employee tried to log in with their
-              invited email — guide them to activation via a resend, never
-              exposing the invite token itself. */}
-          {pendingInvite && (
-            <div role="alert" className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-              {resendSent ? (
-                <p>A new invitation has been sent to <span className="font-semibold">{email}</span>. Check your email to set your password.</p>
-              ) : (
-                <>
-                  <p className="mb-2">You've been invited — set your password to continue instead of logging in.</p>
-                  <button type="button" onClick={handleResendInvite} disabled={resendingInvite}
-                    className="text-sm font-bold text-amber-900 underline disabled:opacity-60 cursor-pointer">
-                    {resendingInvite ? "Sending…" : "Resend invitation email"}
+              <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+              <div className="mb-4 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
+                {[
+                  { key: "email", label: "Email" },
+                  { key: "caseId", label: "Case ID" },
+                  { key: "username", label: "Username" },
+                ].map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => {
+                      setLoginMethod(option.key);
+                      setError("");
+                      setPendingInvite(false);
+                      setResendSent(false);
+                    }}
+                    className={`rounded-lg px-3 py-2 text-sm font-bold transition cursor-pointer ${
+                      loginMethod === option.key
+                        ? "bg-card text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {option.label}
                   </button>
-                </>
+                ))}
+              </div>
+
+              {loginMethod === "email" ? (
+                <FieldWrap icon={<MailIcon />}>
+                  <input
+                    type="email"
+                    id="login-email"
+                    name="email"
+                    placeholder="Email address"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    className="w-full pl-10 pr-4 py-3 text-sm text-foreground placeholder-muted-foreground
+                      border border-border rounded-xl bg-card outline-none
+                      hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15
+                      transition-all duration-150"
+                  />
+                </FieldWrap>
+              ) : loginMethod === "caseId" ? (
+                <FieldWrap icon={<CaseIdIcon />}>
+                  <input
+                    type="text"
+                    id="login-case-id"
+                    name="caseId"
+                    placeholder="Case ID"
+                    value={caseId}
+                    onChange={(e) => setCaseId(e.target.value)}
+                    autoComplete="username"
+                    className="w-full pl-10 pr-4 py-3 text-sm text-foreground placeholder-muted-foreground
+                      border border-border rounded-xl bg-card outline-none
+                      hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15
+                      transition-all duration-150"
+                  />
+                </FieldWrap>
+              ) : (
+                <FieldWrap icon={<CaseIdIcon />}>
+                  <input
+                    type="text"
+                    id="login-username"
+                    name="username"
+                    placeholder="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    autoComplete="username"
+                    className="w-full pl-10 pr-4 py-3 text-sm text-foreground placeholder-muted-foreground
+                      border border-border rounded-xl bg-card outline-none
+                      hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15
+                      transition-all duration-150"
+                  />
+                </FieldWrap>
               )}
-            </div>
+
+              {/* Password */}
+              <PasswordField
+                icon={<LockIcon />}
+                name="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+              />
+
+              {/* Forgot */}
+              <div className="text-right mb-5 -mt-1">
+                <Link to="/forgot-password" className="text-xs text-primary hover:underline font-medium">
+                  Forgot password?
+                </Link>
+              </div>
+
+              {/* Invited-but-passwordless employee tried to log in with their
+                  invited email — guide them to activation via a resend, never
+                  exposing the invite token itself. */}
+              {pendingInvite && (
+                <div role="alert" className="mb-4 px-4 py-3 bg-accent border border-accent-foreground/20 rounded-xl text-sm text-accent-foreground">
+                  {resendSent ? (
+                    <p>A new invitation has been sent to <span className="font-semibold">{email}</span>. Check your email to set your password.</p>
+                  ) : (
+                    <>
+                      <p className="mb-2">You've been invited — set your password to continue instead of logging in.</p>
+                      <button type="button" onClick={handleResendInvite} disabled={resendingInvite}
+                        className="text-sm font-bold underline disabled:opacity-60 cursor-pointer">
+                        {resendingInvite ? "Sending…" : "Resend invitation email"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {error && (
+                <div role="alert" className="flex items-start gap-2 mb-4 px-4 py-3
+                  bg-destructive/10 border border-destructive/30 rounded-xl text-sm text-destructive">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="shrink-0 mt-0.5" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              {/* Login button */}
+              <button
+                type="submit"
+                disabled={loading || googleLoading}
+                className="w-full py-3 mb-3 bg-primary hover:opacity-90
+                  text-primary-foreground text-sm font-bold rounded-xl
+                  shadow-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {loading ? "Signing in…" : "Sign In"}
+              </button>
+              </form>
+
+              {roleTab === "client" && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/signup")}
+                  className="w-full py-3 bg-card border border-border text-foreground
+                    text-sm font-semibold rounded-xl hover:bg-secondary
+                    transition-all duration-200 cursor-pointer"
+                >
+                  New user? Create account
+                </button>
+              )}
+            </>
           )}
 
-          {/* Error */}
-          {error && (
-            <div role="alert" className="flex items-start gap-2 mb-4 px-4 py-3
-              bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
-              <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="shrink-0 mt-0.5" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
-              {error}
-            </div>
-          )}
-
-          {/* Login button */}
-          <button
-            type="submit"
-            disabled={loading || googleLoading}
-            className="w-full py-3 mb-3 bg-[#1D9E75] hover:bg-[#0F6E56]
-              text-white text-sm font-bold rounded-xl
-              shadow-sm shadow-emerald-200 hover:shadow-md hover:shadow-emerald-300
-              transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {loading ? "Signing in…" : "Sign In"}
-          </button>
-          </form>
-
-          {/* Sign up */}
-          <button
-            type="button"
-            onClick={() => navigate("/signup")}
-            className="w-full py-3 bg-white border border-slate-200 text-slate-700
-              text-sm font-semibold rounded-xl hover:bg-slate-50 hover:border-slate-300
-              transition-all duration-200 cursor-pointer"
-          >
-            New user? Create account
-          </button>
-
-          <p className="mt-8 text-center text-xs text-slate-400">
+          <p className="mt-8 text-center text-xs text-muted-foreground">
             © BAIS &nbsp;·&nbsp; info@bayareaimmigrationservices.com
           </p>
         </div>
@@ -357,7 +401,7 @@ export default function Login() {
         className={`
           hidden md:flex flex-1 flex-col items-center justify-center
           px-10 py-12 text-center
-          bg-linear-to-br from-[#1D9E75] via-[#1a7abf] to-[#1756d1]
+          bg-primary
           transition-all duration-500
           ${mounted ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0"}
         `}
@@ -365,17 +409,17 @@ export default function Login() {
       >
         <div className="max-w-sm">
           {/* Large brand */}
-          <p className="text-7xl lg:text-8xl font-light text-white tracking-[0.2em] mb-4
+          <p className="text-7xl lg:text-8xl font-serif font-light text-primary-foreground tracking-[0.2em] mb-4
             animate-[fadeUp_0.5s_ease_forwards_0.2s] opacity-0">
             BAIS
           </p>
-          <p className="text-base text-white/90 leading-relaxed mb-6
+          <p className="text-base text-primary-foreground/90 leading-relaxed mb-6
             animate-[fadeUp_0.5s_ease_forwards_0.4s] opacity-0">
             Welcome to the <strong className="font-semibold">BAIS Client Portal</strong> —{" "}
             your secure gateway to Bay Area immigration services.
           </p>
-          <span className="inline-block px-5 py-2 border border-white/40 rounded-full
-            text-sm text-white/80 tracking-widest font-medium
+          <span className="inline-block px-5 py-2 border border-primary-foreground/40 rounded-full
+            text-sm text-primary-foreground/80 tracking-widest font-medium
             animate-[fadeUp_0.5s_ease_forwards_0.6s] opacity-0">
             Secure · Trusted · Official
           </span>
@@ -387,9 +431,9 @@ export default function Login() {
               { num: "15+",  label: "Years Experience" },
               { num: "98%",  label: "Success Rate" },
             ].map(({ num, label }) => (
-              <div key={label} className="bg-white/10 rounded-2xl px-3 py-4 border border-white/20">
-                <p className="text-2xl font-extrabold text-white">{num}</p>
-                <p className="text-xs text-white/70 mt-0.5 leading-tight">{label}</p>
+              <div key={label} className="bg-primary-foreground/10 rounded-2xl px-3 py-4 border border-primary-foreground/20">
+                <p className="text-2xl font-extrabold text-primary-foreground">{num}</p>
+                <p className="text-xs text-primary-foreground/70 mt-0.5 leading-tight">{label}</p>
               </div>
             ))}
           </div>
@@ -410,7 +454,7 @@ export default function Login() {
 function FieldWrap({ icon, children }) {
   return (
     <div className="relative mb-4">
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
+      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
         {icon}
       </span>
       {children}

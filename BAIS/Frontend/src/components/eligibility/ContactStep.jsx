@@ -16,7 +16,7 @@ export default function ContactStep({ contact, onChange, disclaimerAccepted, onD
 
   const field = (key, label, type = "text", placeholder) => (
     <div>
-      <label htmlFor={`contact-${key}`} className="block text-sm font-bold text-slate-700 mb-1.5">{label}</label>
+      <label htmlFor={`contact-${key}`} className="block text-sm font-bold text-foreground mb-1.5">{label}</label>
       <input
         id={`contact-${key}`}
         type={type}
@@ -24,16 +24,16 @@ export default function ContactStep({ contact, onChange, disclaimerAccepted, onD
         onChange={(e) => onChange(key, e.target.value)}
         onBlur={() => setTouched((t) => ({ ...t, [key]: true }))}
         placeholder={placeholder}
-        className={`w-full rounded-xl border px-4 py-3 text-sm text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1
-          ${touched[key] && errors[key] ? "border-red-300" : "border-slate-200"}`}
+        className={`w-full rounded-xl border px-4 py-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1
+          ${touched[key] && errors[key] ? "border-destructive/40" : "border-border"}`}
       />
-      {touched[key] && errors[key] && <p className="text-xs text-red-600 mt-1">{errors[key]}</p>}
+      {touched[key] && errors[key] && <p className="text-xs text-destructive mt-1">{errors[key]}</p>}
     </div>
   );
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-500">Last step — where should we send your results?</p>
+      <p className="text-sm text-muted-foreground">Last step — where should we send your results?</p>
       {field("fullName", "Full name", "text", "Jane Doe")}
       {field("email", "Email address", "email", "you@example.com")}
       {field("phone", "Phone number", "tel", "(555) 123-4567")}
@@ -45,7 +45,7 @@ export default function ContactStep({ contact, onChange, disclaimerAccepted, onD
           onChange={(e) => onDisclaimerChange(e.target.checked)}
           className="mt-0.5"
         />
-        <span className="text-xs text-slate-500 leading-relaxed">
+        <span className="text-xs text-muted-foreground leading-relaxed">
           I understand this assessment is not legal advice and does not guarantee any immigration outcome.
         </span>
       </label>

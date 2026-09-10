@@ -33,9 +33,9 @@ function FilingOptionCard({ label, onClick, disabled }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-left transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      className="w-full rounded-xl border border-border bg-card p-3.5 text-left transition hover:border-muted-foreground/40 hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <span className="text-sm font-semibold text-slate-900">{label}</span>
+      <span className="text-sm font-semibold text-foreground">{label}</span>
     </button>
   );
 }
@@ -68,16 +68,16 @@ export default function FilingTypeSelection() {
     return acc;
   }, {});
 
-  if (loading) return <div className="p-6 text-sm text-slate-500">Loading filing types…</div>;
-  if (error) return <div className="p-6 text-sm text-red-600">{error}</div>;
+  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading filing types…</div>;
+  if (error) return <div className="p-6 text-sm text-destructive">{error}</div>;
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-slate-100">
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-6 py-6">
-          <p className="text-slate-400 text-xs font-bold uppercase tracking-widest">Filing type</p>
-          <h1 className="text-xl font-bold text-slate-900 mt-1">Change of status, extension, or EAD</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">Filing type</p>
+          <h1 className="text-xl font-bold text-foreground mt-1">Change of status, extension, or EAD</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Pick the filing that matches your situation, then book a consultation to get started.
           </p>
         </div>
@@ -86,28 +86,28 @@ export default function FilingTypeSelection() {
       <div className="mx-auto max-w-3xl space-y-6 p-6">
 
       {(grouped.transitions || []).length > 0 && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-bold text-slate-900">{CATEGORY_LABELS.change_of_status}</h2>
-          <p className="mt-1 text-xs text-slate-500">Tell us your current status and the status you want — we'll match you to the right checklist.</p>
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="text-sm font-bold text-foreground">{CATEGORY_LABELS.change_of_status}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Tell us your current status and the status you want — we'll match you to the right checklist.</p>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="text-xs font-bold text-slate-500">
+            <label className="text-xs font-bold text-muted-foreground">
               Current status
               <select
                 value={fromStatus}
                 onChange={(e) => setFromStatus(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm text-foreground"
               >
                 {CURRENT_STATUS_OPTIONS.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
             </label>
-            <label className="text-xs font-bold text-slate-500">
+            <label className="text-xs font-bold text-muted-foreground">
               Desired status
               <select
                 value={toStatus}
                 onChange={(e) => setToStatus(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800"
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2 text-sm text-foreground"
               >
                 {DESIRED_STATUS_OPTIONS.map((option) => (
                   <option key={option} value={option}>{option}</option>
@@ -121,7 +121,7 @@ export default function FilingTypeSelection() {
               fromStatus: fromStatus.startsWith("Other") ? "" : fromStatus,
               toStatus: toStatus.startsWith("Other") ? "" : toStatus,
             })}
-            className="mt-4 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60"
+            className="mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-60"
           >
             Start This Filing
           </button>
@@ -129,8 +129,8 @@ export default function FilingTypeSelection() {
       )}
 
       {Object.entries(standaloneByCategory).map(([category, entries]) => (
-        <section key={category} className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-sm font-bold text-slate-900">{CATEGORY_LABELS[category] || category}</h2>
+        <section key={category} className="rounded-2xl border border-border bg-card p-5">
+          <h2 className="text-sm font-bold text-foreground">{CATEGORY_LABELS[category] || category}</h2>
           <div className="mt-3 space-y-2">
             {entries.map((entry) => (
               <FilingOptionCard

@@ -21,15 +21,15 @@ export default function CriterionCard({ question, value, onChange, metThreshold 
   const scaleLabels = question.scaleLabels || ["None", "Developing", "Solid", "Strong"];
 
   return (
-    <div className="rounded-2xl border border-slate-200 p-5 sm:p-6">
+    <div className="rounded-2xl border border-border p-5 sm:p-6">
       <div className="flex items-start justify-between gap-3 mb-1">
-        <h3 className="font-bold text-slate-800 text-[0.95rem] leading-snug">{question.label}</h3>
+        <h3 className="font-bold text-foreground text-[0.95rem] leading-snug">{question.label}</h3>
         <span className={`shrink-0 inline-flex items-center gap-1.5 text-[0.68rem] font-bold uppercase tracking-wide ${meta.text}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} aria-hidden="true" />
           {meta.label}
         </span>
       </div>
-      {question.helpText && <p className="text-sm text-slate-500 mb-4">{question.helpText}</p>}
+      {question.helpText && <p className="text-sm text-muted-foreground mb-4">{question.helpText}</p>}
 
       <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label={question.label}>
         {scaleLabels.map((label, index) => {
@@ -43,9 +43,9 @@ export default function CriterionCard({ question, value, onChange, metThreshold 
               onClick={() => onChange(index)}
               className={`rounded-xl border px-2 py-3 text-center transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer
                 ${selected
-                  ? "border-transparent text-white shadow-sm"
-                  : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
-              style={selected ? { backgroundColor: "var(--eligibility-primary, #0B1F3A)" } : undefined}
+                  ? "border-transparent text-primary-foreground shadow-sm"
+                  : "border-border text-muted-foreground hover:border-border hover:bg-secondary"}`}
+              style={selected ? { backgroundColor: "var(--eligibility-primary, hsl(var(--primary)))" } : undefined}
             >
               <span className="block text-xs font-bold">{index}</span>
               <span className="block text-[0.65rem] mt-0.5 leading-tight">{label}</span>

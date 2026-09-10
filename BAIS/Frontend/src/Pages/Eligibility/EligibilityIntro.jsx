@@ -22,8 +22,8 @@ function PickerButton({ selected, onClick, children }) {
       aria-checked={selected}
       onClick={onClick}
       className={`text-left rounded-xl border px-4 py-3.5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 cursor-pointer
-        ${selected ? "border-transparent text-white" : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"}`}
-      style={selected ? { backgroundColor: "var(--eligibility-primary, #0B1F3A)" } : undefined}
+        ${selected ? "border-transparent text-primary-foreground" : "border-border text-foreground hover:border-border hover:bg-secondary"}`}
+      style={selected ? { backgroundColor: "var(--eligibility-primary, hsl(var(--primary)))" } : undefined}
     >
       {children}
     </button>
@@ -85,31 +85,31 @@ export default function EligibilityIntro() {
   return (
     <EligibilityShell>
       <div className="max-w-2xl mx-auto px-5 sm:px-6 py-16 sm:py-24">
-        <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-slate-100 text-xs font-bold uppercase tracking-widest text-slate-500">
+        <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-secondary text-xs font-bold uppercase tracking-widest text-muted-foreground">
           Free Eligibility Assessment
         </span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-4 leading-tight">
           Find your strongest U.S. immigration pathway in 5 minutes.
         </h1>
-        <p className="text-slate-500 leading-relaxed mb-8">
+        <p className="text-muted-foreground leading-relaxed mb-8">
           Answer a few questions about your background and achievements. We'll show you where you stand today — with a clear recommendation and next step, whatever your result.
         </p>
 
         <QuizProgress step={uiStep === "category" ? 1 : 2} totalSteps={2} label={uiStep === "category" ? "Choose a category" : "Choose your visa"} />
 
         {isError && (
-          <p className="text-sm text-red-600 mb-8">Couldn't load visa pathways. Please refresh and try again.</p>
+          <p className="text-sm text-destructive mb-8">Couldn't load visa pathways. Please refresh and try again.</p>
         )}
 
         {isLoading && (
           <div className="space-y-2 mb-8">
-            {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-slate-100 animate-pulse" />)}
+            {[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl bg-secondary animate-pulse" />)}
           </div>
         )}
 
         {!isLoading && !isError && uiStep === "category" && (
           <>
-            <p className="text-sm font-bold text-slate-700 mb-3">Which pathway are you exploring?</p>
+            <p className="text-sm font-bold text-foreground mb-3">Which pathway are you exploring?</p>
             <div className="grid gap-2.5 mb-10" role="radiogroup" aria-label="Visa category">
               {ELIGIBILITY_CATEGORIES.map((category) => {
                 const selected = selectedCategory === category.id;
@@ -118,7 +118,7 @@ export default function EligibilityIntro() {
                   <PickerButton key={category.id} selected={selected} onClick={() => handleSelectCategory(category.id)}>
                     <span className="font-bold text-sm block">{category.label}</span>
                     {examples && (
-                      <span className={`text-xs block mt-0.5 ${selected ? "text-white/75" : "text-slate-500"}`}>
+                      <span className={`text-xs block mt-0.5 ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
                         {examples}
                       </span>
                     )}
@@ -131,8 +131,8 @@ export default function EligibilityIntro() {
               type="button"
               onClick={handleContinueToVisas}
               disabled={!selectedCategory}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              style={{ backgroundColor: "var(--eligibility-accent, #C6A15B)" }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-primary-foreground font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              style={{ backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
             >
               Next
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -147,11 +147,11 @@ export default function EligibilityIntro() {
             <button
               type="button"
               onClick={handleBackToCategories}
-              className="text-sm font-semibold text-slate-500 hover:text-slate-700 mb-4 cursor-pointer"
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground mb-4 cursor-pointer"
             >
               ← Back to categories
             </button>
-            <p className="text-sm font-bold text-slate-700 mb-3">Which visa are you exploring?</p>
+            <p className="text-sm font-bold text-foreground mb-3">Which visa are you exploring?</p>
             <div className="grid gap-2.5 mb-10" role="radiogroup" aria-label="Visa pathway">
               {visasInSelectedCategory.map((visa) => {
                 const selected = selectedVisa === visa.key;
@@ -167,8 +167,8 @@ export default function EligibilityIntro() {
               type="button"
               onClick={handleStart}
               disabled={!selectedVisa}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-white font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              style={{ backgroundColor: "var(--eligibility-accent, #C6A15B)" }}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl text-primary-foreground font-bold text-base transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              style={{ backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
             >
               Start assessment
               <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

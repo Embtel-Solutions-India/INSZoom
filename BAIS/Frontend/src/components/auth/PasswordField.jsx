@@ -26,7 +26,7 @@ export default function PasswordField({
   return (
     <div className="relative flex items-center w-full mb-4">
       {icon && (
-        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
           {icon}
         </span>
       )}
@@ -38,10 +38,10 @@ export default function PasswordField({
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="bais-password-input w-full pl-10 pr-12 py-3 text-sm text-slate-800 placeholder-slate-400
-          border border-slate-200 rounded-xl bg-white outline-none box-border
-          hover:border-slate-300
-          focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
+        className="bais-password-input w-full pl-10 pr-12 py-3 text-sm text-foreground placeholder-muted-foreground
+          border border-border rounded-xl bg-card outline-none box-border
+          hover:border-ring/50
+          focus:border-ring focus:ring-2 focus:ring-ring/15
           transition-all duration-150"
       />
       <button
@@ -51,8 +51,8 @@ export default function PasswordField({
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => setShowPassword((current) => !current)}
         className="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center
-          rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100
-          focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/20 transition-all cursor-pointer"
+          rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary
+          focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all cursor-pointer"
       >
         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
       </button>

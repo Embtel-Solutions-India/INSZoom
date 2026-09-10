@@ -55,7 +55,7 @@ export default function EligibilityQuiz() {
     return (
       <EligibilityShell>
         <div className="max-w-3xl mx-auto px-5 py-16 space-y-4">
-          {[1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-slate-100 animate-pulse" />)}
+          {[1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-secondary animate-pulse" />)}
         </div>
       </EligibilityShell>
     );
@@ -64,8 +64,8 @@ export default function EligibilityQuiz() {
     return (
       <EligibilityShell>
         <div className="max-w-lg mx-auto px-5 py-24 text-center">
-          <p className="font-bold text-slate-800 mb-2">Couldn't load the assessment</p>
-          <p className="text-sm text-slate-500">Please refresh the page and try again.</p>
+          <p className="font-bold text-foreground mb-2">Couldn't load the assessment</p>
+          <p className="text-sm text-muted-foreground">Please refresh the page and try again.</p>
         </div>
       </EligibilityShell>
     );
@@ -148,7 +148,7 @@ export default function EligibilityQuiz() {
                   <button
                     type="button"
                     onClick={() => setTrackerOpen((v) => !v)}
-                    className="lg:hidden mb-4 w-full text-left rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-600"
+                    className="lg:hidden mb-4 w-full text-left rounded-xl border border-border px-4 py-3 text-sm font-bold text-foreground"
                   >
                     {trackerOpen ? "Hide" : "Show"} your live snapshot
                   </button>
@@ -176,7 +176,7 @@ export default function EligibilityQuiz() {
           </AnimatePresence>
 
           {submitMutation.isError && (
-            <div className="mt-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+            <div className="mt-4 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
               Something went wrong submitting your assessment. Your answers are still here — please try again.
             </div>
           )}
@@ -186,7 +186,7 @@ export default function EligibilityQuiz() {
               type="button"
               onClick={goBack}
               disabled={stepIndex === 0}
-              className="px-5 py-3 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-700 disabled:opacity-0 cursor-pointer"
+              className="px-5 py-3 rounded-xl text-sm font-bold text-muted-foreground hover:text-foreground disabled:opacity-0 cursor-pointer"
             >
               Back
             </button>
@@ -194,8 +194,8 @@ export default function EligibilityQuiz() {
               type="button"
               onClick={goNext}
               disabled={!canAdvance || submitMutation.isPending}
-              className="px-8 py-3.5 rounded-xl text-white font-bold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              style={{ backgroundColor: "var(--eligibility-accent, #C6A15B)" }}
+              className="px-8 py-3.5 rounded-xl text-primary-foreground font-bold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              style={{ backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
             >
               {submitMutation.isPending ? "Submitting…" : stepIndex === STEPS.length - 1 ? "Get my results" : "Continue"}
             </button>

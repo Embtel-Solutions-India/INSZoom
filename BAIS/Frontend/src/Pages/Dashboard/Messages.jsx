@@ -62,7 +62,7 @@ function presenceLabel(presence) {
 function DayDivider({ label }) {
   return (
     <div className="flex items-center justify-center py-1">
-      <span className="text-[0.65rem] font-semibold text-slate-500 bg-slate-200/70 px-3 py-1 rounded-full">
+      <span className="text-[0.65rem] font-semibold text-muted-foreground bg-secondary px-3 py-1 rounded-full">
         {label}
       </span>
     </div>
@@ -186,11 +186,11 @@ function AttachmentItem({ messageId, attachment }) {
     return (
       <>
         <button type="button" onClick={handleOpen}
-          className="block w-40 h-32 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 hover:brightness-95 transition">
+          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition">
           {status === "ready" ? (
             <img src={url} alt={attachment.originalName} className="w-full h-full object-cover" />
           ) : (
-            <span className="w-full h-full flex items-center justify-center text-[0.65rem] text-slate-400">
+            <span className="w-full h-full flex items-center justify-center text-[0.65rem] text-muted-foreground">
               {status === "error" ? "Couldn't load image" : "Loading…"}
             </span>
           )}
@@ -218,8 +218,8 @@ function AttachmentItem({ messageId, attachment }) {
 
   return (
     <button type="button" onClick={handleOpen} disabled={status === "loading"}
-      className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-blue-600 bg-blue-50
-        border border-blue-200 px-2.5 py-1 rounded-full hover:bg-blue-100 transition disabled:opacity-60">
+      className="flex items-center gap-1.5 text-[0.7rem] font-semibold text-accent-foreground bg-accent
+        border border-border px-2.5 py-1 rounded-full hover:brightness-95 transition disabled:opacity-60">
       <Ic.File /> {attachment.originalName}
       <Ic.Download />
       {status === "loading" && " · Downloading…"}
@@ -240,20 +240,20 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
 
   return (
     <button onClick={onClick}
-      className={`w-full flex items-start gap-3 px-4 py-4 text-left border-b border-slate-100 transition hover:bg-slate-50 cursor-pointer
-        ${isActive ? "bg-emerald-50/60 border-l-2 border-l-emerald-500" : ""}`}>
-      <div className="w-9 h-9 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
-        flex items-center justify-center text-white text-xs font-extrabold shrink-0">
+      className={`w-full flex items-start gap-3 px-4 py-4 text-left border-b border-border transition hover:bg-secondary cursor-pointer
+        ${isActive ? "bg-accent border-l-2 border-l-primary" : ""}`}>
+      <div className="w-9 h-9 rounded-full bg-primary
+        flex items-center justify-center text-primary-foreground text-xs font-extrabold shrink-0">
         {initials(peer)}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-bold text-slate-800 truncate">{peer}</p>
-          <p className="text-[0.65rem] text-slate-400 shrink-0">{fmt(thread.lastMessageAt)}</p>
+          <p className="text-sm font-bold text-foreground truncate">{peer}</p>
+          <p className="text-[0.65rem] text-muted-foreground shrink-0">{fmt(thread.lastMessageAt)}</p>
         </div>
-        <p className="text-xs text-slate-500 truncate mt-0.5">{caseLabel}</p>
+        <p className="text-xs text-muted-foreground truncate mt-0.5">{caseLabel}</p>
         {unread > 0 && (
-          <span className="inline-block mt-1.5 text-[0.6rem] font-extrabold bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+          <span className="inline-block mt-1.5 text-[0.6rem] font-extrabold bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
             {unread} new
           </span>
         )}
@@ -279,7 +279,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   return (
     <div className={`flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
-        ${isOwn ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-600"}`}>
+        ${isOwn ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
         {initials(msg.senderId?.displayName || msg.senderId?.email || "?")}
       </div>
       <div className={`max-w-[70%] space-y-1 ${isOwn ? "items-end" : "items-start"} flex flex-col`}>
@@ -297,12 +297,12 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
         )}
         {isPending && typeof msg.__uploadProgress === "number" && (
           <div className="flex items-center gap-2 w-40">
-            <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 transition-all" style={{ width: `${msg.__uploadProgress}%` }} />
+            <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+              <div className="h-full bg-primary transition-all" style={{ width: `${msg.__uploadProgress}%` }} />
             </div>
-            <span className="text-[0.6rem] text-slate-500 shrink-0">{msg.__uploadProgress}%</span>
+            <span className="text-[0.6rem] text-muted-foreground shrink-0">{msg.__uploadProgress}%</span>
             <button type="button" onClick={() => onCancelUpload?.(msg._id)} title="Cancel upload"
-              className="text-slate-400 hover:text-red-500 shrink-0">
+              className="text-muted-foreground hover:text-destructive shrink-0">
               <IconX size={11} className="text-inherit" />
             </button>
           </div>
@@ -311,29 +311,29 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
           <div
             onClick={isFailed ? () => onRetry?.(msg) : undefined}
             className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed transition-opacity
-              ${isPending ? "opacity-60" : ""} ${isFailed ? "ring-2 ring-red-300 cursor-pointer" : ""}
+              ${isPending ? "opacity-60" : ""} ${isFailed ? "ring-2 ring-destructive/40 cursor-pointer" : ""}
               ${msg.isInternalNote
                 ? "bg-amber-50 border border-amber-200 text-amber-900"
                 : isOwn
-                  ? "bg-emerald-600 text-white rounded-tr-sm"
-                  : "bg-white border border-slate-200 text-slate-800 rounded-tl-sm"}`}>
+                  ? "bg-primary text-primary-foreground rounded-tr-sm"
+                  : "bg-card border border-border text-card-foreground rounded-tl-sm"}`}>
             {msg.messageBody}
           </div>
         )}
         <div className="flex items-center gap-1">
           {isFailed ? (
-            <button type="button" onClick={() => onRetry?.(msg)} className="text-[0.62rem] text-red-500 font-semibold hover:underline">
+            <button type="button" onClick={() => onRetry?.(msg)} className="text-[0.62rem] text-destructive font-semibold hover:underline">
               Failed to send · Tap to retry
             </button>
           ) : isPending ? (
-            <span className="flex items-center gap-1 text-[0.62rem] text-slate-400">
+            <span className="flex items-center gap-1 text-[0.62rem] text-muted-foreground">
               <Ic.Clock /> Sending…
             </span>
           ) : (
             <>
-              <p className="text-[0.62rem] text-slate-400">{fmt(msg.createdAt)}</p>
+              <p className="text-[0.62rem] text-muted-foreground">{fmt(msg.createdAt)}</p>
               {isOwn && (
-                <span className={isRead ? "text-sky-500" : "text-slate-400"} title={isRead ? "Read" : "Sent"}>
+                <span className={isRead ? "text-sky-500" : "text-muted-foreground"} title={isRead ? "Read" : "Sent"}>
                   <Ic.DoubleCheck />
                 </span>
               )}
@@ -732,21 +732,21 @@ export default function Messages() {
 
   /* ── Render ── */
   return (
-    <div className="min-h-screen bg-[#f1f5f9] flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Banner */}
-      <div className="bg-linear-to-r from-[#1D9E75] via-teal-600 to-blue-700 text-white shrink-0">
+      <div className="bg-primary text-primary-foreground shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex items-center gap-3">
           {showMobile && activeThread && (
-            <button onClick={() => setShowMobile(false)} className="sm:hidden mr-1 text-white/80 hover:text-white">
+            <button onClick={() => setShowMobile(false)} className="sm:hidden mr-1 text-primary-foreground/80 hover:text-primary-foreground">
               <Ic.Back />
             </button>
           )}
           <Ic.Msg />
           <div>
-            <p className="text-white/70 text-[0.7rem] font-semibold uppercase tracking-widest">Communication</p>
+            <p className="text-primary-foreground/70 text-[0.7rem] font-semibold uppercase tracking-widest">Communication</p>
             <h1 className="text-xl font-extrabold leading-tight">Messages</h1>
           </div>
-          <button onClick={loadThreads} className="ml-auto text-white/70 hover:text-white transition" title="Refresh">
+          <button onClick={loadThreads} className="ml-auto text-primary-foreground/70 hover:text-primary-foreground transition" title="Refresh">
             <Ic.Refresh />
           </button>
         </div>
@@ -756,24 +756,24 @@ export default function Messages() {
           side margins, no inset card) and only gets the padded/rounded card
           treatment from the sm breakpoint up. */}
       <div className="flex-1 min-h-0 flex flex-col sm:max-w-6xl sm:w-full sm:mx-auto sm:px-6 sm:py-6">
-        <div className="bg-white flex-1 min-h-0 flex sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-sm overflow-hidden">
+        <div className="bg-card flex-1 min-h-0 flex sm:rounded-2xl sm:border sm:border-border sm:shadow-sm overflow-hidden">
 
           {/* ── Thread list (sidebar) ── */}
-          <div className={`w-full sm:w-72 border-r border-slate-100 flex flex-col shrink-0
+          <div className={`w-full sm:w-72 border-r border-border flex flex-col shrink-0
             ${showMobile ? "hidden sm:flex" : "flex"}`}>
-            <div className="px-4 py-3.5 border-b border-slate-100 flex items-center justify-between">
-              <p className="font-extrabold text-slate-800 text-sm">Conversations</p>
-              <span className="text-xs text-slate-400">{threads.length}</span>
+            <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
+              <p className="font-extrabold text-foreground text-sm">Conversations</p>
+              <span className="text-xs text-muted-foreground">{threads.length}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
               {loading ? (
                 <div className="flex items-center justify-center h-24">
-                  <div className="w-6 h-6 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                  <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                 </div>
               ) : threads.length === 0 ? (
                 <div className="py-12 text-center px-4">
                   <Ic.Msg />
-                  <p className="text-sm text-slate-400 mt-2">No conversations yet.</p>
+                  <p className="text-sm text-muted-foreground mt-2">No conversations yet.</p>
                 </div>
               ) : (
                 threads.map((t) => (
@@ -818,52 +818,52 @@ export default function Messages() {
             }}
           >
             {isDraggingFiles && (
-              <div className="absolute inset-0 z-20 bg-emerald-50/90 border-2 border-dashed border-emerald-400 rounded-lg flex flex-col items-center justify-center pointer-events-none">
+              <div className="absolute inset-0 z-20 bg-accent/90 border-2 border-dashed border-primary rounded-lg flex flex-col items-center justify-center pointer-events-none">
                 <Ic.Attach />
-                <p className="text-emerald-700 font-semibold mt-2">Drop files to attach</p>
+                <p className="text-primary font-semibold mt-2">Drop files to attach</p>
               </div>
             )}
             {!activeThread ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
                 <Ic.Msg />
                 <p className="text-sm font-medium">Select a conversation to view messages</p>
               </div>
             ) : (
               <>
                 {/* Conversation header */}
-                <div className="px-5 py-3.5 border-b border-slate-100 flex items-center gap-3">
-                  <button onClick={() => setShowMobile(false)} className="sm:hidden text-slate-500 hover:text-slate-800">
+                <div className="px-5 py-3.5 border-b border-border flex items-center gap-3">
+                  <button onClick={() => setShowMobile(false)} className="sm:hidden text-muted-foreground hover:text-foreground">
                     <Ic.Back />
                   </button>
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600 flex items-center justify-center text-white text-xs font-extrabold">
+                    <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-extrabold">
                       {isAdmin ? initials(activeThread.clientId?.displayName || activeThread.clientId?.email || "C") : "US"}
                     </div>
                     {presence?.isOnline && (
-                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
+                      <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-card" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-extrabold text-slate-800 text-sm truncate">
+                    <p className="font-extrabold text-foreground text-sm truncate">
                       {isAdmin
                         ? (activeThread.clientId?.displayName || activeThread.clientId?.email || "Client")
                         : "BAIS Case Team"}
                     </p>
                     <p className="text-xs truncate">
                       {typingActive ? (
-                        <span className="text-emerald-600 font-semibold">
+                        <span className="text-primary font-semibold">
                           {isAdmin ? "Client" : "BAIS Case Team"} is typing…
                         </span>
                       ) : presenceLabel(presence) ? (
-                        <span className={presence?.isOnline ? "text-emerald-600 font-semibold" : "text-slate-400"}>
+                        <span className={presence?.isOnline ? "text-primary font-semibold" : "text-muted-foreground"}>
                           {presenceLabel(presence)}
                         </span>
                       ) : (
-                        <span className="text-slate-400">{activeThread.subject}</span>
+                        <span className="text-muted-foreground">{activeThread.subject}</span>
                       )}
                     </p>
                   </div>
-                  <button onClick={() => loadMessages(activeThread._id)} className="ml-auto text-slate-400 hover:text-slate-700 transition">
+                  <button onClick={() => loadMessages(activeThread._id)} className="ml-auto text-muted-foreground hover:text-foreground transition">
                     <Ic.Refresh />
                   </button>
                 </div>
@@ -872,17 +872,17 @@ export default function Messages() {
                 <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
                   {msgLoading ? (
                     <div className="flex items-center justify-center h-24">
-                      <div className="w-6 h-6 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                      <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                     </div>
                   ) : messages.length === 0 ? (
-                    <div className="text-center py-12 text-slate-400">
+                    <div className="text-center py-12 text-muted-foreground">
                       <p className="text-sm">No messages yet. Send the first message below.</p>
                     </div>
                   ) : (
                     <>
                       {loadingOlder && (
                         <div className="flex items-center justify-center py-2">
-                          <div className="w-4 h-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                          <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                         </div>
                       )}
                       {(() => {
@@ -921,25 +921,25 @@ export default function Messages() {
 
                 {/* Attached files preview */}
                 {files.length > 0 && (
-                  <div className="px-4 py-2 flex flex-wrap gap-1.5 border-t border-slate-100">
+                  <div className="px-4 py-2 flex flex-wrap gap-1.5 border-t border-border">
                     {files.map((f, i) => (
-                      <span key={i} className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full font-semibold">
+                      <span key={i} className="flex items-center gap-1.5 text-xs bg-accent text-accent-foreground border border-border px-2.5 py-1 rounded-full font-semibold">
                         <Ic.File /> {f.name}
-                        <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} className="ml-1 text-blue-400 hover:text-red-500"><IconX size={12} className="text-inherit" /></button>
+                        <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))} className="ml-1 text-muted-foreground hover:text-destructive"><IconX size={12} className="text-inherit" /></button>
                       </span>
                     ))}
                   </div>
                 )}
 
                 {sendError && (
-                  <div className="px-4 py-2 text-xs font-semibold text-red-600 border-t border-red-100 bg-red-50">
+                  <div className="px-4 py-2 text-xs font-semibold text-destructive border-t border-destructive/20 bg-destructive/10">
                     {sendError}
                   </div>
                 )}
 
                 {/* Reply box */}
                 <div className={`px-4 py-3 border-t flex items-end gap-2
-                  ${internalNote ? "border-amber-200 bg-amber-50/30" : "border-slate-100 bg-slate-50/60"}`}>
+                  ${internalNote ? "border-amber-200 bg-amber-50/30" : "border-border bg-secondary/60"}`}>
                   <textarea
                     id="messages-body"
                     name="messageBody"
@@ -951,17 +951,17 @@ export default function Messages() {
                     onKeyDown={handleKeyDown}
                     placeholder={internalNote ? "Write an internal note (team only)…" : "Type your message… (Enter to send)"}
                     rows={2}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800
-                      resize-none outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 transition"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground
+                      resize-none outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition"
                   />
                   <div className="flex flex-col gap-2 shrink-0">
                     <button onClick={() => fileRef.current?.click()} title="Attach file"
-                      className="w-9 h-9 rounded-xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100 transition">
+                      className="w-9 h-9 rounded-xl bg-card border border-border text-muted-foreground flex items-center justify-center hover:bg-secondary transition">
                       <Ic.Attach />
                     </button>
                     <button onClick={handleSend} disabled={!body.trim() && files.length === 0}
-                      className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center
-                        transition disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-emerald-200">
+                      className="w-9 h-9 rounded-xl bg-primary hover:opacity-90 text-primary-foreground flex items-center justify-center
+                        transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm">
                       <Ic.Send />
                     </button>
                   </div>

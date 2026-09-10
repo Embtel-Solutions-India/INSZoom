@@ -39,12 +39,12 @@ export default function LiveTracker({ criteriaQuestions, criteriaAnswers, scorin
   const meta = TIER_META[tier];
 
   return (
-    <div className={`rounded-2xl border border-slate-200 p-5 ${className}`}>
-      <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Your live snapshot</p>
+    <div className={`rounded-2xl border border-border p-5 ${className}`}>
+      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Your live snapshot</p>
       <div className="flex items-center gap-3 mb-4">
         <span className={`w-3 h-3 rounded-full ${meta.color}`} aria-hidden="true" />
         <span className={`text-sm font-extrabold ${meta.text}`}>{meta.label} preview</span>
-        <span className="text-xs text-slate-400 ml-auto">{metCount}/{criteriaQuestions.length} strong</span>
+        <span className="text-xs text-muted-foreground ml-auto">{metCount}/{criteriaQuestions.length} strong</span>
       </div>
       <ul className="space-y-2">
         {criteriaQuestions.map((q) => {
@@ -54,13 +54,13 @@ export default function LiveTracker({ criteriaQuestions, criteriaAnswers, scorin
           return (
             <li key={q.key} className="flex items-center gap-2 text-xs">
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} aria-hidden="true" />
-              <span className="text-slate-600 truncate flex-1">{q.label}</span>
-              <span className="text-slate-400 shrink-0">{label}</span>
+              <span className="text-foreground truncate flex-1">{q.label}</span>
+              <span className="text-muted-foreground shrink-0">{label}</span>
             </li>
           );
         })}
       </ul>
-      <p className="text-[0.68rem] text-slate-400 mt-4 leading-relaxed">
+      <p className="text-[0.68rem] text-muted-foreground mt-4 leading-relaxed">
         This is a live preview. Your final result is calculated when you submit.
       </p>
     </div>

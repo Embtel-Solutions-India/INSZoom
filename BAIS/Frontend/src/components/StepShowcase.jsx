@@ -35,22 +35,22 @@ export default function StepShowcase({
               {/* Step Label */}
               <div className="flex items-center gap-4 mb-6">
                 <div className="shrink-0">
-                  <span className="inline-flex items-center justify-center h-14 w-14 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600 text-white font-extrabold text-xl shadow-lg">
+                  <span className="inline-flex items-center justify-center h-14 w-14 rounded-xl bg-primary text-primary-foreground font-extrabold text-xl shadow-lg">
                     {stepNumber}
                   </span>
                 </div>
-                <span className="text-xs font-bold uppercase tracking-widest text-[#1D9E75]">
+                <span className="text-xs font-bold uppercase tracking-widest text-primary">
                   Step {stepNumber}
                 </span>
               </div>
 
               {/* Title */}
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-5 leading-tight">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-5 leading-tight">
                 {title}
               </h2>
 
               {/* Description */}
-              <p className="text-lg text-slate-600 leading-relaxed mb-8 max-w-xl">
+              <p className="text-lg text-muted-foreground leading-relaxed mb-8 max-w-xl">
                 {description}
               </p>
 
@@ -64,13 +64,13 @@ export default function StepShowcase({
                         height="20"
                         viewBox="0 0 24 24"
                         fill="none"
-                        stroke="#1D9E75"
+                        stroke="currentColor"
                         strokeWidth="2.5"
-                        className="shrink-0 mt-0.5"
+                        className="shrink-0 mt-0.5 text-primary"
                       >
                         <path d="M5 13l4 4L19 7" />
                       </svg>
-                      <span className="text-base text-slate-600 leading-relaxed">{feature}</span>
+                      <span className="text-base text-muted-foreground leading-relaxed">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -80,7 +80,7 @@ export default function StepShowcase({
               {ctaText && ctaLink && (
                 <a
                   href={ctaLink}
-                  className="inline-flex items-center gap-2.5 px-6 py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white font-semibold rounded-xl shadow-lg shadow-emerald-200 transition-all duration-200 active:scale-95 no-underline"
+                  className="inline-flex items-center gap-2.5 px-6 py-3 bg-primary hover:opacity-90 text-primary-foreground font-semibold rounded-xl shadow-lg shadow-black/10 transition-all duration-200 active:scale-95 no-underline"
                 >
                   {ctaText}
                   <svg
@@ -110,7 +110,7 @@ export default function StepShowcase({
           >
             <div className="relative">
               {imageSrc ? (
-                <div className="rounded-2xl overflow-hidden shadow-2xl shadow-slate-200/40">
+                <div className="rounded-2xl overflow-hidden shadow-2xl shadow-black/10">
                   <picture>
                     {imageSrcWebp ? <source srcSet={imageSrcWebp} type="image/webp" /> : null}
                     <img
@@ -126,7 +126,7 @@ export default function StepShowcase({
                 </div>
               ) : (
                 /* Placeholder Mockup */
-                <div className="rounded-2xl overflow-hidden shadow-2xl shadow-slate-200/40 bg-linear-to-br from-slate-100 to-slate-50 border border-slate-200">
+                <div className="rounded-2xl overflow-hidden shadow-2xl shadow-black/10 bg-secondary border border-border">
                   <div className="aspect-square sm:aspect-video flex items-center justify-center">
                     <div className="text-center">
                       <svg
@@ -135,7 +135,7 @@ export default function StepShowcase({
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
-                        className="mx-auto text-slate-300 mb-3"
+                        className="mx-auto text-muted-foreground mb-3"
                       >
                         <path
                           strokeLinecap="round"
@@ -144,15 +144,15 @@ export default function StepShowcase({
                           d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                      <p className="text-slate-400 text-sm font-medium">{imageAlt}</p>
+                      <p className="text-muted-foreground text-sm font-medium">{imageAlt}</p>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Decorative accent */}
-              <div className="absolute -top-6 -right-6 w-24 h-24 bg-linear-to-br from-emerald-200/40 to-teal-200/40 rounded-full blur-2xl pointer-events-none" />
-              <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-linear-to-br from-blue-200/20 to-teal-200/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -top-6 -right-6 w-24 h-24 bg-accent/40 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
             </div>
           </ScrollReveal>
         </div>

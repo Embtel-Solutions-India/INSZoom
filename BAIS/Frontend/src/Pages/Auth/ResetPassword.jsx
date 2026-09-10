@@ -44,29 +44,29 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6] px-6 py-10">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-background px-6 py-10">
+      <div className="w-full max-w-md bg-card rounded-2xl shadow-xl p-8">
         <div className="flex items-center gap-2.5 mb-7">
-          <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600
+          <div className="w-9 h-9 rounded-xl bg-primary
             flex items-center justify-center shadow-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-primary-foreground" aria-hidden="true">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
           </div>
           <div>
-            <p className="text-lg font-extrabold text-slate-800 leading-none">BAIS</p>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Immigration Portal</p>
+            <p className="text-lg font-bold text-foreground leading-none">BAIS</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Immigration Portal</p>
           </div>
         </div>
 
         {status === "invalid" && (
           <>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Invalid or expired link</h1>
-            <p className="text-sm text-slate-500 mb-6">
+            <h1 className="text-xl font-serif font-bold text-foreground mb-2">Invalid or expired link</h1>
+            <p className="text-sm text-muted-foreground mb-6">
               This password reset link is no longer valid. Request a new one and try again.
             </p>
             <button onClick={() => navigate("/forgot-password")}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
+              className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
               Request a New Link
             </button>
           </>
@@ -74,12 +74,12 @@ export default function ResetPassword() {
 
         {status === "done" && (
           <>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Password reset</h1>
-            <p className="text-sm text-slate-500 mb-6">
+            <h1 className="text-xl font-serif font-bold text-foreground mb-2">Password reset</h1>
+            <p className="text-sm text-muted-foreground mb-6">
               Your password has been changed successfully. You can now log in with your new password.
             </p>
             <button onClick={() => navigate("/login")}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
+              className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
               Go to Login
             </button>
           </>
@@ -87,8 +87,8 @@ export default function ResetPassword() {
 
         {status === "ready" && (
           <>
-            <h1 className="text-xl font-bold text-slate-900 mb-1">Set a new password</h1>
-            <p className="text-sm text-slate-500 mb-6">Choose a new password for your account.</p>
+            <h1 className="text-xl font-serif font-bold text-foreground mb-1">Set a new password</h1>
+            <p className="text-sm text-muted-foreground mb-6">Choose a new password for your account.</p>
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <PasswordField icon={<LockIcon />} name="newPassword" placeholder="New password"
@@ -97,13 +97,13 @@ export default function ResetPassword() {
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (
-              <div role="alert" className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <div role="alert" className="mb-4 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3">
                 {error}
               </div>
             )}
 
             <button type="submit" disabled={submitting}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl
+              className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {submitting ? "Resetting…" : "Reset Password"}
             </button>

@@ -18,7 +18,7 @@ export default function ProtectedRoute() {
   if (authStatus === "loading") {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
-        <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
+        <div className="w-10 h-10 rounded-full border-4 border-border border-t-primary animate-spin" />
       </div>
     );
   }
@@ -31,22 +31,22 @@ export default function ProtectedRoute() {
   if (authStatus === "error") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
-        <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-8">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-slate-400">
+        <div className="w-20 h-20 rounded-2xl bg-secondary flex items-center justify-center mb-8">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" className="text-muted-foreground">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v4m0 4h.01M4.93 4.93l14.14 14.14M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-3">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-3">
           We're having trouble connecting
         </h1>
-        <p className="text-slate-500 text-base max-w-md mb-8">
+        <p className="text-muted-foreground text-base max-w-md mb-8">
           This isn't a sign you've been logged out — we just couldn't reach the server to confirm your session. Please try again in a moment.
         </p>
         <button
           type="button"
           onClick={retryAuth}
-          className="px-6 py-3.5 bg-linear-to-r from-[#1D9E75] to-teal-600 text-white font-bold text-base rounded-xl
-            shadow-md shadow-emerald-200 hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 active:scale-95"
+          className="px-6 py-3.5 bg-primary text-primary-foreground font-bold text-base rounded-xl
+            shadow-sm hover:opacity-90 transition-all duration-200 active:scale-95"
         >
           Retry
         </button>
@@ -57,20 +57,20 @@ export default function ProtectedRoute() {
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
-        <div className="w-20 h-20 rounded-2xl bg-linear-to-br from-[#1D9E75] to-teal-600
-          flex items-center justify-center shadow-lg mb-8">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+        <div className="w-20 h-20 rounded-2xl bg-primary
+          flex items-center justify-center shadow-sm mb-8">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor" className="text-primary-foreground">
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-3">
+        <h1 className="text-3xl sm:text-4xl font-serif font-bold text-foreground mb-3">
           Welcome Back!
         </h1>
-        <p className="text-slate-500 text-base sm:text-lg max-w-md mb-2">
+        <p className="text-muted-foreground text-base sm:text-lg max-w-md mb-2">
           We're glad to see you. Please log in to continue your immigration journey with us.
         </p>
-        <p className="text-slate-400 text-sm max-w-sm mb-10">
+        <p className="text-muted-foreground text-sm max-w-sm mb-10">
           If you're an existing client, simply log in to pick up right where you left off.
           New to BAIS? Sign up for free — we'd love to help you get started.
         </p>
@@ -79,8 +79,8 @@ export default function ProtectedRoute() {
           <Link
             to="/login"
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3.5
-              border-2 border-[#1D9E75] text-[#1D9E75] font-bold text-base rounded-xl
-              hover:bg-emerald-50 transition-all duration-200 no-underline active:scale-95"
+              border-2 border-primary text-primary font-bold text-base rounded-xl
+              hover:bg-accent transition-all duration-200 no-underline active:scale-95"
           >
             <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
@@ -91,8 +91,8 @@ export default function ProtectedRoute() {
           <Link
             to="/signup"
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3.5
-              bg-linear-to-r from-[#1D9E75] to-teal-600 text-white font-bold text-base rounded-xl
-              shadow-md shadow-emerald-200 hover:from-emerald-600 hover:to-teal-700
+              bg-primary text-primary-foreground font-bold text-base rounded-xl
+              shadow-sm hover:opacity-90
               transition-all duration-200 no-underline active:scale-95"
           >
             <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,7 +103,7 @@ export default function ProtectedRoute() {
           </Link>
         </div>
 
-        <p className="mt-8 text-xs text-slate-400">
+        <p className="mt-8 text-xs text-muted-foreground">
           BAIS · Bay Area Immigration Services (BAIS) · Secure Portal
         </p>
       </div>

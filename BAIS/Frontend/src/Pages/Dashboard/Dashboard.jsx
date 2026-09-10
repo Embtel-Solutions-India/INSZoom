@@ -46,14 +46,14 @@ const Ic = {
 
 /* ── Case stages config — 8-stage INSZoom-style workflow ────────────────────── */
 const CASE_STAGES = [
-  { id: 0, label: "Intake",          sub: "Case intake & assessment",     icon: Ic.User,     color: "#1D9E75" },
+  { id: 0, label: "Intake",          sub: "Case intake & assessment",     icon: Ic.User,     color: "hsl(var(--primary))" },
   { id: 1, label: "Strategy",        sub: "Legal strategy planning",      icon: Ic.Globe,    color: "#3b82f6" },
   { id: 2, label: "Evidence",        sub: "Gathering supporting evidence", icon: Ic.Docs,     color: "#8b5cf6" },
   { id: 3, label: "Expert Letters",  sub: "Expert recommendation letters", icon: Ic.Mail,     color: "#f59e0b" },
   { id: 4, label: "Attorney Review", sub: "Attorney case review",          icon: Ic.Shield,   color: "#f97316" },
   { id: 5, label: "Filing",          sub: "USCIS petition filing",         icon: Ic.Upload,   color: "#06b6d4" },
   { id: 6, label: "USCIS Pending",   sub: "Under USCIS review",            icon: Ic.Clock,    color: "#a855f7" },
-  { id: 7, label: "Approved",        sub: "Case approved!",                icon: Ic.Star,     color: "#1D9E75" },
+  { id: 7, label: "Approved",        sub: "Case approved!",                icon: Ic.Star,     color: "hsl(var(--primary))" },
 ];
 
 const CRM_STAGE_INDEX = {
@@ -83,14 +83,14 @@ const normalizeCaseStage = (caseData) => {
 };
 
 /* ── Circular Progress ──────────────────────────────────────────────────────── */
-function CircularProgress({ pct, size = 72, stroke = 7, color = "#1D9E75", children }) {
+function CircularProgress({ pct, size = 72, stroke = 7, color = "hsl(var(--primary))", children }) {
   const r    = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
   const dash = Math.min(pct, 100) / 100 * circ;
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="absolute top-0 left-0">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={stroke} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
@@ -105,10 +105,10 @@ function CircularProgress({ pct, size = 72, stroke = 7, color = "#1D9E75", child
 /* compact=true → smaller icon, lighter text — used for text-based info cards  */
 function KpiCard({ icon, label, value, sub, color, progress, circPct, circColor, barColor, compact }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow">
       {circPct !== undefined ? (
-        <CircularProgress pct={circPct} size={60} stroke={6} color={circColor || "#1D9E75"}>
-          <span className="text-[0.65rem] font-extrabold text-slate-700">{circPct}%</span>
+        <CircularProgress pct={circPct} size={60} stroke={6} color={circColor || "hsl(var(--primary))"}>
+          <span className="text-[0.65rem] font-extrabold text-foreground">{circPct}%</span>
         </CircularProgress>
       ) : (
         <div className={`${compact ? "w-9 h-9 rounded-lg" : "w-11 h-11 rounded-xl"} flex items-center justify-center shrink-0 ${color}`}>
@@ -116,15 +116,15 @@ function KpiCard({ icon, label, value, sub, color, progress, circPct, circColor,
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-slate-400 truncate">{label}</p>
+        <p className="text-[0.68rem] font-semibold uppercase tracking-wider text-muted-foreground truncate">{label}</p>
         {compact
-          ? <p className="text-sm font-semibold text-slate-700 leading-snug mt-0.5 truncate">{value}</p>
-          : <p className="text-xl font-extrabold text-slate-800 leading-tight mt-0.5 truncate">{value}</p>
+          ? <p className="text-sm font-semibold text-foreground leading-snug mt-0.5 truncate">{value}</p>
+          : <p className="text-xl font-extrabold text-foreground leading-tight mt-0.5 truncate">{value}</p>
         }
-        {sub && <p className="text-[0.7rem] text-slate-400 mt-0.5 truncate">{sub}</p>}
+        {sub && <p className="text-[0.7rem] text-muted-foreground mt-0.5 truncate">{sub}</p>}
         {progress !== undefined && (
-          <div className="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-1000 ${barColor || "bg-emerald-500"}`}
+          <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-1000 ${barColor || "bg-primary"}`}
               style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
         )}
@@ -144,57 +144,57 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
   const purchasedPremium = purchased.find((item) => item.key === "premium_processing_i907");
   if (!premium && !purchasedPremium && !loading) return null;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-[0.72rem] font-bold uppercase tracking-wider text-emerald-600">Upgrade Services</p>
-          <h2 className="text-xl font-extrabold text-slate-800 mt-1">Available Upgrades</h2>
-          <p className="text-sm text-slate-500 mt-1">Add eligible services to this case without creating a new case.</p>
+          <p className="text-[0.72rem] font-bold uppercase tracking-wider text-primary">Upgrade Services</p>
+          <h2 className="text-xl font-extrabold text-foreground mt-1">Available Upgrades</h2>
+          <p className="text-sm text-muted-foreground mt-1">Add eligible services to this case without creating a new case.</p>
         </div>
         {purchasedPremium && (
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-emerald-700">
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-primary">
             {purchasedPremium.paymentStatus === "paid" ? "Paid" : purchasedPremium.status?.replace(/_/g, " ")}
           </span>
         )}
       </div>
       {loading ? (
-        <p className="mt-4 text-sm font-semibold text-slate-500">Checking available upgrades...</p>
+        <p className="mt-4 text-sm font-semibold text-muted-foreground">Checking available upgrades...</p>
       ) : purchasedPremium ? (
-        <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-          <p className="font-bold text-emerald-900">Premium Processing (I-907)</p>
-          <p className="text-sm text-emerald-700 mt-1">This upgrade is attached to your existing case.</p>
+        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/10 p-4">
+          <p className="font-bold text-foreground">Premium Processing (I-907)</p>
+          <p className="text-sm text-primary mt-1">This upgrade is attached to your existing case.</p>
         </div>
       ) : premium ? (
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-xl border border-card-border bg-secondary p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-extrabold text-slate-900">Premium Processing (Form I-907)</p>
-                <p className="text-sm text-slate-500">Processing Time: {premium.processingTime}</p>
+                <p className="font-extrabold text-foreground">Premium Processing (Form I-907)</p>
+                <p className="text-sm text-muted-foreground">Processing Time: {premium.processingTime}</p>
               </div>
-              <p className="text-2xl font-black text-slate-900">{moneyFromCents(premium.totalFeeCents)}</p>
+              <p className="text-2xl font-black text-foreground">{moneyFromCents(premium.totalFeeCents)}</p>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <div className="rounded-lg bg-white p-3">
-                <p className="text-xs text-slate-500">Government Fee</p>
-                <p className="font-bold text-slate-800">{moneyFromCents(premium.governmentFeeCents)}</p>
+              <div className="rounded-lg bg-card p-3">
+                <p className="text-xs text-muted-foreground">Government Fee</p>
+                <p className="font-bold text-foreground">{moneyFromCents(premium.governmentFeeCents)}</p>
               </div>
-              <div className="rounded-lg bg-white p-3">
-                <p className="text-xs text-slate-500">Attorney Fee</p>
-                <p className="font-bold text-slate-800">{moneyFromCents(premium.attorneyFeeCents)}</p>
+              <div className="rounded-lg bg-card p-3">
+                <p className="text-xs text-muted-foreground">Attorney Fee</p>
+                <p className="font-bold text-foreground">{moneyFromCents(premium.attorneyFeeCents)}</p>
               </div>
-              <div className="rounded-lg bg-white p-3">
-                <p className="text-xs text-slate-500">Related Form</p>
-                <p className="font-bold text-slate-800">{premium.form}</p>
+              <div className="rounded-lg bg-card p-3">
+                <p className="text-xs text-muted-foreground">Related Form</p>
+                <p className="font-bold text-foreground">{premium.form}</p>
               </div>
             </div>
             <div className="mt-4 space-y-2">
               {(premium.eligibility?.checks || []).map((check) => (
                 <div key={check.key} className="flex items-center gap-2 text-sm">
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full ${check.passed ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                  <span className={`flex h-5 w-5 items-center justify-center rounded-full ${check.passed ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                     <Ic.Check />
                   </span>
-                  <span className={check.passed ? "text-slate-700" : "text-slate-400"}>{check.label}</span>
+                  <span className={check.passed ? "text-foreground" : "text-muted-foreground"}>{check.label}</span>
                 </div>
               ))}
             </div>
@@ -203,13 +203,13 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
                 Premium Processing is not available for this petition.
               </div>
             )}
-            {error && <p className="mt-3 text-sm font-semibold text-red-600">{error}</p>}
+            {error && <p className="mt-3 text-sm font-semibold text-destructive">{error}</p>}
           </div>
           <button
             type="button"
             onClick={() => onPurchase(premium.key)}
             disabled={!premium.eligibility?.available || purchasing}
-            className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
           >
             {purchasing ? "Starting checkout..." : "Add Upgrade"}
           </button>
@@ -226,11 +226,11 @@ function KpiGridSkeleton() {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3" aria-hidden="true">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 animate-pulse">
-          <div className="w-12 h-12 rounded-xl bg-slate-100 mb-4" />
-          <div className="h-3 w-16 bg-slate-100 rounded mb-2" />
-          <div className="h-6 w-20 bg-slate-200 rounded mb-2" />
-          <div className="h-2.5 w-24 bg-slate-100 rounded" />
+        <div key={i} className="bg-card rounded-2xl border border-card-border shadow-sm p-5 animate-pulse">
+          <div className="w-12 h-12 rounded-xl bg-muted mb-4" />
+          <div className="h-3 w-16 bg-muted rounded mb-2" />
+          <div className="h-6 w-20 bg-secondary rounded mb-2" />
+          <div className="h-2.5 w-24 bg-muted rounded" />
         </div>
       ))}
     </div>
@@ -239,15 +239,15 @@ function KpiGridSkeleton() {
 
 function CaseProgressSkeleton() {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 animate-pulse" aria-hidden="true">
-      <div className="h-4 w-40 bg-slate-200 rounded mb-2" />
-      <div className="h-3 w-56 bg-slate-100 rounded mb-6" />
-      <div className="h-2 w-full bg-slate-100 rounded-full mb-6" />
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6 animate-pulse" aria-hidden="true">
+      <div className="h-4 w-40 bg-secondary rounded mb-2" />
+      <div className="h-3 w-56 bg-muted rounded mb-6" />
+      <div className="h-2 w-full bg-muted rounded-full mb-6" />
       <div className="flex gap-4 overflow-hidden">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex-1 min-w-20">
-            <div className="w-9 h-9 rounded-full bg-slate-100 mb-2" />
-            <div className="h-2.5 w-full bg-slate-100 rounded" />
+            <div className="w-9 h-9 rounded-full bg-muted mb-2" />
+            <div className="h-2.5 w-full bg-muted rounded" />
           </div>
         ))}
       </div>
@@ -257,15 +257,15 @@ function CaseProgressSkeleton() {
 
 function ActivityFeedSkeleton() {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 animate-pulse" aria-hidden="true">
-      <div className="h-3.5 w-28 bg-slate-200 rounded mb-4" />
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm p-5 animate-pulse" aria-hidden="true">
+      <div className="h-3.5 w-28 bg-secondary rounded mb-4" />
       <div className="space-y-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />
+            <div className="w-8 h-8 rounded-lg bg-muted shrink-0" />
             <div className="flex-1 min-w-0">
-              <div className="h-3 w-3/4 bg-slate-100 rounded mb-2" />
-              <div className="h-2.5 w-1/3 bg-slate-100 rounded" />
+              <div className="h-3 w-3/4 bg-muted rounded mb-2" />
+              <div className="h-2.5 w-1/3 bg-muted rounded" />
             </div>
           </div>
         ))}
@@ -279,13 +279,13 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
   const lifecycleMilestones = journeyProgress?.milestones || [];
   if (lifecycleMilestones.length) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-800">Application Progress</h2>
-            <p className="text-sm text-slate-500 mt-0.5">{visaType} · {journeyProgress.nextAction?.label || "Lifecycle complete"}</p>
+            <h2 className="text-lg font-extrabold text-foreground">Application Progress</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{visaType} · {journeyProgress.nextAction?.label || "Lifecycle complete"}</p>
           </div>
-          <span className="text-xs font-bold px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
+          <span className="text-xs font-bold px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-full">
             {journeyProgress.percent || 0}% complete
           </span>
         </div>
@@ -293,30 +293,30 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
           {lifecycleMilestones.map((milestone, index) => {
             const active = milestone.key === journeyProgress.currentMilestone;
             return (
-              <div key={milestone.key} className={`rounded-xl border p-3 ${milestone.completed ? "border-emerald-200 bg-emerald-50" : active ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
-                <div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${milestone.completed ? "bg-emerald-600 text-white" : active ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}`}>
+              <div key={milestone.key} className={`rounded-xl border p-3 ${milestone.completed ? "border-primary/20 bg-primary/10" : active ? "border-blue-300 bg-blue-50" : "border-card-border bg-secondary"}`}>
+                <div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${milestone.completed ? "bg-primary text-primary-foreground" : active ? "bg-blue-600 text-white" : "bg-muted text-muted-foreground"}`}>
                   {milestone.completed ? <Ic.Check /> : index + 1}
                 </div>
-                <p className={`text-xs font-bold leading-tight ${milestone.completed ? "text-emerald-800" : active ? "text-blue-800" : "text-slate-500"}`}>{milestone.label}</p>
-                <p className="mt-1 text-[0.62rem] font-semibold uppercase tracking-wide text-slate-400">{milestone.completed ? "Completed" : active ? "Current" : "Pending"}</p>
+                <p className={`text-xs font-bold leading-tight ${milestone.completed ? "text-primary" : active ? "text-blue-800" : "text-muted-foreground"}`}>{milestone.label}</p>
+                <p className="mt-1 text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">{milestone.completed ? "Completed" : active ? "Current" : "Pending"}</p>
               </div>
             );
           })}
         </div>
-        <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-linear-to-r from-emerald-400 to-teal-500 transition-all duration-1000" style={{ width: `${journeyProgress.percent || 0}%` }} />
+        <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary transition-all duration-1000" style={{ width: `${journeyProgress.percent || 0}%` }} />
         </div>
       </div>
     );
   }
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <div>
-          <h2 className="text-lg font-extrabold text-slate-800">Application Progress</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{visaType} · Stage {currentStage + 1} of {CASE_STAGES.length} — {CASE_STAGES[currentStage]?.label}</p>
+          <h2 className="text-lg font-extrabold text-foreground">Application Progress</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{visaType} · Stage {currentStage + 1} of {CASE_STAGES.length} — {CASE_STAGES[currentStage]?.label}</p>
         </div>
-        <span className="text-xs font-bold px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
+        <span className="text-xs font-bold px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-full">
           {CASE_STAGES[currentStage]?.label}
         </span>
       </div>
@@ -328,7 +328,7 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
           <div className="absolute top-5 left-0 right-0 flex px-[4.16%]">
             {CASE_STAGES.slice(0, -1).map((_, i) => (
               <div key={i} className="flex-1 h-0.5"
-                style={{ background: i < currentStage ? "#1D9E75" : i === currentStage ? "linear-gradient(to right,#1D9E75,#e2e8f0)" : "#e2e8f0" }} />
+                style={{ background: i < currentStage ? "hsl(var(--primary))" : i === currentStage ? "linear-gradient(to right, hsl(var(--primary)), hsl(var(--border)))" : "hsl(var(--border))" }} />
             ))}
           </div>
 
@@ -338,18 +338,18 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
             return (
               <div key={s.id} className="flex-1 flex flex-col items-center gap-2 relative z-10">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 transition-all
-                  ${done   ? "bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-200"
-                  : active ? "bg-white border-emerald-500 text-emerald-600 shadow-lg shadow-emerald-100 ring-4 ring-emerald-100"
-                  : "bg-white border-slate-200 text-slate-400"}`}>
+                  ${done   ? "bg-primary border-primary text-primary-foreground"
+                  : active ? "bg-card border-primary text-primary ring-4 ring-primary/10"
+                  : "bg-card border-card-border text-muted-foreground"}`}>
                   {done ? <Ic.Check /> : <s.icon />}
                 </div>
                 <div className="text-center px-0.5">
-                  <p className={`text-[0.65rem] font-bold leading-tight ${active ? "text-emerald-700" : done ? "text-slate-600" : "text-slate-400"}`}>
+                  <p className={`text-[0.65rem] font-bold leading-tight ${active ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}>
                     {s.label}
                   </p>
                 </div>
                 {active && (
-                  <span className="text-[0.58rem] font-extrabold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200 animate-pulse whitespace-nowrap">
+                  <span className="text-[0.58rem] font-extrabold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full border border-primary/20 animate-pulse whitespace-nowrap">
                     Current
                   </span>
                 )}
@@ -369,23 +369,23 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
               {/* Line + dot column */}
               <div className="flex flex-col items-center">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center border-2 shrink-0
-                  ${done    ? "bg-emerald-500 border-emerald-500 text-white"
-                  : active  ? "bg-white border-emerald-500 text-emerald-600 ring-4 ring-emerald-100"
-                  : "bg-white border-slate-200 text-slate-400"}`}>
+                  ${done    ? "bg-primary border-primary text-primary-foreground"
+                  : active  ? "bg-card border-primary text-primary ring-4 ring-primary/10"
+                  : "bg-card border-card-border text-muted-foreground"}`}>
                   {done ? <Ic.Check /> : <s.icon />}
                 </div>
                 {i < CASE_STAGES.length - 1 && (
                   <div className="w-0.5 h-8 mt-1"
-                    style={{ background: i < currentStage ? "#1D9E75" : "#e2e8f0" }} />
+                    style={{ background: i < currentStage ? "hsl(var(--primary))" : "hsl(var(--border))" }} />
                 )}
               </div>
               {/* Text */}
               <div className="pb-6 pt-1.5">
-                <p className={`text-sm font-bold ${active ? "text-emerald-700" : done ? "text-slate-600" : "text-slate-400"}`}>
+                <p className={`text-sm font-bold ${active ? "text-primary" : done ? "text-foreground" : "text-muted-foreground"}`}>
                   {s.label}
-                  {active && <span className="ml-2 text-[0.6rem] font-extrabold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 align-middle">Current</span>}
+                  {active && <span className="ml-2 text-[0.6rem] font-extrabold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20 align-middle">Current</span>}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">{s.sub}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>
               </div>
             </div>
           );
@@ -393,19 +393,19 @@ function CaseProgressTracker({ currentStage, visaType, journeyProgress }) {
       </div>
 
       {/* Progress bar */}
-      <div className="mt-5 pt-5 border-t border-slate-100">
+      <div className="mt-5 pt-5 border-t border-border">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs font-semibold text-slate-500">Overall Progress</span>
-          <span className="text-xs font-extrabold text-emerald-700">{Math.round((currentStage / (CASE_STAGES.length - 1)) * 100)}%</span>
+          <span className="text-xs font-semibold text-muted-foreground">Overall Progress</span>
+          <span className="text-xs font-extrabold text-primary">{Math.round((currentStage / (CASE_STAGES.length - 1)) * 100)}%</span>
         </div>
-        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-2.5 bg-muted rounded-full overflow-hidden">
           <div
-            className="h-full bg-linear-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-1000"
+            className="h-full bg-primary rounded-full transition-all duration-1000"
             style={{ width: `${(currentStage / (CASE_STAGES.length - 1)) * 100}%` }} />
         </div>
         <div className="flex justify-between mt-1">
-          <span className="text-[0.6rem] text-slate-400">Intake</span>
-          <span className="text-[0.6rem] text-slate-400">Approved</span>
+          <span className="text-[0.6rem] text-muted-foreground">Intake</span>
+          <span className="text-[0.6rem] text-muted-foreground">Approved</span>
         </div>
       </div>
     </div>
@@ -425,14 +425,14 @@ function PaymentSummaryCard({ plan }) {
     const formattedAmount = moneyFromCents(plan.amount);
 
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+      <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
             <Ic.Passport />
           </div>
           <div>
-            <h3 className="font-extrabold text-slate-800 text-sm">Payment Summary</h3>
-            <p className="text-xs text-slate-400">
+            <h3 className="font-extrabold text-foreground text-sm">Payment Summary</h3>
+            <p className="text-xs text-muted-foreground">
               {PLAN_LABELS[plan.tier] || "No plan selected"}
             </p>
           </div>
@@ -440,12 +440,12 @@ function PaymentSummaryCard({ plan }) {
 
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-slate-400">Total Fee</span>
-            <span className="text-sm font-extrabold text-slate-800">{formattedAmount}</span>
+            <span className="text-xs font-semibold text-muted-foreground">Total Fee</span>
+            <span className="text-sm font-extrabold text-foreground">{formattedAmount}</span>
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-semibold text-slate-400">Payment Status</span>
+            <span className="text-xs font-semibold text-muted-foreground">Payment Status</span>
             <span
               className={`text-[0.68rem] font-bold px-2.5 py-1 rounded-full border ${
                 PAYMENT_STATUS_COLORS[status] || PAYMENT_STATUS_COLORS.not_started
@@ -457,7 +457,7 @@ function PaymentSummaryCard({ plan }) {
 
           <Link
             to="/dashboard/payments"
-            className="block text-center mt-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-extrabold text-sm py-2.5 no-underline hover:bg-emerald-100 transition"
+            className="block text-center mt-4 rounded-xl bg-primary/10 border border-primary/20 text-primary font-extrabold text-sm py-2.5 no-underline hover:bg-primary/15 transition"
           >
             View Payment Details
           </Link>
@@ -501,28 +501,28 @@ function ActivityFeed({ caseData, profileSavedAt }) {
   ].filter(Boolean);
 
   const typeStyles = {
-    success: { dot: "bg-emerald-400", bg: "bg-emerald-50",  text: "text-emerald-700" },
-    info:    { dot: "bg-blue-400",    bg: "bg-blue-50",     text: "text-blue-700"    },
-    warn:    { dot: "bg-amber-400",   bg: "bg-amber-50",    text: "text-amber-700"   },
+    success: { dot: "bg-primary",   bg: "bg-primary/10", text: "text-primary"     },
+    info:    { dot: "bg-blue-400",  bg: "bg-blue-50",    text: "text-blue-700"    },
+    warn:    { dot: "bg-amber-400", bg: "bg-amber-50",   text: "text-amber-700"   },
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-muted text-muted-foreground flex items-center justify-center">
           <Ic.Clock />
         </div>
-        <h3 className="font-extrabold text-slate-800 text-sm">Recent Activity</h3>
+        <h3 className="font-extrabold text-foreground text-sm">Recent Activity</h3>
       </div>
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-border">
         {items.map((item, i) => {
           const s = typeStyles[item.type] || typeStyles.info;
           return (
             <li key={i} className={`flex items-start gap-3 px-5 py-3.5 ${i === 0 ? s.bg + "/40" : ""}`}>
               <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${s.dot}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-slate-700 leading-snug">{item.text}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{item.time}</p>
+                <p className="text-sm text-foreground leading-snug">{item.text}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.time}</p>
               </div>
             </li>
           );
@@ -541,12 +541,12 @@ function agentInitials(name) {
 /* ── Case Info Card ─────────────────────────────────────────────────────────── */
 function CaseInfo({ caseData, profileData }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
           <Ic.Shield />
         </div>
-        <h3 className="font-extrabold text-slate-800 text-sm">Case Information</h3>
+        <h3 className="font-extrabold text-foreground text-sm">Case Information</h3>
       </div>
 
       <div className="px-5 py-4 space-y-3">
@@ -562,34 +562,34 @@ function CaseInfo({ caseData, profileData }) {
           { label: "Nationality",        value: profileData.nationality   || "Not provided" },
         ].map(({ label, value }) => (
           <div key={label} className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-slate-400 shrink-0">{label}</span>
-            <span className="text-xs font-bold text-slate-700 text-right truncate max-w-40">{value}</span>
+            <span className="text-xs font-semibold text-muted-foreground shrink-0">{label}</span>
+            <span className={`text-xs font-bold text-foreground text-right truncate max-w-40 ${label === "Case ID" || label === "USCIS Receipt No." ? "font-mono" : ""}`}>{value}</span>
           </div>
         ))}
       </div>
 
       {/* Assigned agent */}
-      <div className="px-5 py-4 border-t border-slate-100 bg-slate-50">
-        <p className="text-[0.68rem] font-extrabold uppercase tracking-wider text-slate-400 mb-3">Assigned Agent</p>
+      <div className="px-5 py-4 border-t border-border bg-secondary">
+        <p className="text-[0.68rem] font-extrabold uppercase tracking-wider text-muted-foreground mb-3">Assigned Agent</p>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
-            flex items-center justify-center text-white font-extrabold text-sm shrink-0">
+          <div className="w-10 h-10 rounded-full bg-primary
+            flex items-center justify-center text-primary-foreground font-extrabold text-sm shrink-0">
             {agentInitials(caseData.assignedAgent)}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-800">{caseData.assignedAgent}</p>
-            <p className="text-xs text-slate-500">Immigration Consultant</p>
+            <p className="text-sm font-bold text-foreground">{caseData.assignedAgent}</p>
+            <p className="text-xs text-muted-foreground">Immigration Consultant</p>
           </div>
         </div>
         <div className="mt-3 flex gap-2">
           <a href={`mailto:${caseData.agentEmail}`}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold
-              bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-100 transition no-underline">
+              bg-card border border-card-border rounded-lg text-muted-foreground hover:bg-muted transition no-underline">
             <Ic.Mail /> Email
           </a>
           <a href="tel:+15107708700"
             className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold
-              bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 hover:bg-emerald-100 transition no-underline">
+              bg-primary/10 border border-primary/20 rounded-lg text-primary hover:bg-primary/15 transition no-underline">
             <Ic.Phone /> Call
           </a>
         </div>
@@ -601,7 +601,7 @@ function CaseInfo({ caseData, profileData }) {
 /* ── Quick Actions ──────────────────────────────────────────────────────────── */
 function QuickActions({ profileComplete }) {
   const actions = [
-    { label: "Complete Profile", to: "/dashboard/profile",   icon: Ic.User,    color: "from-emerald-500 to-teal-600",    shadow: "shadow-emerald-200", done: profileComplete },
+    { label: "Complete Profile", to: "/dashboard/profile",   icon: Ic.User,    color: "from-primary to-primary/80",    shadow: "shadow-primary/20", done: profileComplete },
     { label: "Upload Documents", to: "/dashboard/documents", icon: Ic.Upload,  color: "from-blue-500 to-blue-600",       shadow: "shadow-blue-200",    done: false },
     { label: "View Case Status", to: null, scrollTo: "case-progress", icon: Ic.Shield, color: "from-violet-500 to-violet-600", shadow: "shadow-violet-200", done: false },
     { label: "Contact Agent",    to: "mailto:info@bayareaimmigrationservices.com", icon: Ic.Agent, color: "from-slate-600 to-slate-700", shadow: "shadow-slate-200", done: false },
@@ -657,33 +657,33 @@ const EL_STATUS_LABELS = {
   signed_letter_received:   "Letter Received",
 };
 const EL_STATUS_COLORS = {
-  not_started:              "bg-slate-100 text-slate-500 border-slate-200",
+  not_started:              "bg-muted text-muted-foreground border-border",
   professor_assigned:       "bg-blue-100 text-blue-700 border-blue-200",
   draft_in_progress:        "bg-amber-100 text-amber-700 border-amber-200",
   professor_review_pending: "bg-violet-100 text-violet-700 border-violet-200",
-  revision_needed:          "bg-red-100 text-red-600 border-red-200",
-  signed_letter_received:   "bg-emerald-100 text-emerald-700 border-emerald-200",
+  revision_needed:          "bg-destructive/10 text-destructive border-destructive/20",
+  signed_letter_received:   "bg-primary/10 text-primary border-primary/20",
 };
 
 function ExpertLettersCard({ letters }) {
   if (!letters || letters.length === 0) return null;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center">
           <Ic.Star />
         </div>
         <div>
-          <h3 className="font-extrabold text-slate-800 text-sm">Expert Letters</h3>
-          <p className="text-xs text-slate-400">{letters.filter(l => l.status === "signed_letter_received").length}/{letters.length} received</p>
+          <h3 className="font-extrabold text-foreground text-sm">Expert Letters</h3>
+          <p className="text-xs text-muted-foreground">{letters.filter(l => l.status === "signed_letter_received").length}/{letters.length} received</p>
         </div>
       </div>
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-border">
         {letters.map((l, i) => (
           <li key={i} className="px-5 py-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">{l.professorName || `Expert Letter ${i + 1}`}</p>
-              {l.institution && <p className="text-xs text-slate-400">{l.institution}</p>}
+              <p className="text-sm font-semibold text-foreground truncate">{l.professorName || `Expert Letter ${i + 1}`}</p>
+              {l.institution && <p className="text-xs text-muted-foreground">{l.institution}</p>}
             </div>
             <span className={`text-[0.68rem] font-bold px-2 py-0.5 rounded-full border shrink-0 ${EL_STATUS_COLORS[l.status] || EL_STATUS_COLORS.not_started}`}>
               {EL_STATUS_LABELS[l.status] || l.status}
@@ -704,48 +704,48 @@ const AR_STATUS_LABELS = {
   declined:       "Declined",
 };
 const AR_STATUS_COLORS = {
-  not_started:    "bg-slate-100 text-slate-500 border-slate-200",
+  not_started:    "bg-muted text-muted-foreground border-border",
   pending_review: "bg-amber-100 text-amber-700 border-amber-200",
-  needs_revision: "bg-red-100 text-red-600 border-red-200",
-  approved:       "bg-emerald-100 text-emerald-700 border-emerald-200",
-  declined:       "bg-red-100 text-red-700 border-red-200",
+  needs_revision: "bg-destructive/10 text-destructive border-destructive/20",
+  approved:       "bg-primary/10 text-primary border-primary/20",
+  declined:       "bg-destructive/10 text-destructive border-destructive/20",
 };
 
 function AttorneyReviewCard({ review }) {
   if (!review?.required) return null;
   const status = review.status || "not_started";
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
           <Ic.Shield />
         </div>
         <div>
-          <h3 className="font-extrabold text-slate-800 text-sm">Attorney Review</h3>
-          <p className="text-xs text-slate-400">{review.attorneyName || "Attorney assigned by BAIS"}</p>
+          <h3 className="font-extrabold text-foreground text-sm">Attorney Review</h3>
+          <p className="text-xs text-muted-foreground">{review.attorneyName || "Attorney assigned by BAIS"}</p>
         </div>
       </div>
       <div className="px-5 py-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">Review Status</span>
+          <span className="text-xs font-semibold text-muted-foreground">Review Status</span>
           <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${AR_STATUS_COLORS[status]}`}>
             {AR_STATUS_LABELS[status]}
           </span>
         </div>
         {review.reviewStartedAt && (
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Review Started</span>
-            <span className="text-xs font-bold text-slate-700">{fmtDate(review.reviewStartedAt)}</span>
+            <span className="text-xs font-semibold text-muted-foreground">Review Started</span>
+            <span className="text-xs font-bold text-foreground">{fmtDate(review.reviewStartedAt)}</span>
           </div>
         )}
         {review.reviewedAt && (
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Completed</span>
-            <span className="text-xs font-bold text-slate-700">{fmtDate(review.reviewedAt)}</span>
+            <span className="text-xs font-semibold text-muted-foreground">Completed</span>
+            <span className="text-xs font-bold text-foreground">{fmtDate(review.reviewedAt)}</span>
           </div>
         )}
         {review.attorneyComments && (
-          <div className="mt-2 bg-slate-50 rounded-lg px-3 py-2.5 text-xs text-slate-600 leading-relaxed">
+          <div className="mt-2 bg-secondary rounded-lg px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">
             "{review.attorneyComments}"
           </div>
         )}
@@ -758,28 +758,28 @@ function AttorneyReviewCard({ review }) {
 function MyTasksCard({ caseData }) {
   const openTasks = (caseData?.informationRequests || []).filter((item) => item.target === "employee" && item.status === "open");
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2.5">
+    <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
         <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
           <Ic.Alert />
         </div>
         <div>
-          <h3 className="font-extrabold text-slate-800 text-sm">My Tasks</h3>
-          <p className="text-xs text-slate-400">{openTasks.length} open request{openTasks.length === 1 ? "" : "s"}</p>
+          <h3 className="font-extrabold text-foreground text-sm">My Tasks</h3>
+          <p className="text-xs text-muted-foreground">{openTasks.length} open request{openTasks.length === 1 ? "" : "s"}</p>
         </div>
       </div>
       {openTasks.length ? (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-border">
           {openTasks.map((item) => (
             <li key={item._id} className="px-5 py-3.5">
-              <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-              {item.description && <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>}
+              <p className="text-sm font-semibold text-foreground">{item.title}</p>
+              {item.description && <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>}
               {item.dueDate && <p className="text-xs text-amber-600 font-semibold mt-1">Due {fmtDate(item.dueDate)}</p>}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="px-5 py-6 text-sm text-slate-400 text-center">Nothing outstanding — you're all caught up.</p>
+        <p className="px-5 py-6 text-sm text-muted-foreground text-center">Nothing outstanding — you're all caught up.</p>
       )}
     </div>
   );
@@ -973,7 +973,7 @@ export default function Dashboard() {
   const isInitialCaseLoading = caseIsPending && !caseError;
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9]">
+    <div className="min-h-screen bg-background">
 
       {notice && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
@@ -985,11 +985,11 @@ export default function Dashboard() {
       )}
 
       {caseLoadError && (
-        <div className="bg-red-50 border-b border-red-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-red-800">{caseLoadError}</p>
+        <div className="bg-destructive/10 border-b border-destructive/20 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-destructive">{caseLoadError}</p>
           <button
             onClick={() => refetchCase()}
-            className="text-sm font-bold text-red-700 hover:text-red-900 shrink-0"
+            className="text-sm font-bold text-destructive hover:opacity-80 shrink-0"
           >
             Retry
           </button>
@@ -997,7 +997,7 @@ export default function Dashboard() {
       )}
 
       {/* ── Welcome Banner ── */}
-      <div className="bg-linear-to-r from-[#1D9E75] via-teal-600 to-blue-700 text-white">
+      <div className="bg-primary text-primary-foreground">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -1063,7 +1063,7 @@ export default function Dashboard() {
             value={`${profilePct}%`}
             sub={profileComplete ? "Complete" : "Incomplete"}
             circPct={profilePct}
-            circColor={profilePct === 100 ? "#1D9E75" : profilePct > 50 ? "#f59e0b" : "#ef4444"}
+            circColor={profilePct === 100 ? "hsl(var(--primary))" : profilePct > 50 ? "#f59e0b" : "#ef4444"}
           />
           <KpiCard
             icon={<Ic.Docs />}
@@ -1108,8 +1108,8 @@ export default function Dashboard() {
             value={activeCaseData.visaCategory || "Not Selected"}
             sub="Immigration pathway"
             color={activeCaseData.visaCategory && activeCaseData.visaCategory !== "Not Selected"
-              ? "bg-emerald-50 text-emerald-600"
-              : "bg-slate-100 text-slate-400"}
+              ? "bg-primary/10 text-primary"
+              : "bg-muted text-muted-foreground"}
           />
           <KpiCard compact
             icon={<Ic.Passport />}
@@ -1118,7 +1118,7 @@ export default function Dashboard() {
             sub="Selected visa classification"
             color={activeCaseData.visaType !== "Not Assigned"
               ? "bg-blue-50 text-blue-600"
-              : "bg-slate-100 text-slate-400"}
+              : "bg-muted text-muted-foreground"}
           />
           <KpiCard compact
             icon={<Ic.Agent />}
@@ -1138,32 +1138,32 @@ export default function Dashboard() {
                 label="Service Plan"
                 value={PLAN_LABELS[activeCaseData.plan?.tier] || "Not Selected"}
                 sub={activeCaseData.plan?.tier ? "Active plan" : "Select a plan to activate"}
-                color={activeCaseData.plan?.tier ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}
+                color={activeCaseData.plan?.tier ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}
               />
               <KpiCard compact
                 icon={<Ic.Clock />}
                 label="Payment Status"
                 value={PAYMENT_STATUS_LABELS[activeCaseData.plan?.paymentStatus] || "Not Started"}
                 sub={activeCaseData.plan?.paidAt ? `Paid ${fmtDate(activeCaseData.plan.paidAt)}` : "Contact team to pay"}
-                color={PAYMENT_STATUS_COLORS[activeCaseData.plan?.paymentStatus]?.split(" ")[0] || "bg-slate-100"}
+                color={PAYMENT_STATUS_COLORS[activeCaseData.plan?.paymentStatus]?.split(" ")[0] || "bg-muted"}
               />
             </>
           )}
           {!isEmployee && (
             <Link to="/dashboard/messages" className="no-underline">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow relative">
+              <div className="bg-card rounded-2xl border border-card-border shadow-sm p-5 flex items-center gap-4 hover:shadow-md transition-shadow relative">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-violet-50 text-violet-600 relative">
                   <Ic.Mail />
                   {unreadMessages > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[0.6rem] font-extrabold rounded-full flex items-center justify-center">
+                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-destructive text-destructive-foreground text-[0.6rem] font-extrabold rounded-full flex items-center justify-center">
                       {unreadMessages}
                     </span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[0.72rem] font-bold uppercase tracking-wider text-slate-400">Messages</p>
-                  <p className="text-2xl font-extrabold text-slate-800 leading-tight mt-0.5">{unreadMessages || "0"}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-[0.72rem] font-bold uppercase tracking-wider text-muted-foreground">Messages</p>
+                  <p className="text-2xl font-extrabold text-foreground leading-tight mt-0.5">{unreadMessages || "0"}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {unreadMessages > 0 ? `${unreadMessages} unread message${unreadMessages > 1 ? "s" : ""}` : "No new messages"}
                   </p>
                 </div>
@@ -1208,9 +1208,9 @@ export default function Dashboard() {
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-400 pb-4">
+        <p className="text-center text-xs text-muted-foreground pb-4">
           © 2025 BAIS · Bay Area Immigration Services (BAIS) ·{" "}
-          <a href="mailto:info@bayareaimmigrationservices.com" className="text-emerald-600 hover:underline">info@bayareaimmigrationservices.com</a>
+          <a href="mailto:info@bayareaimmigrationservices.com" className="text-primary hover:underline">info@bayareaimmigrationservices.com</a>
         </p>
       </div>
     </div>

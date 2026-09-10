@@ -94,7 +94,7 @@ const CATEGORY_META = {
   legal:        { label: "Legal Documents",          icon: Ic.File,          color: { bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-100",  tag: "bg-orange-100 text-orange-800",   dot: "bg-orange-500" } },
   supporting:   { label: "Supporting Evidence",      icon: Ic.Image,         color: { bg: "bg-pink-50",    text: "text-pink-600",    border: "border-pink-100",    tag: "bg-pink-100 text-pink-700",       dot: "bg-pink-500" } },
   travel:       { label: "Travel Documents",         icon: Ic.Globe,         color: { bg: "bg-cyan-50",    text: "text-cyan-600",    border: "border-cyan-100",    tag: "bg-cyan-100 text-cyan-700",       dot: "bg-cyan-500" } },
-  general:      { label: "Other Documents",          icon: Ic.File,          color: { bg: "bg-slate-50",   text: "text-slate-600",   border: "border-slate-200",   tag: "bg-slate-100 text-slate-700",     dot: "bg-slate-500" } },
+  general:      { label: "Other Documents",          icon: Ic.File,          color: { bg: "bg-secondary",  text: "text-secondary-foreground", border: "border-border", tag: "bg-secondary text-secondary-foreground", dot: "bg-muted-foreground" } },
 };
 const metaFor = (cat) => CATEGORY_META[cat] || CATEGORY_META.general;
 
@@ -131,38 +131,38 @@ export function buildCaseCategories(checklist = []) {
 /* ── File chip ─────────────────────────────────────────────────────────────── */
 const intelligenceBadge = (file) => {
   const status = file.intelligenceStatus || file.processing?.status || file.aiExtractionStatus;
-  if (status === "failed") return { label: "Processing failed", className: "bg-red-100 text-red-700" };
-  if (status === "approved") return { label: "Verified", className: "bg-emerald-100 text-emerald-700" };
+  if (status === "failed") return { label: "Processing failed", className: "bg-destructive/10 text-destructive" };
+  if (status === "approved") return { label: "Verified", className: "bg-accent text-accent-foreground" };
   if (status === "needs_review" || status === "review_required") return { label: "Under team review", className: "bg-amber-100 text-amber-700" };
-  if (["processing", "ocr_complete", "queued"].includes(status)) return { label: "Processing", className: "bg-blue-100 text-blue-700" };
-  return { label: "Uploaded", className: "bg-slate-100 text-slate-600" };
+  if (["processing", "ocr_complete", "queued"].includes(status)) return { label: "Processing", className: "bg-secondary text-secondary-foreground" };
+  return { label: "Uploaded", className: "bg-secondary text-secondary-foreground" };
 };
 
 function FileChip({ file, onRemove, extraction }) {
   const ext = file.name.split(".").pop().toUpperCase();
   const badge = file.reviewStatus === "needs_revision" || file.reviewStatus === "rejected"
-    ? { label: "Replacement requested", className: "bg-red-100 text-red-700" }
+    ? { label: "Replacement requested", className: "bg-destructive/10 text-destructive" }
     : file.reviewStatus === "approved"
-      ? { label: "Verified", className: "bg-emerald-100 text-emerald-700" }
+      ? { label: "Verified", className: "bg-accent text-accent-foreground" }
       : intelligenceBadge(file);
   const extColors = {
-    PDF:  "bg-red-100 text-red-700",
+    PDF:  "bg-destructive/10 text-destructive",
     JPG:  "bg-sky-100 text-sky-700",
     JPEG: "bg-sky-100 text-sky-700",
     PNG:  "bg-indigo-100 text-indigo-700",
-    DOCX: "bg-blue-100 text-blue-700",
-    DOC:  "bg-blue-100 text-blue-700",
+    DOCX: "bg-secondary text-secondary-foreground",
+    DOC:  "bg-secondary text-secondary-foreground",
   };
   return (
-    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm shadow-sm group">
-      <span className={`text-[0.6rem] font-extrabold px-1.5 py-0.5 rounded ${extColors[ext] || "bg-slate-100 text-slate-600"}`}>
+    <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm shadow-sm group">
+      <span className={`text-[0.6rem] font-extrabold px-1.5 py-0.5 rounded ${extColors[ext] || "bg-secondary text-secondary-foreground"}`}>
         {ext}
       </span>
-      <span className="text-slate-700 font-medium truncate max-w-[160px]" title={file.name}>{file.name}</span>
+      <span className="text-foreground font-medium truncate max-w-[160px]" title={file.name}>{file.name}</span>
       <span className={`text-[0.6rem] font-bold px-2 py-0.5 rounded-full ${badge.className}`}>{badge.label}</span>
       <button
         onClick={onRemove}
-        className="ml-1 text-slate-400 hover:text-red-500 transition opacity-0 group-hover:opacity-100"
+        className="ml-1 text-muted-foreground hover:text-destructive transition opacity-0 group-hover:opacity-100"
         title="Remove"
       >
         <Ic.Trash />
@@ -229,20 +229,20 @@ function UploadZone({ docId, category, label, description, required, accept, col
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden transition hover:shadow-sm">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+    <div className="rounded-xl border border-border bg-card overflow-hidden transition hover:shadow-sm">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2.5">
           <span className={`w-2 h-2 rounded-full ${color.dot}`} />
           <div>
-            <span className="text-sm font-semibold text-slate-700">{label}</span>
-            {description && <p className="text-[0.7rem] text-slate-400 leading-snug">{description}</p>}
+            <span className="text-sm font-semibold text-foreground">{label}</span>
+            {description && <p className="text-[0.7rem] text-muted-foreground leading-snug">{description}</p>}
           </div>
           {required
             ? <span className={`text-[0.62rem] font-extrabold uppercase px-2 py-0.5 rounded-full ${color.tag}`}>Required</span>
-            : <span className="text-[0.62rem] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Optional</span>}
+            : <span className="text-[0.62rem] font-bold uppercase px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">Optional</span>}
         </div>
         {hasFiles && (
-          <span className="flex items-center gap-1 text-emerald-600 text-xs font-bold shrink-0">
+          <span className="flex items-center gap-1 text-primary text-xs font-bold shrink-0">
             <Ic.Check /> {files.length} file{files.length > 1 ? "s" : ""}
           </span>
         )}
@@ -254,12 +254,12 @@ function UploadZone({ docId, category, label, description, required, accept, col
         onDrop={handleDrop}
         onClick={() => !uploading && inputRef.current.click()}
         className={`flex flex-col items-center justify-center gap-1.5 px-4 py-5 cursor-pointer transition
-          ${drag ? `${color.bg} border-2 border-dashed border-current ${color.text}` : "bg-slate-50/70 hover:bg-slate-50"}
+          ${drag ? `${color.bg} border-2 border-dashed border-current ${color.text}` : "bg-secondary/70 hover:bg-secondary"}
           ${uploading ? "opacity-80" : ""}
         `}
       >
         <span className={`${color.text} opacity-70`}><Ic.Upload /></span>
-        <p className="text-[0.8rem] font-semibold text-slate-500">
+        <p className="text-[0.8rem] font-semibold text-muted-foreground">
           {uploading
             ? `${uploadState?.paused ? "Paused" : "Uploading"} ${uploadState?.fileName || ""}`
             : <>Drop files here or <span className={`${color.text} underline`}>browse</span></>}
@@ -267,20 +267,20 @@ function UploadZone({ docId, category, label, description, required, accept, col
         {uploading && (
           <div className="w-full max-w-sm mt-2" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <div className="h-2 flex-1 rounded-full bg-slate-200 overflow-hidden">
+              <div className="h-2 flex-1 rounded-full bg-secondary overflow-hidden">
                 <div className={`h-full ${color.dot} transition-all`} style={{ width: `${uploadState?.progress || 0}%` }} />
               </div>
-              <span className="text-xs font-bold text-slate-600 w-10 text-right">{uploadState?.progress || 0}%</span>
-              <button type="button" onClick={togglePause} className="text-xs font-bold text-emerald-700 hover:text-emerald-900">
+              <span className="text-xs font-bold text-muted-foreground w-10 text-right">{uploadState?.progress || 0}%</span>
+              <button type="button" onClick={togglePause} className="text-xs font-bold text-primary hover:opacity-80">
                 {uploadState?.paused ? "Resume" : "Pause"}
               </button>
             </div>
           </div>
         )}
         {uploadState?.error && !uploading && (
-          <p className="text-xs font-semibold text-red-600">Upload failed: {uploadState.error}. Select the file to retry.</p>
+          <p className="text-xs font-semibold text-destructive">Upload failed: {uploadState.error}. Select the file to retry.</p>
         )}
-        <p className="text-[0.7rem] text-slate-400">
+        <p className="text-[0.7rem] text-muted-foreground">
           {accept.replace(/\./g, "").replace(/,/g, ", ").toUpperCase()}
         </p>
         <input ref={inputRef} type="file" id={`upload-${docId}`} name={`upload-${docId}`} multiple accept={accept} onChange={handleInput} className="hidden" />
@@ -304,21 +304,21 @@ function CategoryCard({ cat, files, extractions, onUpload, onRemove }) {
   const pct      = total > 0 ? Math.round((uploaded / total) * 100) : 0;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className={`px-6 py-4 border-b border-slate-100 flex items-center gap-4`}>
+    <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
+      <div className={`px-6 py-4 border-b border-border flex items-center gap-4`}>
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${cat.color.bg} ${cat.color.text} ${cat.color.border}`}>
           <cat.icon />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="text-base font-bold text-slate-800">{cat.label}</h3>
-            <span className={`text-xs font-extrabold ${uploaded === total ? "text-emerald-600" : cat.color.text}`}>
+            <h3 className="text-base font-bold text-foreground">{cat.label}</h3>
+            <span className={`text-xs font-extrabold ${uploaded === total ? "text-primary" : cat.color.text}`}>
               {uploaded}/{total} uploaded
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="mt-1.5 h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${uploaded === total ? "bg-emerald-500" : cat.color.dot}`}
+              className={`h-full rounded-full transition-all duration-500 ${uploaded === total ? "bg-primary" : cat.color.dot}`}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -353,7 +353,7 @@ function CategoryCard({ cat, files, extractions, onUpload, onRemove }) {
 export default function DocumentChecklist({ items = [], files = {}, extractions = {}, onUpload, onRemove, emptyMessage }) {
   const categories = buildCaseCategories(items);
   if (!categories.length) {
-    return emptyMessage ? <p className="text-sm text-slate-500">{emptyMessage}</p> : null;
+    return emptyMessage ? <p className="text-sm text-muted-foreground">{emptyMessage}</p> : null;
   }
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">

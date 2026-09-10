@@ -9,9 +9,9 @@ import useHasCase from "../hooks/useHasCase";
 // brand-colored text), matching the existing inverted-button convention
 // used on all three marketing pages' colored CTA bands.
 const VARIANTS = {
-  solid: "bg-[#1D9E75] hover:bg-[#0F6E56] text-white shadow-lg shadow-black/10",
-  inverted: "bg-white text-[#1D9E75] hover:bg-emerald-50",
-  outline: "bg-white/10 hover:bg-white/20 text-white border border-white/35 hover:border-white/55 backdrop-blur-sm",
+  solid: "bg-primary hover:opacity-90 text-primary-foreground shadow-lg shadow-black/10",
+  inverted: "bg-card text-primary hover:bg-accent",
+  outline: "border border-border text-foreground hover:bg-secondary",
 };
 
 export default function StartAssessmentButton({ variant = "solid", size = "md", className = "", children = "Start Free Assessment", pageSource }) {

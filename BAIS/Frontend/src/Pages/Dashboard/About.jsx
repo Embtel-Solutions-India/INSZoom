@@ -109,28 +109,28 @@ function GoogleLogo() {
 /* ─── Footer (shared) ────────────────────────────────────────────────────────── */
 function SiteFooter() {
   return (
-    <footer className="bg-slate-950 text-slate-400">
+    <footer className="bg-primary text-primary-foreground/70">
       <div className="max-w-6xl mx-auto px-6 sm:px-10 py-12">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 mb-10">
           <div>
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
               </div>
               <div>
-                <p className="text-base font-extrabold text-white leading-none">BAIS</p>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Immigration Portal</p>
+                <p className="text-base font-extrabold text-primary-foreground leading-none">BAIS</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-primary-foreground/60">Immigration Portal</p>
               </div>
             </div>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-primary-foreground/60 leading-relaxed">
               Bay Area Immigration Services (BAIS) — trusted Bay Area immigration experts since 2008.
             </p>
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Quick Links</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-foreground/80 mb-4">Quick Links</p>
             <ul className="space-y-2.5">
               {[
                 { label: "Home",       to: "/" },
@@ -140,42 +140,42 @@ function SiteFooter() {
                 { label: "Documents",  to: "/dashboard/documents" },
               ].map(({ label, to }) => (
                 <li key={label}>
-                  <Link to={to} className="text-sm text-slate-400 hover:text-emerald-400 transition-colors no-underline">{label}</Link>
+                  <Link to={to} className="text-sm text-primary-foreground/70 hover:text-accent transition-colors no-underline">{label}</Link>
                 </li>
               ))}
             </ul>
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Services</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-foreground/80 mb-4">Services</p>
             <ul className="space-y-2.5">
               {["Temporary Visa","Permanent Visa","Business Visa","Work Visa","Student Visa (F-1)","Family Visa","Change of Status"].map((s) => (
-                <li key={s}><span className="text-sm text-slate-400">{s}</span></li>
+                <li key={s}><span className="text-sm text-primary-foreground/70">{s}</span></li>
               ))}
             </ul>
           </div>
 
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-300 mb-4">Contact Us</p>
-            <div className="space-y-3 text-xs text-slate-400 leading-relaxed">
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-foreground/80 mb-4">Contact Us</p>
+            <div className="space-y-3 text-xs text-primary-foreground/70 leading-relaxed">
               <div>
-                <p className="font-semibold text-slate-300 mb-0.5">Office</p>
+                <p className="font-semibold text-primary-foreground/80 mb-0.5">Office</p>
                 <p>39159 Paseo Padre Pkwy STE 115, Fremont, CA 94538, United States</p>
               </div>
               <div className="space-y-1">
-                <a href="tel:+15107708700" className="flex items-center gap-2 hover:text-emerald-400 transition-colors no-underline"><IconPhone size={14} className="text-slate-400" /> (510) 770-8700</a>
-                <a href="mailto:info@bayareaimmigrationservices.com" className="flex items-center gap-2 hover:text-emerald-400 transition-colors no-underline"><IconMail size={14} className="text-slate-400" /> info@bayareaimmigrationservices.com</a>
+                <a href="tel:+15107708700" className="flex items-center gap-2 hover:text-accent transition-colors no-underline"><IconPhone size={14} className="text-primary-foreground/70" /> (510) 770-8700</a>
+                <a href="mailto:info@bayareaimmigrationservices.com" className="flex items-center gap-2 hover:text-accent transition-colors no-underline"><IconMail size={14} className="text-primary-foreground/70" /> info@bayareaimmigrationservices.com</a>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="border-t border-slate-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+        <div className="border-t border-primary-foreground/20 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-primary-foreground/60">
           <p>© {new Date().getFullYear()} Bay Area Immigration Services (BAIS). All rights reserved.</p>
           <div className="flex gap-5">
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">Privacy Policy</span>
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">Terms of Service</span>
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">Disclaimer</span>
+            <span className="hover:text-primary-foreground transition-colors cursor-pointer">Privacy Policy</span>
+            <span className="hover:text-primary-foreground transition-colors cursor-pointer">Terms of Service</span>
+            <span className="hover:text-primary-foreground transition-colors cursor-pointer">Disclaimer</span>
           </div>
         </div>
       </div>
@@ -192,22 +192,22 @@ export default function About() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc]">
+    <div className="min-h-screen bg-background">
 
       {/* ══ HERO ══ */}
-      <section className="relative bg-linear-to-br from-[#1D9E75] via-teal-600 to-blue-700 text-white overflow-hidden">
-        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/5 pointer-events-none" aria-hidden="true"/>
-        <div className="absolute -bottom-32 -left-16 w-72 h-72 rounded-full bg-white/5 pointer-events-none" aria-hidden="true"/>
+      <section className="relative bg-primary text-primary-foreground overflow-hidden">
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-primary-foreground/5 pointer-events-none" aria-hidden="true"/>
+        <div className="absolute -bottom-32 -left-16 w-72 h-72 rounded-full bg-primary-foreground/5 pointer-events-none" aria-hidden="true"/>
         <div className="relative max-w-6xl mx-auto px-6 sm:px-10 py-20 sm:py-28 text-center">
-          <span className="inline-block mb-5 px-5 py-1.5 rounded-full bg-white/15 border border-white/25
+          <span className="inline-block mb-5 px-5 py-1.5 rounded-full bg-primary-foreground/15 border border-primary-foreground/25
             text-xs font-bold tracking-widest uppercase">
             Est. 2008 · Fremont, USA
           </span>
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight tracking-tight mb-6">
             Bay Area<br className="hidden sm:block"/>
-            <span className="text-white/80">Immigration Services</span>
+            <span className="text-primary-foreground/80">Immigration Services</span>
           </h1>
-          <p className="text-base sm:text-lg text-white/80 leading-relaxed max-w-2xl mx-auto mb-10">
+          <p className="text-base sm:text-lg text-primary-foreground/80 leading-relaxed max-w-2xl mx-auto mb-10">
             Expert immigration support for students, families, and the corporate sector —
             specialising in all US visa categories and Change of Status cases.
           </p>
@@ -217,9 +217,9 @@ export default function About() {
               { num: "15+",    label: "Years Experience" },
               { num: "98%",    label: "Success Rate" },
             ].map(({ num, label }) => (
-              <div key={label} className="bg-white/10 border border-white/20 rounded-2xl py-4 px-2 sm:px-4">
+              <div key={label} className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-2xl py-4 px-2 sm:px-4">
                 <p className="text-lg sm:text-2xl md:text-3xl font-extrabold leading-tight break-words">{num}</p>
-                <p className="text-[10px] sm:text-xs text-white/65 mt-1 leading-tight">{label}</p>
+                <p className="text-[10px] sm:text-xs text-primary-foreground/65 mt-1 leading-tight">{label}</p>
               </div>
             ))}
           </div>
@@ -230,22 +230,22 @@ export default function About() {
       <section className="max-w-6xl mx-auto px-6 sm:px-10 py-16 sm:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
           <div>
-            <span className="inline-block mb-4 text-xs font-bold uppercase tracking-widest text-[#1D9E75]">
+            <span className="inline-block mb-4 text-xs font-bold uppercase tracking-widest text-primary">
               Who We Are
             </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 leading-tight mb-6">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground leading-tight mb-6">
               Your Trusted Partner<br className="hidden sm:block"/> for Bay Area Immigration
             </h2>
-            <div className="space-y-4 text-slate-600 leading-relaxed text-[15px]">
+            <div className="space-y-4 text-muted-foreground leading-relaxed text-[15px]">
               <p>
-                <strong className="text-slate-800">Bay Area Immigration Services (BAIS)</strong> provides
+                <strong className="text-foreground">Bay Area Immigration Services (BAIS)</strong> provides
                 expert support to individuals, families, and the corporate sector for both immigrant and
                 non-immigrant visa petitions. We specialise in preparing and organising all required
                 documentation for every US visa category.
               </p>
               <p>
                 After careful review, we submit the finalised petition directly to the{" "}
-                <strong className="text-slate-800">U.S. Citizenship &amp; Immigration Services (USCIS)</strong>.
+                <strong className="text-foreground">U.S. Citizenship &amp; Immigration Services (USCIS)</strong>.
                 Our team stays current with the latest immigration policies, changing processing times,
                 and legal updates — so you don't have to.
               </p>
@@ -257,8 +257,8 @@ export default function About() {
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to="/signup"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-[#1D9E75] hover:bg-[#0F6E56]
-                  text-white text-sm font-bold rounded-xl shadow-sm shadow-emerald-200
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:opacity-90
+                  text-primary-foreground text-sm font-bold rounded-xl shadow-sm shadow-black/10
                   transition-all duration-200 no-underline active:scale-95">
                 Get Started
                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -266,9 +266,9 @@ export default function About() {
                 </svg>
               </Link>
               <a href="#cos"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-200
-                  hover:border-slate-300 text-slate-700 text-sm font-semibold rounded-xl
-                  transition-all duration-200 no-underline hover:bg-slate-50">
+                className="inline-flex items-center gap-2 px-6 py-3 bg-card border border-border
+                  hover:border-border text-foreground text-sm font-semibold rounded-xl
+                  transition-all duration-200 no-underline hover:bg-secondary">
                 Change of Status <IconArrowRight size={14} />
               </a>
             </div>
@@ -294,31 +294,31 @@ export default function About() {
       </section>
 
       {/* ══ CHANGE OF STATUS — HERO BLOCK ══ */}
-      <section id="cos" className="bg-slate-900 text-white py-16 sm:py-20">
+      <section id="cos" className="bg-primary text-primary-foreground py-16 sm:py-20">
         <div className="max-w-6xl mx-auto px-6 sm:px-10">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-emerald-500/20
-                border border-emerald-400/30 text-xs font-bold tracking-widest uppercase text-emerald-300">
+              <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-accent/20
+                border border-accent/30 text-xs font-bold tracking-widest uppercase text-accent">
                 Specialised Service
               </span>
               <h2 className="text-3xl sm:text-4xl font-extrabold leading-tight mb-5">
                 Change of Status Services —<br className="hidden sm:block"/>
-                <span className="text-emerald-400">Keep Your Visa Status Safe</span>
+                <span className="text-accent">Keep Your Visa Status Safe</span>
               </h2>
-              <p className="text-slate-300 text-[15px] leading-relaxed mb-5">
+              <p className="text-primary-foreground/80 text-[15px] leading-relaxed mb-5">
                 Worried about your visa status or approaching deadlines? A delay, incorrect filing, or wrong
                 strategy can lead to status gaps, denials, or long-term immigration complications that are
                 difficult to fix later.
               </p>
-              <p className="text-slate-400 text-sm leading-relaxed mb-5">
-                Whether you're moving from <strong className="text-white">F-1 to H-1B</strong>,{" "}
-                <strong className="text-white">B1/B2 to F-1</strong>,{" "}
-                <strong className="text-white">H-1B to O-1</strong>, or transitioning to a better
+              <p className="text-primary-foreground/70 text-sm leading-relaxed mb-5">
+                Whether you're moving from <strong className="text-primary-foreground">F-1 to H-1B</strong>,{" "}
+                <strong className="text-primary-foreground">B1/B2 to F-1</strong>,{" "}
+                <strong className="text-primary-foreground">H-1B to O-1</strong>, or transitioning to a better
                 immigration pathway, every Change of Status must be handled with precision and within
                 strict USCIS timelines. Even a small error can impact your ability to stay and work in the U.S.
               </p>
-              <p className="text-slate-400 text-sm leading-relaxed">
+              <p className="text-primary-foreground/70 text-sm leading-relaxed">
                 BAIS brings proven experience in handling Change of Status cases with accuracy and
                 compliance. We assess your situation, recommend the right approach, and manage the
                 filing process end-to-end — ensuring everything is submitted correctly and on time.
@@ -334,16 +334,16 @@ export default function About() {
                 { icon: IconDollarSign, stat: "Fair",       label: "Affordable Fees",          desc: "Competitive, transparent pricing compared to most immigration law firms." },
               ].map(({ icon: Icon, stat, label, desc }) => (
                 <div key={label}
-                  className="flex items-start gap-4 bg-slate-800 border border-slate-700 rounded-2xl p-5
-                    hover:border-slate-500 transition-all duration-200">
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/30
+                  className="flex items-start gap-4 bg-primary-foreground/10 border border-primary-foreground/20 rounded-2xl p-5
+                    hover:border-primary-foreground/40 transition-all duration-200">
+                  <div className="w-12 h-12 rounded-xl bg-accent/15 border border-accent/30
                     flex items-center justify-center shrink-0">
-                    <Icon size={20} className="text-emerald-400" />
+                    <Icon size={20} className="text-accent" />
                   </div>
                   <div>
-                    <p className="text-lg font-extrabold text-emerald-400">{stat}</p>
-                    <p className="font-bold text-white text-sm">{label}</p>
-                    <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{desc}</p>
+                    <p className="text-lg font-extrabold text-accent">{stat}</p>
+                    <p className="font-bold text-primary-foreground text-sm">{label}</p>
+                    <p className="text-xs text-primary-foreground/70 mt-0.5 leading-relaxed">{desc}</p>
                   </div>
                 </div>
               ))}
@@ -356,13 +356,13 @@ export default function About() {
       <section className="max-w-6xl mx-auto px-6 sm:px-10 py-16 sm:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           <div>
-            <span className="inline-block mb-4 text-xs font-bold uppercase tracking-widest text-red-500">
+            <span className="inline-block mb-4 text-xs font-bold uppercase tracking-widest text-destructive">
               Common Challenges
             </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-4">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-4">
               Common Struggles People<br className="hidden sm:block"/> Face with Change of Status
             </h2>
-            <p className="text-slate-500 text-sm leading-relaxed mb-8">
+            <p className="text-muted-foreground text-sm leading-relaxed mb-8">
               You're not alone. Many professionals encounter these same issues when navigating visa status changes.
             </p>
             <ul className="space-y-3">
@@ -375,26 +375,26 @@ export default function About() {
                 "Losing employer sponsorship mid-process without a backup plan",
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3">
-                  <span className="w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold">
+                  <span className="w-5 h-5 rounded-full bg-destructive/10 text-destructive flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold">
                     !
                   </span>
-                  <span className="text-sm text-slate-600 leading-relaxed">{item}</span>
+                  <span className="text-sm text-muted-foreground leading-relaxed">{item}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          <div className="bg-linear-to-br from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-8">
-            <h3 className="text-xl font-extrabold text-slate-900 mb-3">
+          <div className="bg-accent border border-border rounded-2xl p-8">
+            <h3 className="text-xl font-extrabold text-foreground mb-3">
               Your Options Don't End with a Layoff
             </h3>
-            <p className="text-slate-600 text-sm leading-relaxed mb-5">
+            <p className="text-muted-foreground text-sm leading-relaxed mb-5">
               At BAIS, we specialise in helping professionals, families, and students transition
               smoothly from one visa status to another. Whether you're moving from{" "}
               <strong>H-1B to B-2 after a layoff</strong>, or from <strong>F-1 OPT to H-1B</strong>,
               our experts guide you at every step.
             </p>
-            <p className="text-slate-600 text-sm leading-relaxed mb-6">
+            <p className="text-muted-foreground text-sm leading-relaxed mb-6">
               If you're currently on an H-1B or F-1 visa and looking for greater flexibility, the
               <strong> O-1 visa, EB-1A, or EB-2 NIW</strong> could be your next step. These pathways
               offer freedom from lottery limits, reduced dependency on employer sponsorship, and
@@ -403,14 +403,14 @@ export default function About() {
             <div className="flex flex-col sm:flex-row gap-3">
               <a href="#appointment"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3
-                  bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl
+                  bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl
                   transition-all duration-200 no-underline active:scale-95">
                 Book Free Consultation
               </a>
               <a href="tel:+15107708700"
                 className="inline-flex items-center justify-center gap-2 px-6 py-3
-                  bg-white border border-emerald-200 text-emerald-700 text-sm font-semibold rounded-xl
-                  hover:bg-emerald-50 transition-all duration-200 no-underline">
+                  bg-card border border-border text-primary text-sm font-semibold rounded-xl
+                  hover:bg-secondary transition-all duration-200 no-underline">
                 <IconPhone size={16} /> Call Now
               </a>
             </div>
@@ -419,14 +419,14 @@ export default function About() {
       </section>
 
       {/* ══ WHO WE HELP ══ */}
-      <section className="bg-slate-900 py-16 sm:py-20">
+      <section className="bg-primary py-16 sm:py-20">
         <div className="max-w-6xl mx-auto px-6 sm:px-10">
           <div className="text-center mb-12">
-            <span className="inline-block mb-3 text-xs font-bold uppercase tracking-widest text-emerald-400">
+            <span className="inline-block mb-3 text-xs font-bold uppercase tracking-widest text-accent">
               Coverage
             </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Who We Help</h2>
-            <p className="text-slate-400 mt-3 max-w-xl mx-auto text-sm">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-primary-foreground">Who We Help</h2>
+            <p className="text-primary-foreground/70 mt-3 max-w-xl mx-auto text-sm">
               Our expertise covers a wide range of visa status change scenarios.
             </p>
           </div>
@@ -440,11 +440,11 @@ export default function About() {
               { icon: IconAward, title: "EB-1A / O-1 Candidates",    desc: "High-achievers seeking visa options that bypass lottery limits and employer dependency."   },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title}
-                className="bg-slate-800 border border-slate-700 rounded-2xl p-6
-                  hover:border-emerald-500/40 hover:bg-slate-750 transition-all duration-200">
-                <Icon size={28} className="text-emerald-400 block mb-4" />
-                <h3 className="font-extrabold text-white text-base mb-2">{title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
+                className="bg-primary-foreground/10 border border-primary-foreground/20 rounded-2xl p-6
+                  hover:border-accent/40 hover:bg-primary-foreground/15 transition-all duration-200">
+                <Icon size={28} className="text-accent block mb-4" />
+                <h3 className="font-extrabold text-primary-foreground text-base mb-2">{title}</h3>
+                <p className="text-sm text-primary-foreground/70 leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
@@ -454,13 +454,13 @@ export default function About() {
       {/* ══ HOW WE MAKE IT EASIER ══ */}
       <section className="max-w-6xl mx-auto px-6 sm:px-10 py-16 sm:py-20">
         <div className="text-center mb-12">
-          <span className="inline-block mb-3 text-xs font-bold uppercase tracking-widest text-[#1D9E75]">
+          <span className="inline-block mb-3 text-xs font-bold uppercase tracking-widest text-primary">
             Our Process
           </span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900">
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground">
             How BAIS Makes Change of Status Easier
           </h2>
-          <p className="text-slate-500 mt-3 max-w-xl mx-auto text-sm">
+          <p className="text-muted-foreground mt-3 max-w-xl mx-auto text-sm">
             Our streamlined process ensures your status change is handled professionally and efficiently.
           </p>
         </div>
@@ -471,35 +471,35 @@ export default function About() {
             { step: "03", icon: IconRocket, title: "Quick Action",          desc: "Time is critical — our team ensures filings are completed within USCIS deadlines to protect your status." },
             { step: "04", icon: IconHandshake, title: "Ongoing Guidance",      desc: "From filing to approval, we stay by your side providing updates and support throughout the entire process." },
           ].map(({ step, icon: Icon, title, desc }) => (
-            <div key={step} className="relative bg-white border border-slate-100 rounded-2xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-              <span className="absolute top-4 right-4 text-[0.68rem] font-extrabold text-slate-300">{step}</span>
-              <Icon size={32} className="text-[#1D9E75] block mb-4" />
-              <h3 className="font-extrabold text-slate-800 text-base mb-2">{title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+            <div key={step} className="relative bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+              <span className="absolute top-4 right-4 text-[0.68rem] font-extrabold text-muted-foreground">{step}</span>
+              <Icon size={32} className="text-primary block mb-4" />
+              <h3 className="font-extrabold text-foreground text-base mb-2">{title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ══ GOOGLE REVIEWS ══ */}
-      <section className="bg-[#f1f5f9] py-16 sm:py-20">
+      <section className="bg-secondary py-16 sm:py-20">
         <div className="max-w-6xl mx-auto px-6 sm:px-10">
           <div className="text-center mb-10">
             <div className="flex items-center justify-center gap-3 mb-4">
               <GoogleLogo />
-              <span className="text-lg font-extrabold text-slate-800">Google Reviews</span>
+              <span className="text-lg font-extrabold text-foreground">Google Reviews</span>
             </div>
             <div className="flex items-center justify-center gap-2 mb-1">
               <Stars />
-              <span className="text-2xl font-extrabold text-slate-900">5.0</span>
+              <span className="text-2xl font-extrabold text-foreground">5.0</span>
             </div>
-            <p className="text-sm text-slate-500">198 verified reviews · Rated Excellent</p>
+            <p className="text-sm text-muted-foreground">198 verified reviews · Rated Excellent</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {REVIEWS.map((r) => (
               <div key={r.name}
-                className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm
+                className="bg-card border border-border rounded-2xl p-5 shadow-sm
                   hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col">
                 <div className="flex items-center gap-3 mb-3">
                   <div className={`w-10 h-10 rounded-full ${r.color} flex items-center justify-center
@@ -507,13 +507,13 @@ export default function About() {
                     {r.initials}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{r.name}</p>
-                    <p className="text-xs text-slate-400">{r.ago}</p>
+                    <p className="text-sm font-bold text-foreground truncate">{r.name}</p>
+                    <p className="text-xs text-muted-foreground">{r.ago}</p>
                   </div>
                   <GoogleLogo />
                 </div>
                 <Stars />
-                <p className="text-xs text-slate-600 leading-relaxed mt-3 flex-1 line-clamp-5">{r.text}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed mt-3 flex-1 line-clamp-5">{r.text}</p>
               </div>
             ))}
           </div>

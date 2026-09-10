@@ -20,8 +20,8 @@ export default function DisclaimerBanner() {
   if (!text) return null;
 
   return (
-    <div className="bg-slate-100 border-b border-slate-200">
-      <p className="max-w-3xl mx-auto px-4 py-2.5 text-center text-[0.72rem] leading-snug text-slate-500">
+    <div className="bg-secondary border-b border-border">
+      <p className="max-w-3xl mx-auto px-4 py-2.5 text-center text-[0.72rem] leading-snug text-muted-foreground">
         {text}
       </p>
     </div>
