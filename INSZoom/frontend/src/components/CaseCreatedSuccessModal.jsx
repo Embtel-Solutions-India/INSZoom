@@ -24,15 +24,15 @@ export default function CaseCreatedSuccessModal({ caseNumber, onClose }) {
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl"
+        className="w-full max-w-sm rounded-2xl bg-card p-6 text-center shadow-2xl"
       >
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
           <CheckCircle className="h-8 w-8" aria-hidden="true" />
         </div>
-        <h2 id={titleId} className="text-xl font-bold text-gray-900">
+        <h2 id={titleId} className="text-xl font-bold text-foreground">
           Yay! New case created
         </h2>
-        <p id={descriptionId} className="mt-2 text-sm leading-6 text-gray-600">
+        <p id={descriptionId} className="mt-2 text-sm leading-6 text-muted-foreground">
           {caseNumber
             ? `Case ${caseNumber} has been successfully created and added.`
             : 'Your new case has been successfully created and added.'}

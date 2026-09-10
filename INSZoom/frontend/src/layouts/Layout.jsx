@@ -2,6 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { requestPermissionAndGetToken } from '../services/notificationService'
 import {
   LayoutDashboard,
@@ -28,12 +29,15 @@ import {
   CheckCircle,
   AlertTriangle,
   Search,
-  RefreshCw
+  RefreshCw,
+  Moon,
+  Sun
 } from 'lucide-react'
 
 const Layout = () => {
   const { user, logout, hasRole, getSidebarMenuItems } = useAuth()
   const { notifications, unreadCount, unreadMessageCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications()
+  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -124,7 +128,7 @@ const Layout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
+    <div className="min-h-screen bg-background flex">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -135,23 +139,23 @@ const Layout = () => {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-white text-gray-700 border-r border-gray-200 transform transition-transform duration-300 ease-in-out flex flex-col shrink-0 ${
+        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-transform duration-300 ease-in-out flex flex-col shrink-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-navy-800 flex items-center justify-center text-white font-bold text-sm shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-serif font-bold text-sm shrink-0">
               I
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-gray-900 leading-tight truncate">Immigratia</h1>
-              <p className="text-[10px] font-medium text-gray-400 tracking-wide uppercase truncate">Internal CRM</p>
+              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Immigratia</h1>
+              <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Internal CRM</p>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-gray-400 hover:text-gray-700"
+            className="lg:hidden text-muted-foreground hover:text-sidebar-foreground"
           >
             <X className="w-5 h-5" />
           </button>
@@ -170,15 +174,15 @@ const Layout = () => {
                 }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[0.925rem] transition-colors duration-150 ${
                   active
-                    ? 'bg-primary-50 text-primary-700 font-semibold'
-                    : 'text-gray-600 font-medium hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
+                    : 'text-sidebar-foreground/80 font-medium hover:bg-sidebar-accent hover:text-sidebar-foreground'
                 }`}
               >
-                <Icon className={`w-[1.1rem] h-[1.1rem] shrink-0 ${active ? 'text-primary-600' : 'text-gray-400'}`} />
+                <Icon className={`w-[1.1rem] h-[1.1rem] shrink-0 ${active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground'}`} />
                 <span className="truncate">{item.label}</span>
                 {item.path === '/messages' && unreadMessageCount > 0 && (
                   <span className={`ml-auto min-w-[1.15rem] h-[1.15rem] px-1 flex items-center justify-center text-[10px] font-semibold rounded-full ${
-                    active ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-700'
+                    active ? 'bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground' : 'bg-sidebar-accent text-sidebar-accent-foreground'
                   }`}>
                     {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                   </span>
@@ -188,10 +192,10 @@ const Layout = () => {
           })}
         </nav>
 
-        <div className="shrink-0 p-3 border-t border-gray-100">
+        <div className="shrink-0 p-3 border-t border-sidebar-border">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors duration-150"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive transition-colors duration-150"
           >
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
@@ -200,46 +204,57 @@ const Layout = () => {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 bg-gray-100">
+      <div className="flex-1 flex flex-col min-w-0 bg-background">
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
+        <header className="sticky top-0 z-30 bg-card border-b border-border">
           <div className="flex items-center gap-4 px-6 py-3">
             <div className="flex items-center gap-3 shrink-0">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden text-gray-600 hover:text-gray-900"
+                className="lg:hidden text-muted-foreground hover:text-foreground"
               >
                 <Menu className="w-6 h-6" />
               </button>
-              <h2 className="text-base font-semibold text-gray-900 hidden md:block">
+              <h2 className="text-base font-semibold text-foreground hidden md:block">
                 {filteredMenuItems.find(item => isActive(item.path))?.label || 'Dashboard'}
               </h2>
+              <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-semibold text-secondary-foreground bg-secondary border border-border rounded-full px-2.5 py-1 capitalize">
+                {user?.role?.replace('_', ' ')} Portal
+              </span>
             </div>
 
             {/* Global search */}
             <form onSubmit={handleSearchSubmit} className="flex-1 max-w-md hidden sm:block">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   placeholder="Search cases, clients, companies…"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 text-gray-900 rounded-lg focus:ring-2 focus:ring-primary-500/40 focus:border-primary-500 outline-none transition-all"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-input text-foreground placeholder:text-muted-foreground rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all"
                 />
               </div>
             </form>
 
             <div className="flex items-center gap-3 ml-auto shrink-0">
-              <span className="hidden lg:block text-xs text-gray-400">
+              <span className="hidden lg:block text-xs text-muted-foreground font-mono">
                 Snapshot · {snapshotDate}
               </span>
               <button
                 onClick={() => window.location.reload()}
-                className="hidden sm:flex items-center gap-1.5 bg-primary-600 text-white text-xs font-medium px-3 py-2 rounded-lg hover:bg-primary-700 transition-colors"
+                className="hidden sm:flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Refresh
+              </button>
+              {/* Theme toggle - matches the reference portal's moon/sun switch */}
+              <button
+                onClick={toggleTheme}
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
+              >
+                {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
               {/* Notifications */}
               <div className="relative" ref={notificationRef}>
@@ -249,25 +264,25 @@ const Layout = () => {
                     setNotificationsOpen(nextOpen)
                     if (nextOpen) fetchNotifications()
                   }}
-                  className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors"
                 >
                   <Bell className="w-5 h-5" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                  <div className="absolute right-0 mt-2 w-80 bg-popover rounded-lg shadow-none border border-border z-50">
                     {/* Header row */}
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                      <h3 className="font-semibold text-popover-foreground">Notifications</h3>
                       {unreadCount > 0 && (
                         <button
                           onClick={() => markAllAsRead()}
-                          className="text-xs font-medium text-primary-600 hover:text-primary-700"
+                          className="text-xs font-medium text-primary hover:opacity-80"
                         >
                           Mark all read
                         </button>
@@ -275,12 +290,12 @@ const Layout = () => {
                     </div>
 
                     {pushPermission === 'default' && (
-                      <div className="px-4 py-2.5 border-b border-gray-200 bg-primary-50/60 flex items-center justify-between gap-3">
-                        <p className="text-xs text-gray-600 leading-snug">Get notified instantly, even when this tab isn't open.</p>
+                      <div className="px-4 py-2.5 border-b border-border bg-accent flex items-center justify-between gap-3">
+                        <p className="text-xs text-accent-foreground leading-snug">Get notified instantly, even when this tab isn't open.</p>
                         <button
                           onClick={enablePush}
                           disabled={enablingPush}
-                          className="shrink-0 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-md disabled:opacity-60"
+                          className="shrink-0 text-xs font-semibold text-primary-foreground bg-primary px-2.5 py-1 rounded-md disabled:opacity-60"
                         >
                           {enablingPush ? 'Enabling…' : 'Enable'}
                         </button>
@@ -290,8 +305,8 @@ const Layout = () => {
                     {/* Notification list */}
                     {notifications.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8">
-                        <Bell className="w-8 h-8 text-gray-300" />
-                        <p className="text-sm text-gray-500 mt-2">No notifications yet</p>
+                        <Bell className="w-8 h-8 text-muted-foreground/50" />
+                        <p className="text-sm text-muted-foreground mt-2">No notifications yet</p>
                       </div>
                     ) : (
                       <>
@@ -302,31 +317,31 @@ const Layout = () => {
                               <div
                                 key={notification._id}
                                 onClick={() => handleNotificationClick(notification)}
-                                className={`flex items-start px-4 py-3 hover:bg-gray-50 cursor-pointer ${
-                                  !notification.isRead ? 'border-l-2 border-gray-400 bg-primary-50/30' : ''
+                                className={`flex items-start px-4 py-3 hover:bg-secondary cursor-pointer ${
+                                  !notification.isRead ? 'border-l-2 border-primary bg-accent/40' : ''
                                 }`}
                               >
                                 <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${color}`} />
                                 <div className="flex-1 ml-3 min-w-0">
                                   <p className={`text-sm ${
-                                    !notification.isRead ? 'font-medium text-gray-900' : 'text-gray-600'
+                                    !notification.isRead ? 'font-medium text-popover-foreground' : 'text-muted-foreground'
                                   }`}>
                                     {notification.title}
                                   </p>
-                                  <p className="text-xs text-gray-500 truncate">
+                                  <p className="text-xs text-muted-foreground truncate">
                                     {notification.message}
                                   </p>
                                   {notification.caseId && (
-                                    <p className="text-xs text-primary-600">
+                                    <p className="text-xs text-primary font-mono">
                                       {notification.caseId.caseNumber} · {notification.caseId.clientName}
                                     </p>
                                   )}
-                                  <p className="text-xs text-gray-400">
+                                  <p className="text-xs text-muted-foreground/70">
                                     {timeAgo(notification.createdAt)}
                                   </p>
                                 </div>
                                 {!notification.isRead && (
-                                  <span className="w-2 h-2 bg-gray-500 rounded-full shrink-0 mt-1.5 ml-2" />
+                                  <span className="w-2 h-2 bg-primary rounded-full shrink-0 mt-1.5 ml-2" />
                                 )}
                               </div>
                             )
@@ -334,8 +349,8 @@ const Layout = () => {
                         </div>
 
                         {/* Footer */}
-                        <div className="border-t border-gray-200 px-4 py-2">
-                          <p className="text-xs text-gray-400 text-center">
+                        <div className="border-t border-border px-4 py-2">
+                          <p className="text-xs text-muted-foreground text-center">
                             Showing latest 15 notifications
                           </p>
                         </div>
@@ -346,12 +361,12 @@ const Layout = () => {
               </div>
 
               {/* User menu */}
-              <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+              <div className="flex items-center gap-3 pl-4 border-l border-border">
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                  <p className="text-xs text-gray-600 capitalize">{user?.role?.replace('_', ' ')}</p>
+                  <p className="text-sm font-medium text-foreground">{user?.name}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace('_', ' ')}</p>
                 </div>
-                <div className="w-9 h-9 bg-navy-800 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold text-sm">
                   {user?.name?.charAt(0) || 'U'}
                 </div>
               </div>

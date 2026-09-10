@@ -272,7 +272,7 @@ export default function USCISNativeFormPOC({ templateId }) {
 
       {loadError && <div className="mb-4 rounded border border-red-400 bg-red-50 p-3 text-red-700">{loadError}</div>}
 
-      <section className="mb-4 rounded border border-slate-300 bg-white p-3">
+      <section className="mb-4 rounded border border-slate-300 bg-card p-3">
         <h2 className="mb-1 font-semibold">PDF Identity</h2>
         {pdfIdentity ? (
           <pre className="overflow-x-auto text-xs">{JSON.stringify(pdfIdentity, null, 2)}</pre>
@@ -281,7 +281,7 @@ export default function USCISNativeFormPOC({ templateId }) {
         )}
       </section>
 
-      <section className="mb-4 flex items-center gap-3 rounded border border-slate-300 bg-white p-3">
+      <section className="mb-4 flex items-center gap-3 rounded border border-slate-300 bg-card p-3">
         <label className="font-semibold">Test page number:</label>
         <input
           type="number"
@@ -299,7 +299,7 @@ export default function USCISNativeFormPOC({ templateId }) {
       </section>
 
       {pageWidgetSummary && (
-        <section className="mb-4 rounded border border-slate-300 bg-white p-3">
+        <section className="mb-4 rounded border border-slate-300 bg-card p-3">
           <h2 className="mb-1 font-semibold">Widget annotations on this page (independent pdfjs.getAnnotations() scan)</h2>
           <div className="max-h-48 overflow-y-auto">
             <table className="w-full text-xs">
@@ -324,7 +324,7 @@ export default function USCISNativeFormPOC({ templateId }) {
           <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
               <h3 className="mb-1 font-semibold">Config A — renderForms=true</h3>
-              <div ref={containerARef} className="relative overflow-auto border border-slate-400 bg-white" style={{ maxHeight: 700 }}>
+              <div ref={containerARef} className="relative overflow-auto border border-slate-400 bg-card" style={{ maxHeight: 700 }}>
                 <Page
                   pageNumber={testPageNumber}
                   width={560}
@@ -339,7 +339,7 @@ export default function USCISNativeFormPOC({ templateId }) {
             </div>
             <div>
               <h3 className="mb-1 font-semibold">Config B — renderForms=false</h3>
-              <div ref={containerBRef} className="relative overflow-auto border border-slate-400 bg-white" style={{ maxHeight: 700 }}>
+              <div ref={containerBRef} className="relative overflow-auto border border-slate-400 bg-card" style={{ maxHeight: 700 }}>
                 <Page
                   pageNumber={testPageNumber}
                   width={560}
@@ -356,7 +356,7 @@ export default function USCISNativeFormPOC({ templateId }) {
         </Document>
       )}
 
-      <section className="mb-4 rounded border border-slate-300 bg-white p-3">
+      <section className="mb-4 rounded border border-slate-300 bg-card p-3">
         <h2 className="mb-2 font-semibold">Seven field-type tests ({passCount}/{TEST_DEFS.length} marked PASS)</h2>
         <table className="w-full text-xs">
           <thead><tr className="text-left"><th>#</th><th>Field type</th><th>Hint</th><th>Status</th><th>Mark</th></tr></thead>
@@ -382,7 +382,7 @@ export default function USCISNativeFormPOC({ templateId }) {
         </p>
       </section>
 
-      <section className="mb-4 rounded border border-slate-300 bg-white p-3">
+      <section className="mb-4 rounded border border-slate-300 bg-card p-3">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-semibold">Captured events ({capturedEvents.length})</h2>
           <button className="rounded bg-blue-600 px-3 py-1 text-white" onClick={copyFindingsJson}>Copy findings JSON</button>
@@ -403,7 +403,7 @@ export default function USCISNativeFormPOC({ templateId }) {
         </div>
       </section>
 
-      <section className="rounded border border-slate-300 bg-white p-3">
+      <section className="rounded border border-slate-300 bg-card p-3">
         <h2 className="mb-2 font-semibold">Diagnostic log</h2>
         <pre className="max-h-64 overflow-y-auto text-xs">{diagnosticLog.join('\n')}</pre>
       </section>

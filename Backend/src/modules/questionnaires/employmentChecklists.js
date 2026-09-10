@@ -12,6 +12,7 @@ const h1b = require("../employment-workflow/questionnaires/h1b");
 const l1a = require("../employment-workflow/questionnaires/l1a");
 const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
+const eb1b = require("../employment-workflow/questionnaires/eb1b");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -26,6 +27,8 @@ const DOCUMENT_CATEGORY_SECTIONS = {
   p1a_evidence: "Evidence of International Recognition",
   p1b_evidence: "For P-1B (Entertainment Group)",
   p3_evidence: "For P-3 (Culturally Unique Program)",
+  financial: "Financial Documents",
+  evidence: "Evidence Documents",
 };
 
 // Ordered so more specific prefixes are checked before their parents
@@ -53,6 +56,8 @@ const SECTION_PREFIX_MAP = [
   ["immigrationHistory.", "Immigration History"],
   ["otherInformation.", "Other Information"],
   ["previousHLStatusHistory", "Prior H/L Status History"],
+  ["recommenders", "Recommendation Letters"],
+  ["eb1bDependents", "Dependents"],
   ["dependents", "Dependents"],
   ["filingCapType", "Filing Details"],
   ["filingType", "Filing Details"],
@@ -67,6 +72,7 @@ const YES_NO_FIELDS = new Set([
   "heldPVisaLastSevenYears", "deniedPVisaLastSevenYears",
   "heldO1VisaLastSevenYears", "deniedO1VisaLastSevenYears",
   "isH1bDependentOrWillfulViolator", "isAcwiaFeeExempt",
+  "employerIsPrivate", "priorImmigrantPetitionFiled",
 ]);
 
 const SELECT_FIELDS = {
@@ -107,6 +113,18 @@ const REPEATABLE_FIELDS = {
     { key: "name", label: "Name", type: "text" },
     { key: "percentage", label: "Percentage", type: "text" },
     { key: "role", label: "Role", type: "text" },
+  ],
+  "employee.recommenders": [
+    { key: "linkedinUrl", label: "LinkedIn Profile URL", type: "text" },
+  ],
+  // Distinct from "employee.dependents" above (H-1B's shape) — see the
+  // comment on this path in eb1b.js's fieldCatalog().
+  "employee.eb1bDependents": [
+    { key: "firstName", label: "First Name", type: "text" },
+    { key: "lastName", label: "Last Name", type: "text" },
+    { key: "relation", label: "Relation to You", type: "text" },
+    { key: "dateOfBirth", label: "Date of Birth", type: "date" },
+    { key: "countryOfBirth", label: "Country of Birth", type: "text" },
   ],
 };
 
@@ -724,6 +742,89 @@ function buildO1EmployeeChecklist() {
   };
 }
 
+// EB1-B (Outstanding Researcher/Professor) — petitioner (employer) checklist:
+// 6 base documents + a private-employer-only conditional group (gated on
+// employer_company_employerIsPrivate === "yes", the same conditional-
+// document mechanism L-1A uses for its stock-ownership-certificate and
+// LOI/MOU documents).
+function buildEb1bEmployerChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const privateEmployerGate = { mode: "all", rules: [{ questionKey: "employer_company_employerIsPrivate", operator: "equals", value: "yes" }], groups: [] };
+  const documentQuestionList = documentQuestions(eb1b.employerDocuments, visibility, documentSectionOrder, counters)
+    .map((question) => (
+      eb1b.PRIVATE_EMPLOYER_DOCUMENT_TYPES.includes(question.key)
+        ? { ...question, conditionalLogic: privateEmployerGate }
+        : question
+    ));
+  const fieldResult = fieldQuestionsFromCatalog(
+    eb1b.fieldCatalog().filter((entry) => entry.section === "employer"),
+    visibility,
+  );
+  return definitionFromParts({
+    key: "eb1b_employer_checklist",
+    title: "EB-1B Petitioner (Employer) Checklist",
+    visaType: "EB1B",
+    checklistRole: "employer",
+    description: "Petitioner document checklist and company/position information for an EB-1B (Outstanding Researcher or Professor) petition.",
+    documentSectionOrder,
+    documentQuestionList,
+    fieldResult,
+  });
+}
+
+// EB1-B beneficiary (employee) checklist — Section H base documents (always
+// required) plus evidentiary criteria A-F, each individually optional (every
+// item left required:false, exactly like O-1's o1CriteriaQuestions, since
+// USCIS requires satisfying only SOME of the criteria, not all of them or
+// all items within one). Unlike O-1's criteria, EB1-B's A-F are NOT gated on
+// a variant-classification field — there is only one EB1-B classification,
+// so every criterion section is always visible.
+function eb1bCriteriaQuestions(visibility, documentSectionOrder, counters) {
+  const category = "eb1b_criteria";
+  const questions = [];
+  for (const criterion of eb1b.EB1B_CRITERIA) {
+    const title = `EB-1B Criterion ${criterion.letter}`;
+    if (!documentSectionOrder.includes(title)) documentSectionOrder.push(title);
+    for (const item of criterion.items) {
+      const nextOrder = (counters.get(title) || 0) + 1;
+      counters.set(title, nextOrder);
+      const documentType = eb1b.slug(`criterion_${criterion.letter}_${item.name}`);
+      questions.push(buildQuestion(documentType, item.name, "file", title, nextOrder, {
+        description: criterion.heading,
+        required: false,
+        evidenceCategory: category,
+        metadata: { documentType, category, criterionLetter: criterion.letter },
+        visibility,
+      }));
+    }
+  }
+  return questions;
+}
+
+function buildEb1bEmployeeChecklist() {
+  const visibility = { roles: ["employee", ...STAFF_ROLES], portals: ["employee", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(eb1b.employeeDocuments, visibility, documentSectionOrder, counters);
+  const criteriaQuestions = eb1bCriteriaQuestions(visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    eb1b.fieldCatalog().filter((entry) => entry.section === "employee"),
+    visibility,
+  );
+  return {
+    key: "eb1b_employee_checklist",
+    title: "EB-1B Beneficiary (Employee) Checklist",
+    visaType: "EB1B",
+    checklistRole: "employee",
+    isDefault: true,
+    description: eb1b.EB1B_CRITERIA_HEADING,
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList, ...criteriaQuestions],
+  };
+}
+
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
   buildH1bEmployeeChecklist(),
@@ -734,6 +835,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildPEmployeeChecklist(),
   buildO1EmployerChecklist(),
   buildO1EmployeeChecklist(),
+  buildEb1bEmployerChecklist(),
+  buildEb1bEmployeeChecklist(),
 ];
 
 module.exports = { EMPLOYMENT_CHECKLIST_DEFINITIONS };

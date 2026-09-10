@@ -23,13 +23,13 @@ export default function FinalizeModal({ validation, onCancel, onConfirm }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-        <h3 className="text-xl font-bold text-gray-900 mb-4">Finalize Petition</h3>
+      <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <h3 className="text-xl font-bold text-foreground mb-4">Finalize Petition</h3>
         {blocked ? (
-          <p className="text-sm text-gray-600 mb-4">This package still has blocking errors and cannot be finalized. Resolve every error in the validation panel first.</p>
+          <p className="text-sm text-muted-foreground mb-4">This package still has blocking errors and cannot be finalized. Resolve every error in the validation panel first.</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               Finalizing regenerates the mailing PDF and presentation copy, locks this version from further edits, and marks it ready for filing.
             </p>
             {needsAck && (

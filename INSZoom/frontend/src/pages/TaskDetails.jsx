@@ -260,24 +260,24 @@ const TaskDetails = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       assigned: 'bg-blue-100 text-blue-800',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getPriorityColor = (priority) => {
     const colors = {
-      low: 'bg-gray-100 text-gray-800',
+      low: 'bg-secondary text-foreground',
       medium: 'bg-blue-100 text-blue-800',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
-    return colors[priority] || 'bg-gray-100 text-gray-800'
+    return colors[priority] || 'bg-secondary text-foreground'
   }
 
   const formatStatus = (status) => {
@@ -312,7 +312,7 @@ const TaskDetails = () => {
   if (!task) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Task Not Found</h2>
+        <h2 className="text-xl font-semibold text-foreground mb-2">Task Not Found</h2>
         <button
           onClick={() => navigate('/tasks')}
           className="text-blue-600 hover:text-blue-700"
@@ -330,13 +330,13 @@ const TaskDetails = () => {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-secondary rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{isCreating ? 'Create Immigration Task' : 'Task Details'}</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-2xl font-bold text-foreground">{isCreating ? 'Create Immigration Task' : 'Task Details'}</h1>
+            <p className="text-muted-foreground mt-1">
               {isCreating ? 'Assign structured case and documentation work' : `Task ID: ${task._id}`}
             </p>
           </div>
@@ -374,17 +374,17 @@ const TaskDetails = () => {
         {/* Main Content */}
         <div className={`${isCreating ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
           {/* Task Information */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
             {editing ? (
               <div className="space-y-4">
                 {isCreating && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Related Case</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">Related Case</label>
                       <select
                         value={editData.caseId || ''}
                         onChange={(event) => setEditData({ ...editData, caseId: event.target.value })}
-                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">General task (no case)</option>
                         {cases.map((caseItem) => (
@@ -395,11 +395,11 @@ const TaskDetails = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Assigned Employee</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">Assigned Employee</label>
                       <select
                         value={editData.assignedTo || ''}
                         onChange={(event) => setEditData({ ...editData, assignedTo: event.target.value })}
-                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="">Select employee</option>
                         {assigneeOptions.map((member) => (
@@ -412,40 +412,40 @@ const TaskDetails = () => {
                   </div>
                 )}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Title</label>
                   <input
                     type="text"
                     value={editData.title}
                     onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                   <textarea
                     value={editData.description}
                     onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows={4}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Department</label>
                     <select
                       value={editData.department || ''}
                       onChange={(event) => setEditData({ ...editData, department: event.target.value })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {DEPARTMENTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Task Category</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Task Category</label>
                     <select
                       value={editData.category || 'case_preparation'}
                       onChange={(event) => setEditData({ ...editData, category: event.target.value })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {TASK_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
@@ -454,39 +454,39 @@ const TaskDetails = () => {
                 {showDocumentationFields && (
                   <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
                     <div>
-                      <h3 className="font-semibold text-gray-900">Documentation Work Details</h3>
-                      <p className="text-sm text-gray-600">Define the document operation and evidence review required.</p>
+                      <h3 className="font-semibold text-foreground">Documentation Work Details</h3>
+                      <p className="text-sm text-muted-foreground">Define the document operation and evidence review required.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Work Type</label>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Work Type</label>
                         <select
                           value={editData.documentation?.workType || ''}
                           onChange={(event) => setEditData({
                             ...editData,
                             documentation: { ...editData.documentation, workType: event.target.value },
                           })}
-                          className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           {DOCUMENT_WORK_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Evidence Category</label>
+                        <label className="block text-sm font-medium text-muted-foreground mb-1">Evidence Category</label>
                         <select
                           value={editData.documentation?.evidenceCategory || ''}
                           onChange={(event) => setEditData({
                             ...editData,
                             documentation: { ...editData.documentation, evidenceCategory: event.target.value },
                           })}
-                          className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           {EVIDENCE_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                         </select>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">Document Type</label>
                       <input
                         type="text"
                         value={editData.documentation?.documentType || ''}
@@ -495,11 +495,11 @@ const TaskDetails = () => {
                           documentation: { ...editData.documentation, documentType: event.target.value },
                         })}
                         placeholder="e.g. Passport, Degree, I-797 Notice, Employment Letter"
-                        className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Processing Instructions</label>
+                      <label className="block text-sm font-medium text-muted-foreground mb-1">Processing Instructions</label>
                       <textarea
                         value={editData.documentation?.instructions || ''}
                         onChange={(event) => setEditData({
@@ -508,10 +508,10 @@ const TaskDetails = () => {
                         })}
                         rows={3}
                         placeholder="Required checks, naming standards, USCIS relevance, and delivery expectations"
-                        className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                       <input
                         type="checkbox"
                         checked={editData.documentation?.reviewRequired !== false}
@@ -519,7 +519,7 @@ const TaskDetails = () => {
                           ...editData,
                           documentation: { ...editData.documentation, reviewRequired: event.target.checked },
                         })}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-border text-blue-600 focus:ring-blue-500"
                       />
                       Require case manager review
                     </label>
@@ -527,11 +527,11 @@ const TaskDetails = () => {
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                     <select
                       value={editData.status}
                       onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="pending">Pending</option>
                       <option value="assigned">Assigned</option>
@@ -542,11 +542,11 @@ const TaskDetails = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                     <select
                       value={editData.priority}
                       onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -557,35 +557,35 @@ const TaskDetails = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Due Date</label>
                     <input
                       type="datetime-local"
                       value={editData.dueDate}
                       onChange={(e) => setEditData({ ...editData, dueDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Progress (%)</label>
+                    <label className="block text-sm font-medium text-muted-foreground mb-1">Progress (%)</label>
                     <input
                       type="number"
                       min="0"
                       max="100"
                       value={editData.progress}
                       onChange={(e) => setEditData({ ...editData, progress: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Hours</label>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1">Estimated Hours</label>
                   <input
                     type="number"
                     min="0"
                     step="0.25"
                     value={editData.estimatedHours || 0}
                     onChange={(event) => setEditData({ ...editData, estimatedHours: Number(event.target.value) })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -599,7 +599,7 @@ const TaskDetails = () => {
                   </button>
                   <button
                     onClick={() => isCreating ? navigate('/tasks') : setEditing(false)}
-                    className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
                   >
                     Cancel
                   </button>
@@ -608,7 +608,7 @@ const TaskDetails = () => {
             ) : (
               <div>
                 <div className="flex items-start justify-between mb-4">
-                  <h2 className="text-xl font-bold text-gray-900">{task.title}</h2>
+                  <h2 className="text-xl font-bold text-foreground">{task.title}</h2>
                   <div className="flex items-center gap-2">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPriorityColor(task.priority)}`}>
                       {String(task.priority || 'medium').charAt(0).toUpperCase() + String(task.priority || 'medium').slice(1)} Priority
@@ -620,36 +620,36 @@ const TaskDetails = () => {
                 </div>
 
                 {task.description && (
-                  <p className="text-gray-600 mb-4">{task.description}</p>
+                  <p className="text-muted-foreground mb-4">{task.description}</p>
                 )}
 
                 {task.documentation?.workType && (
                   <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
-                    <p className="font-semibold text-gray-900">Documentation Work</p>
-                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+                    <p className="font-semibold text-foreground">Documentation Work</p>
+                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                       <span>Work type: {formatStatus(task.documentation.workType)}</span>
                       <span>Evidence: {formatStatus(task.documentation.evidenceCategory)}</span>
                       {task.documentation.documentType && <span>Document: {task.documentation.documentType}</span>}
                       <span>Review: {task.documentation.reviewRequired === false ? 'Not required' : formatStatus(task.documentation.reviewStatus)}</span>
                     </div>
-                    {task.documentation.instructions && <p className="mt-2 text-sm text-gray-700">{task.documentation.instructions}</p>}
+                    {task.documentation.instructions && <p className="mt-2 text-sm text-muted-foreground">{task.documentation.instructions}</p>}
                   </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
                     <span>Due: {formatDate(task.dueDate)}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <User className="w-4 h-4" />
                     <span>Assigned to: {task.assignedTo?.name}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <User className="w-4 h-4" />
                     <span>Assigned by: {task.assignedBy?.name}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <FileText className="w-4 h-4" />
                     <span>Category: {formatStatus(task.category || 'general')}</span>
                   </div>
@@ -658,10 +658,10 @@ const TaskDetails = () => {
                 {/* Progress Bar */}
                 <div>
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="font-medium text-gray-700">Progress</span>
-                    <span className="text-gray-600">{task.progress || 0}%</span>
+                    <span className="font-medium text-muted-foreground">Progress</span>
+                    <span className="text-muted-foreground">{task.progress || 0}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-muted rounded-full h-2">
                     <div
                       className="bg-blue-600 h-2 rounded-full transition-all"
                       style={{ width: `${Math.min(Math.max(Number(task.progress) || 0, 0), 100)}%` }}
@@ -674,13 +674,13 @@ const TaskDetails = () => {
 
           {/* Case Information */}
           {task.caseId && (
-            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Linked Case</h3>
-              <div className="p-4 bg-gray-50 rounded-lg">
+            <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Linked Case</h3>
+              <div className="p-4 bg-muted rounded-lg">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-gray-900">{task.caseId.caseNumber}</p>
-                    <p className="text-sm text-gray-600">{task.caseId.clientName}</p>
+                    <p className="font-semibold text-foreground">{task.caseId.caseNumber}</p>
+                    <p className="text-sm text-muted-foreground">{task.caseId.clientName}</p>
                   </div>
                   <button
                     onClick={() => navigate(`/crm-cases/${task.caseId._id}`)}
@@ -694,24 +694,24 @@ const TaskDetails = () => {
           )}
 
           {/* Comments */}
-          {!isCreating && <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Comments ({task.comments?.length || 0})</h3>
+          {!isCreating && <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Comments ({task.comments?.length || 0})</h3>
             
             <div className="space-y-3 mb-4">
               {task.comments && task.comments.length > 0 ? (
                 (task.comments || []).map(comment => (
-                  <div key={comment._id} className="p-3 bg-gray-50 rounded-lg">
+                  <div key={comment._id} className="p-3 bg-muted rounded-lg">
                     <div className="flex items-start justify-between mb-1">
-                      <span className="font-medium text-gray-900">{comment.author?.name}</span>
-                      <span className="text-xs text-gray-500">
+                      <span className="font-medium text-foreground">{comment.author?.name}</span>
+                      <span className="text-xs text-muted-foreground">
                         {new Date(comment.createdAt).toLocaleString()}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-600">{comment.text}</p>
+                    <p className="text-sm text-muted-foreground">{comment.text}</p>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500 text-center py-4">No comments yet</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No comments yet</p>
               )}
             </div>
 
@@ -721,7 +721,7 @@ const TaskDetails = () => {
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Add a comment..."
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
               />
               <button
@@ -739,8 +739,8 @@ const TaskDetails = () => {
         {/* Sidebar */}
         {!isCreating && <div className="space-y-6">
           {/* Quick Actions */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+          <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Quick Actions</h3>
             <div className="space-y-2">
               {task.status !== 'completed' && (
                 <button
@@ -786,47 +786,47 @@ const TaskDetails = () => {
           </div>
 
           {/* Attachments */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Attachments ({task.attachments?.length || 0})</h3>
+          <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Attachments ({task.attachments?.length || 0})</h3>
             {task.attachments && task.attachments.length > 0 ? (
               <div className="space-y-2">
                 {(task.attachments || []).map((attachment, index) => (
-                  <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                    <Paperclip className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm text-gray-700 flex-1">{attachment.fileName}</span>
+                  <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                    <Paperclip className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground flex-1">{attachment.fileName}</span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No attachments</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No attachments</p>
             )}
           </div>
 
           {/* Task Metadata */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Task Information</h3>
+          <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Task Information</h3>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-600">Created</span>
-                <span className="text-gray-900">{formatDate(task.createdAt)}</span>
+                <span className="text-muted-foreground">Created</span>
+                <span className="text-foreground">{formatDate(task.createdAt)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Last Updated</span>
-                <span className="text-gray-900">{formatDate(task.updatedAt)}</span>
+                <span className="text-muted-foreground">Last Updated</span>
+                <span className="text-foreground">{formatDate(task.updatedAt)}</span>
               </div>
               {task.completionDate && (
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Completed</span>
-                  <span className="text-gray-900">{formatDate(task.completionDate)}</span>
+                  <span className="text-muted-foreground">Completed</span>
+                  <span className="text-foreground">{formatDate(task.completionDate)}</span>
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-gray-600">Estimated Hours</span>
-                <span className="text-gray-900">{task.estimatedHours}</span>
+                <span className="text-muted-foreground">Estimated Hours</span>
+                <span className="text-foreground">{task.estimatedHours}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Actual Hours</span>
-                <span className="text-gray-900">{task.actualHours}</span>
+                <span className="text-muted-foreground">Actual Hours</span>
+                <span className="text-foreground">{task.actualHours}</span>
               </div>
             </div>
           </div>

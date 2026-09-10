@@ -60,28 +60,28 @@ const formatLabel = (value = '') => String(value || 'Uncategorized')
   .replace(/\b\w/g, (char) => char.toUpperCase())
 
 const EmptyChart = ({ label = 'No analytics data available' }) => (
-  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+  <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border bg-muted text-sm text-muted-foreground">
     {label}
   </div>
 )
 
 const ChartCard = ({ title, subtitle, children }) => (
-  <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+  <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
     <div className="mb-4">
-      <h4 className="font-semibold text-gray-900">{title}</h4>
-      {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+      <h4 className="font-semibold text-foreground">{title}</h4>
+      {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
     </div>
     {children}
   </div>
 )
 
 const AnalyticsTile = ({ label, value, sub, color, icon: Icon }) => (
-  <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+  <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
     <div className="flex items-start justify-between gap-3">
       <div>
-        <p className="text-sm text-gray-500">{label}</p>
-        <p className="mt-1 text-2xl font-bold text-gray-900">{value}</p>
-        {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="mt-1 text-2xl font-bold text-foreground">{value}</p>
+        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
       </div>
       <div className="rounded-lg p-2 text-white" style={{ backgroundColor: color }}>
         <Icon className="h-5 w-5" />
@@ -230,7 +230,7 @@ const CaseManagerDetails = () => {
     const badges = {
       paid: 'bg-green-100 text-green-800',
       partially_paid: 'bg-yellow-100 text-yellow-800',
-      not_started: 'bg-gray-100 text-gray-800',
+      not_started: 'bg-secondary text-foreground',
       overdue: 'bg-red-100 text-red-800',
       refunded: 'bg-purple-100 text-purple-800'
     }
@@ -252,13 +252,13 @@ const CaseManagerDetails = () => {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-8 bg-muted rounded w-1/4"></div>
           <div className="grid grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-32 bg-gray-200 rounded"></div>
+              <div key={i} className="h-32 bg-muted rounded"></div>
             ))}
           </div>
-          <div className="h-64 bg-gray-200 rounded"></div>
+          <div className="h-64 bg-muted rounded"></div>
         </div>
       </div>
     )
@@ -267,9 +267,9 @@ const CaseManagerDetails = () => {
   if (!caseManager) {
     return (
       <div className="p-6">
-        <div className="bg-white rounded-lg shadow p-12 text-center">
-          <User className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Case manager not found</h3>
+        <div className="bg-card rounded-lg shadow p-12 text-center">
+          <User className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-2">Case manager not found</h3>
           <button
             onClick={() => navigate('/case-managers')}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -287,18 +287,18 @@ const CaseManagerDetails = () => {
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => navigate('/case-managers')}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-2 hover:bg-secondary rounded-lg transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Case Manager Details</h1>
-          <p className="text-gray-600 mt-1">{caseManager.name}</p>
+          <h1 className="text-2xl font-bold text-foreground">Case Manager Details</h1>
+          <p className="text-muted-foreground mt-1">{caseManager.name}</p>
         </div>
       </div>
 
       {/* Profile Header */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="bg-card rounded-lg shadow p-6 mb-6">
         <div className="flex flex-col lg:flex-row gap-6">
           <div className="flex-shrink-0">
             <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-3xl font-bold">
@@ -308,25 +308,25 @@ const CaseManagerDetails = () => {
           <div className="flex-1">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{caseManager.name}</h2>
-                <p className="text-gray-600">Employee ID: {caseManager._id?.slice(-6).toUpperCase()}</p>
+                <h2 className="text-xl font-bold text-foreground">{caseManager.name}</h2>
+                <p className="text-muted-foreground">Employee ID: {caseManager._id?.slice(-6).toUpperCase()}</p>
                 <div className="flex flex-wrap gap-4 mt-3">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Mail className="w-4 h-4" />
                     {caseManager.email}
                   </div>
                   {caseManager.phone && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Phone className="w-4 h-4" />
                       {caseManager.phone}
                     </div>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="w-4 h-4" />
                     Joined: {new Date(caseManager.createdAt).toLocaleDateString()}
                   </div>
                   {caseManager.department && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Building className="w-4 h-4" />
                       {caseManager.department}
                     </div>
@@ -335,15 +335,15 @@ const CaseManagerDetails = () => {
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Status</p>
-                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${caseManager.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${caseManager.isActive ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}`}>
                     {caseManager.isActive ? 'Active' : 'Inactive'}
                   </span>
                 </div>
                 {caseManager.lastLogin && (
                   <div className="text-center">
-                    <p className="text-sm text-gray-600">Last Login</p>
-                    <p className="text-sm font-semibold text-gray-900">{new Date(caseManager.lastLogin).toLocaleDateString()}</p>
+                    <p className="text-sm text-muted-foreground">Last Login</p>
+                    <p className="text-sm font-semibold text-foreground">{new Date(caseManager.lastLogin).toLocaleDateString()}</p>
                   </div>
                 )}
               </div>
@@ -355,74 +355,74 @@ const CaseManagerDetails = () => {
       {/* Summary Cards */}
       {stats && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Assigned</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalAssignedCases}</p>
+                <p className="text-sm text-muted-foreground">Total Assigned</p>
+                <p className="text-2xl font-bold text-foreground">{stats.totalAssignedCases}</p>
               </div>
               <Briefcase className="w-8 h-8 text-blue-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-green-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Active Cases</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeCases}</p>
+                <p className="text-sm text-muted-foreground">Active Cases</p>
+                <p className="text-2xl font-bold text-foreground">{stats.activeCases}</p>
               </div>
               <Clock className="w-8 h-8 text-green-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-orange-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Completed</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.completedCases}</p>
+                <p className="text-sm text-muted-foreground">Completed</p>
+                <p className="text-2xl font-bold text-foreground">{stats.completedCases}</p>
               </div>
               <CheckCircle className="w-8 h-8 text-orange-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-blue-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">${(stats.totalRevenue || 0).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Total Revenue</p>
+                <p className="text-2xl font-bold text-foreground">${(stats.totalRevenue || 0).toLocaleString()}</p>
               </div>
               <DollarSign className="w-8 h-8 text-blue-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-purple-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Collected</p>
-                <p className="text-2xl font-bold text-gray-900">${(stats.collectedRevenue || 0).toLocaleString()}</p>
+                <p className="text-sm text-muted-foreground">Collected</p>
+                <p className="text-2xl font-bold text-foreground">${(stats.collectedRevenue || 0).toLocaleString()}</p>
               </div>
               <TrendingUp className="w-8 h-8 text-purple-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-yellow-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Collection Rate</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.collectionPercentage}%</p>
+                <p className="text-sm text-muted-foreground">Collection Rate</p>
+                <p className="text-2xl font-bold text-foreground">{stats.collectionPercentage}%</p>
               </div>
               <Target className="w-8 h-8 text-yellow-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-indigo-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-indigo-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Avg Processing</p>
-                <p className="text-2xl font-bold text-gray-900">{Math.round(stats.avgProcessingTime || 0)} days</p>
+                <p className="text-sm text-muted-foreground">Avg Processing</p>
+                <p className="text-2xl font-bold text-foreground">{Math.round(stats.avgProcessingTime || 0)} days</p>
               </div>
               <Zap className="w-8 h-8 text-indigo-500" />
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-pink-500">
+          <div className="bg-card rounded-lg shadow p-4 border-l-4 border-pink-500">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingCases}</p>
+                <p className="text-sm text-muted-foreground">Pending</p>
+                <p className="text-2xl font-bold text-foreground">{stats.pendingCases}</p>
               </div>
               <Activity className="w-8 h-8 text-pink-500" />
             </div>
@@ -431,8 +431,8 @@ const CaseManagerDetails = () => {
       )}
 
       {/* Tabs */}
-      <div className="bg-white rounded-lg shadow mb-6">
-        <div className="border-b border-gray-200">
+      <div className="bg-card rounded-lg shadow mb-6">
+        <div className="border-b border-border">
           <nav className="flex -mb-px">
             {[
               { id: 'overview', label: 'Overview', icon: User },
@@ -452,7 +452,7 @@ const CaseManagerDetails = () => {
                 className={`flex items-center gap-2 px-4 py-3 border-b-2 font-medium text-sm ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-muted-foreground hover:text-muted-foreground hover:border-border'
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
@@ -465,28 +465,28 @@ const CaseManagerDetails = () => {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Overview</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Quick Overview</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Recent Activity</h4>
+              <div className="bg-muted rounded-lg p-4">
+                <h4 className="font-medium text-foreground mb-3">Recent Activity</h4>
                 {activities.slice(0, 5).map((activity) => (
-                  <div key={activity._id} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
-                    <Activity className="w-4 h-4 text-gray-400 mt-0.5" />
+                  <div key={activity._id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
+                    <Activity className="w-4 h-4 text-muted-foreground mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-sm text-gray-900">{activity.action}</p>
-                      <p className="text-xs text-gray-500">{new Date(activity.createdAt).toLocaleString()}</p>
+                      <p className="text-sm text-foreground">{activity.action}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-medium text-gray-900 mb-3">Recent Cases</h4>
+              <div className="bg-muted rounded-lg p-4">
+                <h4 className="font-medium text-foreground mb-3">Recent Cases</h4>
                 {cases.slice(0, 5).map((caseItem) => (
-                  <div key={caseItem._id} className="flex items-start gap-3 py-2 border-b border-gray-200 last:border-0">
-                    <Briefcase className="w-4 h-4 text-gray-400 mt-0.5" />
+                  <div key={caseItem._id} className="flex items-start gap-3 py-2 border-b border-border last:border-0">
+                    <Briefcase className="w-4 h-4 text-muted-foreground mt-0.5" />
                     <div className="flex-1">
-                      <p className="text-sm text-gray-900">{caseItem.caseNumber}</p>
-                      <p className="text-xs text-gray-500">{caseItem.clientName}</p>
+                      <p className="text-sm text-foreground">{caseItem.caseNumber}</p>
+                      <p className="text-xs text-muted-foreground">{caseItem.clientName}</p>
                     </div>
                   </div>
                 ))}
@@ -500,19 +500,19 @@ const CaseManagerDetails = () => {
           <div className="p-6">
             <div className="flex flex-col lg:flex-row gap-4 mb-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search cases..."
                   value={caseSearch}
                   onChange={(e) => setCaseSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <select
                 value={caseStatusFilter}
                 onChange={(e) => setCaseStatusFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Status</option>
                 <option value="active">Active</option>
@@ -523,47 +523,47 @@ const CaseManagerDetails = () => {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visa Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Number</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Client</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stage</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Progress</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {cases.map((caseItem) => (
-                    <tr key={caseItem._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={caseItem._id} className="hover:bg-muted">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                         {caseItem.caseNumber}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {caseItem.clientName}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {resolveDisplayVisa(caseItem)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {getStageLabel(caseItem.stage)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-muted rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
                             style={{ width: `${getStageProgress(caseItem.stage)}%` }}
                           ></div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{Math.round(getStageProgress(caseItem.stage))}%</p>
+                        <p className="text-xs text-muted-foreground mt-1">{Math.round(getStageProgress(caseItem.stage))}%</p>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
                           caseItem.priority === 'urgent' ? 'bg-red-100 text-red-800' :
                           caseItem.priority === 'high' ? 'bg-orange-100 text-orange-800' :
                           caseItem.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
+                          'bg-secondary text-foreground'
                         }`}>
                           {caseItem.priority}
                         </span>
@@ -576,21 +576,21 @@ const CaseManagerDetails = () => {
 
             {casesPagination && (
               <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-muted-foreground">
                   Showing {(casesPage - 1) * casesPagination.limit + 1} to {Math.min(casesPage * casesPagination.limit, casesPagination.totalCount)} of {casesPagination.totalCount}
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setCasesPage(Math.max(1, casesPage - 1))}
                     disabled={casesPage === 1}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setCasesPage(Math.min(casesPagination.totalPages, casesPage + 1))}
                     disabled={casesPage === casesPagination.totalPages}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Next
                   </button>
@@ -607,7 +607,7 @@ const CaseManagerDetails = () => {
               <select
                 value={activityDateFilter}
                 onChange={(e) => setActivityDateFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Time</option>
                 <option value="today">Today</option>
@@ -618,15 +618,15 @@ const CaseManagerDetails = () => {
 
             <div className="space-y-4">
               {activities.map((activity) => (
-                <div key={activity._id} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
-                  <Activity className="w-5 h-5 text-gray-400 mt-0.5" />
+                <div key={activity._id} className="flex items-start gap-4 p-4 bg-muted rounded-lg">
+                  <Activity className="w-5 h-5 text-muted-foreground mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{activity.action}</p>
-                    <p className="text-sm text-gray-600">{activity.description}</p>
+                    <p className="text-sm font-medium text-foreground">{activity.action}</p>
+                    <p className="text-sm text-muted-foreground">{activity.description}</p>
                     {activity.caseId && (
-                      <p className="text-xs text-gray-500 mt-1">Case: {activity.caseId.caseNumber}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Case: {activity.caseId.caseNumber}</p>
                     )}
-                    <p className="text-xs text-gray-400 mt-1">{new Date(activity.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{new Date(activity.createdAt).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
@@ -634,21 +634,21 @@ const CaseManagerDetails = () => {
 
             {activitiesPagination && (
               <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-muted-foreground">
                   Showing {(activitiesPage - 1) * activitiesPagination.limit + 1} to {Math.min(activitiesPage * activitiesPagination.limit, activitiesPagination.totalCount)} of {activitiesPagination.totalCount}
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setActivitiesPage(Math.max(1, activitiesPage - 1))}
                     disabled={activitiesPage === 1}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setActivitiesPage(Math.min(activitiesPagination.totalPages, activitiesPage + 1))}
                     disabled={activitiesPage === activitiesPagination.totalPages}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Next
                   </button>
@@ -664,20 +664,20 @@ const CaseManagerDetails = () => {
             {paymentSummary && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Total Assigned</p>
-                  <p className="text-xl font-bold text-gray-900">{formatPaymentAmount(paymentSummary.totalRevenueAssigned)}</p>
+                  <p className="text-sm text-muted-foreground">Total Assigned</p>
+                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueAssigned)}</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Collected</p>
-                  <p className="text-xl font-bold text-gray-900">{formatPaymentAmount(paymentSummary.totalRevenueCollected)}</p>
+                  <p className="text-sm text-muted-foreground">Collected</p>
+                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.totalRevenueCollected)}</p>
                 </div>
                 <div className="bg-orange-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Outstanding</p>
-                  <p className="text-xl font-bold text-gray-900">{formatPaymentAmount(paymentSummary.outstandingRevenue)}</p>
+                  <p className="text-sm text-muted-foreground">Outstanding</p>
+                  <p className="text-xl font-bold text-foreground">{formatPaymentAmount(paymentSummary.outstandingRevenue)}</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Collection Rate</p>
-                  <p className="text-xl font-bold text-gray-900">{paymentSummary.collectionRate}%</p>
+                  <p className="text-sm text-muted-foreground">Collection Rate</p>
+                  <p className="text-xl font-bold text-foreground">{paymentSummary.collectionRate}%</p>
                 </div>
               </div>
             )}
@@ -686,7 +686,7 @@ const CaseManagerDetails = () => {
               <select
                 value={paymentStatusFilter}
                 onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">All Status</option>
                 <option value="paid">Paid</option>
@@ -697,37 +697,37 @@ const CaseManagerDetails = () => {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Case</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remaining</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Invoice</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Package</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Total</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Paid</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Remaining</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {payments.map((payment) => (
-                    <tr key={payment._id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={payment._id} className="hover:bg-muted">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                         {payment.invoiceNumber}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {payment.caseId?.caseNumber || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {payment.package}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {formatPaymentAmount(payment.totalFee, payment.currency)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {formatPaymentAmount(payment.paidAmount, payment.currency)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
                         {formatPaymentAmount(payment.remainingAmount, payment.currency)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -741,21 +741,21 @@ const CaseManagerDetails = () => {
 
             {paymentsPagination && (
               <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-gray-700">
+                <p className="text-sm text-muted-foreground">
                   Showing {(paymentsPage - 1) * paymentsPagination.limit + 1} to {Math.min(paymentsPage * paymentsPagination.limit, paymentsPagination.totalCount)} of {paymentsPagination.totalCount}
                 </p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setPaymentsPage(Math.max(1, paymentsPage - 1))}
                     disabled={paymentsPage === 1}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => setPaymentsPage(Math.min(paymentsPagination.totalPages, paymentsPage + 1))}
                     disabled={paymentsPage === paymentsPagination.totalPages}
-                    className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-3 py-1 border border-border rounded hover:bg-muted disabled:opacity-50"
                   >
                     Next
                   </button>

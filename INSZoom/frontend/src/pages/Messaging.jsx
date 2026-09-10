@@ -36,7 +36,7 @@ const INTERNAL_CONTACT_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manag
 // Each entry is fully self-contained (own text color) so nothing downstream
 // needs to append a conflicting text-color class on top of it.
 const EXTRA_PARTICIPANT_PALETTE = [
-  { avatar: 'bg-white text-gray-900 border-2 border-gray-300', bubble: 'bg-white text-gray-900 border border-gray-300' },
+  { avatar: 'bg-card text-foreground border-2 border-border', bubble: 'bg-card text-foreground border border-border' },
   { avatar: 'bg-teal-500 text-white', bubble: 'bg-teal-100 text-teal-900 border border-teal-200' },
   { avatar: 'bg-pink-500 text-white', bubble: 'bg-pink-100 text-pink-900 border border-pink-200' },
   { avatar: 'bg-indigo-500 text-white', bubble: 'bg-indigo-100 text-indigo-900 border border-indigo-200' },
@@ -178,12 +178,12 @@ const AttachmentItem = ({ messageId, attachment }) => {
         <button
           type="button"
           onClick={handleOpen}
-          className="block w-40 h-32 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 hover:brightness-95 transition"
+          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition"
         >
           {status === 'ready' ? (
             <img src={url} alt={attachment.originalName} className="w-full h-full object-cover" />
           ) : (
-            <span className="w-full h-full flex items-center justify-center text-[11px] text-gray-400">
+            <span className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground">
               {status === 'error' ? "Couldn't load image" : 'Loading…'}
             </span>
           )}
@@ -264,7 +264,7 @@ const presenceLabel = (presence) => {
 
 const DayDivider = ({ label }) => (
   <div className="flex items-center justify-center py-1">
-    <span className="text-[11px] font-medium text-gray-500 bg-gray-200/70 px-3 py-1 rounded-full">
+    <span className="text-[11px] font-medium text-muted-foreground bg-muted px-3 py-1 rounded-full">
       {label}
     </span>
   </div>
@@ -282,14 +282,14 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
     ? 'bg-blue-500 text-white'
     : style.key === 'extra'
       ? style.palette.avatar
-      : 'bg-gray-300 text-gray-700'
+      : 'bg-muted text-muted-foreground'
   const bubbleClasses = m.isInternal
     ? 'bg-orange-50 text-orange-900 border border-orange-200'
     : style.key === 'self'
       ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
       : style.key === 'extra'
         ? style.palette.bubble
-        : 'bg-gray-100 text-gray-800 border border-gray-200'
+        : 'bg-secondary text-foreground border border-border'
   const readNames = (m.readBy || [])
     .filter((r) => idOf(r.userId) !== senderId)
     .map((r) => (r.userId?.name || r.userId?.displayName))
@@ -309,7 +309,7 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
             Internal
           </span>
         )}
-        <span className="text-[11px] text-gray-400">
+        <span className="text-[11px] text-muted-foreground">
           {formatTime(m.createdAt)}
         </span>
       </div>
@@ -331,18 +331,18 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
           )}
           {isPending && typeof m.__uploadProgress === 'number' && (
             <div className="flex items-center gap-2 w-40">
-              <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-500 transition-all"
                   style={{ width: `${m.__uploadProgress}%` }}
                 />
               </div>
-              <span className="text-[10px] text-gray-500 shrink-0">{m.__uploadProgress}%</span>
+              <span className="text-[10px] text-muted-foreground shrink-0">{m.__uploadProgress}%</span>
               <button
                 type="button"
                 onClick={() => onCancelUpload?.(m._id)}
                 title="Cancel upload"
-                className="text-gray-400 hover:text-red-500 shrink-0"
+                className="text-muted-foreground hover:text-red-500 shrink-0"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -370,7 +370,7 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
               Failed to send · Tap to retry
             </button>
           ) : isPending ? (
-            <span className="flex items-center gap-1 text-gray-400">
+            <span className="flex items-center gap-1 text-muted-foreground">
               <Clock className="w-3 h-3" />
               Sending…
             </span>
@@ -380,7 +380,7 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
             // no real delivery-ack pipeline, so a fake "delivered" tick in
             // between would just be theater — this skips it rather than lie.
             <span
-              className={`flex items-center gap-1 ${readNames.length > 0 ? 'text-blue-500' : 'text-gray-400'}`}
+              className={`flex items-center gap-1 ${readNames.length > 0 ? 'text-blue-500' : 'text-muted-foreground'}`}
               title={readNames.length > 0 ? `Seen by ${readNames.join(', ')}` : 'Sent'}
             >
               <CheckCheck className="w-3.5 h-3.5" />
@@ -1113,8 +1113,8 @@ const Messaging = () => {
       {/* Header — kept to a single compact line so the conversation pane below gets the vertical space instead */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h1 className="text-base font-bold text-gray-900 leading-tight shrink-0">Messages</h1>
-          <p className="text-xs text-gray-500 truncate">
+          <h1 className="text-base font-bold text-foreground leading-tight shrink-0">Messages</h1>
+          <p className="text-xs text-muted-foreground truncate">
             {selectedGroup?.type === 'user'
               ? `Chat with ${selectedGroup.userName}`
               : location.state?.openChat && location.state?.clientName
@@ -1130,7 +1130,7 @@ const Messaging = () => {
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
                 filter === f.key
                   ? 'bg-primary-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-secondary text-muted-foreground hover:bg-muted'
               }`}
             >
               {f.label}
@@ -1142,13 +1142,13 @@ const Messaging = () => {
       {/* Split pane */}
       <div className="card p-0 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center h-96 text-gray-600">
+          <div className="flex items-center justify-center h-96 text-muted-foreground">
             Loading messages...
           </div>
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-96 text-center px-6">
             <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
-            <p className="text-gray-700 mb-4">{error}</p>
+            <p className="text-muted-foreground mb-4">{error}</p>
             <button onClick={fetchMessages} className="btn-primary">
               Retry
             </button>
@@ -1156,9 +1156,9 @@ const Messaging = () => {
         ) : (
           <div className="flex h-[calc(100vh-11.5rem)] min-h-[500px]">
             {/* Left panel - unified conversations list */}
-            <div className={`w-full sm:w-80 border-r border-gray-200 flex-col shrink-0 ${showMobileThread ? 'hidden sm:flex' : 'flex'}`}>
+            <div className={`w-full sm:w-80 border-r border-border flex-col shrink-0 ${showMobileThread ? 'hidden sm:flex' : 'flex'}`}>
               {/* Search */}
-              <div className="p-3 border-b border-gray-200">
+              <div className="p-3 border-b border-border">
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2">
@@ -1168,7 +1168,7 @@ const Messaging = () => {
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'conversations'
                             ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
                         Conversations
@@ -1179,7 +1179,7 @@ const Messaging = () => {
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'contacts'
                             ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
                         Contacts
@@ -1195,13 +1195,13 @@ const Messaging = () => {
                     </button>
                   </div>
                   <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                     <input
                       type="text"
                       placeholder={activeTab === 'contacts' ? 'Search contacts...' : 'Search conversations...'}
                       value={newChatSearch}
                       onChange={(e) => setNewChatSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -1210,12 +1210,12 @@ const Messaging = () => {
               {/* Conversations / contacts list */}
               <div className="flex-1 overflow-y-auto">
                 {activeTab === 'conversations' && conversations.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-500 px-6 text-center py-12">
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-6 text-center py-12">
                     <Inbox className="w-8 h-8 mb-2" />
                     <p className="text-sm">No conversations found</p>
                   </div>
                 ) : activeTab === 'contacts' && internalContacts.length === 0 && clientContacts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-gray-500 px-6 text-center py-12">
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground px-6 text-center py-12">
                     <Users className="w-8 h-8 mb-2" />
                     <p className="text-sm">No contacts found</p>
                   </div>
@@ -1244,15 +1244,15 @@ const Messaging = () => {
                           }
                           setActiveTab('conversations')
                         }}
-                        className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
+                        className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
                           (conv.type === 'case' && selectedCaseId === conv.caseId) || 
                           (conv.type === 'user' && selectedUserId === conv.userId)
                             ? 'bg-blue-50 border-l-4 border-l-blue-500'
-                            : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+                            : 'hover:bg-muted border-l-4 border-l-transparent'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-gray-900 truncate">
+                          <span className="font-semibold text-foreground truncate">
                             {conv.type === 'case' ? conv.caseNumber : conv.userName}
                           </span>
                           <div className="flex items-center gap-2">
@@ -1261,13 +1261,13 @@ const Messaging = () => {
                                 {conv.userRole}
                               </span>
                             )}
-                            <span className="text-xs text-gray-400 shrink-0">
+                            <span className="text-xs text-muted-foreground shrink-0">
                               {conv.latestAt ? formatTime(conv.latestAt) : ''}
                             </span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <span className="text-sm text-gray-600 truncate">
+                          <span className="text-sm text-muted-foreground truncate">
                             {conv.type === 'case' ? conv.clientName : `${conv.userRole} • ${conv.last?.message || 'No messages yet'}`}
                           </span>
                           {conv.unreadCount > 0 && (
@@ -1276,7 +1276,7 @@ const Messaging = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 truncate mt-1">
+                        <p className="text-xs text-muted-foreground truncate mt-1">
                           {conv.last?.isInternal && (
                             <span className="text-orange-600 font-medium">[Internal] </span>
                           )}
@@ -1304,7 +1304,7 @@ const Messaging = () => {
 
                         return (
                           <div key={section.key} className="pb-2">
-                            <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                            <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {section.label}
                             </div>
                             {filteredItems.map(contact => (
@@ -1316,14 +1316,14 @@ const Messaging = () => {
                                   setSelectedCaseId(null)
                                   setActiveTab('conversations')
                                 }}
-                                className={`w-full text-left px-4 py-3 border-b border-gray-100 transition-colors ${
+                                className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
                                   selectedUserId === idOf(contact._id)
                                     ? 'bg-blue-50 border-l-4 border-l-blue-500'
-                                    : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+                                    : 'hover:bg-muted border-l-4 border-l-transparent'
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="font-semibold text-gray-900 truncate">
+                                  <span className="font-semibold text-foreground truncate">
                                     {contact.name || contact.displayName || contact.email}
                                   </span>
                                   <span className={`text-xs px-2 py-1 rounded-full ${
@@ -1334,11 +1334,11 @@ const Messaging = () => {
                                     {contact.role}
                                   </span>
                                 </div>
-                                <p className="text-sm text-gray-600 truncate mt-1">
+                                <p className="text-sm text-muted-foreground truncate mt-1">
                                   {contact.email}
                                 </p>
                                 {contact.role === 'client' && (contact.relatedCases || []).length > 0 && (
-                                  <p className="text-xs text-gray-500 truncate mt-1">
+                                  <p className="text-xs text-muted-foreground truncate mt-1">
                                     {(contact.relatedCases || []).map(item => item.caseNumber).join(', ')}
                                   </p>
                                 )}
@@ -1391,23 +1391,23 @@ const Messaging = () => {
                 </div>
               )}
               {!selectedGroup ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageSquare className="w-10 h-10 mb-3" />
                   <p>Select a conversation to view messages</p>
                 </div>
               ) : (
                 <>
                   {/* Thread header */}
-                  <div className="px-5 py-3 border-b border-gray-200 flex items-start gap-2">
+                  <div className="px-5 py-3 border-b border-border flex items-start gap-2">
                     <button
                       type="button"
                       onClick={() => setShowMobileThread(false)}
-                      className="sm:hidden mt-0.5 text-gray-500 hover:text-gray-800 shrink-0"
+                      className="sm:hidden mt-0.5 text-muted-foreground hover:text-foreground shrink-0"
                     >
                       <ArrowLeft className="w-5 h-5" />
                     </button>
                     <div className="min-w-0">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <h3 className="font-semibold text-foreground flex items-center gap-2">
                       {selectedGroup?.type === 'user'
                         ? selectedGroup.userName
                         : selectedGroup?.caseNumber}
@@ -1415,11 +1415,11 @@ const Messaging = () => {
                         <span className="w-2 h-2 rounded-full bg-emerald-500" title="Online" />
                       )}
                     </h3>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       {typingUserName ? (
                         <span className="text-blue-600 font-medium">{typingUserName} is typing…</span>
                       ) : presenceLabel(presence) ? (
-                        <span className={presence?.isOnline ? 'text-emerald-600 font-medium' : 'text-gray-400'}>
+                        <span className={presence?.isOnline ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
                           {presenceLabel(presence)}
                         </span>
                       ) : selectedGroup?.type === 'user'
@@ -1430,11 +1430,11 @@ const Messaging = () => {
                   </div>
 
                   {/* Messages */}
-                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 space-y-3 bg-gray-50">
+                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 space-y-3 bg-muted">
                     {threadMessages.length === 0 ? (
-                      <div className="text-center text-gray-500 py-12">
-                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                        <p className="font-medium text-gray-700 mb-2">
+                      <div className="text-center text-muted-foreground py-12">
+                        <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                        <p className="font-medium text-muted-foreground mb-2">
                           {location.state?.openChat && location.state.clientName
                             ? `Start your conversation with ${location.state.clientName}`
                             : selectedGroup?.type === 'user' 
@@ -1488,7 +1488,7 @@ const Messaging = () => {
                   </div>
 
                   {/* Reply box */}
-                  <form onSubmit={handleSend} className="border-t border-gray-200 p-2.5 space-y-2">
+                  <form onSubmit={handleSend} className="border-t border-border p-2.5 space-y-2">
                     {sendError && (
                       <div className="flex items-center gap-2 text-sm text-red-600">
                         <AlertCircle className="w-4 h-4" />
@@ -1538,12 +1538,12 @@ const Messaging = () => {
                       className="input-field resize-none text-sm leading-5 min-h-[46px] max-h-24"
                     />
                     <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={isInternal}
                           onChange={(e) => setIsInternal(e.target.checked)}
-                          className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="w-4 h-4 rounded border-border text-blue-600 focus:ring-blue-500"
                         />
                         <span className="inline-flex items-center gap-1">
                           <Lock className="w-3.5 h-3.5 text-orange-500" />
@@ -1562,7 +1562,7 @@ const Messaging = () => {
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           title="Attach file"
-                          className="w-9 h-9 rounded-lg bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                          className="w-9 h-9 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center hover:bg-muted transition-colors"
                         >
                           <Paperclip className="w-4 h-4" />
                         </button>

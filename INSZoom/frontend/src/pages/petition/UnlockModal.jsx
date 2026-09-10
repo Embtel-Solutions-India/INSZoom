@@ -21,13 +21,13 @@ export default function UnlockModal({ onCancel, onConfirm }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-        <h3 className="text-xl font-bold text-gray-900 mb-4">Unlock Petition</h3>
-        <p className="text-sm text-gray-600 mb-4">
+      <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <h3 className="text-xl font-bold text-foreground mb-4">Unlock Petition</h3>
+        <p className="text-sm text-muted-foreground mb-4">
           This reopens the finalized version for editing. Anyone finalizing again will need to regenerate the filing PDF before it can be filed.
         </p>
         <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
+          <label className="block text-sm font-medium text-muted-foreground mb-1">Reason</label>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}

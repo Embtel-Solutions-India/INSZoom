@@ -98,14 +98,14 @@ const Analytics = () => {
   const renderLoadingSkeleton = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {[1, 2, 3, 4].map(i => (
-        <div key={i} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
+        <div key={i} className="h-32 bg-muted rounded-lg animate-pulse" />
       ))}
     </div>
   )
 
   const renderEmptyState = (message) => (
-    <div className="card text-center py-12 text-gray-500">
-      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+    <div className="card text-center py-12 text-muted-foreground">
+      <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
       <p>{message}</p>
     </div>
   )
@@ -143,10 +143,10 @@ const Analytics = () => {
         {/* Date Range Filter */}
         <div className="card">
           <div className="flex items-center gap-4">
-            <Filter className="w-5 h-5 text-gray-500" />
+            <Filter className="w-5 h-5 text-muted-foreground" />
             <div className="flex gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
                 <input
                   type="date"
                   value={startDate}
@@ -155,7 +155,7 @@ const Analytics = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">End Date</label>
                 <input
                   type="date"
                   value={endDate}
@@ -175,8 +175,8 @@ const Analytics = () => {
               <div key={index} className="card">
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 mb-1">{card.title}</p>
-                    <p className="text-3xl font-bold text-gray-900">{card.value}</p>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">{card.title}</p>
+                    <p className="text-3xl font-bold text-foreground">{card.value}</p>
                   </div>
                   <div className={`p-3 rounded-lg bg-gradient-to-br ${card.color}`}>
                     <Icon className="w-6 h-6 text-white" />
@@ -190,7 +190,7 @@ const Analytics = () => {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Cases by Visa Type</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Visa Type</h3>
             {casesByVisaTypeData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={casesByVisaTypeData}>
@@ -205,7 +205,7 @@ const Analytics = () => {
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Cases by Stage</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Stage</h3>
             {casesByStageData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
@@ -230,7 +230,7 @@ const Analytics = () => {
           </div>
 
           <div className="card lg:col-span-2">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Cases by Package</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Cases by Package</h3>
             {casesByPackageData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={casesByPackageData}>
@@ -266,7 +266,7 @@ const Analytics = () => {
       <div className="space-y-6">
         {/* Monthly Revenue Chart */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Monthly Revenue</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">Monthly Revenue</h3>
           {revenueData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={revenueData}>
@@ -283,19 +283,19 @@ const Analytics = () => {
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="card">
-            <p className="text-sm font-medium text-gray-600 mb-1">Total Revenue</p>
-            <p className="text-2xl font-bold text-gray-900">{formatCents(paymentsData?.totalRevenue)}</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Total Revenue</p>
+            <p className="text-2xl font-bold text-foreground">{formatCents(paymentsData?.totalRevenue)}</p>
           </div>
           <div className="card">
-            <p className="text-sm font-medium text-gray-600 mb-1">Pending Amount</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Pending Amount</p>
             <p className="text-2xl font-bold text-amber-600">{formatCents(paymentsData?.pendingAmount)}</p>
           </div>
           <div className="card">
-            <p className="text-sm font-medium text-gray-600 mb-1">Overdue Amount</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Overdue Amount</p>
             <p className="text-2xl font-bold text-red-600">{formatCents(paymentsData?.overdueAmount)}</p>
           </div>
           <div className="card">
-            <p className="text-sm font-medium text-gray-600 mb-1">Payment Rate</p>
+            <p className="text-sm font-medium text-muted-foreground mb-1">Payment Rate</p>
             <p className="text-2xl font-bold text-blue-600">{paymentsData?.paymentRate || 0}%</p>
           </div>
         </div>
@@ -303,7 +303,7 @@ const Analytics = () => {
         {/* Revenue Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Visa Type</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Revenue by Visa Type</h3>
             {revenueByVisaTypeData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={revenueByVisaTypeData}>
@@ -318,7 +318,7 @@ const Analytics = () => {
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue by Package</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Revenue by Package</h3>
             {revenueByPackageData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={revenueByPackageData}>
@@ -344,21 +344,21 @@ const Analytics = () => {
       <div className="space-y-6">
         {/* Case Manager Workload */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Case Manager Workload</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">Case Manager Workload</h3>
           {caseManagerWorkload.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Active Cases</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Closed Cases</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Score</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Active Cases</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Closed Cases</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Score</th>
                   </tr>
                 </thead>
                 <tbody>
                   {caseManagerWorkload.map((cm, index) => (
-                    <tr key={index} className="border-b border-gray-100">
+                    <tr key={index} className="border-b border-border">
                       <td className="py-3 px-4">{cm.name}</td>
                       <td className="py-3 px-4">{cm.caseCount}</td>
                       <td className="py-3 px-4">{cm.completedCases || 0}</td>
@@ -373,22 +373,22 @@ const Analytics = () => {
 
         {/* Processing Time */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Processing Time by Visa Type</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">Processing Time by Visa Type</h3>
           {processingTimeData.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Visa Type</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Avg Days</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Min</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Max</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Count</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Visa Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Avg Days</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Min</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Max</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Count</th>
                   </tr>
                 </thead>
                 <tbody>
                   {processingTimeData.map((pt, index) => (
-                    <tr key={index} className="border-b border-gray-100">
+                    <tr key={index} className="border-b border-border">
                       <td className="py-3 px-4">{pt._id}</td>
                       <td className="py-3 px-4">{pt.avgProcessingDays?.toFixed(1) || 0}</td>
                       <td className="py-3 px-4">{pt.minProcessingDays || 0}</td>
@@ -422,20 +422,20 @@ const Analytics = () => {
       <div className="space-y-6">
         {/* RFE Trends */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">RFE Trends</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">RFE Trends</h3>
           {rfeTrendsData.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Visa Type</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">RFE Count</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">RFE Rate</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Visa Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">RFE Count</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">RFE Rate</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rfeTrendsData.map((rfe, index) => (
-                    <tr key={index} className="border-b border-gray-100">
+                    <tr key={index} className="border-b border-border">
                       <td className="py-3 px-4">{rfe.visaType}</td>
                       <td className="py-3 px-4">{rfe.rfeCount}</td>
                       <td className="py-3 px-4">{rfe.rfeRate?.toFixed(1) || 0}%</td>
@@ -450,7 +450,7 @@ const Analytics = () => {
         {/* AI Extraction Success */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Extraction Success Rate</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">AI Extraction Success Rate</h3>
             {aiExtractionData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
@@ -475,7 +475,7 @@ const Analytics = () => {
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Evidence Assembly Stats</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Evidence Assembly Stats</h3>
             {evidenceAssemblyData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={evidenceAssemblyData}>
@@ -492,7 +492,7 @@ const Analytics = () => {
 
         {/* Filing Readiness Distribution */}
         <div className="card">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Filing Readiness Distribution</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-4">Filing Readiness Distribution</h3>
           {evidenceAssemblyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={evidenceAssemblyData}>
@@ -513,8 +513,8 @@ const Analytics = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="text-gray-600 mt-1">Comprehensive insights and performance metrics</p>
+          <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
+          <p className="text-muted-foreground mt-1">Comprehensive insights and performance metrics</p>
         </div>
         {renderLoadingSkeleton()}
       </div>
@@ -525,8 +525,8 @@ const Analytics = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-        <p className="text-gray-600 mt-1">Comprehensive insights and performance metrics</p>
+        <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
+        <p className="text-muted-foreground mt-1">Comprehensive insights and performance metrics</p>
       </div>
 
       {error && (
@@ -536,13 +536,13 @@ const Analytics = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-gray-200">
+      <div className="flex gap-4 border-b border-border">
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'overview'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <BarChart3 className="w-4 h-4 inline mr-2" />
@@ -553,7 +553,7 @@ const Analytics = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'revenue'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <DollarSign className="w-4 h-4 inline mr-2" />
@@ -564,7 +564,7 @@ const Analytics = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'team'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Users className="w-4 h-4 inline mr-2" />
@@ -575,7 +575,7 @@ const Analytics = () => {
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
             activeTab === 'rfe-ai'
               ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Brain className="w-4 h-4 inline mr-2" />

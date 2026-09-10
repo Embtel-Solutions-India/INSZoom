@@ -585,16 +585,16 @@ export default function QuestionnaireTemplates() {
   return (
     <div className="flex h-[calc(100vh-5rem)] -m-6 overflow-hidden">
       {/* ── Left sidebar ─────────────────────────────────────────────── */}
-      <div className="w-72 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="font-bold text-gray-900">Checklists</h2>
+      <div className="w-72 shrink-0 border-r border-border bg-card flex flex-col">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <h2 className="font-bold text-foreground">Checklists</h2>
           <button onClick={openCreateWizard} className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700" title="Create checklist">
             <Plus className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-3 border-b border-gray-100">
+        <div className="p-3 border-b border-border">
           <div className="relative">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               className="input-field pl-9 text-sm"
               placeholder="Search checklists"
@@ -605,33 +605,33 @@ export default function QuestionnaireTemplates() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-4 text-sm text-gray-500">Loading checklists...</div>
+            <div className="p-4 text-sm text-muted-foreground">Loading checklists...</div>
           ) : Object.keys(groupedTemplates).length === 0 ? (
-            <div className="p-4 text-sm text-gray-500">No checklists yet.</div>
+            <div className="p-4 text-sm text-muted-foreground">No checklists yet.</div>
           ) : Object.entries(groupedTemplates).map(([category, items]) => (
             <div key={category}>
-              <div className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              <div className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 {CATEGORY_LABELS[category] || category}
               </div>
               {items.map((template) => (
                 <button
                   key={template._id}
                   onClick={() => setSelectedId(template._id)}
-                  className={`w-full text-left px-4 py-3 border-l-4 hover:bg-gray-50 transition-colors ${selectedId === template._id ? 'bg-blue-50 border-l-blue-500' : 'border-l-transparent'}`}
+                  className={`w-full text-left px-4 py-3 border-l-4 hover:bg-muted transition-colors ${selectedId === template._id ? 'bg-blue-50 border-l-blue-500' : 'border-l-transparent'}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-gray-900 truncate text-sm">{template.title}</span>
-                    <span className="text-[10px] bg-gray-100 text-gray-600 rounded-full px-1.5 py-0.5 shrink-0">v{template.version}</span>
+                    <span className="font-semibold text-foreground truncate text-sm">{template.title}</span>
+                    <span className="text-[10px] bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 shrink-0">v{template.version}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-gray-500">{template.visaType || template.visaTypes?.[0]}</span>
+                    <span className="text-xs text-muted-foreground">{template.visaType || template.visaTypes?.[0]}</span>
                     {template.checklistRole && (
                       <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5">
                         {TARGET_ROLE_LABELS[template.checklistRole] || template.checklistRole}
                       </span>
                     )}
                     {selectedId === template._id && (
-                      <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${template.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-600'}`}>
+                      <span className={`text-[10px] rounded-full px-1.5 py-0.5 ${template.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>
                         {template.status === 'published' ? 'Published' : 'Draft'}
                       </span>
                     )}
@@ -653,7 +653,7 @@ export default function QuestionnaireTemplates() {
         )}
 
         {!selectedTemplate ? (
-          <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-3">
+          <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3">
             <FileText className="w-12 h-12" />
             <p>Select a checklist, or create a new one to get started.</p>
           </div>
@@ -666,25 +666,25 @@ export default function QuestionnaireTemplates() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <input
-                      className="text-2xl font-bold text-gray-900 w-full border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none pb-1 bg-transparent"
+                      className="text-2xl font-bold text-foreground w-full border-b border-transparent hover:border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
                       value={templateForm.title}
                       disabled={isPublished}
                       placeholder="Checklist title"
                       onChange={(e) => setTemplateForm((prev) => ({ ...prev, title: e.target.value, key: prev.key || slug(e.target.value) }))}
                     />
                     <input
-                      className="text-sm text-gray-500 w-full border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none mt-2 pb-1 bg-transparent"
+                      className="text-sm text-muted-foreground w-full border-b border-transparent hover:border-border focus:border-blue-500 outline-none mt-2 pb-1 bg-transparent"
                       value={templateForm.description || ''}
                       disabled={isPublished}
                       placeholder="Checklist description (optional)"
                       onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
                     />
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
-                      <span className="text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1 font-medium">{templateForm.visaType}</span>
+                      <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2.5 py-1 font-medium">{templateForm.visaType}</span>
                       {templateForm.checklistRole && (
                         <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2.5 py-1 font-medium">{TARGET_ROLE_LABELS[templateForm.checklistRole]}</span>
                       )}
-                      <span className="text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1 font-medium">v{selectedTemplate.version}</span>
+                      <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2.5 py-1 font-medium">v{selectedTemplate.version}</span>
                       <span className={`text-xs rounded-full px-2.5 py-1 font-medium ${isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                         {isPublished ? 'Published' : 'Draft'}
                       </span>
@@ -702,11 +702,11 @@ export default function QuestionnaireTemplates() {
                       </button>
                     )}
                     <div className="relative group">
-                      <button className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50">
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                      <button className="p-2 rounded-lg border border-border hover:bg-muted">
+                        <MoreVertical className="w-4 h-4 text-muted-foreground" />
                       </button>
-                      <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 py-1">
-                        <button onClick={duplicateTemplate} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2">
+                      <div className="absolute right-0 mt-1 w-44 bg-card border border-border rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-30 py-1">
+                        <button onClick={duplicateTemplate} className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2">
                           <Copy className="w-3.5 h-3.5" /> Duplicate
                         </button>
                         <button onClick={archiveTemplate} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
@@ -730,8 +730,8 @@ export default function QuestionnaireTemplates() {
               <div key={section.key || 'default'} className="space-y-3">
                 {section.title && (
                   <div className="flex items-center gap-3 pt-2">
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">{section.title}</h3>
-                    <div className="flex-1 h-px bg-gray-200" />
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">{section.title}</h3>
+                    <div className="flex-1 h-px bg-muted" />
                     <button onClick={() => beginNewQuestion(section.key)} className="text-xs text-blue-600 font-semibold hover:underline shrink-0">
                       + Add here
                     </button>
@@ -778,7 +778,7 @@ export default function QuestionnaireTemplates() {
             ))}
 
             {!isPublished && sections.length === 0 && (
-              <div className="card text-center py-10 text-gray-400 text-sm space-y-3">
+              <div className="card text-center py-10 text-muted-foreground text-sm space-y-3">
                 <p>No sections yet. Add one to start building this checklist.</p>
                 <div className="flex items-center justify-center gap-2 max-w-sm mx-auto">
                   <input className="input-field" placeholder="Section title (e.g. Personal Information)" value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} />
@@ -801,10 +801,10 @@ export default function QuestionnaireTemplates() {
                 {questions.map((question) => (
                   <div key={question._id} className="card !py-3 !px-4 flex items-center justify-between opacity-80">
                     <div>
-                      <p className="font-medium text-gray-900 text-sm">{question.label}</p>
-                      <p className="text-xs text-gray-400">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</p>
+                      <p className="font-medium text-foreground text-sm">{question.label}</p>
+                      <p className="text-xs text-muted-foreground">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</p>
                     </div>
-                    <Lock className="w-3.5 h-3.5 text-gray-300" />
+                    <Lock className="w-3.5 h-3.5 text-muted-foreground" />
                   </div>
                 ))}
               </div>
@@ -812,14 +812,14 @@ export default function QuestionnaireTemplates() {
 
             {/* Case assignment / progress / USCIS mappings - unchanged tools, tucked below the fold */}
             <div className="pt-6">
-              <button onClick={() => setShowCaseTools((v) => !v)} className="text-xs font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1">
+              <button onClick={() => setShowCaseTools((v) => !v)} className="text-xs font-semibold text-muted-foreground hover:text-muted-foreground flex items-center gap-1">
                 {showCaseTools ? <ChevronLeft className="w-3.5 h-3.5 rotate-90" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 Case assignment, progress & USCIS mappings
               </button>
               {showCaseTools && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
                   <div className="card">
-                    <h3 className="font-semibold text-gray-900 mb-4">Case Assignment &amp; Progress</h3>
+                    <h3 className="font-semibold text-foreground mb-4">Case Assignment &amp; Progress</h3>
                     <div className="space-y-3">
                       <select className="input-field" value={assignCaseId} onChange={(e) => setAssignCaseId(e.target.value)}>
                         <option value="">Select case to assign</option>
@@ -835,12 +835,12 @@ export default function QuestionnaireTemplates() {
                       </select>
                       <button onClick={loadProgress} disabled={!selectedTemplate?._id || !progressCaseId} className="btn-secondary w-full disabled:opacity-50">Load Progress</button>
                       {progress && (
-                        <div className="p-3 rounded-lg bg-gray-50 border border-gray-200">
+                        <div className="p-3 rounded-lg bg-muted border border-border">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-gray-900">Overall</span>
+                            <span className="font-medium text-foreground">Overall</span>
                             <span className="font-bold text-blue-700">{progress.completionPercentage}%</span>
                           </div>
-                          <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                          <div className="h-2 rounded-full bg-muted overflow-hidden">
                             <div className="h-full bg-blue-500" style={{ width: `${progress.completionPercentage}%` }} />
                           </div>
                           <div className="mt-3 space-y-2">
@@ -857,18 +857,18 @@ export default function QuestionnaireTemplates() {
                   </div>
 
                   <div className="card">
-                    <h3 className="font-semibold text-gray-900 mb-4">USCIS Mappings</h3>
+                    <h3 className="font-semibold text-foreground mb-4">USCIS Mappings</h3>
                     {mappings.length === 0 ? (
-                      <p className="text-sm text-gray-500">No mappings configured.</p>
+                      <p className="text-sm text-muted-foreground">No mappings configured.</p>
                     ) : (
                       <div className="space-y-2 max-h-80 overflow-y-auto">
                         {mappings.map((mapping) => (
-                          <div key={mapping.questionKey} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                          <div key={mapping.questionKey} className="p-3 rounded-lg border border-border bg-muted">
+                            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                               <FileText className="w-4 h-4 text-blue-600" />
                               {mapping.questionKey}
                             </div>
-                            <div className="mt-1 text-xs text-gray-600">
+                            <div className="mt-1 text-xs text-muted-foreground">
                               {mapping.uscisMappings.map((item) => <div key={item}>{item}</div>)}
                             </div>
                           </div>
@@ -884,12 +884,12 @@ export default function QuestionnaireTemplates() {
 
         {/* Floating right toolbar (Google Forms-style) */}
         {selectedTemplate && !isPublished && (
-          <div className="fixed right-8 top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-2xl shadow-lg flex flex-col divide-y divide-gray-100 z-20">
-            <button onClick={() => beginNewQuestion(sections[sections.length - 1]?.key)} disabled={!sections.length} className="p-3 hover:bg-gray-50 rounded-t-2xl disabled:opacity-30" title="Add question">
-              <Plus className="w-5 h-5 text-gray-600" />
+          <div className="fixed right-8 top-1/2 -translate-y-1/2 bg-card border border-border rounded-2xl shadow-lg flex flex-col divide-y divide-border z-20">
+            <button onClick={() => beginNewQuestion(sections[sections.length - 1]?.key)} disabled={!sections.length} className="p-3 hover:bg-muted rounded-t-2xl disabled:opacity-30" title="Add question">
+              <Plus className="w-5 h-5 text-muted-foreground" />
             </button>
-            <button onClick={() => { const created = addSection(sectionTitle || `Section ${sections.length + 1}`); if (created) setSectionTitle('') }} className="p-3 hover:bg-gray-50" title="Add section divider">
-              <SeparatorHorizontal className="w-5 h-5 text-gray-600" />
+            <button onClick={() => { const created = addSection(sectionTitle || `Section ${sections.length + 1}`); if (created) setSectionTitle('') }} className="p-3 hover:bg-muted" title="Add section divider">
+              <SeparatorHorizontal className="w-5 h-5 text-muted-foreground" />
             </button>
             <button
               onClick={() => {
@@ -897,13 +897,13 @@ export default function QuestionnaireTemplates() {
                 if (title === null) return
                 addSection(title || `Note ${sections.length + 1}`)
               }}
-              className="p-3 hover:bg-gray-50"
+              className="p-3 hover:bg-muted"
               title="Add text block"
             >
-              <TypeIcon className="w-5 h-5 text-gray-600" />
+              <TypeIcon className="w-5 h-5 text-muted-foreground" />
             </button>
             <button disabled className="p-3 rounded-b-2xl opacity-30 cursor-not-allowed" title="Import from library (coming soon)">
-              <Library className="w-5 h-5 text-gray-600" />
+              <Library className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
         )}
@@ -954,7 +954,7 @@ function QuestionCard({
           <div className="flex items-center gap-3">
             <input
               autoFocus
-              className="flex-1 text-base font-medium text-gray-900 border-b border-gray-300 focus:border-blue-500 outline-none pb-1 bg-transparent"
+              className="flex-1 text-base font-medium text-foreground border-b border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
               placeholder="Question"
               value={questionForm.label}
               onChange={(e) => setQuestionForm((prev) => ({ ...prev, label: e.target.value, key: prev.key || slug(e.target.value) }))}
@@ -978,25 +978,25 @@ function QuestionCard({
             editable
           />
 
-          <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-            <label className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex items-center justify-between pt-3 border-t border-border">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <button
                 type="button"
                 onClick={() => setQuestionForm((prev) => ({ ...prev, required: !prev.required }))}
-                className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-gray-300'}`}
+                className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-muted'}`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-card transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
               </button>
               Required
             </label>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={onDuplicate} title="Duplicate" className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+              <button type="button" onClick={onDuplicate} title="Duplicate" className="p-2 rounded-lg hover:bg-secondary text-muted-foreground">
                 <Copy className="w-4 h-4" />
               </button>
               <button type="button" onClick={onRemove} title="Delete" className="p-2 rounded-lg hover:bg-red-50 text-red-500">
                 <Trash2 className="w-4 h-4" />
               </button>
-              <button type="button" onClick={onOpenAdvanced} title="Advanced options" className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+              <button type="button" onClick={onOpenAdvanced} title="Advanced options" className="p-2 rounded-lg hover:bg-secondary text-muted-foreground">
                 <MoreVertical className="w-4 h-4" />
               </button>
             </div>
@@ -1017,26 +1017,26 @@ function QuestionCard({
       className={`card !py-4 !px-4 cursor-pointer hover:shadow-md transition-shadow ${isDragOver ? 'ring-2 ring-blue-400' : ''}`}
     >
       <div className="flex items-start gap-3">
-        <GripVertical className="w-4 h-4 text-gray-300 mt-1 shrink-0 cursor-grab" />
+        <GripVertical className="w-4 h-4 text-muted-foreground mt-1 shrink-0 cursor-grab" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-3">
-            <p className="font-medium text-gray-900 truncate">{question.label}{question.required && <span className="text-red-500 ml-1">*</span>}</p>
-            <span className="text-xs text-gray-400 shrink-0">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</span>
+            <p className="font-medium text-foreground truncate">{question.label}{question.required && <span className="text-red-500 ml-1">*</span>}</p>
+            <span className="text-xs text-muted-foreground shrink-0">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</span>
           </div>
           {CHOICE_TYPES.has(question.type) && (question.options || []).length > 0 && (
             <div className="mt-2 space-y-1">
               {question.options.slice(0, 4).map((option) => (
-                <div key={option.value} className="text-sm text-gray-400 flex items-center gap-2">
-                  <span className="w-3 h-3 rounded-full border border-gray-300 shrink-0" />
+                <div key={option.value} className="text-sm text-muted-foreground flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full border border-border shrink-0" />
                   {option.label}
                 </div>
               ))}
-              {question.options.length > 4 && <p className="text-xs text-gray-300">+{question.options.length - 4} more</p>}
+              {question.options.length > 4 && <p className="text-xs text-muted-foreground">+{question.options.length - 4} more</p>}
             </div>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button onClick={onDuplicate} title="Duplicate" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+          <button onClick={onDuplicate} title="Duplicate" className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground">
             <Copy className="w-3.5 h-3.5" />
           </button>
           <button onClick={onRemove} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-red-400">
@@ -1055,7 +1055,7 @@ function NewQuestionCard({ questionForm, setQuestionForm, onBlurContainer, onAdd
         <div className="flex items-center gap-3">
           <input
             autoFocus
-            className="flex-1 text-base font-medium text-gray-900 border-b border-gray-300 focus:border-blue-500 outline-none pb-1 bg-transparent"
+            className="flex-1 text-base font-medium text-foreground border-b border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
             placeholder="Question"
             value={questionForm.label}
             onChange={(e) => setQuestionForm((prev) => ({ ...prev, label: e.target.value, key: prev.key || slug(e.target.value) }))}
@@ -1069,18 +1069,18 @@ function NewQuestionCard({ questionForm, setQuestionForm, onBlurContainer, onAdd
           </select>
         </div>
         <QuestionTypeBody type={questionForm.type} questionForm={questionForm} setQuestionForm={setQuestionForm} onAddOption={onAddOption} onRemoveOption={onRemoveOption} onUpdateOption={onUpdateOption} editable />
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center justify-between pt-3 border-t border-border">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <button
               type="button"
               onClick={() => setQuestionForm((prev) => ({ ...prev, required: !prev.required }))}
-              className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-gray-300'}`}
+              className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-muted'}`}
             >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-card transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
             </button>
             Required
           </label>
-          <button type="button" onClick={onCancel} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+          <button type="button" onClick={onCancel} className="text-sm text-muted-foreground hover:text-muted-foreground">Cancel</button>
         </div>
       </div>
     </div>
@@ -1094,13 +1094,13 @@ function QuestionTypeBody({ type, questionForm, setQuestionForm, onAddOption, on
       <div className="space-y-2 pl-1">
         {lines.map((line, index) => (
           <div key={index} className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border border-gray-300 shrink-0" />
+            <span className="w-3 h-3 rounded-full border border-border shrink-0" />
             <input
-              className="flex-1 text-sm border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none py-1 bg-transparent"
+              className="flex-1 text-sm border-b border-transparent hover:border-border focus:border-blue-500 outline-none py-1 bg-transparent"
               value={line}
               onChange={(e) => onUpdateOption(index, e.target.value)}
             />
-            <button onClick={() => onRemoveOption(index)} className="text-gray-300 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={() => onRemoveOption(index)} className="text-muted-foreground hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
           </div>
         ))}
         <button onClick={onAddOption} className="text-sm text-blue-600 font-medium hover:underline pl-5">+ Add option</button>
@@ -1108,11 +1108,11 @@ function QuestionTypeBody({ type, questionForm, setQuestionForm, onAddOption, on
     )
   }
   if (type === 'file' || type === 'file-multiple') {
-    return <p className="text-xs text-gray-400 pl-1">Accepted formats: PDF, DOC, JPG (all by default) · {type === 'file-multiple' ? 'Multiple files allowed' : 'Single file'}</p>
+    return <p className="text-xs text-muted-foreground pl-1">Accepted formats: PDF, DOC, JPG (all by default) · {type === 'file-multiple' ? 'Multiple files allowed' : 'Single file'}</p>
   }
   return (
     <input
-      className="w-full text-sm text-gray-400 border-b border-dashed border-gray-200 outline-none py-1 bg-transparent"
+      className="w-full text-sm text-muted-foreground border-b border-dashed border-border outline-none py-1 bg-transparent"
       placeholder="Placeholder text (optional)"
       value={questionForm.placeholder || ''}
       onChange={(e) => setQuestionForm((prev) => ({ ...prev, placeholder: e.target.value }))}
@@ -1127,16 +1127,16 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-gray-900">Create checklist</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <h3 className="text-lg font-bold text-foreground">Create checklist</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>
         </div>
 
         {wizardStep === 1 ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Checklist name</label>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Checklist name</label>
               <input
                 autoFocus
                 className="input-field"
@@ -1146,7 +1146,7 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Visa type</label>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Visa type</label>
               <select
                 className="input-field"
                 value={wizardForm.visaType}
@@ -1170,17 +1170,17 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm font-semibold text-gray-700">Who completes this checklist?</p>
+            <p className="text-sm font-semibold text-muted-foreground">Who completes this checklist?</p>
             <div className="space-y-2">
               {roleOptions.map((option) => (
-                <label key={option.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${wizardForm.checklistRole === option.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                <label key={option.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${wizardForm.checklistRole === option.value ? 'border-blue-500 bg-blue-50' : 'border-border hover:bg-muted'}`}>
                   <input
                     type="radio"
                     name="checklistRole"
                     checked={wizardForm.checklistRole === option.value}
                     onChange={() => setWizardForm((prev) => ({ ...prev, checklistRole: option.value }))}
                   />
-                  <span className="text-sm font-medium text-gray-800">{option.label}</span>
+                  <span className="text-sm font-medium text-foreground">{option.label}</span>
                 </label>
               ))}
             </div>
@@ -1200,15 +1200,15 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
 // ── Advanced options slide-out ───────────────────────────────────────────
 function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-white shadow-2xl border-l border-gray-200 z-40 overflow-y-auto">
-      <div className="p-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white">
-        <h3 className="font-bold text-gray-900">Advanced options</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-y-0 right-0 w-96 bg-card shadow-2xl border-l border-border z-40 overflow-y-auto">
+      <div className="p-5 border-b border-border flex items-center justify-between sticky top-0 bg-card">
+        <h3 className="font-bold text-foreground">Advanced options</h3>
+        <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>
       </div>
       <div className="p-5 space-y-6">
         <div>
-          <h4 className="text-sm font-bold text-gray-700 mb-2">Conditional logic</h4>
-          <p className="text-xs text-gray-400 mb-3">Show this question only when:</p>
+          <h4 className="text-sm font-bold text-muted-foreground mb-2">Conditional logic</h4>
+          <p className="text-xs text-muted-foreground mb-3">Show this question only when:</p>
           <div className="space-y-2">
             <input
               className="input-field text-sm"
@@ -1233,8 +1233,8 @@ function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
         </div>
 
         <div>
-          <h4 className="text-sm font-bold text-gray-700 mb-2">USCIS field mappings</h4>
-          <p className="text-xs text-gray-400 mb-3">One per line</p>
+          <h4 className="text-sm font-bold text-muted-foreground mb-2">USCIS field mappings</h4>
+          <p className="text-xs text-muted-foreground mb-3">One per line</p>
           <textarea
             className="input-field text-sm min-h-[90px]"
             placeholder="I129.part2.fullName"
@@ -1244,7 +1244,7 @@ function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
         </div>
 
         <div>
-          <h4 className="text-sm font-bold text-gray-700 mb-2">Eligibility weight</h4>
+          <h4 className="text-sm font-bold text-muted-foreground mb-2">Eligibility weight</h4>
           <input
             type="number"
             className="input-field text-sm"
@@ -1254,7 +1254,7 @@ function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
         </div>
 
         <div>
-          <h4 className="text-sm font-bold text-gray-700 mb-2">Evidence category</h4>
+          <h4 className="text-sm font-bold text-muted-foreground mb-2">Evidence category</h4>
           <select
             className="input-field text-sm"
             value={questionForm.evidenceCategory}
@@ -1266,8 +1266,8 @@ function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
         </div>
 
         <div>
-          <h4 className="text-sm font-bold text-gray-700 mb-2">Question key</h4>
-          <p className="text-xs text-gray-400 mb-2">Auto-generated. Override only if needed.</p>
+          <h4 className="text-sm font-bold text-muted-foreground mb-2">Question key</h4>
+          <p className="text-xs text-muted-foreground mb-2">Auto-generated. Override only if needed.</p>
           <input
             className="input-field text-sm"
             value={questionForm.key}

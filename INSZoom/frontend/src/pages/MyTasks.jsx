@@ -77,24 +77,24 @@ const MyTasks = ({ mode = 'my' }) => {
 
   const getStatusColor = (status) => {
     const colors = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       assigned: 'bg-blue-100 text-blue-800',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
       cancelled: 'bg-red-100 text-red-800'
     }
-    return colors[status] || 'bg-gray-100 text-gray-800'
+    return colors[status] || 'bg-secondary text-foreground'
   }
 
   const getPriorityColor = (priority) => {
     const colors = {
-      low: 'bg-gray-100 text-gray-800',
+      low: 'bg-secondary text-foreground',
       medium: 'bg-blue-100 text-blue-800',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
-    return colors[priority] || 'bg-gray-100 text-gray-800'
+    return colors[priority] || 'bg-secondary text-foreground'
   }
 
   const getPriorityIcon = (priority) => {
@@ -102,7 +102,7 @@ const MyTasks = ({ mode = 'my' }) => {
       case 'urgent': return <AlertTriangle className="w-4 h-4 text-red-600" />
       case 'high': return <AlertTriangle className="w-4 h-4 text-orange-600" />
       case 'medium': return <Clock className="w-4 h-4 text-blue-600" />
-      default: return <CheckCircle className="w-4 h-4 text-gray-600" />
+      default: return <CheckCircle className="w-4 h-4 text-muted-foreground" />
     }
   }
 
@@ -147,14 +147,14 @@ const MyTasks = ({ mode = 'my' }) => {
           <button
             type="button"
             onClick={() => navigate('/tasks')}
-            className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            className="p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
             aria-label="Back to task dashboard"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{mode === 'all' ? 'All Tasks' : 'My Tasks'}</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-2xl font-bold text-foreground">{mode === 'all' ? 'All Tasks' : 'My Tasks'}</h1>
+            <p className="text-muted-foreground mt-1">
               {mode === 'all'
                 ? 'Tasks available within your authorized scope'
                 : 'Manage your assigned tasks'}
@@ -179,23 +179,23 @@ const MyTasks = ({ mode = 'my' }) => {
       )}
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+      <div className="bg-card rounded-xl shadow-sm p-4 border border-border">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search tasks..."
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <select
             value={filters.status}
             onChange={(e) => handleFilterChange('status', e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Status</option>
             <option value="pending">Pending</option>
@@ -208,7 +208,7 @@ const MyTasks = ({ mode = 'my' }) => {
           <select
             value={filters.priority}
             onChange={(e) => handleFilterChange('priority', e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Priority</option>
             <option value="urgent">Urgent</option>
@@ -220,7 +220,7 @@ const MyTasks = ({ mode = 'my' }) => {
           <select
             value={filters.category}
             onChange={(e) => handleFilterChange('category', e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Categories</option>
             <option value="case_preparation">Case Preparation</option>
@@ -237,7 +237,7 @@ const MyTasks = ({ mode = 'my' }) => {
 
           <button
             onClick={() => setFilters({ status: '', priority: '', category: '', search: '' })}
-            className="px-4 py-2 text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors"
           >
             Clear Filters
           </button>
@@ -245,22 +245,22 @@ const MyTasks = ({ mode = 'my' }) => {
       </div>
 
       {/* Tasks List */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-card rounded-xl shadow-sm border border-border">
         {filteredTasks.length === 0 ? (
           <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-              <Calendar className="w-8 h-8 text-gray-400" />
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-secondary rounded-full mb-4">
+              <Calendar className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No tasks found</h3>
-            <p className="text-gray-600">Try adjusting your filters or create a new task</p>
+            <h3 className="text-lg font-semibold text-foreground mb-2">No tasks found</h3>
+            <p className="text-muted-foreground">Try adjusting your filters or create a new task</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-border">
             {filteredTasks.map(task => (
               <div
                 key={task._id}
                 onClick={() => navigate(`/tasks/${task._id}`)}
-                className="p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                className="p-4 hover:bg-muted transition-colors cursor-pointer"
               >
                 <div className="flex items-start gap-4">
                   <div className="mt-1">
@@ -270,9 +270,9 @@ const MyTasks = ({ mode = 'my' }) => {
                   <div className="flex-1">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h3 className="font-semibold text-gray-900">{task.title}</h3>
+                        <h3 className="font-semibold text-foreground">{task.title}</h3>
                         {task.description && (
-                          <p className="text-sm text-gray-600 mt-1 line-clamp-2">{task.description}</p>
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
                         )}
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
@@ -287,7 +287,7 @@ const MyTasks = ({ mode = 'my' }) => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-sm font-medium ${isOverdue(task.dueDate) && task.status !== 'completed' ? 'text-red-600' : 'text-gray-900'}`}>
+                        <div className={`text-sm font-medium ${isOverdue(task.dueDate) && task.status !== 'completed' ? 'text-red-600' : 'text-foreground'}`}>
                           {formatDate(task.dueDate)}
                         </div>
                         {isOverdue(task.dueDate) && task.status !== 'completed' && (
@@ -296,7 +296,7 @@ const MyTasks = ({ mode = 'my' }) => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 mt-3 text-sm text-gray-600">
+                    <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                       {task.caseId && (
                         <div className="flex items-center gap-1">
                           <span className="font-medium">Case:</span>
@@ -305,7 +305,7 @@ const MyTasks = ({ mode = 'my' }) => {
                       )}
                       <div className="flex items-center gap-1">
                         <span className="font-medium">Progress:</span>
-                        <div className="w-24 bg-gray-200 rounded-full h-2">
+                        <div className="w-24 bg-muted rounded-full h-2">
                           <div
                             className="bg-blue-600 h-2 rounded-full"
                             style={{ width: `${Math.min(Math.max(Number(task.progress) || 0, 0), 100)}%` }}

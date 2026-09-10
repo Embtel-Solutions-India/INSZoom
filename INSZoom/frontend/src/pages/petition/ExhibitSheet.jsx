@@ -22,10 +22,10 @@ export default function ExhibitSheet({ exhibit, startPage, totalPages, onPageCou
 
   return (
     <div>
-      <PetitionSheet pageNumber={startPage} totalPages={totalPages} className="border-2 border-dashed border-gray-300">
+      <PetitionSheet pageNumber={startPage} totalPages={totalPages} className="border-2 border-dashed border-border">
         <div className="flex h-full flex-col items-center justify-center text-center">
-          <p className="text-3xl font-bold text-gray-900">Exhibit {exhibit.label}</p>
-          <p className="mt-3 text-lg text-gray-600">{exhibit.title}</p>
+          <p className="text-3xl font-bold text-foreground">Exhibit {exhibit.label}</p>
+          <p className="mt-3 text-lg text-muted-foreground">{exhibit.title}</p>
         </div>
       </PetitionSheet>
       {documentIds.map((documentId) => {

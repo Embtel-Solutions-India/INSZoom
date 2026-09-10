@@ -24,6 +24,7 @@ const VISA_TYPE_OPTIONS = [
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },
+  { value: 'eb1b', label: 'EB-1B' },
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },
@@ -36,7 +37,7 @@ const PACKAGE_OPTIONS = [
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
 
-const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1'])
+const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b'])
 
 const initialForm = {
   clientName: '',
@@ -138,12 +139,12 @@ const CreateCaseModal = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-card rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-bold text-gray-900">New Case</h3>
+          <h3 className="text-xl font-bold text-foreground">New Case</h3>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded-lg"
+            className="p-1 text-muted-foreground hover:text-muted-foreground rounded-lg"
             aria-label="Close"
           >
             <X className="w-5 h-5" />
@@ -158,7 +159,7 @@ const CreateCaseModal = ({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client Name *</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Name *</label>
             <input
               type="text"
               required
@@ -170,7 +171,7 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client Email *</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Email *</label>
             <input
               type="email"
               required
@@ -182,7 +183,7 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Client Phone</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Phone</label>
             <input
               type="tel"
               value={form.clientPhone}
@@ -193,7 +194,7 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Visa Type *</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Visa Type *</label>
             <select
               required
               value={form.visaType}
@@ -208,7 +209,7 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Package</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Package</label>
             <select
               value={form.packageName}
               onChange={handleChange('packageName')}
@@ -221,7 +222,7 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Assign Case Manager</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Assign Case Manager</label>
             <select
               value={form.assignedCaseManager}
               onChange={handleChange('assignedCaseManager')}
@@ -235,9 +236,9 @@ const CreateCaseModal = ({
           </div>
 
           {showEmployerFields && (
-            <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Employer</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer</label>
                 <input
                   type="text"
                   value={form.employerName}
@@ -248,7 +249,7 @@ const CreateCaseModal = ({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Employer Email</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer Email</label>
                 <input
                   type="email"
                   value={form.employerEmail}
@@ -259,7 +260,7 @@ const CreateCaseModal = ({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Employer Workflow</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer Workflow</label>
                 <select
                   value={form.employerCompletionMode}
                   onChange={handleChange('employerCompletionMode')}
@@ -274,7 +275,7 @@ const CreateCaseModal = ({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Case Details</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Case Details</label>
             <textarea
               rows={3}
               value={form.caseDetails}

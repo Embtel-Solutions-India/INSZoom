@@ -109,6 +109,7 @@ const escapeSelector = (value) => {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(value)
   return String(value).replace(/["\\]/g, '\\$&')
 }
+
 const displayValue = (value) => {
   if (value === undefined || value === null || value === '') return 'Not provided'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
@@ -139,7 +140,7 @@ function StatusBadge({ status, children }) {
 }
 
 function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommit }) {
-  const common = `w-full rounded-md border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2 ${invalid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-slate-300 focus:border-blue-600 focus:ring-blue-100'} disabled:bg-slate-50 disabled:text-slate-500`
+  const common = `w-full rounded-md border bg-card px-3 py-2 text-sm text-slate-900 outline-none transition focus:ring-2 ${invalid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-slate-300 focus:border-blue-600 focus:ring-blue-100'} disabled:bg-slate-50 disabled:text-slate-500`
   const options = field.options || []
   const isDisabled = disabled || field.readOnly || field.readonly
   const handleKeyDown = (event) => {
@@ -150,7 +151,6 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
     }
     if (event.key === 'Tab') onCommit?.()
   }
-
   if (field.hidden) return null
   if (field.fieldType === 'signature' || field.semanticType === 'signature') {
     return (
@@ -179,7 +179,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
         {options.map((option) => {
           const optionValue = option.value ?? option.exportValue ?? option
           return (
-            <label key={String(optionValue)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${value === optionValue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+            <label key={String(optionValue)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${value === optionValue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-card'}`}>
               <input type="radio" checked={value === optionValue} disabled={isDisabled} onChange={() => onChange(optionValue)} onBlur={onBlur} onKeyDown={handleKeyDown} />
               {option.label || optionValue}
             </label>
@@ -190,7 +190,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
   }
   if (field.fieldType === 'checkbox') {
     return (
-      <label className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+      <label className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-sm ${value ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-card'}`}>
         <input type="checkbox" checked={Boolean(value)} disabled={isDisabled} onChange={(event) => onChange(event.target.checked)} onBlur={onBlur} onKeyDown={handleKeyDown} />
         Selected
       </label>
@@ -203,7 +203,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
         {options.map((option) => {
           const optionValue = option.value ?? option.exportValue ?? option
           return (
-            <label key={String(optionValue)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${selected.includes(optionValue) ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+            <label key={String(optionValue)} className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${selected.includes(optionValue) ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-card'}`}>
               <input
                 type="checkbox"
                 checked={selected.includes(optionValue)}
@@ -255,7 +255,7 @@ function FieldInput({ field, value, disabled, invalid, onChange, onBlur, onCommi
             {!isDisabled && <button type="button" className="mt-2 text-xs font-semibold text-red-600" onClick={() => onChange(rows.filter((_, index) => index !== rowIndex))}>Remove entry</button>}
           </div>
         ))}
-        {!isDisabled && <button type="button" className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => onChange([...rows, {}])}>Add entry</button>}
+        {!isDisabled && <button type="button" className="rounded-md border border-slate-300 bg-card px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => onChange([...rows, {}])}>Add entry</button>}
       </div>
     )
   }
@@ -323,15 +323,15 @@ function FieldOverlay({ field, value, errors, scale, pageHeightPt, canEdit, edit
   const boxClass = tone
     ? OVERLAY_BORDER_TONE[tone]
     : field.required
-      ? 'border-slate-400 border-dashed bg-white/40'
-      : 'border-slate-300 border-dashed bg-white/30'
+      ? 'border-slate-400 border-dashed bg-card/40'
+      : 'border-slate-300 border-dashed bg-card/30'
 
   if (editing) {
     const popoverWidth = Math.max(width, 240)
     return (
       <div
         id={`uscis-field-${field.fieldName}`}
-        className="absolute z-30 rounded-md border-2 border-blue-600 bg-white p-2 shadow-xl"
+        className="absolute z-30 rounded-md border-2 border-blue-600 bg-card p-2 shadow-xl"
         style={{ left, top, minWidth: popoverWidth, maxWidth: 360 }}
       >
         <p className="mb-1 truncate text-[10px] font-bold text-slate-500">{field.label || field.fieldLabel}</p>
@@ -454,7 +454,7 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fie
         pageRef.current = node
         registerPageRef(pageNumber, node)
       }}
-      className="pdf-native-page relative mx-auto mb-6 bg-white shadow-md"
+      className="pdf-native-page relative mx-auto mb-6 bg-card shadow-md"
       style={{ width: renderWidth, minHeight: renderHeight }}
     >
       <style>{`
@@ -1208,7 +1208,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   })
 
   if (loading) {
-    return <div className="flex min-h-[520px] items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500"><RefreshCw className="mr-2 h-5 w-5 animate-spin" />Opening interactive USCIS form...</div>
+    return <div className="flex min-h-[520px] items-center justify-center rounded-xl border border-slate-200 bg-card text-slate-500"><RefreshCw className="mr-2 h-5 w-5 animate-spin" />Opening interactive USCIS form...</div>
   }
   if (!workspace) {
     return <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">{errorMessage || 'Unable to load this form.'}</div>
@@ -1221,11 +1221,11 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-300 bg-slate-100 shadow-sm">
-      <header className="border-b border-slate-300 bg-white px-4 py-3">
+      <header className="border-b border-slate-300 bg-card px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={handleClose} className="rounded-md border border-slate-300 p-2 text-slate-600 hover:bg-slate-50" aria-label="Back to forms"><ArrowLeft className="h-4 w-4" /></button>
-            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#12365b] text-white"><FileText className="h-5 w-5" /></div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground"><FileText className="h-5 w-5" /></div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-lg font-bold text-slate-950">{workspace.template.formCode} · {workspace.template.title}</h2>
@@ -1293,14 +1293,14 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
         <button
           type="button"
           onClick={() => setLeftPanelOpen((current) => !current)}
-          className="absolute left-0 top-4 z-40 flex h-12 w-5 items-center justify-center rounded-r-md border border-l-0 border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50"
+          className="absolute left-0 top-4 z-40 flex h-12 w-5 items-center justify-center rounded-r-md border border-l-0 border-slate-300 bg-card text-slate-700 shadow-sm transition hover:bg-slate-50"
           aria-label={leftPanelOpen ? 'Collapse page navigation' : 'Expand page navigation'}
           title={leftPanelOpen ? 'Hide navigation' : 'Show navigation'}
         >
           {leftPanelOpen ? '<' : '>'}
         </button>
 
-        <aside className={`absolute left-0 top-0 z-30 h-full w-[250px] border-r border-slate-300 bg-white shadow-xl transition-transform duration-200 ease-out ${leftPanelOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside className={`absolute left-0 top-0 z-30 h-full w-[250px] border-r border-slate-300 bg-card shadow-xl transition-transform duration-200 ease-out ${leftPanelOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="border-b border-slate-200 p-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -1388,7 +1388,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             <div className="mx-auto mb-4 max-w-[900px] rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">{templatePdfError}</div>
           )}
           <div className="sticky top-0 z-20 mb-3 flex min-w-max items-center justify-between gap-3 border-b border-slate-300 bg-slate-100/95 px-2 py-2 backdrop-blur">
-            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white p-1">
+            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-card p-1">
               {[
                 ['fit-width', 'Fit Width'],
                 ['fit-page', 'Fit Page'],
@@ -1404,7 +1404,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-white p-1">
+            <div className="flex items-center gap-1 rounded-md border border-slate-300 bg-card p-1">
               <button type="button" onClick={() => { setZoomMode('fit-width'); setZoomScale((current) => Math.max(0.5, Number((current - 0.1).toFixed(2)))) }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="Zoom out"><Minus className="h-3.5 w-3.5" /></button>
               <span className="w-12 text-center text-[11px] font-semibold text-slate-600">{zoomMode === '100' ? '100%' : `${Math.round(zoomScale * 100)}%`}</span>
               <button type="button" onClick={() => { setZoomMode('fit-width'); setZoomScale((current) => Math.min(2.5, Number((current + 0.1).toFixed(2)))) }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="Zoom in"><Plus className="h-3.5 w-3.5" /></button>
@@ -1490,7 +1490,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>
           )}
           {selectedField && (
-            <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-4 py-2.5">
+            <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-card px-4 py-2.5">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={selectedField.review?.status || selectedField.verificationStatus} />
                 {/* Phase 3 (§I.3): prefers the explicit syncState when present; falls back to the
@@ -1519,7 +1519,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
           ))}
         </main>
 
-        <aside className="border-t border-slate-300 bg-white xl:border-l xl:border-t-0">
+        <aside className="border-t border-slate-300 bg-card xl:border-l xl:border-t-0">
           <div className="grid grid-cols-4 border-b border-slate-200">
             {[
               ['review', ClipboardCheck, 'Review'],
@@ -1553,7 +1553,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
                         <p className="flex items-center gap-1 text-xs font-bold text-amber-900"><AlertTriangle className="h-4 w-4" />Source conflict</p>
                         <p className="mt-1 text-[11px] text-amber-800">Compare the canonical value and current form value before verifying this field.</p>
-                        {canEdit && <button type="button" onClick={useCanonicalValue} className="mt-2 rounded-md border border-amber-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-amber-900">Use canonical value</button>}
+                        {canEdit && <button type="button" onClick={useCanonicalValue} className="mt-2 rounded-md border border-amber-400 bg-card px-2.5 py-1.5 text-[11px] font-semibold text-amber-900">Use canonical value</button>}
                       </div>
                     )}
                     {/* Phase 3 (§I.4) - resolves a DIFFERENT, newer conflict than the "Source
@@ -1571,8 +1571,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                         </dl>
                         {canEdit && (
                           <div className="mt-2 grid grid-cols-2 gap-2">
-                            <button type="button" onClick={() => resolveFieldConflict('canonical')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Use canonical value</button>
-                            <button type="button" onClick={() => resolveFieldConflict('manual')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Keep my edit</button>
+                            <button type="button" onClick={() => resolveFieldConflict('canonical')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-card px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Use canonical value</button>
+                            <button type="button" onClick={() => resolveFieldConflict('manual')} disabled={busy === `conflict:${selectedField.fieldName}`} className="rounded-md border border-red-400 bg-card px-2.5 py-1.5 text-[11px] font-semibold text-red-900 disabled:opacity-50">Keep my edit</button>
                           </div>
                         )}
                       </div>

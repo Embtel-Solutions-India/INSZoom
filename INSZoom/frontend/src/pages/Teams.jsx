@@ -69,7 +69,7 @@ function roleFieldIsLocked(actorRole, currentTargetRole) {
 // ─── sub-components ───────────────────────────────────────────────────────────
 function RoleBadge({ role }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[role] || 'bg-gray-100 text-gray-600'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[role] || 'bg-secondary text-muted-foreground'}`}>
       {ROLE_LABEL[role] || role}
     </span>
   )
@@ -77,7 +77,7 @@ function RoleBadge({ role }) {
 
 function StatusBadge({ isActive }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'}`}>
       {isActive ? 'Active' : 'Inactive'}
     </span>
   )
@@ -86,10 +86,10 @@ function StatusBadge({ isActive }) {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+      <div className="bg-card rounded-xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -102,26 +102,26 @@ function Modal({ title, onClose, children }) {
 function Field({ label, required, hint, children }) {
   return (
     <div className="mb-4">
-      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">
+      <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
         {label}{required && <span className="text-red-400 ml-0.5">*</span>}
       </label>
-      {hint && <p className="text-xs text-gray-400 mb-1.5">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground mb-1.5">{hint}</p>}
       {children}
     </div>
   )
 }
 
-const inputCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition'
-const inputDisabledCls = 'w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 text-gray-500 cursor-not-allowed'
+const inputCls = 'w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-ring focus:border-ring transition'
+const inputDisabledCls = 'w-full px-3 py-2 text-sm border border-input rounded-lg outline-none bg-muted text-muted-foreground cursor-not-allowed'
 
 function PwdInput({ value, onChange, placeholder }) {
   const [show, setShow] = useState(false)
   return (
     <div className="relative">
       <input type={show ? 'text' : 'password'} value={value} onChange={onChange}
-        placeholder={placeholder} className={inputCls + ' pr-9'} />
+        placeholder={placeholder} className={inputCls + 'pr-9'} />
       <button type="button" onClick={() => setShow((p) => !p)}
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground">
         {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
       </button>
     </div>
@@ -292,8 +292,8 @@ export default function Teams() {
         <div className="flex items-center gap-2">
           <Users className="w-5 h-5 text-primary-600" />
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Teams</h1>
-            <p className="text-xs text-gray-500">Manage staff accounts and credentials</p>
+            <h1 className="text-lg font-bold text-foreground">Teams</h1>
+            <p className="text-xs text-muted-foreground">Manage staff accounts and credentials</p>
           </div>
         </div>
         <button onClick={openAdd} className="btn-primary flex items-center gap-2 text-sm whitespace-nowrap">
@@ -304,7 +304,7 @@ export default function Teams() {
       {/* filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -335,18 +335,18 @@ export default function Teams() {
       {/* table */}
       <div className="card !p-0 md:!p-5">
         {loading ? (
-          <div className="flex items-center justify-center h-48 gap-2 text-gray-500 text-sm">
+          <div className="flex items-center justify-center h-48 gap-2 text-muted-foreground text-sm">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading team members…
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-gray-400 text-sm gap-2">
+          <div className="flex flex-col items-center justify-center h-48 text-muted-foreground text-sm gap-2">
             <Users className="w-8 h-8 opacity-30" />
             <p>{search || roleFilter ? 'No members match your filters.' : 'No team members yet.'}</p>
           </div>
         ) : (
           <>
             {/* Mobile cards */}
-            <div className="md:hidden divide-y divide-gray-100">
+            <div className="md:hidden divide-y divide-border">
               {filtered.map((m) => {
                 const isSelf = m._id === me._id
                 const showEdit = canEditCredentials(me)
@@ -356,11 +356,11 @@ export default function Teams() {
                   <div key={m._id} className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-semibold text-gray-900 text-sm">
+                        <p className="font-semibold text-foreground text-sm">
                           {m.name || m.displayName}
                           {isSelf && <span className="ml-1.5 text-[10px] font-semibold text-blue-500 uppercase tracking-wide">(you)</span>}
                         </p>
-                        <p className="text-xs text-gray-500">{m.email}</p>
+                        <p className="text-xs text-muted-foreground">{m.email}</p>
                       </div>
                       <RoleBadge role={m.role} />
                     </div>
@@ -369,19 +369,19 @@ export default function Teams() {
                       <div className="flex items-center gap-1.5">
                         {showEdit && (
                           <button onClick={() => openEdit(m)} title="Edit"
-                            className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition">
+                            className="p-1.5 rounded text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {showToggle && (
                           <button onClick={() => toggleActive(m)} title={m.isActive ? 'Deactivate' : 'Activate'}
-                            className="p-1.5 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
+                            className="p-1.5 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition">
                             {m.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                           </button>
                         )}
                         {showDelete && (
                           <button onClick={() => setDeleteTarget(m)} title="Remove"
-                            className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
+                            className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -396,12 +396,12 @@ export default function Teams() {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-3 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <tr className="bg-muted">
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th className="px-3 py-2.5 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -411,38 +411,38 @@ export default function Teams() {
                     const showToggle = canRemoveOrDeactivate(me, m)
                     const showDelete = canRemoveOrDeactivate(me, m)
                     return (
-                      <tr key={m._id} className="border-b hover:bg-gray-50 transition">
+                      <tr key={m._id} className="border-b hover:bg-muted transition">
                         <td className="px-3 py-3">
-                          <p className="font-medium text-gray-900 text-sm truncate max-w-[180px]" title={m.name || m.displayName}>
+                          <p className="font-medium text-foreground text-sm truncate max-w-[180px]" title={m.name || m.displayName}>
                             {m.name || m.displayName || '—'}
                             {isSelf && <span className="ml-1.5 text-[10px] font-semibold text-blue-500 uppercase tracking-wide">(you)</span>}
                           </p>
                         </td>
-                        <td className="px-3 py-3 text-sm text-gray-600 truncate max-w-[220px]" title={m.email}>{m.email}</td>
+                        <td className="px-3 py-3 text-sm text-muted-foreground truncate max-w-[220px]" title={m.email}>{m.email}</td>
                         <td className="px-3 py-3"><RoleBadge role={m.role} /></td>
                         <td className="px-3 py-3"><StatusBadge isActive={m.isActive} /></td>
                         <td className="px-3 py-3">
                           <div className="flex items-center justify-end gap-1.5">
                             {showEdit && (
                               <button onClick={() => openEdit(m)} title="Edit"
-                                className="p-1.5 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition">
+                                className="p-1.5 rounded text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition">
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {showToggle && (
                               <button onClick={() => toggleActive(m)} title={m.isActive ? 'Deactivate' : 'Activate'}
-                                className="p-1.5 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition">
+                                className="p-1.5 rounded text-muted-foreground hover:text-amber-600 hover:bg-amber-50 transition">
                                 {m.isActive ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
                               </button>
                             )}
                             {showDelete && (
                               <button onClick={() => setDeleteTarget(m)} title="Deactivate"
-                                className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
+                                className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {!showEdit && !showToggle && !showDelete && (
-                              <span className="text-xs text-gray-300 px-2">—</span>
+                              <span className="text-xs text-muted-foreground px-2">—</span>
                             )}
                           </div>
                         </td>
@@ -482,7 +482,7 @@ export default function Teams() {
           </Field>
           <div className="flex gap-3 pt-2">
             <button onClick={() => setShowAdd(false)} disabled={submitting}
-              className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              className="flex-1 py-2 text-sm font-semibold text-muted-foreground bg-secondary hover:bg-muted rounded-lg transition">Cancel</button>
             <button onClick={handleAdd} disabled={submitting}
               className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -518,7 +518,7 @@ export default function Teams() {
           </Field>
           <div className="flex gap-3 pt-2">
             <button onClick={() => setEditTarget(null)} disabled={submitting}
-              className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              className="flex-1 py-2 text-sm font-semibold text-muted-foreground bg-secondary hover:bg-muted rounded-lg transition">Cancel</button>
             <button onClick={handleEdit} disabled={submitting}
               className="flex-1 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -531,13 +531,13 @@ export default function Teams() {
       {/* ── Delete Confirm ── */}
       {deleteTarget && (
         <Modal title="Deactivate Member" onClose={() => setDeleteTarget(null)}>
-          <p className="text-sm text-gray-600 mb-6">
-            Deactivate <strong className="text-gray-900">{deleteTarget.name || deleteTarget.displayName}</strong>?
+          <p className="text-sm text-muted-foreground mb-6">
+            Deactivate <strong className="text-foreground">{deleteTarget.name || deleteTarget.displayName}</strong>?
             They will lose access immediately. You can reactivate them later.
           </p>
           <div className="flex gap-3">
             <button onClick={() => setDeleteTarget(null)} disabled={submitting}
-              className="flex-1 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition">Cancel</button>
+              className="flex-1 py-2 text-sm font-semibold text-muted-foreground bg-secondary hover:bg-muted rounded-lg transition">Cancel</button>
             <button onClick={handleDelete} disabled={submitting}
               className="flex-1 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

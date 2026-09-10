@@ -23,16 +23,16 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">
+        <div className="min-h-screen flex items-center justify-center bg-muted p-4">
+          <div className="max-w-md w-full bg-card rounded-2xl shadow-lg p-8 text-center">
+            <h1 className="text-xl font-semibold text-foreground mb-2">
               Something went wrong
             </h1>
-            <p className="text-gray-600 mb-4">
+            <p className="text-muted-foreground mb-4">
               The page failed to render. Try reloading — if it keeps happening,
               the error below will help us debug it.
             </p>
-            <pre className="text-left text-xs bg-gray-100 text-red-600 rounded-lg p-3 mb-4 overflow-auto max-h-40">
+            <pre className="text-left text-xs bg-secondary text-red-600 rounded-lg p-3 mb-4 overflow-auto max-h-40">
               {this.state.error?.message || String(this.state.error)}
             </pre>
             <button onClick={this.handleReload} className="btn-primary">

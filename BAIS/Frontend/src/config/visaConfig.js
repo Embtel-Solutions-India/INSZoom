@@ -45,6 +45,7 @@ export const VISA_DETAILS = {
   ],
   "Green Card": [
     { id: "EB-1",     desc: "Extraordinary ability / outstanding professional green card." },
+    { id: "EB-1B",    desc: "Outstanding researcher or professor green card." },
     { id: "EB-2 NIW", desc: "National Interest Waiver green card." },
     { id: "EB-3",     desc: "Skilled / professional worker green card." },
     { id: "EB-5",     desc: "Investment-based green card." },
@@ -88,6 +89,7 @@ export const VISA_PURPOSE_MAP = {
   "H-4": "family",
   "EB-1": "permanent",
   "EB-1A": "permanent",
+  "EB-1B": "permanent",
   "EB-2": "permanent",
   "EB-2 NIW": "permanent",
   "EB-3": "permanent",

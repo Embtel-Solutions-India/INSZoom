@@ -5,12 +5,12 @@
 export default function PetitionSheet({ pageNumber, totalPages, children, className = '' }) {
   return (
     <div
-      className={`relative mx-auto mb-6 bg-white shadow-lg ${className}`}
+      className={`relative mx-auto mb-6 bg-card shadow-lg ${className}`}
       style={{ width: '816px', minHeight: '1056px' }}
     >
       <div className="h-full px-16 py-14">{children}</div>
       {pageNumber != null && (
-        <div className="absolute inset-x-0 bottom-4 text-center text-xs font-medium text-gray-400">
+        <div className="absolute inset-x-0 bottom-4 text-center text-xs font-medium text-muted-foreground">
           Page {pageNumber} of {totalPages || '…'}
         </div>
       )}

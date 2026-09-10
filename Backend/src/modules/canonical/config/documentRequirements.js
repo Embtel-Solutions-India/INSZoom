@@ -17,6 +17,10 @@ const DOCUMENT_REQUIREMENTS = {
   "O-1A": ["passport", "resume", "award", "publication", "recommendation_letter"],
   EB1A: ["passport", "resume", "award", "publication", "recommendation_letter"],
   "EB-1A": ["passport", "resume", "award", "publication", "recommendation_letter"],
+  // Keys match eb1b.js's real documentType values (surfaced via
+  // employmentChecklists.js's buildEb1bEmployerChecklist/buildEb1bEmployeeChecklist).
+  EB1B: ["passport", "updated_resume", "eb1b_offer_letter", "eb1b_petitioner_tax_returns"],
+  "EB-1B": ["passport", "updated_resume", "eb1b_offer_letter", "eb1b_petitioner_tax_returns"],
   EB2NIW: ["passport", "resume", "degree", "publication", "recommendation_letter"],
   "EB-2 NIW": ["passport", "resume", "degree", "publication", "recommendation_letter"],
   N400: ["green_card", "tax_return", "travel_history"],
