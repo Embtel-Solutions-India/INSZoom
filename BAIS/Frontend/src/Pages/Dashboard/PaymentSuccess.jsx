@@ -88,22 +88,22 @@ export default function PaymentSuccess() {
   const isConfirming = status === "confirming";
 
   return (
-    <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center p-6">
-      <div className={`bg-white rounded-2xl border p-8 text-center shadow-sm max-w-md ${
-        isSuccess ? "border-emerald-200" : "border-amber-200"
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className={`bg-card rounded-2xl border p-8 text-center shadow-sm max-w-md ${
+        isSuccess ? "border-primary/30" : "border-accent-foreground/30"
       }`}>
         <div className={`mx-auto mb-4 h-14 w-14 rounded-full flex items-center justify-center text-2xl ${
-          isSuccess ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+          isSuccess ? "bg-primary/10 text-primary" : "bg-accent text-accent-foreground"
         }`}>
-          {isConfirming ? "…" : isSuccess ? <IconCheckmark size={26} className="text-emerald-700" /> : "!"}
+          {isConfirming ? "…" : isSuccess ? <IconCheckmark size={26} className="text-primary" /> : "!"}
         </div>
-        <h1 className={`text-2xl font-extrabold ${isSuccess ? "text-emerald-700" : "text-amber-700"}`}>
+        <h1 className={`text-2xl font-extrabold ${isSuccess ? "text-primary" : "text-accent-foreground"}`}>
           {isConfirming ? "Confirming Payment" : isSuccess ? "Payment Successful" : "Payment Processing"}
         </h1>
-        <p className="text-slate-500 mt-2">{message}</p>
+        <p className="text-muted-foreground mt-2">{message}</p>
         <Link
           to="/dashboard/payments?refresh=1"
-          className="inline-block mt-6 px-5 py-3 rounded-xl bg-emerald-600 text-white font-bold"
+          className="inline-block mt-6 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold"
         >
           View Updated Payments
         </Link>

@@ -606,7 +606,7 @@ export default function Documents() {
     if (employerMeQuery.isLoading) {
       return (
         <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
-          <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
+          <div className="w-10 h-10 rounded-full border-4 border-secondary border-t-primary animate-spin" />
         </div>
       );
     }
@@ -624,8 +624,8 @@ export default function Documents() {
   const renderSections = (list, locked = submitted) => list.map((section) => (
     <section key={section.id} id={section.id} ref={(el) => { sectionRefs.current[section.id] = el; }} className="scroll-mt-40" aria-labelledby={`${section.id}-heading`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 id={`${section.id}-heading`} className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
-        <span className="text-xs font-semibold text-slate-400">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
+        <h2 id={`${section.id}-heading`} className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</h2>
+        <span className="text-xs font-semibold text-muted-foreground">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
       </div>
       {!locked && section.autofillSources?.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -712,10 +712,10 @@ export default function Documents() {
   // PHASE_9_COMPLETION_REPORT.md for why both currently coexist.
   if (activeCase?.caseRole === "principal") {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-background">
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Case checklist</p>
-          <h1 className="text-lg font-semibold text-slate-900 mb-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Case checklist</p>
+          <h1 className="text-lg font-semibold text-foreground mb-6">
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
           <PrincipalCaseWorkspace activeCase={activeCase} />
@@ -725,10 +725,10 @@ export default function Documents() {
   }
   if (["employee", "beneficiary"].includes(activeCase?.caseRole)) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-background">
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Case checklist</p>
-          <h1 className="text-lg font-semibold text-slate-900 mb-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Case checklist</p>
+          <h1 className="text-lg font-semibold text-foreground mb-6">
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
           <EmployeeSelfServiceView activeCase={activeCase} />
@@ -738,23 +738,23 @@ export default function Documents() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <a href="#checklist-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-900 focus:shadow">
+    <div className="min-h-screen bg-background">
+      <a href="#checklist-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow">
         Skip to checklist
       </a>
 
       {/* ── Sticky case header ── */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+      <header className="sticky top-0 z-30 border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Case checklist</p>
-              <h1 className="truncate text-base font-semibold text-slate-900 sm:text-lg">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Case checklist</p>
+              <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
                 {visaType ? `${visaType} intake` : "Your case checklist"}
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-4">
-              <div aria-live="polite" className="text-xs font-medium text-slate-500">
+              <div aria-live="polite" className="text-xs font-medium text-muted-foreground">
                 {uploadsInFlightCount > 0
                   ? `Uploading… (${uploadsInFlightCount} remaining)`
                   : saveProgressState === "saving" ? "Saving…"
@@ -764,16 +764,16 @@ export default function Documents() {
                   : combinedStatus.lastSavedAt ? `Saved at ${combinedStatus.lastSavedAt}` : ""}
               </div>
               <div className="flex items-center gap-2">
-                <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuenow={overallPct} aria-valuemin={0} aria-valuemax={100}>
-                  <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${overallPct}%` }} />
+                <div className="h-2 w-32 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-valuenow={overallPct} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${overallPct}%` }} />
                 </div>
-                <span className="text-sm font-semibold text-slate-700">{overall.done} of {overall.total} complete</span>
+                <span className="text-sm font-semibold text-foreground">{overall.done} of {overall.total} complete</span>
               </div>
               <button
                 type="button"
                 onClick={handleSaveProgress}
                 disabled={allRolesSubmitted || submitting || saveProgressState === "saving" || uploadsInFlightCount > 0}
-                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
               >
                 {saveProgressState === "saving" ? "Saving…" : "Save progress"}
               </button>
@@ -781,7 +781,7 @@ export default function Documents() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={missingRequiredItemsForSubmit.length > 0 || allRolesSubmitted || submitting || uploadsInFlightCount > 0}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
               >
                 {allRolesSubmitted ? "Submitted" : submitting ? "Submitting…" : "Submit case"}
               </button>
@@ -798,7 +798,7 @@ export default function Documents() {
                   aria-selected={activeRole === item.targetRole}
                   onClick={() => setActiveRole(item.targetRole)}
                   className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                    activeRole === item.targetRole ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                    activeRole === item.targetRole ? "border-primary/30 bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:bg-secondary"
                   }`}
                 >
                   {item.title || roleLabel(item.targetRole)}
@@ -809,13 +809,13 @@ export default function Documents() {
         </div>
 
         {/* Mobile section nav — dropdown */}
-        <div className="border-t border-slate-100 px-4 py-2 sm:px-6 lg:hidden">
+        <div className="border-t border-border px-4 py-2 sm:px-6 lg:hidden">
           <label htmlFor="checklist-section-select" className="sr-only">Jump to section</label>
           <select
             id="checklist-section-select"
             value={activeSectionId}
             onChange={(event) => scrollToSection(event.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground"
           >
             {sectionCounts.map((section) => (
               <option key={section.id} value={section.id}>{section.label} ({section.done}/{section.total})</option>
@@ -825,7 +825,7 @@ export default function Documents() {
       </header>
 
       {allRolesSubmitted && (
-        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-center text-sm font-semibold text-emerald-800 sm:px-6">
+        <div className="border-b border-accent-foreground/20 bg-accent px-4 py-2.5 text-center text-sm font-semibold text-accent-foreground sm:px-6">
           Your case checklist has been submitted and is now read-only. Your case team will follow up if anything needs attention.
         </div>
       )}
@@ -833,11 +833,11 @@ export default function Documents() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:grid lg:grid-cols-[240px_1fr] lg:gap-8">
         {/* Desktop section nav — sticky rail */}
         <nav aria-label="Checklist sections" className="hidden lg:block">
-          <div className="sticky top-24 space-y-1 rounded-xl border border-slate-200 bg-white p-2">
+          <div className="sticky top-24 space-y-1 rounded-xl border border-border bg-card p-2">
             {presentRoleGroups.length > 1 ? (
               presentRoleGroups.map((roleGroup) => (
                 <div key={roleGroup} className="mb-2 last:mb-0">
-                  <p className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-wide text-slate-400">{ROLE_GROUP_LABEL[roleGroup] || titleFromKey(roleGroup)}</p>
+                  <p className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-wide text-muted-foreground">{ROLE_GROUP_LABEL[roleGroup] || titleFromKey(roleGroup)}</p>
                   {sectionCounts.filter((section) => section.roleGroup === roleGroup).map((section) => (
                     <button
                       key={section.id}
@@ -845,11 +845,11 @@ export default function Documents() {
                       onClick={() => scrollToSection(section.id)}
                       aria-current={activeSectionId === section.id ? "true" : undefined}
                       className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
-                        activeSectionId === section.id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100"
+                        activeSectionId === section.id ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-secondary"
                       }`}
                     >
                       <span className="truncate">{section.label}</span>
-                      <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-emerald-600" : "text-slate-400"}`}>
+                      <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
                         {section.done}/{section.total}
                       </span>
                     </button>
@@ -864,11 +864,11 @@ export default function Documents() {
                   onClick={() => scrollToSection(section.id)}
                   aria-current={activeSectionId === section.id ? "true" : undefined}
                   className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
-                    activeSectionId === section.id ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-100"
+                    activeSectionId === section.id ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-secondary"
                   }`}
                 >
                   <span className="truncate">{section.label}</span>
-                  <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-emerald-600" : "text-slate-400"}`}>
+                  <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
                     {section.done}/{section.total}
                   </span>
                 </button>
@@ -876,7 +876,7 @@ export default function Documents() {
             )}
             {employeeWaitingOnInvite && (
               <div className="mb-2 last:mb-0">
-                <p className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-wide text-slate-400">Employee</p>
+                <p className="px-3 pb-1 pt-2 text-[0.68rem] font-bold uppercase tracking-wide text-muted-foreground">Employee</p>
                 <div className="flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">
                   <span aria-hidden="true">⏳</span> Waiting on employee
                 </div>
@@ -889,7 +889,7 @@ export default function Documents() {
           <StatusLegend />
 
           {isEmployeeLoginView && activeCase && (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            <div className="rounded-xl border border-accent-foreground/20 bg-accent px-4 py-3 text-sm text-accent-foreground">
               Your employer has started a {visaType || "your"} case for you. Complete the sections below, then click Save progress or Submit case.
             </div>
           )}
@@ -899,28 +899,28 @@ export default function Documents() {
           )}
 
           {documentsLoadError && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
               <span>We couldn't load your uploaded documents. Anything you've already uploaded is still safe.</span>
-              <button type="button" onClick={reloadDocuments} className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50">
+              <button type="button" onClick={reloadDocuments} className="shrink-0 rounded-lg border border-destructive/30 bg-card px-3 py-1.5 text-xs font-semibold text-destructive transition hover:bg-destructive/10">
                 Try again
               </button>
             </div>
           )}
 
           {sections.length === 0 && questionnaireLoading && (
-            <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8">
-              <div className="h-8 w-8 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin" aria-label="Loading your checklist" />
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-border bg-card p-8">
+              <div className="h-8 w-8 rounded-full border-4 border-secondary border-t-primary animate-spin" aria-label="Loading your checklist" />
             </div>
           )}
 
           {sections.length === 0 && !questionnaireLoading && questionnaireError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center text-sm text-red-700">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-8 text-center text-sm text-destructive">
               <p className="font-semibold">We couldn't load your checklist.</p>
-              <p className="mt-1 text-red-600">{questionnaireError}</p>
+              <p className="mt-1 text-destructive">{questionnaireError}</p>
               <button
                 type="button"
                 onClick={() => activeQAs.forEach((qa) => qa.refetch())}
-                className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                className="mt-3 rounded-lg border border-destructive/30 bg-card px-4 py-2 text-sm font-semibold text-destructive transition hover:bg-destructive/10"
               >
                 Try again
               </button>
@@ -928,7 +928,7 @@ export default function Documents() {
           )}
 
           {sections.length === 0 && !questionnaireLoading && !questionnaireError && (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+            <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
               Complete your eligibility assessment to see your case-specific checklist.
             </div>
           )}
@@ -936,19 +936,19 @@ export default function Documents() {
           {renderSections(useNewArchitecture ? employerBusinessPlanSections : sections, useNewArchitecture ? employerSectionsLocked : submitted)}
 
           {showHandoffJunction && activeEmployeeMode && (
-            <section className="rounded-xl border border-slate-200 bg-white p-5">
-              <h2 className="text-sm font-semibold text-slate-900">Employee's part</h2>
-              {handoffMessage && <p className="mt-2 text-sm text-emerald-700">{handoffMessage}</p>}
+            <section className="rounded-xl border border-border bg-card p-5">
+              <h2 className="text-sm font-semibold text-foreground">Employee's part</h2>
+              {handoffMessage && <p className="mt-2 text-sm text-accent-foreground">{handoffMessage}</p>}
               {activeEmployeeMode === "employer_completes" ? (
-                <p className="mt-2 text-sm text-slate-600">You're completing the employee's section yourself — it appears below.</p>
+                <p className="mt-2 text-sm text-muted-foreground">You're completing the employee's section yourself — it appears below.</p>
               ) : activeEmployeeMode === "invite_employee" ? (
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-slate-600">Waiting on the employee to complete their own section.</p>
+                  <p className="text-sm text-muted-foreground">Waiting on the employee to complete their own section.</p>
                   <button
                     type="button"
                     onClick={resendEmployeeInvite}
                     disabled={resendingInvite}
-                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {resendingInvite ? "Resending…" : "Resend invite"}
                   </button>
@@ -972,8 +972,8 @@ export default function Documents() {
               // behalf — band it so it's visually distinct from their own
               // sections above. An actual employee login (showEmployer
               // false) just sees their sections plainly, no banner.
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-1">
-                <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-emerald-700">Employee — completed by employer</p>
+              <div className="rounded-xl border border-accent-foreground/20 bg-accent/40 p-1">
+                <p className="px-4 pt-3 text-xs font-bold uppercase tracking-wide text-accent-foreground">Employee — completed by employer</p>
                 <div className="space-y-8 p-4">{renderSections(employeeSections, employeeSectionsLocked)}</div>
               </div>
             ) : (
@@ -986,22 +986,22 @@ export default function Documents() {
               employee viewing only their own section. */}
           {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} caseData={activeCase} />}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
             <div>
-              <p className="text-sm font-semibold text-slate-800">
+              <p className="text-sm font-semibold text-foreground">
                 {missingRequiredItemsForSubmit.length > 0 ? `${missingRequiredItemsForSubmit.length} required item${missingRequiredItemsForSubmit.length === 1 ? "" : "s"} still needed` : "All required items complete"}
               </p>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {allRolesSubmitted ? "This checklist is read-only after submission." : uploadsInFlightCount > 0 ? `Waiting on ${uploadsInFlightCount} upload${uploadsInFlightCount === 1 ? "" : "s"} to finish before you can save or submit.` : useNewArchitecture && showEmployer ? "Submitting locks the employer side for your case team's review. Save progress any time without submitting." : "Submitting locks this checklist for your case team's review. Save progress any time without submitting."}
               </p>
-              {submitError && <p role="alert" className="mt-1.5 text-xs font-semibold text-rose-600">{submitError}</p>}
+              {submitError && <p role="alert" className="mt-1.5 text-xs font-semibold text-destructive">{submitError}</p>}
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleSaveProgress}
                 disabled={allRolesSubmitted || submitting || saveProgressState === "saving" || uploadsInFlightCount > 0}
-                className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                className="rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-secondary disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground"
               >
                 {saveProgressState === "saving" ? "Saving…" : "Save progress"}
               </button>
@@ -1009,7 +1009,7 @@ export default function Documents() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={missingRequiredItemsForSubmit.length > 0 || allRolesSubmitted || submitting || uploadsInFlightCount > 0}
-                className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground disabled:opacity-100"
               >
                 {allRolesSubmitted ? "Submitted" : submitting ? "Submitting…" : "Submit case"}
               </button>

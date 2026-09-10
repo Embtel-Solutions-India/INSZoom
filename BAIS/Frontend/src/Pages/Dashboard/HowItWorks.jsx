@@ -190,18 +190,18 @@ export default function HowItWorks() {
   }, []);
 
   return (
-    <div className="bg-white">
+    <div className="bg-background">
       {/* ══ HERO SECTION ══ */}
-      <section className="pt-16 sm:pt-24 pb-12 px-6 sm:px-10 bg-linear-to-b from-slate-50 to-white">
+      <section className="pt-16 sm:pt-24 pb-12 px-6 sm:px-10 bg-background">
         <div className="max-w-4xl mx-auto text-center">
           <ScrollReveal>
-            <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-emerald-100 text-[#1D9E75] text-xs font-bold uppercase tracking-widest">
+            <span className="inline-block mb-4 px-4 py-1.5 rounded-full bg-accent text-accent-foreground text-xs font-bold uppercase tracking-widest">
               Step-by-Step Guide
             </span>
-            <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 mb-5 leading-tight">
+            <h1 className="text-4xl sm:text-5xl font-extrabold text-foreground mb-5 leading-tight">
               How Your Immigration Journey Works
             </h1>
-            <p className="text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto mb-8">
+            <p className="text-lg text-muted-foreground leading-relaxed max-w-2xl mx-auto mb-8">
               A clear, guided process from application to approval. We handle the complexity so you can focus on your future in the USA.
             </p>
             <StartAssessmentButton size="lg" pageSource="How It Works Page" />
@@ -210,7 +210,7 @@ export default function HowItWorks() {
       </section>
 
       {/* ══ PROCESS STEPS - SaaS Style ══ */}
-      <section className="bg-white">
+      <section className="bg-background">
         {PROCESS_STEPS.map((step) => (
           <StepShowcase
             key={step.stepNumber}
@@ -229,14 +229,14 @@ export default function HowItWorks() {
       </section>
 
       {/* ══ STATISTICS SECTION ══ */}
-      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-linear-to-r from-slate-50 via-emerald-50 to-slate-50 border-y border-slate-200">
+      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-secondary border-y border-border">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <ScrollReveal>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-3">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-3">
                 Real Results From Real Clients
               </h2>
-              <p className="text-slate-600 text-lg">
+              <p className="text-muted-foreground text-lg">
                 Numbers that speak for themselves
               </p>
             </ScrollReveal>
@@ -245,14 +245,14 @@ export default function HowItWorks() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
             {STATS.map((stat, idx) => (
               <ScrollReveal key={idx} delay={idx * 100}>
-                <div className="text-center p-8 rounded-2xl bg-white border border-slate-200 hover:border-emerald-300 hover:shadow-lg transition-all duration-300">
+                <div className="text-center p-8 rounded-2xl bg-card border border-border hover:border-primary/40 hover:shadow-lg transition-all duration-300">
                   <div className="flex justify-center mb-4">
-                    <stat.icon size={32} className="text-[#1D9E75]" />
+                    <stat.icon size={32} className="text-primary" />
                   </div>
-                  <p className="text-3xl sm:text-4xl font-extrabold text-[#1D9E75] mb-1">
+                  <p className="text-3xl sm:text-4xl font-extrabold text-primary mb-1">
                     {stat.value}
                   </p>
-                  <p className="text-xs sm:text-sm font-semibold text-slate-600 uppercase tracking-widest">
+                  <p className="text-xs sm:text-sm font-semibold text-muted-foreground uppercase tracking-widest">
                     {stat.label}
                   </p>
                 </div>
@@ -263,14 +263,14 @@ export default function HowItWorks() {
       </section>
 
       {/* ══ WHY THIS PROCESS WORKS ══ */}
-      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-white">
+      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-background">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <ScrollReveal>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-3">
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-3">
                 Why This Process Works
               </h2>
-              <p className="text-slate-600 text-lg max-w-2xl mx-auto">
+              <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
                 Built on years of immigration expertise, backed by proven results
               </p>
             </ScrollReveal>
@@ -300,10 +300,10 @@ export default function HowItWorks() {
               },
             ].map((item, idx) => (
               <ScrollReveal key={idx} delay={idx * 50}>
-                <div className="p-6 rounded-2xl border border-slate-200 bg-white hover:border-emerald-300 hover:shadow-lg transition-all duration-300">
-                  <item.icon size={32} className="text-[#1D9E75] mb-4" />
-                  <h3 className="font-bold text-slate-900 mb-2">{item.title}</h3>
-                  <p className="text-sm text-slate-600 leading-relaxed">{item.desc}</p>
+                <div className="p-6 rounded-2xl border border-border bg-card hover:border-primary/40 hover:shadow-lg transition-all duration-300">
+                  <item.icon size={32} className="text-primary mb-4" />
+                  <h3 className="font-bold text-foreground mb-2">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
                 </div>
               </ScrollReveal>
             ))}
@@ -312,20 +312,20 @@ export default function HowItWorks() {
       </section>
 
       {/* ══ CTA SECTION ══ */}
-      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-linear-to-br from-[#1D9E75] via-teal-600 to-emerald-700">
-        <div className="max-w-3xl mx-auto text-center text-white">
+      <section className="py-16 sm:py-24 px-6 sm:px-10 bg-primary">
+        <div className="max-w-3xl mx-auto text-center text-primary-foreground">
           <ScrollReveal>
             <h2 className="text-3xl sm:text-4xl font-extrabold mb-5">
               Ready to Start Your Journey?
             </h2>
-            <p className="text-white/80 text-lg mb-8 max-w-2xl mx-auto">
+            <p className="text-primary-foreground/80 text-lg mb-8 max-w-2xl mx-auto">
               Join over 1,200 successful clients who've navigated their visa journey with BAIS. Let's get you to the USA.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <StartAssessmentButton variant="inverted" size="lg" pageSource="How It Works Page">Start Your Free Assessment</StartAssessmentButton>
               <a
                 href="tel:+15107708700"
-                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white/20 border border-white/40 text-white font-bold rounded-xl hover:bg-white/30 transition-colors no-underline"
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-foreground/20 border border-primary-foreground/40 text-primary-foreground font-bold rounded-xl hover:bg-primary-foreground/30 transition-colors no-underline"
               >
                 <IconPhone size={18} /> Call Us
               </a>

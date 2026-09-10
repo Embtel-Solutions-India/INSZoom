@@ -128,8 +128,8 @@ function textValue(value) {
 function Field({ label, required, children }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[0.68rem] font-bold uppercase tracking-wide text-slate-500">
-        {label}{required ? <span className="text-red-500"> *</span> : null}
+      <span className="mb-1 block text-[0.68rem] font-bold uppercase tracking-wide text-muted-foreground">
+        {label}{required ? <span className="text-destructive"> *</span> : null}
       </span>
       {children}
     </label>
@@ -139,7 +139,7 @@ function Field({ label, required, children }) {
 function Input({ label, required, ...props }) {
   return (
     <Field label={label} required={required}>
-      <input {...props} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[0.82rem] text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100" />
+      <input {...props} className="w-full rounded-lg border border-border bg-card px-3 py-2 text-[0.82rem] text-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15" />
     </Field>
   );
 }
@@ -147,7 +147,7 @@ function Input({ label, required, ...props }) {
 function Select({ label, required, options, ...props }) {
   return (
     <Field label={label} required={required}>
-      <select {...props} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[0.82rem] text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+      <select {...props} className="w-full rounded-lg border border-border bg-card px-3 py-2 text-[0.82rem] text-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15">
         <option value="">Select</option>
         {options.map((option) => (
           <option key={option.value || option} value={option.value || option}>{option.label || option}</option>
@@ -213,13 +213,13 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6">
+      <section className="rounded-2xl border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Case details</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Additional details specific to your case.</p>
+            <h2 className="text-base font-bold text-foreground">Case details</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Additional details specific to your case.</p>
           </div>
-          {saving && <span className="text-xs text-slate-400">Saving…</span>}
+          {saving && <span className="text-xs text-muted-foreground">Saving…</span>}
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {caseFields.map(([field, label]) => (
@@ -229,13 +229,13 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
       </section>
 
       {showPremiumProcessing && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="text-base font-bold text-slate-900 mb-1">Form I-907 — Premium Processing</h2>
-          <p className="text-xs text-slate-500 mb-4">Required information for your Premium Processing request.</p>
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="text-base font-bold text-foreground mb-1">Form I-907 — Premium Processing</h2>
+          <p className="text-xs text-muted-foreground mb-4">Required information for your Premium Processing request.</p>
 
           <div className="space-y-6">
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Filer identity</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Filer identity</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <Input id="i907-alienRegistrationNumber" name="alienRegistrationNumber" label="Alien Registration Number (A-Number)" value={textValue(i907.alienRegistrationNumber)} onChange={(e) => updateI907("alienRegistrationNumber", e.target.value)} />
                 <Input id="i907-uscisOnlineAccountNumber" name="uscisOnlineAccountNumber" label="USCIS Online Account Number" value={textValue(i907.uscisOnlineAccountNumber)} onChange={(e) => updateI907("uscisOnlineAccountNumber", e.target.value)} />
@@ -246,7 +246,7 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Mailing address</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Mailing address</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <Input id="i907-mailingStreet" name="mailingStreet" label="Street Number and Name" required value={textValue(i907.mailingStreet)} onChange={(e) => updateI907("mailingStreet", e.target.value)} />
                 <Input id="i907-mailingApt" name="mailingApt" label="Apt/Ste/Flr" value={textValue(i907.mailingApt)} onChange={(e) => updateI907("mailingApt", e.target.value)} />
@@ -258,7 +258,7 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Physical address</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Physical address</p>
               <div className="mb-4 max-w-sm">
                 <Select id="i907-samePhysicalAddress" name="samePhysicalAddress" label="Same as Mailing Address?" required value={textValue(i907.samePhysicalAddress || "Yes")} onChange={(e) => updateI907("samePhysicalAddress", e.target.value)} options={["Yes", "No"]} />
               </div>
@@ -274,7 +274,7 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Related petition or application</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Related petition or application</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <Input id="i907-relatedFormNumber" name="relatedFormNumber" label="Form Number of Related Petition or Application" required value={textValue(i907.relatedFormNumber)} onChange={(e) => updateI907("relatedFormNumber", e.target.value)} />
                 <Input id="i907-relatedReceiptNumber" name="relatedReceiptNumber" label="Receipt Number of Related Petition or Application" required value={textValue(i907.relatedReceiptNumber)} onChange={(e) => updateI907("relatedReceiptNumber", e.target.value)} />
@@ -283,7 +283,7 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Related case people</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Related case people</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Input id="i907-petitionerFamilyName" name="petitionerFamilyName" label="Petitioner or Applicant Family Name" value={textValue(i907.petitionerFamilyName)} onChange={(e) => updateI907("petitionerFamilyName", e.target.value)} />
                 <Input id="i907-petitionerGivenName" name="petitionerGivenName" label="Petitioner or Applicant Given Name" value={textValue(i907.petitionerGivenName)} onChange={(e) => updateI907("petitionerGivenName", e.target.value)} />
@@ -293,7 +293,7 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
             </div>
 
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Company point of contact</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Company point of contact</p>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <Input id="i907-pointOfContactFamilyName" name="pointOfContactFamilyName" label="Point of Contact Family Name" value={textValue(i907.pointOfContactFamilyName)} onChange={(e) => updateI907("pointOfContactFamilyName", e.target.value)} />
                 <Input id="i907-pointOfContactGivenName" name="pointOfContactGivenName" label="Point of Contact Given Name" value={textValue(i907.pointOfContactGivenName)} onChange={(e) => updateI907("pointOfContactGivenName", e.target.value)} />

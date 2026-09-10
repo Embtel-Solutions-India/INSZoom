@@ -24,30 +24,30 @@ export default function InfoPopup({ open, onClose, title, description, items = [
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop — outside click closes */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
+      <div className="relative z-10 w-full max-w-md mx-4 bg-card rounded-2xl shadow-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
           <div className="flex items-start gap-3">
             <div>
-              <h3 className="font-extrabold text-slate-800">{title}</h3>
-              {description && <p className="text-sm text-slate-500 mt-1">{description}</p>}
+              <h3 className="font-extrabold text-foreground">{title}</h3>
+              {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
             </div>
-            <button onClick={onClose} aria-label="Close" className="ml-auto text-slate-400 hover:text-slate-600">
+            <button onClick={onClose} aria-label="Close" className="ml-auto text-muted-foreground hover:text-foreground">
               <IconX size={16} className="text-inherit" />
             </button>
           </div>
         </div>
         <div className="p-4 space-y-3 max-h-[60vh] overflow-auto">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Visa Types</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Visa Types</p>
           <div className="grid grid-cols-1 gap-2">
             {normalized.map((t) => (
               <button
                 key={t.id}
                 onClick={() => onSelect?.(t.id)}
-                className="text-left px-3 py-2.5 rounded-lg border border-slate-200 hover:border-emerald-300
-                  hover:bg-emerald-50/50 transition bg-white group"
+                className="text-left px-3 py-2.5 rounded-lg border border-border hover:border-primary/30
+                  hover:bg-accent transition bg-card group"
               >
-                <span className="font-extrabold text-slate-800 text-sm group-hover:text-emerald-700">{t.label}</span>
-                {t.desc && <span className="block text-xs text-slate-500 mt-0.5 leading-snug">{t.desc}</span>}
+                <span className="font-extrabold text-foreground text-sm group-hover:text-accent-foreground">{t.label}</span>
+                {t.desc && <span className="block text-xs text-muted-foreground mt-0.5 leading-snug">{t.desc}</span>}
               </button>
             ))}
           </div>

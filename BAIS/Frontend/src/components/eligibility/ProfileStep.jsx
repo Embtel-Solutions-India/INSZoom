@@ -6,7 +6,7 @@ export default function ProfileStep({ questions, answers, onChange }) {
     <div className="space-y-5">
       {questions.map((q) => (
         <div key={q.key}>
-          <label htmlFor={`profile-${q.key}`} className="block text-sm font-bold text-slate-700 mb-1.5">
+          <label htmlFor={`profile-${q.key}`} className="block text-sm font-bold text-foreground mb-1.5">
             {q.label}
           </label>
           {q.type === "select" ? (
@@ -15,7 +15,7 @@ export default function ProfileStep({ questions, answers, onChange }) {
               value={answers[q.key] || ""}
               onChange={(e) => onChange(q.key, e.target.value)}
               required={q.required}
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 bg-white"
+              className="w-full rounded-xl border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 bg-card"
             >
               <option value="" disabled>Select an option…</option>
               {(q.options || []).map((opt) => (
@@ -29,7 +29,7 @@ export default function ProfileStep({ questions, answers, onChange }) {
               value={answers[q.key] || ""}
               onChange={(e) => onChange(q.key, e.target.value)}
               required={q.required}
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+              className="w-full rounded-xl border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
               placeholder="Type your answer"
             />
           )}

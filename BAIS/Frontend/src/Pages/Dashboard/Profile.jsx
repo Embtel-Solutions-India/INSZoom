@@ -30,13 +30,13 @@ function initials(firstName, lastName, email) {
 function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</span>
       {children}
     </label>
   );
 }
 
-const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100";
+const inputClass = "w-full rounded-lg border border-border bg-card px-3.5 py-2.5 text-sm text-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition-all duration-150";
 
 function canonicalValue(profile, path) {
   return path.split(".").reduce((current, key) => current?.[key], profile?.canonicalData)?.value || "";
@@ -197,22 +197,22 @@ export default function Profile() {
   }, [data.visaCategory]);
 
   if (loading) {
-    return <div className="flex min-h-[60vh] items-center justify-center text-slate-400">Loading profile…</div>;
+    return <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">Loading profile…</div>;
   }
 
   const fullName = `${data.firstName} ${data.lastName}`.trim() || "Your profile";
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-14">
+    <div className="min-h-screen bg-background px-6 py-14">
       <div className="mx-auto max-w-lg">
         <div className="flex flex-col items-center text-center mb-10">
-          <div className="w-20 h-20 rounded-full bg-slate-900 text-white flex items-center justify-center text-xl font-bold">
+          <div className="w-20 h-20 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xl font-bold">
             {initials(data.firstName, data.lastName, data.email)}
           </div>
-          <h1 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h1>
+          <h1 className="mt-4 text-xl font-bold text-foreground">{fullName}</h1>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Field label="First name">
               <input id="profile-firstName" name="firstName" className={inputClass} value={data.firstName} onChange={(e) => update("firstName", e.target.value)} />
@@ -229,7 +229,7 @@ export default function Profile() {
               name="email"
               readOnly
               disabled
-              className={`${inputClass} bg-slate-50 text-slate-500 cursor-not-allowed`}
+              className={`${inputClass} bg-secondary text-muted-foreground cursor-not-allowed`}
               value={user?.email || data.email}
             />
           </Field>
@@ -275,19 +275,19 @@ export default function Profile() {
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <p className="text-xs text-slate-400">{message}</p>
+          <p className="text-xs text-muted-foreground">{message}</p>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving || !dirty}
-            className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? "Saving…" : "Save changes"}
           </button>
         </div>
 
-        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">Change Password</h2>
+        <div className="mt-8 rounded-2xl border border-border bg-card p-6 space-y-4">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Change Password</h2>
 
           <Field label="Current password">
             <input
@@ -324,18 +324,18 @@ export default function Profile() {
           </Field>
 
           {passwordError && (
-            <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
+            <p role="alert" className="text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-2.5">
               {passwordError}
             </p>
           )}
 
           <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-400">{passwordMessage}</p>
+            <p className="text-xs text-muted-foreground">{passwordMessage}</p>
             <button
               type="button"
               onClick={handleChangePassword}
               disabled={passwordSaving}
-              className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {passwordSaving ? "Changing…" : "Change Password"}
             </button>

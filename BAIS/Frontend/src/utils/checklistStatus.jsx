@@ -24,27 +24,27 @@ function pathIcon(d) {
 export const STATUS_META = {
   [STATUS.NOT_STARTED]: {
     label: "Not started",
-    className: "border-slate-200 bg-slate-50 text-slate-500",
+    className: "border-border bg-secondary text-muted-foreground",
     icon: pathIcon("M12 7v5l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"),
   },
   [STATUS.IN_PROGRESS]: {
     label: "In progress",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
+    className: "border-accent-foreground/20 bg-accent text-accent-foreground",
     icon: pathIcon("M12 4.5v4M12 15.5v4M4.5 12h4M15.5 12h4"),
   },
   [STATUS.UNDER_REVIEW]: {
     label: "Under review",
-    className: "border-blue-200 bg-blue-50 text-blue-700",
+    className: "border-border bg-secondary text-secondary-foreground",
     icon: pathIcon("M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM12 9.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5z"),
   },
   [STATUS.VERIFIED]: {
     label: "Verified",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    className: "border-primary/20 bg-primary text-primary-foreground",
     icon: pathIcon("M5 13l4 4L19 7"),
   },
   [STATUS.NEEDS_ATTENTION]: {
     label: "Needs attention",
-    className: "border-rose-200 bg-rose-50 text-rose-700",
+    className: "border-destructive/30 bg-destructive/10 text-destructive",
     icon: pathIcon("M12 9v4m0 3.5h.01M10.6 4.3L2.9 18a1.5 1.5 0 001.3 2.2h15.6a1.5 1.5 0 001.3-2.2L13.4 4.3a1.5 1.5 0 00-2.8 0z"),
   },
 };

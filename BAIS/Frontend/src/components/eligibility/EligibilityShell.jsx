@@ -9,7 +9,7 @@ import DisclaimerBanner from "./DisclaimerBanner";
 // content. Defaults to a calm navy/gold professional scheme — matching
 // Phase 0's own DEFAULT_BRAND_TOKENS — when no brand tokens are configured.
 export default function EligibilityShell({ children }) {
-  const [tokens, setTokens] = useState({ primaryColor: "#0B1F3A", accentColor: "#C6A15B" });
+  const [tokens, setTokens] = useState({ primaryColor: "hsl(var(--primary))", accentColor: "hsl(var(--primary))" });
 
   useEffect(() => {
     let mounted = true;
@@ -19,8 +19,8 @@ export default function EligibilityShell({ children }) {
         const brandTokens = res.data?.brandTokens;
         if (brandTokens?.primaryColor || brandTokens?.accentColor) {
           setTokens({
-            primaryColor: brandTokens.primaryColor || "#0B1F3A",
-            accentColor: brandTokens.accentColor || "#C6A15B",
+            primaryColor: brandTokens.primaryColor || "hsl(var(--primary))",
+            accentColor: brandTokens.accentColor || "hsl(var(--primary))",
           });
         }
       })
@@ -30,7 +30,7 @@ export default function EligibilityShell({ children }) {
 
   return (
     <div
-      className="min-h-screen bg-white flex flex-col"
+      className="min-h-screen bg-background flex flex-col"
       style={{ "--eligibility-primary": tokens.primaryColor, "--eligibility-accent": tokens.accentColor }}
     >
       <DisclaimerBanner />

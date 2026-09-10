@@ -5,6 +5,7 @@ import "./index.css";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
+import { ThemeProvider } from "./context/ThemeContext.jsx";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,11 +20,13 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <SocketProvider>
-          <App />
-        </SocketProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <SocketProvider>
+            <App />
+          </SocketProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

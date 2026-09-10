@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
 import NotificationBell from "./NotificationBell";
+import ThemeToggle from "./ThemeToggle";
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 const MenuIcon = () => (
@@ -148,45 +149,46 @@ export default function Navbar() {
 
   return (
     <nav
-      className={`sticky top-0 z-50 bg-white/95 backdrop-blur-sm transition-shadow duration-200
-        ${scrolled ? "shadow-md shadow-slate-200/60" : "border-b border-slate-100"}`}
+      className={`sticky top-0 z-50 bg-card/95 backdrop-blur-sm transition-shadow duration-200
+        ${scrolled ? "shadow-md shadow-black/5" : "border-b border-border"}`}
     >
       <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
 
         {/* ── Logo ── */}
-        <Link to="/" className="flex items-center gap-2.5 shrink-0 group no-underline min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600
-            flex items-center justify-center shadow-sm group-hover:shadow-md transition">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        <Link to="/" className="flex items-center gap-2 shrink-0 group no-underline min-w-0">
+          <div className="w-8 h-8 rounded-full border border-border
+            flex items-center justify-center text-foreground shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 7l-10 10M7 7h10v10" />
             </svg>
           </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-[1.05rem] font-extrabold text-slate-800 tracking-tight">BAIS</span>
-            <span className="text-[0.56rem] font-semibold text-slate-400 uppercase tracking-widest hidden sm:block">
-              Immigration Portal
-            </span>
-          </div>
+          <span className="text-lg text-foreground">Immiglance</span>
         </Link>
 
-        {/* ── Desktop nav links ── */}
-        <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center gap-0.5 xl:gap-1">
-          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
-            <Link
-              key={label}
-              to={to}
-              className={`text-[0.82rem] font-semibold px-2.5 py-2 xl:px-3 rounded-lg transition-all no-underline whitespace-nowrap
-                ${isActive(to)
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
-            >
-              {label}
-            </Link>
-          ))}
-        </div>
+        {/* ── Desktop nav (authenticated only — matches Immiglance's
+            minimal unauthenticated header exactly: logo, Client Login,
+            Start Free Evaluation, dark toggle, nothing in between) ── */}
+        {user && (
+          <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center gap-0.5 xl:gap-1">
+            {visibleNavLinks(user, hasCase).map(({ label, to }) => (
+              <Link
+                key={label}
+                to={to}
+                className={`text-[0.82rem] font-semibold px-2.5 py-2 xl:px-3 rounded-lg transition-all no-underline whitespace-nowrap
+                  ${isActive(to)
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* ── Auth section ── */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
+
+          <ThemeToggle className="hidden sm:inline-flex" />
 
           {authResolving ? (
             /* ── Auth state still resolving (loading, or backend error) ──
@@ -203,38 +205,38 @@ export default function Navbar() {
                 onClick={() => setDropOpen((o) => !o)}
                 className={`flex max-w-36 items-center gap-2 px-2.5 py-1.5 xl:max-w-44 xl:px-3 rounded-xl border transition-all
                   ${dropOpen
-                    ? "bg-emerald-50 border-emerald-200 shadow-sm"
-                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300"}`}
+                    ? "bg-accent border-accent-foreground/20 shadow-sm"
+                    : "bg-secondary border-border hover:bg-muted"}`}
               >
                 {/* Avatar */}
-                <div className="w-7 h-7 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
-                  flex items-center justify-center text-[0.65rem] font-extrabold text-white shrink-0">
+                <div className="w-7 h-7 rounded-full bg-primary
+                  flex items-center justify-center text-[0.65rem] font-extrabold text-primary-foreground shrink-0">
                   {initials}
                 </div>
-                <span className="text-[0.82rem] min-w-0 font-semibold text-slate-700 hidden sm:block truncate">
+                <span className="text-[0.82rem] min-w-0 font-semibold text-foreground hidden sm:block truncate">
                   {displayName}
                 </span>
-                <span className={`text-slate-400 transition-transform duration-200 ${dropOpen ? "rotate-180" : ""}`}>
+                <span className={`text-muted-foreground transition-transform duration-200 ${dropOpen ? "rotate-180" : ""}`}>
                   <ChevronDown />
                 </span>
               </button>
 
               {/* Dropdown */}
               {dropOpen && (
-                <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl border border-slate-200
-                  shadow-xl shadow-slate-200/70 overflow-hidden z-50
+                <div className="absolute right-0 mt-2 w-60 bg-card rounded-2xl border border-card-border
+                  shadow-xl shadow-black/10 overflow-hidden z-50
                   animate-[fadeDown_0.15s_ease_forwards]">
 
                   {/* User info header */}
-                  <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50">
+                  <div className="px-4 py-3.5 border-b border-border bg-secondary">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
-                        flex items-center justify-center text-sm font-extrabold text-white shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-primary
+                        flex items-center justify-center text-sm font-extrabold text-primary-foreground shrink-0">
                         {initials}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-800 truncate">{displayName}</p>
-                        <p className="text-xs text-slate-400 truncate">{emailShort}</p>
+                        <p className="text-sm font-bold text-foreground truncate">{displayName}</p>
+                        <p className="text-xs text-muted-foreground truncate">{emailShort}</p>
                       </div>
                     </div>
                   </div>
@@ -258,13 +260,13 @@ export default function Navbar() {
                   </div>
 
                   {/* Logout */}
-                  <div className="border-t border-slate-100 py-1.5">
+                  <div className="border-t border-border py-1.5">
                     <button
                       onClick={handleLogout}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold
-                        text-red-600 hover:bg-red-50 transition-colors text-left"
+                        text-destructive hover:bg-destructive/10 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                      <span className="w-7 h-7 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
                         <LogoutIcon />
                       </span>
                       Sign Out
@@ -276,23 +278,22 @@ export default function Navbar() {
             </div>
 
           ) : (
-            /* ── Not logged in: Login + Sign Up ── */
+            /* ── Not logged in: Client Login + Start Free Evaluation ── */
             <>
               <Link
                 to="/login"
-                className="hidden sm:flex text-sm font-semibold px-4 py-2 rounded-lg border border-slate-300
-                  text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-all no-underline"
+                className="hidden sm:flex text-sm font-semibold px-4 py-2 rounded-lg
+                  text-foreground hover:text-primary transition-all no-underline"
               >
-                Login
+                Client Login
               </Link>
               <Link
-                to="/signup"
+                to="/eligibility?src=Navbar"
                 className="text-sm font-bold px-4 py-2 rounded-lg
-                  bg-linear-to-r from-[#1D9E75] to-teal-600
-                  text-white shadow-sm shadow-emerald-200 hover:shadow-md hover:from-emerald-600 hover:to-teal-700
+                  bg-primary text-primary-foreground shadow-sm hover:opacity-90
                   transition-all no-underline active:scale-95"
               >
-                Sign Up
+                Start Free Evaluation
               </Link>
             </>
           )}
@@ -301,7 +302,7 @@ export default function Navbar() {
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg
-              border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+              border border-border text-muted-foreground hover:bg-secondary transition"
             aria-label="Toggle menu"
           >
             {menuOpen ? <XIcon /> : <MenuIcon />}
@@ -311,33 +312,38 @@ export default function Navbar() {
 
       {/* ── Mobile menu ── */}
       {menuOpen && (
-        <div className="lg:hidden border-t border-slate-100 bg-white px-4 py-3 space-y-1
-          shadow-lg shadow-slate-200/50">
+        <div className="lg:hidden border-t border-border bg-card px-4 py-3 space-y-1
+          shadow-lg shadow-black/5">
 
-          {/* Nav links */}
-          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
+          {/* Nav links — authenticated only, matches the desktop bar above */}
+          {user && visibleNavLinks(user, hasCase).map(({ label, to }) => (
             <Link
               key={label}
               to={to}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition
-                ${isActive(to) ? "bg-emerald-50 text-emerald-700" : "text-slate-600 hover:bg-slate-100"}`}
+                ${isActive(to) ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-secondary"}`}
             >
               {label}
             </Link>
           ))}
 
-          <div className="border-t border-slate-100 pt-2 mt-2 space-y-1">
+          <div className="flex items-center justify-between px-4 py-2 mt-1">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Appearance</span>
+            <ThemeToggle />
+          </div>
+
+          <div className="border-t border-border pt-2 mt-2 space-y-1">
             {authResolving ? null : user ? (
               <>
                 {/* User info chip */}
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 rounded-xl mb-1">
-                  <div className="w-9 h-9 rounded-full bg-linear-to-br from-[#1D9E75] to-teal-600
-                    flex items-center justify-center text-sm font-extrabold text-white shrink-0">
+                <div className="flex items-center gap-3 px-4 py-2.5 bg-secondary rounded-xl mb-1">
+                  <div className="w-9 h-9 rounded-full bg-primary
+                    flex items-center justify-center text-sm font-extrabold text-primary-foreground shrink-0">
                     {initials}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800 truncate">{displayName}</p>
-                    <p className="text-xs text-slate-400 truncate">{emailShort}</p>
+                    <p className="text-sm font-bold text-foreground truncate">{displayName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{emailShort}</p>
                   </div>
                 </div>
                 <MobileItem to="/dashboard/profile" icon={<UserIcon />} label="My Profile" />
@@ -348,9 +354,9 @@ export default function Navbar() {
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm
-                    font-semibold text-red-600 hover:bg-red-50 transition text-left mt-1"
+                    font-semibold text-destructive hover:bg-destructive/10 transition text-left mt-1"
                 >
-                  <span className="w-6 h-6 rounded-md bg-red-50 flex items-center justify-center shrink-0">
+                  <span className="w-6 h-6 rounded-md bg-destructive/10 flex items-center justify-center shrink-0">
                     <LogoutIcon />
                   </span>
                   Sign Out
@@ -360,14 +366,14 @@ export default function Navbar() {
               <div className="flex gap-2 pt-1">
                 <Link to="/login"
                   className="flex-1 text-center text-sm font-semibold py-2.5 rounded-xl border
-                    border-slate-300 text-slate-700 hover:bg-slate-50 transition no-underline">
-                  Login
+                    border-border text-foreground hover:bg-secondary transition no-underline">
+                  Client Login
                 </Link>
-                <Link to="/signup"
+                <Link to="/eligibility?src=Navbar"
                   className="flex-1 text-center text-sm font-bold py-2.5 rounded-xl
-                    bg-linear-to-r from-[#1D9E75] to-teal-600 text-white
-                    hover:from-emerald-600 hover:to-teal-700 transition no-underline">
-                  Sign Up
+                    bg-primary text-primary-foreground
+                    hover:opacity-90 transition no-underline">
+                  Start Free Evaluation
                 </Link>
               </div>
             )}
@@ -394,15 +400,15 @@ function DropItem({ to, icon, label, sub }) {
     <Link
       to={to}
       className={`flex items-center gap-3 px-4 py-2.5 text-sm transition-colors no-underline
-        ${active ? "bg-emerald-50" : "hover:bg-slate-50"}`}
+        ${active ? "bg-accent" : "hover:bg-secondary"}`}
     >
       <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0
-        ${active ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
+        ${active ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground"}`}>
         {icon}
       </span>
       <div className="min-w-0">
-        <p className={`font-semibold leading-tight ${active ? "text-emerald-700" : "text-slate-700"}`}>{label}</p>
-        {sub && <p className="text-xs text-slate-400 truncate">{sub}</p>}
+        <p className={`font-semibold leading-tight ${active ? "text-accent-foreground" : "text-foreground"}`}>{label}</p>
+        {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
       </div>
     </Link>
   );
@@ -416,10 +422,10 @@ function MobileItem({ to, icon, label }) {
     <Link
       to={to}
       className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold no-underline transition
-        ${active ? "bg-emerald-50 text-emerald-700" : "text-slate-600 hover:bg-slate-100"}`}
+        ${active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-secondary"}`}
     >
       <span className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0
-        ${active ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"}`}>
+        ${active ? "bg-accent text-accent-foreground" : "bg-secondary text-muted-foreground"}`}>
         {icon}
       </span>
       {label}

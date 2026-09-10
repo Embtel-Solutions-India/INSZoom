@@ -5,13 +5,13 @@ export default function QuizProgress({ step, totalSteps, label }) {
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Step {step} of {totalSteps}
         </span>
-        {label && <span className="text-xs font-semibold text-slate-500">{label}</span>}
+        {label && <span className="text-xs font-semibold text-muted-foreground">{label}</span>}
       </div>
       <div
-        className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden"
+        className="h-1.5 w-full rounded-full bg-secondary overflow-hidden"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -19,7 +19,7 @@ export default function QuizProgress({ step, totalSteps, label }) {
       >
         <div
           className="h-full rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${pct}%`, backgroundColor: "var(--eligibility-accent, #C6A15B)" }}
+          style={{ width: `${pct}%`, backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
         />
       </div>
     </div>

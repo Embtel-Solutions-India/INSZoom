@@ -81,7 +81,7 @@ const MapPinIcon = () => (
 function Field({ icon, type = "text", placeholder, value, onChange, rightEl, name, autoComplete }) {
   return (
     <div className="relative flex items-center w-full mb-4">
-      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex items-center z-10">
+      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
         {icon}
       </span>
       <input
@@ -92,10 +92,10 @@ function Field({ icon, type = "text", placeholder, value, onChange, rightEl, nam
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="w-full pl-10 pr-10 py-3 text-sm text-slate-800 placeholder-slate-400
-          border border-slate-200 rounded-xl bg-white outline-none box-border
-          hover:border-slate-300
-          focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/15
+        className="w-full pl-10 pr-10 py-3 text-sm text-foreground placeholder-muted-foreground
+          border border-border rounded-xl bg-card outline-none box-border
+          hover:border-ring/50
+          focus:border-ring focus:ring-2 focus:ring-ring/15
           transition-all duration-150"
       />
       {rightEl && (
@@ -113,19 +113,19 @@ function ContactCard({ icon, title, lines, animClass }) {
     <div className={`
       ${animClass}
       flex items-start gap-4 w-full
-      px-5 py-4 bg-white border border-slate-100 rounded-2xl
-      shadow-[0_4px_16px_rgba(0,0,0,0.06)]
-      hover:shadow-[0_8px_24px_rgba(0,0,0,0.10)] hover:-translate-y-0.5
+      px-5 py-4 bg-card border border-border rounded-2xl
+      shadow-sm
+      hover:shadow-md hover:-translate-y-0.5
       transition-all duration-250
     `}>
-      <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0">
+      <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center shrink-0">
         {icon}
       </div>
       <div>
-        <p className="text-[15px] font-semibold text-slate-900 mb-1">{title}</p>
+        <p className="text-[15px] font-semibold text-foreground mb-1">{title}</p>
         {lines.map((line, i) => (
           typeof line === "string"
-            ? <p key={i} className="text-[13px] text-slate-600 leading-relaxed my-0.5">{line}</p>
+            ? <p key={i} className="text-[13px] text-muted-foreground leading-relaxed my-0.5">{line}</p>
             : <span key={i}>{line}</span>
         ))}
       </div>
@@ -273,14 +273,14 @@ export default function Register() {
         .card-anim-3 { opacity: 0; animation: fadeUp 0.5s ease forwards 0.6s; }
       `}</style>
 
-      <div className="min-h-screen flex flex-col md:flex-row bg-[#f3f4f6]">
+      <div className="min-h-screen flex flex-col md:flex-row bg-background">
 
         {/* ══ LEFT — Form Card ══ */}
         <div
           className={`
             flex-1 flex flex-col justify-start
             px-6 sm:px-10 md:px-12 lg:px-16 py-8 md:py-10
-            bg-white
+            bg-card
             shadow-xl md:shadow-[2px_0_24px_rgba(0,0,0,0.06)]
             transition-all duration-500
             ${show ? "translate-x-0 opacity-100" : "-translate-x-10 opacity-0"}
@@ -290,20 +290,20 @@ export default function Register() {
           <div className="w-full max-w-md mx-auto">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-7">
-              <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600
+              <div className="w-9 h-9 rounded-xl bg-primary
                 flex items-center justify-center shadow-sm">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-primary-foreground" aria-hidden="true">
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
               </div>
               <div>
-                <p className="text-lg font-extrabold text-slate-800 leading-none">BAIS</p>
-                <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Immigration Portal</p>
+                <p className="text-lg font-bold text-foreground leading-none">BAIS</p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Immigration Portal</p>
               </div>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">Create your account</h1>
-            <p className="text-sm text-slate-500 mb-6">Join thousands of clients on their Bay Area immigration journey</p>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-1">Create your account</h1>
+            <p className="text-sm text-muted-foreground mb-6">Join thousands of clients on their Bay Area immigration journey</p>
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             {/* Name + Phone row — stacks on very small screens */}
@@ -341,30 +341,29 @@ export default function Register() {
               autoComplete="off"
             />
             {form.referralCode && (
-              <p className="-mt-2 mb-4 text-xs text-emerald-600 font-semibold flex items-center gap-1.5">
+              <p className="-mt-2 mb-4 text-xs text-primary font-semibold flex items-center gap-1.5">
                 <GiftIcon /> You'll get 10% off your package — and your referrer earns a reward too.
               </p>
             )}
 
             {success && (
-              <div role="status" className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-2">
+              <div role="status" className="mb-4 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-3 flex items-center gap-2">
                 <CheckIcon /> {success}
               </div>
             )}
 
             {/* Divider */}
-            <div className="flex items-center gap-2.5 mb-4 text-xs text-slate-400">
-              <span className="flex-1 h-px bg-slate-200" />
+            <div className="flex items-center gap-2.5 mb-4 text-xs text-muted-foreground">
+              <span className="flex-1 h-px bg-border" />
               <span className="font-medium whitespace-nowrap">or sign up with</span>
-              <span className="flex-1 h-px bg-slate-200" />
+              <span className="flex-1 h-px bg-border" />
             </div>
 
             {/* Google */}
             <button type="button" onClick={handleGoogle} disabled={loading || googleLoading}
               className="flex items-center justify-center gap-2.5 w-full py-3 mb-3
-                bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700
-                hover:bg-slate-50 hover:border-slate-300 hover:shadow-md
-                transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
+                bg-card border border-border rounded-xl text-sm font-semibold text-foreground
+                hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
               {googleLoading ? "Redirecting to Google…" : (
                 <>
                   <GoogleIcon />
@@ -375,10 +374,9 @@ export default function Register() {
 
             {/* Submit */}
             <button type="submit" disabled={loading || googleLoading}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56]
-                text-white text-sm font-bold rounded-xl
-                shadow-sm shadow-emerald-200 hover:shadow-md
-                transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
+              className="w-full py-3 bg-primary hover:opacity-90
+                text-primary-foreground text-sm font-bold rounded-xl
+                shadow-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {loading ? "Creating account…" : "Create Account"}
             </button>
             </form>
@@ -388,14 +386,14 @@ export default function Register() {
                 409. The token never appears here; only a fresh invite email
                 is (re)sent. */}
             {pendingInvite && (
-              <div role="alert" className="mt-3 mb-1 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <div role="alert" className="mt-3 mb-1 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-3">
                 {resendSent ? (
                   <p>A new invitation has been sent to <span className="font-semibold">{form.email}</span>. Check your email to set your password.</p>
                 ) : (
                   <>
                     <p className="mb-2">You've been invited to BAIS already — set your password to continue instead of creating a new account.</p>
                     <button type="button" onClick={handleResendInvite} disabled={resendingInvite}
-                      className="text-sm font-bold text-amber-900 underline disabled:opacity-60 cursor-pointer">
+                      className="text-sm font-bold underline disabled:opacity-60 cursor-pointer">
                       {resendingInvite ? "Sending…" : "Resend invitation email"}
                     </button>
                   </>
@@ -405,7 +403,7 @@ export default function Register() {
 
             {/* Inline error below submit */}
             {error && (
-              <div role="alert" className="mt-3 mb-1 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <div role="alert" className="mt-3 mb-1 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3 flex items-start gap-2">
                 <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="shrink-0 mt-0.5" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                 </svg>
@@ -415,13 +413,13 @@ export default function Register() {
 
             {/* Login redirect */}
             <button type="button" onClick={() => navigate("/login")}
-              className="w-full py-3 bg-white border border-slate-200 text-slate-700
-                text-sm font-semibold rounded-xl hover:bg-slate-50 hover:border-slate-300
+              className="w-full py-3 bg-card border border-border text-foreground
+                text-sm font-semibold rounded-xl hover:bg-secondary
                 transition-all duration-200 cursor-pointer">
               <span className="inline-flex items-center gap-1.5">Already have an account? Sign in <ArrowRightIcon /></span>
             </button>
 
-            <p className="mt-6 text-center text-xs text-slate-400">
+            <p className="mt-6 text-center text-xs text-muted-foreground">
               © BAIS · info@bayareaimmigrationservices.com
             </p>
           </div>
@@ -431,14 +429,14 @@ export default function Register() {
         <div
           className={`
             hidden md:flex flex-1 flex-col gap-4 items-start justify-center
-            px-8 lg:px-12 py-10 bg-[#f3f4f6]
+            px-8 lg:px-12 py-10 bg-background
             transition-all duration-500
             ${show ? "translate-x-0 opacity-100" : "translate-x-10 opacity-0"}
           `}
           style={{ transitionTimingFunction: "cubic-bezier(0.22,1,0.36,1)" }}
         >
           <div className="w-full max-w-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5">Get in Touch</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-5">Get in Touch</p>
 
             <ContactCard
               animClass="card-anim-1"

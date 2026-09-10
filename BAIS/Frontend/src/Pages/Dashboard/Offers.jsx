@@ -147,14 +147,14 @@ export default function Offers() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-slate-50 via-white to-slate-50">
+    <div className="min-h-screen bg-background">
       {/* ── Hero Section ────────────────────────────────────────────────────────── */}
       <section className="pt-16 sm:pt-24 pb-12 px-5 sm:px-8 max-w-6xl mx-auto">
         <div className="text-center max-w-3xl mx-auto mb-16 animate-[fadeIn_0.6s_ease-out]">
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 mb-4 leading-tight">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-foreground mb-4 leading-tight">
             Our Offers & Packages
           </h1>
-          <p className="text-lg text-slate-600 leading-relaxed mb-8">
+          <p className="text-lg text-muted-foreground leading-relaxed mb-8">
             Flexible, affordable visa assistance packages designed for every immigration need and budget.
           </p>
           <StartAssessmentButton size="lg" pageSource="Offers Page">Not sure which package fits? Take the free assessment</StartAssessmentButton>
@@ -185,22 +185,22 @@ export default function Offers() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           {/* Left: Referral Benefits */}
           <div className="animate-[fadeIn_0.6s_ease-out]">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-6">
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-6">
               Refer a Friend
             </h2>
-            <p className="text-slate-600 mb-8 leading-relaxed">
+            <p className="text-muted-foreground mb-8 leading-relaxed">
               Know someone who needs visa assistance? Share your unique referral code and earn rewards for every successful referral. Help your friends while earning!
             </p>
 
             <div className="space-y-4">
               {REFERRAL_BENEFITS.map((benefit, idx) => (
-                <div key={idx} className="flex gap-4 group p-4 rounded-lg hover:bg-slate-50 transition-colors">
+                <div key={idx} className="flex gap-4 group p-4 rounded-lg hover:bg-secondary transition-colors">
                   <div className="shrink-0">
-                    <benefit.icon size={24} className="text-emerald-600 group-hover:text-emerald-700 transition-colors" />
+                    <benefit.icon size={24} className="text-primary group-hover:opacity-80 transition-colors" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-slate-900 mb-1">{benefit.title}</h3>
-                    <p className="text-sm text-slate-600">{benefit.description}</p>
+                    <h3 className="font-semibold text-foreground mb-1">{benefit.title}</h3>
+                    <p className="text-sm text-muted-foreground">{benefit.description}</p>
                   </div>
                 </div>
               ))}
@@ -209,24 +209,24 @@ export default function Offers() {
 
           {/* Right: Referral CTA Card */}
           <div className="animate-[fadeIn_0.6s_ease-out]" style={{ animationDelay: "0.15s" }}>
-            <div className="p-8 sm:p-10 rounded-2xl bg-linear-to-br from-emerald-600 to-teal-600 text-white">
+            <div className="p-8 sm:p-10 rounded-2xl bg-primary text-primary-foreground">
               <h3 className="text-2xl font-bold mb-4">Your Referral Code</h3>
-              <div className="mb-6 p-4 bg-white/20 rounded-lg backdrop-blur">
-                <p className="text-sm text-emerald-100 mb-2">Your unique code:</p>
+              <div className="mb-6 p-4 bg-primary-foreground/20 rounded-lg backdrop-blur">
+                <p className="text-sm text-primary-foreground/80 mb-2">Your unique code:</p>
                 <p className="text-2xl font-mono font-bold break-all">{referralCode}</p>
                 {referral?.successfulReferrals > 0 && (
-                  <p className="text-xs text-emerald-100 mt-2 flex items-center gap-1.5">
-                    <IconCelebrate size={14} className="text-emerald-100" /> {referral.successfulReferrals} successful referral(s) so far
+                  <p className="text-xs text-primary-foreground/80 mt-2 flex items-center gap-1.5">
+                    <IconCelebrate size={14} className="text-primary-foreground/80" /> {referral.successfulReferrals} successful referral(s) so far
                   </p>
                 )}
               </div>
-              <p className="text-emerald-100 text-sm mb-6 leading-relaxed">
+              <p className="text-primary-foreground/80 text-sm mb-6 leading-relaxed">
                 Share your link with friends. When they sign up and complete their application, you both get 10% off!
               </p>
-              <button onClick={copyReferral} className="w-full px-4 py-3 rounded-lg bg-white text-emerald-600 font-bold hover:bg-emerald-50 transition-colors mb-3">
+              <button onClick={copyReferral} className="w-full px-4 py-3 rounded-lg bg-card text-primary font-bold hover:bg-accent transition-colors mb-3">
                 {copied ? "Copied!" : referral?.referralCode ? "Copy Referral Link" : "Sign in to get your code"}
               </button>
-              <button onClick={shareWhatsApp} className="w-full px-4 py-3 rounded-lg border-2 border-white text-white font-bold hover:bg-white/10 transition-colors">
+              <button onClick={shareWhatsApp} className="w-full px-4 py-3 rounded-lg border-2 border-primary-foreground text-primary-foreground font-bold hover:bg-primary-foreground/10 transition-colors">
                 Share on WhatsApp
               </button>
             </div>
@@ -235,18 +235,18 @@ export default function Offers() {
       </section>
 
       {/* ── Special Offer Banner ────────────────────────────────────────────────── */}
-      <section className="py-12 px-5 sm:px-8 bg-linear-to-r from-emerald-600 via-teal-600 to-emerald-600">
-        <div className="max-w-4xl mx-auto text-center text-white">
+      <section className="py-12 px-5 sm:px-8 bg-primary">
+        <div className="max-w-4xl mx-auto text-center text-primary-foreground">
           <h2 className="text-2xl sm:text-3xl font-extrabold mb-4 flex items-center justify-center gap-2.5">
-            <IconCelebrate size={26} className="text-white shrink-0" /> Limited Time Offer: 20% Off Your First Consultation
+            <IconCelebrate size={26} className="text-primary-foreground shrink-0" /> Limited Time Offer: 20% Off Your First Consultation
           </h2>
-          <p className="text-emerald-100 mb-6 text-lg">
-            Use code <span className="font-mono font-bold bg-white/20 px-3 py-1 rounded">WELCOME20</span> when booking your consultation
+          <p className="text-primary-foreground/80 mb-6 text-lg">
+            Use code <span className="font-mono font-bold bg-primary-foreground/20 px-3 py-1 rounded">WELCOME20</span> when booking your consultation
           </p>
           <button
             type="button"
             onClick={goToNextStep}
-            className="inline-block px-8 py-3 rounded-lg bg-white text-emerald-600 font-bold hover:bg-emerald-50 transition-colors"
+            className="inline-block px-8 py-3 rounded-lg bg-card text-primary font-bold hover:bg-accent transition-colors"
           >
             Claim Your Discount
           </button>
@@ -255,7 +255,7 @@ export default function Offers() {
 
       {/* ── FAQ Section ─────────────────────────────────────────────────────────── */}
       <section className="py-16 sm:py-24 px-5 sm:px-8 max-w-3xl mx-auto">
-        <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-12 text-center">
+        <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground mb-12 text-center">
           Questions About Our Offers?
         </h2>
 
@@ -289,9 +289,9 @@ export default function Offers() {
 
       {/* ── Contact Section ─────────────────────────────────────────────────────── */}
       <section className="py-16 sm:py-24 px-5 sm:px-8 max-w-4xl mx-auto">
-        <div className="p-8 sm:p-12 rounded-2xl bg-slate-900 text-white text-center">
+        <div className="p-8 sm:p-12 rounded-2xl bg-primary text-primary-foreground text-center">
           <h2 className="text-3xl sm:text-4xl font-extrabold mb-4">Still Have Questions?</h2>
-          <p className="text-slate-300 mb-8 text-lg max-w-2xl mx-auto">
+          <p className="text-primary-foreground/80 mb-8 text-lg max-w-2xl mx-auto">
             Our team is ready to help. Contact us for a free 15-minute consultation.
           </p>
           <form onSubmit={handleContactRequest} className="flex flex-col sm:flex-row gap-3 max-w-lg mx-auto">
@@ -301,12 +301,12 @@ export default function Offers() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="flex-1 px-4 py-3 rounded-lg bg-white text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="flex-1 px-4 py-3 rounded-lg bg-card text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-3 rounded-lg bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              className="px-6 py-3 rounded-lg bg-accent text-accent-foreground font-bold hover:opacity-90 transition-colors disabled:opacity-50"
             >
               {loading ? "Sending..." : "Contact Us"}
             </button>
@@ -324,15 +324,15 @@ function FAQItem({ q, a }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white hover:border-emerald-200 transition-all duration-200 overflow-hidden">
+    <div className="rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200 overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50 transition-colors gap-4"
+        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-secondary transition-colors gap-4"
       >
-        <span className="font-semibold text-slate-800">{q}</span>
+        <span className="font-semibold text-foreground">{q}</span>
         <span
-          className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-slate-100 text-slate-500 transition-transform duration-200 ${
-            isOpen ? "rotate-180 bg-emerald-100 text-emerald-600" : ""
+          className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-secondary text-muted-foreground transition-transform duration-200 ${
+            isOpen ? "rotate-180 bg-accent text-accent-foreground" : ""
           }`}
         >
           <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,7 +341,7 @@ function FAQItem({ q, a }) {
         </span>
       </button>
       {isOpen && (
-        <div className="px-6 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-4 bg-slate-50/50">
+        <div className="px-6 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-border pt-4 bg-secondary/50">
           {a}
         </div>
       )}

@@ -10,11 +10,11 @@ const NOTIFICATIONS_QUERY_KEY = ["notifications", "my"];
 const TYPE_STYLES = {
   case: "bg-blue-100 text-blue-700",
   document: "bg-violet-100 text-violet-700",
-  payment: "bg-emerald-100 text-emerald-700",
+  payment: "bg-accent text-accent-foreground",
   message: "bg-amber-100 text-amber-700",
   appointment: "bg-pink-100 text-pink-700",
   lead_created: "bg-teal-100 text-teal-700",
-  general: "bg-slate-100 text-slate-700",
+  general: "bg-secondary text-secondary-foreground",
 };
 
 const fmt = (iso) => {
@@ -149,35 +149,35 @@ export default function NotificationBell() {
   return (
     <div className="relative" ref={dropRef}>
       <button onClick={() => setOpen(!open)}
-        className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 transition relative">
+        className="w-10 h-10 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-secondary transition relative">
         <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-2 right-2 w-4 h-4 bg-red-500 text-white text-[0.6rem] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+          <span className="absolute top-2 right-2 w-4 h-4 bg-destructive text-destructive-foreground text-[0.6rem] font-bold rounded-full flex items-center justify-center ring-2 ring-card">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden z-[60] animate-[fadeDown_0.15s_ease_forwards]">
-          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Notifications</h3>
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-card rounded-2xl border border-border shadow-xl overflow-hidden z-[60] animate-[fadeDown_0.15s_ease_forwards]">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-secondary/50">
+            <h3 className="font-extrabold text-foreground text-xs uppercase tracking-wider">Notifications</h3>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-[0.65rem] font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wide">
+              <button onClick={markAllRead} className="text-[0.65rem] font-bold text-primary hover:opacity-80 uppercase tracking-wide">
                 Mark all read
               </button>
             )}
           </div>
 
           {pushPermission === "default" && (
-            <div className="px-5 py-3 border-b border-slate-100 bg-emerald-50/60 flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-600 leading-snug">Get notified instantly, even when this tab isn't open.</p>
+            <div className="px-5 py-3 border-b border-border bg-accent/60 flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground leading-snug">Get notified instantly, even when this tab isn't open.</p>
               <button
                 onClick={enablePush}
                 disabled={enablingPush}
-                className="shrink-0 text-[0.65rem] font-bold text-white bg-[#1D9E75] hover:bg-[#0F6E56] px-3 py-1.5 rounded-lg uppercase tracking-wide disabled:opacity-60 cursor-pointer"
+                className="shrink-0 text-[0.65rem] font-bold text-primary-foreground bg-primary hover:opacity-90 px-3 py-1.5 rounded-lg uppercase tracking-wide disabled:opacity-60 cursor-pointer"
               >
                 {enablingPush ? "Enabling…" : "Enable"}
               </button>
@@ -187,22 +187,22 @@ export default function NotificationBell() {
           <div className="max-h-[400px] overflow-y-auto">
             {items.length === 0 ? (
               <div className="py-10 text-center px-6">
-                <p className="text-sm font-bold text-slate-700">No notifications yet</p>
-                <p className="text-xs text-slate-400 mt-1">Updates about your case will appear here.</p>
+                <p className="text-sm font-bold text-foreground">No notifications yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Updates about your case will appear here.</p>
               </div>
             ) : (
-              <ul className="divide-y divide-slate-50">
+              <ul className="divide-y divide-border">
                 {items.map((n) => (
-                  <li key={n._id} className={`px-5 py-4 transition flex gap-3 ${!n.read ? 'bg-emerald-50/30' : 'hover:bg-slate-50'} ${n.link ? 'cursor-pointer' : ''}`}>
+                  <li key={n._id} className={`px-5 py-4 transition flex gap-3 ${!n.read ? 'bg-accent/30' : 'hover:bg-secondary'} ${n.link ? 'cursor-pointer' : ''}`}>
                     <div className="flex-1 min-w-0" onClick={() => handleItemClick(n)}>
                       <div className="flex items-start justify-between gap-2">
-                        <p className={`text-sm leading-snug ${!n.read ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{n.title}</p>
+                        <p className={`text-sm leading-snug ${!n.read ? 'font-bold text-foreground' : 'text-muted-foreground'}`}>{n.title}</p>
                         <span className={`text-[0.55rem] font-black px-1.5 py-0.5 rounded-full shrink-0 uppercase tracking-tighter ${TYPE_STYLES[n.type] || TYPE_STYLES.general}`}>
                           {n.type}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1 leading-relaxed">{n.message}</p>
-                      <p className="text-[0.62rem] text-slate-400 mt-1.5 font-medium">{fmt(n.createdAt)}</p>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{n.message}</p>
+                      <p className="text-[0.62rem] text-muted-foreground mt-1.5 font-medium">{fmt(n.createdAt)}</p>
                     </div>
                   </li>
                 ))}

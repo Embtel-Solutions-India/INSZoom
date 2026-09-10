@@ -55,33 +55,33 @@ export default function AcceptInvite() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f3f4f6] px-6 py-10">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen flex items-center justify-center bg-background px-6 py-10">
+      <div className="w-full max-w-md bg-card rounded-2xl shadow-xl p-8">
         <div className="flex items-center gap-2.5 mb-7">
-          <div className="w-9 h-9 rounded-xl bg-linear-to-br from-[#1D9E75] to-teal-600
+          <div className="w-9 h-9 rounded-xl bg-primary
             flex items-center justify-center shadow-sm">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="white" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-primary-foreground" aria-hidden="true">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
           </div>
           <div>
-            <p className="text-lg font-extrabold text-slate-800 leading-none">BAIS</p>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Immigration Portal</p>
+            <p className="text-lg font-bold text-foreground leading-none">BAIS</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Immigration Portal</p>
           </div>
         </div>
 
         {status === "checking" && (
-          <p className="text-sm text-slate-500">Checking your invitation…</p>
+          <p className="text-sm text-muted-foreground">Checking your invitation…</p>
         )}
 
         {status === "invalid" && (
           <>
-            <h1 className="text-xl font-bold text-slate-900 mb-2">Invalid or expired link</h1>
-            <p className="text-sm text-slate-500 mb-6">
+            <h1 className="text-xl font-serif font-bold text-foreground mb-2">Invalid or expired link</h1>
+            <p className="text-sm text-muted-foreground mb-6">
               This invitation link is no longer valid. Ask whoever invited you to send a new one, or log in if you've already activated your account.
             </p>
             <button onClick={() => navigate("/login")}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
+              className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl transition-all duration-200 cursor-pointer">
               Go to Login
             </button>
           </>
@@ -89,15 +89,15 @@ export default function AcceptInvite() {
 
         {status === "valid" && (
           <>
-            <h1 className="text-xl font-bold text-slate-900 mb-1">Create your account</h1>
-            <p className="text-sm text-slate-500 mb-6">
-              {invite?.name ? `Welcome, ${invite.name}. ` : ""}Set a password for <span className="font-semibold text-slate-700">{invite?.email}</span> to activate your account and get started.
+            <h1 className="text-xl font-serif font-bold text-foreground mb-1">Create your account</h1>
+            <p className="text-sm text-muted-foreground mb-6">
+              {invite?.name ? `Welcome, ${invite.name}. ` : ""}Set a password for <span className="font-semibold text-foreground">{invite?.email}</span> to activate your account and get started.
             </p>
 
             {invite?.caseNumber && (
               <div className="mb-5">
-                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Case ID</label>
-                <div className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Case ID</label>
+                <div className="w-full px-4 py-2.5 rounded-xl border border-border bg-secondary text-sm font-semibold text-foreground">
                   {invite.caseNumber}
                 </div>
               </div>
@@ -105,8 +105,8 @@ export default function AcceptInvite() {
 
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <div className="mb-5">
-              <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                Username <span className="text-slate-400 font-normal">(optional — defaults to your email prefix)</span>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                Username <span className="text-muted-foreground font-normal">(optional — defaults to your email prefix)</span>
               </label>
               <input
                 type="text"
@@ -114,9 +114,9 @@ export default function AcceptInvite() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. john.doe"
                 autoComplete="username"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/15"
               />
-              <p className="mt-1 text-xs text-slate-400">You can log in with your Case ID, email, or username + password.</p>
+              <p className="mt-1 text-xs text-muted-foreground">You can log in with your Case ID, email, or username + password.</p>
             </div>
             <PasswordField icon={<LockIcon />} name="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
@@ -124,13 +124,13 @@ export default function AcceptInvite() {
               value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
 
             {error && (
-              <div role="alert" className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <div role="alert" className="mb-4 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3">
                 {error}
               </div>
             )}
 
             <button type="submit" disabled={submitting}
-              className="w-full py-3 bg-[#1D9E75] hover:bg-[#0F6E56] text-white text-sm font-bold rounded-xl
+              className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {submitting ? "Activating…" : "Activate Account"}
             </button>
