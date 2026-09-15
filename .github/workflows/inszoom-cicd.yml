@@ -124,7 +124,7 @@ jobs:
               \"cd /home/ubuntu/INSZoom/Backend && npm ci --omit=dev\",
 
               \"echo 'Restarting backend...'\",
-              \"pm2 restart inszoom-backend --update-env\",
+              \"sudo -u ubuntu env PM2_HOME=/home/ubuntu/.pm2 pm2 restart inszoom-backend --update-env\",
 
               \"echo 'Cleaning deployment files...'\",
               \"rm -rf ${DEPLOY_DIR}\",
