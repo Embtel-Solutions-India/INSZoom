@@ -10,7 +10,6 @@ const Home = lazy(() => import("./Pages/Dashboard/Home"));
 const Dashboard = lazy(() => import("./Pages/Dashboard/Dashboard"));
 const Profile = lazy(() => import("./Pages/Dashboard/Profile"));
 const Documents = lazy(() => import("./Pages/Dashboard/Documents"));
-const About = lazy(() => import("./Pages/Dashboard/About"));
 const Payments = lazy(() => import("./Pages/Dashboard/Payments"));
 const DocumentReview = lazy(() => import("./Pages/Dashboard/DocumentReview"));
 const Intake = lazy(() => import("./Pages/Dashboard/Intake"));
@@ -19,8 +18,6 @@ const PlanSelection = lazy(() => import("./Pages/Dashboard/PlanSelection"));
 const Messages = lazy(() => import("./Pages/Dashboard/Messages"));
 const QuickBooks = lazy(() => import("./Pages/Dashboard/QuickBooks"));
 const FedEx = lazy(() => import("./Pages/Dashboard/FedEx"));
-const HowItWorks = lazy(() => import("./Pages/Dashboard/HowItWorks"));
-const Offers = lazy(() => import("./Pages/Dashboard/Offers"));
 const Login = lazy(() => import("./Pages/Auth/Login"));
 const Register = lazy(() => import("./Pages/Auth/Register"));
 const PaymentSuccess = lazy(() => import("./Pages/Dashboard/PaymentSuccess"));
@@ -47,9 +44,6 @@ export default function App() {
         {/* Layout wrapper */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/how-it-works" element={<HowItWorks />} />
-          <Route path="/offers" element={<Offers />} />
 
           {/* Public eligibility intro + free consultation booking — no
               ProtectedRoute, reachable by anonymous prospects. /eligibility

@@ -61,14 +61,10 @@ const MsgIcon = () => (
 // invited-employee account away from anyway (see ProtectedRoute.jsx) — kept
 // off an employee's nav entirely rather than shown-then-redirected.
 const NAV_LINKS = [
-  { label: "Home",      to: "/"                    },
-  { label: "How It Works", to: "/how-it-works"     },
   { label: "Dashboard", to: "/dashboard"            },
   { label: "Documents", to: "/dashboard/documents", authOnly: true, employeeOnly: true },
   { label: "Profile",   to: "/dashboard/profile",   authOnly: true, employeeOnly: true },
-  { label: "Offers",    to: "/offers"              },
   { label: "Messages",  to: "/dashboard/messages", authOnly: true, hideForEmployee: true },
-  { label: "About Us",  to: "/about"               },
   { label: "Payments",  to: "/dashboard/payments", authOnly: true, hideForEmployee: true },
 ];
 
@@ -165,25 +161,28 @@ export default function Navbar() {
           <span className="text-lg text-foreground">Immiglance</span>
         </Link>
 
-        {/* ── Desktop nav (authenticated only — matches Immiglance's
-            minimal unauthenticated header exactly: logo, Client Login,
-            Start Free Evaluation, dark toggle, nothing in between) ── */}
-        {user && (
-          <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center gap-0.5 xl:gap-1">
-            {visibleNavLinks(user, hasCase).map(({ label, to }) => (
-              <Link
-                key={label}
-                to={to}
-                className={`text-[0.82rem] font-semibold px-2.5 py-2 xl:px-3 rounded-lg transition-all no-underline whitespace-nowrap
-                  ${isActive(to)
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
-              >
-                {label}
-              </Link>
-            ))}
-          </div>
-        )}
+        {/* ── Desktop nav — public marketing links (Home, How It Works,
+            Getting Started, Documentation, Petition Process, About Us,
+            Offers) are visible to every visitor, logged in or not, so a
+            prospect can browse the process before signing up.
+            visibleNavLinks() already filters out account-only destinations
+            (Dashboard, Documents, Profile, Messages, Payments) via
+            authOnly/CASE_REQUIRED_LINKS when user is null/hasCase is
+            false, so this renders correctly for anonymous visitors too. ── */}
+        <div className="hidden lg:flex min-w-0 flex-1 items-center justify-center gap-0.5 xl:gap-1">
+          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
+            <Link
+              key={label}
+              to={to}
+              className={`text-[0.82rem] font-semibold px-2.5 py-2 xl:px-3 rounded-lg transition-all no-underline whitespace-nowrap
+                ${isActive(to)
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
 
         {/* ── Auth section ── */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
@@ -315,8 +314,8 @@ export default function Navbar() {
         <div className="lg:hidden border-t border-border bg-card px-4 py-3 space-y-1
           shadow-lg shadow-black/5">
 
-          {/* Nav links — authenticated only, matches the desktop bar above */}
-          {user && visibleNavLinks(user, hasCase).map(({ label, to }) => (
+          {/* Nav links — public + account links, same filtering as the desktop bar above */}
+          {visibleNavLinks(user, hasCase).map(({ label, to }) => (
             <Link
               key={label}
               to={to}

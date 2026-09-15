@@ -24,8 +24,8 @@ vi.mock("./hooks/useHasCase", () => ({
 vi.mock("./Pages/Eligibility/EligibilityQuiz", () => ({
   default: () => <div data-testid="quiz-page">QUIZ</div>,
 }));
-vi.mock("./Pages/Dashboard/About", () => ({
-  default: () => <div data-testid="about-page">ABOUT</div>,
+vi.mock("./Pages/Dashboard/Home", () => ({
+  default: () => <div data-testid="home-page">HOME</div>,
 }));
 
 const { default: App } = await import("./App");
@@ -40,10 +40,10 @@ describe("App route/layout wiring", () => {
   });
 
   it("still renders an ordinary marketing route with the global Navbar", async () => {
-    window.history.pushState({}, "", "/about");
+    window.history.pushState({}, "", "/");
     render(<App />);
 
-    expect(await screen.findByTestId("about-page")).toBeTruthy();
+    expect(await screen.findByTestId("home-page")).toBeTruthy();
     expect(screen.queryByTestId("global-navbar")).toBeTruthy();
   });
 });
