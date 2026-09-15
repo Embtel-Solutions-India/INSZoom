@@ -36,7 +36,7 @@ exports.createFiling = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Unknown or unresolved filing type" });
     }
 
-    const caseNumber = await generateCaseNumber(req.body.legacySource === "INSZoom" ? "INS" : "BAIS");
+    const caseNumber = await generateCaseNumber(req.body.legacySource === "INSZoom" ? "INS" : "Immiglance");
     const caseData = await Case.create({
       caseNumber,
       caseId: caseNumber,
@@ -56,7 +56,7 @@ exports.createFiling = async (req, res, next) => {
       stage: "intake",
       createdBy: req.user._id,
       lastModifiedBy: req.user._id,
-      legacySource: req.body.legacySource || "BAIS",
+      legacySource: req.body.legacySource || "Immiglance",
     });
     caseService.addTimelineEvent(
       caseData,

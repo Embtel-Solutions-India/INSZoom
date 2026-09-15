@@ -130,6 +130,46 @@ async function s3HeadObject(key) {
   }
 }
 
+// Metadata-only probe (HEAD on S3, stat on local) — never transfers object
+// bytes, so a registry health sweep over every USCIS form costs one HEAD per
+// object rather than a full download. `storedSize` is the size of the stored
+// object as-is: with STORAGE_ENCRYPTION_KEY set that is the AES-256-GCM
+// envelope (+36 bytes of header/IV/auth tag), NOT the plaintext length, so
+// callers comparing against a recorded plaintext fileSize must account for
+// the envelope rather than expecting an exact match.
+async function statObject(key) {
+  const normalizedKey = normalizeKey(key);
+  if (STORAGE_PROVIDER === "s3") {
+    const { client, commands } = getS3();
+    try {
+      const response = await client.send(
+        new commands.HeadObjectCommand({ Bucket: env.storage.aws.bucket, Key: normalizedKey })
+      );
+      return {
+        exists: true,
+        provider: "s3",
+        key: normalizedKey,
+        storedSize: response.ContentLength ?? null,
+        lastModified: response.LastModified || null,
+      };
+    } catch (error) {
+      if (isS3NotFound(error)) return { exists: false, provider: "s3", key: normalizedKey, storedSize: null, lastModified: null };
+      throw error;
+    }
+  }
+  try {
+    const stats = await fs.stat(path.join(LOCAL_STORAGE_PATH, normalizedKey));
+    return { exists: true, provider: "local", key: normalizedKey, storedSize: stats.size, lastModified: stats.mtime };
+  } catch (error) {
+    if (error.code === "ENOENT") return { exists: false, provider: "local", key: normalizedKey, storedSize: null, lastModified: null };
+    throw error;
+  }
+}
+
+async function objectExists(key) {
+  return (await statObject(key)).exists;
+}
+
 async function storeBuffer(key, buffer, contentType) {
   const normalizedKey = normalizeKey(key);
   const encrypted = encrypt(buffer);
@@ -339,7 +379,10 @@ module.exports = {
   deleteObject,
   encrypt,
   generateDocumentKey,
+  objectExists,
+  provider: STORAGE_PROVIDER,
   readBuffer,
+  statObject,
   storeBuffer,
   storeImmutableBuffer,
 };

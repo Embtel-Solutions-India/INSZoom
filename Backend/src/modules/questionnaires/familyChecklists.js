@@ -74,7 +74,7 @@ function conditionalLogicFromEntry(entry) {
 // there is silently stripped by Mongoose before save (confirmed via a direct
 // schema construction test). `metadata` is Schema.Types.Mixed, so it's the
 // only path that actually persists; the frontend's RepeatableGroupInput
-// (BAIS/Frontend/src/components/questionnaire/QuestionInput.jsx) checks
+// (Immiglance/Frontend/src/components/questionnaire/QuestionInput.jsx) checks
 // metadata.columns / metadata.fields / repeatableConfig.fields / fields, in
 // that order — metadata.fields is the second-priority, and the first one
 // that actually survives persistence, so that's what's populated here.

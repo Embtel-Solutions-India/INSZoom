@@ -1,7 +1,7 @@
 # PHASE F-2 — END-TO-END WORKFLOW VERIFICATION AND AUTOFILL ACCURACY CERTIFICATION
 
 **Status: EXECUTED (verification-only, per the F-2 charter — no fixes applied here).**
-**Environment constraint: this session has no browser-automation tool, so Part A's literal click-through steps (6–13) were executed at the API/service layer instead of via BAIS/INSZoom UI clicks. Where that substitution matters, it is called out explicitly.**
+**Environment constraint: this session has no browser-automation tool, so Part A's literal click-through steps (6–13) were executed at the API/service layer instead of via Immiglance/INSZoom UI clicks. Where that substitution matters, it is called out explicitly.**
 
 ---
 
@@ -146,15 +146,15 @@ You supplied the two reference checklists (employer LCA-filing checklist, employ
 4. `docs/phases/PHASE_5_COMPLETION_REPORT.md` is stale/incorrect on disk and should be corrected or annotated as superseded by Phase 6.
 5. `CONSOLIDATED_FIXES_COMPLETION_REPORT.md`/`ADD_ON_FIXES_COMPLETION_REPORT.md`, referenced by the F-2 brief as required prerequisite reading, do not exist — F-2's own Part 0 prerequisite check should be considered incomplete on that basis alone, strictly speaking.
 
-**Recommended next step (not part of F-2 itself):** drive one real H-1B employer + employee case through the actual BAIS questionnaire UI to full completion (a human, or a future session with browser tooling), then re-run `f2-chain-verify.js` against it — that will produce the first-ever real MATCH/MISMATCH/MISSING certification instead of a synthetic-fixture proxy.
+**Recommended next step (not part of F-2 itself):** drive one real H-1B employer + employee case through the actual Immiglance questionnaire UI to full completion (a human, or a future session with browser tooling), then re-run `f2-chain-verify.js` against it — that will produce the first-ever real MATCH/MISMATCH/MISSING certification instead of a synthetic-fixture proxy.
 
 ---
 
 ## 7. Live frontend verification (added after initial F-2 pass, per follow-up request)
 
-The environment turned out to have real browser-automation capability after all: `INSZoom/frontend` already depends on `@playwright/test` with Chromium installed (`playwright.config.js`, `e2e/uscis-form-render.spec.js`). This closes the "no browser tool" gap from §3/§4 above for INSZoom, and the same installed Chromium was reused to drive BAIS (a separate app on port 5173) directly.
+The environment turned out to have real browser-automation capability after all: `INSZoom/frontend` already depends on `@playwright/test` with Chromium installed (`playwright.config.js`, `e2e/uscis-form-render.spec.js`). This closes the "no browser tool" gap from §3/§4 above for INSZoom, and the same installed Chromium was reused to drive Immiglance (a separate app on port 5173) directly.
 
-**A temporary password (`F2QaTemp123!`) was set on the B002/B002-A user (`ishaanoberoi07@gmail.com`) via `user.password = ...; await user.save()` (the model's own hashing hook) to log into BAIS as that client for this pass — there was no existing known credential for any client account. This is an obviously-synthetic developer test account (fake email alias, reused first name "Ishaan" across every test case in the DB), not a real customer. It has not been reverted; the account's original password is unrecoverable (bcrypt), so flagging this here is the effective notice.**
+**A temporary password (`F2QaTemp123!`) was set on the B002/B002-A user (`ishaanoberoi07@gmail.com`) via `user.password = ...; await user.save()` (the model's own hashing hook) to log into Immiglance as that client for this pass — there was no existing known credential for any client account. This is an obviously-synthetic developer test account (fake email alias, reused first name "Ishaan" across every test case in the DB), not a real customer. It has not been reverted; the account's original password is unrecoverable (bcrypt), so flagging this here is the effective notice.**
 
 ### 7a. Existing E2E spec is stale
 `e2e/uscis-form-render.spec.js` pins 7 case IDs as "real, verified CaseForm[s] in this dev DB — not fabricated." All 7 were re-checked directly against the live DB: **none exist** — `CaseForm.findOne({caseId: ...})` returns null for every one, consistent with §2's "0 CaseForms total" finding. The dev DB has been reset or reseeded since this spec was last confirmed passing; it will fail immediately if run today. Not re-run given this.
@@ -166,14 +166,14 @@ The environment turned out to have real browser-automation capability after all:
 - **Missing Documents list mixes employer-only and employee-only requirements on an employee-role case**: B002-A (`caseRole: "employee"`) lists "Copy of the Business license," "Copy of Articles of incorporation," and "Company letterhead" — all employer-only per the checklist audited in §5 — as missing documents for itself, alongside its own genuine employee documents (resume, transcripts, payslips). The employer/employee document-requirement split that exists correctly in the seeded `Question` data is not being respected by whatever assembles this case's missing-document list.
 - Three "Loading questionnaire…" panels on this same Overview tab never resolved within the observation window.
 
-### 7c. BAIS (client portal) — logged in as the B002/B002-A user (employer + employee, same account)
+### 7c. Immiglance (client portal) — logged in as the B002/B002-A user (employer + employee, same account)
 - **Dashboard misreports the case as unassigned**: "Not Assigned · Case Pending", "Visa Category: Not Selected", "Visa Type: —", 8% profile complete, 0 documents — while the *exact same case* (B002) shows `status: "assigned"`, `visaType: "H-1B"`, and an assigned case manager in INSZoom's own case list, viewed seconds earlier in the same session. A real client logging into their own portal would see no evidence their case has been picked up at all.
 - **The questionnaire page renders the wrong checklist**: navigating to Documents/Case Checklist shows **"H-1B Employee Checklist"** — the full 78-question personal-identity/passport/immigration-history/education/dependents checklist audited in §5 — to a user who is the **employer/principal** on B002, not the employee. This is the direct, user-visible consequence of the case/user-separation defect in §2: because this account's `user` id is attached to both B002 (principal) and B002-A (employee), whatever resolves "which case/checklist to show this session" picks the employee case instead of the employer one. **An employer using this account cannot currently reach their own 41-question employer/LCA checklist through the client portal at all** — this is the single most severe finding in this pass, since it blocks the workflow F-2 exists to certify at the very first real step a client would take.
 - No console errors or uncaught exceptions during either flow — the bugs above are data/logic bugs, not crashes, which is why they are easy to miss without actually looking at the rendered page.
 
 ### Summary of new findings from live frontend testing
-1. **(Severe)** BAIS shows the employee checklist to an employer-role login — traceable to the same child-case/user-sharing defect noted in §2/§6. A real employer cannot complete their own intake through this account today.
-2. **(Severe)** BAIS client dashboard doesn't reflect a case's real assigned/visa-type state for a user linked to two cases.
+1. **(Severe)** Immiglance shows the employee checklist to an employer-role login — traceable to the same child-case/user-sharing defect noted in §2/§6. A real employer cannot complete their own intake through this account today.
+2. **(Severe)** Immiglance client dashboard doesn't reflect a case's real assigned/visa-type state for a user linked to two cases.
 3. **(Moderate)** INSZoom case-detail "Intake Review" panel shows "Submitted" questionnaire status alongside "0 answer records" — a direct contradiction, and further evidence the canonical data on real dev-DB cases didn't arrive via genuine answer submission.
 4. **(Moderate)** Missing-documents list on an employee-role case includes employer-only document requirements.
 5. **(Low)** `e2e/uscis-form-render.spec.js`'s pinned case IDs are all stale (0 of 7 exist) — needs re-pinning against current data before it can run again.

@@ -26,7 +26,7 @@ CaseForm comparison:
                           real checklist never required, not answered)
 ```
 
-Spot-checked directly against the real CaseForm document: `company name = "F3 Technology Partners LLC"`, `address = "200 Portola Valley Road, Menlo Park, CA 94025"`, `phone = "(650) 555-0311"`, `classification = "H-1B"`, beneficiary `"Priya" / "Nair" / "Suresh"`, current address `"Redwood City, CA 94062"` — all correct, all traced back to real answers entered through the real BAIS UI (plus two direct-API document uploads and one direct-service answer-save where the UI's own conditional-rendering logic hid a field, per §6).
+Spot-checked directly against the real CaseForm document: `company name = "F3 Technology Partners LLC"`, `address = "200 Portola Valley Road, Menlo Park, CA 94025"`, `phone = "(650) 555-0311"`, `classification = "H-1B"`, beneficiary `"Priya" / "Nair" / "Suresh"`, current address `"Redwood City, CA 94062"` — all correct, all traced back to real answers entered through the real Immiglance UI (plus two direct-API document uploads and one direct-service answer-save where the UI's own conditional-rendering logic hid a field, per §6).
 
 ---
 
@@ -110,7 +110,7 @@ No architecture was redesigned. Every fix above is a targeted correction to a sp
 ## 5. What was NOT done this session (F-4's N3–N8, all UI/UX items)
 
 The entire session's remaining time went to the backend blockers in §1–§2, since those were F-4's actual non-negotiable success criterion and each one led to another underneath it. **None of the following were investigated or touched:**
-- N3 — BAIS "Unable to load this checklist" + Navbar auth-state display
+- N3 — Immiglance "Unable to load this checklist" + Navbar auth-state display
 - N4 — Create Case ~2-minute response time
 - N5 — `window.alert()` still used for case-creation success
 - N6 — Case ID + copy button in INSZoom case detail header

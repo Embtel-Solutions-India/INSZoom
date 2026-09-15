@@ -14,11 +14,11 @@ const mongoose = require("mongoose");
 const User = require("../src/models/User");
 
 const STAFF = [
-  { name: "Super Admin", email: "superadmin@immigratia.com", password: "SuperAdmin123", role: "super_admin" },
-  { name: "Admin User", email: "admin@immigratia.com", password: "Admin123", role: "admin" },
-  { name: "David Team Lead", email: "teamlead@immigratia.com", password: "TeamLead123", role: "team_lead" },
-  { name: "John Case Manager", email: "casemanager@immigratia.com", password: "CaseManager123", role: "case_manager" },
-  { name: "Second Case Manager", email: "casemanager2@immigratia.com", password: "CaseManager123", role: "case_manager" },
+  { name: "Super Admin", email: "superadmin@immiglance.com", password: "SuperAdmin123", role: "super_admin" },
+  { name: "Admin User", email: "admin@immiglance.com", password: "Admin123", role: "admin" },
+  { name: "David Team Lead", email: "teamlead@immiglance.com", password: "TeamLead123", role: "team_lead" },
+  { name: "John Case Manager", email: "casemanager@immiglance.com", password: "CaseManager123", role: "case_manager" },
+  { name: "Second Case Manager", email: "casemanager2@immiglance.com", password: "CaseManager123", role: "case_manager" },
 ];
 
 async function main() {

@@ -13,6 +13,18 @@
  *   2. Ensure USCISFormTemplate records exist for each form listed
  *   3. Ensure USCISMappingVersion records exist for each form listed
  *   Do NOT add it directly to a route handler or controller.
+ *
+ * Every key string here must exactly match a `visaType` value in the
+ * VisaFormMapping registry (src/modules/form-registry/seeds/visaFormMappings.seed.js)
+ * — that registry is what actually determines which USCIS forms get
+ * auto-assigned to a case (see uscis-form.service.js's
+ * latestTemplatesByAssignmentRules/ensureAssignedForms). A visa type
+ * recognized here but absent from that registry will pass case creation but
+ * never have any forms auto-assigned, so the two must be kept in sync.
+ * Existing keys are never renamed/removed here even if the registry's
+ * naming differs slightly (e.g. "TN" vs "TN Canada"/"TN Mexico") — a case
+ * already created with the old string must keep resolving. New entries
+ * below use the registry's exact string.
  */
 
 const VISA_CATEGORIES = {
@@ -166,6 +178,98 @@ const VISA_CATEGORIES = {
     forms: ["i-134"],
     label: "Declaration of Financial Support",
   },
+
+  // ─── ADDITIONAL H/L/O/P/Q/R/E/TN VARIANTS (registry-exact strings) ───────
+  "H-1B1 Chile": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-1B1 (Chile)" },
+  "H-1B1 Singapore": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-1B1 (Singapore)" },
+  "H-2A": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-2A Agricultural Worker" },
+  "H-2B": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-2B Temporary Non-Agricultural Worker" },
+  "H-3": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-3 Trainee" },
+  "H-4": { caseStructure: "single", forms: ["i-539"], label: "H-4 Dependent" },
+  "L-2": { caseStructure: "single", forms: ["i-539"], label: "L-2 Dependent" },
+  "O-3": { caseStructure: "single", forms: ["i-539"], label: "O-3 Dependent" },
+  "P-1": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-1 Internationally Recognized Athlete/Entertainment Group" },
+  "P-1S": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-1S Essential Support Personnel" },
+  "P-2S": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-2S Essential Support Personnel" },
+  "P-3S": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-3S Essential Support Personnel" },
+  "P-4": { caseStructure: "single", forms: ["i-539"], label: "P-4 Dependent" },
+  "Q-1": { caseStructure: "employer_employee", forms: ["i-129"], label: "Q-1 Cultural Exchange Visitor" },
+  "R-2": { caseStructure: "single", forms: ["i-539"], label: "R-2 Dependent" },
+  "TN Canada": { caseStructure: "employer_employee", forms: ["i-129"], label: "TN Trade NAFTA/USMCA (Canada)" },
+  "TN Mexico": { caseStructure: "employer_employee", forms: ["i-129"], label: "TN Trade NAFTA/USMCA (Mexico)" },
+
+  // ─── STUDENT / EXCHANGE VISITOR ───────────────────────────────────────────
+  "F-1": { caseStructure: "single", forms: ["i-539"], label: "F-1 Academic Student" },
+  "F-2": { caseStructure: "single", forms: ["i-539"], label: "F-2 Dependent of F-1 Student" },
+  "F-1 OPT": { caseStructure: "single", forms: ["i-765"], label: "F-1 Optional Practical Training" },
+  "F-1 STEM OPT": { caseStructure: "single", forms: ["i-765"], label: "F-1 STEM OPT Extension" },
+  "J-1": { caseStructure: "single", forms: ["i-539"], label: "J-1 Exchange Visitor" },
+  "J-2": { caseStructure: "single", forms: ["i-539"], label: "J-2 Dependent of J-1" },
+  "M-1": { caseStructure: "single", forms: ["i-539"], label: "M-1 Vocational Student" },
+  "M-2": { caseStructure: "single", forms: ["i-539"], label: "M-2 Dependent of M-1" },
+
+  // ─── VISITOR ───────────────────────────────────────────────────────────────
+  "B-1": { caseStructure: "single", forms: ["i-539"], label: "B-1 Business Visitor" },
+  "B-2": { caseStructure: "single", forms: ["i-539"], label: "B-2 Tourist Visitor" },
+  "B-1/B-2": { caseStructure: "single", forms: ["i-539"], label: "B-1/B-2 Visitor" },
+
+  // ─── HUMANITARIAN ──────────────────────────────────────────────────────────
+  "U-1": { caseStructure: "single", forms: ["i-918"], label: "U-1 Victim of Qualifying Criminal Activity" },
+  "U derivative": { caseStructure: "family", forms: ["i-918"], label: "U Derivative Family Member" },
+  "SB-1": { caseStructure: "single", forms: [], label: "SB-1 Returning Resident" },
+
+  // ─── EB-1 (EMPLOYMENT-BASED, FIRST PREFERENCE) ────────────────────────────
+  "EB-1A": { caseStructure: "single", forms: ["i-140", "i-485"], label: "EB-1A Extraordinary Ability" },
+  "EB-1B": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-1B Outstanding Researcher/Professor" },
+  "EB-1C": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-1C Multinational Manager/Executive" },
+
+  // ─── EB-2 (EMPLOYMENT-BASED, SECOND PREFERENCE) ───────────────────────────
+  "EB-2 PERM": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-2 (PERM Labor Certification)" },
+  "EB-2 NIW": { caseStructure: "single", forms: ["i-140", "i-485"], label: "EB-2 National Interest Waiver" },
+  // Plain "EB-2" is not a registry visaType (the registry only has the two
+  // subtypes above), but pre-existing UI (INSZoom's CreateCaseModal) offers
+  // it as a generic choice — recognized here as an alias for the standard
+  // PERM-based pathway so it doesn't 400 at case creation.
+  "EB-2": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-2 (Advanced Degree/Exceptional Ability)" },
+
+  // ─── EB-3 (EMPLOYMENT-BASED, THIRD PREFERENCE) ────────────────────────────
+  "EB-3 Skilled Worker": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-3 Skilled Worker" },
+  "EB-3 Professional": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-3 Professional" },
+  "EB-3 Other Worker": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-3 Other Worker" },
+  // Plain "EB-3" alias, same reasoning as plain "EB-2" above.
+  "EB-3": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-3 (Skilled Worker/Professional/Other Worker)" },
+
+  // ─── EB-4 (SPECIAL IMMIGRANTS) ─────────────────────────────────────────────
+  "EB-4": { caseStructure: "single", forms: ["i-360", "i-485"], label: "EB-4 Special Immigrant" },
+
+  // ─── EB-5 (IMMIGRANT INVESTOR) ─────────────────────────────────────────────
+  "EB-5 Regional Center": { caseStructure: "single", forms: ["i-526e", "i-485"], label: "EB-5 Immigrant Investor (Regional Center)" },
+  "EB-5 Standalone": { caseStructure: "single", forms: ["i-526", "i-485"], label: "EB-5 Immigrant Investor (Standalone)" },
+
+  // ─── FAMILY-BASED (ADDITIONAL PREFERENCE CATEGORIES) ──────────────────────
+  "CR-1": { caseStructure: "family", forms: ["i-130"], label: "CR-1 Conditional Resident Spouse" },
+  "CR-2": { caseStructure: "family", forms: ["i-130"], label: "CR-2 Conditional Resident Child" },
+  "IR-3": { caseStructure: "family", forms: ["i-130"], label: "IR-3 Orphan Adopted Abroad" },
+  "IR-4": { caseStructure: "family", forms: ["i-130"], label: "IR-4 Orphan to Be Adopted in the U.S." },
+  "K-2": { caseStructure: "family", forms: ["i-539"], label: "K-2 Derivative Child of K-1" },
+  "K-4": { caseStructure: "family", forms: ["i-539"], label: "K-4 Derivative Child of K-3" },
+  F1: { caseStructure: "family", forms: ["i-130"], label: "F1 Unmarried Son/Daughter of U.S. Citizen" },
+  // Registry-exact "F2A" (no hyphen) — kept alongside the pre-existing
+  // "F-2A" (with hyphen) below rather than replacing it, since an existing
+  // case may already store either string.
+  F2A: { caseStructure: "family", forms: ["i-130"], label: "F2A Spouse/Child of LPR" },
+  F2B: { caseStructure: "family", forms: ["i-130"], label: "F2B Unmarried Son/Daughter of LPR" },
+  F3: { caseStructure: "family", forms: ["i-130"], label: "F3 Married Son/Daughter of U.S. Citizen" },
+  F4: { caseStructure: "family", forms: ["i-130"], label: "F4 Sibling of U.S. Citizen" },
+
+  // ─── GREEN CARD / CITIZENSHIP WORKFLOWS (STANDALONE CASE TYPES) ───────────
+  "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
+  "Conditional Green Card Removal": { caseStructure: "single", forms: ["i-751"], label: "Removal of Conditions on Residence" },
+  "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal/Replacement" },
+  "Re-entry Permit": { caseStructure: "single", forms: ["i-131"], label: "Re-entry Permit" },
+  Naturalization: { caseStructure: "single", forms: ["n-400"], label: "Naturalization" },
+  "Certificate of Citizenship": { caseStructure: "single", forms: ["n-600"], label: "Certificate of Citizenship" },
+  "Replacement Citizenship Certificate": { caseStructure: "single", forms: ["n-565"], label: "Replacement Citizenship/Naturalization Document" },
 };
 
 /**

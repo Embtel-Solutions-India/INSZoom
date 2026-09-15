@@ -21,19 +21,19 @@ So the fix is: call the *existing* questionnaire APIs once per real Case documen
 
 ## What changed
 
-**New:** `BAIS/Frontend/src/components/questionnaire/CaseRoleChecklist.jsx` — renders one Case's one `targetRole` questionnaire through the real `ChecklistItemRow`/`QuestionInput`/`AutofillButton`/`PrefillBadge` stack (copied faithfully from `Documents.jsx`'s own existing render loop). Exports both a convenience wrapper (`CaseRoleChecklist`, calls the hook itself) and a presentational view (`CaseRoleChecklistView`, takes a pre-built `qa` object) so a caller that needs the same hook result for its own logic doesn't fetch twice.
+**New:** `Immiglance/Frontend/src/components/questionnaire/CaseRoleChecklist.jsx` — renders one Case's one `targetRole` questionnaire through the real `ChecklistItemRow`/`QuestionInput`/`AutofillButton`/`PrefillBadge` stack (copied faithfully from `Documents.jsx`'s own existing render loop). Exports both a convenience wrapper (`CaseRoleChecklist`, calls the hook itself) and a presentational view (`CaseRoleChecklistView`, takes a pre-built `qa` object) so a caller that needs the same hook result for its own logic doesn't fetch twice.
 
 **Rewritten:** `PrincipalCaseWorkspace.jsx` — the employer/petitioner section and each fill-self employee tab now render through `CaseRoleChecklist`/`CaseRoleChecklistView` (`targetRole: 'employer'|'petitioner'` on the principal's own `caseId`, `'employee'|'beneficiary'` on each child's own `caseId`) instead of `CanonicalProfileForm`. The data-entry-mode modal's gating condition ("has the employer started answering") now reads `useQuestionnaireAnswers`'s own `answers` object instead of `EmployerProfile.canonicalData`. `DataEntryModeModal`/`InvitePanel`/remove-employee are unchanged — they're genuinely new-architecture concerns (principal+children case trees) with no old-system equivalent.
 
 **Rewritten (and narrowed):** `EmployeeSelfServiceView.jsx` — originally showed a read-only employer summary above the employee's own checklist. Investigation of `canAccessCase` found `employee`/`beneficiary` accounts go through `canAccessRestrictedChildCase`, a **deliberate** security boundary requiring `caseData.caseRole === user's own role` — i.e. an invited employee's account can never access the principal case, by design. This also matches the original spec more precisely: the "read-only employer summary" was specified for the *employer's own* fill-self tabs (who already has legitimate access to both), not for an invited employee's separate account. Removed the employer summary rather than working around a real security boundary; an invited employee now sees only their own checklist.
 
-**Not changed:** `CanonicalProfileForm.jsx`, `canonicalFieldGroups.js`, `employerProfileApi`/`employeeProfileApi`, and the `Backend/src/modules/employer-profile/`+`employee-profile/` modules — `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx` (modified by a separate, unrelated session) still calls `employeeProfileApi` directly, so none of this is dead code; it was left fully intact.
+**Not changed:** `CanonicalProfileForm.jsx`, `canonicalFieldGroups.js`, `employerProfileApi`/`employeeProfileApi`, and the `Backend/src/modules/employer-profile/`+`employee-profile/` modules — `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx` (modified by a separate, unrelated session) still calls `employeeProfileApi` directly, so none of this is dead code; it was left fully intact.
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| `npm run build` (BAIS frontend) | PASS |
+| `npm run build` (Immiglance frontend) | PASS |
 | `npx eslint` on all 3 changed/created files | PASS, zero warnings |
 | Backend boot (no backend files changed this pass) | PASS |
 | `AutofillButton` prop signature matches usage | Confirmed (`documentType, caseId, disabled, onUploaded`) |
@@ -51,14 +51,14 @@ So the fix is: call the *existing* questionnaire APIs once per real Case documen
 
 ## Files Modified
 
-1. `BAIS/Frontend/src/components/questionnaire/PrincipalCaseWorkspace.jsx`
-2. `BAIS/Frontend/src/components/questionnaire/EmployeeSelfServiceView.jsx`
+1. `Immiglance/Frontend/src/components/questionnaire/PrincipalCaseWorkspace.jsx`
+2. `Immiglance/Frontend/src/components/questionnaire/EmployeeSelfServiceView.jsx`
 
 ## Files Created
 
-1. `BAIS/Frontend/src/components/questionnaire/CaseRoleChecklist.jsx`
+1. `Immiglance/Frontend/src/components/questionnaire/CaseRoleChecklist.jsx`
 2. `docs/forms/QUESTIONNAIRE_UI_BRIDGE_REPORT.md` (this file)
 
 ## Files Read (no changes)
 
-`BAIS/Frontend/src/hooks/useQuestionnaireAnswers.js`, `BAIS/Frontend/src/hooks/useCaseQuestionnaire.js`, `BAIS/Frontend/src/Pages/Dashboard/Documents.jsx` (render-loop reference only), `Backend/src/modules/cases/case-participant.service.js`, `Backend/src/modules/cases/case.service.js` (`canAccessCase`/`canAccessRestrictedChildCase`), `Backend/src/modules/questionnaires/questionnaire.service.js` (`getQuestionnaireForCase`/`saveAnswers`), `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx` (confirmed still uses `employeeProfileApi` — not touched)
+`Immiglance/Frontend/src/hooks/useQuestionnaireAnswers.js`, `Immiglance/Frontend/src/hooks/useCaseQuestionnaire.js`, `Immiglance/Frontend/src/Pages/Dashboard/Documents.jsx` (render-loop reference only), `Backend/src/modules/cases/case-participant.service.js`, `Backend/src/modules/cases/case.service.js` (`canAccessCase`/`canAccessRestrictedChildCase`), `Backend/src/modules/questionnaires/questionnaire.service.js` (`getQuestionnaireForCase`/`saveAnswers`), `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx` (confirmed still uses `employeeProfileApi` — not touched)

@@ -3,7 +3,7 @@
 **Date:** 2026-09-01
 **Scope:** Track 1 (static code) + Track 2 (database state) in full, plus the curl-testable subset of Track 3 (RBAC/IDOR/auth-endpoint behavior). Browser-click-through items (login UI, PDF editor interaction, visual rendering) are explicitly out of scope — this agent session has no browser-automation tool available, confirmed identically to the prior `USCIS_NATIVE_POC_REPORT.md` finding. Those items are listed at the end as **NOT INDEPENDENTLY VERIFIED**, not faked as passing.
 
-**Method:** Every PASS below is backed by a real command run against the actual code, the live dev database (`immigration_crm`, direct `mongodb://` connection — confirmed **not** Atlas), or the live running servers (Backend :7000, INSZoom :3002, BAIS :5173, all already running). Sensitive values are masked. No fixes were applied during this audit — this is an evidence-gathering pass only.
+**Method:** Every PASS below is backed by a real command run against the actual code, the live dev database (`immigration_crm`, direct `mongodb://` connection — confirmed **not** Atlas), or the live running servers (Backend :7000, INSZoom :3002, Immiglance :5173, all already running). Sensitive values are masked. No fixes were applied during this audit — this is an evidence-gathering pass only.
 
 ---
 
@@ -15,7 +15,7 @@ All expected env vars present and well-formed: `JWT_ACCESS_SECRET` (47 chars) / 
 **Audit 2 — Builds and startup.** RESULT: PASS.
 - `find Backend/src -name "*.js" | xargs node --check`: **0 syntax errors** across the entire backend source tree.
 - Backend already running on :7000; `GET /api/health` → `200`.
-- `BAIS/Frontend`: `npm run build` → clean, exit 0, built in 19.3s.
+- `Immiglance/Frontend`: `npm run build` → clean, exit 0, built in 19.3s.
 - `INSZoom/frontend`: `npm run build` → clean, exit 0, built in 27.5s.
 
 **Audit 3 — External connectivity.** RESULT: PASS.
@@ -131,9 +131,9 @@ Also reviewed the two DELETE routes that rely on **controller-level ownership ch
 
 ## Explicitly NOT Independently Verified (Track 3 browser-dependent items)
 
-No browser-automation tool is available to this agent session (same constraint `USCIS_NATIVE_POC_REPORT.md` hit). The following require a human (or a future session with browser tooling) actually driving BAIS (:5173) and INSZoom (:3002) — they are not claimed as passing or failing here:
+No browser-automation tool is available to this agent session (same constraint `USCIS_NATIVE_POC_REPORT.md` hit). The following require a human (or a future session with browser tooling) actually driving Immiglance (:5173) and INSZoom (:3002) — they are not claimed as passing or failing here:
 
-- Registration/login page rendering and first-click login behavior (BAIS Case-ID login, INSZoom staff login)
+- Registration/login page rendering and first-click login behavior (Immiglance Case-ID login, INSZoom staff login)
 - Forms-tab rendering, PDF editor interaction, and visual field-edit persistence (the exact scenario Phase 13/13.5 already proved at the API/DB level — this would be the corresponding UI-level confirmation)
 - RBAC-driven menu visibility per role
 - Visual confirmation that the "Preparing forms..." / provisioning states render correctly on a freshly created case

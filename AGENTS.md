@@ -8,7 +8,7 @@ This workspace contains the complete Immigration CRM Platform.
 
 The platform consists of three applications that together form one enterprise system.
 
-1. BAIS
+1. Immiglance
 
    * Client Portal
    * Used by immigration clients.
@@ -23,7 +23,7 @@ The platform consists of three applications that together form one enterprise sy
 3. Backend
 
    * Shared backend.
-   * This will become the single backend used by both BAIS and INSZoom.
+   * This will become the single backend used by both Immiglance and INSZoom.
    * All business logic must eventually live here.
 
 ---
@@ -79,7 +79,7 @@ Future
 
 # Workspace Structure
 
-BAIS/
+Immiglance/
 
 Client Portal only.
 
@@ -244,7 +244,7 @@ Never modify unrelated modules.
 
 # Migration Rules
 
-BAIS and INSZoom currently contain duplicate functionality.
+Immiglance and INSZoom currently contain duplicate functionality.
 
 During migration:
 
@@ -334,6 +334,6 @@ Before implementing any feature:
 * Explain the proposed solution.
 * Modify only the required files.
 * Keep commits focused on one feature at a time.
-* Ensure both BAIS and INSZoom remain functional after every change.
+* Ensure both Immiglance and INSZoom remain functional after every change.
 
 Treat this project as an enterprise SaaS platform, not as two independent applications.

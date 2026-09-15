@@ -153,6 +153,6 @@ Raw field names are long, XFA-path-style strings, not simple flat identifiers â€
 ## Unchanged / Untouched
 
 - No production backend code, route, or model file
-- No existing React component in `BAIS/Frontend/src/` or `INSZoom/frontend/src/` (the one pre-existing POC component, `USCISNativeFormPOC.jsx`, was read but not modified)
+- No existing React component in `Immiglance/Frontend/src/` or `INSZoom/frontend/src/` (the one pre-existing POC component, `USCISNativeFormPOC.jsx`, was read but not modified)
 - No database write (all three diagnostic scripts are read-only â€” `storageService.readBuffer` only)
 - AutoFillService, CanonicalSyncService, existing form pipeline

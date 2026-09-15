@@ -85,7 +85,7 @@ const Login = () => {
               <Shield className="h-7 w-7" />
             </div>
             <div>
-              <p className="text-xl font-black uppercase tracking-[0.28em] text-foreground sm:text-2xl">IMMIGRATIA</p>
+              <p className="text-xl font-black uppercase tracking-[0.28em] text-foreground sm:text-2xl">Immiglance</p>
               <p className="mt-1 text-sm font-black uppercase tracking-[0.26em] text-primary">Admin Portal</p>
             </div>
           </div>

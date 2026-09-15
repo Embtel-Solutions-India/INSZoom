@@ -40,9 +40,9 @@
 
 | File | Change |
 |---|---|
-| `BAIS/Frontend/src/services/api.js` | Added `leadsApi.createLead` (→ `POST /leads`, not currently called by any page — see Section 6) and `leadsApi.createLeadFromIntake` (→ `POST /leads/from-intake`, called by `Intake.jsx`). Both follow the file's real fetch-wrapper shape (`res` is the parsed JSON body directly, not `res.data`) — confirmed by reading `request()`'s implementation directly, not assumed. No existing function modified. |
-| `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` | The questionnaire-completion branch (inside `selectAnswer`'s `setTimeout`) now calls a new `submitIntakeLead(finalAnswers)` function before navigating, instead of navigating directly. `submitIntakeLead` calls `leadsApi.createLeadFromIntake({visaInterest, extensionInterest, intakeAnswers})`, and on success navigates to `/consultation/book?leadId=${res.leadId}`; on failure it sets an inline error banner and does **not** navigate, leaving the user on the same (already-answered) last question so they can retry. Added a full-screen "Saving your answers…" state while the request is in flight. The `cos_extension_ead` single-question shortcut was also routed through `submitIntakeLead` (previously it navigated directly with zero data capture) for consistency — see Section 6. `visaInterest`/`extensionInterest` are derived with best-effort helper functions, since the quiz has no single canonical "visa type" answer key (it branches through `workVisaType`/`studentVisaType`/`businessPathway`/`greenCardType`/`service` depending on path). |
-| `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx` | Now reads `leadId` from **either** the URL param (`useParams()`, the existing public-quiz path via `EligibilityResults.jsx`, unchanged) **or** the query string (`useSearchParams()`, the new intake path's `?leadId=` redirect) — `paramLeadId || searchParams.get('leadId')`. Nothing else in this file changed; `handleConfirm()` already passed `leadId` through to `consultationApi.book()` correctly once the variable itself resolves correctly. |
+| `Immiglance/Frontend/src/services/api.js` | Added `leadsApi.createLead` (→ `POST /leads`, not currently called by any page — see Section 6) and `leadsApi.createLeadFromIntake` (→ `POST /leads/from-intake`, called by `Intake.jsx`). Both follow the file's real fetch-wrapper shape (`res` is the parsed JSON body directly, not `res.data`) — confirmed by reading `request()`'s implementation directly, not assumed. No existing function modified. |
+| `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` | The questionnaire-completion branch (inside `selectAnswer`'s `setTimeout`) now calls a new `submitIntakeLead(finalAnswers)` function before navigating, instead of navigating directly. `submitIntakeLead` calls `leadsApi.createLeadFromIntake({visaInterest, extensionInterest, intakeAnswers})`, and on success navigates to `/consultation/book?leadId=${res.leadId}`; on failure it sets an inline error banner and does **not** navigate, leaving the user on the same (already-answered) last question so they can retry. Added a full-screen "Saving your answers…" state while the request is in flight. The `cos_extension_ead` single-question shortcut was also routed through `submitIntakeLead` (previously it navigated directly with zero data capture) for consistency — see Section 6. `visaInterest`/`extensionInterest` are derived with best-effort helper functions, since the quiz has no single canonical "visa type" answer key (it branches through `workVisaType`/`studentVisaType`/`businessPathway`/`greenCardType`/`service` depending on path). |
+| `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx` | Now reads `leadId` from **either** the URL param (`useParams()`, the existing public-quiz path via `EligibilityResults.jsx`, unchanged) **or** the query string (`useSearchParams()`, the new intake path's `?leadId=` redirect) — `paramLeadId || searchParams.get('leadId')`. Nothing else in this file changed; `handleConfirm()` already passed `leadId` through to `consultationApi.book()` correctly once the variable itself resolves correctly. |
 
 **Build/lint results:**
 
@@ -50,7 +50,7 @@
 |---|---|
 | `npm run build` | PASS — zero errors |
 | `eslint` on every file touched (`api.js`, `Intake.jsx`, `BookConsultation.jsx`) | PASS — zero new errors. `Intake.jsx`'s `motion` unused-import flag is the same pre-existing eslint false-positive confirmed in Phases 2 and 3 (verified again via `git show HEAD:... \| eslint --stdin`). `BookConsultation.jsx`'s `slots`-useMemo warning confirmed pre-existing the same way. |
-| `grep` for `casesApi.create`/`singlePartyFilingsApi.create` anywhere in `BAIS/Frontend/src` | PASS — zero matches (Phase 2's removal held) |
+| `grep` for `casesApi.create`/`singlePartyFilingsApi.create` anywhere in `Immiglance/Frontend/src` | PASS — zero matches (Phase 2's removal held) |
 | `Intake.jsx` contains a call to `leadsApi.createLeadFromIntake` | PASS |
 | `BookConsultation.jsx` sends `leadId` to the backend when booking | PASS — via the existing `handleConfirm()`/`consultationApi.book()` call, now fed a correctly-resolved `leadId` from either source |
 
@@ -137,16 +137,16 @@ In the order touched:
 2. `Backend/src/modules/leads/lead.routes.js` — modified
 3. `Backend/src/modules/leads/lead.service.js` — modified
 4. `Backend/src/modules/leads/lead.controller.js` — modified
-5. `BAIS/Frontend/src/services/api.js` — modified
-6. `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` — modified
-7. `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx` — modified
+5. `Immiglance/Frontend/src/services/api.js` — modified
+6. `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` — modified
+7. `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx` — modified
 8. `PHASE_4_COMPLETION_REPORT.md` — created (this file)
 
 ---
 
 ## Section 8 — Files Read
 
-`PHASE_3_COMPLETION_REPORT.md`, `PHASE_2_COMPLETION_REPORT.md`, `Backend/src/models/Lead.js`, `Backend/src/modules/leads/{lead.routes.js, lead.controller.js, lead.service.js}`, `Backend/src/modules/notifications/notification.service.js` (grep, `createNotification`/`createFromEvent` signatures), `Backend/src/modules/email/templates/` (glob listing), `Backend/src/modules/eligibility-quiz/quiz.routes.js` (full, rate limiter + submit rules), `Backend/src/services/CaseNumberService.js`, `BAIS/Frontend/src/Pages/Eligibility/{EligibilityQuiz.jsx, EligibilityResults.jsx}`, `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx`, `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` (current post-Phase-2/3 state), `BAIS/Frontend/src/services/api.js` (`leadsApi`/`eligibilityQuizApi`/`consultationApi` sections), `Backend/src/modules/eligibility-quiz/quiz.controller.js` (grep, `submit` response shape), `Backend/src/modules/consultation/consultation.controller.js` (grep, response shapes), `Backend/src/modules/consultation/consultation.service.js` (`book()` function, full).
+`PHASE_3_COMPLETION_REPORT.md`, `PHASE_2_COMPLETION_REPORT.md`, `Backend/src/models/Lead.js`, `Backend/src/modules/leads/{lead.routes.js, lead.controller.js, lead.service.js}`, `Backend/src/modules/notifications/notification.service.js` (grep, `createNotification`/`createFromEvent` signatures), `Backend/src/modules/email/templates/` (glob listing), `Backend/src/modules/eligibility-quiz/quiz.routes.js` (full, rate limiter + submit rules), `Backend/src/services/CaseNumberService.js`, `Immiglance/Frontend/src/Pages/Eligibility/{EligibilityQuiz.jsx, EligibilityResults.jsx}`, `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx`, `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` (current post-Phase-2/3 state), `Immiglance/Frontend/src/services/api.js` (`leadsApi`/`eligibilityQuizApi`/`consultationApi` sections), `Backend/src/modules/eligibility-quiz/quiz.controller.js` (grep, `submit` response shape), `Backend/src/modules/consultation/consultation.controller.js` (grep, response shapes), `Backend/src/modules/consultation/consultation.service.js` (`book()` function, full).
 
 ---
 

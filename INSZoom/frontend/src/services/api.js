@@ -304,7 +304,7 @@ export const petitionApi = {
   upsertDefinition: (key, payload) => api.put(`/petition/definitions/${key}`, payload),
 }
 
-// Public eligibility quiz leads — same Backend module BAIS's own admin
+// Public eligibility quiz leads — same Backend module Immiglance's own admin
 // portal reads from (Backend/src/modules/eligibility-quiz/quiz.routes.js,
 // mounted at /eligibility-quiz). Every lead here originated from a
 // prospect completing the public quiz (and, if consultationId is

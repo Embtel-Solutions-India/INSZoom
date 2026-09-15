@@ -513,7 +513,7 @@ function buildL1aBusinessPlanChecklist() {
     documentQuestionList: [],
     fieldResult,
     // Only required for a New Office petition — gated on the "Is this a New
-    // Office petition?" intake question (BAIS/Frontend Intake.jsx,
+    // Office petition?" intake question (Immiglance/Frontend Intake.jsx,
     // persisted as case.assessmentAnswers.newOfficePetition) via
     // ImmigrationKnowledgeEngineService.questionnaireApplies().
     assignmentRules: { requiresNewOfficePetition: true },

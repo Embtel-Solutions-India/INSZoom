@@ -116,7 +116,7 @@ pre-existing `draftPdf` (stamps `"DRAFT"`) and `generate`+`download` (stamps `"A
 ### 1. Current architecture (confirmed this session)
 
 ```
-Client Portal (BAIS/Frontend)              Admin Portal (INSZoom/frontend)
+Client Portal (Immiglance/Frontend)              Admin Portal (INSZoom/frontend)
         |  fetch-based api.js, 25s timeout          |  axios-based api.js, 120s timeout
         v                                            v
                     Backend (Express + Mongoose, 29 router mounts, 350 routes)

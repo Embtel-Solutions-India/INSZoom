@@ -7,7 +7,7 @@ Scope: read-and-report only. No source files were modified.
 Search command used:
 
 ```powershell
-rg -n -C 4 "visaVariant|oClassification|pClassification" Backend/src BAIS/Frontend/src INSZoom/frontend/src
+rg -n -C 4 "visaVariant|oClassification|pClassification" Backend/src Immiglance/Frontend/src INSZoom/frontend/src
 ```
 
 ### `visaVariant`
@@ -18,9 +18,9 @@ Found in 8 code locations:
    - Context: comment explaining that selected O/P variants are mirrored onto `case.questionnaireData.masterData.visaVariant`.
 2. `INSZoom/frontend/src/utils/visaDisplay.js:9`
    - Context: runtime display helper reads `caseItem?.questionnaireData?.masterData?.visaVariant`.
-3. `BAIS/Frontend/src/utils/visaDisplay.js:6`
+3. `Immiglance/Frontend/src/utils/visaDisplay.js:6`
    - Context: same comment as INSZoom helper.
-4. `BAIS/Frontend/src/utils/visaDisplay.js:10`
+4. `Immiglance/Frontend/src/utils/visaDisplay.js:10`
    - Context: runtime display helper reads `caseItem?.questionnaireData?.masterData?.visaVariant`.
 5. `Backend/src/utils/visaDisplay.js:4`
    - Context: backend display helper comment says selected variant is mirrored to `case.questionnaireData.masterData.visaVariant`.
@@ -280,7 +280,7 @@ Findings:
 
    - `visaVariant` exists as a questionnaire master-data path and display helper value:
      - `Backend/src/utils/visaDisplay.js:4`, `12`
-     - `BAIS/Frontend/src/utils/visaDisplay.js:6`, `10`
+     - `Immiglance/Frontend/src/utils/visaDisplay.js:6`, `10`
      - `INSZoom/frontend/src/utils/visaDisplay.js:5`, `9`
      - `Backend/src/modules/employment-workflow/questionnaires/o1.js:378`
      - `Backend/src/modules/employment-workflow/questionnaires/p.js:199`
@@ -351,7 +351,7 @@ Findings:
    17. `Backend/src/modules/employment-workflow/questionnaires/p.js`
    18. `Backend/src/modules/questionnaires/employmentChecklists.js`
    19. `Backend/src/utils/visaDisplay.js`
-   20. `BAIS/Frontend/src/utils/visaDisplay.js`
+   20. `Immiglance/Frontend/src/utils/visaDisplay.js`
    21. `INSZoom/frontend/src/utils/visaDisplay.js`
    22. `Backend/src/modules/questionnaires/questionnaire.service.js`
    23. `../../forms/H0_I-129_template_seed_prompt.md`

@@ -20,14 +20,14 @@ Implementation was stopped before source changes because the mandatory read foun
 12. `saveClientIntake()` requires an active case, writes flattened intake fields plus `Client.intakeData`, updates `Client.intakeSubmission`, updates the active `Case`, writes timeline/audit data, and returns `buildIntakePayload(client, caseData, user)`.
 13. `submitClientIntake()` requires an active case, validates intake completion, writes submitted/locked state to `Client`, updates the active `Case`, sends notification/automation, and returns `buildIntakePayload(client, caseData, user)`.
 14. `submitClientIntake()` does not call `ensureCaseForCompletedClient` directly; the auto-case side effect was in `client.service.js:saveProfile`, not this intake module.
-15. `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` currently sends final intake selection through `casesApi.create(buildCasePayloadFromIntake(...))`, which posts to `/api/cases`.
-16. After the intake package is selected, `Intake.jsx` stores `bais_intake_selection`, stores `bais_active_case_id`, and redirects to `/dashboard`.
+15. `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` currently sends final intake selection through `casesApi.create(buildCasePayloadFromIntake(...))`, which posts to `/api/cases`.
+16. After the intake package is selected, `Intake.jsx` stores `immiglance_intake_selection`, stores `immiglance_active_case_id`, and redirects to `/dashboard`.
 17. `Intake.jsx` does show a package-selection screen when `showResult` is true and `result` is computed.
 18. `Intake.jsx` also navigates the `cos_extension_ead` service option directly to `/dashboard/filing-type`.
-19. `BAIS/Frontend/src/Pages/Eligibility/EligibilityQuiz.jsx` submits to `eligibilityQuizApi.submit(payload)`, which posts to `/api/eligibility-quiz/submit`.
+19. `Immiglance/Frontend/src/Pages/Eligibility/EligibilityQuiz.jsx` submits to `eligibilityQuizApi.submit(payload)`, which posts to `/api/eligibility-quiz/submit`.
 20. After public quiz submit, `EligibilityQuiz.jsx` redirects to `/eligibility/results/${res.data.leadId}` with `{ result, contact }` in navigation state. It does not redirect directly to `/consultation/book/${leadId}`.
-21. `BAIS/Frontend/src/Pages/Eligibility/EligibilityResults.jsx` has the later button that navigates to `/consultation/book/${leadId || result.leadId}`.
-22. `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx` accepts optional `leadId` from `useParams()`, prefills contact only from `location.state?.contact`, and passes `leadId` to `consultationApi.book(...)`.
+21. `Immiglance/Frontend/src/Pages/Eligibility/EligibilityResults.jsx` has the later button that navigates to `/consultation/book/${leadId || result.leadId}`.
+22. `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx` accepts optional `leadId` from `useParams()`, prefills contact only from `location.state?.contact`, and passes `leadId` to `consultationApi.book(...)`.
 23. `BookConsultation.jsx` works without a `leadId`; it simply books without an associated lead id if none is present.
 24. `Backend/src/modules/leads/lead.routes.js` currently only defines `POST /public`; there is no `POST /api/leads/from-intake`.
 25. I found no existing endpoint that creates a Lead from an authenticated client's intake data.
@@ -49,7 +49,7 @@ It redirects to `/eligibility/results/${res.data.leadId}`. Yes, it includes the 
 
 4. After the intake questionnaire submits, what exact URL does the frontend redirect to? Does it create a case, show a package page, or do something else?
 
-`Intake.jsx` first shows a package-selection screen when the questionnaire result is ready. After package selection, it calls `casesApi.create(...)`, stores `bais_active_case_id`, and redirects to `/dashboard`.
+`Intake.jsx` first shows a package-selection screen when the questionnaire result is ready. After package selection, it calls `casesApi.create(...)`, stores `immiglance_active_case_id`, and redirects to `/dashboard`.
 
 5. Does `submitClientIntake` call `ensureCaseForCompletedClient` directly, or does it happen via `client.service.js:saveProfile`?
 
@@ -109,11 +109,11 @@ No implementation changes were made and no verification flow was executed. Stati
 7. `Backend/src/modules/client-intake/client-intake.service.js`
 8. `Backend/src/modules/leads/lead.routes.js`
 9. `Backend/src/modules/leads/lead.controller.js`
-10. `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx`
-11. `BAIS/Frontend/src/Pages/Eligibility/EligibilityQuiz.jsx`
-12. `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx`
-13. `BAIS/Frontend/src/App.jsx`
-14. `BAIS/Frontend/src/services/api.js`
-15. `BAIS/Frontend/src/Pages/Eligibility/EligibilityResults.jsx`
+10. `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx`
+11. `Immiglance/Frontend/src/Pages/Eligibility/EligibilityQuiz.jsx`
+12. `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx`
+13. `Immiglance/Frontend/src/App.jsx`
+14. `Immiglance/Frontend/src/services/api.js`
+15. `Immiglance/Frontend/src/Pages/Eligibility/EligibilityResults.jsx`
 16. `Backend/src/routes/index.js`
 17. `Backend/src/models/User.js`

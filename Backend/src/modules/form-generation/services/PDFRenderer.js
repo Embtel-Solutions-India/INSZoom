@@ -1,5 +1,3 @@
-const fs = require("fs").promises;
-const path = require("path");
 const storageService = require("../../uploads/storage.service");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
@@ -18,16 +16,34 @@ class PDFRenderer {
     }
   }
 
+  // Official template bytes come from managed storage ONLY (private S3 in
+  // this deployment, local provider in dev) — never from a path inside the
+  // repository. This used to fall back to fs.readFile(pdfTemplatePath ||
+  // localPdfPath), which would silently render a filing against whatever
+  // stale PDF happened to sit on the box's disk if storage was unreachable
+  // or the key was missing; a wrong-edition USCIS form is a rejected filing,
+  // so a hard error is the only safe failure mode here. Key resolution order
+  // matches uscis-form.controller.js's getTemplatePdf so a reader and a
+  // renderer can never disagree about which object is authoritative.
   static async loadTemplateBuffer(template) {
-    if (template.pdfStorageKey) return storageService.readBuffer(template.pdfStorageKey);
-    const templatePath = template.pdfTemplatePath || template.localPdfPath;
-    if (!templatePath) {
-      const error = new Error("PDF template path is not configured");
+    const storageKey = template.artifacts?.form?.storageKey || template.pdfStorageKey;
+    if (!storageKey) {
+      const error = new Error(
+        `No stored PDF artifact is registered for ${template.formCode || "this form"}. Upload the official USCIS PDF in the USCIS Forms registry before generating filings.`
+      );
       error.status = 422;
       throw error;
     }
-    const absolutePath = path.isAbsolute(templatePath) ? templatePath : path.join(process.cwd(), templatePath);
-    return fs.readFile(absolutePath);
+    try {
+      return await storageService.readBuffer(storageKey);
+    } catch (storageError) {
+      const error = new Error(
+        `The official PDF for ${template.formCode || "this form"} could not be retrieved from secure storage. The filing was not generated.`
+      );
+      error.status = storageError?.code === "ENOENT" ? 422 : 502;
+      error.cause = storageError;
+      throw error;
+    }
   }
 
   // Loads the template's stored PDF and hands back a pdf-lib document that is

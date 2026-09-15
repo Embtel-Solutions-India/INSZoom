@@ -232,7 +232,7 @@ const beneficiarySchema = new mongoose.Schema(
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team", index: true },
 
     profileCompletion: { type: Number, default: 0 },
-    source: { type: String, enum: ["BAIS", "INSZoom", "shared", "import", ""], default: "shared" },
+    source: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", "import", ""], default: "shared" },
     notes: [noteSchema],
     timeline: [timelineSchema],
     activityHistory: [timelineSchema],

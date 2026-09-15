@@ -40,27 +40,27 @@ No Markdown files were deleted as part of Phase 10.
 
 ## Frontend Changes
 
-- `BAIS/Frontend/src/components/AuthGate.jsx`
+- `Immiglance/Frontend/src/components/AuthGate.jsx`
   - Employee/beneficiary accounts can access only `/dashboard`, `/dashboard/documents`, and `/dashboard/profile`.
   - Unknown client-portal roles fail closed.
 
-- `BAIS/Frontend/src/components/Navbar.jsx`
+- `Immiglance/Frontend/src/components/Navbar.jsx`
   - Restricted accounts see only Dashboard, Documents, and Profile navigation.
 
-- `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx`
+- `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx`
   - Restricted dashboard no longer requests payments, unread messages, or upgrade data.
   - Messages card remains hidden for restricted accounts.
 
-- `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx`
+- `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx`
   - Restricted users load and save their own `EmployeeProfile` data instead of the legacy client intake profile.
 
-- `BAIS/Frontend/src/Pages/Dashboard/Documents.jsx`
+- `Immiglance/Frontend/src/Pages/Dashboard/Documents.jsx`
   - Employee/beneficiary self-service no longer depends on `parentCase` being exposed in the case response.
 
-- `BAIS/Frontend/src/components/questionnaire/EmployeeSelfServiceView.jsx`
+- `Immiglance/Frontend/src/components/questionnaire/EmployeeSelfServiceView.jsx`
   - Uses the new minimized employer summary endpoint.
 
-- `BAIS/Frontend/src/services/api.js`
+- `Immiglance/Frontend/src/services/api.js`
   - Added `employerProfileApi.mySummary()`.
 
 ## Tests Added
@@ -85,7 +85,7 @@ Passed:
 - `node --check Backend/src/modules/employer-profile/employer-profile.controller.js`
 - `node --test Backend/src/modules/authorization/tests/phase10-restricted-portal-rbac.test.js`
 - `node --test Backend/src/modules/documents/tests/document-intelligence-platform.test.js`
-- `npm run build` in `BAIS/Frontend`
+- `npm run build` in `Immiglance/Frontend`
 
 Broader backend suite:
 

@@ -16,7 +16,7 @@ This was not caught by `PDFFieldChangeAdapter.js`'s 23/23 unit tests or `USCISFo
 
 ---
 
-## 1. P12-C2 — BAIS Navbar showing Login/Sign Up for an authenticated user
+## 1. P12-C2 — Immiglance Navbar showing Login/Sign Up for an authenticated user
 
 **Investigated first, not assumed.** `Navbar.jsx`'s logic is correct and simple: `user ? <profile dropdown> : <Login/SignUp>`. The bug isn't in Navbar's rendering logic at all — it's that `AuthContext.jsx`'s `verifySession()` (which calls `GET /auth/me` on every hard page load) correctly avoids treating a network/5xx failure as "logged out" (a deliberate, well-designed `AUTH_STATUS.ERROR` state, distinct from `UNAUTHENTICATED`) — but never automatically retried. Against this dev environment's remote DB (routinely 15-45s per prior phase reports), a single slow `/auth/me` response left `user` at its initial `null` *indefinitely*, with no recovery path short of a manual page reload — even while the actual page content (whose own API calls carry the token directly, independent of whether `user` ever resolved) rendered correctly moments later. This is exactly the pattern observed repeatedly across F-2/F-3/F-4 sessions: Navbar shows logged-out, page content is fully authenticated and correct.
 
@@ -24,7 +24,7 @@ This was not caught by `PDFFieldChangeAdapter.js`'s 23/23 unit tests or `USCISFo
 
 ---
 
-## 2. P12-C1 — BAIS "Unable to load this checklist"
+## 2. P12-C1 — Immiglance "Unable to load this checklist"
 
 **Also investigated first, not assumed — and the assumption in this phase's own brief turned out to be wrong.** `Documents.jsx` contains no gate blocking the checklist on `employerProfile` existing; that text doesn't even appear in the file. "Unable to load this checklist" comes from `CaseRoleChecklistView`'s `error` state (a genuine fetch failure, not a blocking condition), and "Complete the employer information above to continue" is a *correct*, intentional message in `PrincipalCaseWorkspace.jsx` shown *below* the already-rendering checklist once `dataEntryMode` is unset and no answers exist yet — not an error screen at all.
 
@@ -83,7 +83,7 @@ Driven with a real Playwright Chromium session against B003-A's real I-129 CaseF
 
 ## 6. P12-S3 — Case ID + copy button in INSZoom case detail
 
-Added directly below the case-number heading in `CRMCaseDetail.jsx`: a "Client Case ID" badge showing the case number, a copy-to-clipboard button with a 2.5s "Copied!" confirmation, and a "Share with client for BAIS portal login" hint. Verified live in the same Playwright session used for the F-1 reproduction above — visible in the real rendered page, styled consistently with the rest of the header.
+Added directly below the case-number heading in `CRMCaseDetail.jsx`: a "Client Case ID" badge showing the case number, a copy-to-clipboard button with a 2.5s "Copied!" confirmation, and a "Share with client for Immiglance portal login" hint. Verified live in the same Playwright session used for the F-1 reproduction above — visible in the real rendered page, styled consistently with the rest of the header.
 
 ---
 

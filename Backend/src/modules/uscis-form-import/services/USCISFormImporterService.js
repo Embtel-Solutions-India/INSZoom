@@ -421,7 +421,150 @@ class USCISFormImporterService {
 
   async importUpload(file, input = {}, user, req) {
     if (!file?.buffer) throw enterpriseError("PDF upload is required", 400, "PDF_UPLOAD_REQUIRED");
+    // Spec §9: publish exactly what the admin reviewed. When the review
+    // screen echoes back the sha256 it was shown, refuse the import if the
+    // bytes changed between analyze and confirm.
+    if (input.expectedSha256) {
+      const actual = checksum(file.buffer);
+      if (actual !== String(input.expectedSha256).toLowerCase()) {
+        throw enterpriseError(
+          "The uploaded file does not match the analyzed document. Re-run the analysis and try again.",
+          409,
+          "ANALYSIS_CHECKSUM_MISMATCH"
+        );
+      }
+    }
     return this.importFromBuffer(file.buffer, input, user, req);
+  }
+
+  // Spec §9/§10/§31 — read-only inspection of an uploaded PDF. Runs the exact
+  // same deterministic pipeline importFromBuffer uses (qpdf normalize → PDF
+  // validation → AcroForm scan → metadata extraction → registry lookup) but
+  // writes NOTHING: no S3 object, no template document, no audit mutation.
+  // This is what backs the admin review screen, so nothing reaches storage
+  // until a human confirms. Deliberately deterministic-only (§11): form
+  // number/edition come from PDF text, metadata and AcroForm structure — no
+  // AI is consulted here.
+  async analyzeUpload(file, input = {}) {
+    if (!file?.buffer) throw enterpriseError("PDF upload is required", 400, "PDF_UPLOAD_REQUIRED");
+    const buffer = file.buffer;
+    const sourceChecksum = checksum(buffer);
+
+    const normalizedBuffer = await normalizePdf(buffer);
+    await this.validation.validatePdfBuffer(normalizedBuffer);
+    const scanResult = await this.scanner.scan(normalizedBuffer);
+    const metadata = await this.metadata.extract(buffer, input, scanResult);
+    metadata.formCode = normalizeFormCode(metadata.formCode);
+    metadata.formNumber = metadata.formCode;
+
+    // §12: the SHA-256 is the primary identity signal, checked BEFORE and
+    // independently of text-derived form-number detection. Deterministic text
+    // extraction genuinely fails on some official USCIS PDFs (the I-140's
+    // form number isn't recoverable from its text layer), and letting a
+    // failed text parse mask an exact byte-for-byte duplicate would let the
+    // same file be registered twice under two identities.
+    const checksumMatch = await USCISFormTemplate.findOne({
+      $or: [
+        { "artifacts.form.checksum": sourceChecksum },
+        { "importMetadata.checksum": sourceChecksum },
+        { "pdfMetadata.sourceChecksum": sourceChecksum },
+      ],
+    })
+      .select("formCode version editionDate title status activeFlag")
+      .lean();
+
+    // When the bytes are already registered, the registry — not the parser —
+    // is the authority on what this form is.
+    if (checksumMatch) {
+      metadata.formCode = metadata.formCode || checksumMatch.formCode;
+      metadata.formNumber = metadata.formCode;
+      metadata.title = metadata.title || checksumMatch.title;
+    }
+
+    const identified = Boolean(metadata.formCode);
+    const editionKnown = Boolean(metadata.version || metadata.editionDate);
+    const fieldsFound = Boolean(scanResult.fields?.length);
+
+    const sameCodeVersions = metadata.formCode
+      ? await USCISFormTemplate.find({ formCode: metadata.formCode })
+        .select("formCode version editionDate status activeFlag artifacts.form.checksum")
+        .sort({ editionDate: -1 })
+        .lean()
+      : [];
+
+    const versionMatch = sameCodeVersions.find((item) => item.version === metadata.version);
+    const activeVersion = sameCodeVersions.find((item) => item.status === "active" && item.activeFlag !== false);
+
+    let disposition = "new_form";
+    if (checksumMatch) disposition = "exact_duplicate";
+    else if (versionMatch) disposition = "same_edition_different_file";
+    else if (sameCodeVersions.length) disposition = "new_version";
+
+    return {
+      analyzedAt: new Date(),
+      sha256: sourceChecksum,
+      fileSize: buffer.length,
+      detected: {
+        formCode: metadata.formCode || null,
+        formNumber: metadata.formNumber || null,
+        title: metadata.title || metadata.formName || null,
+        // On an exact-duplicate match the registry's recorded edition is
+        // authoritative over the parser's guess (the extractor falls back to
+        // "today" when it can't read an edition date off the PDF, which would
+        // otherwise be reported as a brand-new edition).
+        edition: checksumMatch?.version || metadata.version || null,
+        editionDate: checksumMatch?.editionDate || metadata.editionDate || null,
+        // Where the identity actually came from, so the review screen can say
+        // so plainly rather than implying the PDF was parsed successfully.
+        identitySource: checksumMatch ? "registry_checksum_match" : (identified ? "pdf_analysis" : "unidentified"),
+        pageCount: metadata.pageCount ?? scanResult.pageCount ?? null,
+        pdfVersion: metadata.pdfVersion || null,
+      },
+      pdf: {
+        fillable: fieldsFound,
+        fieldCount: scanResult.fieldCount || (scanResult.fields || []).length,
+        fieldFingerprint: scanResult.fieldFingerprint || null,
+        // A USCIS PDF that only parses after qpdf normalization is an
+        // XFA/object-stream hybrid — worth surfacing, since it's the class of
+        // file that silently yields zero fillable fields without normalizing.
+        requiredNormalization: normalizedBuffer.length !== buffer.length,
+        warnings: scanResult.warnings || [],
+        errors: scanResult.errors || [],
+      },
+      confidence: {
+        formNumber: identified ? (metadata.formCodeConfidence ?? 1) : 0,
+        edition: editionKnown ? (metadata.versionConfidence ?? 1) : 0,
+        // Anything unidentified or non-fillable must be confirmed by a human
+        // before it can be published.
+        requiresConfirmation: !identified || !editionKnown || !fieldsFound,
+      },
+      registry: {
+        disposition,
+        existingVersions: sameCodeVersions.map((item) => ({
+          id: item._id,
+          version: item.version,
+          editionDate: item.editionDate,
+          status: item.status,
+          active: item.status === "active" && item.activeFlag !== false,
+        })),
+        duplicateTemplateId: checksumMatch?._id || null,
+        activeVersion: activeVersion ? { id: activeVersion._id, version: activeVersion.version } : null,
+      },
+      // Suggestion only — mappings are never created by analysis (§18/§32).
+      suggestedVisaTypes: metadata.formCode ? await this.suggestVisaTypes(metadata.formCode) : [],
+    };
+  }
+
+  // Visa suggestions come from the EXISTING VisaFormMapping registry (the
+  // authority on visa↔form relationships), never from a second hardcoded
+  // list and never from AI.
+  async suggestVisaTypes(formCode) {
+    const VisaFormMapping = require("../../../models/VisaFormMapping");
+    const mappings = await VisaFormMapping.find({
+      formTemplateFormCode: String(formCode).toLowerCase(),
+      active: true,
+    }).select("visaType provisioningType").lean();
+    return mappings.map((item) => ({ visaType: item.visaType, provisioningType: item.provisioningType }));
   }
 
   async importFromUrl(input = {}, user, req) {

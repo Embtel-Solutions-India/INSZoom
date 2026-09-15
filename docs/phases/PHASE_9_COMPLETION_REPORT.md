@@ -74,7 +74,7 @@ Two new modules, neither existed before: `Backend/src/modules/employer-profile/`
 
 ---
 
-## Deliverable 6 — BAIS Frontend: Documents page, three-and-a-half paths
+## Deliverable 6 — Immiglance Frontend: Documents page, three-and-a-half paths
 
 **Architecture decision, made explicitly to avoid the two-parallel-systems failure mode:** rather than rewiring the existing 987-line questionnaire engine (`useQuestionnaireAnswers`/`buildRoleSections`/`resolveApplicableChecklistRoles`, deeply tied to System A's single-Case-multi-`targetRole` model) onto System B, `Documents.jsx` gained a **new, self-contained branch, added as early returns before the existing render logic**:
 
@@ -86,7 +86,7 @@ if (["employee","beneficiary"].includes(activeCase?.caseRole) && activeCase?.par
 ```
 Every hook the existing code calls still runs unconditionally (React rules of hooks preserved) — only the *render output* branches, and only for a case whose `caseRole` is a System-B value, which no System-A case ever has. Zero risk to any in-flight case still on the old architecture.
 
-**New components** (`BAIS/Frontend/src/components/questionnaire/`):
+**New components** (`Immiglance/Frontend/src/components/questionnaire/`):
 - `CanonicalProfileForm.jsx` — generic, config-driven form over a `canonicalData`-shaped profile; used by all three of the pieces below.
 - `canonicalFieldGroups.js` — the actual field lists (`EMPLOYER_FIELD_GROUPS`, `EMPLOYEE_FIELD_GROUPS`) — a working first cut (company/address/contact for employer; identity/contact/passport/position for employee), not exhaustive against every field the two Mongoose schemas define. Adding a field later is a one-line addition here; the form and the backend's path validation are already fully generic.
 - `DataEntryModeModal.jsx` — Invariant 6, gated by the caller on `dataEntryMode === 'not_set'` and only once the employer profile has actually been started.
@@ -123,7 +123,7 @@ Every hook the existing code calls still runs unconditionally (React rules of ho
 |-------|--------|
 | `node --check` on every modified/created backend file | PASS |
 | `require('./src/app.js')` full boot | PASS |
-| `npm run build` in BAIS frontend | PASS |
+| `npm run build` in Immiglance frontend | PASS |
 | `npx eslint` on every new/modified frontend file | PASS (fixed 3 issues found: an unused var, two `setState`-in-effect violations) |
 | grep `Case.create`/`new Case(` in `inviteEmployee` | ZERO — PASS |
 | grep `EmployerProfile` in `employee-profile/` module | ZERO — PASS |
@@ -163,20 +163,20 @@ Every hook the existing code calls still runs unconditionally (React rules of ho
 3. `Backend/src/modules/cases/case.routes.js` — added the three corresponding routes
 4. `Backend/src/modules/cases/case.service.js` — `getRelatedRecords`'s child-case selection now also includes `clientEmail`/`dataEntryMode`
 5. `Backend/src/routes/index.js` — mounted `/employer-profile`, `/employee-profile`
-6. `BAIS/Frontend/src/services/api.js` — `casesApi` Phase 9 additions; new `employerProfileApi`/`employeeProfileApi`
-7. `BAIS/Frontend/src/Pages/Dashboard/Documents.jsx` — new additive branch + imports
-8. `BAIS/Frontend/src/utils/auth.js` — `isEmployeeAccount` broadened to include `beneficiary`
+6. `Immiglance/Frontend/src/services/api.js` — `casesApi` Phase 9 additions; new `employerProfileApi`/`employeeProfileApi`
+7. `Immiglance/Frontend/src/Pages/Dashboard/Documents.jsx` — new additive branch + imports
+8. `Immiglance/Frontend/src/utils/auth.js` — `isEmployeeAccount` broadened to include `beneficiary`
 
 ## Files Created
 
 1. `Backend/src/utils/canonicalFieldWriter.js`
 2. `Backend/src/modules/employer-profile/{employer-profile.service.js,employer-profile.controller.js,employer-profile.routes.js}`
 3. `Backend/src/modules/employee-profile/{employee-profile.service.js,employee-profile.controller.js,employee-profile.routes.js}`
-4. `BAIS/Frontend/src/components/questionnaire/{CanonicalProfileForm.jsx,canonicalFieldGroups.js,DataEntryModeModal.jsx,InvitePanel.jsx,PrincipalCaseWorkspace.jsx,EmployeeSelfServiceView.jsx}`
+4. `Immiglance/Frontend/src/components/questionnaire/{CanonicalProfileForm.jsx,canonicalFieldGroups.js,DataEntryModeModal.jsx,InvitePanel.jsx,PrincipalCaseWorkspace.jsx,EmployeeSelfServiceView.jsx}`
 
 ## Files Read
 
-`PHASE_2_COMPLETION_REPORT.md`, `PHASE_5_COMPLETION_REPORT.md`, `PHASE_7_COMPLETION_REPORT.md`, `PHASE_8_COMPLETION_REPORT.md`, `Backend/src/models/{EmployerProfile.js,EmployeeProfile.js,Case.js}`, `Backend/src/modules/cases/{case.controller.js,case.routes.js,case.service.js,case.constants.js}`, `Backend/src/modules/auth/{clientInvite.service.js,employeeInvite.service.js,auth.routes.js}`, `Backend/src/modules/authorization/permissions.registry.js`, `Backend/src/modules/canonical/services/{CanonicalSyncService.js,CanonicalProfileService.js,CanonicalBuilderService.js}`, `Backend/src/modules/document-intelligence/document-intelligence.routes.js`, `Backend/src/modules/questionnaires/questionnaire.service.js`, `Backend/src/modules/email/templates/employee-case-invitation.js` (confirmed existing, reused), `Backend/src/routes/index.js`, `BAIS/Frontend/src/Pages/Dashboard/Documents.jsx`, `BAIS/Frontend/src/utils/auth.js`, `BAIS/Frontend/src/services/api.js`, `BAIS/Frontend/src/hooks/useMyCaseProfile.js`
+`PHASE_2_COMPLETION_REPORT.md`, `PHASE_5_COMPLETION_REPORT.md`, `PHASE_7_COMPLETION_REPORT.md`, `PHASE_8_COMPLETION_REPORT.md`, `Backend/src/models/{EmployerProfile.js,EmployeeProfile.js,Case.js}`, `Backend/src/modules/cases/{case.controller.js,case.routes.js,case.service.js,case.constants.js}`, `Backend/src/modules/auth/{clientInvite.service.js,employeeInvite.service.js,auth.routes.js}`, `Backend/src/modules/authorization/permissions.registry.js`, `Backend/src/modules/canonical/services/{CanonicalSyncService.js,CanonicalProfileService.js,CanonicalBuilderService.js}`, `Backend/src/modules/document-intelligence/document-intelligence.routes.js`, `Backend/src/modules/questionnaires/questionnaire.service.js`, `Backend/src/modules/email/templates/employee-case-invitation.js` (confirmed existing, reused), `Backend/src/routes/index.js`, `Immiglance/Frontend/src/Pages/Dashboard/Documents.jsx`, `Immiglance/Frontend/src/utils/auth.js`, `Immiglance/Frontend/src/services/api.js`, `Immiglance/Frontend/src/hooks/useMyCaseProfile.js`
 
 ---
 

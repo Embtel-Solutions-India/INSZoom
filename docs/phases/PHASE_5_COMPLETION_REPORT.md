@@ -16,7 +16,7 @@ The intended backend behavior is:
 - A stub client `User` is provisioned with a one-time setup token.
 - Lifecycle work, notifications, realtime events, and email happen only after the create operation succeeds.
 - `POST /api/cases/create-with-client` remains untouched.
-- BAIS frontend remains untouched.
+- Immiglance frontend remains untouched.
 
 No implementation files were changed in this Phase 5 pass. Only this report was created.
 
@@ -202,7 +202,7 @@ Native transaction support is therefore not safe to assume. Per the Phase 5 prom
 
 ### INSZoom Frontend
 
-INSZoom uses axios, not the BAIS custom fetch wrapper. New INSZoom code should use `response.data` and `error.response?.data`.
+INSZoom uses axios, not the Immiglance custom fetch wrapper. New INSZoom code should use `response.data` and `error.response?.data`.
 
 Current create case UI:
 
@@ -244,11 +244,11 @@ For that reason, implementation was paused before modifying source code. This wa
 5. Lifecycle calls after case creation: YES - `workflowService.caseCreated`, `caseService` audit/timeline helpers, `lifecycleOrchestrator.initializeCase`, with notification-causing lifecycle work after the create unit succeeds.
 6. Setup token mechanism: YES - opaque random token, hashed on `User.inviteTokenHash`, expiry on `User.inviteTokenExpiresAt`, raw token only used in the email/setup link.
 7. Will not modify `POST /api/cases/create-with-client`: YES.
-8. Will not modify BAIS frontend: YES.
+8. Will not modify Immiglance frontend: YES.
 
 Required commitment, with the blocker noted:
 
-> I have read every file I would touch. I understand the Case model including the relevant existing fields and hook behavior. I understand that MongoDB native transactions are not safe to assume in this environment and that the prompt points toward compensating writes. I will not modify create-with-client. I will not touch the BAIS frontend. Notifications must fire only after the create unit succeeds. Single-visa cases must create exactly one Case document with zero children, zero EmployerProfile, and zero EmployeeProfile. I stopped before implementation because the compensating-write cleanup requirement conflicts with the no-hard-delete invariant.
+> I have read every file I would touch. I understand the Case model including the relevant existing fields and hook behavior. I understand that MongoDB native transactions are not safe to assume in this environment and that the prompt points toward compensating writes. I will not modify create-with-client. I will not touch the Immiglance frontend. Notifications must fire only after the create unit succeeds. Single-visa cases must create exactly one Case document with zero children, zero EmployerProfile, and zero EmployeeProfile. I stopped before implementation because the compensating-write cleanup requirement conflicts with the no-hard-delete invariant.
 
 ---
 
@@ -294,7 +294,7 @@ No planned change to:
 
 - `INSZoom/frontend/src/App.jsx`
 - `INSZoom/frontend/src/layouts/Layout.jsx`
-- BAIS frontend
+- Immiglance frontend
 - Lead endpoints
 
 ---

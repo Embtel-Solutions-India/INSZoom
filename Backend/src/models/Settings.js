@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const settingsSchema = new mongoose.Schema(
   {
     key: { type: String, default: "global", unique: true, index: true },
-    companyName: { type: String, default: "BAIS" },
+    companyName: { type: String, default: "Immiglance" },
     companyLogo: { type: String, default: "" },
     // Firm letterhead for generated legal documents (petition cover
     // letters, etc.) — additive, blank by default so existing installs are
@@ -60,14 +60,14 @@ const settingsSchema = new mongoose.Schema(
     // structure) — additive, defaults keep every existing install identical
     // until an admin fills these in. lawFirmEntityName stays blank ("") until
     // founder-confirmed; never guess a law firm name into existence. ---
-    msoEntityName: { type: String, default: "Bay Area Immigration Services" },
-    msoEntityShortName: { type: String, default: "BAIS" },
+    msoEntityName: { type: String, default: "Immiglance" },
+    msoEntityShortName: { type: String, default: "Immiglance" },
     lawFirmEntityName: { type: String, default: "" },
     lawFirmEntityShortName: { type: String, default: "" },
     lawFirmIsConfigured: { type: Boolean, default: false },
 
     // --- Phase 0: brand identity / theming tokens (feeds future white-label) ---
-    activeBrand: { type: String, default: "BAIS" },
+    activeBrand: { type: String, default: "Immiglance" },
     brandTokens: {
       primaryColor: { type: String, default: "#0B1F3A" },
       accentColor: { type: String, default: "#C6A15B" },

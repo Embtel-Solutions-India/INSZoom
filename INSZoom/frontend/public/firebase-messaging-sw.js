@@ -3,7 +3,7 @@ importScripts("https://www.gstatic.com/firebasejs/12.12.1/firebase-messaging-com
 
 // Values below are the public Firebase Web config (apiKey/appId/etc are
 // project identifiers, not secrets — see Firebase's own docs) for INSZoom's
-// own Web App registration (a different appId from BAIS's) in the same
+// own Web App registration (a different appId from Immiglance's) in the same
 // shared white-cedar-504623-u1 project. A service worker in /public is
 // served as a static file, not run through Vite's env-var pipeline, so
 // these can't be injected from import.meta.env at build time — they're

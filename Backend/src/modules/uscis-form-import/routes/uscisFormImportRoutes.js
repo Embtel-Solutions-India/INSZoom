@@ -32,6 +32,11 @@ router.get("/:id/validation", authorizePermissions("forms:read"), controller.val
 router.get("/:id/compare", authorizePermissions("forms:read"), controller.compare);
 
 router.post("/import", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:create"), normalizeImportBody, validateSystemImport, controller.importFromUrl);
+// Analyze-then-confirm (§9): /analyze inspects and returns a review report
+// without persisting anything; /upload does the actual store+register, and
+// accepts the expectedSha256 echoed from the analysis so an admin can only
+// publish the exact file they reviewed.
+router.post("/analyze", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:create"), upload.single("pdf"), normalizeImportBody, controller.analyze);
 router.post("/upload", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:create"), upload.single("pdf"), normalizeImportBody, controller.upload);
 router.post("/:id/activate", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.activate);
 router.post("/:id/retire", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.retire);

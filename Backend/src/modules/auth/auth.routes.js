@@ -61,7 +61,7 @@ router.get("/me", authenticate, ctrl.me);
 // GET /api/auth/session-context
 // Returns the complete routing context for the authenticated user.
 // This is the single source of truth for frontend routing decisions
-// (see BAIS/Frontend/src/components/AuthGate.jsx). Requires a valid JWT.
+// (see Immiglance/Frontend/src/components/AuthGate.jsx). Requires a valid JWT.
 router.get("/session-context", authenticate, ctrl.getSessionContext);
 router.put(
   "/change-password",

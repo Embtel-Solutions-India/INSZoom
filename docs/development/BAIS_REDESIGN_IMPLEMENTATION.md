@@ -1,4 +1,4 @@
-# BAIS Portal Redesign - Implementation Summary
+# Immiglance Portal Redesign - Implementation Summary
 
 ## Overview
 Your visa immigration client portal has been redesigned to be more professional, modern, client-friendly, and guided. All existing functionality, backend structure, and theme colors have been preserved. The redesign focuses on better UX, modern design patterns, responsive layouts, and smooth animations.

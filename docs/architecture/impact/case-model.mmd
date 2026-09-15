@@ -27,7 +27,7 @@ flowchart TD
   NOTIFICATION_MODEL[(Notification)] -.->|"caseId-adjacent"| CASE
 
   FRONTEND_INSZ["INSZoom: CRMCases.jsx, CRMCaseDetail.jsx,\nDashboard.jsx, USCISForms.jsx"] -.->|"11 distinct HTTP_REQUEST edges traced this session"| CASE_CTRL
-  FRONTEND_BAIS["BAIS: Dashboard.jsx, Documents.jsx,\npostLoginDest.js"] -.->|"casesApi.my/workflow/addons/generateForms"| CASE_CTRL
+  FRONTEND_IMMIGLANCE["IMMIGLANCE: Dashboard.jsx, Documents.jsx,\npostLoginDest.js"] -.->|"casesApi.my/workflow/addons/generateForms"| CASE_CTRL
 
   SCORE["Blast-radius score (methodology: count of distinct\nservices + controllers + models + frontend pages\nconfirmed touching Case this session):\nServices: 9 | Frontend pages: 7 | Direct model refs: 6+\n=> CRITICAL. Any schema change to Case risks all 9\nservices, both frontends' case-detail/dashboard/forms\nflows, and the already-broken 64-index ceiling."]
   CASE -.-> SCORE

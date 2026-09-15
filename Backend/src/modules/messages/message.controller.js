@@ -162,7 +162,7 @@ exports.sendThreadMessage = async (req, res, next) => {
     const conversation = await getAccessibleConversation(req.params.threadId, req.user);
     const message = await messageService.sendMessage({
       conversation,
-      body: { ...req.body, legacySource: req.body.legacySource || "BAIS" },
+      body: { ...req.body, legacySource: req.body.legacySource || "Immiglance" },
       files: req.files || [],
       user: req.user,
       req,

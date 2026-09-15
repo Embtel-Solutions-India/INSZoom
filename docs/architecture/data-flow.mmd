@@ -21,7 +21,7 @@ flowchart TD
 
   subgraph QUESTIONNAIRE["Questionnaire Engine"]
     direction TB
-    Q_UI["BAIS Documents.jsx<br/>(questionnaire + checklist)"]
+    Q_UI["Immiglance Documents.jsx<br/>(questionnaire + checklist)"]
     Q_SVC["questionnaire.service.js<br/>responseId = hash(questionnaireId+caseId+userId)<br/>-- fresh-per-client guarantee CONFIRMED"]
     Q_ANSWER[("Answer<br/>atomic findOneAndUpdate")]
     Q_UI --> Q_SVC --> Q_ANSWER

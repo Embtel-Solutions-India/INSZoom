@@ -14,6 +14,7 @@ const US_COMPANY_DOCUMENTS = [
   { name: "Business License", documentType: "us_business_license", description: "Current business license for the U.S. entity." },
   { name: "Lease", documentType: "us_lease_agreement", description: "Lease agreement for the U.S. business premises." },
   { name: "Business Premises Photographs", documentType: "us_business_premises_photographs", description: "Interior and exterior photographs showing company name, logo, address, and personnel at work in major work areas." },
+  { name: "Floor Plan of the Leased Premises", documentType: "us_business_floor_plan", description: "Floor plan of the U.S. entity's leased business premises." },
   { name: "Company Website", documentType: "us_company_website", description: "Printout or screenshot of the U.S. company website." },
   { name: "Brochure", documentType: "us_company_brochure", description: "U.S. company marketing brochure." },
   { name: "Commercial Contracts / Invoices / Bills of Lading / Letters of Credit", documentType: "us_commercial_transaction_documents", description: "Evidence of ongoing U.S. business activity." },
@@ -74,14 +75,26 @@ const employerDocuments = [
   ...FOREIGN_COMPANY_DOCUMENTS.map((doc) => ({ ...doc, required: true, category: "foreign_business", targetRole: "employer", status: "requested" })),
 ];
 
+// "Documents required from the Beneficiary" — matches the L-1A Beneficiary
+// checklist exactly, in this order. i94_record is conditional (only shown
+// once the beneficiary confirms they're inside the United States — see
+// I94_RECORD_DOCUMENT below and its conditional wiring in
+// employmentChecklists.js's buildL1aEmployeeChecklist(), mirroring the
+// employer side's stockOwnershipConditionalLogic pattern).
 const employeeDocuments = [
+  { name: "Employment Verification Letter (Foreign Company HR Department)", documentType: "foreign_employment_verification_letter", description: "Employment verification letter from the foreign company's HR department, confirming title, dates, and duties of the qualifying foreign employment.", required: true, category: "employment", targetRole: "employee", status: "requested" },
+  { name: "Academic Certificate and Transcripts", documentType: "academic_certificates", description: "Education credential documents with transcripts.", required: true, category: "education", targetRole: "employee", status: "requested" },
+  { name: "Resume of Beneficiary", documentType: "updated_resume", description: "Current resume covering the qualifying foreign employment.", required: true, category: "employment", targetRole: "employee", status: "requested" },
   { name: "Passport", documentType: "passport", description: "Biographic passport pages.", required: true, category: "identity", targetRole: "employee", status: "requested" },
-  { name: "Updated Resume", documentType: "updated_resume", description: "Current resume covering the qualifying foreign employment.", required: true, category: "employment", targetRole: "employee", status: "requested" },
-  { name: "Foreign Employer Organizational Chart", documentType: "foreign_employer_org_chart", description: "Org chart or role verification letter from the foreign qualifying organization.", required: true, category: "employment", targetRole: "employee", status: "requested" },
-  { name: "Foreign Employment Verification Letter", documentType: "foreign_employment_verification_letter", description: "Letter confirming title, dates, and duties of the qualifying foreign employment.", required: true, category: "employment", targetRole: "employee", status: "requested" },
-  { name: "All Previous I-797 Approval / Receipt Notices", documentType: "previous_i797_notices", description: "Prior USCIS approval or receipt notices, if any.", required: false, category: "immigration", targetRole: "employee", status: "requested" },
-  { name: "Last 3 Months Pay Slips", documentType: "last_3_months_pay_slips", description: "Recent pay slips from the last three months.", required: true, category: "employment", targetRole: "employee", status: "requested" },
+  { name: "I-94 (if any)", documentType: "employee_i94_copy", description: "Copy of the Arrival-Departure record, if inside the United States.", required: false, category: "immigration", targetRole: "employee", status: "requested" },
+  { name: "Previous USCIS-Issued Notice (if any)", documentType: "previous_i797_notices", description: "Prior USCIS approval or receipt notices, if any.", required: false, category: "immigration", targetRole: "employee", status: "requested" },
 ];
+
+// Convenience alias so employmentChecklists.js can gate this document's
+// visibility on employee.immigrationStatus.insideUnitedStates without
+// re-deriving it from the array by index (mirrors
+// STOCK_OWNERSHIP_CERTIFICATES_DOCUMENT above).
+const I94_RECORD_DOCUMENT = employeeDocuments.find((doc) => doc.documentType === "employee_i94_copy");
 
 const RELATIONSHIP_TYPES = ["Parent", "Branch", "Subsidiary", "Affiliate", "Joint Venture"];
 const SALARY_UNITS = ["Hour", "Week", "Bi-weekly", "Month", "Year"];
@@ -688,6 +701,7 @@ module.exports = {
   ENTITY_TYPES_INDIA,
   ENTITY_TYPES_US,
   STOCK_OWNERSHIP_CERTIFICATES_DOCUMENT,
+  I94_RECORD_DOCUMENT,
   LOI_MOU_CONTRACTS_DOCUMENT,
   MANAGERIAL_DUTY_BREAKDOWN_FIELDS,
   BUSINESS_PLAN_INTRO,

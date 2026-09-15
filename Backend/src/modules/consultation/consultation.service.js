@@ -210,7 +210,7 @@ async function book({ leadId, name, email, phone, startAt, note, source, visaTyp
       phone,
       visaType,
       message: note,
-      source: source || "BAIS scheduled consultation",
+      source: source || "Immiglance scheduled consultation",
     }, req, {
       status: "booked",
       consultationId: appointment._id,

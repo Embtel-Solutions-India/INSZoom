@@ -347,7 +347,7 @@ const CRMCaseDetail = () => {
   const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: overviewActive })
   const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: overviewActive })
   // Server-computed checklist completeness (calculateDetailedProgress, via
-  // listCaseChecklists) — the same numbers BAIS's client portal shows, matched
+  // listCaseChecklists) — the same numbers Immiglance's client portal shows, matched
   // by responseId to the questionnaires resolved above.
   const [checklistsProgress, setChecklistsProgress] = useState([])
   useEffect(() => {
@@ -1359,7 +1359,7 @@ const CRMCaseDetail = () => {
             <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
             <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
             {/* P12-S3: Case ID + copy button — the admin's fastest path to
-                share the client's BAIS portal login ID, no DB lookup needed. */}
+                share the client's Immiglance portal login ID, no DB lookup needed. */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">
@@ -1375,14 +1375,14 @@ const CRMCaseDetail = () => {
                     setCaseIdCopied(true)
                     setTimeout(() => setCaseIdCopied(false), 2500)
                   }}
-                  title="Copy Case ID — share with client for BAIS portal login"
+                  title="Copy Case ID — share with client for Immiglance portal login"
                   className={`flex items-center rounded p-0.5 transition-colors ${caseIdCopied ? 'text-emerald-600' : 'text-indigo-400 hover:text-indigo-700'}`}
                 >
                   {caseIdCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
                 {caseIdCopied && <span className="text-[11px] font-semibold text-emerald-600">Copied!</span>}
               </div>
-              <span className="text-xs text-muted-foreground">Share with client for BAIS portal login</span>
+              <span className="text-xs text-muted-foreground">Share with client for Immiglance portal login</span>
             </div>
           </div>
           <button

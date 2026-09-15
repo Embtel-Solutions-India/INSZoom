@@ -9,7 +9,7 @@ This audit does **not** claim a fully exhaustive canonical graph of all ~350 bac
 | Router mounts | 29 / 29 | 100% — every mount in `routes/index.js` read and resolved to controller/service. |
 | Route definitions | 350 / 350 (inventoried) — ~60 represented as individual graph edges | Full table lives in the Phase-2 agent outputs (`endpoints-core`/`endpoints-forms-docs` inventories, saved under the audit's scratch directory this session, not re-saved into the repo) and is summarized in the chat report's endpoint inventory section. The canonical `dependency-graph.json` includes every route implicated in a confirmed finding, not all 350 individually. |
 | Mongoose models | 64 / 64 | 100% — every model file opened and read (models-indexes dimension). |
-| Frontend artifacts (BAIS) | ~55 relevant / 79 total files scanned | 24 purely presentational components excluded with reason (see BAIS extraction agent's stated exclusions). |
+| Frontend artifacts (Immiglance) | ~55 relevant / 79 total files scanned | 24 purely presentational components excluded with reason (see Immiglance extraction agent's stated exclusions). |
 | Frontend artifacts (INSZoom) | ~26 relevant / 28 total files scanned | 2 excluded (ErrorBoundary, QuestionnaireAnswersPanel) with reason. |
 | External integrations | 8 / 8 identified | Firebase, Gemini, Stripe, SMTP, Redis, Google Drive, USCIS.gov scanner, qpdf subprocess — all traced to config source, consumer, and failure handling. |
 | Background jobs/workers | 8 / 8 | All 7 `withJobLock`-wrapped jobs + the 1 non-wrapped USCISMonitoringJob enumerated with schedule and write-capability. |

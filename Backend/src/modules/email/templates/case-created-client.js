@@ -12,9 +12,9 @@ function bodyLines(data = {}) {
         <p style="margin:0;font-size:22px;font-weight:800;color:#065f46;letter-spacing:1px;">${data.caseNumber || ""}</p>
       </td></tr>
     </table>`,
-    `Please keep your Case ID safe — you will use it to log in to the BAIS portal and to reference your case in any communication with our team.`,
+    `Please keep your Case ID safe — you will use it to log in to the Immiglance portal and to reference your case in any communication with our team.`,
     `<strong>What happens next?</strong> You will receive a separate email shortly with a link to activate your portal account. Once activated, you can track your case progress, upload documents, and message your case manager directly.`,
-    `If you have any questions, reply to your case manager directly or contact us at support@baisimmigration.com.`,
+    `If you have any questions, reply to your case manager directly or reach us through the Messages section of your portal.`,
   ];
 }
 
