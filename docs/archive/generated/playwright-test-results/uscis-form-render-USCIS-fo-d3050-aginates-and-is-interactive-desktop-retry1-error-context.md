@@ -28,7 +28,7 @@ Call log:
 ```yaml
 - complementary:
   - text: I
-  - heading "Immigratia" [level=1]
+  - heading "Immiglance" [level=1]
   - paragraph: Internal CRM
   - navigation:
     - button "Dashboard":

@@ -1,6 +1,6 @@
 # UI Functional Completeness Audit (§25) + Session/Refresh/Routing (§27, frontend) + Error Handling (§26, frontend)
 
-**Scope:** read-only static analysis of `BAIS/Frontend` (client portal) and `INSZoom/frontend` (staff portal).
+**Scope:** read-only static analysis of `Immiglance/Frontend` (client portal) and `INSZoom/frontend` (staff portal).
 **Method:** every page and interactive control traced from its handler to the API call it actually makes; every endpoint cross-checked against `Backend/src/routes/index.js` and the module route files. No servers were started, no database was touched, no source file was modified.
 **Date:** 2026-09-01. **Branch:** `refactor` @ `c86c446`.
 
@@ -12,7 +12,7 @@
 
 ### 1.1 Inventory totals
 
-| | BAIS (client portal) | INSZoom (staff portal) | Total |
+| | Immiglance (client portal) | INSZoom (staff portal) | Total |
 |---|---|---|---|
 | Declared routes | 29 | 30 | 59 |
 | Page components inventoried | 33 | 33 | 66 |
@@ -29,19 +29,19 @@
 
 | # | Severity | Finding |
 |---|---|---|
-| D-01 | **Critical** | BAIS: hard refresh (F5) of any authenticated page leaves `AuthContext.user = null` forever. `verifySession()` short-circuits when there is no *in-memory* access token and never consults the `bais_has_session` marker or the refresh cookie. Navbar shows "Login / Sign Up" for a logged-in user; websockets never connect; `useHasCase()` reports `hasCase:false`. |
-| D-02 | **Critical** | BAIS: `logout()` clears the session locally *before* calling `POST /auth/logout`, so the request goes out with no `Authorization` header, `authenticate` rejects it 401, and the `.catch(()=>{})` swallows it. **The server-side refresh session is never revoked and the refresh cookie is never cleared.** |
+| D-01 | **Critical** | IMMIGLANCE: hard refresh (F5) of any authenticated page leaves `AuthContext.user = null` forever. `verifySession()` short-circuits when there is no *in-memory* access token and never consults the `immiglance_has_session` marker or the refresh cookie. Navbar shows "Login / Sign Up" for a logged-in user; websockets never connect; `useHasCase()` reports `hasCase:false`. |
+| D-02 | **Critical** | IMMIGLANCE: `logout()` clears the session locally *before* calling `POST /auth/logout`, so the request goes out with no `Authorization` header, `authenticate` rejects it 401, and the `.catch(()=>{})` swallows it. **The server-side refresh session is never revoked and the refresh cookie is never cleared.** |
 | D-03 | **High** | INSZoom: the entire **Expert Letters** tab on `CRMCaseDetail` is fake — `fetchLetters` hardcodes `[]`, `handleCreateLetter` only closes the modal. No backend resource exists. |
 | D-04 | **High** | ISSUE-007 (auth refresh session-rotation race) is **still fully present**. None of the three proposed fixes were applied. |
 | D-46 | **High** | INSZoom: a **backend route-mount collision** (`/uscis/forms` registered before `/uscis` in `routes/index.js:24-25`) silently misroutes 4 of the USCIS Lifecycle tab's endpoints to the form-*import* module. "Pending Reviews" is permanently 0, and "Activate"/"Retire" run a different service than "Approve"/"Compare" beside them. |
 | D-05 | **High** | INSZoom: `TaskDetails` "Delete" button has no `onClick` at all, despite `DELETE /tasks/:id` existing. |
-| D-06 | **High** | BAIS: `AdminLogin` grants an app-wide session on a successful login even when the role check then fails — the screen says "not authorized" while the user is actually logged in. |
-| D-07 | **High** | BAIS: `Intake` "Save & close" persists nothing. All quiz answers are silently discarded. |
-| D-08 | **High** | BAIS: `AdminPortal` loads via `Promise.all` of 6 endpoints with a `console.error`-only catch — one failure blanks all six sections into indistinguishable "no data" empty states. |
+| D-06 | **High** | IMMIGLANCE: `AdminLogin` grants an app-wide session on a successful login even when the role check then fails — the screen says "not authorized" while the user is actually logged in. |
+| D-07 | **High** | IMMIGLANCE: `Intake` "Save & close" persists nothing. All quiz answers are silently discarded. |
+| D-08 | **High** | IMMIGLANCE: `AdminPortal` loads via `Promise.all` of 6 endpoints with a `console.error`-only catch — one failure blanks all six sections into indistinguishable "no data" empty states. |
 | D-09 | **High** | INSZoom: `CaseManagerDetails` has no error state at all; the Analytics tab shows "Loading case manager analytics…" **forever** on failure. |
 | D-10 | **High** | INSZoom: `QuestionnaireTemplates` — 8 mutating handlers with no `try/catch` and no error UI anywhere on the page. |
-| D-11 | **High** | BAIS: `ManageBooking` cancel is a false success — the view flips synchronously without awaiting the mutation, and neither cancel nor reschedule has any error path. |
-| D-16 – D-18 | **Medium** | 4 orphaned BAIS pages: `/dashboard/document-review` (structurally unreachable — its only nav links render for staff roles, whom `AuthGate` redirects off-origin), `/dashboard/plan` and `/dashboard/filing-type` (zero inbound links anywhere), and `Notifications.jsx` (never imported or routed). |
+| D-11 | **High** | IMMIGLANCE: `ManageBooking` cancel is a false success — the view flips synchronously without awaiting the mutation, and neither cancel nor reschedule has any error path. |
+| D-16 – D-18 | **Medium** | 4 orphaned Immiglance pages: `/dashboard/document-review` (structurally unreachable — its only nav links render for staff roles, whom `AuthGate` redirects off-origin), `/dashboard/plan` and `/dashboard/filing-type` (zero inbound links anywhere), and `Notifications.jsx` (never imported or routed). |
 | D-19 | **Medium** | Neither app has a `path="*"` catch-all. An unknown URL renders a blank page. |
 | D-47 | **High** | INSZoom: `PaymentsOverview` has no user-facing error state at all — a failed load renders a zeroed, authoritative-looking financial ledger. |
 
@@ -49,7 +49,7 @@
 
 ## 2. TASK 1 — Route & page inventory
 
-### 2.1 BAIS client portal (`BAIS/Frontend/src/App.jsx`)
+### 2.1 Immiglance client portal (`Immiglance/Frontend/src/App.jsx`)
 
 Guards in use:
 - **`AuthGate`** (`src/components/AuthGate.jsx`) — the sole routing authority. Calls `GET /auth/session-context` once on mount, then routes by role / `mustSetPassword` / employee-account / `hasCase` / `isLegacyNoCaseAccount`.
@@ -141,7 +141,7 @@ Guard: **`ProtectedRoute`** (`src/components/ProtectedRoute.jsx`) with a `module
 
 Legend for the "API" column: `METHOD /path` = a real, verified backend route; `NONE (nav)` = navigation only; `NONE (local)` = local state only, by design; **`DEAD`** = defect.
 
-### 3.1 BAIS client portal
+### 3.1 Immiglance client portal
 
 #### `/login` — `Pages/Auth/Login.jsx`
 
@@ -814,7 +814,7 @@ Mount fetches: `GET /messages` (501), `GET /users/assignable?includeCaseClients=
 | "Retry" (full-page error) | 1152-1154 | `fetchMessages()` | — | refetch |
 | Back arrow (mobile) | 1402-1408 | NONE (local) | — | — |
 
-This is the second-strongest error-handling implementation in either app after BAIS `Messages.jsx` — a full-page error state with Retry, plus optimistic-send reconciliation and per-attachment states.
+This is the second-strongest error-handling implementation in either app after Immiglance `Messages.jsx` — a full-page error state with Retry, plus optimistic-send reconciliation and per-attachment states.
 
 #### `/uscis-forms` — `pages/USCISForms.jsx`
 
@@ -913,16 +913,16 @@ This is the **best-engineered surface in either app**: every action funnels thro
 
 ## 4. TASK 3 — Session / refresh / routing (§27, frontend half)
 
-### 4.1 BAIS — token model
+### 4.1 Immiglance — token model
 
-`BAIS/Frontend/src/services/api.js`:
+`Immiglance/Frontend/src/services/api.js`:
 - The access token lives **only in a module-scoped variable** (`let accessToken = null`, api.js:41) — it does not survive a page load.
-- `localStorage` holds only a non-sensitive marker, `bais_has_session = "1"` (api.js:7, 29-33).
+- `localStorage` holds only a non-sensitive marker, `immiglance_has_session = "1"` (api.js:7, 29-33).
 - The refresh token is an httpOnly cookie set by the backend; JS never sees it.
 - `request()` (api.js:71-148) performs a **just-in-time refresh**: if there is no in-memory token but `tokenStore.hasSession()` is true, it calls `refreshAccessToken()` first (api.js:78-90). Concurrent callers share a single `refreshPromise` (api.js:43, 81-84, 121-123), so same-tab refresh is correctly single-flighted.
-- A 25s `AbortSignal.timeout` bounds every request (api.js:69, 99) — this is why no BAIS page can hang forever at the fetch layer.
+- A 25s `AbortSignal.timeout` bounds every request (api.js:69, 99) — this is why no Immiglance page can hang forever at the fetch layer.
 
-### 4.2 BAIS — **hard refresh (F5) is broken** (D-01, Critical)
+### 4.2 Immiglance — **hard refresh (F5) is broken** (D-01, Critical)
 
 `AuthContext.verifySession()` (`context/AuthContext.jsx:58-87`) begins:
 
@@ -949,7 +949,7 @@ The irony is that the code comment at `AuthContext.jsx:44-56` describes exactly 
 
 **Fix shape:** in `verifySession`, replace the early return with `if (!access && !tokenStore.hasSession()) { setAuthStatus(UNAUTHENTICATED); return; }`, letting `authApi.me()` drive the refresh.
 
-### 4.3 BAIS — logout does not revoke the server session (D-02, Critical)
+### 4.3 Immiglance — logout does not revoke the server session (D-02, Critical)
 
 ```js
 const logout = useCallback(async () => {
@@ -959,15 +959,15 @@ const logout = useCallback(async () => {
 }, [clearSession]);
 ```
 
-`clearSession()` (AuthContext.jsx:34-38) calls `tokenStore.clear()`, which nulls the in-memory access token **and removes `bais_has_session`** (api.js:34-38). The subsequent `authApi.logout()` therefore enters `request()` with `token === null` and `hasSession() === false` (api.js:78-79), so it attaches **no `Authorization` header**.
+`clearSession()` (AuthContext.jsx:34-38) calls `tokenStore.clear()`, which nulls the in-memory access token **and removes `immiglance_has_session`** (api.js:34-38). The subsequent `authApi.logout()` therefore enters `request()` with `token === null` and `hasSession() === false` (api.js:78-79), so it attaches **no `Authorization` header**.
 
 `POST /api/auth/logout` is declared as `router.post("/logout", authenticate, …)` (`Backend/src/modules/auth/auth.routes.js:53`). The `authenticate` middleware rejects the unauthenticated request with a 401, so the controller body never runs — meaning `sessionService.revokeSession(incomingRefreshToken)` and `clearRefreshCookie(res)` (`auth.controller.js:254-256`) are both skipped. The `.catch(() => {})` swallows the 401 entirely.
 
-**Consequences:** the `AuthSession` row stays `revokedAt: null` and the httpOnly refresh cookie stays in the browser for the full `refreshTokenTtlDays`. Any subsequent `POST /auth/refresh` — from another tab, from a bookmark, or from the app itself once `bais_has_session` is re-set — mints a fresh valid session for a user who believes they signed out. On a shared machine this is a real account-takeover vector.
+**Consequences:** the `AuthSession` row stays `revokedAt: null` and the httpOnly refresh cookie stays in the browser for the full `refreshTokenTtlDays`. Any subsequent `POST /auth/refresh` — from another tab, from a bookmark, or from the app itself once `immiglance_has_session` is re-set — mints a fresh valid session for a user who believes they signed out. On a shared machine this is a real account-takeover vector.
 
 INSZoom does **not** have this bug: `contexts/AuthContext.jsx:131-143` sends the logout with an explicit `Authorization` header and only calls `clearSession()` in the `finally`.
 
-### 4.4 BAIS — direct-URL navigation to a protected route
+### 4.4 Immiglance — direct-URL navigation to a protected route
 
 `AuthGate` (`components/AuthGate.jsx`) fetches `GET /auth/session-context` once on mount (`[]` deps, line 69) and renders a spinner meanwhile (81-87). Outcomes:
 - **401** → `<Navigate to="/login" state={{from: location}} />` (103). Note that nothing ever consumes `state.from`, so the post-login destination is not restored.
@@ -984,9 +984,9 @@ Because `AuthGate` is a layout-route element, one instance stays mounted across 
 
 Duplicate call: `Navbar` independently fetches `GET /auth/session-context` (`Navbar.jsx:125`) on every `user` change, so an authenticated page load issues this endpoint twice.
 
-### 4.5 BAIS — token expiry / 401 handling
+### 4.5 Immiglance — token expiry / 401 handling
 
-`request()` (api.js:118-135): on a 401 whose body carries `code === "TOKEN_EXPIRED"`, it refreshes once and replays the request with `retry=false`. Any other 401, or a failed refresh, clears the token store and dispatches `window.dispatchEvent(new Event("bais:session-expired"))`. `AuthContext` listens for that event and calls `clearSession()` (AuthContext.jsx:107-111). This part is correct.
+`request()` (api.js:118-135): on a 401 whose body carries `code === "TOKEN_EXPIRED"`, it refreshes once and replays the request with `retry=false`. Any other 401, or a failed refresh, clears the token store and dispatches `window.dispatchEvent(new Event("immiglance:session-expired"))`. `AuthContext` listens for that event and calls `clearSession()` (AuthContext.jsx:107-111). This part is correct.
 
 `tokenStore.getAccess()` (api.js:13-28) additionally decodes the JWT payload and treats an `exp` in the past as "no token", so an expired token is never sent.
 
@@ -994,14 +994,14 @@ Duplicate call: `Navbar` independently fetches `GET /auth/session-context` (`Nav
 
 `INSZoom/frontend/src/services/api.js`: the access token is also memory-only (`let accessToken = null`, line 13); `localStorage` holds only `loginTime` and legacy keys that are proactively removed on load (15-16). Timeout is 120s (line 9).
 
-`contexts/AuthContext.jsx:36-101` handles refresh **correctly**, unlike BAIS:
+`contexts/AuthContext.jsx:36-101` handles refresh **correctly**, unlike IMMIGLANCE:
 - On mount `token` is `null`, so the `else` branch runs `POST /auth/refresh` with `_skipAuthRedirect: true` (line 70) — the flag prevents the response interceptor's hard `window.location.href = '/login'` (api.js:119-121) from firing during bootstrap.
 - On success it `setToken(...)` and **returns without setting `loading = false`** (72-76), so the effect re-runs with a token and fetches `/auth/me`. `ProtectedRoute` shows "Loading…" throughout (`ProtectedRoute.jsx:16-22`), so **there is no flash of the login state**.
 - On refresh failure it `clearSession()` and `setLoading(false)` → `<Navigate to="/login" replace />`.
 
 An `authVersionRef` guard (21, 25-27, 38-39) correctly discards results from a stale auth check after a login/logout, so a slow in-flight `/auth/me` cannot clobber a newer session.
 
-**Defect (High):** the `/auth/me` catch is a blanket `clearSession(authVersion)` (AuthContext.jsx:65-67) with **no distinction between a real 401 and a 5xx / network failure**. A transient backend blip during bootstrap therefore force-logs-out a user with a perfectly valid session and bounces them to `/login`. BAIS explicitly engineered around this exact failure mode (its four-state `AUTH_STATUS` machine with a distinct `ERROR` state, AuthContext.jsx:7-18); INSZoom did not.
+**Defect (High):** the `/auth/me` catch is a blanket `clearSession(authVersion)` (AuthContext.jsx:65-67) with **no distinction between a real 401 and a 5xx / network failure**. A transient backend blip during bootstrap therefore force-logs-out a user with a perfectly valid session and bounces them to `/login`. Immiglance explicitly engineered around this exact failure mode (its four-state `AUTH_STATUS` machine with a distinct `ERROR` state, AuthContext.jsx:7-18); INSZoom did not.
 
 ### 4.7 INSZoom — session timer, direct-URL navigation, logout
 
@@ -1023,9 +1023,9 @@ An `authVersionRef` guard (21, 25-27, 38-39) correctly discards results from a s
 The orphaned-session side effect described in the issue also still applies: the losing caller's `AuthSession.create(replacement)` has already committed before the failing `save()`.
 
 **Frontend exposure and mitigation:**
-- Both frontends single-flight their refresh through a module-scoped `refreshPromise` (BAIS `api.js:43, 81-84, 121-123`; INSZoom `api.js:12, 126-128`), which removes the *same-tab* concurrent-refresh trigger. This is real mitigation, and it is why the bug is intermittent rather than constant.
-- It does **not** cover the cross-tab case: two tabs of the same portal (or one BAIS tab and one INSZoom tab, if the refresh cookie is scoped to a shared parent domain) each hold their own module scope and their own `refreshPromise`, and both send the same still-valid refresh cookie. That is exactly the race the issue describes.
-- **When the race is lost, the user is logged out.** BAIS's `refreshAccessToken` treats any non-`res.ok` — the 500 included — as terminal: `tokenStore.clear(); throw new Error("Session expired")` (api.js:53-56), which propagates to `bais:session-expired` and wipes the session (api.js:86-88, 128-130). INSZoom's is the same shape: the axios rejection is caught at `api.js:133`, `clearStoredSession()` runs, and line 139-141 hard-navigates to `/login`. So the observable symptom of ISSUE-007 is **random forced logouts with a full page navigation**, which is materially worse than a retryable error.
+- Both frontends single-flight their refresh through a module-scoped `refreshPromise` (Immiglance `api.js:43, 81-84, 121-123`; INSZoom `api.js:12, 126-128`), which removes the *same-tab* concurrent-refresh trigger. This is real mitigation, and it is why the bug is intermittent rather than constant.
+- It does **not** cover the cross-tab case: two tabs of the same portal (or one Immiglance tab and one INSZoom tab, if the refresh cookie is scoped to a shared parent domain) each hold their own module scope and their own `refreshPromise`, and both send the same still-valid refresh cookie. That is exactly the race the issue describes.
+- **When the race is lost, the user is logged out.** Immiglance's `refreshAccessToken` treats any non-`res.ok` — the 500 included — as terminal: `tokenStore.clear(); throw new Error("Session expired")` (api.js:53-56), which propagates to `immiglance:session-expired` and wipes the session (api.js:86-88, 128-130). INSZoom's is the same shape: the axios rejection is caught at `api.js:133`, `clearStoredSession()` runs, and line 139-141 hard-navigates to `/login`. So the observable symptom of ISSUE-007 is **random forced logouts with a full page navigation**, which is materially worse than a retryable error.
 
 **Recommendation:** fix (1) server-side as the issue specifies; do not add a client-side retry on 500 (the issue explicitly argues against it, and a blind retry would race a third caller).
 
@@ -1035,15 +1035,15 @@ The orphaned-session side effect described in the issue also still applies: the 
 
 ### 5.1 What the shared transport layer guarantees
 
-| Condition | BAIS (`services/api.js`) | INSZoom (`services/api.js`) |
+| Condition | Immiglance (`services/api.js`) | INSZoom (`services/api.js`) |
 |---|---|---|
 | Backend unreachable | `TypeError` → `"Unable to reach the server. Check your connection and try again."`, `error.isNetworkError` (108-115) | axios network error; no `error.response`, so any handler reading only `error.response?.data?.message` gets `undefined` |
 | Timeout | `AbortSignal.timeout(25 000)` → `"The server took too long to respond."`, `error.isTimeout` (69, 99-107) | `timeout: 120_000` → `error.userMessage` set on `ECONNABORTED` (9, 114-116) |
 | 401 `TOKEN_EXPIRED` | silent refresh + single replay (118-132) | silent refresh + single replay (122-135) |
-| 401 other | clear + `bais:session-expired` event (133-134) | clear + hard `window.location.href = '/login'` (136-141) |
+| 401 other | clear + `immiglance:session-expired` event (133-134) | clear + hard `window.location.href = '/login'` (136-141) |
 | 4xx/5xx | `error.status`, `error.code`, `error.message` from the JSON body (137-143) | `error.response.data`; Blob error bodies from `responseType:'blob'` are re-hydrated to JSON (100-108, 117) — a genuinely good fix |
 
-Because BAIS bounds every request at 25s and INSZoom at 120s, **no page in either app can hang forever at the fetch layer**. Every "infinite spinner" finding below is a *state-machine* bug, not a transport hang.
+Because Immiglance bounds every request at 25s and INSZoom at 120s, **no page in either app can hang forever at the fetch layer**. Every "infinite spinner" finding below is a *state-machine* bug, not a transport hang.
 
 Critically, `error.userMessage` is only read by `CRMCases.jsx:151` in the entire INSZoom app. Every other INSZoom handler reads `error.response?.data?.message`, which is `undefined` for a network failure or a timeout — so those failures fall back to a generic string at best, and to nothing at all in the many `console.error`-only handlers.
 
@@ -1060,7 +1060,7 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 | Symptom | Location | Detail |
 |---|---|---|
 | **Permanent fake "Loading…"** | `CaseManagerDetails.jsx:203-204, 772` | The Analytics tab renders `EmptyChart label="Loading case manager analytics..."` whenever `analytics` is null. The fetch's catch is `console.error` only and never sets `analytics`, so on any failure the tab claims to be loading forever. |
-| **Blank page** | `App.jsx` (both apps) | No `path="*"` route in either app. An unknown URL renders nothing in BAIS, and the Layout chrome with an empty outlet in INSZoom. |
+| **Blank page** | `App.jsx` (both apps) | No `path="*"` route in either app. An unknown URL renders nothing in Immiglance, and the Layout chrome with an empty outlet in INSZoom. |
 | **Whole component vanishes** | `NotificationPreferencesCard.jsx:20-23, 46` | Failed preferences load → `preferences` stays `null` → `return null`. Indistinguishable from "feature not applicable". |
 | **Whole panel vanishes** | `CRMCaseDetail.jsx:1660-1680` + `QuestionnaireAnswersPanel.jsx` | `useCaseQuestionnaire`'s `error` is captured and never rendered; the panel early-returns `null`. A 403/500 looks like "no questionnaire assigned". |
 | **Entire admin dashboard blanks** | `AdminPortal.jsx:874-894` | `Promise.all` of 6 endpoints, `console.error`-only catch, no `loading` state. One failure leaves all six sections at their initial `[]`/`null` and every section renders its "nothing here yet" empty state. |
@@ -1080,7 +1080,7 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 | **False-empty (leaderboard)** | `Leaderboard.jsx:24-26` | `console.error` only → "No data available for this period". |
 | **Permanently wrong counter** | `USCISForms.jsx:420-423` (via D-46) | The Lifecycle tab's "Pending Reviews" card always shows 0, because the shadowing handler's `dashboard` object has no `pendingReviews` key. |
 | **Formatting-only-looking control that is actually persisted** *(verified NOT a defect)* | `RichTextToolbar.jsx:42-55` | Every toolbar command mutates the Tiptap document, which fires the same `onUpdate` → debounced `PATCH …/letters/:sectionKey` as typed text. Recorded here because it was the obvious fake-control candidate and was cleared. |
-| **Plausible-but-wrong KPIs** | `Dashboard.jsx:819-861` (BAIS); `Dashboard.jsx:920-982` (INSZoom) | `.catch(() => {})` / silent `[]` resets on the supporting fetches → "0 documents", "$0.00 paid", empty pipeline, with no error indicator. |
+| **Plausible-but-wrong KPIs** | `Dashboard.jsx:819-861` (Immiglance); `Dashboard.jsx:920-982` (INSZoom) | `.catch(() => {})` / silent `[]` resets on the supporting fetches → "0 documents", "$0.00 paid", empty pipeline, with no error indicator. |
 | **Silent settings load failure** | `Settings.jsx:58-60` | `settings` stays `null`, every field optional-chains to a default. Looks like a fresh install. |
 | **Mislabelled terminal state** | `PaymentSuccess.jsx:70` | Polling stops after 60s while the copy still says "This page will update automatically…". |
 | **Network failure reported as bad credentials** | `Login.jsx:96` | A timeout or offline error falls through every `msg.includes(...)` branch to "Please check your credentials". |
@@ -1093,8 +1093,8 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 |---|---|
 | `Login.jsx:101-109`, `Register.jsx:231-239` | `POST /auth/resend-invite` |
 | `DocumentReview.jsx:24-34` | `PUT /document-intelligence/:id/field`, `POST …/approve`, `POST …/reject` |
-| `Documents.jsx:268-279` (BAIS) | `PUT /employment-workflow/:id/employee-questionnaire` |
-| `Notifications.jsx:29-37` (BAIS, orphaned page) | `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read` |
+| `Documents.jsx:268-279` (Immiglance) | `PUT /employment-workflow/:id/employee-questionnaire` |
+| `Notifications.jsx:29-37` (Immiglance, orphaned page) | `PUT /notifications/:id/read`, `PUT /notifications/mark-all-read` |
 | `NotificationBell.jsx:43-51` | `POST /notifications/register-device` |
 | `ApplicantTypeSelector.jsx:25-35` | `PUT /auth/updatedetails` |
 | `CRMCaseDetail.jsx:1341-1352` | `navigator.clipboard.writeText` |
@@ -1105,11 +1105,11 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 
 ### 5.5 Write controls with no in-flight disable (double-submit risk)
 
-`AdminPortal.jsx` "Advance Stage" (408-421) and "Advance to next stage" (432-438), "Mark Contacted"/"Mark Done" (824-837), "Refresh" (1101-1105); `LeadsInbox.jsx` status select (317-321), assign select (323-329), quick-action buttons (335-346), note "Add" (400-408); `Notifications.jsx` (BAIS) "Mark read"/"Mark all read" (63-68, 113-118); `Payments.jsx` "Download receipt" (360-366); `CRMCaseDetail.jsx` "Update Stage" (2761-2763), review `<select>` (2247-2256), "Add Note" (2566-2572); `Documents.jsx` (INSZoom) Approve/Revise (776-795); `Teams.jsx` toggle-active (376-380); `Settings.jsx` AI provider checkbox (388-391); `PrincipalCaseWorkspace.jsx` "Remove this employee" (115-121); **every** mutation button on `USCISForms.jsx` (create, update, delete, approve, archive, fill, scan, and all four import actions — 136-332); `EODReports.jsx` "Mark as Reviewed" (421-427); `Leaderboard.jsx` "Refresh" (100-105) and "Calculate Performance" (115-121).
+`AdminPortal.jsx` "Advance Stage" (408-421) and "Advance to next stage" (432-438), "Mark Contacted"/"Mark Done" (824-837), "Refresh" (1101-1105); `LeadsInbox.jsx` status select (317-321), assign select (323-329), quick-action buttons (335-346), note "Add" (400-408); `Notifications.jsx` (Immiglance) "Mark read"/"Mark all read" (63-68, 113-118); `Payments.jsx` "Download receipt" (360-366); `CRMCaseDetail.jsx` "Update Stage" (2761-2763), review `<select>` (2247-2256), "Add Note" (2566-2572); `Documents.jsx` (INSZoom) Approve/Revise (776-795); `Teams.jsx` toggle-active (376-380); `Settings.jsx` AI provider checkbox (388-391); `PrincipalCaseWorkspace.jsx` "Remove this employee" (115-121); **every** mutation button on `USCISForms.jsx` (create, update, delete, approve, archive, fill, scan, and all four import actions — 136-332); `EODReports.jsx` "Mark as Reviewed" (421-427); `Leaderboard.jsx` "Refresh" (100-105) and "Calculate Performance" (115-121).
 
 ### 5.6 Blocking `alert()` / `confirm()` / `prompt()` used as the error or confirmation surface
 
-`Payments.jsx:154-177` (BAIS), `Offers.jsx:140,143`, `AdminPortal.jsx:960,969` and every `LeadsInbox` write handler (933, 942, 951), `PrincipalCaseWorkspace.jsx:70`, `Leads.jsx:170-174` (`window.prompt` for a rejection reason), `Settings.jsx:79-92` (`window.confirm` — appropriate here), `QuestionnaireTemplates.jsx:220-235` (`window.confirm` for question removal, but **no confirm at all on template archive**, 267-273).
+`Payments.jsx:154-177` (Immiglance), `Offers.jsx:140,143`, `AdminPortal.jsx:960,969` and every `LeadsInbox` write handler (933, 942, 951), `PrincipalCaseWorkspace.jsx:70`, `Leads.jsx:170-174` (`window.prompt` for a rejection reason), `Settings.jsx:79-92` (`window.confirm` — appropriate here), `QuestionnaireTemplates.jsx:220-235` (`window.confirm` for question removal, but **no confirm at all on template archive**, 267-273).
 
 ---
 
@@ -1119,26 +1119,26 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 
 | ID | Defect | Location | Impact |
 |---|---|---|---|
-| **D-01** | Hard refresh permanently drops the client session from `AuthContext`. `verifySession()` early-returns on a missing in-memory token without consulting `tokenStore.hasSession()` or attempting a refresh. | `BAIS/Frontend/src/context/AuthContext.jsx:58-63`, `100-104`; `services/api.js:41` | After every F5: navbar shows "Login / Sign Up" to a logged-in user; websockets never connect (`SocketContext.jsx:24`); `useHasCase()` reports false; `BlockIfHasCase` lets an existing client retake the quiz. Page content still renders because `AuthGate` refreshes independently — a half-broken, high-visibility state. |
-| **D-02** | Logout never revokes the server-side session. `clearSession()` runs before `authApi.logout()`, stripping the token and the session marker, so the request goes out unauthenticated and `authenticate` 401s it; the error is swallowed. | `BAIS/Frontend/src/context/AuthContext.jsx:147-151`; `services/api.js:34-38, 78-79`; `Backend/src/modules/auth/auth.routes.js:53`; `auth.controller.js:252-259` | The `AuthSession` row stays active and the httpOnly refresh cookie is never cleared. A "signed-out" browser can mint a fresh session for the full refresh-token TTL. Account-takeover risk on shared machines. INSZoom does this correctly (`contexts/AuthContext.jsx:131-143`) — copy that ordering. |
+| **D-01** | Hard refresh permanently drops the client session from `AuthContext`. `verifySession()` early-returns on a missing in-memory token without consulting `tokenStore.hasSession()` or attempting a refresh. | `Immiglance/Frontend/src/context/AuthContext.jsx:58-63`, `100-104`; `services/api.js:41` | After every F5: navbar shows "Login / Sign Up" to a logged-in user; websockets never connect (`SocketContext.jsx:24`); `useHasCase()` reports false; `BlockIfHasCase` lets an existing client retake the quiz. Page content still renders because `AuthGate` refreshes independently — a half-broken, high-visibility state. |
+| **D-02** | Logout never revokes the server-side session. `clearSession()` runs before `authApi.logout()`, stripping the token and the session marker, so the request goes out unauthenticated and `authenticate` 401s it; the error is swallowed. | `Immiglance/Frontend/src/context/AuthContext.jsx:147-151`; `services/api.js:34-38, 78-79`; `Backend/src/modules/auth/auth.routes.js:53`; `auth.controller.js:252-259` | The `AuthSession` row stays active and the httpOnly refresh cookie is never cleared. A "signed-out" browser can mint a fresh session for the full refresh-token TTL. Account-takeover risk on shared machines. INSZoom does this correctly (`contexts/AuthContext.jsx:131-143`) — copy that ordering. |
 
 ### High
 
 | ID | Defect | Location | Impact |
 |---|---|---|---|
 | **D-03** | The entire **Expert Letters** tab is fake. `fetchLetters` hardcodes `setLetters([])`; `handleCreateLetter` only closes the modal. No `letters` resource exists in the backend. | `INSZoom/frontend/src/pages/CRMCaseDetail.jsx:662-665, 860-863, 2494-2502, 2846-2862` | Staff believe they created a document that was never created and never will appear. |
-| **D-04** | **ISSUE-007 is still fully present.** All three proposed fixes are unimplemented. | `Backend/src/modules/auth/session.service.js:30-42`; `auth.service.js:326-346`; `middleware/errorHandler.js:12-30, 51` | Concurrent refresh (cross-tab, or BAIS+INSZoom on a shared cookie domain) throws a Mongoose `VersionError` → an undifferentiated 500. Both frontends treat a failed refresh as terminal, so the user is **hard-logged-out and navigated to `/login`** (BAIS `api.js:53-56, 128-130`; INSZoom `api.js:133, 139-141`). A valid orphan `AuthSession` is created on every occurrence. Same-tab single-flight (`refreshPromise`) is the only reason this is intermittent. |
+| **D-04** | **ISSUE-007 is still fully present.** All three proposed fixes are unimplemented. | `Backend/src/modules/auth/session.service.js:30-42`; `auth.service.js:326-346`; `middleware/errorHandler.js:12-30, 51` | Concurrent refresh (cross-tab, or Immiglance+INSZoom on a shared cookie domain) throws a Mongoose `VersionError` → an undifferentiated 500. Both frontends treat a failed refresh as terminal, so the user is **hard-logged-out and navigated to `/login`** (Immiglance `api.js:53-56, 128-130`; INSZoom `api.js:133, 139-141`). A valid orphan `AuthSession` is created on every occurrence. Same-tab single-flight (`refreshPromise`) is the only reason this is intermittent. |
 | **D-05** | `TaskDetails` "Delete" button has no `onClick` attribute at all. | `INSZoom/frontend/src/pages/TaskDetails.jsx:356-361` | Task deletion is impossible from the UI despite `DELETE /tasks/:id` existing (`task.routes.js:21`) and the button carrying the correct role gate. |
-| **D-06** | `AdminLogin` leaves a full app-wide session established when the post-login role check fails — it sets a local `error` and returns without calling `logout()`. | `BAIS/Frontend/src/Pages/Admin/AdminLogin.jsx:45-64`; `context/AuthContext.jsx:129-135` | The screen says "You are not authorized"; the user is nevertheless authenticated everywhere else in the app. A false-failure that grants access. |
-| **D-07** | `Intake` "Save & close" persists nothing — no API call, no `localStorage`, no `sessionStorage`. | `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx:705-707` (verified: zero `saveIntake`/`localStorage` references in the file) | A partially-completed intake questionnaire is silently discarded; the user restarts from question 1. Label/behaviour mismatch. |
-| **D-08** | `AdminPortal` loads via `Promise.all` of 6 endpoints with a `console.error`-only catch and no `loading` state. | `BAIS/Frontend/src/Pages/Admin/AdminPortal.jsx:874-894` | One failing endpoint blanks all six sections into "No users / No cases / No leads" empty states, indistinguishable from an empty system. No retry affordance beyond a Refresh button with no feedback. |
+| **D-06** | `AdminLogin` leaves a full app-wide session established when the post-login role check fails — it sets a local `error` and returns without calling `logout()`. | `Immiglance/Frontend/src/Pages/Admin/AdminLogin.jsx:45-64`; `context/AuthContext.jsx:129-135` | The screen says "You are not authorized"; the user is nevertheless authenticated everywhere else in the app. A false-failure that grants access. |
+| **D-07** | `Intake` "Save & close" persists nothing — no API call, no `localStorage`, no `sessionStorage`. | `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx:705-707` (verified: zero `saveIntake`/`localStorage` references in the file) | A partially-completed intake questionnaire is silently discarded; the user restarts from question 1. Label/behaviour mismatch. |
+| **D-08** | `AdminPortal` loads via `Promise.all` of 6 endpoints with a `console.error`-only catch and no `loading` state. | `Immiglance/Frontend/src/Pages/Admin/AdminPortal.jsx:874-894` | One failing endpoint blanks all six sections into "No users / No cases / No leads" empty states, indistinguishable from an empty system. No retry affordance beyond a Refresh button with no feedback. |
 | **D-09** | `CaseManagerDetails` has no error state at all; all five fetches `console.error` only, and the Analytics tab claims "Loading case manager analytics…" forever after a failure. | `INSZoom/frontend/src/pages/CaseManagerDetails.jsx:145-146, 163-164, 178-179, 194-195, 203-204, 772` | A permanent fake loading state, plus a 500 rendering as "case manager not found". |
 | **D-10** | `QuestionnaireTemplates` has 8 mutating handlers with no `try/catch` and no error mechanism on the page. | `INSZoom/frontend/src/pages/QuestionnaireTemplates.jsx:150-184, 200-218, 220-235, 250-258, 260-265, 267-273, 275-279, 281-285` | Save / Duplicate / Version / Archive / Add Question / Remove Question / Assign / Load Progress all look like no-ops on failure. `archiveTemplate` also has no confirmation dialog. |
-| **D-11** | `ManageBooking` cancel and reschedule are false successes: cancel flips the view synchronously without awaiting the mutation, and neither mutation has an `onError` or any error rendering. | `BAIS/Frontend/src/Pages/Consultation/ManageBooking.jsx:100-108, 121-128` | A user can believe a consultation was cancelled or moved when the server rejected it. |
-| **D-12** | `DocumentReview`'s three write buttons have no `try/catch`. | `BAIS/Frontend/src/Pages/Dashboard/DocumentReview.jsx:24-34` | Approve / Reject / Save Edit fail completely silently. (Mitigated only by the page being unreachable — see D-13.) |
+| **D-11** | `ManageBooking` cancel and reschedule are false successes: cancel flips the view synchronously without awaiting the mutation, and neither mutation has an `onError` or any error rendering. | `Immiglance/Frontend/src/Pages/Consultation/ManageBooking.jsx:100-108, 121-128` | A user can believe a consultation was cancelled or moved when the server rejected it. |
+| **D-12** | `DocumentReview`'s three write buttons have no `try/catch`. | `Immiglance/Frontend/src/Pages/Dashboard/DocumentReview.jsx:24-34` | Approve / Reject / Save Edit fail completely silently. (Mitigated only by the page being unreachable — see D-13.) |
 | **D-13** | INSZoom document review is a false success. `Documents.jsx` optimistically patches local state and only `console.error`s; `CRMCaseDetail.jsx`'s `<select>` resets to its placeholder either way and skips the refetch on failure. | `INSZoom/frontend/src/pages/Documents.jsx:505-510, 776-795`; `pages/CRMCaseDetail.jsx:806-813, 2247-2256` | A rejected `PUT /documents/:id/review` displays as an approved document until the next full reload. |
 | **D-14** | Both AI-provider write controls in Settings have no `try/catch`, no disable, no feedback. | `INSZoom/frontend/src/pages/Settings.jsx:388-391, 401-411` | A failed `PUT /ai/providers/:key` is invisible; the checkbox may not even revert. Every other settings section is correct. |
-| **D-15** | INSZoom force-logs-out on any `/auth/me` failure during bootstrap — the catch is a blanket `clearSession()` with no 401-vs-5xx distinction. | `INSZoom/frontend/src/contexts/AuthContext.jsx:65-67` | A transient backend blip evicts a valid session. BAIS solved this with a four-state machine (`AuthContext.jsx:7-18`); INSZoom should adopt the same shape. |
+| **D-15** | INSZoom force-logs-out on any `/auth/me` failure during bootstrap — the catch is a blanket `clearSession()` with no 401-vs-5xx distinction. | `INSZoom/frontend/src/contexts/AuthContext.jsx:65-67` | A transient backend blip evicts a valid session. Immiglance solved this with a four-state machine (`AuthContext.jsx:7-18`); INSZoom should adopt the same shape. |
 | **D-46** | **Backend route-mount collision silently misroutes the USCIS Lifecycle tab.** `router.use("/uscis/forms", uscisFormImportRoutes)` is registered **before** `router.use("/uscis", uscisLifecycleRoutes)`, so Express resolves overlapping paths to the import module and the lifecycle module never sees them. | `Backend/src/routes/index.js:24-25`; `modules/uscis-form-import/routes/uscisFormImportRoutes.js:23, 34, 36, 37`; `modules/uscis-lifecycle/routes/uscisLifecycleRoutes.js:9, 12, 15, 16`; caller `INSZoom/frontend/src/pages/USCISForms.jsx:96, 147-155` | **Four endpoints are shadowed:** `GET /uscis/forms` → import `get("/")` instead of lifecycle `listForms`; `POST /uscis/forms/import` → import `post("/import")`; `POST /uscis/forms/:id/activate` → import `post("/:id/activate")`; `POST /uscis/forms/:id/retire` → import `post("/:id/retire")`. Four others fall through correctly because the import router has no matching pattern: `.../scan`, `.../:id/approve`, `.../:formType/versions`, `.../:formType/compare/:version`. Concrete user-visible consequence: the import service's `list()` builds a `dashboard` object with no `pendingReviews` key (`USCISFormImporterService.js:456-465`) whereas the lifecycle service does (`VersionManagementService.js:41`), so the **Lifecycle tab's "Pending Reviews" card is permanently 0** (`USCISForms.jsx:420,423`). Worse, "Activate" and "Retire" run a different module's service (different audit action and impact-analysis behaviour) than the "Approve" and "Compare" buttons sitting next to them on the same tab. Fix by mounting `/uscis` before `/uscis/forms`, or by giving the two routers non-overlapping prefixes. |
 | **D-47** | `PaymentsOverview` has **no user-facing error state at all** — all three fetches are `console.error` only. | `INSZoom/frontend/src/pages/PaymentsOverview.jsx:61-96` | A 401/500/outage renders zeroed stat cards and "No payments found", indistinguishable from an empty ledger. Financial data presented as authoritative when it failed to load. |
 | **D-48** | `Leaderboard` "Calculate Performance" is fire-and-forget: `onClick={() => api.post(...)}` with no `await`, no `catch`, no loading state, no success feedback and **no refetch of the table afterwards**. | `INSZoom/frontend/src/pages/Leaderboard.jsx:115-121` | The button appears to do nothing whether it succeeded or failed; even a successful recalculation leaves stale scores on screen. `fetchLeaderboard`'s catch (24-26) is also `console.error` only, so a load failure renders "No data available for this period". |
@@ -1147,20 +1147,20 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 
 | ID | Defect | Location | Impact |
 |---|---|---|---|
-| **D-16** | `/dashboard/document-review` is structurally unreachable. Its only nav links render for staff roles (`Navbar.jsx:241, 336`), but `AuthGate` redirects every staff role off-origin to INSZoom (`AuthGate.jsx:75-78`) and shows "Access unavailable" for any non-client-portal role (106-115). | `BAIS/Frontend/src/App.jsx:93`; `Navbar.jsx:241-244, 336-338`; `AuthGate.jsx:26-28, 75-78, 106-115` | An entire document-intelligence review workflow is dead code. |
-| **D-17** | `/dashboard/plan` and `/dashboard/filing-type` have zero inbound links anywhere in the app. | `BAIS/Frontend/src/App.jsx:81-82` (verified by exhaustive grep) | Two functional pages, including the plan-selection + payment entry point, are URL-only. |
-| **D-18** | `Pages/Dashboard/Notifications.jsx` is never imported and never routed. | `BAIS/Frontend/src/Pages/Dashboard/Notifications.jsx` | Dead page. Its two write handlers also have no `try/catch` (29-37). |
-| **D-19** | Neither app declares a `path="*"` catch-all. | `BAIS/Frontend/src/App.jsx`; `INSZoom/frontend/src/App.jsx` | A typo or a stale link renders a blank page (BAIS) or empty chrome (INSZoom). |
-| **D-20** | `PlanSelection`'s save failure is `console.error` only — no error state, nothing rendered. | `BAIS/Frontend/src/Pages/Dashboard/PlanSelection.jsx:50-53` | A failed plan save looks exactly like the Continue button doing nothing. |
-| **D-21** | `CaseIntakeExtras` autosaves I-907 premium-processing filing data with `.catch(() => null)` and no success confirmation. | `BAIS/Frontend/src/components/checklist/CaseIntakeExtras.jsx:189-198` | Filing-critical data can silently fail to save; the only signal is the "Saving…" label disappearing, which it also does on success. |
-| **D-22** | `EmployeeHandoffModal`'s "I'll fill it myself" fires a real `PUT` without `await` and closes the modal regardless. | `BAIS/Frontend/src/components/checklist/EmployeeHandoffModal.jsx:64-71`; `Pages/Dashboard/Documents.jsx:268-279` | A failed handoff assignment reads as success. |
-| **D-23** | `Navbar` silently hides the Dashboard / Messages / Payments links when `GET /auth/session-context` fails. | `BAIS/Frontend/src/components/Navbar.jsx:75-87, 121-133` | A transient failure makes a client's own case navigation disappear with no retry and no explanation. |
+| **D-16** | `/dashboard/document-review` is structurally unreachable. Its only nav links render for staff roles (`Navbar.jsx:241, 336`), but `AuthGate` redirects every staff role off-origin to INSZoom (`AuthGate.jsx:75-78`) and shows "Access unavailable" for any non-client-portal role (106-115). | `Immiglance/Frontend/src/App.jsx:93`; `Navbar.jsx:241-244, 336-338`; `AuthGate.jsx:26-28, 75-78, 106-115` | An entire document-intelligence review workflow is dead code. |
+| **D-17** | `/dashboard/plan` and `/dashboard/filing-type` have zero inbound links anywhere in the app. | `Immiglance/Frontend/src/App.jsx:81-82` (verified by exhaustive grep) | Two functional pages, including the plan-selection + payment entry point, are URL-only. |
+| **D-18** | `Pages/Dashboard/Notifications.jsx` is never imported and never routed. | `Immiglance/Frontend/src/Pages/Dashboard/Notifications.jsx` | Dead page. Its two write handlers also have no `try/catch` (29-37). |
+| **D-19** | Neither app declares a `path="*"` catch-all. | `Immiglance/Frontend/src/App.jsx`; `INSZoom/frontend/src/App.jsx` | A typo or a stale link renders a blank page (Immiglance) or empty chrome (INSZoom). |
+| **D-20** | `PlanSelection`'s save failure is `console.error` only — no error state, nothing rendered. | `Immiglance/Frontend/src/Pages/Dashboard/PlanSelection.jsx:50-53` | A failed plan save looks exactly like the Continue button doing nothing. |
+| **D-21** | `CaseIntakeExtras` autosaves I-907 premium-processing filing data with `.catch(() => null)` and no success confirmation. | `Immiglance/Frontend/src/components/checklist/CaseIntakeExtras.jsx:189-198` | Filing-critical data can silently fail to save; the only signal is the "Saving…" label disappearing, which it also does on success. |
+| **D-22** | `EmployeeHandoffModal`'s "I'll fill it myself" fires a real `PUT` without `await` and closes the modal regardless. | `Immiglance/Frontend/src/components/checklist/EmployeeHandoffModal.jsx:64-71`; `Pages/Dashboard/Documents.jsx:268-279` | A failed handoff assignment reads as success. |
+| **D-23** | `Navbar` silently hides the Dashboard / Messages / Payments links when `GET /auth/session-context` fails. | `Immiglance/Frontend/src/components/Navbar.jsx:75-87, 121-133` | A transient failure makes a client's own case navigation disappear with no retry and no explanation. |
 | **D-24** | `CaseManagers` "Export CSV" exports only the current ≤10-row page. | `INSZoom/frontend/src/pages/CaseManagers.jsx:80-103, 163-169` | Silent, unlabelled under-export of a reporting artefact. |
-| **D-25** | `Login` reports network and timeout failures as a credentials problem. | `BAIS/Frontend/src/Pages/Auth/Login.jsx:83-97` | Users retype correct passwords during an outage. |
-| **D-26** | `Profile`'s save status line styles success and error identically. | `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx:278` | A failed save reads as "Saved". |
-| **D-27** | `PaymentSuccess` stops polling after 60s while still claiming the page updates automatically. | `BAIS/Frontend/src/Pages/Dashboard/PaymentSuccess.jsx:70` | A slow settlement leaves a permanently misleading message. |
-| **D-28** | `NotificationPreferencesCard` and `CanonicalProfileForm` are orphaned components (never imported). | `BAIS/Frontend/src/components/NotificationPreferencesCard.jsx`, `components/questionnaire/CanonicalProfileForm.jsx` | Notification preferences are unreachable from the UI despite `GET`/`PUT /notifications/preferences/me` existing. |
-| **D-29** | `ProtectedRoute.jsx` (BAIS) is dead — defined but removed from the route tree; `poc/PocHarness.jsx` and `poc/pocMain.jsx` (INSZoom) are unreferenced. | `BAIS/Frontend/src/components/ProtectedRoute.jsx`; `INSZoom/frontend/src/poc/*` | Dead code that still reads as live routing infrastructure (its Retry button is the only manual `verifySession()` trigger, and it can never be pressed). |
+| **D-25** | `Login` reports network and timeout failures as a credentials problem. | `Immiglance/Frontend/src/Pages/Auth/Login.jsx:83-97` | Users retype correct passwords during an outage. |
+| **D-26** | `Profile`'s save status line styles success and error identically. | `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx:278` | A failed save reads as "Saved". |
+| **D-27** | `PaymentSuccess` stops polling after 60s while still claiming the page updates automatically. | `Immiglance/Frontend/src/Pages/Dashboard/PaymentSuccess.jsx:70` | A slow settlement leaves a permanently misleading message. |
+| **D-28** | `NotificationPreferencesCard` and `CanonicalProfileForm` are orphaned components (never imported). | `Immiglance/Frontend/src/components/NotificationPreferencesCard.jsx`, `components/questionnaire/CanonicalProfileForm.jsx` | Notification preferences are unreachable from the UI despite `GET`/`PUT /notifications/preferences/me` existing. |
+| **D-29** | `ProtectedRoute.jsx` (Immiglance) is dead — defined but removed from the route tree; `poc/PocHarness.jsx` and `poc/pocMain.jsx` (INSZoom) are unreferenced. | `Immiglance/Frontend/src/components/ProtectedRoute.jsx`; `INSZoom/frontend/src/poc/*` | Dead code that still reads as live routing infrastructure (its Retry button is the only manual `verifySession()` trigger, and it can never be pressed). |
 | **D-49** | Petition exhibit drag-reorder re-throws its failure into a caller that never awaits or catches it. | `INSZoom/frontend/src/pages/petition/PetitionOutline.jsx:58-66`; `hooks/usePetitionPackage.js:69-89` | On a non-409 reorder failure the UI silently reverts with no error banner and produces an unhandled promise rejection. Only 409s surface, via the generic conflict banner. |
 | **D-50** | Every mutation button on `USCISForms.jsx` (create / update / delete / approve / archive / fill / scan / import ×4) lacks an in-flight disable, and all errors share one page-level `error` string that concurrent failures overwrite. | `INSZoom/frontend/src/pages/USCISForms.jsx:23, 374-378, and all handlers 136-332` | Every write on the page is double-clickable, including template deletion and version approval. |
 | **D-51** | `EODReports` "Mark as Reviewed" has no in-flight disable — the page's `submitting` flag is never set by this handler. | `INSZoom/frontend/src/pages/EODReports.jsx:89-99, 421-427` | The modal stays open with a clickable button and no feedback during the request; duplicate reviews are possible. |
@@ -1179,7 +1179,7 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 | **D-36** | `ResetPassword` never validates the token before rendering the form; failure surfaces only on submit. | `ResetPassword.jsx:18` |
 | **D-37** | `AuthGate` passes `state={{from: location}}` on its login redirect, but nothing ever consumes it — the intended destination is lost. Same in INSZoom, which passes nothing. | `AuthGate.jsx:103`; `INSZoom ProtectedRoute.jsx:26` |
 | **D-38** | Role-gating drift in INSZoom: `case-managers` allows `team_lead` in `canAccessModule` but not in the sidebar; `analytics`/`leaderboard`/`uscis-forms` are reachable by URL for roles the sidebar hides them from; `/tasks/team-tasks` is client-gated to all four staff roles while the backend restricts it to three. | `INSZoom/frontend/src/utils/permissions.js:76, 132, 137, 139, 142`; `App.jsx:217-232`; `Backend/.../task.routes.js:15` |
-| **D-39** | `AdminPortal` at `/admin/portal` has no client-side route guard at all; it relies entirely on the backend 403ing its data calls, which then blanks the page via D-08. | `BAIS/Frontend/src/App.jsx:132` |
+| **D-39** | `AdminPortal` at `/admin/portal` has no client-side route guard at all; it relies entirely on the backend 403ing its data calls, which then blanks the page via D-08. | `Immiglance/Frontend/src/App.jsx:132` |
 | **D-40** | `Teams`'s "Add Member" button is not role-gated in the UI, unlike the row-level Edit/Toggle/Delete icons. | `INSZoom/frontend/src/pages/Teams.jsx:299-301` |
 | **D-41** | `SocketContext` (INSZoom) exposes no permanent-disconnect state; after 5 exhausted reconnection attempts, "Live" indicators read "Connecting…" forever. | `INSZoom/frontend/src/contexts/SocketContext.jsx:29-70`; consumer at `CaseManagerAnalyticsPanel.jsx:144` |
 | **D-42** | `ErrorBoundary` renders `error.message` verbatim in a `<pre>` — a minor information-disclosure surface. | `INSZoom/frontend/src/components/ErrorBoundary.jsx:35-37` |
@@ -1196,7 +1196,7 @@ Everywhere else, 400 / 403 / 404 / 409 / 422 / 500 / timeout / offline collapse 
 
 ## 7. Endpoint contract cross-check
 
-Every endpoint invoked from either frontend was resolved through its API wrapper (`BAIS/Frontend/src/services/api.js`, `INSZoom/frontend/src/services/api.js`) and matched against `Backend/src/routes/index.js` mount prefixes plus the corresponding module route file.
+Every endpoint invoked from either frontend was resolved through its API wrapper (`Immiglance/Frontend/src/services/api.js`, `INSZoom/frontend/src/services/api.js`) and matched against `Backend/src/routes/index.js` mount prefixes plus the corresponding module route file.
 
 **Result: zero calls to non-existent backend endpoints in either app.** With one exception (D-46, below), every defect in this report is a frontend behaviour defect — a dead handler, a missing error path, a false success, or an unreachable route — not a frontend↔backend contract mismatch.
 
@@ -1225,10 +1225,10 @@ Three places in this codebase already do it right and should be the pattern for 
 
 | Pattern | Where |
 |---|---|
-| Distinguishing loading / error / empty, with a working Retry | `INSZoom/frontend/src/components/CaseManagerAnalyticsPanel.jsx:69-120`; `BAIS/Frontend/src/Pages/Dashboard/Documents.jsx:349-354, 904-926` |
+| Distinguishing loading / error / empty, with a working Retry | `INSZoom/frontend/src/components/CaseManagerAnalyticsPanel.jsx:69-120`; `Immiglance/Frontend/src/Pages/Dashboard/Documents.jsx:349-354, 904-926` |
 | Consistent `e.response?.data?.message` surfacing with submitting/disabled states on every mutation | `INSZoom/frontend/src/pages/Teams.jsx` (whole file) |
-| Optimistic send with reconciliation, a `__failed` marker and a click-to-retry affordance | `BAIS/Frontend/src/Pages/Dashboard/Messages.jsx:632-705` |
-| Status-code-specific recovery (409 → clear the stale selection and refetch) | `BAIS/Frontend/src/Pages/Consultation/BookConsultation.jsx:46-52` |
-| An auth state machine that keeps "backend unreachable" distinct from "logged out" | `BAIS/Frontend/src/context/AuthContext.jsx:7-18` (adopt in INSZoom — see D-15) |
-| Correct logout ordering (call the API while still authenticated, clear in `finally`) | `INSZoom/frontend/src/contexts/AuthContext.jsx:131-143` (adopt in BAIS — see D-02) |
+| Optimistic send with reconciliation, a `__failed` marker and a click-to-retry affordance | `Immiglance/Frontend/src/Pages/Dashboard/Messages.jsx:632-705` |
+| Status-code-specific recovery (409 → clear the stale selection and refetch) | `Immiglance/Frontend/src/Pages/Consultation/BookConsultation.jsx:46-52` |
+| An auth state machine that keeps "backend unreachable" distinct from "logged out" | `Immiglance/Frontend/src/context/AuthContext.jsx:7-18` (adopt in INSZoom — see D-15) |
+| Correct logout ordering (call the API while still authenticated, clear in `finally`) | `INSZoom/frontend/src/contexts/AuthContext.jsx:131-143` (adopt in Immiglance — see D-02) |
 | A single `action()` wrapper that sets `busy`, catches, and sets `errorMessage` for *every* mutation on the page, plus field autosave with 3-attempt exponential backoff and a `beforeunload` guard | `INSZoom/frontend/src/components/uscis/USCISFormRenderer.jsx:74, 588-597, 732-756` — the most thoroughly error-handled surface in either app |

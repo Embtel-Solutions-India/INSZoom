@@ -40,7 +40,7 @@ test("every pre-existing Settings field keeps its original default (additive onl
     assert.ok(paths[field], `Settings field "${field}" is missing`);
     assert.deepEqual(paths[field].defaultValue, expected, `Settings.${field}'s default changed`);
   };
-  expectDefault("companyName", "BAIS");
+  expectDefault("companyName", "Immiglance");
   expectDefault("primaryColor", "#10b981");
   expectDefault("timezone", "America/New_York");
   expectDefault("dateFormat", "MM/DD/YYYY");

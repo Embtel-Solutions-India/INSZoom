@@ -3,7 +3,7 @@
 %% with the two CONFIRMED live failure modes (Cases 503, auth-refresh 500) shown as concrete branches
 %% off the same generic path -- not hypothetical, both reproduced this session.
 sequenceDiagram
-    participant FE as React Frontend<br/>(BAIS or INSZoom)
+    participant FE as React Frontend<br/>(Immiglance or INSZoom)
     participant API as api.js<br/>(fetch / axios client)
     participant RTR as Express Router<br/>routes/index.js (29 mounts)
     participant AUTH as authenticate.js<br/>(JWT verify + User.findById)

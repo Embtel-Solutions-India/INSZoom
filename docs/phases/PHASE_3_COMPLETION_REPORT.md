@@ -49,10 +49,10 @@ For roles outside `['client','employer','employee','beneficiary']` (i.e. staff),
 |---|---|
 | Route registered, requires `authenticate` | PASS (confirmed via route-table inspection) |
 | `node --check` / `require('./src/app.js')` | PASS |
-| Frontend `authApi.sessionContext()` added to `BAIS/Frontend/src/services/api.js` | PASS — as `api.get("/auth/session-context")`, matching every other call in that file's established pattern |
+| Frontend `authApi.sessionContext()` added to `Immiglance/Frontend/src/services/api.js` | PASS — as `api.get("/auth/session-context")`, matching every other call in that file's established pattern |
 | Live HTTP scenarios (staff shape, client-no-case shape, client-has-case shape, 401 unauthenticated) | **NOT RUN** — same DB blocker |
 
-**Adaptation note:** `BAIS/Frontend/src/services/api.js` is a custom fetch wrapper (`request()`), not axios — confirmed by reading it directly. It resolves successful calls with the parsed JSON body **directly** (no `.data` envelope) and throws errors carrying `.status`/`.code`/`.message` (not an axios-style `err.response.status`). Every frontend consumer of `sessionContext()` (`AuthGate.jsx`, `BlockIfHasCase.jsx`) was written against this real shape — `res.hasCase`/`res.success`, `err.status === 401` — rather than the prompt's illustrative axios-style pseudocode (`res.data?.hasCase`, `err?.response?.status`), which would have silently failed against this codebase's actual client.
+**Adaptation note:** `Immiglance/Frontend/src/services/api.js` is a custom fetch wrapper (`request()`), not axios — confirmed by reading it directly. It resolves successful calls with the parsed JSON body **directly** (no `.data` envelope) and throws errors carrying `.status`/`.code`/`.message` (not an axios-style `err.response.status`). Every frontend consumer of `sessionContext()` (`AuthGate.jsx`, `BlockIfHasCase.jsx`) was written against this real shape — `res.hasCase`/`res.success`, `err.status === 401` — rather than the prompt's illustrative axios-style pseudocode (`res.data?.hasCase`, `err?.response?.status`), which would have silently failed against this codebase's actual client.
 
 ---
 
@@ -88,16 +88,16 @@ For roles outside `['client','employer','employee','beneficiary']` (i.e. staff),
 
 | File | What changed |
 |---|---|
-| `BAIS/Frontend/src/components/AuthGate.jsx` (new) | Single routing authority. Fetches `session-context` once on mount; routes staff → INSZoom (external, via a `useEffect` — see adaptation note below), employee-role → `/dashboard/documents`, client-with-case → `/dashboard`, legacy-no-case → `/legacy-holding`, client-no-case → `/onboarding/intake`. |
-| `BAIS/Frontend/src/App.jsx` | All `/dashboard/*` routes (previously `ProtectedRoute`→`BlockEmployeeRoute`) now wrapped in a single `<Route element={<AuthGate/>}>` — `BlockEmployeeRoute` dropped from this group since AuthGate's own employee branch subsumes it (redundant nesting would just duplicate the same check). Added `/onboarding/intake` (AuthGate-wrapped, renders `<Intake/>`) and `/legacy-holding` (public, renders `<LegacyHolding/>`, outside AuthGate). `/dashboard/intake` kept alive as a plain redirect stub to `/onboarding/intake` (see "unexpected finding" below) rather than removed. `ProtectedRoute`/`BlockEmployeeRoute` left defined in `components/ProtectedRoute.jsx` (not deleted), just no longer imported/used by `App.jsx`. |
-| `BAIS/Frontend/src/Pages/Auth/OAuthCallback.jsx` | Fixed exactly as specified — staff roles now `window.location.href = INSZOOM_URL` directly; client roles `navigate('/dashboard', {replace:true})` and let AuthGate take over. No other part of the component touched. |
-| `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx` | Removed **only** the `if (!currentCase?._id && !isEmployee) navigate('/dashboard/intake')` redirect from the mount effect's `loadCase().then()`. The `loadCase()` call itself (and the rest of the mount effect — `profileApi`, `documentsApi`, `messagesApi`, `paymentsApi` calls) was **kept**, since it fetches the real case/profile/workflow data this page renders, not just a routing signal — removing it wholesale (as the prompt's literal instruction suggested) would have broken the dashboard's actual data loading. |
-| `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` | Removed the mount-time `useEffect` that checked `isEmployeeAccount(user)`/`hasCase` and redirected. Removed the now-unused `isEmployeeAccount` import and `hasCase` destructured variable (both flagged as dead code by this project's `no-unused-vars` eslint config, matching the same cleanup pattern applied in Phase 2). |
-| `BAIS/Frontend/src/utils/postLoginDest.js` | Replaced with the deprecated stub exactly as specified. |
-| `BAIS/Frontend/src/Pages/Auth/Login.jsx` | Both effects that called `resolvePostLoginDest` now simply `navigate('/dashboard', {replace:true})`; import removed. |
-| `BAIS/Frontend/src/Pages/Auth/Register.jsx` | **Not in the prompt's Step 21 file list — added for consistency, see "unexpected finding" below.** Same treatment as Login.jsx for its `googleRedirectUser` effect; its staff-only "already authenticated" guard effect (deliberately *not* broadened to clients, per its own pre-existing comment about protecting the 1.6s "Account created!" message timing) now inlines the same `STAFF_ROLES` check AuthGate uses, instead of calling the now-deprecated `getPostLoginDest`. |
-| `BAIS/Frontend/src/components/eligibility/BlockIfHasCase.jsx` | Rewritten to call `authApi.sessionContext()` instead of `casesApi.my()` (via the old `useHasCase()` hook), preserving the exact same employee special-casing `useHasCase()` used to provide (see AuthGate's identical note) and the same fail-open behavior on a fetch error. |
-| `BAIS/Frontend/src/services/api.js` | Added `authApi.sessionContext: () => api.get("/auth/session-context")`. |
+| `Immiglance/Frontend/src/components/AuthGate.jsx` (new) | Single routing authority. Fetches `session-context` once on mount; routes staff → INSZoom (external, via a `useEffect` — see adaptation note below), employee-role → `/dashboard/documents`, client-with-case → `/dashboard`, legacy-no-case → `/legacy-holding`, client-no-case → `/onboarding/intake`. |
+| `Immiglance/Frontend/src/App.jsx` | All `/dashboard/*` routes (previously `ProtectedRoute`→`BlockEmployeeRoute`) now wrapped in a single `<Route element={<AuthGate/>}>` — `BlockEmployeeRoute` dropped from this group since AuthGate's own employee branch subsumes it (redundant nesting would just duplicate the same check). Added `/onboarding/intake` (AuthGate-wrapped, renders `<Intake/>`) and `/legacy-holding` (public, renders `<LegacyHolding/>`, outside AuthGate). `/dashboard/intake` kept alive as a plain redirect stub to `/onboarding/intake` (see "unexpected finding" below) rather than removed. `ProtectedRoute`/`BlockEmployeeRoute` left defined in `components/ProtectedRoute.jsx` (not deleted), just no longer imported/used by `App.jsx`. |
+| `Immiglance/Frontend/src/Pages/Auth/OAuthCallback.jsx` | Fixed exactly as specified — staff roles now `window.location.href = INSZOOM_URL` directly; client roles `navigate('/dashboard', {replace:true})` and let AuthGate take over. No other part of the component touched. |
+| `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx` | Removed **only** the `if (!currentCase?._id && !isEmployee) navigate('/dashboard/intake')` redirect from the mount effect's `loadCase().then()`. The `loadCase()` call itself (and the rest of the mount effect — `profileApi`, `documentsApi`, `messagesApi`, `paymentsApi` calls) was **kept**, since it fetches the real case/profile/workflow data this page renders, not just a routing signal — removing it wholesale (as the prompt's literal instruction suggested) would have broken the dashboard's actual data loading. |
+| `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` | Removed the mount-time `useEffect` that checked `isEmployeeAccount(user)`/`hasCase` and redirected. Removed the now-unused `isEmployeeAccount` import and `hasCase` destructured variable (both flagged as dead code by this project's `no-unused-vars` eslint config, matching the same cleanup pattern applied in Phase 2). |
+| `Immiglance/Frontend/src/utils/postLoginDest.js` | Replaced with the deprecated stub exactly as specified. |
+| `Immiglance/Frontend/src/Pages/Auth/Login.jsx` | Both effects that called `resolvePostLoginDest` now simply `navigate('/dashboard', {replace:true})`; import removed. |
+| `Immiglance/Frontend/src/Pages/Auth/Register.jsx` | **Not in the prompt's Step 21 file list — added for consistency, see "unexpected finding" below.** Same treatment as Login.jsx for its `googleRedirectUser` effect; its staff-only "already authenticated" guard effect (deliberately *not* broadened to clients, per its own pre-existing comment about protecting the 1.6s "Account created!" message timing) now inlines the same `STAFF_ROLES` check AuthGate uses, instead of calling the now-deprecated `getPostLoginDest`. |
+| `Immiglance/Frontend/src/components/eligibility/BlockIfHasCase.jsx` | Rewritten to call `authApi.sessionContext()` instead of `casesApi.my()` (via the old `useHasCase()` hook), preserving the exact same employee special-casing `useHasCase()` used to provide (see AuthGate's identical note) and the same fail-open behavior on a fetch error. |
+| `Immiglance/Frontend/src/services/api.js` | Added `authApi.sessionContext: () => api.get("/auth/session-context")`. |
 
 **Routing scenarios — static/code-level verification:**
 
@@ -106,7 +106,7 @@ For roles outside `['client','employer','employee','beneficiary']` (i.e. staff),
 | No remaining callers of `resolvePostLoginDest`/`getPostLoginDest` outside `postLoginDest.js` itself | PASS — confirmed via repo-wide grep (only a code *comment* mentions the name) |
 | `Dashboard.jsx` no longer contains a *routing* decision based on case existence | PASS — the data-fetching `casesApi.my()` call inside `loadCase()` remains (necessary for rendering), but the redirect it used to trigger is gone |
 | `Intake.jsx` no longer contains a mount-time hasCase/employee redirect | PASS |
-| `npm run build` (BAIS frontend) | PASS — zero errors |
+| `npm run build` (Immiglance frontend) | PASS — zero errors |
 | `eslint` on every file touched this phase | PASS — zero errors after fixing two real issues I introduced (see below); all other flagged lines confirmed pre-existing via `git show HEAD:<file> | eslint --stdin` diffing |
 | Live browser scenarios (Step 22 items 6–11) | **NOT RUN** — no browser-automation tool available in this environment |
 
@@ -120,7 +120,7 @@ For roles outside `['client','employer','employee','beneficiary']` (i.e. staff),
 
 ## Section 5 — Part E: Legacy Holding Page
 
-**Component:** `BAIS/Frontend/src/Pages/Auth/LegacyHolding.jsx` — styled with this project's existing Tailwind conventions (matching `ProtectedRoute.jsx`'s visual language) rather than the prompt's inline-style placeholder, per its own instruction to "adjust the styling to match the project's design system." Canonical message text preserved verbatim as instructed.
+**Component:** `Immiglance/Frontend/src/Pages/Auth/LegacyHolding.jsx` — styled with this project's existing Tailwind conventions (matching `ProtectedRoute.jsx`'s visual language) rather than the prompt's inline-style placeholder, per its own instruction to "adjust the styling to match the project's design system." Canonical message text preserved verbatim as instructed.
 
 **Route:** `<Route path="/legacy-holding" element={<LegacyHolding />} />` in `App.jsx` — confirmed **outside** the `<AuthGate/>` wrapper, so it's reachable regardless of auth/case state, exactly as Step 24's verification requires.
 
@@ -134,7 +134,7 @@ For roles outside `['client','employer','employee','beneficiary']` (i.e. staff),
 
 **Unexpected findings** (discovered during investigation, handled, and documented here rather than silently worked around):
 
-1. **`BAIS/Frontend/src/Pages/Auth/Register.jsx` also imports and calls `resolvePostLoginDest`/`getPostLoginDest`**, and was not in the prompt's Step 21 file list. Since Step 22 explicitly requires "no component other than AuthGate.jsx imports or calls `resolvePostLoginDest`," leaving Register.jsx untouched would have both failed that verification and produced a real runtime bug: once `postLoginDest.js` was replaced with the deprecated stub (which returns a bare string from `resolvePostLoginDest`, not the `{external, url}` object shape), Register.jsx's `if (dest.external) ... else navigate(dest.url, ...)` would have called `navigate(undefined, {replace:true})`. Updated it with the same treatment as Login.jsx.
+1. **`Immiglance/Frontend/src/Pages/Auth/Register.jsx` also imports and calls `resolvePostLoginDest`/`getPostLoginDest`**, and was not in the prompt's Step 21 file list. Since Step 22 explicitly requires "no component other than AuthGate.jsx imports or calls `resolvePostLoginDest`," leaving Register.jsx untouched would have both failed that verification and produced a real runtime bug: once `postLoginDest.js` was replaced with the deprecated stub (which returns a bare string from `resolvePostLoginDest`, not the `{external, url}` object shape), Register.jsx's `if (dest.external) ... else navigate(dest.url, ...)` would have called `navigate(undefined, {replace:true})`. Updated it with the same treatment as Login.jsx.
 2. **`api.js` is a custom fetch wrapper, not axios.** The prompt's AuthGate/session-context/BlockIfHasCase pseudocode uses axios conventions (`res.data`, `err.response.status`) that don't match this codebase's actual API client (confirmed by reading `services/api.js` directly — `api.get()` resolves with the parsed JSON body directly, and thrown errors carry `.status`). Every implementation was written against the real client.
 3. **An "employee"-role account would have been misrouted by AuthGate's literal given logic.** `useHasCase.js` (an existing hook) already special-cases `isEmployeeAccount(user)` as "has a case," because employees are Case-linked via `Case.employeeUser`, not `Case.user` — and the Phase 3 migration script (correctly, per its own explicit scope) only processes `role: 'client'` accounts, so an employee's `User.caseIds` will always stay empty. Without accounting for this, AuthGate's given logic would route every employee into `/onboarding/intake` before `BlockEmployeeRoute` ever got a chance to catch them. Added an explicit `isEmployeeAccount(context)` branch to AuthGate, mirroring the existing convention, confining employees to `/dashboard/documents`.
 4. **`/dashboard/intake` has three live external callers** (`Register.jsx`'s post-signup redirect, `Offers.jsx`'s "continue" CTA, and previously `Dashboard.jsx`'s own removed redirect) beyond what AuthGate's stated `/onboarding/intake` target implies. Rather than rename the route (breaking those callers) or duplicate `<Intake/>` under two independently-checked paths (which produced a real edge-case bug — a client with an existing case landing on `/dashboard/intake` directly wouldn't have been bounced back to `/dashboard`, unlike landing on `/onboarding/intake`), made `/dashboard/intake` a plain `<Navigate to="/onboarding/intake" replace/>` redirect stub, so AuthGate only ever has to reason about one canonical intake path.
@@ -153,24 +153,24 @@ In the order touched:
 4. `Backend/scripts/migrateAccounts.js` — created (Part C)
 5. `migrations/.gitignore` — created (Part C)
 6. `.gitignore` (project root) — modified (Part C)
-7. `BAIS/Frontend/src/components/AuthGate.jsx` — created (Part D)
-8. `BAIS/Frontend/src/Pages/Auth/LegacyHolding.jsx` — created (Part E, created early to avoid a dangling import during App.jsx's edit)
-9. `BAIS/Frontend/src/App.jsx` — modified (Part D + E)
-10. `BAIS/Frontend/src/Pages/Auth/OAuthCallback.jsx` — modified (Part D)
-11. `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx` — modified (Part D)
-12. `BAIS/Frontend/src/Pages/Dashboard/Intake.jsx` — modified (Part D)
-13. `BAIS/Frontend/src/utils/postLoginDest.js` — rewritten to deprecated stub (Part D)
-14. `BAIS/Frontend/src/Pages/Auth/Login.jsx` — modified (Part D)
-15. `BAIS/Frontend/src/Pages/Auth/Register.jsx` — modified (Part D, unexpected finding #1)
-16. `BAIS/Frontend/src/components/eligibility/BlockIfHasCase.jsx` — rewritten (Part D)
-17. `BAIS/Frontend/src/services/api.js` — modified (Part B)
+7. `Immiglance/Frontend/src/components/AuthGate.jsx` — created (Part D)
+8. `Immiglance/Frontend/src/Pages/Auth/LegacyHolding.jsx` — created (Part E, created early to avoid a dangling import during App.jsx's edit)
+9. `Immiglance/Frontend/src/App.jsx` — modified (Part D + E)
+10. `Immiglance/Frontend/src/Pages/Auth/OAuthCallback.jsx` — modified (Part D)
+11. `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx` — modified (Part D)
+12. `Immiglance/Frontend/src/Pages/Dashboard/Intake.jsx` — modified (Part D)
+13. `Immiglance/Frontend/src/utils/postLoginDest.js` — rewritten to deprecated stub (Part D)
+14. `Immiglance/Frontend/src/Pages/Auth/Login.jsx` — modified (Part D)
+15. `Immiglance/Frontend/src/Pages/Auth/Register.jsx` — modified (Part D, unexpected finding #1)
+16. `Immiglance/Frontend/src/components/eligibility/BlockIfHasCase.jsx` — rewritten (Part D)
+17. `Immiglance/Frontend/src/services/api.js` — modified (Part B)
 18. `PHASE_3_COMPLETION_REPORT.md` — created (this file)
 
 ---
 
 ## Section 8 — Files Read
 
-`PHASE_2_COMPLETION_REPORT.md`; `Backend/src/modules/auth/{auth.routes.js, auth.controller.js, auth.service.js, token.service.js}`; `Backend/src/middleware/authenticate.js`; `Backend/src/modules/auth/{employeeInvite.service.js, clientInvite.service.js}`; `Backend/src/modules/cases/case.service.js` (grep); `Backend/src/config/database.js`; `Backend/src/seeds/seedUsers.js`; `Backend/.env` context (mongoUri host, read during Phase 2, re-confirmed via `env.js`); `BAIS/Frontend/src/App.jsx`; `BAIS/Frontend/src/utils/postLoginDest.js`; `BAIS/Frontend/src/context/AuthContext.jsx`; `BAIS/Frontend/src/components/ProtectedRoute.jsx`; `BAIS/Frontend/src/components/eligibility/BlockIfHasCase.jsx`; `BAIS/Frontend/src/Pages/Auth/{Login.jsx, OAuthCallback.jsx, Register.jsx}`; `BAIS/Frontend/src/hooks/useHasCase.js`; `BAIS/Frontend/src/utils/auth.js`; `BAIS/Frontend/src/services/api.js` (full `request()`/`api`/`authApi`/`casesApi` sections); `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx` (mount-effect region); plus repo-wide greps for `dashboard/intake`, `resolvePostLoginDest`/`getPostLoginDest`, and route-table introspection of the live `app.js` object.
+`PHASE_2_COMPLETION_REPORT.md`; `Backend/src/modules/auth/{auth.routes.js, auth.controller.js, auth.service.js, token.service.js}`; `Backend/src/middleware/authenticate.js`; `Backend/src/modules/auth/{employeeInvite.service.js, clientInvite.service.js}`; `Backend/src/modules/cases/case.service.js` (grep); `Backend/src/config/database.js`; `Backend/src/seeds/seedUsers.js`; `Backend/.env` context (mongoUri host, read during Phase 2, re-confirmed via `env.js`); `Immiglance/Frontend/src/App.jsx`; `Immiglance/Frontend/src/utils/postLoginDest.js`; `Immiglance/Frontend/src/context/AuthContext.jsx`; `Immiglance/Frontend/src/components/ProtectedRoute.jsx`; `Immiglance/Frontend/src/components/eligibility/BlockIfHasCase.jsx`; `Immiglance/Frontend/src/Pages/Auth/{Login.jsx, OAuthCallback.jsx, Register.jsx}`; `Immiglance/Frontend/src/hooks/useHasCase.js`; `Immiglance/Frontend/src/utils/auth.js`; `Immiglance/Frontend/src/services/api.js` (full `request()`/`api`/`authApi`/`casesApi` sections); `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx` (mount-effect region); plus repo-wide greps for `dashboard/intake`, `resolvePostLoginDest`/`getPostLoginDest`, and route-table introspection of the live `app.js` object.
 
 ---
 

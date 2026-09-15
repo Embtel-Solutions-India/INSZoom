@@ -45,7 +45,7 @@ test("every Phase 0 + pre-existing Settings field keeps its original default", (
     assert.ok(paths[field], `Settings field "${field}" is missing`);
     assert.deepEqual(paths[field].defaultValue, expected, `Settings.${field}'s default changed`);
   };
-  expectDefault("companyName", "BAIS");
+  expectDefault("companyName", "Immiglance");
   expectDefault("primaryColor", "#10b981");
   expectDefault("lawFirmEntityName", "");
   expectDefault("disclaimerVersion", 1);

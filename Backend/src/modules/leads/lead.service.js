@@ -73,7 +73,7 @@ async function createConsultationLead(payload = {}, req, options = {}) {
     phone: clean(payload.phone),
     visaPathway,
     visaInterest: visaPathway,
-    source: clean(payload.source) || "BAIS consultation request",
+    source: clean(payload.source) || "Immiglance consultation request",
     message,
     status: options.status || "new",
     leadNumber: await CaseNumberService.nextLeadNumber(),
@@ -94,7 +94,7 @@ async function createConsultationLead(payload = {}, req, options = {}) {
 }
 
 // Backward-compatible entry point for the existing `/leads/public` contract
-// (BAIS appointment/consultation form). Now ALSO persists a `Lead` document
+// (Immiglance appointment/consultation form). Now ALSO persists a `Lead` document
 // (previously this only ever produced a mailto: link and never touched the
 // database) and sends the staff notification via sendTemplateEmail instead
 // of a hardcoded mailto recipient. The internal notification email is sent
@@ -108,7 +108,7 @@ async function createLead(payload = {}, req) {
     phone: clean(payload.phone),
     visaType: clean(payload.visaType || payload.visa),
     message: clean(payload.message),
-    source: clean(payload.source) || "BAIS appointment form",
+    source: clean(payload.source) || "Immiglance appointment form",
     ipAddress: req?.ip,
     userAgent: req?.headers?.["user-agent"],
     createdAt: new Date(),

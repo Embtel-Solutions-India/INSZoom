@@ -1,14 +1,40 @@
+const AuditLog = require("../../models/AuditLog");
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
 const logger = require("../../utils/logger");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
+const VisaFormMapping = require("../../models/VisaFormMapping");
+// Canonical visa registry (§32/§33) — the single source of visa identity for
+// mapping creation; never a second hardcoded visa list.
+const { VISA_CATEGORIES } = require("../../config/visaCategories");
 const { createCrudController } = require("../../utils/crudFactory");
 const uscisFormService = require("./uscis-form.service");
 const uscisFormImporterService = require("./uscis-form-importer.service");
 const interactiveFormReviewService = require("./interactive-form-review.service");
+const accessService = require("./uscis-form-access.service");
+const healthService = require("./uscis-form-health.service");
 const USCISScannerService = require("../uscis-lifecycle/services/USCISScannerService");
 const VersionManagementService = require("../uscis-lifecycle/services/VersionManagementService");
 const storageService = require("../uploads/storage.service");
+
+// Spec §29 — registry-level audit events, on the same immutable AuditLog
+// collection the case-form side already writes to (uscis-form.service.js's
+// writeAuditLog), never a parallel audit store. Non-blocking by design: an
+// audit write must never fail a registry operation.
+async function writeRegistryAudit(action, template, req, metadata = {}) {
+  await AuditLog.create({
+    userId: req?.user?._id,
+    userRole: req?.user?.role,
+    action,
+    entityType: "uscis_form_template",
+    entityId: template?._id || template?.id || null,
+    changes: metadata,
+    ipAddress: req?.ip,
+    userAgent: req?.headers?.["user-agent"],
+    source: "api",
+    description: `${action} ${template?.formCode || ""} ${template?.version || ""}`.trim(),
+  }).catch(() => {});
+}
 
 const templates = createCrudController(USCISFormTemplate, {
   label: "USCIS form template",
@@ -205,6 +231,13 @@ async function createCaseForm(req, res, next) {
 // client-side).
 async function getTemplatePdf(req, res, next) {
   try {
+    // Two ways in: a normal authenticated session (authenticate middleware
+    // already ran), or a short-lived signed grant from getTemplatePdfUrl
+    // below — the latter exists so a PDF viewer/iframe can load the bytes
+    // without replaying the caller's bearer token in a URL.
+    if (req.query.token) {
+      accessService.verifyFormAccessToken(String(req.query.token), req.params.id);
+    }
     const template = await USCISFormTemplate.findById(req.params.id).select("formCode version artifacts pdfStorageKey").lean();
     if (!template) {
       const error = new Error("USCIS form template not found");
@@ -217,11 +250,291 @@ async function getTemplatePdf(req, res, next) {
       error.statusCode = 404;
       throw error;
     }
-    const buffer = await storageService.readBuffer(key);
+    let buffer;
+    try {
+      buffer = await storageService.readBuffer(key);
+    } catch (storageError) {
+      // Spec §25/§41: never silently fall back to a repository-local PDF,
+      // and never surface a raw S3/SDK error to the client.
+      logger.error?.("uscis_template_pdf_unavailable", { templateId: req.params.id, code: storageError?.code });
+      const error = new Error("The official PDF for this form could not be retrieved from secure storage. Please try again or contact an administrator.");
+      error.statusCode = 502;
+      throw error;
+    }
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${template.formCode}-${template.version}.pdf"`);
     res.setHeader("Cache-Control", "private, max-age=3600");
     res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Spec §40 GET /:id/url — mints a short-lived signed link to the official
+// PDF. See uscis-form-access.service.js for why this is a backend-signed
+// grant rather than a raw S3 presigned URL (objects are app-encrypted at
+// rest, so a direct-to-S3 URL would return ciphertext).
+async function getTemplatePdfUrl(req, res, next) {
+  try {
+    const template = await USCISFormTemplate.findById(req.params.id)
+      .select("formCode version artifacts.form.storageKey pdfStorageKey")
+      .lean();
+    if (!template) {
+      const error = new Error("USCIS form template not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    if (!(template.artifacts?.form?.storageKey || template.pdfStorageKey)) {
+      const error = new Error("This template has no stored PDF artifact");
+      error.statusCode = 404;
+      throw error;
+    }
+    const grant = accessService.createFormAccessToken({
+      templateId: req.params.id,
+      user: req.user,
+      ttlSeconds: req.query.ttl,
+    });
+    await writeRegistryAudit("FORM_DOWNLOADED", template, req, { via: "signed_url", jti: grant.jti });
+    res.json({
+      success: true,
+      url: `/api/uscis-forms/${req.params.id}/pdf?token=${encodeURIComponent(grant.token)}`,
+      expiresAt: grant.expiresAt,
+      expiresInSeconds: grant.expiresInSeconds,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Spec §30 — per-template health. `?deep=true` additionally downloads the
+// object and verifies its SHA-256 against the registry (admin-only cost).
+async function getTemplateHealth(req, res, next) {
+  try {
+    const template = await USCISFormTemplate.findById(req.params.id)
+      .select("formCode version status activeFlag editionDate pdfStorageKey artifacts.form formFields")
+      .lean();
+    if (!template) {
+      const error = new Error("USCIS form template not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const result = await healthService.checkTemplate(template, { deep: req.query.deep === "true" });
+    res.json({ success: true, health: result, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Registry-wide health sweep for the list page's S3/health column —
+// metadata-only probes, bounded concurrency (see checkRegistry).
+async function getRegistryHealth(req, res, next) {
+  try {
+    const health = await healthService.checkRegistry({
+      deep: req.query.deep === "true",
+      force: req.query.force === "true",
+    });
+    res.json({ success: true, health, data: health });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// §32/§33 — the canonical visa vocabulary the mapping editor must pick from,
+// served straight off config/visaCategories.js (the same source case creation
+// validates against) so the UI can never introduce a second visa list.
+async function getVisaRegistry(req, res, next) {
+  try {
+    const visaTypes = Object.entries(VISA_CATEGORIES)
+      .map(([value, config]) => ({
+        value,
+        label: config.label || value,
+        caseStructure: config.caseStructure || null,
+      }))
+      .sort((a, b) => a.value.localeCompare(b.value));
+    res.json({
+      success: true,
+      visaTypes,
+      provisioningTypes: VisaFormMapping.PROVISIONING_TYPES,
+      componentTypes: VisaFormMapping.COMPONENT_TYPES,
+      agencies: VisaFormMapping.AGENCIES,
+      triggerFields: VisaFormMapping.TRIGGER_FIELD_WHITELIST,
+      data: visaTypes,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/* ── Visa mapping management (spec §32) ─────────────────────────────────────
+   Reads/writes the EXISTING VisaFormMapping collection — deliberately not a
+   second mapping model (§18/§44). A mapping is linked to a registry template
+   by formTemplateFormCode (lowercased formCode), exactly as
+   visaFormMappings.seed.js does it, so mappings created here and mappings
+   created by the seed are indistinguishable to the provisioning resolver. */
+
+// VisaFormMapping.immigrationNature is required, and getting it wrong
+// mislabels the nature of a filing. Derived from the canonical visa registry
+// (never a second visa list): an admin can always state it explicitly, this
+// only supplies a sane default when they don't.
+function inferImmigrationNature(visaType) {
+  const value = String(visaType || "");
+  if (/^EB-|Adjustment of Status|Green Card|Permanent Resident|^F[1-4]|^IR-|^CR-/i.test(value)) {
+    return "PERMANENT_IMMIGRANT";
+  }
+  if (/Naturalization|Citizenship|^N-/i.test(value)) return "CITIZENSHIP";
+  if (/^F-1|^M-1|^J-1|Student|Exchange/i.test(value)) return "STUDENT_EXCHANGE";
+  if (/Asylum|Refugee|^U-|^T-|VAWA|Humanitarian/i.test(value)) return "HUMANITARIAN";
+  return "TEMPORARY_NONIMMIGRANT";
+}
+
+async function loadTemplateOr404(id) {
+  const template = await USCISFormTemplate.findById(id).select("formCode formNumber title version").lean();
+  if (!template) {
+    const error = new Error("USCIS form template not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  return template;
+}
+
+async function listFormMappings(req, res, next) {
+  try {
+    const template = await loadTemplateOr404(req.params.id);
+    const mappings = await VisaFormMapping.find({
+      formTemplateFormCode: String(template.formCode).toLowerCase(),
+    })
+      .sort({ visaType: 1, displayOrder: 1 })
+      .lean();
+    res.json({ success: true, formCode: template.formCode, mappings, data: mappings });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function createFormMapping(req, res, next) {
+  try {
+    const template = await loadTemplateOr404(req.params.id);
+    const { visaType, provisioningType, componentType, triggerCondition, agency, displayOrder, notes, immigrationNature } = req.body || {};
+
+    // §32/§33: visa must come from the canonical registry — never free text.
+    if (!visaType || !VISA_CATEGORIES[visaType]) {
+      const error = new Error("Select a visa type from the canonical visa registry.");
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!VisaFormMapping.PROVISIONING_TYPES.includes(provisioningType)) {
+      const error = new Error(`Assignment type must be one of: ${VisaFormMapping.PROVISIONING_TYPES.join(", ")}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    if (immigrationNature && !VisaFormMapping.IMMIGRATION_NATURE.includes(immigrationNature)) {
+      const error = new Error(`Immigration nature must be one of: ${VisaFormMapping.IMMIGRATION_NATURE.join(", ")}`);
+      error.statusCode = 400;
+      throw error;
+    }
+    // Required by the mapping schema. Derive it from the canonical visa's own
+    // case structure when the caller doesn't state it, rather than defaulting
+    // every new mapping to "nonimmigrant" — an EB/green-card visa mapped as
+    // temporary would misreport the nature of the filing.
+    const resolvedNature = immigrationNature || inferImmigrationNature(visaType);
+    // Mirror the trigger-condition whitelist check the schema validator
+    // enforces, so a bad condition returns a clean 400 instead of a
+    // ValidationError surfacing through the generic error handler (§41).
+    if (triggerCondition) {
+      const conditionError = VisaFormMapping.validateTriggerNode(triggerCondition, "triggerCondition");
+      if (conditionError) {
+        const error = new Error(conditionError);
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+
+    const existing = await VisaFormMapping.findOne({
+      visaType,
+      formNumber: template.formNumber || template.formCode,
+      componentType: componentType || "STANDALONE_FORM",
+    });
+    if (existing) {
+      const error = new Error(`${visaType} is already mapped to ${template.formCode}.`);
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const mapping = await VisaFormMapping.create({
+      visaType,
+      formNumber: template.formNumber || template.formCode,
+      formName: template.title || template.formCode,
+      agency: agency || "USCIS",
+      immigrationNature: resolvedNature,
+      provisioningType,
+      componentType: componentType || "STANDALONE_FORM",
+      // Conditions go through the existing trigger DSL (validated by the
+      // model's own TRIGGER_FIELD_WHITELIST) — never React-side logic (§19).
+      triggerCondition: triggerCondition || undefined,
+      formTemplateFormCode: String(template.formCode).toLowerCase(),
+      displayOrder: displayOrder ?? 0,
+      notes,
+      active: true,
+    });
+
+    uscisFormService.invalidateTemplateCache();
+    await writeRegistryAudit("FORM_MAPPING_CREATED", template, req, { visaType, provisioningType, mappingId: mapping._id });
+    res.status(201).json({ success: true, mapping, data: mapping });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateFormMapping(req, res, next) {
+  try {
+    const template = await loadTemplateOr404(req.params.id);
+    const mapping = await VisaFormMapping.findById(req.params.mappingId);
+    if (!mapping || mapping.formTemplateFormCode !== String(template.formCode).toLowerCase()) {
+      const error = new Error("Mapping not found for this form");
+      error.statusCode = 404;
+      throw error;
+    }
+    const { provisioningType, triggerCondition, active, displayOrder, notes } = req.body || {};
+    if (provisioningType !== undefined) {
+      if (!VisaFormMapping.PROVISIONING_TYPES.includes(provisioningType)) {
+        const error = new Error(`Assignment type must be one of: ${VisaFormMapping.PROVISIONING_TYPES.join(", ")}`);
+        error.statusCode = 400;
+        throw error;
+      }
+      mapping.provisioningType = provisioningType;
+    }
+    if (triggerCondition !== undefined) mapping.triggerCondition = triggerCondition;
+    if (active !== undefined) mapping.active = Boolean(active);
+    if (displayOrder !== undefined) mapping.displayOrder = displayOrder;
+    if (notes !== undefined) mapping.notes = notes;
+    await mapping.save();
+
+    uscisFormService.invalidateTemplateCache();
+    await writeRegistryAudit("FORM_MAPPING_UPDATED", template, req, { mappingId: mapping._id, visaType: mapping.visaType });
+    res.json({ success: true, mapping, data: mapping });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function deleteFormMapping(req, res, next) {
+  try {
+    const template = await loadTemplateOr404(req.params.id);
+    const mapping = await VisaFormMapping.findById(req.params.mappingId);
+    if (!mapping || mapping.formTemplateFormCode !== String(template.formCode).toLowerCase()) {
+      const error = new Error("Mapping not found for this form");
+      error.statusCode = 404;
+      throw error;
+    }
+    // Deactivate rather than destroy: existing CaseForms carry
+    // provisioning.mappingId, and an audit trail that dead-ends at a deleted
+    // document can't explain why a form was assigned (§13/§27 spirit).
+    mapping.active = false;
+    await mapping.save();
+
+    uscisFormService.invalidateTemplateCache();
+    await writeRegistryAudit("FORM_MAPPING_REMOVED", template, req, { mappingId: mapping._id, visaType: mapping.visaType });
+    res.json({ success: true, mapping, data: mapping });
   } catch (error) {
     next(error);
   }
@@ -446,6 +759,14 @@ module.exports = {
   checkUpdates,
   compareCaseForm,
   createCaseForm,
+  createFormMapping,
+  deleteFormMapping,
+  getRegistryHealth,
+  getTemplateHealth,
+  getVisaRegistry,
+  getTemplatePdfUrl,
+  listFormMappings,
+  updateFormMapping,
   createInteractiveTask,
   decideInteractiveForm,
   getAllCaseForms,

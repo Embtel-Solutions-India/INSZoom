@@ -143,7 +143,7 @@ const companySchema = new mongoose.Schema(
       defaultCurrency: { type: String, default: "usd" },
     },
 
-    source: { type: String, enum: ["INSZoom", "BAIS", "shared", "import", ""], default: "shared" },
+    source: { type: String, enum: ["INSZoom", "Immiglance", "BAIS", "shared", "import", ""], default: "shared" },
     notes: [noteSchema],
     timeline: [timelineSchema],
     activityHistory: [timelineSchema],

@@ -11,7 +11,7 @@ const notificationService = require("../notifications/notification.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const { zonedTimeToUtc, zonedDateParts } = require("../../utils/timezone");
 
-// Bay Area / firm default when no CalendarAvailability doc has been
+// Immiglance / firm default when no CalendarAvailability doc has been
 // configured for the host yet — see getAvailability().
 const DEFAULT_AVAILABILITY_TIMEZONE = "America/Los_Angeles";
 
@@ -288,7 +288,7 @@ function normalizeAppointmentPayload(payload, user, context = {}, publicBooking 
     reminders: payload.reminders || defaultReminders(startAt),
     publicBooking,
     selfScheduled: payload.selfScheduled || publicBooking,
-    legacySource: payload.legacySource || (publicBooking ? "BAIS" : "shared"),
+    legacySource: payload.legacySource || (publicBooking ? "Immiglance" : "shared"),
   };
 }
 

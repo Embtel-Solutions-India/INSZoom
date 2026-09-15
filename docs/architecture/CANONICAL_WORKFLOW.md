@@ -14,7 +14,7 @@
 
 | App | Role | Location |
 |-----|------|----------|
-| **BAIS** | Client Portal (React) | `BAIS/Frontend` |
+| **Immiglance** | Client Portal (React) | `Immiglance/Frontend` |
 | **INSZoom** | Internal CRM — team lead, case manager, admin (React) | `INSZoom/frontend` |
 | **Backend** | Shared Express/Mongo API — all business logic | `Backend/src` |
 
@@ -27,7 +27,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 ### Step 1 — Client completes the intake questionnaire and selects a package → a Case is created
 - The client fills the **existing onboarding questionnaire** and reaches **Plan / Package selection**.
 - When the client selects a package, **a Case is created and its `visaType` is set from the visa the client chose.**
-- Frontend: `BAIS/Frontend/src/Pages/Dashboard/PlanSelection.jsx` → `casesApi` (`services/api.js`).
+- Frontend: `Immiglance/Frontend/src/Pages/Dashboard/PlanSelection.jsx` → `casesApi` (`services/api.js`).
 - Backend: case creation runs through `Backend/src/modules/cases/*` and the
   **lifecycle orchestrator** `case-lifecycle-orchestrator.service.js`.
 
@@ -44,7 +44,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 - Lifecycle stage moves `case_assigned → case_manager_review` (`case-lifecycle-orchestrator.service.js`).
 
 ### Step 4 — Client fills personal info + documents in the Client Portal
-- In BAIS the client completes personal details and uploads required documents.
+- In Immiglance the client completes personal details and uploads required documents.
 - Pages: `Pages/Dashboard/Intake.jsx`, `Documents.jsx`, `Profile.jsx`, `Dashboard.jsx`.
 - The **required document set is driven by the visa type** (see §2 single-source-of-truth).
 
@@ -104,9 +104,9 @@ The **same questionnaire/checklist per visa type** must appear, identically, in 
 1. INSZoom **admin Questionnaire page** — `INSZoom/frontend/src/pages/QuestionnaireTemplates.jsx`
 2. INSZoom **Case → Documents sub-page** — `INSZoom/frontend/src/pages/CRMCaseDetail.jsx`, `Documents.jsx`
 3. **Every "pending documents" section** (both portals)
-4. BAIS **client Dashboard** — `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx`
-5. BAIS **Profile** — `Profile.jsx`
-6. BAIS **Documents** — `Documents.jsx`
+4. Immiglance **client Dashboard** — `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx`
+5. Immiglance **Profile** — `Profile.jsx`
+6. Immiglance **Documents** — `Documents.jsx`
 
 **Assignment is automatic from the client's visa-type selection** (Step 1). The
 mechanism already exists: `Questionnaire` model has `visaType` / `visaTypes` /
@@ -116,7 +116,7 @@ mechanism already exists: `Questionnaire` model has `visaType` / `visaTypes` /
 ### ⚠️ Known divergence to fix (found during audit)
 The checklist currently lives in **multiple, already-out-of-sync places**:
 - `Backend/src/config/visaChecklists.js` — **50 lines, 5 visa types, fewer docs**
-- `BAIS/Frontend/src/config/visaChecklists.js` — **221 lines, ~10+ visa types, more docs** (claims to "mirror" the backend but does not)
+- `Immiglance/Frontend/src/config/visaChecklists.js` — **221 lines, ~10+ visa types, more docs** (claims to "mirror" the backend but does not)
 - `Backend/src/modules/questionnaires/employmentChecklists.js`
 - `Backend/src/modules/employment-workflow/questionnaires/{h1b,l1a,shared,registry}.js`
 - Seeded default templates inside `questionnaire.service.js` (`ensureDefaultVisaTemplates`)
@@ -149,7 +149,7 @@ For each one:
 
 ## 5. Reusable agent prompt (paste this to start a work session)
 
-> You are working on **ImmigrationCRM** (BAIS client portal + INSZoom internal CRM +
+> You are working on **ImmigrationCRM** (Immiglance client portal + INSZoom internal CRM +
 > shared Backend, one MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
 > treat the latter as the authoritative end-to-end flow.
 >

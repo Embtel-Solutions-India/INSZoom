@@ -289,8 +289,8 @@ function me(req, res) {
  * GET /api/auth/session-context
  *
  * Returns the complete routing context for the authenticated user.
- * This is the single source of truth for all BAIS frontend routing
- * decisions (see BAIS/Frontend/src/components/AuthGate.jsx) — nothing else
+ * This is the single source of truth for all Immiglance frontend routing
+ * decisions (see Immiglance/Frontend/src/components/AuthGate.jsx) — nothing else
  * should independently decide where to route a session based on case status.
  *
  * Pure read: never writes to any model.

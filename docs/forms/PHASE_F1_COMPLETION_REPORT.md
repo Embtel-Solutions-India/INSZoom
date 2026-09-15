@@ -26,7 +26,7 @@ PHASE F-1 BLOCKED - implementation complete, but live authenticated browser save
 ## Files Intentionally Not Changed
 
 - No Backend source files were changed for Phase F-1.
-- No BAIS source files were changed for Phase F-1.
+- No Immiglance source files were changed for Phase F-1.
 - `CanonicalSyncService`, `AutoFillService`, and shared data-layer behavior were not changed.
 - `USCISNativeFormPOC.jsx` was not changed.
 

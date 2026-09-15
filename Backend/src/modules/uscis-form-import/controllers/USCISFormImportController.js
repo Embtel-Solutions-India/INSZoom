@@ -18,6 +18,18 @@ function handle(res, error) {
   });
 }
 
+// Spec §9/§31 — analyze an uploaded PDF and return the review report WITHOUT
+// storing the file or creating a template. The admin confirms from this
+// report, and only then does POST /upload persist anything.
+exports.analyze = async (req, res) => {
+  try {
+    const analysis = await importerService.analyzeUpload(req.file, req.body || {});
+    res.json({ success: true, analysis, data: analysis });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
 exports.upload = async (req, res) => {
   try {
     const result = await importerService.importUpload(req.file, req.body, req.user, req);

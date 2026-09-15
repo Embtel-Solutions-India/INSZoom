@@ -6,7 +6,7 @@
 
 ## 0. What actually happened, in one paragraph
 
-F-2 diagnosed four "critical" findings (C1–C4) and guessed at their root causes. Investigating each one properly (not applying the guessed fixes blindly) found that **two of F-2's own root-cause guesses were wrong** — fixing them as literally proposed would have broken working mechanisms. The real root causes were different, smaller, and more precise. Both real fixes were made and confirmed working in a live browser against the actual app. A fresh, real H-1B case (B003 / B003-A) was then driven entirely through the real BAIS UI — real employer questionnaire, real invite-employee flow to a separate employee account, real employee questionnaire — reaching a point no case in this database has ever reached before. That process surfaced **two new, deeper structural bugs** that block the final "Generate USCIS Forms → 200" step, both documented precisely below with exact file/line evidence. Full certification (Part D–E's success criterion) was not reached. Nothing here was patched as a raw database write to canonical/questionnaire data — every real answer in this report was entered through the actual BAIS UI or the actual API endpoints a UI click would hit.
+F-2 diagnosed four "critical" findings (C1–C4) and guessed at their root causes. Investigating each one properly (not applying the guessed fixes blindly) found that **two of F-2's own root-cause guesses were wrong** — fixing them as literally proposed would have broken working mechanisms. The real root causes were different, smaller, and more precise. Both real fixes were made and confirmed working in a live browser against the actual app. A fresh, real H-1B case (B003 / B003-A) was then driven entirely through the real Immiglance UI — real employer questionnaire, real invite-employee flow to a separate employee account, real employee questionnaire — reaching a point no case in this database has ever reached before. That process surfaced **two new, deeper structural bugs** that block the final "Generate USCIS Forms → 200" step, both documented precisely below with exact file/line evidence. Full certification (Part D–E's success criterion) was not reached. Nothing here was patched as a raw database write to canonical/questionnaire data — every real answer in this report was entered through the actual Immiglance UI or the actual API endpoints a UI click would hit.
 
 ---
 
@@ -24,7 +24,7 @@ if (childCase.user && String(childCase.user) !== String(principal.user)) {
 ```
 It then transfers ownership (`childCase.user = employeeUser._id`) on invite. Nulling `user` at creation would break this ALREADY_INVITED check and the transfer logic outright — the exact opposite of a fix.
 
-**The real root cause**, found by tracing the actual symptom (BAIS showing the employee's checklist to an employer login): `Case.controller.js`'s `getMyCase` (`GET /api/cases/my`, line 430) resolved "which case is this login's own case" via:
+**The real root cause**, found by tracing the actual symptom (Immiglance showing the employee's checklist to an employer login): `Case.controller.js`'s `getMyCase` (`GET /api/cases/my`, line 430) resolved "which case is this login's own case" via:
 ```js
 Case.findOne(filter).sort({ createdAt: -1 })
 ```
@@ -32,13 +32,13 @@ For a user linked to both their own principal case and every one of its not-yet-
 
 **Fix applied** (`Backend/src/modules/cases/case.controller.js`, `getMyCase`): prefer the case matching `req.user.primaryCaseId` (set once at account creation and never repointed at a child for the original employer account, and correctly repointed at the employee's own child case when an invite is accepted) before falling back to the original sort.
 
-**Verified live**, twice: (1) direct API call — `GET /api/cases/my` as the B002 employer now returns B002 (`caseRole: principal`), not B002-A; (2) full browser session — logging into BAIS as that employer now renders `PrincipalCaseWorkspace` (the correct 41-question employer/LCA checklist, showing the earlier test answer as "Under review"), not the 78-question employee checklist.
+**Verified live**, twice: (1) direct API call — `GET /api/cases/my` as the B002 employer now returns B002 (`caseRole: principal`), not B002-A; (2) full browser session — logging into Immiglance as that employer now renders `PrincipalCaseWorkspace` (the correct 41-question employer/LCA checklist, showing the earlier test answer as "Under review"), not the 78-question employee checklist.
 
 ---
 
 ## 2. A second real bug found investigating C1: InvitePanel always shows "Invited"
 
-Not in F-2's list — found while trying to actually invite an employee to test the fix. `BAIS/Frontend/src/components/questionnaire/InvitePanel.jsx` line 15:
+Not in F-2's list — found while trying to actually invite an employee to test the fix. `Immiglance/Frontend/src/components/questionnaire/InvitePanel.jsx` line 15:
 ```js
 const invited = Boolean(child.clientEmail);
 ```
@@ -64,7 +64,7 @@ Loaded `i129-h1b-crosswalk.js` directly: of 101 crosswalk entries, 84 use `sourc
 
 ## 4. Real workflow execution (Part D) — how far it got
 
-A fresh case was created via the real `POST /api/cases` endpoint (same code path a staff "Create Case" click hits) — **B003** (principal/employer, `f3employer@test.corp`) / **B003-A** (child, invited separately as `priya.nair@f3tech.example.com`, a genuinely distinct account per §2). Driven entirely through the real BAIS UI (Playwright driving the actual Chromium-rendered app, not API calls, for every questionnaire answer):
+A fresh case was created via the real `POST /api/cases` endpoint (same code path a staff "Create Case" click hits) — **B003** (principal/employer, `f3employer@test.corp`) / **B003-A** (child, invited separately as `priya.nair@f3tech.example.com`, a genuinely distinct account per §2). Driven entirely through the real Immiglance UI (Playwright driving the actual Chromium-rendered app, not API calls, for every questionnaire answer):
 
 - **Employer checklist**: all 20 required fields filled (company info, signing person, position/LCA, workforce counts, radios) + all 4 required documents uploaded (business license, articles of incorporation, company letterhead, certified LCA). `Case.questionnaireReferences` for `targetRole: "employer"` is now **`"completed"`** — the first time any real case in this database has reached that state.
 - **Employee checklist** (separate login, separate account): all required fields filled (personal identity, passport, gender, education, immigration history, filing type) + required documents uploaded (resume, passport, I-94). 30 real `Answer` documents now exist for B003-A (compare: B001-A/B002-A, the two "real" test cases audited in F-2, still have **zero**).
@@ -103,7 +103,7 @@ unconditionally overwrites whatever the merge step computed for the `company.*` 
 
 | F-3 success criterion | Result |
 |---|---|
-| Real case driven through BAIS + INSZoom, no direct DB manipulation of case/questionnaire data | **Achieved for both questionnaires.** Employer and employee checklists both fully completed through the real UI on a fresh case (B003/B003-A), including the real invite-employee flow producing a genuinely separate employee account. |
+| Real case driven through Immiglance + INSZoom, no direct DB manipulation of case/questionnaire data | **Achieved for both questionnaires.** Employer and employee checklists both fully completed through the real UI on a fresh case (B003/B003-A), including the real invite-employee flow producing a genuinely separate employee account. |
 | Generate USCIS Forms → 200 | **Not reached.** Blocked by N1 (documents gate reads a collection the checklist UI never populates), independent of questionnaire completeness. |
 | CaseForm exists with fieldValues populated | Not reached (blocked by the above). |
 | f2-chain-verify.js ≥ 90% primary field match | **Not measurable yet** (no CaseForm to compare against), but the canonical-resolution precondition improved from 14/101 to 69/101 real fields, and N2 identifies the specific remaining defect for `company.name`'s 2 occurrences. |

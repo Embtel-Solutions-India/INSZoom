@@ -111,7 +111,7 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       // No custom fontSize override — stock Tailwind scale (text-sm = 14px at
-      // the 16px root above), matching BAIS's client portal exactly (it has
+      // the 16px root above), matching Immiglance's client portal exactly (it has
       // no override either). The previous override shrank every size below
       // stock on top of a shrunk 14px root, compounding into a genuinely
       // too-small admin portal.

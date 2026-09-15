@@ -22,16 +22,16 @@ Pre-work complete. Baselines: Backend 481/539, Frontend 20/20.
 
 ### [AUTOFILL-002] LCA Deterministic Questionnaire Mapping
 - Date: 2026-08-26
-- File(s): `Backend/src/modules/document-intelligence/config/field-mapping.registry.js`, `Backend/src/modules/document-intelligence/tests/lca-field-mapping.test.js`, `BAIS/Frontend/src/utils/questionnaireEngine.js`, `BAIS/Frontend/src/utils/questionnaireEngine.autofill.test.js`
+- File(s): `Backend/src/modules/document-intelligence/config/field-mapping.registry.js`, `Backend/src/modules/document-intelligence/tests/lca-field-mapping.test.js`, `Immiglance/Frontend/src/utils/questionnaireEngine.js`, `Immiglance/Frontend/src/utils/questionnaireEngine.autofill.test.js`
 - Defect: LCA deterministic mapping did not cover employee, employer, or expanded position fields.
-- Root cause: `field-mapping.registry.js` had no `lca` registry entry, and the BAIS allowlist exposed the LCA button only for the original five position keys.
-- Fix: Added LCA field mappings for confirmed scalar H-1B keys and expanded the BAIS `certified_lca_eta9035` source list.
+- Root cause: `field-mapping.registry.js` had no `lca` registry entry, and the Immiglance allowlist exposed the LCA button only for the original five position keys.
+- Fix: Added LCA field mappings for confirmed scalar H-1B keys and expanded the Immiglance `certified_lca_eta9035` source list.
 - Verified by: `node --test src/modules/document-intelligence/tests/lca-field-mapping.test.js`; `npm test -- src/utils/questionnaireEngine.autofill.test.js`
 - Status: partial
 
 ### [AUTOFILL-003] Autofill Callback Persistence
 - Date: 2026-08-26
-- File(s): `BAIS/Frontend/src/hooks/useQuestionnaireAnswers.js`, `BAIS/Frontend/src/hooks/useQuestionnaireAnswers.test.js`
+- File(s): `Immiglance/Frontend/src/hooks/useQuestionnaireAnswers.js`, `Immiglance/Frontend/src/hooks/useQuestionnaireAnswers.test.js`
 - Defect: The frontend callback did not persist answer-shaped OCR prefill payloads.
 - Root cause: `handleAutofillResult` only counted `prefill` items, displayed a status, and refetched.
 - Fix: Normalize array/object prefill payloads, immediately apply visible answer entries to local state, and save non-conflicted answer entries through `questionnairesApi.saveAnswer`.
@@ -51,6 +51,6 @@ Pre-work complete. Baselines: Backend 481/539, Frontend 20/20.
 
 - Backend targeted: `node --test src/modules/uploads/tests/upload.middleware.test.js src/modules/document-intelligence/tests/lca-field-mapping.test.js` -> 5/5 passed.
 - Backend full suite: `npm test` -> 486/544 passed, 58 failed. Failure count was already 58 before this task; representative existing failures include MongoDB/S3 `EACCES` integration failures and unrelated route/PDF assertions.
-- BAIS targeted: `npm test -- src/hooks/useQuestionnaireAnswers.test.js src/utils/questionnaireEngine.autofill.test.js` -> 12/12 passed.
-- BAIS full suite: `npm test` -> 22/22 passed.
+- Immiglance targeted: `npm test -- src/hooks/useQuestionnaireAnswers.test.js src/utils/questionnaireEngine.autofill.test.js` -> 12/12 passed.
+- Immiglance full suite: `npm test` -> 22/22 passed.
 - Runtime 413/CORS/auth/OAuth/manual OCR upload verification: not performed locally; requires deployed Nginx/backend and an authenticated test case.

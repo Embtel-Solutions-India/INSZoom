@@ -2,7 +2,7 @@
 // slot names (Document.documentType / the value the client's Autofill
 // button actually sends - see employmentChecklists.js's h1b.employerDocuments
 // / h1b.employeeDocuments / l1a.employerDocuments / l1a.employeeDocuments
-// and BAIS/Frontend's AUTOFILL_SOURCES), not by the AI-classification-oriented
+// and Immiglance/Frontend's AUTOFILL_SOURCES), not by the AI-classification-oriented
 // type names (passport/resume/i94/...) used inside document-intelligence/
 // schemas + extractors.
 //

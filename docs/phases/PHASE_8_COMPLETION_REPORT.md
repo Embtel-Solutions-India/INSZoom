@@ -7,7 +7,7 @@
 
 ## Direct answer: did this implement all 25 steps across 3 sections?
 
-**No — deliberately not.** The original prompt's Part 0 (Steps 1–11, investigation), Part A (Backend), and Part B (BAIS Frontend) assumed several deliverables were missing that were **already fully built**, in some cases more robustly than the prompt's own proposed implementation (audit trail, resend-invite flow, neutral error responses that don't leak account existence). Building the prompt's versions anyway would have produced a second, parallel client-onboarding system running alongside the real one — the exact failure mode this project's own Phase 6 and Phase 7 completion reports independently discovered and explicitly warned against repeating.
+**No — deliberately not.** The original prompt's Part 0 (Steps 1–11, investigation), Part A (Backend), and Part B (Immiglance Frontend) assumed several deliverables were missing that were **already fully built**, in some cases more robustly than the prompt's own proposed implementation (audit trail, resend-invite flow, neutral error responses that don't leak account existence). Building the prompt's versions anyway would have produced a second, parallel client-onboarding system running alongside the real one — the exact failure mode this project's own Phase 6 and Phase 7 completion reports independently discovered and explicitly warned against repeating.
 
 Instead, Phase 8 was executed as: **investigate every claim in the prompt against the actual current code first, then implement only the steps whose gap was real.** The table below maps every step from the original prompt to its actual outcome.
 
@@ -19,7 +19,7 @@ Instead, Phase 8 was executed as: **investigate every claim in the prompt agains
 
 | Step | Original ask | Outcome |
 |---|---|---|
-| 1–7 | Read completion reports, User model, auth module, Case model, BAIS frontend, EmployerProfile/EmployeeProfile, setup infrastructure | **DONE** — via a dedicated read-only investigation pass covering every file the prompt named, cross-checked against the actual current code rather than trusting completion-report verdicts alone (Phase 5's own report was independently re-confirmed stale, same finding Phase 6/7 already made) |
+| 1–7 | Read completion reports, User model, auth module, Case model, Immiglance frontend, EmployerProfile/EmployeeProfile, setup infrastructure | **DONE** — via a dedicated read-only investigation pass covering every file the prompt named, cross-checked against the actual current code rather than trusting completion-report verdicts alone (Phase 5's own report was independently re-confirmed stale, same finding Phase 6/7 already made) |
 | 8 | Conflict and risk analysis (Q1–Q8) | **DONE** — folded into the Gap Analysis below; every question answered with a concrete file/line reference |
 | 9 | Schema additions to User (`inviteTokenHash`, `inviteTokenExpiresAt`) | **NOT NEEDED** — both fields already exist on `User.js` exactly as named, added in an earlier phase; no schema change made |
 | 10 | Implementation plan | **DONE** — the Gap Analysis section from the investigation pass served this role |
@@ -32,15 +32,15 @@ Instead, Phase 8 was executed as: **investigate every claim in the prompt agains
 | 12 | Create `GET /api/cases/:id` (assumed missing per a Phase 7 gap) | **NOT BUILT — already existed.** `case.routes.js` line 65: `router.get("/:id", authenticate, authorizePermissions("cases:read"), ctrl.getCase)`, backed by `getAccessibleCaseOrThrow`/`canAccessCase`, already role-scoped including every client role (`sameId(caseData.user, user._id)`). Confirmed by direct code read, not by trusting the prompt's own "Phase 7 gap" claim. |
 | 13 | Create `GET /api/cases/:principalId/dashboard` | **NOT BUILT as a new endpoint.** `GET /cases/my` (`getMyCase`) already serves this exact purpose — a fully populated, serialized case for the calling client — and `Dashboard.jsx` was already calling it before this phase started. Building a second, parallel dashboard-data endpoint would have forked the client dashboard's data source in two. |
 | 14 | Create `POST /api/auth/setup-credentials` | **NOT BUILT — already existed under a different name.** `POST /api/auth/invite/:token/accept` (+ `GET /api/auth/invite/:token` for pre-fill) already validates the one-time `inviteTokenHash`/`inviteTokenExpiresAt`, sets the password, and issues a full session in the same shape as `login()`. One real bug found and fixed: it never cleared `mustSetPassword` back to `false` — see Deliverable 1 below. |
-| 15 | Create `PATCH /api/users/profile` + `POST /api/auth/change-password` | **NOT BUILT — both already existed.** `PUT /api/auth/updatedetails` (self-service `name`/`displayName`/`phone`/etc., never `email`) and `PUT /api/auth/change-password` (current-password verification, bcrypt rehash via the existing `User` pre-save hook) were both already implemented and already exposed in `BAIS/Frontend/src/services/api.js`'s `authApi` — simply never called by any page until this phase wired `Profile.jsx` to the second one. |
+| 15 | Create `PATCH /api/users/profile` + `POST /api/auth/change-password` | **NOT BUILT — both already existed.** `PUT /api/auth/updatedetails` (self-service `name`/`displayName`/`phone`/etc., never `email`) and `PUT /api/auth/change-password` (current-password verification, bcrypt rehash via the existing `User` pre-save hook) were both already implemented and already exposed in `Immiglance/Frontend/src/services/api.js`'s `authApi` — simply never called by any page until this phase wired `Profile.jsx` to the second one. |
 | 16 | Backend verification | **DONE** — `node --check` on every modified file, full `require('./src/app.js')` boot, confirmed clean. Live-DB transition testing not possible in this environment (no reachable MongoDB / mongodb-memory-server) — same caveat as Phases 6 and 7. |
 
-### Part B — BAIS Frontend (Steps 17 through the truncated end of the prompt)
+### Part B — Immiglance Frontend (Steps 17 through the truncated end of the prompt)
 
 | Step | Original ask | Outcome |
 |---|---|---|
 | 17 | Add `authApi`/`casesApi` functions for setup-credentials/dashboard/getById | **NOT NEEDED** — no new endpoints were built for these to wrap; `authApi.changePassword` and `casesApi.get(id)` already existed and were already correct |
-| 18 | Create `BAIS/Frontend/src/Pages/Auth/Setup.jsx` at route `/setup` | **NOT BUILT — already existed as `AcceptInvite.jsx` at `/accept-invite`.** Read in full: it already reads `?token=`, shows a graceful "invalid or expired link" state with no token, displays the email read-only, sets the password, and navigates to `/dashboard` on success — functionally identical to what Step 18 specified. Building a second page at `/setup` would have duplicated it under a different URL that the actual case-created email (`client-portal-invitation.js`) never points to. **Enhancement made:** added a read-only Case ID display, since the existing page only showed email. |
+| 18 | Create `Immiglance/Frontend/src/Pages/Auth/Setup.jsx` at route `/setup` | **NOT BUILT — already existed as `AcceptInvite.jsx` at `/accept-invite`.** Read in full: it already reads `?token=`, shows a graceful "invalid or expired link" state with no token, displays the email read-only, sets the password, and navigates to `/dashboard` on success — functionally identical to what Step 18 specified. Building a second page at `/setup` would have duplicated it under a different URL that the actual case-created email (`client-portal-invitation.js`) never points to. **Enhancement made:** added a read-only Case ID display, since the existing page only showed email. |
 | 19 | Update `AuthGate.jsx` to route `mustSetPassword: true` → `/setup` before all other branches | **DONE, redirect target corrected to `/accept-invite`.** New branch added immediately after the unauthenticated check and before every other routing branch (including the invited-employee special case), matching Invariant 3's "checked before /dashboard" requirement. `/accept-invite` was confirmed to already sit outside the `<AuthGate/>` wrapper in `App.jsx` (public, like `/login`), so the redirect never loops. |
 | 20 | Add `/setup` route to `App.jsx` | **NOT APPLICABLE** — no `Setup.jsx` was created; `/accept-invite` was already routed |
 | 21 | Update `Dashboard.jsx` to load 100% live data, remove every mocked value | **DONE.** The dashboard's actual data loading (`casesApi.my()`, `workflow()`, `addons()`, `profileApi.get()`, `documentsApi.list()`, `messagesApi.getUnreadCount()`, `paymentsApi.summary()`) was already live before this phase — the prompt's premise that the whole dashboard needed live-wiring was itself stale. What was genuinely fabricated and has now been removed: the `ANNOUNCEMENTS` array (3 fake news items), the `KeyDates` widget's 4 fabricated deadlines (`Date.now() + 7/30/45/90 days`, no relation to any real case data), a hardcoded `"PS"` avatar initials literal (now derived from the real assigned agent's name via a new `agentInitials()` helper), and a dead, never-rendered fake-activity array inside `ActivityFeed`. |
@@ -56,7 +56,7 @@ Instead, Phase 8 was executed as: **investigate every claim in the prompt agains
 | 2 | `GET /api/cases/:id` | Already existed, already role-scoped correctly. No change. |
 | 3 | `GET /api/cases/:principalId/dashboard` | Already served live by `GET /cases/my`. No new endpoint. |
 | 4 | `PATCH /api/users/profile` + `POST /api/auth/change-password` | Both already existed (`PUT /auth/updatedetails`, `PUT /auth/change-password`). No new endpoints. |
-| 5 | BAIS `/setup` page | Already existed as `/accept-invite` (`AcceptInvite.jsx`). Enhanced with a read-only Case ID field. |
+| 5 | Immiglance `/setup` page | Already existed as `/accept-invite` (`AcceptInvite.jsx`). Enhanced with a read-only Case ID field. |
 | 6 | Dashboard + Profile live data, nav correction | Dashboard: fabricated content removed (Announcements, KeyDates, hardcoded avatar initials). Profile: username made read-only, Change Password section added. Nav: already correct, confirmed not touched. |
 
 ---
@@ -79,7 +79,7 @@ Instead, Phase 8 was executed as: **investigate every claim in the prompt agains
 |-------|--------|
 | `node --check` on all modified backend files | PASS |
 | `require('./src/app.js')` loads cleanly | PASS |
-| `npm run build` in BAIS frontend | PASS |
+| `npm run build` in Immiglance frontend | PASS |
 | `mustSetPassword` cleared on both client and employee invite-accept paths | Confirmed by code read (both `clientInvite.service.js` and `employeeInvite.service.js` fixed identically) |
 | No duplicate `/setup` route or `setup-credentials` endpoint created | Confirmed — neither exists in the diff |
 | `POST /api/cases`, `POST /api/cases/:principalId/assign`, all Phase 6 lead endpoints | Untouched — confirmed |
@@ -102,10 +102,10 @@ Instead, Phase 8 was executed as: **investigate every claim in the prompt agains
 
 1. `Backend/src/modules/auth/clientInvite.service.js` — `getClientInviteDetails` now returns `caseNumber`; `acceptClientInvite` now clears `mustSetPassword`
 2. `Backend/src/modules/auth/employeeInvite.service.js` — same two fixes, mirrored
-3. `BAIS/Frontend/src/components/AuthGate.jsx` — new `mustSetPassword` routing branch
-4. `BAIS/Frontend/src/Pages/Auth/AcceptInvite.jsx` — displays case number read-only
-5. `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx` — removed `ANNOUNCEMENTS`, `KeyDates`, dead `ActivityFeed` fallback array, `daysUntil` helper; fixed hardcoded avatar initials
-6. `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx` — email field made read-only; new Change Password section
+3. `Immiglance/Frontend/src/components/AuthGate.jsx` — new `mustSetPassword` routing branch
+4. `Immiglance/Frontend/src/Pages/Auth/AcceptInvite.jsx` — displays case number read-only
+5. `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx` — removed `ANNOUNCEMENTS`, `KeyDates`, dead `ActivityFeed` fallback array, `daysUntil` helper; fixed hardcoded avatar initials
+6. `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx` — email field made read-only; new Change Password section
 
 ## Files Created
 
@@ -113,7 +113,7 @@ None.
 
 ## Files Read
 
-`PHASE_1_AUDIT_REPORT.md`, `PHASE_2_COMPLETION_REPORT.md`, `PHASE_3_COMPLETION_REPORT.md`, `PHASE_5_COMPLETION_REPORT.md`, `Backend/src/models/User.js`, `Backend/src/modules/auth/auth.routes.js`, `Backend/src/modules/auth/auth.controller.js`, `Backend/src/modules/auth/auth.service.js`, `Backend/src/modules/auth/clientInvite.service.js`, `Backend/src/modules/auth/employeeInvite.service.js`, `Backend/src/modules/auth/password.service.js`, `Backend/src/modules/cases/case.routes.js`, `Backend/src/modules/cases/case.controller.js`, `Backend/src/modules/cases/case.service.js`, `Backend/src/modules/users/user.routes.js`, `Backend/src/models/EmployerProfile.js`, `Backend/src/models/EmployeeProfile.js`, `Backend/src/modules/email/templates/client-portal-invitation.js`, `BAIS/Frontend/src/App.jsx`, `BAIS/Frontend/src/components/AuthGate.jsx`, `BAIS/Frontend/src/context/AuthContext.jsx`, `BAIS/Frontend/src/services/api.js`, `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx`, `BAIS/Frontend/src/Pages/Dashboard/Profile.jsx`, `BAIS/Frontend/src/Pages/Auth/AcceptInvite.jsx`, `BAIS/Frontend/src/components/auth/PasswordField.jsx`, `BAIS/Frontend/src/layout/MainLayout.jsx`, `BAIS/Frontend/src/components/Navbar.jsx`
+`PHASE_1_AUDIT_REPORT.md`, `PHASE_2_COMPLETION_REPORT.md`, `PHASE_3_COMPLETION_REPORT.md`, `PHASE_5_COMPLETION_REPORT.md`, `Backend/src/models/User.js`, `Backend/src/modules/auth/auth.routes.js`, `Backend/src/modules/auth/auth.controller.js`, `Backend/src/modules/auth/auth.service.js`, `Backend/src/modules/auth/clientInvite.service.js`, `Backend/src/modules/auth/employeeInvite.service.js`, `Backend/src/modules/auth/password.service.js`, `Backend/src/modules/cases/case.routes.js`, `Backend/src/modules/cases/case.controller.js`, `Backend/src/modules/cases/case.service.js`, `Backend/src/modules/users/user.routes.js`, `Backend/src/models/EmployerProfile.js`, `Backend/src/models/EmployeeProfile.js`, `Backend/src/modules/email/templates/client-portal-invitation.js`, `Immiglance/Frontend/src/App.jsx`, `Immiglance/Frontend/src/components/AuthGate.jsx`, `Immiglance/Frontend/src/context/AuthContext.jsx`, `Immiglance/Frontend/src/services/api.js`, `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx`, `Immiglance/Frontend/src/Pages/Dashboard/Profile.jsx`, `Immiglance/Frontend/src/Pages/Auth/AcceptInvite.jsx`, `Immiglance/Frontend/src/components/auth/PasswordField.jsx`, `Immiglance/Frontend/src/layout/MainLayout.jsx`, `Immiglance/Frontend/src/components/Navbar.jsx`
 
 ---
 

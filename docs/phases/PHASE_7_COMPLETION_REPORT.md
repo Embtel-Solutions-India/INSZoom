@@ -140,7 +140,7 @@ There is no separate `AdminCasesPage.jsx` / `CaseManagerCasesPage.jsx` — the e
 | grep string-splitting on `caseNumber` (e.g. `.split('-')`) anywhere in Phase 7 code | ZERO results — PASS |
 | `POST /api/cases` (Phase 5) untouched | CONFIRMED |
 | All Phase 6 lead endpoints (`/api/eligibility-quiz/leads/*`) untouched | CONFIRMED |
-| `BAIS/Frontend/` untouched | CONFIRMED |
+| `Immiglance/Frontend/` untouched | CONFIRMED |
 | Auth middleware, JWT structure | untouched — CONFIRMED |
 | Live DB assignment/cascade tests | PENDING — requires human smoke test (no reachable MongoDB instance or mongodb-memory-server in this environment) |
 
@@ -183,7 +183,7 @@ None — Phase 7 required no new files (unlike Phase 6, which needed two new ema
 - `POST /api/cases` handler (`Backend/src/modules/cases/case.controller.js`'s `createCase`) — untouched
 - `Backend/src/modules/cases/case.routes.js` — untouched (no new routes needed)
 - All Phase 6 lead endpoints (`Backend/src/modules/eligibility-quiz/`) — untouched
-- All files in `BAIS/Frontend/` — untouched
+- All files in `Immiglance/Frontend/` — untouched
 - Auth middleware and JWT structure — untouched
 - AutoFillService, CanonicalSyncService, USCIS form mapping — untouched
 - `GET /api/auth/session-context` (Phase 3) — untouched

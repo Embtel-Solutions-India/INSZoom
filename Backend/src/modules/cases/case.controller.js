@@ -376,7 +376,7 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
   const caseManagerName = caseManager?.name || caseManager?.displayName || "your case manager";
   const isReassignment = Boolean(previousCaseManagerId);
   const emailTemplate = isReassignment ? "case-manager-reassigned" : "case-manager-assigned";
-  const portalLink = `${process.env.BAIS_FRONTEND_URL || "http://localhost:5173"}/dashboard/case/${caseData._id}`;
+  const portalLink = `${process.env.IMMIGLANCE_FRONTEND_URL || "http://localhost:5173"}/dashboard/case/${caseData._id}`;
 
   await notificationService.createNotification({
     userId: caseData.user,
@@ -547,7 +547,7 @@ exports.purchaseAddon = async (req, res, next) => {
       totalAmount: PREMIUM_PROCESSING_ADDON.totalFeeCents,
       totalFee: PREMIUM_PROCESSING_ADDON.totalFeeCents,
       planKey: "pay_in_full",
-      legacySource: "BAIS",
+      legacySource: "Immiglance",
       notes: `Upgrade for case ${caseData.caseNumber || caseData.caseId}`,
       billingItems: [
         {

@@ -120,7 +120,7 @@ function ds260(visaType, opts = {}) {
   return m(visaType, "DS-260", "Immigrant Visa Electronic Application", "DOS", opts.provisioningType || COND, ONLINE, { processingPaths: opts.provisioningType === AUTO ? [] : ["CONSULAR", "NVC"], immigrationNature: IMMIGRANT, notes: "Never created for an AOS-only case - the immigrant visa application, gated on consular/NVC processing.", ...opts });
 }
 function i693(visaType, opts = {}) {
-  return m(visaType, "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "AOS medical requirement, conditional.", ...opts });
+  return m(visaType, "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-693", processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "AOS medical requirement, conditional.", ...opts });
 }
 
 const mappings = [];
@@ -189,8 +189,8 @@ add(
 );
 
 // ===================== L FAMILY =====================
-add(i129Petition("L-1A"), i129LSupplement("L-1A"), m("L-1A", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { notes: "Blanket L petition workflow only." }), ds160("L-1A"), i539("L-1A"), i907("L-1A"));
-add(i129Petition("L-1B"), i129LSupplement("L-1B"), m("L-1B", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { notes: "Blanket L petition workflow only." }), ds160("L-1B"), i907("L-1B"));
+add(i129Petition("L-1A"), i129LSupplement("L-1A"), m("L-1A", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A"), i539("L-1A"), i907("L-1A"));
+add(i129Petition("L-1B"), i129LSupplement("L-1B"), m("L-1B", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1B"), i907("L-1B"));
 add(i539("L-2"), i539A("L-2"), i765("L-2"), ds160("L-2"));
 
 // ===================== O FAMILY =====================
@@ -256,21 +256,21 @@ add(
 add(
   m("K-1", "I-129F", "Petition for Alien Fiancé(e)", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-129f", initialCaseCreation: true, verificationSource: "uscis.gov/i-129f", verificationDate: new Date(), sourceVerified: true }),
   ds160("K-1", { provisioningType: AUTO, initialCaseCreation: true }),
-  m("K-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "post_marriage_aos", notes: "After marriage/AOS, not at initial case creation." }),
+  m("K-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos", notes: "After marriage/AOS, not at initial case creation." }),
   i765("K-1", { provisioningType: COND }),
   i131("K-1", { provisioningType: COND })
 );
 add(
   m("K-3", "I-130", "Petition for Alien Relative", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-130", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
   m("K-3", "I-130A", "Supplemental Information for Spouse Beneficiary", "USCIS", COND, SUPPLEMENT, { parentForm: "I-130", notes: "Spouse beneficiary only." }),
-  m("K-3", "I-129F", "Petition for Alien Fiancé(e)", "USCIS", COND, STANDALONE, { notes: "K-3 pathway specific." }),
+  m("K-3", "I-129F", "Petition for Alien Fiancé(e)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129f", notes: "K-3 pathway specific." }),
   ds160("K-3", { provisioningType: AUTO, initialCaseCreation: true }),
-  m("K-3", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "post_marriage_aos" }),
+  m("K-3", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos" }),
   i765("K-3", { provisioningType: COND }),
   i131("K-3", { provisioningType: COND })
 );
-add(m("K-2", "I-539", "Application to Extend/Change Nonimmigrant Status", "USCIS", COND, STANDALONE, { notes: "K-2 derivative status workflow." }));
-add(m("K-4", "I-539", "Application to Extend/Change Nonimmigrant Status", "USCIS", COND, STANDALONE, { notes: "K-4 derivative status workflow." }));
+add(m("K-2", "I-539", "Application to Extend/Change Nonimmigrant Status", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-539", notes: "K-2 derivative status workflow." }));
+add(m("K-4", "I-539", "Application to Extend/Change Nonimmigrant Status", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-539", notes: "K-4 derivative status workflow." }));
 
 // ===================== F FAMILY =====================
 add(
@@ -291,7 +291,7 @@ add(
   ds160("J-1", { provisioningType: AUTO, initialCaseCreation: true }),
   i539("J-1"),
   m("J-1", "DS-3035", "J Visa Waiver Recommendation Application", "DOS", COND, ONLINE, { notes: "Waiver workflow only." }),
-  m("J-1", "I-612", "Application for Waiver of the Foreign Residence Requirement", "USCIS", COND, STANDALONE, { notes: "Waiver-related USCIS filing, only where applicable." })
+  m("J-1", "I-612", "Application for Waiver of the Foreign Residence Requirement", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-612", notes: "Waiver-related USCIS filing, only where applicable." })
 );
 add(
   m("J-2", "DS-2019", "Certificate of Eligibility for Exchange Visitor Status", "SCHOOL_OR_PROGRAM_SPONSOR", REF, REFDOC, { initialCaseCreation: false }),
@@ -320,15 +320,15 @@ add(ds160("B-1/B-2", { provisioningType: AUTO, initialCaseCreation: true }), i53
 
 // ===================== U VISA =====================
 add(
-  m("U-1", "I-918", "Petition for U Nonimmigrant Status", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "HUMANITARIAN", verificationSource: "uscis.gov/i-918", verificationDate: new Date(), sourceVerified: true }),
+  m("U-1", "I-918", "Petition for U Nonimmigrant Status", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-918", initialCaseCreation: true, immigrationNature: "HUMANITARIAN", verificationSource: "uscis.gov/i-918", verificationDate: new Date(), sourceVerified: true }),
   m("U-1", "I-918 Supplement B", "U Nonimmigrant Status Certification", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-918", initialCaseCreation: true, immigrationNature: "HUMANITARIAN" }),
   i765("U-1", { immigrationNature: "HUMANITARIAN" }),
-  m("U-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: "HUMANITARIAN", stage: "post_qualifying_u_period", notes: "Adjustment after qualifying U-status period." })
+  m("U-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: "HUMANITARIAN", stage: "post_qualifying_u_period", notes: "Adjustment after qualifying U-status period." })
 );
 add(
   m("U derivative", "I-918 Supplement A", "Petition for Qualifying Family Member of U-1 Recipient", "USCIS", COND, SUPPLEMENT, { parentForm: "I-918", immigrationNature: "HUMANITARIAN", notes: "Qualifying family member only." }),
   i765("U derivative", { immigrationNature: "HUMANITARIAN" }),
-  m("U derivative", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: "HUMANITARIAN", stage: "post_qualifying_u_period" })
+  m("U derivative", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: "HUMANITARIAN", stage: "post_qualifying_u_period" })
 );
 
 // ===================== SB-1 =====================
@@ -369,11 +369,11 @@ add(
   m("EB-2 PERM", "ETA-9141", "Application for Prevailing Wage Determination", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" }),
   m("EB-2 PERM", "ETA-9089", "Application for Permanent Employment Certification", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" }),
   m("EB-2 PERM", "I-140", "Immigrant Petition for Alien Worker", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-140", immigrationNature: IMMIGRANT, stage: "post_perm" }),
-  m("EB-2 PERM", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status", processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
+  m("EB-2 PERM", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status", processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   m("EB-2 PERM", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa", processingPaths: ["CONSULAR", "NVC"] }),
-  m("EB-2 PERM", "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-  m("EB-2 PERM", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-  m("EB-2 PERM", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  m("EB-2 PERM", "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  m("EB-2 PERM", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  m("EB-2 PERM", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
   i907("EB-2 PERM", { immigrationNature: IMMIGRANT })
 );
 add(
@@ -392,11 +392,11 @@ function eb3Perm(visaType) {
     m(visaType, "ETA-9141", "Application for Prevailing Wage Determination", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" }),
     m(visaType, "ETA-9089", "Application for Permanent Employment Certification", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" }),
     m(visaType, "I-140", "Immigrant Petition for Alien Worker", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-140", immigrationNature: IMMIGRANT, stage: "post_perm" }),
-    m(visaType, "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status", processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
+    m(visaType, "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status", processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
     m(visaType, "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa", processingPaths: ["CONSULAR", "NVC"] }),
-    m(visaType, "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-    m(visaType, "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-    m(visaType, "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+    m(visaType, "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+    m(visaType, "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+    m(visaType, "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
     i907(visaType, { immigrationNature: IMMIGRANT })
   );
 }
@@ -404,7 +404,7 @@ eb3Perm("EB-3 Skilled Worker"); eb3Perm("EB-3 Professional"); eb3Perm("EB-3 Othe
 
 // ===================== EB-4 =====================
 add(
-  m("EB-4", "I-360", "Petition for Amerasian, Widow(er), or Special Immigrant", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: IMMIGRANT }),
+  m("EB-4", "I-360", "Petition for Amerasian, Widow(er), or Special Immigrant", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-360", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
   i485("EB-4"), ds260("EB-4"),
   i765("EB-4", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   i131("EB-4", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
@@ -413,23 +413,23 @@ add(
 
 // ===================== EB-5 =====================
 add(
-  m("EB-5 Regional Center", "I-526E", "Immigrant Petition by Regional Center Investor", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526e", verificationDate: new Date(), sourceVerified: true, notes: "Regional Center path - never substitute I-526 (Standalone) for this." }),
-  m("EB-5 Regional Center", "I-956F", "Application for Approval of an Investment in a Commercial Enterprise", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "project_level_filing", notes: "Project-level filing, only when applicable." }),
-  m("EB-5 Regional Center", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  m("EB-5 Regional Center", "I-526E", "Immigrant Petition by Regional Center Investor", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-526e", initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526e", verificationDate: new Date(), sourceVerified: true, notes: "Regional Center path - never substitute I-526 (Standalone) for this." }),
+  m("EB-5 Regional Center", "I-956F", "Application for Approval of an Investment in a Commercial Enterprise", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-956f", immigrationNature: IMMIGRANT, stage: "project_level_filing", notes: "Project-level filing, only when applicable." }),
+  m("EB-5 Regional Center", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
   m("EB-5 Regional Center", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa" }),
-  m("EB-5 Regional Center", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Regional Center", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Regional Center", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Regional Center", "I-829", "Petition by Investor to Remove Conditions on Permanent Resident Status", "USCIS", LATER, STANDALONE, { immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", stage: "condition_removal" })
+  m("EB-5 Regional Center", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT }),
+  m("EB-5 Regional Center", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT }),
+  m("EB-5 Regional Center", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT }),
+  m("EB-5 Regional Center", "I-829", "Petition by Investor to Remove Conditions on Permanent Resident Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-829", immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", stage: "condition_removal" })
 );
 add(
-  m("EB-5 Standalone", "I-526", "Immigrant Petition by Standalone Investor", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526", verificationDate: new Date(), sourceVerified: true, notes: "Standalone path - never substitute I-526E (Regional Center) for this." }),
-  m("EB-5 Standalone", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  m("EB-5 Standalone", "I-526", "Immigrant Petition by Standalone Investor", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-526", initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526", verificationDate: new Date(), sourceVerified: true, notes: "Standalone path - never substitute I-526E (Regional Center) for this." }),
+  m("EB-5 Standalone", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
   m("EB-5 Standalone", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa" }),
-  m("EB-5 Standalone", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Standalone", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Standalone", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
-  m("EB-5 Standalone", "I-829", "Petition by Investor to Remove Conditions on Permanent Resident Status", "USCIS", LATER, STANDALONE, { immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", stage: "condition_removal" })
+  m("EB-5 Standalone", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT }),
+  m("EB-5 Standalone", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT }),
+  m("EB-5 Standalone", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT }),
+  m("EB-5 Standalone", "I-829", "Petition by Investor to Remove Conditions on Permanent Resident Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-829", immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", stage: "condition_removal" })
 );
 
 // ===================== FAMILY-BASED (IR/CR/F categories) =====================
@@ -437,9 +437,9 @@ function familyBased(visaType, opts = {}) {
   add(
     m(visaType, "I-130", "Petition for Alien Relative", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-130", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
     m(visaType, "I-130A", "Supplemental Information for Spouse Beneficiary", "USCIS", COND, SUPPLEMENT, { parentForm: "I-130", immigrationNature: IMMIGRANT, notes: "Spouse-beneficiary trigger.", triggerCondition: opts.spouseTrigger || null }),
-    m(visaType, "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT, notes: "Immigrant case requires Affidavit of Support." }),
+    m(visaType, "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT, notes: "Immigrant case requires Affidavit of Support." }),
     m(visaType, "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { parentForm: "I-864", immigrationNature: IMMIGRANT, notes: "Qualifying household member contributes income." }),
-    m(visaType, "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT, notes: "Sponsor meets I-864EZ criteria." }),
+    m(visaType, "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT, notes: "Sponsor meets I-864EZ criteria." }),
     i485(visaType),
     ds260(visaType),
     i765(visaType, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
@@ -453,9 +453,9 @@ function familyBased(visaType, opts = {}) {
 add(
   ds260("GC-NVC", { provisioningType: AUTO, initialCaseCreation: true, processingPaths: [], notes: "AUTO_CREATE when a case enters immigrant consular processing." }),
   m("GC-NVC", "DS-261", "Choice of Address and Agent", "DOS", COND, ONLINE, { immigrationNature: IMMIGRANT, notes: "NVC workflow/applicability dependent." }),
-  m("GC-NVC", "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT }),
+  m("GC-NVC", "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT }),
   m("GC-NVC", "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { parentForm: "I-864", immigrationNature: IMMIGRANT }),
-  m("GC-NVC", "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT })
+  m("GC-NVC", "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT })
 );
 
 // ===================== GREEN CARD WORKFLOWS =====================
@@ -464,21 +464,21 @@ add(
   i765("Adjustment of Status", { immigrationNature: IMMIGRANT }),
   i131("Adjustment of Status", { immigrationNature: IMMIGRANT }),
   i693("Adjustment of Status", { processingPaths: [] }),
-  m("Adjustment of Status", "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { immigrationNature: IMMIGRANT })
+  m("Adjustment of Status", "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT })
 );
-add(m("Conditional Green Card Removal", "I-751", "Petition to Remove Conditions on Residence", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", verificationSource: "uscis.gov/i-751", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create I-90." }));
-add(m("Green Card Renewal", "I-90", "Application to Replace Permanent Resident Card", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "PERMANENT_RESIDENT_DOCUMENT", verificationSource: "uscis.gov/i-90", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create I-751." }));
+add(m("Conditional Green Card Removal", "I-751", "Petition to Remove Conditions on Residence", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-751", initialCaseCreation: true, immigrationNature: "CONDITIONAL_PERMANENT_RESIDENT", verificationSource: "uscis.gov/i-751", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create I-90." }));
+add(m("Green Card Renewal", "I-90", "Application to Replace Permanent Resident Card", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-90", initialCaseCreation: true, immigrationNature: "PERMANENT_RESIDENT_DOCUMENT", verificationSource: "uscis.gov/i-90", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create I-751." }));
 add(m("Re-entry Permit", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-131", initialCaseCreation: true, immigrationNature: "TRAVEL_DOCUMENT", notes: "I-131 is a travel-document application, not a visa classification itself." }));
 
 // ===================== CITIZENSHIP =====================
-add(m("Naturalization", "N-400", "Application for Naturalization", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-400", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-600." }));
-add(m("Certificate of Citizenship", "N-600", "Application for Certificate of Citizenship", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-600", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-400." }));
-add(m("Replacement Citizenship Certificate", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", AUTO, STANDALONE, { initialCaseCreation: true, immigrationNature: "CITIZENSHIP" }));
+add(m("Naturalization", "N-400", "Application for Naturalization", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-400", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-400", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-600." }));
+add(m("Certificate of Citizenship", "N-600", "Application for Certificate of Citizenship", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-600", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-600", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-400." }));
+add(m("Replacement Citizenship Certificate", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-565", initialCaseCreation: true, immigrationNature: "CITIZENSHIP" }));
 
 // ===================== I-824 (post-approval, common cross-visa) =====================
 // Not tied to a single visaType - the spec explicitly requires this to
 // never auto-fire from any petition approval. Registered under a
 // dedicated pseudo-category rather than duplicated per visa.
-add(m("Action on Approved Case", "I-824", "Application for Action on an Approved Application or Petition", "USCIS", COND, STANDALONE, { immigrationNature: "POST_APPROVAL", notes: "Case must be eligible for post-approval action AND the case manager must explicitly select \"Action on Approved Case\" - never auto-created merely because another petition was approved. No generic trigger field exists for this in the current whitelist; CM-initiated only." }));
+add(m("Action on Approved Case", "I-824", "Application for Action on an Approved Application or Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-824", immigrationNature: "POST_APPROVAL", notes: "Case must be eligible for post-approval action AND the case manager must explicitly select \"Action on Approved Case\" - never auto-created merely because another petition was approved. No generic trigger field exists for this in the current whitelist; CM-initiated only." }));
 
 module.exports = { mappings };

@@ -149,7 +149,7 @@ const Layout = () => {
               I
             </div>
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Immigratia</h1>
+              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Immiglance</h1>
               <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Internal CRM</p>
             </div>
           </div>

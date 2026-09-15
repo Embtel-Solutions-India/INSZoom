@@ -224,7 +224,7 @@ exports.createFamilyCase = async (req, res, next) => {
       beneficiaryInvite: { email: beneficiaryEmail, name: beneficiaryName, phone: beneficiaryPhone, status: "", invitedBy: req.user._id },
       familyCompletionMode: completionMode,
       familyWorkflow: { petitionerStatus: "in_progress", beneficiaryStatus: "not_invited", caseManagerStatus: "waiting_for_beneficiary" },
-      legacySource: "BAIS",
+      legacySource: "Immiglance",
     });
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
     await beneficiary.save();

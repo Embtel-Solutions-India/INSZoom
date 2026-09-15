@@ -1,7 +1,7 @@
 # Regression Results — Enterprise Audit Track 32
 
 **Date:** 2026-09-01
-**Scope:** Full backend test suite (`node --test`), both frontend vitest suites (BAIS/Frontend, INSZoom/frontend), and a read-only verification of the known-suspect Playwright spec `INSZoom/frontend/e2e/uscis-form-render.spec.js`.
+**Scope:** Full backend test suite (`node --test`), both frontend vitest suites (Immiglance/Frontend, INSZoom/frontend), and a read-only verification of the known-suspect Playwright spec `INSZoom/frontend/e2e/uscis-form-render.spec.js`.
 **Mode:** Discovery only. **No source file or test file was modified.** No failure was repaired. No server was started, stopped, or restarted. No data was deleted.
 
 **Database:** live dev Atlas cluster, DB name `immigration_crm` (38 `cases`, 2 `caseforms` at time of audit).
@@ -13,8 +13,8 @@
 | Suite | Command | Files | Tests | Passed | Failed | Skipped |
 |---|---|---:|---:|---:|---:|---:|
 | Backend (`Backend/`) | `npm test` → `node --test "src/**/*.test.js"` | _see §2_ | _see §2_ | _see §2_ | _see §2_ | _see §2_ |
-| BAIS Frontend | `npx vitest run` | 5 | 24 | 22 | 2 | 0 |
-| BAIS Frontend (2nd full run) | `npx vitest run` | 5 | 24 | 23 | 1 | 0 |
+| Immiglance Frontend | `npx vitest run` | 5 | 24 | 22 | 2 | 0 |
+| Immiglance Frontend (2nd full run) | `npx vitest run` | 5 | 24 | 23 | 1 | 0 |
 | INSZoom Frontend | `npx vitest run` | 4 | 29 | 29 | 0 | 0 |
 | INSZoom E2E (Playwright) | **not executed** (rate-limit budget) — analysed statically | 3 spec files | 7 tests × 2 projects in the suspect spec | — | — | — |
 
@@ -38,17 +38,17 @@
 
 ---
 
-## 3. BAIS/Frontend (vitest)
+## 3. Immiglance/Frontend (vitest)
 
 ### 3.1 Per-file results
 
 | File | Tests | Pass | Fail |
 |---|---:|---:|---:|
-| `BAIS/Frontend/src/App.test.jsx` | 2 | 1 | **1** |
-| `BAIS/Frontend/src/Pages/Dashboard/Documents.test.jsx` | 8 | 7 | **1** (non-deterministic) |
-| `BAIS/Frontend/src/components/auth/PasswordField.test.jsx` | 2 | 2 | 0 |
-| `BAIS/Frontend/src/hooks/useQuestionnaireAnswers.test.js` | 5 | 5 | 0 |
-| `BAIS/Frontend/src/utils/questionnaireEngine.autofill.test.js` | 7 | 7 | 0 |
+| `Immiglance/Frontend/src/App.test.jsx` | 2 | 1 | **1** |
+| `Immiglance/Frontend/src/Pages/Dashboard/Documents.test.jsx` | 8 | 7 | **1** (non-deterministic) |
+| `Immiglance/Frontend/src/components/auth/PasswordField.test.jsx` | 2 | 2 | 0 |
+| `Immiglance/Frontend/src/hooks/useQuestionnaireAnswers.test.js` | 5 | 5 | 0 |
+| `Immiglance/Frontend/src/utils/questionnaireEngine.autofill.test.js` | 7 | 7 | 0 |
 
 **Totals: 24 tests — 22 passed, 2 failed, 0 skipped.**
 
@@ -71,20 +71,20 @@ Ignored nodes: comments, script, style
 
 **Evidence**
 
-- `BAIS/Frontend/src/App.jsx:118-120` — the route still exists and is still wrapped exactly as the test's comment describes:
+- `Immiglance/Frontend/src/App.jsx:118-120` — the route still exists and is still wrapped exactly as the test's comment describes:
   ```jsx
   <Route element={<BlockIfHasCase />}>
     <Route path="/eligibility/quiz" element={<EligibilityQuiz />} />
   </Route>
   ```
   So the routing behaviour under test is intact; the route simply renders nothing because its guard never resolves.
-- `BAIS/Frontend/src/components/eligibility/BlockIfHasCase.jsx` was rewritten in Phase 3 (commit `3ab9201` "Architectural changes (Phases 1-9)"). It **no longer uses `useHasCase`**. It now calls `authApi.sessionContext()` (`GET /api/auth/session-context`) directly in a `useEffect`, and deliberately renders `null` while that call is in flight:
+- `Immiglance/Frontend/src/components/eligibility/BlockIfHasCase.jsx` was rewritten in Phase 3 (commit `3ab9201` "Architectural changes (Phases 1-9)"). It **no longer uses `useHasCase`**. It now calls `authApi.sessionContext()` (`GET /api/auth/session-context`) directly in a `useEffect`, and deliberately renders `null` while that call is in flight:
   ```js
   // Render nothing while the check is in flight rather than showing the
   // quiz for a moment and then redirecting away from it.
   if (remoteHasCase === null && !isError) return null;
   ```
-- `BAIS/Frontend/src/App.test.jsx` (unchanged since `47c4b4c` "Initial commit" — `git log` confirms it has never been touched since) mocks exactly three things: `./components/Navbar`, `./context/AuthContext` (returning a logged-in `role: "client"` user with `authLoading: false`), and **`./hooks/useHasCase`** — the hook the guard no longer imports. It does **not** mock `./services/api`, so `authApi.sessionContext()` is left unmocked.
+- `Immiglance/Frontend/src/App.test.jsx` (unchanged since `47c4b4c` "Initial commit" — `git log` confirms it has never been touched since) mocks exactly three things: `./components/Navbar`, `./context/AuthContext` (returning a logged-in `role: "client"` user with `authLoading: false`), and **`./hooks/useHasCase`** — the hook the guard no longer imports. It does **not** mock `./services/api`, so `authApi.sessionContext()` is left unmocked.
 - Consequence: `shouldCheck` is `true` (user present, not employee, not loading), the unmocked network call never resolves inside jsdom within the 1 s `findBy*` window, `remoteHasCase` stays `null`, and `BlockIfHasCase` correctly returns `null` — hence the empty `<body><div /></body>`.
 
 **Verdict:** the production code is behaving as designed and as documented in its own comment. The test's mock surface is stale relative to the Phase-3 guard rewrite. Fixing it means mocking `authApi.sessionContext` (or `./services/api`) instead of `./hooks/useHasCase`. **Not a product defect.**
@@ -117,7 +117,7 @@ A different test fails on different runs, the file passes cleanly on 3 of 5 runs
 
 **Evidence**
 
-- `BAIS/Frontend/vite.config.js` declares only `test: { environment: "jsdom", globals: true }` — **no `setupFiles`, no `testTimeout`, no `waitFor` timeout override.** The suite therefore runs on RTL's default `waitFor` timeout of **1000 ms**.
+- `Immiglance/Frontend/vite.config.js` declares only `test: { environment: "jsdom", globals: true }` — **no `setupFiles`, no `testTimeout`, no `waitFor` timeout override.** The suite therefore runs on RTL's default `waitFor` timeout of **1000 ms**.
 - The full-suite run reports `transform 35.45s, import 53.01s, environment 67.11s` against `tests 15.22s` — i.e. the harness spends far more wall-clock on module transform/environment setup than on test bodies. Under that load a 1 s `waitFor` on an async React Query round trip is marginal.
 - The test file's own header comment already documents a prior instance of exactly this problem ("…was the source of an intermittent full-suite-only flake (isolated single-test runs never reproduced it; tests slowed down and occasionally exceeded waitFor's default timeout as more trees piled up)"), and added an explicit `afterEach(cleanup)` to mitigate it. The mitigation reduced but did not eliminate the flake.
 - The failing assertions are all `waitFor(...)` on the in-memory fake server's call log — no real network, no DB — so an environment/service cause is ruled out.
@@ -125,7 +125,7 @@ A different test fails on different runs, the file passes cleanly on 3 of 5 runs
 **Verdict:** flaky test harness, not a product defect and not a stale assertion (the same assertions pass on a quieter run).
 
 **Secondary code observation (not the failing assertion, recorded for follow-up):**
-`BAIS/Frontend/src/hooks/useQuestionnaireAnswers.js:251-267` — `commitAll()` skips the network call entirely when the answers map is empty:
+`Immiglance/Frontend/src/hooks/useQuestionnaireAnswers.js:251-267` — `commitAll()` skips the network call entirely when the answers map is empty:
 
 ```js
 const entries = Object.entries(answers).map(([questionKeyValue, value]) => ({ questionKey: questionKeyValue, value }));

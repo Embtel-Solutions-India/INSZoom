@@ -58,7 +58,7 @@ function employeeAssignment(mode, user, extra = {}) {
 // whoever actually owns it (caseData.employerUser / matching companyId),
 // regardless of whether their account role is literally "employer" or a
 // plain "client" acting as the employer (the common case — see
-// BAIS's resolveApplicableChecklistRoles for the same reasoning on the
+// Immiglance's resolveApplicableChecklistRoles for the same reasoning on the
 // frontend). Gating this on `role === "employer"` previously locked every
 // "client"-role employer out of their own cases.
 function canAccessEmployerCase(user, caseData) {
@@ -124,7 +124,7 @@ async function ensureEmployerCompany(user, payload = {}) {
     contact: { email: payload.email || user.email, phone: payload.phone || user.phone, website: payload.website },
     hrManager: user._id,
     hrUsers: [user._id],
-    source: "BAIS",
+    source: "Immiglance",
   });
   user.companyId = company._id;
   await user.save();
@@ -300,7 +300,7 @@ exports.createEmployerCase = async (req, res, next) => {
         user: employeeUser?._id,
         companyId: company._id,
         type: "employee",
-        source: "BAIS",
+        source: "Immiglance",
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
@@ -342,7 +342,7 @@ exports.createEmployerCase = async (req, res, next) => {
         { role: "employer", user: req.user._id, status: "not_requested" },
         { role: "employee", user: employeeUser?._id, status: "not_requested" },
       ],
-      legacySource: "BAIS",
+      legacySource: "Immiglance",
     });
     assignStandardDocuments(caseData);
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];

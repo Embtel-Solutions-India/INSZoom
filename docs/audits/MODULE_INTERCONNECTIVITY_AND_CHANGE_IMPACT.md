@@ -27,7 +27,7 @@
 - **WRITES / READS** — Mongo collections and in-document paths the module mutates / consults.
 - **UPSTREAM** — what must run before it for it to be meaningful.
 - **DOWNSTREAM** — what consumes its output.
-- **UI CONSUMERS** — the *actual* React pages/components that call it. `NONE` means an exhaustive grep of both `BAIS/Frontend/src` and `INSZoom/frontend/src` found zero live call sites — this is a finding, not an omission.
+- **UI CONSUMERS** — the *actual* React pages/components that call it. `NONE` means an exhaustive grep of both `Immiglance/Frontend/src` and `INSZoom/frontend/src` found zero live call sites — this is a finding, not an omission.
 - **FAILURE IMPACT** — what breaks for a user if this module fails.
 - **CHANGE IMPACT** — blast radius of modifying its contract.
 
@@ -45,13 +45,13 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `users` (`Backend/src/middleware/authenticate.js:24`), Redis user cache (`authenticate.js:20-26`, `Backend/src/config/redis.js`).
 **UPSTREAM:** `config/env.js` (JWT secrets), `modules/auth/token.service.js`, `password.service.js`, Redis (optional — cache-aside, degrades to Mongo).
 **DOWNSTREAM:** every authenticated route in the app. `authenticate` sets `req.user`, which RBAC (`authorizePermissions`/`authorizeRoles`), `caseService.canAccessCase`, audit logging, and notification targeting all read.
-**UI CONSUMERS:** BAIS `src/context/AuthContext.jsx:69,123,130,140,150,160`, `Pages/Auth/Login.jsx:78`, `Register.jsx:206`, `AcceptInvite.jsx:33,48`, `ForgotPassword.jsx:52`, `ResetPassword.jsx:33`, `OAuthCallback.jsx:25,36`, `Pages/Admin/AdminLogin.jsx:51`, `components/AuthGate.jsx:47`, `Navbar.jsx:125,136`; INSZoom `src/contexts/AuthContext.jsx:56,70,105,135`, `pages/Login.jsx:32`, `layouts/Layout.jsx:76-79,193`.
+**UI CONSUMERS:** Immiglance `src/context/AuthContext.jsx:69,123,130,140,150,160`, `Pages/Auth/Login.jsx:78`, `Register.jsx:206`, `AcceptInvite.jsx:33,48`, `ForgotPassword.jsx:52`, `ResetPassword.jsx:33`, `OAuthCallback.jsx:25,36`, `Pages/Admin/AdminLogin.jsx:51`, `components/AuthGate.jsx:47`, `Navbar.jsx:125,136`; INSZoom `src/contexts/AuthContext.jsx:56,70,105,135`, `pages/Login.jsx:32`, `layouts/Layout.jsx:76-79,193`.
 **API CONSUMERS:** internal only — no other backend module calls auth's HTTP surface; they consume `req.user`.
 **DB COLLECTIONS:** `users`, `authsessions`, `auditlogs`, `emaillogs`.
 **EVENTS:** no domain events emitted. Side effects are the audit-log write (`auditAuth`) and, on invite acceptance, notification/email dispatch.
 **DEPENDENCIES:** `jsonwebtoken`, `bcryptjs`, `google-auth-library` (`modules/auth/google-oauth.service.js`), Redis, `modules/email/email.service.js`.
 **FAILURE IMPACT:** total outage of both portals. `authenticate.js:8-10` returns 401 for any request without a bearer token, and every non-public route mounts it.
-**CHANGE IMPACT:** **CRITICAL.** The access-token payload shape is a hard contract between `token.service.js`, `authenticate.js:28` (`decoded.tokenVersion` compared against `user.tokenVersion`), and both frontends' client-side JWT decode (BAIS `services/api.js:13-28` decodes `exp` from segment 1 itself). Adding a claim is safe; renaming/removing `userId` or `tokenVersion` invalidates every issued token and both portals' pre-flight refresh logic simultaneously.
+**CHANGE IMPACT:** **CRITICAL.** The access-token payload shape is a hard contract between `token.service.js`, `authenticate.js:28` (`decoded.tokenVersion` compared against `user.tokenVersion`), and both frontends' client-side JWT decode (Immiglance `services/api.js:13-28` decodes `exp` from segment 1 itself). Adding a claim is safe; renaming/removing `userId` or `tokenVersion` invalidates every issued token and both portals' pre-flight refresh logic simultaneously.
 
 ---
 
@@ -61,10 +61,10 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `authsessions` by SHA-hashed refresh token (`session.service.js:22-27`, `.select("+refreshTokenHash")`).
 **UPSTREAM:** `password.service.hashToken`, `config/env.refreshTokenTtlDays` (`session.service.js:5-9`).
 **DOWNSTREAM:** `auth.service.js` refresh flow → new access token → every subsequent authenticated request.
-**UI CONSUMERS:** BAIS `services/api.js:45-61` (single-flight `refreshPromise` at `:43`, pre-flight refresh at `:78-90`, reactive 401 retry at `:118-135`); INSZoom `services/api.js:30-38` (raw axios to avoid interceptor recursion) and `:122-135`, plus silent boot restore at `contexts/AuthContext.jsx:69-79`.
+**UI CONSUMERS:** Immiglance `services/api.js:45-61` (single-flight `refreshPromise` at `:43`, pre-flight refresh at `:78-90`, reactive 401 retry at `:118-135`); INSZoom `services/api.js:30-38` (raw axios to avoid interceptor recursion) and `:122-135`, plus silent boot restore at `contexts/AuthContext.jsx:69-79`.
 **API CONSUMERS:** none.
 **DB COLLECTIONS:** `authsessions`.
-**EVENTS:** BAIS dispatches a browser-level `bais:session-expired` event on unrecoverable refresh failure (`BAIS/Frontend/src/services/api.js:87,134`), consumed at `context/AuthContext.jsx:107-111`. No server-side event.
+**EVENTS:** Immiglance dispatches a browser-level `immiglance:session-expired` event on unrecoverable refresh failure (`Immiglance/Frontend/src/services/api.js:87,134`), consumed at `context/AuthContext.jsx:107-111`. No server-side event.
 **DEPENDENCIES:** `cookie-parser` (`Backend/src/app.js:67`), CORS `credentials:true` (`app.js:41`).
 **FAILURE IMPACT:** users are silently logged out mid-session. Both portals hard-redirect or clear state on a failed refresh (INSZoom `services/api.js:136-142` does `window.location.href = '/login'`).
 **CHANGE IMPACT:** **HIGH.** `rotateSession` (`session.service.js:30-43`) performs an unguarded read → create-replacement → `save()` with Mongoose's default `__v` optimistic concurrency and **no application-level lock**. Two concurrent refreshes presenting the same refresh token both pass `findActiveSession`, both create a replacement session, and the second `save()` raises a `VersionError` — which `Backend/src/middleware/errorHandler.js:27-30` does **not** classify (its `DATABASE_UNAVAILABLE_ERROR_NAMES` set has 7 entries, none of them `VersionError`), so it falls through to the generic 500 at `errorHandler.js:47`. Both portals only auto-retry on `401 + code:"TOKEN_EXPIRED"`, so a 500 here is a hard logout. Any change to rotation semantics touches this race.
@@ -77,7 +77,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `req.user.role`, `req.user.permissions` (`rbac.service.js:12-21`), `req.user.teamId` (`canModifyUser`, `:37-39`).
 **UPSTREAM:** `authenticate` must have populated `req.user`.
 **DOWNSTREAM:** every guarded route; plus a *second*, independent per-record layer — `caseService.canAccessCase` (`Backend/src/modules/cases/case.service.js:102-126`), `requireCaseFormAccess` (`Backend/src/modules/form-generation/middleware/requireCaseFormAccess.js:17-41`), `beneficiaryService.canAccessBeneficiary`, `notificationService.canAccessNotification`. **These two layers are not equivalent, and several routes have only the first** — see §0.8.
-**UI CONSUMERS:** INSZoom `src/utils/permissions.js:123-142` drives sidebar visibility and `ProtectedRoute module=…` guards (`App.jsx:44-264`); BAIS `components/AuthGate.jsx:24,28,77,131-173` routes by role. Both are convenience-only; the server is the boundary.
+**UI CONSUMERS:** INSZoom `src/utils/permissions.js:123-142` drives sidebar visibility and `ProtectedRoute module=…` guards (`App.jsx:44-264`); Immiglance `components/AuthGate.jsx:24,28,77,131-173` routes by role. Both are convenience-only; the server is the boundary.
 **API CONSUMERS:** `GET /api/auth/session-context` (`auth.routes.js:60`) exposes the effective role/case context to the client.
 **DB COLLECTIONS:** none directly (role lives on `users`).
 **EVENTS:** none.
@@ -93,7 +93,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `cases`, and via populate `users`, `clients`, `beneficiaries`, `companies`, `caseforms`, `questionnaires`, `answers`, `documents`, `payments`, `tasks`, `notifications`.
 **UPSTREAM:** Authentication → RBAC → `canAccessCase` (`case.service.js:102-126`, which itself defers to `case-participant.service.canAccessAnyParticipant` at `:110`).
 **DOWNSTREAM:** essentially every other domain module. Direct requirers of `models/Case`: `case.service`, `case.controller`, `case-lifecycle-orchestrator`, `case-participant.service`, `CanonicalBuilderService.js:4`, `CanonicalSyncService.js:2`, `AutoFillService.js:2`, `CanonicalProfileService`, `EligibilityEngineService`, `workflow.service`, `document.service`, `dashboard.service`, `report.service`, `search.service`, `uscis-form.service`, `requireCaseFormAccess.js:2`.
-**UI CONSUMERS:** INSZoom `pages/CRMCases.jsx:135`, `CRMCaseDetail.jsx:490,497,507,630,651,771,776,797,867`, `Dashboard.jsx:922,931,986,998,1010`, `Documents.jsx:419,428`, `USCISForms.jsx:107`, `QuestionnaireTemplates.jsx:113`, `TaskDetails.jsx:137`, `components/CreateCaseModal.jsx:126`; BAIS `hooks/useMyCaseProfile.js:9`, `useHasCase.js:26`, `Pages/Dashboard/Dashboard.jsx:766,770,782,803`, `Profile.jsx:67`, `Documents.jsx:121,553`, `Messages.jsx:414`, `PlanSelection.jsx:37,42`, `Offers.jsx:93`, `components/questionnaire/PrincipalCaseWorkspace.jsx:36,67`, `DataEntryModeModal.jsx:19`, `InvitePanel.jsx:25`, `Pages/Admin/AdminPortal.jsx:881,966`.
+**UI CONSUMERS:** INSZoom `pages/CRMCases.jsx:135`, `CRMCaseDetail.jsx:490,497,507,630,651,771,776,797,867`, `Dashboard.jsx:922,931,986,998,1010`, `Documents.jsx:419,428`, `USCISForms.jsx:107`, `QuestionnaireTemplates.jsx:113`, `TaskDetails.jsx:137`, `components/CreateCaseModal.jsx:126`; Immiglance `hooks/useMyCaseProfile.js:9`, `useHasCase.js:26`, `Pages/Dashboard/Dashboard.jsx:766,770,782,803`, `Profile.jsx:67`, `Documents.jsx:121,553`, `Messages.jsx:414`, `PlanSelection.jsx:37,42`, `Offers.jsx:93`, `components/questionnaire/PrincipalCaseWorkspace.jsx:36,67`, `DataEntryModeModal.jsx:19`, `InvitePanel.jsx:25`, `Pages/Admin/AdminPortal.jsx:881,966`.
 **DB COLLECTIONS:** `cases` (+ everything reachable by populate).
 **EVENTS:** Socket.IO `case:created`, `case:assigned`, `case:activity`, `case:client_submitted` via `modules/realtime/realtime.gateway.js` (emitted at `case-lifecycle-orchestrator.service.js:399-400`). In-document `timeline[]`/`auditHistory[]`/`activityLog[]` append-only trails.
 **DEPENDENCIES:** MongoDB; `config/visaCategories.js`, `config/packages.js`, `config/filingTypes.js`, `services/CaseNumberService.js`, `modules/cases/caseId.js`.
@@ -108,10 +108,10 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `leads`, populated with `consultationId` → `appointments`, `assignedTo` → `users` (`quiz.service.js:174-182`).
 **UPSTREAM:** eligibility-quiz scoring (`modules/eligibility-quiz/scoring.service.js`, `recommendation.service.js`) writes `scoreResult`; consultation booking writes `consultationId`.
 **DOWNSTREAM:** `POST /api/cases` with `creationSource:"lead_conversion"` + `leadId` — `case.controller.js:820-836` validates the transition and `:1159-1163` flips the lead to `status:"converted"` and stamps `convertedCaseId`. `Case.leadId` (`models/Case.js:872`) and `Case.consultationId` (`:885`) are set at `case.controller.js:940-941`.
-**UI CONSUMERS:** INSZoom `pages/Leads.jsx:88,122,132,143,167,168,169,173` (full lifecycle drawer) + `components/CreateCaseModal.jsx` launched from `Leads.jsx:335`; BAIS `Pages/Admin/AdminPortal.jsx:882,923,930,939,948` → `Pages/Admin/leads/LeadsInbox.jsx`; BAIS public capture at `components/ConsultationSection.jsx:23`, `Pages/Dashboard/Offers.jsx:130`, `Pages/Dashboard/Intake.jsx:660`.
+**UI CONSUMERS:** INSZoom `pages/Leads.jsx:88,122,132,143,167,168,169,173` (full lifecycle drawer) + `components/CreateCaseModal.jsx` launched from `Leads.jsx:335`; Immiglance `Pages/Admin/AdminPortal.jsx:882,923,930,939,948` → `Pages/Admin/leads/LeadsInbox.jsx`; Immiglance public capture at `components/ConsultationSection.jsx:23`, `Pages/Dashboard/Offers.jsx:130`, `Pages/Dashboard/Intake.jsx:660`.
 **API CONSUMERS:** `consultation.service.js:5,164-220` and `consultation-routing/routing.service.js:2,78-136` both load and mutate `Lead` directly.
 **DB COLLECTIONS:** `leads`, `appointments`, `strategycallqueueitems`, `auditlogs`, `notifications`, `emaillogs`.
-**EVENTS:** Socket.IO `lead:created` / `lead:updated` (consumed BAIS `AdminPortal.jsx:913-914`); `notificationService.createForRoles(["super_admin","admin","team_lead"], {type:"lead_approved"...})` at `quiz.service.js:314-318`; emails `lead-approved` / `lead-rejected` / `consultation-confirmation` (`email.service.js:23-24,20`).
+**EVENTS:** Socket.IO `lead:created` / `lead:updated` (consumed Immiglance `AdminPortal.jsx:913-914`); `notificationService.createForRoles(["super_admin","admin","team_lead"], {type:"lead_approved"...})` at `quiz.service.js:314-318`; emails `lead-approved` / `lead-rejected` / `consultation-confirmation` (`email.service.js:23-24,20`).
 **DEPENDENCIES:** `modules/email`, `modules/notifications`, `modules/audit`, `modules/telemetry`.
 **FAILURE IMPACT:** the marketing funnel stops; existing cases are unaffected (Lead is not on any case read path).
 **CHANGE IMPACT:** **MODERATE.** The state machine is enforced in exactly one place (`quiz.service.js:260-330`) and its enum lives in `models/Lead.js:66-80`. Widening the enum is additive; narrowing it strands existing documents. The *freeform* `PATCH /leads/:id/status` (`quiz.routes.js:44`) bypasses the state machine entirely by design (comment at `quiz.routes.js:47-49`), so any new invariant added to the machine is not enforced on that path.
@@ -125,7 +125,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `settings`, `users` (hosts), `calendaravailabilities`, `leads`, `entity-config`.
 **UPSTREAM:** eligibility quiz produces the `leadId` the booking attaches to.
 **DOWNSTREAM:** `Lead.consultationId` → `Case.consultationId` at `case.controller.js:941`; lead lifecycle `confirm-consultation`/`complete-consultation`.
-**UI CONSUMERS:** BAIS `Pages/Consultation/BookConsultation.jsx:36,41,45,65` and `ManageBooking.jsx:20,26,31,35`; INSZoom has **no consultation page** — the only staff touchpoints are the two lead-lifecycle PATCHes in `pages/Leads.jsx:167-168`.
+**UI CONSUMERS:** Immiglance `Pages/Consultation/BookConsultation.jsx:36,41,45,65` and `ManageBooking.jsx:20,26,31,35`; INSZoom has **no consultation page** — the only staff touchpoints are the two lead-lifecycle PATCHes in `pages/Leads.jsx:167-168`.
 **API CONSUMERS:** `modules/leads/lead.service.js` (creation), `modules/appointments/appointment.service.js`.
 **DB COLLECTIONS:** `appointments`, `leads`, `calendaravailabilities`, `strategycallqueueitems`, `settings`, `emaillogs`, `telemetryevents`, `auditlogs`.
 **EVENTS:** `consultation-confirmation` / `-reschedule` / `-cancel` / `-host-notify` emails (`email.service.js:20-22`), realtime push, `.ics` generation (`modules/consultation/ics.service.js`).
@@ -145,7 +145,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `leads` (`case.controller.js:835`), `users` (dedupe), `visaCategories` config (`config/visaCategories.js` → `getCaseStructure`).
 **UPSTREAM:** Lead approval (optional), RBAC.
 **DOWNSTREAM:** `CaseLifecycleOrchestrator.initializeCase` → `ensureBeneficiary` → `immigration-knowledge-engine.orchestrate` → `provisionRequiredForms` → `recalculate` → `notifyCaseCreated` (`case-lifecycle-orchestrator.service.js:284-310`).
-**UI CONSUMERS:** path (A): INSZoom `components/CreateCaseModal.jsx:126`, reached from `pages/CRMCases.jsx:305` and `pages/Leads.jsx:335`. Path (B): **declared but never called** — `INSZoom/frontend/src/services/api.js:158` defines `createWithClient` and no component invokes it; BAIS removed its case-creation calls in Phase 2 (`BAIS/Frontend/src/Pages/Dashboard/FilingTypeSelection.jsx:60-62`).
+**UI CONSUMERS:** path (A): INSZoom `components/CreateCaseModal.jsx:126`, reached from `pages/CRMCases.jsx:305` and `pages/Leads.jsx:335`. Path (B): **declared but never called** — `INSZoom/frontend/src/services/api.js:158` defines `createWithClient` and no component invokes it; Immiglance removed its case-creation calls in Phase 2 (`Immiglance/Frontend/src/Pages/Dashboard/FilingTypeSelection.jsx:60-62`).
 **DB COLLECTIONS:** `cases`, `users`, `clients`, `employerprofiles`, `employeeprofiles`, `counters`, `caseforms`, `auditlogs`, `notifications`, `emaillogs`.
 **EVENTS:** `case:created` (realtime, `case-lifecycle-orchestrator.service.js:399-400`), emails `case-created-client` + `case-created-team-lead` + `client-portal-invitation`.
 **DEPENDENCIES:** `services/CaseNumberService.js`, `modules/cases/caseId.js`, `config/packages.js`, `config/visaCategories.js`, `modules/auth/clientInvite.service.js`.
@@ -159,8 +159,8 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **WRITES:** `cases` — `status`, `stage`, `filingReadinessScore`, `workflow.*`, `journeyProgress.*`, `timeline[]`, `auditHistory[]`, `lastSyncedAt` (`:226-244`); `auditlogs`; `caseforms` (indirectly via `ensureAssignedForms` + `AutoFillService.generate`).
 **READS:** `answers`, `documents`, `caseforms`, `tasks` (`metrics()` at `:97-103`), plus `cases.canonicalProfile` and `cases.questionnaireReferences`.
 **UPSTREAM:** Case creation / assignment / questionnaire submission / document upload / autofill — each calls `recalculate` with a `reason`.
-**DOWNSTREAM:** the 6 milestones in `MILESTONE_DEFINITIONS` (`:19-26`) drive `journeyProgress`, which BAIS renders as the client journey (`Pages/Dashboard/Dashboard.jsx:770`) and INSZoom renders on the case detail.
-**UI CONSUMERS:** INSZoom `pages/CRMCaseDetail.jsx:630` (generate-forms), `:651` (generate-package); BAIS `Pages/Dashboard/Dashboard.jsx:770`, `Documents.jsx:553`.
+**DOWNSTREAM:** the 6 milestones in `MILESTONE_DEFINITIONS` (`:19-26`) drive `journeyProgress`, which Immiglance renders as the client journey (`Pages/Dashboard/Dashboard.jsx:770`) and INSZoom renders on the case detail.
+**UI CONSUMERS:** INSZoom `pages/CRMCaseDetail.jsx:630` (generate-forms), `:651` (generate-package); Immiglance `Pages/Dashboard/Dashboard.jsx:770`, `Documents.jsx:553`.
 **API CONSUMERS:** `case.controller.js` (create/assign), `AutoFillService.js:294`, `documents/document.workflow.service.js`, `questionnaire.service.js`.
 **DB COLLECTIONS:** `cases`, `answers`, `documents`, `caseforms`, `tasks`, `auditlogs`.
 **EVENTS:** timeline "milestone" events on first completion of each milestone (`:237-241`); `case:created` realtime.
@@ -176,7 +176,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `employerprofiles` by `{principalCaseId}`; `cases` for authorization.
 **UPSTREAM:** `Case.employerProfileId` set at creation (`case.controller.js`, path A only).
 **DOWNSTREAM:** `CanonicalBuilderService.loadSources:225` (`EmployerProfile.findOne({principalCaseId})`) → `addProfileCandidates(…, EMPLOYER_PROFILE_TO_CANONICAL, "employer", …)` (`CanonicalBuilderService.js:403`) → merged canonical profile → `AutoFillService` → `CaseForm.fieldValues` → PDF. Also the reverse direction: `AutoFillService.applyFormEditToProfile` writes back with `source:"form_edit"` (`AutoFillService.js:353-364`).
-**UI CONSUMERS:** **NONE.** `BAIS/Frontend/src/services/api.js:498-501` declares `employerProfileApi.get` / `.mySummary` / `.save`, and an exhaustive grep of `BAIS/Frontend/src` and `INSZoom/frontend/src` finds **zero call sites** for any of the three. The component built for it, `BAIS/Frontend/src/components/questionnaire/CanonicalProfileForm.jsx`, is never imported. INSZoom has no employer-profile API at all.
+**UI CONSUMERS:** **NONE.** `Immiglance/Frontend/src/services/api.js:498-501` declares `employerProfileApi.get` / `.mySummary` / `.save`, and an exhaustive grep of `Immiglance/Frontend/src` and `INSZoom/frontend/src` finds **zero call sites** for any of the three. The component built for it, `Immiglance/Frontend/src/components/questionnaire/CanonicalProfileForm.jsx`, is never imported. INSZoom has no employer-profile API at all.
 **API CONSUMERS:** `AutoFillService.js:12,353` is the **only** live writer.
 **DB COLLECTIONS:** `employerprofiles`, `cases`.
 **EVENTS:** none.
@@ -192,7 +192,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `employeeprofiles` by `{caseId}`; `cases` (`caseRole`, `parentCase`) for authorization.
 **UPSTREAM:** `Case.personProfileId` set at `case.controller.js:1146` (path A only).
 **DOWNSTREAM:** `CanonicalBuilderService.loadSources:226` — note the guard `["employee","beneficiary"].includes(caseRecord.caseRole)`: a case with `caseRole: null` (i.e. any case from the legacy creation path) **never loads its EmployeeProfile**. Then `addProfileCandidates(…, EMPLOYEE_PROFILE_TO_CANONICAL, profileType, …)` (`:405`).
-**UI CONSUMERS:** BAIS `Pages/Dashboard/Profile.jsx:71` (GET) and `:132` (POST, flattened dot-paths) — the *only* live profile UI in either portal, and only for `role: employee | beneficiary`.
+**UI CONSUMERS:** Immiglance `Pages/Dashboard/Profile.jsx:71` (GET) and `:132` (POST, flattened dot-paths) — the *only* live profile UI in either portal, and only for `role: employee | beneficiary`.
 **API CONSUMERS:** `AutoFillService.js:11,370` (`form_edit` write-back).
 **DB COLLECTIONS:** `employeeprofiles`, `cases`.
 **EVENTS:** none.
@@ -208,7 +208,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 **READS:** `beneficiaries`, `clients`, `cases`, `companies`.
 **UPSTREAM:** `beneficiaryService.syncFromClient` called from `CaseLifecycleOrchestrator.ensureBeneficiary` (`case-lifecycle-orchestrator.service.js:249-264`) — this is how most Beneficiary documents are actually created.
 **DOWNSTREAM:** `CanonicalBuilderService.loadSources:219` loads it and `addMappedObjectCandidates(candidates,"beneficiary",…)` (`:397`) maps 25 fields into canonical paths via `DATABASE_FIELD_MAP` (`:19-55`) at confidence 70. **Important:** because a Beneficiary is shared across all of a person's cases, `addMappedObjectCandidates` blocks every path listed in `CASE_SCOPED_CANONICAL_PATHS` for this prefix (`:238,241`, config in `modules/canonical/config/fieldScope.js`), so `immigration.currentStatus`, `immigration.currentVisaType`, `immigration.i94.*`, `immigration.sevis.id` are deliberately **not** read from it.
-**UI CONSUMERS:** **NONE.** No component in `BAIS/Frontend/src` or `INSZoom/frontend/src` calls any `/beneficiaries` endpoint (verified by prefix extraction across both trees). Beneficiary data surfaces only as a populated sub-object on the Case payload (INSZoom `pages/CRMCaseDetail.jsx:1230-1237`).
+**UI CONSUMERS:** **NONE.** No component in `Immiglance/Frontend/src` or `INSZoom/frontend/src` calls any `/beneficiaries` endpoint (verified by prefix extraction across both trees). Beneficiary data surfaces only as a populated sub-object on the Case payload (INSZoom `pages/CRMCaseDetail.jsx:1230-1237`).
 **API CONSUMERS:** `case.service.js`, `case-lifecycle-orchestrator.service.js`, `CanonicalBuilderService.js`, `company.service.js`, `dashboard.service.js`, `document.service.js`, `employment-workflow.controller.js`, `family-workflow.controller.js`, `reminder-generation.service.js`, `report.service.js`, `search.service.js`, `uscis-form.service.js`.
 **DB COLLECTIONS:** `beneficiaries`, `clients`, `cases`.
 **EVENTS:** none.
@@ -227,7 +227,7 @@ Blast-radius scale used throughout: **LOW** (contained in one module) · **MODER
 2. `immigration-knowledge-engine.service.js:242-243` — required-question canonical paths become `Case.knowledgePlan.requiredCanonicalFields`.
 3. `question-library.service.js:198-207` — library key identity is derived from `canonicalPath`.
 Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (library import).
-**UI CONSUMERS:** INSZoom `pages/QuestionnaireTemplates.jsx:206,209,225` (question CRUD), `:124` (`GET /questionnaires/:id/uscis-mappings`); BAIS renders questions read-only via `hooks/useCaseQuestionnaire.js:41` and `components/questionnaire/QuestionInput.jsx`.
+**UI CONSUMERS:** INSZoom `pages/QuestionnaireTemplates.jsx:206,209,225` (question CRUD), `:124` (`GET /questionnaires/:id/uscis-mappings`); Immiglance renders questions read-only via `hooks/useCaseQuestionnaire.js:41` and `components/questionnaire/QuestionInput.jsx`.
 **DB COLLECTIONS:** `questions`, `questionnaires`, `questionlibraryitems`.
 **EVENTS:** none.
 **DEPENDENCIES:** none external.
@@ -242,7 +242,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `answers`, `questions`, `questionnaires`, `cases`.
 **UPSTREAM:** Question definitions; `Case.questionnaireReferences[]` assignment.
 **DOWNSTREAM:** `CanonicalBuilderService.loadSources:222` — `Answer.find({caseId: {$in: familyCaseIds}}).populate({path:"question", select:"mapping questionnaire"})`. Confidence tiering by status: `approved` 95 / `submitted` 85 / else 75 (`CanonicalBuilderService.js:269`). Also `CaseLifecycleOrchestrator.metrics:98` reads answer status for the questionnaire milestone.
-**UI CONSUMERS:** BAIS `hooks/useQuestionnaireAnswers.js:179,223,258`, `hooks/useCaseQuestionnaire.js:70`, `Pages/Dashboard/Documents.jsx:774,782`, `components/questionnaire/CaseRoleChecklist.jsx:62,113`; INSZoom reads them via `hooks/useCaseQuestionnaire.js:29` (called 3× at `pages/CRMCaseDetail.jsx:346-348` for employer/employee/business_plan) rendered by `QuestionnaireAnswersPanel` (`:1660,1667,1674`). INSZoom does **not** write answers.
+**UI CONSUMERS:** Immiglance `hooks/useQuestionnaireAnswers.js:179,223,258`, `hooks/useCaseQuestionnaire.js:70`, `Pages/Dashboard/Documents.jsx:774,782`, `components/questionnaire/CaseRoleChecklist.jsx:62,113`; INSZoom reads them via `hooks/useCaseQuestionnaire.js:29` (called 3× at `pages/CRMCaseDetail.jsx:346-348` for employer/employee/business_plan) rendered by `QuestionnaireAnswersPanel` (`:1660,1667,1674`). INSZoom does **not** write answers.
 **DB COLLECTIONS:** `answers`, `cases`, `questions`, `documents` (file answers).
 **EVENTS:** `CanonicalSyncService.syncCase` / `syncParticipant` invoked from `questionnaire.service.js:11`; `case:client_submitted` realtime.
 **DEPENDENCIES:** `modules/uploads/upload.middleware.js` for file answers.
@@ -257,7 +257,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** all of the above plus `Backend/src/config/filingTypes.js` and the static checklist modules.
 **UPSTREAM:** case creation → `immigration-knowledge-engine.orchestrate` → `intelligent-questionnaire.service` → `ensureDefaultVisaTemplates`.
 **DOWNSTREAM:** `CanonicalSyncService` (`questionnaire.service.js:11`), `checklist-rule-engine.service.js`, `CaseLifecycleOrchestrator.metrics`.
-**UI CONSUMERS:** BAIS `hooks/useCaseQuestionnaire.js:41`, `useCaseChecklists.js:22`, `useQuestionnaireAnswers.js`, `Pages/Dashboard/Documents.jsx:156,220-222`, `components/questionnaire/{CaseRoleChecklist,PrincipalCaseWorkspace,EmployeeSelfServiceView}.jsx`; INSZoom `pages/QuestionnaireTemplates.jsx:101-283` (template design), `pages/CRMCaseDetail.jsx:346-348,356` (read-only answers).
+**UI CONSUMERS:** Immiglance `hooks/useCaseQuestionnaire.js:41`, `useCaseChecklists.js:22`, `useQuestionnaireAnswers.js`, `Pages/Dashboard/Documents.jsx:156,220-222`, `components/questionnaire/{CaseRoleChecklist,PrincipalCaseWorkspace,EmployeeSelfServiceView}.jsx`; INSZoom `pages/QuestionnaireTemplates.jsx:101-283` (template design), `pages/CRMCaseDetail.jsx:346-348,356` (read-only answers).
 **DB COLLECTIONS:** `questionnaires`, `questions`, `answers`, `questionlibraryitems`, `cases`, `documents`, `notifications`, `auditlogs`.
 **EVENTS:** questionnaire lifecycle notifications (`notificationRules.js` types `questionnaire_assigned`, `_reminder`, `_approved`, `_rejected`, `_corrections_requested`).
 **DEPENDENCIES:** AI generation path (`generateQuestionnaireFromPrompt`, `POST /questionnaires/ai-generate`) depends on `modules/ai`.
@@ -337,7 +337,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `caseforms`, `uscisformtemplates` (populate).
 **UPSTREAM:** `Case` + `USCISFormTemplate` + canonical profile.
 **DOWNSTREAM:** `PDFFieldMapper.mapFields(caseForm, template)` → `PDFRenderer.render` → `documents` (generated PDF) → `FilingPackageService` → petition package.
-**UI CONSUMERS:** INSZoom `components/uscis/USCISFormRenderer.jsx` (the full editing workspace, `:544,673,735,965,971,983,992,1002,1015,1028,1037,1047,1058,1063,1073,1091,1114,1139,1281,1643,1657`), `pages/CRMCaseDetail.jsx:606,2275`, `pages/USCISForms.jsx:121`. BAIS has **no** CaseForm UI at all.
+**UI CONSUMERS:** INSZoom `components/uscis/USCISFormRenderer.jsx` (the full editing workspace, `:544,673,735,965,971,983,992,1002,1015,1028,1037,1047,1058,1063,1073,1091,1114,1139,1281,1643,1657`), `pages/CRMCaseDetail.jsx:606,2275`, `pages/USCISForms.jsx:121`. Immiglance has **no** CaseForm UI at all.
 **API CONSUMERS:** `AutoFillService`, `uscis-form.service`, `interactive-form-review.service`, `PDFGenerationService`, `PDFValidationService`, `PDFFidelityService`, `FilingPackageService`, `CaseLifecycleOrchestrator.metrics`, `requireCaseFormAccess`.
 **DB COLLECTIONS:** `caseforms`, `uscisformtemplates`, `documents`, `auditlogs`, `tasks`.
 **EVENTS:** per-field `fieldHistory[]`, per-document `auditHistory[]`, `comments[]`; `AuditLog` rows via `AutoFillService.audit`.
@@ -385,7 +385,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `caseforms`, `uscisformtemplates`, `documents`, object storage.
 **UPSTREAM:** for `/preview` and `/download`, a generated PDF must already exist; INSZoom pre-fires `POST /forms/:id/generate` before both (`USCISFormRenderer.jsx:1072,1090`).
 **DOWNSTREAM:** the browser. Filing copy is gated to `["approved","ready_for_pdf","locked","generated"]` (`FormGenerationController.js:103,108-113`).
-**UI CONSUMERS:** INSZoom `USCISFormRenderer.jsx:1073` (preview → `window.open`), `:1091` (download → anchor), `:1114` (draft), `:1139` (filing copy); `pages/petition/PetitionViewer.jsx:67`; `pages/CRMCaseDetail.jsx:154,166-177` and `pages/Documents.jsx:75,100` (document preview via `<iframe>` + blob URL); `pages/petition/PdfDocumentPages.jsx:41` (react-pdf page stack). BAIS: **download-only, no viewer** — `Pages/Dashboard/Payments.jsx:362` (receipt) and `Pages/Dashboard/Messages.jsx:172-183` (attachments); `package.json` contains no PDF library.
+**UI CONSUMERS:** INSZoom `USCISFormRenderer.jsx:1073` (preview → `window.open`), `:1091` (download → anchor), `:1114` (draft), `:1139` (filing copy); `pages/petition/PetitionViewer.jsx:67`; `pages/CRMCaseDetail.jsx:154,166-177` and `pages/Documents.jsx:75,100` (document preview via `<iframe>` + blob URL); `pages/petition/PdfDocumentPages.jsx:41` (react-pdf page stack). IMMIGLANCE: **download-only, no viewer** — `Pages/Dashboard/Payments.jsx:362` (receipt) and `Pages/Dashboard/Messages.jsx:172-183` (attachments); `package.json` contains no PDF library.
 **API CONSUMERS:** `FilingPackageService.readItemBuffer` reads the same stored artifacts.
 **DB COLLECTIONS:** `caseforms`, `documents`, `auditlogs`.
 **EVENTS:** `PDF_DOWNLOADED`, `PDF_FILING_COPY_DOWNLOADED`.
@@ -401,7 +401,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `documents` + the stored file, `uscisformtemplates` (for field matching), `config/field-mapping.registry.js`, `config/autofill-document-types.js`.
 **UPSTREAM:** a `Document` must be uploaded and stored.
 **DOWNSTREAM:** `CanonicalBuilderService.addOcrCandidates` (`:279-301`) maps extraction fields through `OCR_FIELD_MAP` (`:111-142`) into canonical candidates; `CanonicalSyncService.syncFromExtraction` (`:46-49`) triggers the rebuild.
-**UI CONSUMERS:** **BAIS only.** `components/questionnaire/QuestionInput.jsx:29` (`AutofillButton` → `POST /document-intelligence/case/:caseId/autofill`), `Pages/Dashboard/DocumentReview.jsx:27,28,29,92` (the review queue). **INSZoom calls zero document-intelligence endpoints** — staff have no OCR review surface in the admin portal despite `reviewerRoles` being `super_admin`/`admin`/`team_lead`/`case_manager` server-side.
+**UI CONSUMERS:** **Immiglance only.** `components/questionnaire/QuestionInput.jsx:29` (`AutofillButton` → `POST /document-intelligence/case/:caseId/autofill`), `Pages/Dashboard/DocumentReview.jsx:27,28,29,92` (the review queue). **INSZoom calls zero document-intelligence endpoints** — staff have no OCR review surface in the admin portal despite `reviewerRoles` being `super_admin`/`admin`/`team_lead`/`case_manager` server-side.
 **API CONSUMERS:** `document.service`, `document.workflow.service`, `extraction-mapping.service`, `case-workbook.service`.
 **DB COLLECTIONS:** `documentextractions`, `documentanalyses`, `documentprocessingjobs`, `documents`, `cases`.
 **EVENTS:** job queue lifecycle (`queues/document-intelligence.queue.js` — an **in-process array + `setImmediate` drain** at `:7-46`, not BullMQ, despite `bullmq` being a declared dependency in `Backend/package.json`).
@@ -417,7 +417,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `documents`, `cases`, `beneficiaries`, `clients`, storage.
 **UPSTREAM:** authentication; for case-scoped documents, `canAccessCase`.
 **DOWNSTREAM:** OCR queue (`documentIntelligenceQueue.enqueue`), `CanonicalBuilderService.loadSources:223`, `CaseLifecycleOrchestrator.metrics:99-102` (documents milestone + filing-package detection by `tags:"filing-package"`), `evidence.service`, `FilingPackageService`, `PetitionAssemblyService`.
-**UI CONSUMERS:** BAIS `hooks/useDocumentChecklist.js:32,56,72`, `Pages/Dashboard/Documents.jsx:462,649`, `Dashboard.jsx:849`, `components/checklist/DocumentUploadControl.jsx`; INSZoom `pages/Documents.jsx:257,460,504`, `pages/CRMCaseDetail.jsx:154,168,268,561,808`, `pages/petition/PdfDocumentPages.jsx:41`.
+**UI CONSUMERS:** Immiglance `hooks/useDocumentChecklist.js:32,56,72`, `Pages/Dashboard/Documents.jsx:462,649`, `Dashboard.jsx:849`, `components/checklist/DocumentUploadControl.jsx`; INSZoom `pages/Documents.jsx:257,460,504`, `pages/CRMCaseDetail.jsx:154,168,268,561,808`, `pages/petition/PdfDocumentPages.jsx:41`.
 **API CONSUMERS:** OCR, canonical, petition, form-generation, lifecycle.
 **DB COLLECTIONS:** `documents`, `documentuploadsessions`, `documentextractions`, `cases`, `auditlogs`.
 **EVENTS:** `document.workflow.service` triggers `CanonicalSyncService.syncFromDocument`; upload-progress socket events.
@@ -433,10 +433,10 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `notifications`, `users` (role fan-out), `notificationpreferences`.
 **UPSTREAM:** ~32 call sites across case, questionnaire, document, payment, lead, and form modules.
 **DOWNSTREAM:** in-app bell, FCM push (`push.service.js`, `firebase-admin`), email (`emailTemplate`/`emailTo`/`emailData` passed through `createNotification`, e.g. `case-lifecycle-orchestrator.service.js:363-365`).
-**UI CONSUMERS:** BAIS `components/NotificationBell.jsx:46,55,68,122,129`, `services/notificationService.js:67,120`; INSZoom `contexts/NotificationContext.jsx:49,64,94,106`, `layouts/Layout.jsx:120-124,250,269,281`.
+**UI CONSUMERS:** Immiglance `components/NotificationBell.jsx:46,55,68,122,129`, `services/notificationService.js:67,120`; INSZoom `contexts/NotificationContext.jsx:49,64,94,106`, `layouts/Layout.jsx:120-124,250,269,281`.
 **API CONSUMERS:** every domain module that notifies.
 **DB COLLECTIONS:** `notifications`, `notificationpreferences`, `notificationtemplates`, `devicetokens`, `emaillogs`.
-**EVENTS:** Socket.IO. The two portals listen on **different event names** — BAIS on `new_notification` (`components/NotificationBell.jsx:68`), INSZoom on `notification:new` (`contexts/NotificationContext.jsx:158`). `createNotification` dual-emits both to the target user (`notification.service.js:245-246`), so direct notifications reach both. **But `createForRoles` emits only `notification:new`** (`:251`) — so every role-fanout notification (e.g. `lead_approved`, `quiz.service.js:314-318`) is invisible in real time to BAIS clients and only appears on the next bell fetch.
+**EVENTS:** Socket.IO. The two portals listen on **different event names** — Immiglance on `new_notification` (`components/NotificationBell.jsx:68`), INSZoom on `notification:new` (`contexts/NotificationContext.jsx:158`). `createNotification` dual-emits both to the target user (`notification.service.js:245-246`), so direct notifications reach both. **But `createForRoles` emits only `notification:new`** (`:251`) — so every role-fanout notification (e.g. `lead_approved`, `quiz.service.js:314-318`) is invisible in real time to Immiglance clients and only appears on the next bell fetch.
 **DEPENDENCIES:** `firebase-admin` (`config/firebase-admin.js`), `modules/email`, `modules/realtime`.
 **FAILURE IMPACT:** silent — users simply stop being told things. Nearly every call site is `.catch(() => null)`'d (e.g. `case-lifecycle-orchestrator.service.js:366,385`), so a notification failure never surfaces.
 **CHANGE IMPACT:** **MODERATE.** `notificationRules.js` supplies `{priority, channels}` defaults per `type` and is fallback-only (its own header comment records that all 32+ existing call sites pass explicit values). Adding a type without a rule entry is safe; renaming one silently drops it to defaults.
@@ -465,7 +465,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `users` (`GET /users/assignable`, `/users/case-managers`), `cases`.
 **UPSTREAM:** RBAC (`cases:assign`).
 **DOWNSTREAM:** `CaseLifecycleOrchestrator.onAssignment` (`:404-423`) → safety-net form provisioning + `recalculate`; `assigned` metric (`:158`) feeds the `case_assigned` milestone.
-**UI CONSUMERS:** INSZoom `pages/CRMCaseDetail.jsx:764-793` (assign modal), `pages/CRMCases.jsx:62-72` (pending-assignment queue), `components/CreateCaseModal.jsx:88`, `pages/TaskDetails.jsx:136`, `pages/Teams.jsx:225,244,253,263`. BAIS: none.
+**UI CONSUMERS:** INSZoom `pages/CRMCaseDetail.jsx:764-793` (assign modal), `pages/CRMCases.jsx:62-72` (pending-assignment queue), `components/CreateCaseModal.jsx:88`, `pages/TaskDetails.jsx:136`, `pages/Teams.jsx:225,244,253,263`. IMMIGLANCE: none.
 **API CONSUMERS:** `AssignmentService`, `NotificationOrchestrator`, `TimelineService`.
 **DB COLLECTIONS:** `cases`, `caseassignmentevents`, `users`, `notifications`, `auditlogs`.
 **EVENTS:** `case:assigned` realtime (INSZoom `CRMCases.jsx:104`); `CASE_REASSIGNED` audit.
@@ -481,7 +481,7 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `cases`, `users`, `documents`, `payments`, `answers`, `beneficiaries`, `tasks`, `appointments`, `messages` (aggregations in `dashboard.service.js`, 447 lines).
 **UPSTREAM:** all domain data.
 **DOWNSTREAM:** UI only.
-**UI CONSUMERS:** INSZoom `pages/Dashboard.jsx:922,931,940,965,986,998,1010`, `pages/Analytics.jsx:71-76`, `pages/PaymentsOverview.jsx:79,88`, `components/CaseManagerAnalyticsPanel.jsx:67`; BAIS `Pages/Dashboard/Dashboard.jsx` uses `/cases/my` + `/cases/:id/workflow`, not this module. **The `/api/dashboard/*` router itself has zero UI consumers** — INSZoom exclusively uses `/api/analytics/*` and `/api/cases/dashboard/*`. Verified by API-prefix extraction across both frontends.
+**UI CONSUMERS:** INSZoom `pages/Dashboard.jsx:922,931,940,965,986,998,1010`, `pages/Analytics.jsx:71-76`, `pages/PaymentsOverview.jsx:79,88`, `components/CaseManagerAnalyticsPanel.jsx:67`; Immiglance `Pages/Dashboard/Dashboard.jsx` uses `/cases/my` + `/cases/:id/workflow`, not this module. **The `/api/dashboard/*` router itself has zero UI consumers** — INSZoom exclusively uses `/api/analytics/*` and `/api/cases/dashboard/*`. Verified by API-prefix extraction across both frontends.
 **API CONSUMERS:** none.
 **DB COLLECTIONS:** `dashboards`, `scheduledreports`, and read-only across ~9 domain collections.
 **EVENTS:** none.
@@ -492,18 +492,18 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 ---
 
 ### MODULE: Documents page (UI)
-**INPUTS:** BAIS route `/dashboard/documents` and `/dashboard/documents/:caseId` (`BAIS/Frontend/src/App.jsx:87,92`); INSZoom route `/documents` and `/documents/:caseId` (`INSZoom/frontend/src/App.jsx:111-126`, guard module `documents`).
-**WRITES (via API):** BAIS — `POST /documents/upload` or the 3-step chunked session (`services/api.js:253-310`), `DELETE /documents/:docId` (`:312`), `POST /questionnaires/:id/answers` and `/answers/files`, `POST /employment-workflow/:caseId/submit`, `POST /family-workflow/:caseId/submit`, `POST /client-intake/me/submit`. INSZoom — `POST /documents` (multipart, `pages/Documents.jsx:257`), `PUT /documents/:id/review` (`:504`).
-**READS:** BAIS — `GET /cases/my`, `/employment-workflow/me`, `/questionnaires/case/:caseId?targetRole=` (up to 3 parallel roles, `Pages/Dashboard/Documents.jsx:220-222`), `/questionnaires/case/:caseId/checklists` (`:156`), `/documents/me`. INSZoom — `GET /cases`, `GET /documents?caseId=&limit=200` (`pages/Documents.jsx:419,428,460`).
+**INPUTS:** Immiglance route `/dashboard/documents` and `/dashboard/documents/:caseId` (`Immiglance/Frontend/src/App.jsx:87,92`); INSZoom route `/documents` and `/documents/:caseId` (`INSZoom/frontend/src/App.jsx:111-126`, guard module `documents`).
+**WRITES (via API):** Immiglance — `POST /documents/upload` or the 3-step chunked session (`services/api.js:253-310`), `DELETE /documents/:docId` (`:312`), `POST /questionnaires/:id/answers` and `/answers/files`, `POST /employment-workflow/:caseId/submit`, `POST /family-workflow/:caseId/submit`, `POST /client-intake/me/submit`. INSZoom — `POST /documents` (multipart, `pages/Documents.jsx:257`), `PUT /documents/:id/review` (`:504`).
+**READS:** Immiglance — `GET /cases/my`, `/employment-workflow/me`, `/questionnaires/case/:caseId?targetRole=` (up to 3 parallel roles, `Pages/Dashboard/Documents.jsx:220-222`), `/questionnaires/case/:caseId/checklists` (`:156`), `/documents/me`. INSZoom — `GET /cases`, `GET /documents?caseId=&limit=200` (`pages/Documents.jsx:419,428,460`).
 **UPSTREAM:** questionnaire assignment + document checklist generation.
 **DOWNSTREAM:** OCR queue; canonical rebuild; lifecycle recalculation.
-**UI CONSUMERS:** itself. BAIS composes `components/checklist/*`, `components/questionnaire/{CaseRoleChecklist,PrincipalCaseWorkspace,EmployeeSelfServiceView,QuestionInput}.jsx`.
+**UI CONSUMERS:** itself. Immiglance composes `components/checklist/*`, `components/questionnaire/{CaseRoleChecklist,PrincipalCaseWorkspace,EmployeeSelfServiceView,QuestionInput}.jsx`.
 **API CONSUMERS:** n/a.
 **DB COLLECTIONS:** (transitively) `documents`, `answers`, `cases`, `documentuploadsessions`.
-**EVENTS:** upload progress via a dedicated `XMLHttpRequest` path (`BAIS/Frontend/src/services/api.js:531-569`).
-**DEPENDENCIES:** `@tanstack/react-query` (BAIS), native file input.
+**EVENTS:** upload progress via a dedicated `XMLHttpRequest` path (`Immiglance/Frontend/src/services/api.js:531-569`).
+**DEPENDENCIES:** `@tanstack/react-query` (Immiglance), native file input.
 **FAILURE IMPACT:** this is the client portal's primary work surface — it is where a client answers the questionnaire *and* uploads evidence.
-**CHANGE IMPACT:** **HIGH** for BAIS. It is the only consumer of `useCaseQuestionnaire` / `useQuestionnaireAnswers` / `useDocumentChecklist` and of the three workflow submit endpoints. **Confirmed defect:** BAIS's XHR upload path (`services/api.js:531-569`) reads the access token once (`:536-537`) and **bypasses the 401→refresh→retry interceptor entirely**, so an upload started during a token rotation window fails outright.
+**CHANGE IMPACT:** **HIGH** for Immiglance. It is the only consumer of `useCaseQuestionnaire` / `useQuestionnaireAnswers` / `useDocumentChecklist` and of the three workflow submit endpoints. **Confirmed defect:** Immiglance's XHR upload path (`services/api.js:531-569`) reads the access token once (`:536-537`) and **bypasses the 401→refresh→retry interceptor entirely**, so an upload started during a token rotation window fails outright.
 
 ---
 
@@ -545,10 +545,10 @@ Plus `questionnaire.service.js:273` (`inferMasterDataPath`) and `:655-656` (libr
 **READS:** `payments`, `paymentledgerentries`, `paymentrequests`, `cases`, `users`, `companies`.
 **UPSTREAM:** Stripe (`modules/payments/payment.gateway.js:1-10`, `maxNetworkRetries` + 30 s timeout; `configurationStatus` at `:12-23`; `requireStripe` throws `503 STRIPE_NOT_CONFIGURED` at `:25-31`).
 **DOWNSTREAM:** `Case.plan.paymentStatus`, `Case.addons[].status`, revenue analytics.
-**UI CONSUMERS:** BAIS `Pages/Dashboard/Payments.jsx:80,95,96,163,362`, `PaymentSuccess.jsx:51,64,73`, `Dashboard.jsx:803,858`; INSZoom `pages/PaymentsOverview.jsx:67,79,88`, `pages/CRMCaseDetail.jsx:575,839`, `pages/CaseManagerDetails.jsx:190`.
+**UI CONSUMERS:** Immiglance `Pages/Dashboard/Payments.jsx:80,95,96,163,362`, `PaymentSuccess.jsx:51,64,73`, `Dashboard.jsx:803,858`; INSZoom `pages/PaymentsOverview.jsx:67,79,88`, `pages/CRMCaseDetail.jsx:575,839`, `pages/CaseManagerDetails.jsx:190`.
 **API CONSUMERS:** `case.controller.js` (addon purchase), `dashboard.service`, `report.service`.
 **DB COLLECTIONS:** `payments`, `paymentledgerentries`, `paymentrequests`, `cases`, `auditlogs`, `notifications`.
-**EVENTS:** Stripe webhooks; Socket.IO `payment:updated` (BAIS `Payments.jsx:123`, `PaymentSuccess.jsx:78`; INSZoom `CRMCaseDetail.jsx:591`, `PaymentsOverview.jsx:44`).
+**EVENTS:** Stripe webhooks; Socket.IO `payment:updated` (Immiglance `Payments.jsx:123`, `PaymentSuccess.jsx:78`; INSZoom `CRMCaseDetail.jsx:591`, `PaymentsOverview.jsx:44`).
 **DEPENDENCIES:** `stripe` (lazily required at `payment.gateway.js:3`).
 **FAILURE IMPACT:** clients cannot pay; the plan/addon gate on premium services stalls.
 **CHANGE IMPACT:** **HIGH.** The webhook is the only unauthenticated write path in the app and is signature-verified. **Note:** `billing.controller.getLedger` (`modules/billing/billing.controller.js:39-48`) and `getRequests` (`:50-60`) build their filter from query params **only** — unlike `payment.service.buildPaymentFilter`, they apply no user/case scoping, so any `financeRoles` holder reads the entire ledger. Also, INSZoom's `PaymentsOverview` period filter is inert: `period` is in the effect deps (`pages/PaymentsOverview.jsx:31,55`) but is never sent (`:64-67,79,88`).
@@ -621,7 +621,7 @@ Each entry traces the concrete files, routes, and tests that a change would touc
 | `Backend/src/modules/document-requirements/document-requirement.resolver.js` | per-role requirement resolution |
 | `Backend/src/modules/auth/auth.controller.js` (`/session-context`) | echoes `User.caseRole` to the client |
 
-**Frontend files:** BAIS `src/services/api.js`, `Pages/Dashboard/Documents.jsx`, `components/questionnaire/EmployeeSelfServiceView.jsx`, `components/questionnaire/PrincipalCaseWorkspace.jsx`; INSZoom `pages/CRMCases.jsx`, `pages/CRMCaseDetail.jsx`.
+**Frontend files:** Immiglance `src/services/api.js`, `Pages/Dashboard/Documents.jsx`, `components/questionnaire/EmployeeSelfServiceView.jsx`, `components/questionnaire/PrincipalCaseWorkspace.jsx`; INSZoom `pages/CRMCases.jsx`, `pages/CRMCaseDetail.jsx`.
 
 **Routes affected:** all of `/api/cases/*`, `/api/employer-profile/*`, `/api/employee-profile/*`, `/api/canonical/cases/:caseId/*`, `/api/cases/:caseId/forms/:formType/*`, `/api/uscis-forms/case/*`.
 
@@ -638,7 +638,7 @@ Justification: `caseRole` is not a label — it is the **partition key for the c
 
 **Backend consumers (non-test):** `models/Case.js:425-426,1029`; `CanonicalBuilderService.js:202,217,401,407`; `AutoFillService.js:342,351`; `case.controller.js:298` (assignment cascade filter `{parentCase, assignmentOverridden: {$ne:true}}`), `:1105-1150` (child creation), `:1443,:1497` (override flag); `case.service.js:158-159` (`parentCase`/`parentCaseId` query filters), `:596-598` (child listing, sorted by `childIndex`); `employer-profile.service.js` and `employee-profile.service.js` (principal resolution); `services/CaseNumberService.js` (child suffix).
 
-**Frontend:** INSZoom `pages/CRMCaseDetail.jsx` (child-cases table, driven by `GET /cases/:id/related`); BAIS `components/questionnaire/PrincipalCaseWorkspace.jsx:36,67`.
+**Frontend:** INSZoom `pages/CRMCaseDetail.jsx` (child-cases table, driven by `GET /cases/:id/related`); Immiglance `components/questionnaire/PrincipalCaseWorkspace.jsx:36,67`.
 
 **Routes affected:** `GET /api/cases/:id/related`, `PATCH /api/cases/:principalId/data-entry-mode`, `POST /api/cases/:principalId/invite-employee`, `PATCH /api/cases/:caseId/remove-employee`, `GET /api/employer-profile/:principalCaseId`, all canonical + autofill routes for child cases.
 
@@ -727,12 +727,12 @@ Justification: the architecture is genuinely built for this — `formVersionLock
 
 **Every guarded route** — `authenticate` is applied to roughly 337 of ~350 routes; the deliberate exceptions are `POST /auth/{login,register,refresh,forgot-password,reset-password,verify-email}`, `GET /auth/invite/:token`, `POST /auth/invite/:token/accept`, `GET /auth/google[/callback]`, `POST /api/payments/webhook/stripe` (`app.js:64`), `GET /api/health` (`app.js:70`), and the six public funnel endpoints (`leads/lead.routes.js:19,36`, `quiz.routes.js:32-35`, `consultation.routes.js:15-20`, `consultation-routing/routing.routes.js:16-17`, `telemetry.routes.js`, `entityConfig.routes.js` `/public`, `compliance.routes.js` `/disclaimer*`).
 
-**Frontend:** BAIS `services/api.js:1-172` (token store, pre-flight refresh, 401 replay), `context/AuthContext.jsx`, `components/AuthGate.jsx`, `context/SocketContext.jsx:36`, `Pages/Auth/*`, `Pages/Admin/AdminLogin.jsx`; INSZoom `services/api.js:13-145`, `contexts/AuthContext.jsx`, `contexts/SocketContext.jsx:37-52`, `components/ProtectedRoute.jsx`, `pages/Login.jsx`, `layouts/Layout.jsx`.
+**Frontend:** Immiglance `services/api.js:1-172` (token store, pre-flight refresh, 401 replay), `context/AuthContext.jsx`, `components/AuthGate.jsx`, `context/SocketContext.jsx:36`, `Pages/Auth/*`, `Pages/Admin/AdminLogin.jsx`; INSZoom `services/api.js:13-145`, `contexts/AuthContext.jsx`, `contexts/SocketContext.jsx:37-52`, `components/ProtectedRoute.jsx`, `pages/Login.jsx`, `layouts/Layout.jsx`.
 
 **Tests:** `modules/auth/auth.security.test.js`, `modules/auth/tests/employeeInvite.test.js`, `utils/logger.security.test.js`, `modules/authorization/tests/phase10-restricted-portal-rbac.test.js`, `routes/tests/{phase0,phase1}-regression.test.js`, `modules/tasks/task.authorization.test.js`, `modules/dashboard/payment-analytics-access.test.js`.
 
 **BLAST RADIUS: CRITICAL.**
-Justification: three separate hard contracts change together. (1) The **token payload** — `authenticate.js:28` compares `decoded.tokenVersion` to `user.tokenVersion`, and both frontends decode `exp` client-side (BAIS `services/api.js:13-28`) to decide whether to pre-refresh. (2) The **refresh cookie** — httpOnly, requires `credentials:"include"` on the client and `cors({credentials:true})` + `cookie-parser` on the server; a `SameSite`/domain change silently logs out every cross-origin user (the two portals are served from different origins). (3) The **error contract** — both portals auto-retry *only* on `401` with `code:"TOKEN_EXPIRED"` (BAIS `services/api.js:118-132`, INSZoom `services/api.js:122-135`); any change that turns an expired-token response into a different status or code converts a transparent refresh into a hard logout. And the existing `rotateSession` race (`session.service.js:30-43` + `errorHandler.js:27-30`, §15 "Session/refresh") means the *current* implementation already produces an unclassified 500 under concurrency, so any change here must fix or preserve that path deliberately.
+Justification: three separate hard contracts change together. (1) The **token payload** — `authenticate.js:28` compares `decoded.tokenVersion` to `user.tokenVersion`, and both frontends decode `exp` client-side (Immiglance `services/api.js:13-28`) to decide whether to pre-refresh. (2) The **refresh cookie** — httpOnly, requires `credentials:"include"` on the client and `cors({credentials:true})` + `cookie-parser` on the server; a `SameSite`/domain change silently logs out every cross-origin user (the two portals are served from different origins). (3) The **error contract** — both portals auto-retry *only* on `401` with `code:"TOKEN_EXPIRED"` (Immiglance `services/api.js:118-132`, INSZoom `services/api.js:122-135`); any change that turns an expired-token response into a different status or code converts a transparent refresh into a hard logout. And the existing `rotateSession` race (`session.service.js:30-43` + `errorHandler.js:27-30`, §15 "Session/refresh") means the *current* implementation already produces an unclassified 500 under concurrency, so any change here must fix or preserve that path deliberately.
 
 ---
 
@@ -787,7 +787,7 @@ Method for this section: a full `require()`-graph reachability pass from `Backen
 
 | # | Item | Evidence | Note |
 |---|---|---|---|
-| B1 | `POST /api/auth/google-token` always fails | `Backend/src/modules/auth/auth.controller.js:112-121` — validates `idToken`, then unconditionally throws `503 GOOGLE_AUTH_NOT_CONFIGURED`. Touches no model, no service | Deliberate (documented at `:102-110` — Firebase Auth removed). BAIS declares `authApi.googleToken` (`services/api.js:184`) and **never calls it**; the live Google path is the OAuth redirect at `AuthContext.jsx:160`. So the endpoint is a phantom on both sides |
+| B1 | `POST /api/auth/google-token` always fails | `Backend/src/modules/auth/auth.controller.js:112-121` — validates `idToken`, then unconditionally throws `503 GOOGLE_AUTH_NOT_CONFIGURED`. Touches no model, no service | Deliberate (documented at `:102-110` — Firebase Auth removed). Immiglance declares `authApi.googleToken` (`services/api.js:184`) and **never calls it**; the live Google path is the OAuth redirect at `AuthContext.jsx:160`. So the endpoint is a phantom on both sides |
 | B2 | `client.controller.saveProfile` | defined `modules/clients/client.controller.js:78`, exported `:145`, **no route file references it** | fully implemented, unreachable |
 | B3 | `user.controller.getAttorneys` | defined `modules/users/user.controller.js:59`, exported `:144`, never routed | unreachable — and `attorney` is not a valid `User.role` (see D3) |
 | B4 | `family-workflow.controller` exports `isFamilyCapable`, `canAccessFamilyCase`, `ensureFamilyChecklistReferences` (`:284-286`); `task.controller` exports `taskScope`, `canAccessTask` (`:191-192`) | exported for external use, referenced by nothing outside their own file | dead exports |
@@ -808,7 +808,7 @@ Method for this section: a full `require()`-graph reachability pass from `Backen
 | C7 | Push notifications degrade silently to `"Push notifications are temporarily unavailable"` whenever `firebase-admin` is unconfigured | `modules/notifications/push.service.js:10` |
 | C8 | `documentRequirements.js` L-1B keys use non-canonical `documentType` slugs that "will never match uploaded docs", left as placeholders | `modules/canonical/config/documentRequirements.js:13-15` |
 | C9 | **INSZoom's Expert Letters tab is entirely inert.** `fetchLetters` unconditionally `setLetters([])`; `handleCreateLetter` only closes the modal | `INSZoom/frontend/src/pages/CRMCaseDetail.jsx:662-665`, `:860-863`; tab at `:1566-1576`, body `:2490-2541`, modal `:2838-2862` |
-| C10 | **BAIS Dashboard fabricates a case when the user has none** — renders `caseId:"Pending"`, `visaCategory:"Not Selected"`, `assignedAgent:"BAIS Team"`, `agentEmail:"info@…"`, `uscisNumber:"Pending Assignment"` as if real case data | `BAIS/Frontend/src/Pages/Dashboard/Dashboard.jsx:894-904`, rendered at `:502` |
+| C10 | **Immiglance Dashboard fabricates a case when the user has none** — renders `caseId:"Pending"`, `visaCategory:"Not Selected"`, `assignedAgent:"Immiglance Team"`, `agentEmail:"info@…"`, `uscisNumber:"Pending Assignment"` as if real case data | `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx:894-904`, rendered at `:502` |
 | C11 | **INSZoom's "View Form" modal renders a raw JSON dump** of `selectedCaseForm.filledData` — no PDF, no link to the real workspace | `INSZoom/frontend/src/pages/USCISForms.jsx:1108-1150` |
 | C12 | **INSZoom's Payments period filter is inert** — `period` is in the effect deps but is never sent in any request | `INSZoom/frontend/src/pages/PaymentsOverview.jsx:20,31,55` vs `:64-67,79,88` |
 | C13 | **INSZoom's "Calculate Performance" button** fires `api.post('/leaderboard/calculate')` un-awaited, with no error handling and no refetch — the table never reflects the result | `INSZoom/frontend/src/pages/Leaderboard.jsx:116` |
@@ -847,17 +847,17 @@ Determined by extracting every API path prefix from both `src` trees and differe
 | `/billing` | `:56` | 6 | INSZoom uses `/payments` + `/analytics` instead |
 | `/data-rights` | `:65` | GDPR/DSAR | no UI |
 | `/petition-intelligence` | `:47` | — | no UI |
-| `/consultation-routing` (staff half) | `:61` | `/queue`, `/queue/:id/claim` | the public half is used by BAIS |
+| `/consultation-routing` (staff half) | `:61` | `/queue`, `/queue/:id/claim` | the public half is used by Immiglance |
 
 **Individually unreachable service surfaces:**
 
 | # | Item | Evidence |
 |---|---|---|
 | E1 | **All 10 `autoFillRoutes` endpoints** (`/api/cases/:caseId/forms/:formType/{autofill,preview,validation,regenerate,refresh,repopulate-fields,reset-auto-filled,rollback/:versionNumber}` + the two `fields/:fieldId/*` PATCHes) | `form-mapping/routes/autoFillRoutes.js:8-17`; zero call sites in either portal. `AutoFillService` is reached only internally, from `case-lifecycle-orchestrator.service.js:487` and `interactive-form-review.service.js:413` |
-| E2 | **`POST /api/employer-profile/:principalCaseId` and `GET /:principalCaseId` and `GET /summary/me`** | `employer-profile.routes.js:11-13`. BAIS declares `employerProfileApi.get/mySummary/save` at `BAIS/Frontend/src/services/api.js:498-501` and **calls none of them**; the component built for it, `BAIS/Frontend/src/components/questionnaire/CanonicalProfileForm.jsx`, is never imported; INSZoom has no employer-profile API at all. The **only** live writer of `EmployerProfile` canonical data is `AutoFillService.applyFormEditToProfile` (`AutoFillService.js:353`) — i.e. a staff member editing a USCIS form field |
+| E2 | **`POST /api/employer-profile/:principalCaseId` and `GET /:principalCaseId` and `GET /summary/me`** | `employer-profile.routes.js:11-13`. Immiglance declares `employerProfileApi.get/mySummary/save` at `Immiglance/Frontend/src/services/api.js:498-501` and **calls none of them**; the component built for it, `Immiglance/Frontend/src/components/questionnaire/CanonicalProfileForm.jsx`, is never imported; INSZoom has no employer-profile API at all. The **only** live writer of `EmployerProfile` canonical data is `AutoFillService.applyFormEditToProfile` (`AutoFillService.js:353`) — i.e. a staff member editing a USCIS form field |
 | E3 | **INSZoom calls zero `/document-intelligence` endpoints** — staff have no OCR review surface, despite `reviewerRoles` = `super_admin`/`admin`/`team_lead`/`case_manager` being granted server-side (`document-intelligence.routes.js:22-29`) | grep of `INSZoom/frontend/src` for `document-intelligence`: no matches |
 | E4 | 40+ declared-but-never-called wrappers in `INSZoom/frontend/src/services/api.js` — incl. `casesApi.createWithClient:158`, `update:159`, `archive:160`, `dashboardStats:149`, `uscisFormsApi.{createCaseForm:237,render:238,saveDraft:240,autoSave:241,saveSection:242,review:243,workspaceValidation:261,workspaceHistory:262,workspaceSources:263,workspaceComparison:264,searchWorkspaceFields:265}`, `formGenerationApi.regeneratePdf:270`, `eligibilityApi.{gaps:319,recommendations:320,recalculate:321,override:322}` | makes `api.js` a misleading guide to what the app actually does |
-| E5 | ~30 declared-but-never-called wrappers in `BAIS/Frontend/src/services/api.js` — incl. the entire `employerProfileApi`, `casesApi.create:441`, all 9 checklist/questionnaire-reference wrappers `:448-472`, `documentsApi.download:313`, `documentIntelligenceApi.casePrefillSummary:333` | `services/api.js:365-371` even admits one is "for a future caller" |
+| E5 | ~30 declared-but-never-called wrappers in `Immiglance/Frontend/src/services/api.js` — incl. the entire `employerProfileApi`, `casesApi.create:441`, all 9 checklist/questionnaire-reference wrappers `:448-472`, `documentsApi.download:313`, `documentIntelligenceApi.casePrefillSummary:333` | `services/api.js:365-371` even admits one is "for a future caller" |
 
 ## 0.8-F — Orphan backend modules (never `require()`d)
 
@@ -956,7 +956,7 @@ The brief asked whether `docs/architecture/FULL-SYSTEM-DEPENDENCY-GRAPH.mmd`, `d
 
 | Claim | Correction |
 |---|---|
-| `:10` — "`POST /leads/:id/consultation`, `PATCH /leads/:id/confirm-consultation`, `PATCH /leads/:id/approve` — **Do not exist.** … there is no automated lead-approval-to-case pipeline to test." | **WRONG for this branch.** `PATCH /api/eligibility-quiz/leads/:id/confirm-consultation`, `/complete-consultation`, `/approve`, `/reject` all exist (`modules/eligibility-quiz/quiz.routes.js:50-53`), are backed by a real state machine (`quiz.service.js:260-335`), send emails and role-fanout notifications (`:302-318`), and are fully wired in **both** portals (INSZoom `pages/Leads.jsx:167-173` via `services/api.js:310-313`; BAIS `Pages/Admin/AdminPortal.jsx:923-948`). The conversion terminus exists too: `POST /api/cases` with `creationSource:"lead_conversion"` flips the lead to `converted` and stamps `convertedCaseId` (`case.controller.js:1159-1163`). The prior audit inspected only `lead.routes.js` and did not check the `/eligibility-quiz` mount. **The pipeline is real; the prior report's Part 1 was skipped on a false premise.** |
+| `:10` — "`POST /leads/:id/consultation`, `PATCH /leads/:id/confirm-consultation`, `PATCH /leads/:id/approve` — **Do not exist.** … there is no automated lead-approval-to-case pipeline to test." | **WRONG for this branch.** `PATCH /api/eligibility-quiz/leads/:id/confirm-consultation`, `/complete-consultation`, `/approve`, `/reject` all exist (`modules/eligibility-quiz/quiz.routes.js:50-53`), are backed by a real state machine (`quiz.service.js:260-335`), send emails and role-fanout notifications (`:302-318`), and are fully wired in **both** portals (INSZoom `pages/Leads.jsx:167-173` via `services/api.js:310-313`; Immiglance `Pages/Admin/AdminPortal.jsx:923-948`). The conversion terminus exists too: `POST /api/cases` with `creationSource:"lead_conversion"` flips the lead to `converted` and stamps `convertedCaseId` (`case.controller.js:1159-1163`). The prior audit inspected only `lead.routes.js` and did not check the `/eligibility-quiz` mount. **The pipeline is real; the prior report's Part 1 was skipped on a false premise.** |
 | `:36-61` — EmployerProfile `legalName`/`contact.email` silently discarded into `conflictPending` | **Present in the committed branch (`c86c446`); an uncommitted working-tree fix appeared during this audit.** `git diff Backend/src/modules/cases/case.controller.js` (unstaged at the time of writing, authored by a concurrent workstream, not by this audit) now builds `canonicalData` conditionally and only stamps `source:"case_manager_edit"` when a real value was supplied — exactly the origin-side fix the prior report recommended at `:63-65`. The downstream machinery is unchanged: `models/EmployerProfile.js:31-41` still declares `conflictPending` and `utils/canonicalFieldWriter.js` still arbitrates on `STAFF_AUTHORITATIVE_SOURCES`, so **already-created profiles carrying a null `case_manager_edit` stamp are not repaired by this fix** — they need a data migration. **Newly material context either way:** the endpoint the report says the employer would use — `POST /api/employer-profile/:id` — has **zero UI callers in either portal** (§0.8-E2), so an employer cannot submit that data at all today; the only live writer is a staff form-edit via `AutoFillService.applyFormEditToProfile` |
 
 ## 17.5 — Corrections to `docs/audits/COMPREHENSIVE_AUDIT_V3_REPORT.md`
@@ -982,14 +982,14 @@ The brief asked whether `docs/architecture/FULL-SYSTEM-DEPENDENCY-GRAPH.mmd`, `d
 | 3 | RBAC | ✅ | ✅ (menu gating) | 7 roles branched on that cannot exist |
 | 4 | Case | ✅ | ✅ both portals | index-count ceiling; legacy/current split |
 | 5 | Lead | ✅ | ✅ both portals | split across `/leads` + `/eligibility-quiz/leads`; `team_lead` holds `leads:read` but is blocked by `authorizeRoles` |
-| 6 | Consultation | ✅ | ✅ BAIS public only | no staff calendar UI; `/consultation-routing/queue` unreachable |
+| 6 | Consultation | ✅ | ✅ Immiglance public only | no staff calendar UI; `/consultation-routing/queue` unreachable |
 | 7 | Case creation | ✅ | ✅ INSZoom (path A only) | **two divergent live implementations** |
 | 8 | Case lifecycle | ✅ | ✅ both portals | duplicate-`formCode` autofill loop bug |
 | 9 | EmployerProfile | ✅ | ❌ **no UI caller** | write path unreachable; silent-conflict defect persists |
-| 10 | EmployeeProfile | ✅ | ✅ BAIS Profile.jsx | gated on `caseRole` |
+| 10 | EmployeeProfile | ✅ | ✅ Immiglance Profile.jsx | gated on `caseRole` |
 | 11 | Beneficiary profile | ✅ | ❌ **no UI caller** | 12 dead HTTP routes |
 | 12 | Question | ✅ | ✅ INSZoom builder | `canonicalPath` is an unvalidated string contract |
-| 13 | Answer | ✅ | ✅ BAIS writes, INSZoom reads | family-scoped `caseId` query is load-bearing |
+| 13 | Answer | ✅ | ✅ Immiglance writes, INSZoom reads | family-scoped `caseId` query is load-bearing |
 | 14 | Questionnaire service | ✅ | ✅ both portals | widest write surface in the backend |
 | 15 | CanonicalBuilderService | ✅ | ❌ (no `/canonical` UI) | 3 unvalidated string maps define the whole pipeline |
 | 16 | CanonicalSyncService | ✅ | ❌ (side-effect only) | writes a participant store that autofill never reads |
@@ -999,9 +999,9 @@ The brief asked whether `docs/architecture/FULL-SYSTEM-DEPENDENCY-GRAPH.mmd`, `d
 | 20 | PDF rendering | ✅ | ✅ (indirect) | `pdf-lib` class-name dispatch; qpdf |
 | 21 | PDF editing | ✅ | ✅ INSZoom | missing `maxTimeMS` on the save reload; formCode-vs-id identity mismatch |
 | 22 | PDF download | ✅ | ✅ INSZoom | GET that writes a Document |
-| 23 | OCR | ✅ | ✅ **BAIS only** | staff have no review surface; default provider name unregistered |
-| 24 | Documents | ✅ | ✅ both portals | BAIS XHR upload bypasses token refresh |
-| 25 | Notifications | ✅ | ✅ both portals | role-fanout emits only `notification:new`; BAIS listens for `new_notification` |
+| 23 | OCR | ✅ | ✅ **Immiglance only** | staff have no review surface; default provider name unregistered |
+| 24 | Documents | ✅ | ✅ both portals | Immiglance XHR upload bypasses token refresh |
+| 25 | Notifications | ✅ | ✅ both portals | role-fanout emits only `notification:new`; Immiglance listens for `new_notification` |
 | 26 | Email | ✅ | n/a (server) | 4 production templates ship placeholder bodies |
 | 27 | Assignments | ✅ | ✅ INSZoom | 2 phantom `Case` fields silently dropped |
 | 28 | Dashboard | ✅ | ⚠️ `/analytics` only | the `/dashboard` mount itself has no caller |

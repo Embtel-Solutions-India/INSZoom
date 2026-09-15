@@ -101,7 +101,7 @@ const CreateCaseModal = ({
     setSubmitting(true)
     try {
       // Send the display label ("H-1B"), not the raw code ("h1b") — matches
-      // the visaType format BAIS's self-registration intake sends, so both
+      // the visaType format Immiglance's self-registration intake sends, so both
       // paths render identically in the cases table and downstream forms.
       const visaTypeLabel = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)?.label || form.visaType
       const payload = {

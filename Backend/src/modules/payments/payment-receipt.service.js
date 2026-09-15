@@ -21,7 +21,7 @@ async function generateReceipt({ payment, transaction, receipt }) {
     color: options.color || rgb(0.12, 0.16, 0.22),
   });
 
-  draw("BAIS Immigration Solutions", 54, 730, { size: 20, bold: true, color });
+  draw("Immiglance", 54, 730, { size: 20, bold: true, color });
   draw("Payment Receipt", 54, 694, { size: 17, bold: true });
   draw(`Receipt: ${receipt.receiptNumber}`, 54, 664);
   draw(`Invoice: ${payment.invoiceNumber}`, 54, 644);

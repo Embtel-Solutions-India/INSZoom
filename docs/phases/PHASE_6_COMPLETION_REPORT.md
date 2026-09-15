@@ -147,7 +147,7 @@ This was confirmed by reading the actual handler in the working tree. **The `PHA
 | `POST /api/cases` untouched | CONFIRMED |
 | `POST /api/leads`, `POST /api/leads/from-intake` untouched | CONFIRMED |
 | `POST /consultation/book` untouched | CONFIRMED |
-| `BAIS/Frontend/` untouched | CONFIRMED |
+| `Immiglance/Frontend/` untouched | CONFIRMED |
 | Live DB transition tests | PENDING — requires human smoke test (no reachable MongoDB instance or mongodb-memory-server in this environment) |
 
 ---
@@ -190,6 +190,6 @@ The following must be confirmed manually against a real MongoDB instance before 
 - `POST /api/cases` handler (`Backend/src/modules/cases/case.controller.js`) — untouched
 - `POST /api/leads`, `POST /api/leads/from-intake` (`Backend/src/modules/leads/`) — untouched
 - `POST /consultation/book` — untouched
-- All files in `BAIS/Frontend/` — untouched
+- All files in `Immiglance/Frontend/` — untouched
 - Auth middleware and JWT structure — untouched
 - AutoFillService, CanonicalSyncService — untouched

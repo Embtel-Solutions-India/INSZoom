@@ -359,7 +359,7 @@ class CaseLifecycleOrchestrator {
         caseId: caseData._id,
         link: "/dashboard",
         priority: "medium",
-        source: caseData.legacySource === "BAIS" ? "BAIS" : "shared",
+        source: ["Immiglance", "BAIS"].includes(caseData.legacySource) ? "Immiglance" : "shared",
         emailTemplate: "case-created-client",
         emailTo: clientEmail,
         emailData: { clientName: caseData.clientName, caseNumber },

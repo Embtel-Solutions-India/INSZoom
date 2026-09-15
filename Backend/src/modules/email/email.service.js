@@ -63,12 +63,11 @@ function wrapHtml(subjectText, lines = []) {
     <tr><td align="center">
       <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
         <tr>
-          <td style="background:linear-gradient(135deg,#0f766e 0%,#14b8a6 100%);padding:28px 36px;">
+          <td style="background:#1e3a5f;padding:28px 36px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td>
-                  <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:-0.5px;">BAIS</span>
-                  <span style="color:#ccfbf1;font-size:12px;font-weight:500;margin-left:8px;letter-spacing:1.5px;text-transform:uppercase;">Immigration Portal</span>
+                  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Immiglance</span>
                 </td>
               </tr>
             </table>
@@ -84,8 +83,8 @@ function wrapHtml(subjectText, lines = []) {
         <tr>
           <td style="padding:20px 36px 28px;">
             <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
-              This is an automated message from <strong>BAIS Immigration Portal</strong>. Please do not reply to this email.<br>
-              &copy; ${year} Bay Area Immigration Services. All rights reserved.
+              This is an automated message from <strong>Immiglance</strong>. Please do not reply to this email.<br>
+              &copy; ${year} Immiglance. All rights reserved.
             </p>
           </td>
         </tr>

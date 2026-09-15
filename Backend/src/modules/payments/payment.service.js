@@ -395,7 +395,7 @@ async function getOrCreateClientPayment(user, caseData, req) {
       baseAmount: caseData.plan?.amount,
       totalAmount: caseData.plan?.amount,
       packageName: normalizePackageName(caseData.plan?.tier),
-      legacySource: "BAIS",
+      legacySource: "Immiglance",
     }, user, req);
   } else if ((payment.amountPaid || 0) <= 0 && caseData.plan?.amount && payment.totalAmount !== caseData.plan.amount) {
     const tier = caseData.plan?.tier || payment.packageKey;

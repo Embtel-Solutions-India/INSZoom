@@ -3,12 +3,18 @@ const authenticate = require("../../middleware/authenticate");
 const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const ctrl = require("./uscis-form.controller");
+const accessService = require("./uscis-form-access.service");
 
 router.get("/", authenticate, authorizePermissions("forms:read"), ctrl.list);
 router.post("/", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:create"), ctrl.create);
 router.get("/registry", authenticate, authorizePermissions("forms:read"), ctrl.listRegistry);
 router.get("/registry/active", authenticate, authorizePermissions("forms:read"), ctrl.listActiveEditions);
 router.get("/registry/archived", authenticate, authorizePermissions("forms:read"), ctrl.listArchivedEditions);
+// Registry-wide health sweep (§30) — declared before /registry/:formCode so
+// "health" is never captured as a formCode param.
+router.get("/registry/health", authenticate, authorizePermissions("forms:read"), ctrl.getRegistryHealth);
+// Canonical visa vocabulary for the mapping editor (§32/§33).
+router.get("/registry/visa-registry", authenticate, authorizePermissions("forms:read"), ctrl.getVisaRegistry);
 router.get("/registry/:formCode/versions", authenticate, authorizePermissions("forms:read"), ctrl.getVersions);
 router.get("/sync/history", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:check_updates"), ctrl.getSyncHistory);
 router.post("/sync", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:check_updates"), ctrl.syncForms);
@@ -50,7 +56,40 @@ router.get("/case/:caseId/:formId/workspace/history", authenticate, authorizePer
 router.get("/case/:caseId/:formId/workspace/sources", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveSources);
 router.get("/case/:caseId/:formId/workspace/comparison", authenticate, authorizePermissions("forms:read"), ctrl.getInteractiveComparison);
 router.get("/case/:caseId/:formId/workspace/search", authenticate, authorizePermissions("forms:read"), ctrl.searchInteractiveFields);
-router.get("/:id/pdf", authenticate, authorizePermissions("forms:read"), ctrl.getTemplatePdf);
+// Two accepted credentials, never both optional: a normal authenticated
+// session, OR a short-lived signed grant minted by GET /:id/url. The signed
+// path exists because a PDF viewer/iframe cannot attach an Authorization
+// header — without it the caller's bearer token would have to be put in a
+// URL, which is strictly worse. An absent/!valid token falls through to the
+// normal authenticate + forms:read chain, so this widens nothing.
+function authenticateOrSignedGrant(req, res, next) {
+  if (req.query.token) {
+    try {
+      accessService.verifyFormAccessToken(String(req.query.token), req.params.id);
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
+  return authenticate(req, res, (authError) => {
+    if (authError) return next(authError);
+    return authorizePermissions("forms:read")(req, res, next);
+  });
+}
+
+router.get("/:id/pdf", authenticateOrSignedGrant, ctrl.getTemplatePdf);
+// §40 GET /:id/url — mint a short-lived signed link to the official PDF.
+router.get("/:id/url", authenticate, authorizePermissions("forms:read"), ctrl.getTemplatePdfUrl);
+// §30 per-form health (?deep=true additionally verifies the stored SHA-256).
+router.get("/:id/health", authenticate, authorizePermissions("forms:read"), ctrl.getTemplateHealth);
+// §32 visa mapping management — read for any forms:read holder; mutations
+// restricted to registry administrators, matching the activate/archive gate
+// above (case managers/team leads hold forms:update for CASE forms, which is
+// why the role allowlist, not the permission alone, is the binding check).
+router.get("/:id/mappings", authenticate, authorizePermissions("forms:read"), ctrl.listFormMappings);
+router.post("/:id/mappings", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.createFormMapping);
+router.patch("/:id/mappings/:mappingId", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.updateFormMapping);
+router.delete("/:id/mappings/:mappingId", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.deleteFormMapping);
 router.get("/:id", authenticate, authorizePermissions("forms:read"), ctrl.get);
 router.put("/:id", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:update"), ctrl.update);
 router.delete("/:id", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:delete"), ctrl.remove);

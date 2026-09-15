@@ -8,7 +8,7 @@ const ctrl = require("./employment-workflow.controller");
 
 // "client" is included alongside "employer" throughout: an employer-sponsored
 // case is usually driven by a plain "client" account that selected "employer"
-// during intake (see BAIS's resolveApplicableChecklistRoles), not a distinct
+// during intake (see Immiglance's resolveApplicableChecklistRoles), not a distinct
 // "employer" account type — only a real invited employee (role "employee")
 // is excluded, per the employer-centric rule that employees never initiate.
 router.get("/me", authenticate, authorizeRoles("employer", "employee", "client"), ctrl.getMyWorkspace);

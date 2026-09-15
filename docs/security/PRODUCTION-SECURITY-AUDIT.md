@@ -13,7 +13,7 @@ Status: remediation in progress. This report records verified repository evidenc
 ### P0: Bearer access tokens persisted in browser storage
 
 - Root cause: both portals previously stored access tokens in `localStorage`; INSZoom also stored refresh tokens there.
-- Remediation: access tokens are now memory-only. Refresh tokens are delivered through the existing HttpOnly cookie and are not returned in login JSON or stored by the portals. A non-sensitive session marker remains in BAIS localStorage so refresh can be attempted after reload.
+- Remediation: access tokens are now memory-only. Refresh tokens are delivered through the existing HttpOnly cookie and are not returned in login JSON or stored by the portals. A non-sensitive session marker remains in Immiglance localStorage so refresh can be attempted after reload.
 - Login password state is cleared after the authentication attempt in the client and admin login screens. The password still necessarily exists briefly in the browser to submit the authentication request; it is not persisted by the application.
 - Remaining requirement: verify cookie behavior on the deployed custom domains and rotate any tokens exposed by older builds.
 
@@ -64,7 +64,7 @@ node --check Backend/src/utils/logger.js
 node --check Backend/src/modules/realtime/realtime.gateway.js
 npm audit --prefix Backend --omit=dev
 npm audit --prefix INSZoom/frontend --omit=dev
-npm audit --prefix BAIS/Frontend --omit=dev
+npm audit --prefix Immiglance/Frontend --omit=dev
 ```
 
 ## MongoDB Connection-Pool Incident Remediation (2026-08-13)
@@ -134,7 +134,7 @@ This section records findings from a full-scope forensic audit (18 dimensions: e
 
 ### P1: Server-side login has no central role/portal gate
 
-- Root cause: `POST /api/auth/login` (`auth.service.js`) issues a valid token to any active, credentialed user regardless of role; portal separation (client vs. staff) is enforced only client-side, per-portal, in React state after the token already exists (`INSZoom/frontend/src/contexts/AuthContext.jsx:99`, `BAIS/Frontend/src/Pages/Admin/AdminLogin.jsx:52-56`).
+- Root cause: `POST /api/auth/login` (`auth.service.js`) issues a valid token to any active, credentialed user regardless of role; portal separation (client vs. staff) is enforced only client-side, per-portal, in React state after the token already exists (`INSZoom/frontend/src/contexts/AuthContext.jsx:99`, `Immiglance/Frontend/src/Pages/Admin/AdminLogin.jsx:52-56`).
 - Impact: whether a client-role token is rejected by staff-only backend routes depends entirely on each individual route carrying its own `authorizeRoles`/`authorizePermissions` check — confirmed present on the routes this session traced, but there is no defense-in-depth central gate if a future route is added without one.
 - Remediation: not yet implemented — recommend a documented, enforced convention (or a shared middleware default) rather than relying on per-route diligence alone.
 

@@ -42,7 +42,7 @@ const ROLE_PERMISSIONS = {
   // cases:update / companies:update: a "client" account is how most
   // employer-sponsored cases are actually driven (selected "employer" during
   // intake rather than holding a distinct "employer" account type — see
-  // BAIS's resolveApplicableChecklistRoles), so it needs the same
+  // Immiglance's resolveApplicableChecklistRoles), so it needs the same
   // case/company-management permissions "employer" has. Ownership is still
   // enforced per-case in employment-workflow.controller.js's
   // canAccessEmployerCase, not by this role-level grant alone.

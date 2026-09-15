@@ -194,7 +194,7 @@ const documentExtractionSchema = new mongoose.Schema(
         sourceFields: [String],
       },
     ],
-    // Phase H2 contract (must match BAIS/Frontend's handleAutofillResult +
+    // Phase H2 contract (must match Immiglance/Frontend's handleAutofillResult +
     // AC2/AC4): key is the question/masterData path (targetPath from the
     // semantic matcher); targetSystem distinguishes an editable draft-answer
     // write from a masterData suggestion routed through the review pipeline.

@@ -328,7 +328,7 @@ const documentSchema = new mongoose.Schema(
     deletedAt: Date,
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     auditHistory: [documentAuditSchema],
-    legacySource: { type: String, enum: ["BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
   },
   { timestamps: true }
 );

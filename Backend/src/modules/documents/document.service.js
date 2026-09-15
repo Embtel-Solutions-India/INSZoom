@@ -540,7 +540,7 @@ async function createUploadSession(payload, user) {
       documentType: payload.documentType,
       description: payload.description,
       tags: payload.tags,
-      legacySource: payload.legacySource || "BAIS",
+      legacySource: payload.legacySource || "Immiglance",
     },
     expiresAt: new Date(Date.now() + UPLOAD_SESSION_TTL_MS),
   });

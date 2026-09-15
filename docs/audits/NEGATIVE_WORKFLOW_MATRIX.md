@@ -206,7 +206,7 @@ frontend guard exists · **ABSENT** = neither · **PARTIAL** = enforced on some 
 | Surface | `POST /api/eligibility-quiz/submit` — `modules/eligibility-quiz/quiz.routes.js:35` (public, `optionalAuthenticate`, 60/min limiter `:13-18`) |
 | Enforcement | `quiz.service.js:83` → `submit()` calls `rejectIfHasCase(req)` first, then scores and creates **only** a `Lead`. `Case` is `require`d at `quiz.service.js:9` **solely** for the `Case.exists()` duplicate check at `:29` — there is no `Case.create`/`new Case` anywhere in the module. |
 | Secondary guard | `quiz.service.js:26-35` — if a logged-in submitter already owns a case, 409 `CASE_EXISTS`. Comment at `:21-25` documents this as defense-in-depth behind the frontend's `BlockIfHasCase`. |
-| Frontend (not relied on) | `BAIS/Frontend/src/components/eligibility/BlockIfHasCase.jsx` |
+| Frontend (not relied on) | `Immiglance/Frontend/src/components/eligibility/BlockIfHasCase.jsx` |
 | Verdict | **Server-side. Real.** Case creation is structurally impossible from this endpoint — the only `Case` write path is `POST /api/cases` (`case.routes.js:22`, SA/A/TL) and `POST /api/cases/create-with-client` (`:40`, STAFF). |
 
 **Live probe:**
@@ -643,7 +643,7 @@ A 409/422 mentioning "questionnaire" on (3) would be a **regression** against th
 ## T4.11 Direct URL navigation bypassing RBAC — **SERVER ✅ for role gates**
 
 **Client-side guards exist but are not the enforcement.**
-`BAIS/Frontend/src/components/ProtectedRoute.jsx:15` (auth state) and `:9-13`
+`Immiglance/Frontend/src/components/ProtectedRoute.jsx:15` (auth state) and `:9-13`
 `BlockEmployeeRoute` (redirects `employee` accounts to `/dashboard/documents`);
 `INSZoom/frontend/src/components/ProtectedRoute.jsx:5-51` checks `requiredRoles` (`:34`),
 `requiredPermissions` (`:39-44`) and `canAccessModule` (`:49`), and force-logs-out client-portal

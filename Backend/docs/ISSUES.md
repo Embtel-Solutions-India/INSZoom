@@ -230,7 +230,7 @@ Resolved by: `uscis-form.service.js` (`mergeFieldValues` rewrite + `renderCaseFo
 
 ---
 
-## Issue: BAIS Navbar Auth-State Race Condition
+## Issue: Immiglance Navbar Auth-State Race Condition
 
 ### ID
 ISSUE-002
@@ -245,7 +245,7 @@ High — a fully authenticated user, including staff on the internal build, sees
 Reported directly, with the root cause already substantially diagnosed: both symptoms (Login/Sign Up showing while authenticated; Dashboard/Messages/Payments tabs missing) were suspected to share a single cause in `Navbar.jsx`'s handling of the auth-loading window. Confirmed by reading the actual code before making any change.
 
 ### Root Cause
-**File: `BAIS/Frontend/src/components/Navbar.jsx`**
+**File: `Immiglance/Frontend/src/components/Navbar.jsx`**
 
 `AuthContext.jsx` exposes an explicit state machine — `AUTH_STATUS = { LOADING, AUTHENTICATED, UNAUTHENTICATED, ERROR }` and a derived `authLoading: authStatus === AUTH_STATUS.LOADING` — specifically so consumers can distinguish "we don't know yet" from "we know you're logged out." `AuthContext.jsx` already carries a comment documenting a "Phase 12 fix (P12-C2)" for `ProtectedRoute` having exactly this class of bug previously. `Navbar.jsx` was never updated to match: it destructured only `user` from `useAuth()`, never `authStatus`.
 
@@ -258,7 +258,7 @@ Two symptoms, one cause:
 - Dashboard/Messages/Payments tabs appeared to vanish and reappear on every navigation, since `sessionHasCase` resets and re-fetches per mount.
 
 ### Fix Applied
-**File: `BAIS/Frontend/src/components/Navbar.jsx` only.** `AuthContext.jsx` was not touched — its state machine was already correct; `Navbar.jsx` simply never read it.
+**File: `Immiglance/Frontend/src/components/Navbar.jsx` only.** `AuthContext.jsx` was not touched — its state machine was already correct; `Navbar.jsx` simply never read it.
 
 - Destructured `authStatus` alongside `user` from `useAuth()`. Added `const authResolving = authStatus === "loading" || authStatus === "error"`.
 - Auth section (desktop and mobile menu): while `authResolving`, render neither the profile dropdown nor Login/Sign Up — a neutral fixed-size placeholder (`<div className="w-9 h-9" />`) in the desktop view, nothing in the mobile menu. Only when `authStatus === "unauthenticated"` (i.e., session verification actually completed and found no user) does Login/Sign Up render. No spinner was added to the rest of the navbar (logo, nav links, hamburger) — only this one section's markup changed.
@@ -271,7 +271,7 @@ Two symptoms, one cause:
 - Does not change the underlying M0-slowness cause of `authStatus` staying in `loading`/`error` for multiple seconds — it changes what the UI shows *during* that window, not the window's length.
 
 ### Verification
-- Build: `npm run build` in `BAIS/Frontend` — succeeds, no errors. ✓
+- Build: `npm run build` in `Immiglance/Frontend` — succeeds, no errors. ✓
 - **Real-browser proof — NOT YET PERFORMED.** Per this investigation's own standing rule ("the only real proof... is the actual [rendered output]", established in ISSUE-001's Future Lesson #4), this fix must not be considered closed until verified in a real running browser: log in, confirm the profile dropdown appears (not Login/Sign Up) within ~2 seconds of the page becoming visible with no manual refresh, and confirm Dashboard/Messages/Payments appear once logged in with a case. This step is still outstanding and will close this issue when complete.
 
 ### Future Lessons

@@ -4,7 +4,7 @@
 // the employer never sees or chooses it.
 const env = require("../../../config/env");
 
-const FRONTEND_URL = process.env.BAIS_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
+const FRONTEND_URL = process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
 
 function subject() {
   return "You've been invited to complete your immigration case";

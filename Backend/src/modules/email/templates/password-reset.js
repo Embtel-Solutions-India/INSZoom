@@ -3,17 +3,17 @@
 // email + the stored hash/expiry, nothing role-specific.
 const env = require("../../../config/env");
 
-const FRONTEND_URL = process.env.BAIS_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
+const FRONTEND_URL = process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
 
 function subject() {
-  return "Reset your BAIS password";
+  return "Reset your Immiglance password";
 }
 
 function bodyLines(data = {}) {
   const link = `${FRONTEND_URL}/reset-password?token=${data.token}`;
   return [
     `Hi ${data.name || "there"},`,
-    `We received a request to reset the password for your BAIS Immigration Portal account.`,
+    `We received a request to reset the password for your Immiglance Immigration Portal account.`,
     `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>`,
     `Or copy this link into your browser: ${link}`,
     `This link expires in 1 hour.`,

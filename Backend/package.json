@@ -1,7 +1,7 @@
 {
   "name": "immigration-crm-backend",
   "version": "1.0.0",
-  "description": "Shared backend for BAIS Client Portal and INSZoom Admin CRM",
+  "description": "Shared backend for Immiglance Client Portal and INSZoom Admin CRM",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

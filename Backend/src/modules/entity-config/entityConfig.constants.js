@@ -56,7 +56,7 @@ const CANONICAL_STATUSES = Object.freeze([
   },
 ]);
 
-// Maps the current 5-state frontend vocabulary (BAIS/Frontend/src/utils/
+// Maps the current 5-state frontend vocabulary (Immiglance/Frontend/src/utils/
 // checklistStatus.jsx) onto the 6 canonical states with zero breakage.
 // "needs_attention" maps to "critical" (not "action_required"): checked
 // against its actual call sites (fieldItemStatus/documentItemStatus in that
