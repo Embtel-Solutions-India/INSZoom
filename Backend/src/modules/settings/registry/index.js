@@ -2,29 +2,42 @@
 // Mongo (SettingValue). Every category module exports an array of entries;
 // this aggregator flattens them into one Map keyed by dot-notation `key`
 // for O(1) lookup, plus indexes by category for the UI/catalog endpoint.
-const organization = require("./organization.registry");
-const security = require("./security.registry");
+//
+// "Settings Overhaul" pass — organization.registry.js/branding.registry.js/
+// integrations.registry.js/roles.registry.js were deleted (their content
+// had zero live runtime consumers, confirmed before deleting) and replaced
+// by firm/users/portal/intake/email/invoice below, matching Docketwise/
+// INSZoom's real settings taxonomy. workflow/modules/ai/data/billing are
+// UNCHANGED — their keys already have live consumers (SLA sweep, feature
+// flags, AI budget, retention sweep) that this pass did not touch, and
+// there was no reason to.
+const firm = require("./firm.registry");
+const users = require("./users.registry");
+const portal = require("./portal.registry");
 const notifications = require("./notifications.registry");
-const branding = require("./branding.registry");
+const intake = require("./intake.registry");
+const email = require("./email.registry");
+const invoice = require("./invoice.registry");
+const security = require("./security.registry");
 const workflow = require("./workflow.registry");
 const modules = require("./modules.registry");
 const ai = require("./ai.registry");
 const data = require("./data.registry");
-const integrations = require("./integrations.registry");
-const roles = require("./roles.registry");
 const billing = require("./billing.registry");
 
 const ALL_ENTRIES = [
-  ...organization,
-  ...security,
+  ...firm,
+  ...users,
+  ...portal,
   ...notifications,
-  ...branding,
+  ...intake,
+  ...email,
+  ...invoice,
+  ...security,
   ...workflow,
   ...modules,
   ...ai,
   ...data,
-  ...integrations,
-  ...roles,
   ...billing,
 ];
 

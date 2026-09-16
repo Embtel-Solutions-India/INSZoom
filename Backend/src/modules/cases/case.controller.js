@@ -28,6 +28,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const emailService = require("../email/email.service");
 const clientInviteService = require("../auth/clientInvite.service");
 const { generateOpaqueToken, hashToken } = require("../auth/password.service");
+const workflowSlaService = require("../settings/workflowSla.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
 const { getCaseStructure } = require("../../config/visaCategories");
@@ -954,6 +955,13 @@ exports.createCase = async (req, res, next) => {
         });
       }
       const status = assignedCaseManager ? "assigned" : "pending_assignment";
+      // §4.9 workflow.sla.* (settings/registry/workflow.registry.js) — a
+      // one-time snapshot of the current SLA day-counts, same "computed at
+      // creation" pattern as assignedAgent/agentEmail above. A best-effort
+      // failure here (e.g. the settings engine being briefly unavailable)
+      // must never block case creation itself — falls back to no SLA dates
+      // set on this case, same as it would with no wiring at all.
+      const slaDueDates = await workflowSlaService.computeInitialSlaDueDates().catch(() => undefined);
       const commonCaseData = {
         isDemoData: false,
         createdBy: req.user._id,
@@ -985,6 +993,7 @@ exports.createCase = async (req, res, next) => {
         assignedAgentUser: assignedCaseManager ? req.user._id : undefined,
         primaryOwner: assignedCaseManager || undefined,
         assignedCaseManager: assignedCaseManager || undefined,
+        slaDueDates,
         internalNotes: trimmedCaseDetails ? [{
           author: req.user._id,
           note: trimmedCaseDetails,

@@ -36,6 +36,12 @@ const PERMISSIONS = {
     "manage_general", "manage_security", "manage_roles", "manage_data",
     "manage_notifications", "manage_integrations", "manage_ai",
     "manage_branding", "manage_workflow", "manage_modules", "view_billing",
+    // Settings Overhaul pass — new category actions (firm/users/portal/
+    // intake/email/invoice), additive alongside the ones above (manage_roles
+    // is reused unchanged; roles.permissionOverrides just moved files, see
+    // settings/registry/users.registry.js).
+    "manage_firm", "manage_users", "manage_portal", "manage_intake",
+    "manage_email", "manage_invoice",
   ],
   // Phase 0 — Foundation & Compliance layer.
   entity_config: ["read", "update"],

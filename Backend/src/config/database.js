@@ -108,6 +108,18 @@ function installPoolDiagnostics(client) {
 // request open for a minute and a half. connectTimeoutMS/waitQueueTimeoutMS
 // were previously unset (driver defaults), so a brand-new connection attempt
 // or a pool-checkout wait had no explicit bound of their own either.
+// Confirmed live against this cluster (see docs/MONGODB_STARTUP_LOAD_FINDINGS.md):
+// mongoose's default autoIndex:true fires one createIndexes command PER
+// DECLARED INDEX across every one of the app's 74 models — 277 commands,
+// entirely unrelated to any real request or background job — the instant the
+// connection opens on every single process start. Individually fast once a
+// connection is available, but 277 near-simultaneous checkouts is exactly
+// what produced the pool_checkout_wait burst this file already had
+// diagnostics for. This is expensive, unnecessary, repeated-every-boot work
+// for indexes that in a running system essentially never change between
+// deploys — the standard fix is to manage index creation explicitly instead
+// of re-verifying it on every startup. Run src/scripts/syncIndexes.js after
+// any deploy that adds/changes a model's .index() declarations.
 async function connectDB() {
   installQueryProfiler();
   const poolOptions = {
@@ -118,6 +130,15 @@ async function connectDB() {
     connectTimeoutMS: Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 10000),
     waitQueueTimeoutMS: Number(process.env.MONGO_WAIT_QUEUE_TIMEOUT_MS || 10000),
     maxIdleTimeMS: Number(process.env.MONGO_MAX_IDLE_TIME_MS || 60000),
+    autoIndex: process.env.MONGO_AUTO_INDEX === "true",
+    // Separate from autoIndex — mongoose issues one createCollection command
+    // per model at connect time unless this is off, regardless of autoIndex.
+    // Confirmed live: with only autoIndex disabled, 72 more pool_checkout_wait
+    // events still fired on startup; command-monitoring isolated them to one
+    // "create" per model (74 total). Collections that already exist don't
+    // need re-verifying on every boot either — MongoDB creates a collection
+    // implicitly on its first real insert regardless.
+    autoCreate: process.env.MONGO_AUTO_CREATE === "true",
   };
   const conn = await mongoose.connect(env.mongoUri, poolOptions);
   installPoolDiagnostics(mongoose.connection.getClient());

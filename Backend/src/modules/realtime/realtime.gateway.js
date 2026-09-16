@@ -6,6 +6,44 @@ let io = null;
 // setup would need this shared via Redis instead.
 const onlineUsers = new Map();
 
+// Bounds concurrent DB lookups during the connection-auth cache-miss path.
+// A backend restart disconnects every open socket.io client at once; each
+// reconnects on its own first retry attempt (socket.io-client defaults —
+// see INSZoom/Immiglance SocketContext), so without this, a fleet of N
+// simultaneously-reconnecting sockets across N distinct users would all
+// call User.findById in the same instant, racing normal HTTP API traffic
+// for the same MongoDB pool (see docs/MONGODB_STARTUP_LOAD_FINDINGS.md).
+// This is on top of, not instead of, the getCachedUser/setCachedUser cache
+// below — the cache collapses repeat lookups for the same user (multiple
+// tabs, or the retry itself); this gate bounds the remaining distinct-user
+// lookups so they queue a few at a time instead of all landing at once.
+const AUTH_LOOKUP_CONCURRENCY = Math.max(1, Number(process.env.SOCKET_AUTH_LOOKUP_CONCURRENCY || 8));
+let activeAuthLookups = 0;
+const authLookupWaiters = [];
+
+function acquireAuthLookupSlot() {
+  if (activeAuthLookups < AUTH_LOOKUP_CONCURRENCY) {
+    activeAuthLookups += 1;
+    return Promise.resolve();
+  }
+  // sourceType/sourceName per docs/MONGODB_STARTUP_LOAD_FINDINGS.md's
+  // instrumentation convention — lets a future mongodb_pool_checkout_wait
+  // be cross-referenced against a real reconnect burst instead of guessed at.
+  require("../../utils/logger").info("socket_auth_lookup_queued", {
+    sourceType: "socket_connection_auth",
+    sourceName: "realtimeGateway",
+    queueDepth: authLookupWaiters.length + 1,
+    activeLookups: activeAuthLookups,
+  });
+  return new Promise((resolve) => authLookupWaiters.push(resolve));
+}
+
+function releaseAuthLookupSlot() {
+  const next = authLookupWaiters.shift();
+  if (next) next();
+  else activeAuthLookups = Math.max(0, activeAuthLookups - 1);
+}
+
 function init(httpServer, options = {}) {
   const { Server } = require("socket.io");
   const User = require("../../models/User");
@@ -14,6 +52,7 @@ function init(httpServer, options = {}) {
   const mongoose = require("mongoose");
   const caseService = require("../cases/case.service");
   const { verifyAccessToken } = require("../auth/token.service");
+  const { getCachedUser, setCachedUser } = require("../../config/redis");
   io = new Server(httpServer, {
     cors: {
       origin: options.origins || ["http://localhost:5173", "http://localhost:3002"],
@@ -28,7 +67,23 @@ function init(httpServer, options = {}) {
       const token = String(bearer || "").replace(/^Bearer\s+/i, "");
       if (!token) return next(new Error("Authentication required"));
       const decoded = verifyAccessToken(token);
-      const user = await User.findById(decoded.userId).select("_id role isActive tokenVersion");
+
+      // Same cache-aside used by middleware/authenticate.js on the HTTP path
+      // — reused here rather than duplicated (see config/redis.js).
+      let user;
+      const cached = await getCachedUser(decoded.userId);
+      if (cached) {
+        user = User.hydrate(cached);
+      } else {
+        await acquireAuthLookupSlot();
+        try {
+          user = await User.findById(decoded.userId).select("-password");
+        } finally {
+          releaseAuthLookupSlot();
+        }
+        if (user) setCachedUser(decoded.userId, user.toObject()).catch(() => {});
+      }
+
       if (!user?.isActive || (user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) return next(new Error("Invalid session"));
       socket.data.user = user;
       return next();

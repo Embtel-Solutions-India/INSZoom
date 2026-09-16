@@ -18,6 +18,7 @@ const E2E_PASSWORD = "E2eAudit!Passw0rd";
 
 const STAFF_FIXTURES = [
   { key: "admin", role: "admin", name: "E2E Audit Admin" },
+  { key: "superAdmin", role: "super_admin", name: "E2E Audit Super Admin" },
   { key: "teamLead", role: "team_lead", name: "E2E Audit Team Lead" },
   { key: "caseManager", role: "case_manager", name: "E2E Audit Case Manager" },
 ];

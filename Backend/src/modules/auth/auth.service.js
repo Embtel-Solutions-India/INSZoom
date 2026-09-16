@@ -11,6 +11,22 @@ const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const { invalidateUserCache } = require("../../config/redis");
 const { isPendingInvite } = require("./employeeInvite.service");
 const { isPendingClientInvite } = require("./clientInvite.service");
+const settingsEngine = require("../settings/settingsEngine.service");
+
+// Settings → Security → Account lockout (settings/registry/security.registry.js).
+// Replaces 3 previously-hardcoded "5 attempts / 15 minutes" blocks
+// (login/loginWithCaseId/loginWithUsername all had their own copy).
+// Mutates `user` in place; caller still does `await user.save()`.
+async function recordFailedLoginAttempt(user) {
+  const [maxAttempts, lockoutMinutes] = await Promise.all([
+    settingsEngine.getEffective("security.maxLoginAttempts", {}),
+    settingsEngine.getEffective("security.lockoutDurationMinutes", {}),
+  ]);
+  user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+  if (user.failedLoginAttempts >= maxAttempts) {
+    user.lockedUntil = new Date(Date.now() + lockoutMinutes * 60 * 1000);
+  }
+}
 
 function authPayload(user, accessToken, refreshToken, options = {}) {
   const userPayload = user.toAuthJSON ? user.toAuthJSON() : user;
@@ -168,8 +184,7 @@ async function login(email, password, req) {
   }
   const passwordMatches = await user.comparePassword(password);
   if (!passwordMatches) {
-    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    if (user.failedLoginAttempts >= 5) user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    await recordFailedLoginAttempt(user);
     user.loginHistory = [...(user.loginHistory || []).slice(-19), {
       loggedInAt: new Date(),
       ipAddress: req?.ip,
@@ -249,8 +264,7 @@ async function loginWithCaseId(caseNumber, password, req) {
   }
   const passwordMatches = await user.comparePassword(password);
   if (!passwordMatches) {
-    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    if (user.failedLoginAttempts >= 5) user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    await recordFailedLoginAttempt(user);
     user.loginHistory = [...(user.loginHistory || []).slice(-19), {
       loggedInAt: new Date(),
       ipAddress: req?.ip,
@@ -304,8 +318,7 @@ async function loginWithUsername(username, password, req) {
   }
   const passwordMatches = await user.comparePassword(password);
   if (!passwordMatches) {
-    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    if (user.failedLoginAttempts >= 5) user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    await recordFailedLoginAttempt(user);
     user.loginHistory = [...(user.loginHistory || []).slice(-19), {
       loggedInAt: new Date(),
       ipAddress: req?.ip,
