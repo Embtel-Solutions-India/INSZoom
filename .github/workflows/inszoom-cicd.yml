@@ -39,6 +39,8 @@ jobs:
 
       - name: Build Immiglance Frontend
         working-directory: Immiglance/Frontend
+        env:
+          VITE_INSZOOM_URL: ${{ secrets.BAIS_VITE_INSZOOM_URL }}
         run: npm run build
 
       - name: Package Immiglance Frontend
