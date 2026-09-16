@@ -38,6 +38,20 @@ router.get(
   ctrl.getUsers
 );
 router.get("/dashboard", authenticate, authorizeRoles(...adminRoles), authorizePermissions("users:read"), ctrl.getDashboard);
+// Settings → Users & Permissions (§5.2, §5.8) — mounted before /:id so
+// "locked"/"invite" are never swallowed by the :id param route below.
+router.get("/locked", authenticate, authorizeRoles(...adminRoles), authorizePermissions("users:read"), ctrl.listLockedUsers);
+router.post(
+  "/invite",
+  authenticate,
+  authorizeRoles(...adminRoles),
+  authorizePermissions("settings:manage_users"),
+  body("email").isEmail().normalizeEmail().withMessage("Valid email required"),
+  body("role").isIn(["admin", "team_lead", "case_manager"]).withMessage("role must be admin, team_lead, or case_manager"),
+  validate,
+  ctrl.inviteFirmMember
+);
+router.patch("/:id/unlock", authenticate, authorizeRoles(...adminRoles), authorizePermissions("users:update"), ctrl.unlockUser);
 router.get("/assignable", authenticate, authorizeRoles(...staffRoles), authorizePermissions("users:read"), ctrl.getAssignableUsers);
 router.get("/case-managers", authenticate, authorizeRoles(...staffRoles), authorizePermissions("users:read"), ctrl.getCaseManagers);
 // Online/last-seen status — not role-gated beyond being logged in, since

@@ -16,6 +16,7 @@ const reminderGenerationService = require("./modules/notifications/reminder-gene
 const aiOrchestrationService = require("./modules/ai/ai-orchestration.service");
 const reportService = require("./modules/reports/report.service");
 const settingsRetentionService = require("./modules/settings/retention.service");
+const workflowSlaService = require("./modules/settings/workflowSla.service");
 
 process.on("uncaughtException", (error) => {
   logger.fatal("uncaught_exception", { error });
@@ -53,6 +54,21 @@ function startSettingsRetentionMaintenance() {
       const result = await settingsRetentionService.runRetentionSweep();
       logger.info("settings_retention_sweep_complete", result);
     }).catch((error) => logger.error("settings_retention_sweep_failed", { error }));
+  scheduleInitialRun(run, initialDelayMs);
+  return setInterval(run, intervalMs);
+}
+
+// §4.9 workflow.sla.* — promotes cases to at_risk/breached as their SLA
+// dates pass. Runs more often than daily (hourly) since "breached" is a
+// user-visible state that should show up promptly, not just once a day.
+function startSlaSweepMaintenance() {
+  const intervalMs = Number(process.env.SLA_SWEEP_INTERVAL_MS || 60 * 60 * 1000);
+  const initialDelayMs = Number(process.env.SLA_SWEEP_INITIAL_DELAY_MS || 40 * 1000);
+  const run = () =>
+    withJobLock("sla-sweep", intervalMs * 3, async () => {
+      const result = await workflowSlaService.runSlaSweep();
+      logger.info("sla_sweep_complete", result);
+    }).catch((error) => logger.error("sla_sweep_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -202,6 +218,7 @@ connectDB()
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob();
     const settingsRetentionMaintenance = startSettingsRetentionMaintenance();
+    const slaSweepMaintenance = startSlaSweepMaintenance();
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         logger.fatal("port_in_use", { port: env.port, error });
@@ -215,6 +232,10 @@ connectDB()
       if (process.env.DOCUMENT_INTELLIGENCE_RECOVERY_ON_STARTUP !== "false") {
         require("./modules/document-intelligence/queues/document-intelligence.queue").startRecovery();
       }
+      // §5.6.3 — idempotent (no-ops once any isSystem template exists).
+      require("./scripts/seedSystemEmailTemplates").seedSystemEmailTemplates()
+        .then((result) => logger.info("system_email_templates_seed", result))
+        .catch((error) => logger.error("system_email_templates_seed_failed", { error }));
     });
     const shutdown = () => {
       clearInterval(workflowMaintenance);
@@ -226,6 +247,7 @@ connectDB()
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
       clearInterval(settingsRetentionMaintenance);
+      clearInterval(slaSweepMaintenance);
       server.close(() => {
         disconnectDB()
           .catch((error) => logger.error("mongodb_disconnect_failed", { error }))

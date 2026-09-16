@@ -5,6 +5,7 @@ const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const upload = require("../uploads/upload.middleware");
+const requirePortalCapability = require("../../middleware/requirePortalCapability");
 const ctrl = require("./document.controller");
 
 const allDocumentRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee", "beneficiary"];
@@ -13,7 +14,7 @@ const reviewRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 
 router.get("/me", authenticate, ctrl.getMyDocuments);
 router.get("/me/count", authenticate, ctrl.getMyDocumentsCount);
-router.post("/me", authenticate, upload.single("file"), ctrl.uploadDocument);
+router.post("/me", authenticate, requirePortalCapability("portal.allowClientDocumentUpload"), upload.single("file"), ctrl.uploadDocument);
 router.get("/user/:userId", authenticate, authorizeRoles("super_admin", "admin"), ctrl.getUserDocuments);
 router.post("/user/:userId", authenticate, authorizeRoles("super_admin", "admin"), upload.single("file"), ctrl.uploadDocument);
 

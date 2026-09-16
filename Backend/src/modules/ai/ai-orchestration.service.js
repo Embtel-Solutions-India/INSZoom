@@ -11,6 +11,8 @@ const TaskManagementService = require("../case-collaboration/services/TaskManage
 const caseService = require("../cases/case.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const logger = require("../../utils/logger");
+const settingsEngine = require("../settings/settingsEngine.service");
+const notificationService = require("../notifications/notification.service");
 
 // Bounds how many recovered AI jobs run concurrently per recovery tick —
 // mirrors document-intelligence.queue.js's DOCUMENT_INTELLIGENCE_CONCURRENCY
@@ -43,6 +45,57 @@ function redactSensitiveObject(value, key = "") {
   }
   if (/(ssn|socialsecurity|passport|aliennumber|anumber|bankaccount|routingnumber)/i.test(key.replace(/[^a-z]/gi, ""))) return "[REDACTED]";
   return value;
+}
+
+// §4.7 AI Platform budget gate (settings/registry/ai.registry.js). Reuses
+// the AIJob.usage.estimatedCost field/usage() aggregation that already
+// existed here — no separate ledger model was introduced; AIJob already IS
+// the usage ledger. A cap of 0 disables that check. Best-effort, in-memory
+// monthly-alert dedup (resets on restart) — acceptable for an advisory
+// alert, not a hard requirement like the cap itself.
+const alertedMonths = new Set();
+
+async function checkAiBudget(user) {
+  const monthlyCap = await settingsEngine.getEffective("ai.budget.monthlyUsdCap", {});
+  if (monthlyCap > 0) {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const rows = await usage({ from: startOfMonth });
+    const monthSpend = rows.reduce((sum, row) => sum + (row.estimatedCost || 0), 0);
+    if (monthSpend >= monthlyCap) {
+      // retryable:false — a 429 here is a hard budget wall, not a transient
+      // rate limit; without this, execute()'s catch block would treat it
+      // like a normal 429 and re-queue the (background) job for a pointless
+      // retry that will just hit the same cap again.
+      throw Object.assign(new Error(`Monthly AI budget of $${monthlyCap} has been reached.`), { status: 429, code: "AI_BUDGET_EXCEEDED", retryable: false });
+    }
+    const alertThresholdPct = await settingsEngine.getEffective("ai.budget.alertThresholdPct", {});
+    const monthKey = `${startOfMonth.getFullYear()}-${startOfMonth.getMonth()}`;
+    if (alertThresholdPct > 0 && (monthSpend / monthlyCap) * 100 >= alertThresholdPct && !alertedMonths.has(monthKey)) {
+      alertedMonths.add(monthKey);
+      notificationService.createForRoles(["super_admin", "admin"], {
+        type: "ai_budget_alert",
+        title: "AI spend approaching monthly cap",
+        message: `AI spend has reached ${((monthSpend / monthlyCap) * 100).toFixed(0)}% of the $${monthlyCap} monthly cap.`,
+        priority: "high",
+      }, user).catch(() => {});
+    }
+  }
+
+  const perUserDailyCap = await settingsEngine.getEffective("ai.budget.perUserDailyUsdCap", {});
+  if (perUserDailyCap > 0) {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const rows = await AIJob.aggregate([
+      { $match: { requestedBy: user._id, createdAt: { $gte: startOfDay } } },
+      { $group: { _id: null, total: { $sum: "$usage.estimatedCost" } } },
+    ]);
+    const userSpend = rows[0]?.total || 0;
+    if (userSpend >= perUserDailyCap) {
+      throw Object.assign(new Error(`Your daily AI budget of $${perUserDailyCap} has been reached.`), { status: 429, code: "AI_USER_BUDGET_EXCEEDED", retryable: false });
+    }
+  }
 }
 
 function rateLimit(userId, limit = 30) {
@@ -109,6 +162,7 @@ async function createJob(jobType, payload, user) {
 }
 
 async function callModel(job, promptKey, variables, user, req) {
+  await checkAiBudget(user);
   const template = await promptService.resolve(promptKey, user);
   const providerConfig = await providerRegistry.resolve(template.providerKey, user);
   const safeVariables = providerConfig.privacy?.sendSensitiveData === false ? redactSensitiveObject(variables) : variables;

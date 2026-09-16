@@ -2,11 +2,44 @@ const Redis = require("ioredis");
 const { EJSON } = require("mongodb");
 const env = require("./env");
 
-// Cache-aside layer for the per-request auth user lookup. Every helper here
-// is a safe no-op when REDIS_URL isn't configured, so the app behaves
-// identically to before this module existed in any environment without Redis.
+// Cache-aside layer for the per-request auth user lookup. When REDIS_URL
+// isn't configured (true in this dev environment — see
+// MONGODB_STARTUP_LOAD_FINDINGS.md §"Uncached auth lookup"), this used to be
+// a pure no-op, meaning EVERY authenticated HTTP request and EVERY socket.io
+// connection/reconnection hit User.findById uncached. That's fine for a
+// single staggered request, but a backend restart disconnects every open
+// socket.io client at once; each reconnects within its first retry attempt,
+// producing a burst of simultaneous uncached lookups that raced for the
+// same MongoDB connection-pool slots. Falls back to an in-process Map, the
+// same single-instance-correct pattern already used by
+// middleware/idleSessionGuard.js, instead of leaving this cache inert.
 const USER_CACHE_TTL_SECONDS = 60;
 const USER_CACHE_PREFIX = "auth:user:";
+const inMemoryUserCache = new Map(); // userId -> { value, expiresAt }
+
+function inMemoryGet(userId) {
+  const entry = inMemoryUserCache.get(String(userId));
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    inMemoryUserCache.delete(String(userId));
+    return null;
+  }
+  return entry.value;
+}
+
+function inMemorySet(userId, plainUser) {
+  inMemoryUserCache.set(String(userId), { value: plainUser, expiresAt: Date.now() + USER_CACHE_TTL_SECONDS * 1000 });
+}
+
+// Periodic sweep so a long-running process without Redis doesn't accumulate
+// one entry per distinct user forever — mirrors the sweep style already used
+// by the settings-retention/SLA maintenance jobs in server.js.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of inMemoryUserCache) {
+    if (entry.expiresAt <= now) inMemoryUserCache.delete(key);
+  }
+}, 5 * 60 * 1000).unref?.();
 
 let client;
 let triedConnect = false;
@@ -36,7 +69,7 @@ function cacheKey(userId) {
 // native driver types, not stringified ones.
 async function getCachedUser(userId) {
   const redis = getClient();
-  if (!redis) return null;
+  if (!redis) return inMemoryGet(userId);
   try {
     const raw = await redis.get(cacheKey(userId.toString()));
     return raw ? EJSON.parse(raw) : null;
@@ -47,7 +80,7 @@ async function getCachedUser(userId) {
 
 async function setCachedUser(userId, plainUser) {
   const redis = getClient();
-  if (!redis) return;
+  if (!redis) return inMemorySet(userId, plainUser);
   try {
     await redis.set(cacheKey(userId.toString()), EJSON.stringify(plainUser), "EX", USER_CACHE_TTL_SECONDS);
   } catch {
@@ -56,8 +89,10 @@ async function setCachedUser(userId, plainUser) {
 }
 
 async function invalidateUserCache(userId) {
+  if (!userId) return;
+  inMemoryUserCache.delete(String(userId));
   const redis = getClient();
-  if (!redis || !userId) return;
+  if (!redis) return;
   try {
     await redis.del(cacheKey(userId.toString()));
   } catch {

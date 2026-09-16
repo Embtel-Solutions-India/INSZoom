@@ -5,6 +5,7 @@ const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const upload = require("../uploads/upload.middleware");
+const requirePortalCapability = require("../../middleware/requirePortalCapability");
 const ctrl = require("./message.controller");
 
 const messageRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee"];
@@ -25,6 +26,7 @@ router.post(
   authenticate,
   authorizeRoles(...messageRoles),
   authorizePermissions("messages:create"),
+  requirePortalCapability("portal.allowClientMessages"),
   upload.array("attachments", 5),
   body("message").optional().isString(),
   body("messageBody").optional().isString(),
@@ -44,6 +46,7 @@ router.post(
   authenticate,
   authorizeRoles(...messageRoles),
   authorizePermissions("messages:create"),
+  requirePortalCapability("portal.allowClientMessages"),
   upload.array("attachments", 5),
   ctrl.sendThreadMessage
 );

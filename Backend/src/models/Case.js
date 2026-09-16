@@ -881,6 +881,22 @@ const caseSchema = new mongoose.Schema(
     },
 
     /**
+     * Settings-engine-driven SLA tracking (workflow.sla.* — see
+     * Backend/src/modules/settings/registry/workflow.registry.js). Computed
+     * once at creation time from whatever the SLA day-counts were AT THAT
+     * MOMENT (see case.controller.js's createCase) — changing the setting
+     * later only affects newly-created cases, not existing ones, same as
+     * every other "snapshot at creation" field on this model. slaStatus is
+     * advanced by modules/settings/slaSweep.service.js's daily job.
+     */
+    slaDueDates: {
+      intake: Date,
+      rfeResponse: Date,
+      docCollection: Date,
+    },
+    slaStatus: { type: String, enum: ["on_track", "at_risk", "breached"], default: "on_track", index: true },
+
+    /**
      * The Lead document that was converted to create this case.
      * Only set when creationSource = 'lead_conversion'.
      * Null for direct-creation cases.

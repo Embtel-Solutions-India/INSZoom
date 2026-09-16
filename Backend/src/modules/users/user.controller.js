@@ -137,6 +137,39 @@ async function updateStatus(req, res, next) {
   }
 }
 
+// Settings → Users & Permissions → "Invite Firm Member" (§5.2.1).
+async function inviteFirmMember(req, res, next) {
+  try {
+    const { inviteFirmMember: invite } = require("../auth/staffInvite.service");
+    const user = await invite({ name: req.body.name, email: req.body.email, role: req.body.role }, req.user);
+    res.status(201).json({ success: true, user: { _id: user._id, email: user.email, name: user.name, role: user.role } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Settings → Users & Permissions → "Locked Users" panel (§5.8).
+async function listLockedUsers(req, res, next) {
+  try {
+    const User = require("../../models/User");
+    const locked = await User.find({ lockedUntil: { $gt: new Date() } }).select("name displayName email role lockedUntil failedLoginAttempts");
+    res.json({ success: true, users: locked });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function unlockUser(req, res, next) {
+  try {
+    const User = require("../../models/User");
+    const user = await User.findByIdAndUpdate(req.params.id, { $set: { failedLoginAttempts: 0 }, $unset: { lockedUntil: 1 } }, { new: true }).select("name displayName email role lockedUntil");
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    res.json({ success: true, user });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   createUser,
   deleteUser,
@@ -151,4 +184,7 @@ module.exports = {
   getUsers,
   updateStatus,
   updateUser,
+  inviteFirmMember,
+  listLockedUsers,
+  unlockUser,
 };

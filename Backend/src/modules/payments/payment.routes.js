@@ -5,6 +5,7 @@ const authenticate = require("../../middleware/authenticate");
 const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
+const requirePortalCapability = require("../../middleware/requirePortalCapability");
 const ctrl = require("./payment.controller");
 
 const paymentReadRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user"];
@@ -49,7 +50,7 @@ router.get("/webhooks/monitor", authenticate, authorizeRoles(...financeRoles), a
 router.get("/reconciliation/scan", authenticate, authorizeRoles(...financeRoles), authorizePermissions("payments:report"), ctrl.reconciliationScan);
 router.get("/reports", authenticate, authorizeRoles(...financeRoles), authorizePermissions("payments:report"), ctrl.getFinanceStats);
 router.post("/reports", authenticate, authorizeRoles(...financeRoles), authorizePermissions("payments:report"), ctrl.generateRevenueReport);
-router.get("/", authenticate, authorizeRoles(...paymentReadRoles), authorizePermissions("payments:read"), ctrl.getPayments);
+router.get("/", authenticate, authorizeRoles(...paymentReadRoles), authorizePermissions("payments:read"), requirePortalCapability("portal.showInvoices"), ctrl.getPayments);
 router.post(
   "/",
   authenticate,
