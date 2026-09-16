@@ -50,6 +50,7 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.BAIS_VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.BAIS_VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.BAIS_VITE_FIREBASE_APP_ID }}
+          VITE_INSZOOM_URL: ${{ secrets.BAIS_VITE_INSZOOM_URL }}
         run: npm run build
 
       - name: Package Immiglance Frontend
