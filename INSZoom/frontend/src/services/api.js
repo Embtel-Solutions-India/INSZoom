@@ -245,6 +245,26 @@ export const uscisFormsApi = {
   templatePdf: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { responseType: 'blob' }),
   caseForms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
   createCaseForm: (caseId, payload) => api.post(`/uscis-forms/case/${caseId}`, payload),
+  // Registry-driven form visibility (Phase 1): the full applicable form set
+  // for this case's visa, provisioned or not - not just the CaseForms that
+  // already exist (that's caseForms() above, still used by the workspace).
+  formsOverview: (caseId) => api.get(`/cases/${caseId}/forms-overview`),
+  // On-demand live USCIS fetch (Phase 2) for a mapped form with no active
+  // template yet.
+  acquireForm: (caseId, formNumber) => api.post(`/cases/${caseId}/forms/acquire`, { formNumber }),
+  // Curated + biographic-fallback autofill for one already-provisioned form
+  // (Phase 3) - distinct from the bulk casesApi.generateForms(), which
+  // provisions/autofills every AUTO_CREATE form on the case but does not run
+  // the biographic fallback.
+  autofill: (caseId, formId) => api.post(`/uscis-forms/case/${caseId}/${formId}/autofill`),
+  // Existing conditional-form decision endpoint (visaFormMapping.service.js's
+  // recordConditionalDecision) - "Add"/"Not applicable" actions on a
+  // CONDITIONAL_PENDING forms-overview row.
+  decideMapping: (caseId, mappingId, decision, reason) => api.post(`/cases/${caseId}/form-mappings/${mappingId}/decision`, { decision, reason }),
+  // Biographic Activation tier: no state change, just a staff notification
+  // asking an admin to complete a full curated mapping review for a
+  // biographic_active template.
+  requestMappingReview: (templateId) => api.post(`/uscis-forms/${templateId}/mapping-review-request`),
   render: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/render`),
   workspace: (caseId, formId) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace`),
   saveDraft: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/draft`, payload),

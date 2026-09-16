@@ -52,6 +52,7 @@ const Analytics = () => {
   const [paymentsData, setPaymentsData] = useState(null)
   const [processingTimeData, setProcessingTimeData] = useState([])
   const [rfeTrendsData, setRfeTrendsData] = useState([])
+  const [caseManagerWorkload, setCaseManagerWorkload] = useState([])
 
   // Only the very first load shows the full skeleton — changing the date
   // range afterwards updates the charts in place instead of blanking them.
@@ -67,13 +68,18 @@ const Analytics = () => {
       if (startDate) params.startDate = startDate
       if (endDate) params.endDate = endDate
 
-      const [analyticsRes, dashboardRes, revenueRes, paymentsRes, processingRes, rfeRes] = await Promise.all([
+      const [analyticsRes, dashboardRes, revenueRes, paymentsRes, processingRes, rfeRes, caseManagersRes] = await Promise.all([
         api.get('/analytics', { params }),
         api.get('/analytics/dashboard'),
         api.get('/analytics/revenue'),
         api.get('/analytics/payments'),
         api.get('/analytics/processing-time'),
-        api.get('/analytics/rfe-trends')
+        api.get('/analytics/rfe-trends'),
+        // Case manager workload isn't part of /analytics at all — it's the
+        // same real-time per-manager active/completed case counts the admin
+        // Dashboard's "Team Workload" panel already uses (see Dashboard.jsx's
+        // fetchTeamWorkload), reused here instead of re-deriving it.
+        api.get('/case-managers')
       ])
 
       setAnalyticsData(analyticsRes.data.analytics)
@@ -85,6 +91,18 @@ const Analytics = () => {
       setPaymentsData(paymentsRes.data)
       setProcessingTimeData(processingRes.data.processingTimes || [])
       setRfeTrendsData(rfeRes.data.rfeTrends || [])
+      const managers = caseManagersRes.data.data || caseManagersRes.data.caseManagers || []
+      setCaseManagerWorkload(managers.map(cm => {
+        const caseCount = cm.activeCasesCount || 0
+        const completedCases = cm.completedCasesCount || 0
+        const decided = caseCount + completedCases
+        return {
+          name: cm.displayName || cm.name || 'Unassigned',
+          caseCount,
+          completedCases,
+          score: decided > 0 ? Math.round((completedCases / decided) * 100) : 0,
+        }
+      }))
       setError('')
     } catch (error) {
       setError('Failed to load analytics data')
@@ -112,18 +130,24 @@ const Analytics = () => {
 
   // TAB 1: Overview
   const OverviewTab = () => {
-    const casesByVisaTypeData = analyticsData?.casesByVisaType?.map(item => ({
-      name: item._id,
+    // analyticsData is GET /analytics's response — a domain-nested object
+    // (analyticsData.cases.byVisaType, not a flat analyticsData.casesByVisaType),
+    // and each row's name is `key` (see dashboard.service.js's groupCount/
+    // mapGroups), with `_id` kept as a fallback for any raw-aggregate array
+    // that never went through groupCount — same defensive read the admin
+    // Dashboard page already uses for this exact data shape.
+    const casesByVisaTypeData = analyticsData?.cases?.byVisaType?.map(item => ({
+      name: item.key ?? item._id ?? 'Unspecified',
       value: item.count
     })) || []
 
-    const casesByStageData = analyticsData?.casesByStage?.map(item => ({
-      name: item._id,
+    const casesByStageData = analyticsData?.cases?.byStage?.map(item => ({
+      name: item.key ?? item._id ?? 'Unspecified',
       value: item.count
     })) || []
 
-    const casesByPackageData = analyticsData?.casesByPackage?.map(item => ({
-      name: item._id,
+    const casesByPackageData = analyticsData?.cases?.byPackage?.map(item => ({
+      name: (item.key ?? item._id) || 'No Package Selected',
       value: item.count
     })) || []
 
@@ -250,16 +274,21 @@ const Analytics = () => {
 
   // TAB 2: Revenue
   const RevenueTab = () => {
-    const revenueByVisaTypeData = analyticsData?.revenueByVisaType?.map(item => ({
-      name: item._id,
-      totalRevenue: Number(item.totalRevenue || 0) / 100,
-      pendingRevenue: Number(item.pendingRevenue || 0) / 100
+    // analyticsData.revenue.byVisaType/byPackage (dashboard.service.js's
+    // revenueAnalytics) use `revenue`/`outstanding` field names, not
+    // `totalRevenue`/`pendingRevenue` — mapped here rather than renamed on
+    // the backend since /analytics/revenue's existing byPackage shape is
+    // also read as-is elsewhere (PaymentsOverview.jsx).
+    const revenueByVisaTypeData = analyticsData?.revenue?.byVisaType?.map(item => ({
+      name: item._id ?? 'Unspecified',
+      totalRevenue: Number(item.revenue || 0) / 100,
+      pendingRevenue: Number(item.outstanding || 0) / 100
     })) || []
 
-    const revenueByPackageData = analyticsData?.revenueByPackage?.map(item => ({
-      name: item._id,
-      totalRevenue: Number(item.totalRevenue || 0) / 100,
-      pendingRevenue: Number(item.pendingRevenue || 0) / 100
+    const revenueByPackageData = analyticsData?.revenue?.byPackage?.map(item => ({
+      name: item._id || 'No Package Selected',
+      totalRevenue: Number(item.revenue || 0) / 100,
+      pendingRevenue: Number(item.outstanding || 0) / 100
     })) || []
 
     return (
@@ -338,8 +367,6 @@ const Analytics = () => {
 
   // TAB 3: Team Performance
   const TeamPerformanceTab = () => {
-    const caseManagerWorkload = analyticsData?.caseManagerWorkload || []
-
     return (
       <div className="space-y-6">
         {/* Case Manager Workload */}
@@ -407,15 +434,19 @@ const Analytics = () => {
 
   // TAB 4: RFE & AI
   const RFEAITab = () => {
-    const aiExtractionData = analyticsData?.aiExtractionSuccessRate?.map(item => ({
-      name: item._id,
+    // analyticsData.evidence (dashboard.service.js's evidenceAnalytics):
+    // aiExtraction groups DocumentExtraction by processingStatus (via
+    // groupCount, so `key` not `_id`); evidenceAssembly is a raw Case
+    // aggregate grouped by stage, so it genuinely is `_id`.
+    const aiExtractionData = analyticsData?.evidence?.aiExtraction?.map(item => ({
+      name: item.key ?? item._id ?? 'unknown',
       value: item.count
     })) || []
 
-    const evidenceAssemblyData = analyticsData?.evidenceAssemblyStats?.map(item => ({
-      name: item._id,
+    const evidenceAssemblyData = analyticsData?.evidence?.evidenceAssembly?.map(item => ({
+      name: item._id ?? 'Unspecified',
       value: item.count,
-      avgScore: item.avgReadinessScore
+      avgScore: Math.round((item.avgReadinessScore || 0) * 10) / 10
     })) || []
 
     return (

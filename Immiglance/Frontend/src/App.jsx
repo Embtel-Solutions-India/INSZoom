@@ -28,9 +28,7 @@ const ForgotPassword = lazy(() => import("./Pages/Auth/ForgotPassword"));
 const ResetPassword = lazy(() => import("./Pages/Auth/ResetPassword"));
 const AdminLogin = lazy(() => import("./Pages/Admin/AdminLogin"));
 const AdminPortal = lazy(() => import("./Pages/Admin/AdminPortal"));
-const EligibilityIntro = lazy(() => import("./Pages/Eligibility/EligibilityIntro"));
 const EligibilityQuiz = lazy(() => import("./Pages/Eligibility/EligibilityQuiz"));
-const EligibilityResults = lazy(() => import("./Pages/Eligibility/EligibilityResults"));
 const BookConsultation = lazy(() => import("./Pages/Consultation/BookConsultation"));
 const ManageBooking = lazy(() => import("./Pages/Consultation/ManageBooking"));
 const LegacyHolding = lazy(() => import("./Pages/Auth/LegacyHolding"));
@@ -44,23 +42,13 @@ export default function App() {
         {/* Layout wrapper */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
-
-          {/* Public eligibility intro + free consultation booking — no
-              ProtectedRoute, reachable by anonymous prospects. /eligibility
-              is wrapped in BlockIfHasCase so a client who already has a case
-              (or an invited employee) can't retake the quiz by URL/stale
-              link — see components/eligibility/BlockIfHasCase.jsx. Results
-              stays open since it's the read-only outcome of a quiz just
-              taken. The quiz itself (/eligibility/quiz) is standalone below,
-              same pattern as /dashboard/intake — it's a questionnaire flow,
-              not a browsing page, so it shouldn't render with the global Navbar. */}
-          <Route element={<BlockIfHasCase />}>
-            <Route path="/eligibility" element={<EligibilityIntro />} />
-          </Route>
-          <Route path="/eligibility/results/:leadId?" element={<EligibilityResults />} />
-          <Route path="/consultation/book/:leadId?" element={<BookConsultation />} />
-          <Route path="/consultation/booking/:token" element={<ManageBooking />} />
         </Route>
+
+        {/* /eligibility used to be a separate category/visa picker page
+            (shown with the navbar) before the quiz itself. That picker is
+            now the first two steps of the single continuous quiz below —
+            redirect old links/bookmarks straight there. */}
+        <Route path="/eligibility" element={<Navigate to="/eligibility/quiz" replace />} />
 
         {/* Client portal — themed sidebar + top-bar shell (PortalLayout)
             instead of the marketing Navbar. PHASE 3: routing based on auth +
@@ -121,6 +109,17 @@ export default function App() {
         <Route element={<BlockIfHasCase />}>
           <Route path="/eligibility/quiz" element={<EligibilityQuiz />} />
         </Route>
+        {/* Consultation booking previously lived under MainLayout (navbar +
+            its own EligibilityShell stacked). It immediately follows a
+            completed quiz (no results screen in between — see
+            EligibilityQuiz.jsx) and is also linked to from the logged-in
+            intake flow (Intake.jsx, as /consultation/book?leadId=...), so —
+            unlike the quiz above — it's deliberately left unguarded by
+            BlockIfHasCase, exactly as before; only the navbar is removed.
+            ManageBooking is reached via an emailed token link independent of
+            login state and was already unguarded. */}
+        <Route path="/consultation/book/:leadId?" element={<BookConsultation />} />
+        <Route path="/consultation/booking/:token" element={<ManageBooking />} />
 
         {/* Auth pages WITHOUT navbar */}
         <Route path="/login"          element={<Login />} />

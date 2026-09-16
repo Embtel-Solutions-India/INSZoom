@@ -9,6 +9,9 @@ const VisaFormMapping = require("../../models/VisaFormMapping");
 const { VISA_CATEGORIES } = require("../../config/visaCategories");
 const { createCrudController } = require("../../utils/crudFactory");
 const uscisFormService = require("./uscis-form.service");
+const AutoFillService = require("../form-mapping/services/AutoFillService");
+const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
+const CanonicalBiographicAutofill = require("./CanonicalBiographicAutofill");
 const uscisFormImporterService = require("./uscis-form-importer.service");
 const interactiveFormReviewService = require("./interactive-form-review.service");
 const accessService = require("./uscis-form-access.service");
@@ -117,6 +120,37 @@ async function approveTemplate(req, res, next) {
   try {
     const item = await VersionManagementService.approve(req.params.id, req.user, req);
     res.json({ success: true, data: item });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /uscis-forms/:id/mapping-review-request - no state change, just a
+// staff notification (reuses VersionManagementService.notify - the same
+// mechanism approve()/activate() already use to alert admins, never a
+// second notification path). Any staff member holding forms:read may
+// request; only an admin can act on it via the existing Approve/Activate
+// (or, for a biographic-tier template, a full curated mapping edit).
+async function requestMappingReview(req, res, next) {
+  try {
+    const USCISFormTemplate = require("../../models/USCISFormTemplate");
+    const template = await USCISFormTemplate.findById(req.params.id).select("formCode title version mappingStatus").lean();
+    if (!template) {
+      const error = new Error("USCIS form template not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    await VersionManagementService.notify(
+      ["super_admin", "admin"],
+      {
+        title: "Mapping review requested",
+        message: `${req.user?.name || req.user?.email || "A staff member"} requested a full curated mapping review for ${template.formCode} ${template.version}.`,
+        metadata: { templateId: template._id, formCode: template.formCode, mappingStatus: template.mappingStatus, requestedBy: req.user?._id },
+      },
+      req.user,
+      req
+    );
+    res.json({ success: true, requested: true });
   } catch (error) {
     next(error);
   }
@@ -549,6 +583,44 @@ async function renderCaseForm(req, res, next) {
   }
 }
 
+// POST /uscis-forms/case/:caseId/:formId/autofill - Phase 3: runs the
+// curated autofill (AutoFillService.generate - the same pipeline "Generate
+// USCIS Forms"/"Refresh Auto Fill" already uses) then the biographic
+// fallback (CanonicalBiographicAutofill) for whatever the curated pass left
+// blank. Exists as its own endpoint because provisioning a form (via
+// ensureAssignedForms/generateForms) does NOT by itself run the biographic
+// fallback - this is the explicit "make sure this specific form is as
+// filled as it can be" action, used by both the Forms tab's per-form
+// Autofill button and the on-demand acquisition flow.
+async function autofillCaseForm(req, res, next) {
+  try {
+    const caseData = await uscisFormService.getAccessibleCase(req.params.caseId, req.user, { requestId: req?.requestId });
+    const caseForm = await require("../../models/CaseForm").findOne({ _id: req.params.formId, caseId: caseData._id }).select("formCode");
+    if (!caseForm) {
+      const error = new Error("Case form not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    let curatedFill = null;
+    try {
+      curatedFill = await AutoFillService.generate(caseData._id, caseForm.formCode, req.user, req, {});
+    } catch (error) {
+      curatedFill = { error: error.message };
+    }
+    let biographicFill = null;
+    try {
+      const canonicalState = await CanonicalProfileService.get(caseData._id, req.user, req).catch(() => null);
+      const canonicalProfile = canonicalState?.profile || caseData.canonicalProfile?.profile || {};
+      biographicFill = await CanonicalBiographicAutofill.fillMissingBiographicFields(caseForm._id, canonicalProfile);
+    } catch (error) {
+      biographicFill = { error: error.message };
+    }
+    res.json({ success: true, data: { curatedFill, biographicFill } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function saveDraft(req, res, next) {
   try {
     const form = await uscisFormService.saveCaseForm(req.params.caseId, req.params.formId, req.body, req.user, req, "save_draft");
@@ -753,9 +825,11 @@ module.exports = {
   ...templates,
   addInteractiveComment,
   activateTemplate,
+  requestMappingReview,
   approveTemplate,
   archiveTemplate,
   autoSave,
+  autofillCaseForm,
   checkUpdates,
   compareCaseForm,
   createCaseForm,

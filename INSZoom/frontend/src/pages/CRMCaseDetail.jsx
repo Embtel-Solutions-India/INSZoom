@@ -404,6 +404,15 @@ const CRMCaseDetail = () => {
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
   const [formsWarning, setFormsWarning] = useState('')
+  // Phase 1: the full registry-resolved form set for this case's visa
+  // (provisioned or not) - the Forms tab's single source of truth for "what
+  // forms this case needs". caseForms (above) stays as-is; it's still what
+  // the interactive workspace opens by _id.
+  const [formsOverview, setFormsOverview] = useState({ items: [], diagnostics: [] })
+  const [formsOverviewError, setFormsOverviewError] = useState('')
+  // mappingId/formNumber currently mid-action, so only that row's buttons
+  // show a busy state rather than disabling the whole table.
+  const [rowActionPending, setRowActionPending] = useState('')
   const [eligibility, setEligibility] = useState(null)
   const [payments, setPayments] = useState([])
   const [letters, setLetters] = useState([])
@@ -660,6 +669,7 @@ const CRMCaseDetail = () => {
       const errorMessages = errorBlockers.length ? ` ${errorBlockers.map(item => item.message).join(' ')}` : ''
       setFormActionMessage(`${payload.message || 'USCIS forms were assigned and auto-filled from the canonical profile.'}${failures}${errorMessages}`)
       if (infoBlockers.length) setFormsWarning(infoBlockers.map(item => item.message).join(' '))
+      await fetchFormsOverview(true)
     } catch (error) {
       const data = error.response?.data || {}
       if (data.code === 'CANONICAL_NEEDS_REVIEW') {
@@ -671,6 +681,100 @@ const CRMCaseDetail = () => {
       setFormActionMessage(`${data.message || error.message || 'Unable to generate USCIS forms'}${issues}`)
     } finally {
       setTabLoading(prev => ({ ...prev, forms: false }))
+    }
+  }
+
+  // Phase 1: the full registry-resolved form set (provisioned or not) -
+  // read-only, never mutates anything itself.
+  const fetchFormsOverview = useCallback(async (force = false) => {
+    try {
+      const response = await uscisFormsApi.formsOverview(id)
+      setFormsOverview(response.data.data || { items: [], diagnostics: [] })
+      setFormsOverviewError('')
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormsOverviewError(data.message || error.message || 'Unable to load the full USCIS forms overview.')
+    }
+  }, [id])
+
+  // Phase 2: on-demand live fetch from uscis.gov for a mapped form whose
+  // template doesn't exist yet.
+  const handleAcquireForm = async (item) => {
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      const response = await uscisFormsApi.acquireForm(id, item.formNumber)
+      const payload = response?.data?.data || {}
+      if (payload.requiresActivation) {
+        const reason = payload.activationBlockedReason ? ` (${payload.activationBlockedReason})` : ''
+        setFormActionMessage(`${item.formNumber} was imported from uscis.gov and is awaiting admin review before it can be filed${reason}.`)
+      } else {
+        setFormActionMessage(`${item.formNumber} was fetched from uscis.gov, added to this case, and auto-filled.`)
+      }
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not fetch ${item.formNumber} from USCIS.`)
+    } finally {
+      setRowActionPending('')
+    }
+  }
+
+  // Phase 3: curated + biographic-fallback autofill for one already-
+  // provisioned form (distinct from generateCaseForms' bulk pass, which
+  // does not run the biographic fallback).
+  const handleAutofillForm = async (item) => {
+    if (!item.caseForm?.id) return
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      await uscisFormsApi.autofill(id, item.caseForm.id)
+      setFormActionMessage(`${item.formNumber} was re-autofilled from the canonical profile.`)
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not autofill ${item.formNumber}.`)
+    } finally {
+      setRowActionPending('')
+    }
+  }
+
+  // "Add"/"Not applicable" for a CONDITIONAL_PENDING row - the existing
+  // recordConditionalDecision endpoint.
+  const handleDecideMapping = async (item, decision) => {
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      await uscisFormsApi.decideMapping(id, item.mappingId, decision)
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not update ${item.formNumber}.`)
+    } finally {
+      setRowActionPending('')
+    }
+  }
+
+  // Biographic Activation tier: notifies admins a template needs a full
+  // curated mapping review - no state change, so no overview refresh needed.
+  const handleRequestMappingReview = async (item) => {
+    if (!item.caseForm?.id) return
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      const linkedForm = caseForms.find(f => f._id === item.caseForm.id)
+      const templateId = linkedForm?.formTemplateId?._id || linkedForm?.formTemplateId
+      if (!templateId) throw new Error('Could not resolve this form\'s template.')
+      await uscisFormsApi.requestMappingReview(templateId)
+      setFormActionMessage(`Requested a full mapping review for ${item.formNumber}.`)
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not request a mapping review for ${item.formNumber}.`)
+    } finally {
+      setRowActionPending('')
     }
   }
 
@@ -781,11 +885,11 @@ const CRMCaseDetail = () => {
   useEffect(() => {
     if (!id) return
     if (activeTab === 'documents' && !fetched.documents) fetchDocuments()
-    if (activeTab === 'forms' && !fetched.forms) fetchCaseForms()
+    if (activeTab === 'forms' && !fetched.forms) { fetchCaseForms(); fetchFormsOverview() }
     if (activeTab === 'strategy' && !fetched.strategy) fetchEligibility()
     if (activeTab === 'letters' && !fetched.letters) fetchLetters()
     if (activeTab === 'tracking' && !fetched.tracking) { fetchTracking(); ensureUsers() }
-  }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchEligibility, fetchLetters, fetchTracking, ensureUsers])
+  }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchFormsOverview, fetchEligibility, fetchLetters, fetchTracking, ensureUsers])
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
@@ -966,6 +1070,42 @@ const CRMCaseDetail = () => {
       locked: 'badge-info'
     }
     return colors[status] || 'badge-info'
+  }
+
+  // Phase 1: status chip for a forms-overview row (see form-registry.
+  // controller.js's deriveUiStatus for the server-side derivation this mirrors).
+  const UI_STATUS_LABEL = {
+    AUTOFILLED: 'Autofilled',
+    PROVISIONED: 'Added',
+    AVAILABLE_TO_PROVISION: 'Ready to add',
+    ACQUIRE_FROM_USCIS: 'Not on file yet',
+    CONDITIONAL_PENDING: 'Needs a decision',
+    LATER_STAGE: 'Later stage',
+    REFERENCE: 'Reference only',
+    RULE_CONFLICT: 'Configuration issue',
+    // Not a USCIS form (DOS/DOL, e.g. DS-160/ETA-9035) - never fetchable via
+    // "Fetch from USCIS", which only ever pulls from uscis.gov.
+    NOT_FETCHABLE_HERE: 'Not a USCIS form',
+    // Biographic Activation tier: a real, provisioned CaseForm exists and
+    // biographic-core fields (name/DOB/address/...) are autofillable, but
+    // the template hasn't passed a full curated mapping review yet - never
+    // shown as plain "Autofilled" (that implies full production activation).
+    BIOGRAPHIC_READY: 'Biographic autofill ready'
+  }
+  const getUiStatusColor = (uiStatus) => {
+    const colors = {
+      AUTOFILLED: 'badge-info',
+      PROVISIONED: 'bg-secondary text-foreground',
+      AVAILABLE_TO_PROVISION: 'badge-success',
+      ACQUIRE_FROM_USCIS: 'badge-warning',
+      CONDITIONAL_PENDING: 'badge-warning',
+      LATER_STAGE: 'bg-secondary text-foreground',
+      REFERENCE: 'bg-secondary text-foreground',
+      RULE_CONFLICT: 'badge-danger',
+      NOT_FETCHABLE_HERE: 'bg-secondary text-foreground',
+      BIOGRAPHIC_READY: 'badge-warning'
+    }
+    return colors[uiStatus] || 'bg-secondary text-foreground'
   }
 
   const getLetterStatusColor = (status) => {
@@ -2400,9 +2540,19 @@ const CRMCaseDetail = () => {
                           {form.lastModifiedAt || form.updatedAt ? new Date(form.lastModifiedAt || form.updatedAt).toLocaleString() : 'Not started'}
                         </td>
                         <td className="py-3 px-4">
-                          <button onClick={() => setSelectedCaseForm(form)} className="btn-primary text-sm">
-                            Open Form
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => setSelectedCaseForm(form)} className="btn-primary text-sm">
+                              Open Form
+                            </button>
+                            <button
+                              onClick={() => handleAutofillForm({ mappingId: `caseform-${form._id}`, formNumber: form.formCode, caseForm: { id: form._id } })}
+                              disabled={rowActionPending === `caseform-${form._id}`}
+                              className="btn-secondary text-sm"
+                              title="Re-run curated + biographic-fallback autofill for this form"
+                            >
+                              {rowActionPending === `caseform-${form._id}` ? 'Filling…' : 'Autofill'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2419,6 +2569,137 @@ const CRMCaseDetail = () => {
                   provided yet — fill them in manually, or they'll populate automatically
                   as the client completes their questionnaire.
                 </p>
+              </div>
+            )}
+
+            {/* Phase 1: every OTHER form the VisaFormMapping registry says this
+                case's visa needs, not yet a CaseForm above - mapped-but-not-
+                provisioned and mapped-but-not-yet-fetched-from-USCIS forms are
+                otherwise completely invisible. Rows already represented in the
+                table above (a CaseForm exists) are excluded here on purpose. */}
+            {formsOverview.items.some((item) => !item.caseForm) && (
+              <div className="mt-6 pt-6 border-t border-border">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-semibold text-foreground">Other Forms for This Visa</h4>
+                  <button onClick={() => fetchFormsOverview(true)} className="btn-secondary text-xs">Refresh</button>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Every other form the registry maps to {caseData?.visaType || 'this visa type'} — not yet on this case.
+                </p>
+                {formsOverviewError && (
+                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formsOverviewError}</div>
+                )}
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  Autofill covers biographic identity, contact, and address fields only — deeper, form-specific
+                  fields still need manual review. Forms are downloaded directly from the current version published
+                  on uscis.gov; always confirm the edition date matches the latest USCIS release before filing.
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Form</th>
+                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Status</th>
+                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formsOverview.items.filter((item) => item.uiStatus !== 'AUTOFILLED' && item.uiStatus !== 'PROVISIONED').map((item) => (
+                        <tr key={item.mappingId} className="border-b border-border">
+                          <td className="py-2 px-3">
+                            <p className="font-medium text-foreground text-sm">{item.formNumber}</p>
+                            <p className="text-xs text-muted-foreground">{item.formName}</p>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`badge ${getUiStatusColor(item.uiStatus)}`}>
+                              {UI_STATUS_LABEL[item.uiStatus] || item.uiStatus}
+                            </span>
+                            {item.uiStatus === 'RULE_CONFLICT' && (
+                              <p className="text-xs text-red-600 mt-1">This form's template can't be applied to this case yet — contact a registry admin.</p>
+                            )}
+                            {item.uiStatus === 'NOT_FETCHABLE_HERE' && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Issued by {item.agency} — no downloadable PDF on uscis.gov. Import it manually via the form registry.
+                              </p>
+                            )}
+                            {item.uiStatus === 'BIOGRAPHIC_READY' && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Autofill covers biographic identity, contact, and address fields only. A full field
+                                mapping review is required before this form is ready for filing.
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-2 px-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {item.officialPageUrl && (
+                                <a href={item.officialPageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                                  View on USCIS.gov
+                                </a>
+                              )}
+                              {item.uiStatus === 'ACQUIRE_FROM_USCIS' && (
+                                <button
+                                  onClick={() => handleAcquireForm(item)}
+                                  disabled={rowActionPending === item.mappingId}
+                                  className="btn-primary text-xs"
+                                >
+                                  {rowActionPending === item.mappingId ? 'Fetching…' : 'Fetch from USCIS'}
+                                </button>
+                              )}
+                              {item.uiStatus === 'AVAILABLE_TO_PROVISION' && (
+                                <button
+                                  onClick={generateCaseForms}
+                                  disabled={tabLoading.forms}
+                                  className="btn-primary text-xs"
+                                  title="Provisions and autofills every available form on this case"
+                                >
+                                  Add &amp; Autofill
+                                </button>
+                              )}
+                              {item.uiStatus === 'CONDITIONAL_PENDING' && (
+                                <>
+                                  <button
+                                    onClick={() => handleDecideMapping(item, 'ADD')}
+                                    disabled={rowActionPending === item.mappingId}
+                                    className="btn-primary text-xs"
+                                  >
+                                    Add
+                                  </button>
+                                  <button
+                                    onClick={() => handleDecideMapping(item, 'NOT_APPLICABLE')}
+                                    disabled={rowActionPending === item.mappingId}
+                                    className="btn-secondary text-xs"
+                                  >
+                                    Not Applicable
+                                  </button>
+                                </>
+                              )}
+                              {item.uiStatus === 'BIOGRAPHIC_READY' && (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      const form = caseForms.find(f => f._id === item.caseForm.id)
+                                      if (form) setSelectedCaseForm(form)
+                                    }}
+                                    className="btn-primary text-xs"
+                                  >
+                                    Open (Biographic Autofill)
+                                  </button>
+                                  <button
+                                    onClick={() => handleRequestMappingReview(item)}
+                                    disabled={rowActionPending === item.mappingId}
+                                    className="btn-secondary text-xs"
+                                  >
+                                    Request Full Mapping Review
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

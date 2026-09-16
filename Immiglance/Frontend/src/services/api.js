@@ -396,6 +396,9 @@ export const eligibilityQuizApi = {
     return api.get(`/eligibility-quiz/definition${q ? "?" + q : ""}`);
   },
   submit: (payload) => api.post("/eligibility-quiz/submit", payload),
+  // Fire-and-forget autosave after every answered step — never blocks the
+  // quiz's own step transition on a slow/failed network call.
+  draft: (payload) => api.post("/eligibility-quiz/draft", payload).catch(() => null),
 };
 
 // ── Free consultation booking (Phase 1 add-on) ───────

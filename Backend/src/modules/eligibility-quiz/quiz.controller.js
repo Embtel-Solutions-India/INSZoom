@@ -30,6 +30,15 @@ async function submit(req, res, next) {
   }
 }
 
+async function saveDraft(req, res, next) {
+  try {
+    const data = await quizService.saveDraft(req.body || {}, req);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function listLeads(req, res, next) {
   try {
     const result = await quizService.listLeads(req.query);
@@ -122,6 +131,6 @@ async function rejectLead(req, res, next) {
 }
 
 module.exports = {
-  getDefinition, getVisas, submit, listLeads, getLead, markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
+  getDefinition, getVisas, submit, saveDraft, listLeads, getLead, markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
   confirmConsultation, completeConsultation, approveLead, rejectLead,
 };

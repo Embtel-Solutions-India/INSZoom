@@ -101,6 +101,17 @@ const leadSchema = new mongoose.Schema(
     ipHash: String,
     userAgent: String,
 
+    // Correlates a public-quiz lead with the browser session that created it
+    // (see Immiglance's utils/eligibilitySession.js) so a draft save and the
+    // eventual final submit resolve to the same document instead of two.
+    sessionId: { type: String, index: true },
+
+    // True for a quiz still in progress (autosaved after each answered step),
+    // flipped to false the moment the quiz is actually submitted. Lets a
+    // visitor who closes the tab mid-quiz still leave a real, visible Lead
+    // behind with whatever they'd filled in so far.
+    isDraft: { type: Boolean, default: false, index: true },
+
     // ─── PHASE 2 ADDITIONS TO EXISTING LEAD MODEL ────────────────────────────
     // `source` already exists as a plain unrestricted string (no enum), so it
     // already accepts 'intake'/'direct' without a schema change — confirmed

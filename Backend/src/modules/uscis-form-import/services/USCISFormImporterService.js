@@ -114,8 +114,25 @@ class USCISFormImporterService {
     let lastError;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
+        // Bug fix (confirmed live, both against a fresh N-565 download and
+        // a re-download of the currently-active I-129's own official PDF):
+        // this used to call this.validation.validatePdfBuffer(downloaded.
+        // buffer) here - a full pdf-lib PDFDocument.load() parse of the RAW,
+        // not-yet-normalized bytes. Many real official USCIS PDFs (I-129
+        // confirmed; apparently not rare) ship with compressed object/xref
+        // streams pdf-lib cannot parse until qpdf normalizes them - exactly
+        // the case importFromBuffer's own normalizePdf-then-validate
+        // sequence three lines below this method's only real caller already
+        // exists to handle (see its comment: "normalizing here, before
+        // validation, is required for those PDFs to import at all"). Doing
+        // the strict parse HERE, before that normalization ever runs, threw
+        // PDF_CORRUPTED on a perfectly valid, official, current-edition
+        // USCIS PDF and made every URL-based import of such a form fail
+        // outright. fetchPdf() above already confirms the response is
+        // actually a PDF (content-type/%PDF- signature); the full
+        // parseability check correctly stays in importFromBuffer, after
+        // normalization, where it can succeed.
         const downloaded = await fetchPdf(url);
-        await this.validation.validatePdfBuffer(downloaded.buffer);
         return { ...downloaded, attempts: attempt, sourceUrl: url, artifactType };
       } catch (error) {
         lastError = error;

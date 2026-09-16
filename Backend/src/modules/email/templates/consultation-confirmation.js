@@ -1,8 +1,6 @@
 // Sent to the prospect after a direct (Tier A/B) consultation booking.
-// Branded per entity-config (msoEntityShortName only — PRD FR-2.3: no
-// Founder's Office attribution); the caller supplies that via `data`.
-function subject(data = {}) {
-  return `Your consultation with ${data.msoEntityShortName || "us"} is confirmed`;
+function subject() {
+  return "Your consultation with Immiglance is confirmed";
 }
 
 function bodyLines(data = {}) {
@@ -13,7 +11,7 @@ function bodyLines(data = {}) {
       ? "We'll call you at the phone number you provided."
       : (data.meetingUrl ? `Join here: ${data.meetingUrl}` : "We'll send video call details separately."),
     data.manageUrl ? `Need to reschedule or cancel? <a href="${data.manageUrl}">Manage your booking</a>.` : "",
-    `${data.msoEntityShortName || "Our team"} looks forward to speaking with you.`,
+    "Immiglance looks forward to speaking with you.",
   ].filter(Boolean);
 }
 

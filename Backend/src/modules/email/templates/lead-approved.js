@@ -7,7 +7,7 @@ function subject(data = {}) {
 function bodyLines(data = {}) {
   return [
     `Hi ${data.fullName || "there"},`,
-    `We're pleased to let you know your case has been approved to move forward with ${data.msoEntityShortName || "our immigration team"}.`,
+    "We're pleased to let you know your case has been approved to move forward with Immiglance.",
     `We'll be in touch shortly with next steps to get your case started.`,
   ].filter(Boolean);
 }

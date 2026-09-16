@@ -15,6 +15,7 @@ const { startUSCISMonitoringJob } = require("./modules/uscis-lifecycle/jobs/USCI
 const reminderGenerationService = require("./modules/notifications/reminder-generation.service");
 const aiOrchestrationService = require("./modules/ai/ai-orchestration.service");
 const reportService = require("./modules/reports/report.service");
+const settingsRetentionService = require("./modules/settings/retention.service");
 
 process.on("uncaughtException", (error) => {
   logger.fatal("uncaught_exception", { error });
@@ -39,6 +40,22 @@ function scheduleInitialRun(run, delayMs) {
 // backend is ever run as more than one instance. ttlMs is set to a multiple
 // of the job's own interval so a crashed run self-heals instead of wedging
 // the job forever.
+
+// §4.4 — data.retention.* settings. Runs daily by default; the retention
+// *window* (auditLogDays etc.) is re-read from the settings engine on every
+// tick, so an admin lowering it in the settings UI takes effect on the very
+// next tick with zero code/restart involved.
+function startSettingsRetentionMaintenance() {
+  const intervalMs = Number(process.env.SETTINGS_RETENTION_INTERVAL_MS || 24 * 60 * 60 * 1000);
+  const initialDelayMs = Number(process.env.SETTINGS_RETENTION_INITIAL_DELAY_MS || 30 * 1000);
+  const run = () =>
+    withJobLock("settings-retention-sweep", intervalMs * 3, async () => {
+      const result = await settingsRetentionService.runRetentionSweep();
+      logger.info("settings_retention_sweep_complete", result);
+    }).catch((error) => logger.error("settings_retention_sweep_failed", { error }));
+  scheduleInitialRun(run, initialDelayMs);
+  return setInterval(run, intervalMs);
+}
 
 function startWorkflowMaintenance() {
   const intervalMs = Number(process.env.WORKFLOW_MAINTENANCE_INTERVAL_MS || 5 * 60 * 1000);
@@ -184,6 +201,7 @@ connectDB()
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob();
+    const settingsRetentionMaintenance = startSettingsRetentionMaintenance();
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         logger.fatal("port_in_use", { port: env.port, error });
@@ -207,6 +225,7 @@ connectDB()
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
+      clearInterval(settingsRetentionMaintenance);
       server.close(() => {
         disconnectDB()
           .catch((error) => logger.error("mongodb_disconnect_failed", { error }))

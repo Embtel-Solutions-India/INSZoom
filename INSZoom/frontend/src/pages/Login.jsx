@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Lock, Shield, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -22,8 +22,16 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  // A valid shared session already exists (e.g. staff signed in via the
+  // Immiglance client portal's "Team member" tab, which redirects here with
+  // the same auth cookie already set) — skip the login form entirely
+  // instead of forcing them to sign in again.
+  useEffect(() => {
+    if (!authLoading && user) navigate('/dashboard', { replace: true })
+  }, [user, authLoading, navigate])
 
   const attemptLogin = async (loginEmail, loginPassword) => {
     setError('')

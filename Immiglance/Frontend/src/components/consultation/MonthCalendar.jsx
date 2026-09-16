@@ -28,17 +28,17 @@ export default function MonthCalendar({ availableDateKeys, selectedDate, onSelec
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <button type="button" onClick={() => changeMonth(-1)} aria-label="Previous month" className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer">
+        <button type="button" onClick={() => changeMonth(-1)} aria-label="Previous month" className="w-8 h-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <p className="font-bold text-slate-800 text-sm">{viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
-        <button type="button" onClick={() => changeMonth(1)} aria-label="Next month" className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer">
+        <p className="font-bold text-foreground text-sm">{viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
+        <button type="button" onClick={() => changeMonth(1)} aria-label="Next month" className="w-8 h-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>
       <div className="grid grid-cols-7 gap-1 mb-1">
         {WEEKDAYS.map((w, i) => (
-          <div key={i} className="text-center text-[0.65rem] font-bold text-slate-400 py-1">{w}</div>
+          <div key={i} className="text-center text-[0.65rem] font-bold text-muted-foreground py-1">{w}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-1">
@@ -55,8 +55,7 @@ export default function MonthCalendar({ availableDateKeys, selectedDate, onSelec
               disabled={!available || isPast}
               onClick={() => onSelectDate(date)}
               className={`aspect-square rounded-lg text-xs font-semibold transition flex items-center justify-center
-                ${selected ? "text-white" : available && !isPast ? "text-slate-700 hover:bg-slate-100 cursor-pointer" : "text-slate-300 cursor-not-allowed"}`}
-              style={selected ? { backgroundColor: "var(--eligibility-primary, #0B1F3A)" } : undefined}
+                ${selected ? "bg-primary text-primary-foreground" : available && !isPast ? "text-foreground hover:bg-secondary cursor-pointer" : "text-muted-foreground/50 cursor-not-allowed"}`}
             >
               {date.getDate()}
             </button>

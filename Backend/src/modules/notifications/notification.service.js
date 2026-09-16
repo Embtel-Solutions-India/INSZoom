@@ -229,7 +229,34 @@ function channelsEnabledByPreference(channels, preference, notification) {
   });
 }
 
+// §4.5 Notifications — org-level event x channel gate (settings/registry/
+// notifications.registry.js). Runs BEFORE per-user preference filtering
+// (applyPreferences below) since it's a hard floor: if the org disables
+// "payment_overdue -> email" entirely, no individual user preference can
+// re-enable it. Only touches the channel types the settings engine actually
+// models (in_app/email/sms/webhook) — "socket"/"push"/"browser" etc. are
+// real-time delivery mechanics outside this registry and pass through
+// unaffected. Silently no-ops for any notification.type that isn't one of
+// the registered events (every other type is unaffected by this gate).
+const REGISTERED_NOTIFICATION_EVENTS = ["new_client_submission", "payment_received", "payment_overdue", "rfe_received", "document_uploaded"];
+const SETTINGS_MODELED_CHANNELS = new Set(["in_app", "email", "sms", "webhook"]);
+
+async function applyOrgSettingsGate(notification) {
+  if (!REGISTERED_NOTIFICATION_EVENTS.includes(notification.type)) return notification;
+  const settingsEngine = require("../settings/settingsEngine.service");
+  const allowedChannels = await settingsEngine.getEffective(`notifications.events.${notification.type}.channels`, {});
+  notification.channels = (notification.channels || []).filter(
+    (channel) => !SETTINGS_MODELED_CHANNELS.has(channel) || allowedChannels.includes(channel)
+  );
+  return notification;
+}
+
 async function applyPreferences(notification) {
+  await applyOrgSettingsGate(notification);
+  if (!notification.channels.length) {
+    notification.delivery = [{ channel: "in_app", status: "skipped", error: "Notification disabled by organization settings" }];
+    return notification;
+  }
   if (!notification.userId) return notification;
   const preference = await getPreference(notification.userId);
   notification.channels = channelsEnabledByPreference(notification.channels || ["in_app"], preference, notification);

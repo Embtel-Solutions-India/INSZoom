@@ -25,11 +25,11 @@ export default function StartAssessmentButton({ variant = "solid", size = "md", 
   // (no network round trip needed to know "anonymous"), so the funnel never
   // stalls for them.
   if (hasCase || loading) return null;
-  // `pageSource` (e.g. "Home Page") travels through EligibilityIntro ->
-  // EligibilityQuiz -> the submit payload's `source`, so a lead created by
-  // completing the quiz is traceable back to the page that launched it —
-  // same idea as ConsultationSection's `source` prop for the contact forms.
-  const quizLink = pageSource ? `/eligibility?src=${encodeURIComponent(pageSource)}` : "/eligibility";
+  // `pageSource` (e.g. "Home Page") travels straight into EligibilityQuiz's
+  // submit/draft payload `source`, so a lead is traceable back to the page
+  // that launched it — same idea as ConsultationSection's `source` prop for
+  // the contact forms.
+  const quizLink = pageSource ? `/eligibility/quiz?src=${encodeURIComponent(pageSource)}` : "/eligibility/quiz";
   return (
     <Link
       to={quizLink}

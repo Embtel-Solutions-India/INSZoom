@@ -1361,4 +1361,11 @@ module.exports = {
   resolveConditionalTemplates,
   invalidateTemplateCache,
   findLatestActiveTemplate,
+  // Export-only addition (no behavior change) — lets
+  // CanonicalBiographicAutofill.js and the new on-demand-acquisition/forms-
+  // overview endpoints build the exact same binding context renderCaseForm
+  // already uses internally, instead of re-deriving canonical/masterData
+  // access a second way.
+  buildBindingContext,
+  getAccessibleCase,
 };

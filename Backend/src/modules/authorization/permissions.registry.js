@@ -23,7 +23,20 @@ const PERMISSIONS = {
   forms: ["create", "read", "update", "delete", "approve", "check_updates"],
   ai: ["create", "read", "update", "review"],
   audit: ["read", "export"],
-  settings: ["read", "update"],
+  // "read"/"update" are the original whole-document settings CRUD (kept for
+  // backward compat — modules/settings/settings.controller.js). The
+  // settings-engine (modules/settings/settingsEngine.*) introduces one
+  // fine-grained action per settings category, matching the enterprise
+  // settings platform's permission model 1:1 (settings.security.manage,
+  // etc. in the spec) but expressed in this repo's existing
+  // "resource:action" convention rather than a parallel dot-notation system.
+  settings: [
+    "read", "update",
+    "view", "audit_view",
+    "manage_general", "manage_security", "manage_roles", "manage_data",
+    "manage_notifications", "manage_integrations", "manage_ai",
+    "manage_branding", "manage_workflow", "manage_modules", "view_billing",
+  ],
   // Phase 0 — Foundation & Compliance layer.
   entity_config: ["read", "update"],
   compliance: ["read", "lint", "accept"],
@@ -38,7 +51,7 @@ const PERMISSIONS = {
 const ROLE_PERMISSIONS = {
   super_admin: ["*"],
   admin: ["users:*", "cases:*", "clients:*", "beneficiaries:*", "companies:*", "documents:*", "document_intelligence:*", "messages:*", "notifications:*", "payments:*", "billing:*", "dashboard:*", "analytics:*", "reports:*", "search:*", "teams:*", "tasks:*", "appointments:*", "calendar:*", "workflows:*", "questionnaires:*", "forms:*", "ai:*", "audit:*", "settings:*", "entity_config:*", "compliance:*", "data_rights:*", "telemetry:*", "leads:*", "eligibility_quiz:*", "consultation_routing:*"],
-  case_manager: ["users:read", "cases:read", "cases:create", "cases:update", "clients:create", "clients:read", "clients:update", "beneficiaries:create", "beneficiaries:read", "beneficiaries:update", "companies:read", "documents:*", "document_intelligence:*", "messages:*", "notifications:*", "appointments:*", "calendar:*", "dashboard:read", "analytics:read", "reports:create", "reports:read", "reports:update", "search:*", "tasks:*", "forms:read", "forms:create", "forms:update", "forms:approve", "workflows:read", "workflows:create", "workflows:update", "questionnaires:*", "ai:create", "ai:read", "ai:review", "compliance:lint", "telemetry:read", "consultation_routing:read", "consultation_routing:update"],
+  case_manager: ["users:read", "cases:read", "cases:create", "cases:update", "clients:create", "clients:read", "clients:update", "beneficiaries:create", "beneficiaries:read", "beneficiaries:update", "companies:read", "documents:*", "document_intelligence:*", "messages:*", "notifications:*", "appointments:*", "calendar:*", "dashboard:read", "analytics:read", "reports:create", "reports:read", "reports:update", "search:*", "tasks:*", "forms:read", "forms:create", "forms:update", "forms:approve", "workflows:read", "workflows:create", "workflows:update", "questionnaires:*", "ai:create", "ai:read", "ai:review", "compliance:lint", "telemetry:read", "consultation_routing:read", "consultation_routing:update", "settings:view"],
   // cases:update / companies:update: a "client" account is how most
   // employer-sponsored cases are actually driven (selected "employer" during
   // intake rather than holding a distinct "employer" account type — see
@@ -55,7 +68,7 @@ const ROLE_PERMISSIONS = {
   // permission-gated route (not just questionnaires) 403'd for it.
   beneficiary: ["cases:read", "clients:read", "clients:update", "beneficiaries:read", "beneficiaries:update", "documents:create", "documents:read", "documents:delete", "document_intelligence:create", "document_intelligence:read", "messages:create", "messages:read", "messages:update", "notifications:read", "notifications:update", "notifications:delete", "appointments:create", "appointments:read", "appointments:update", "calendar:read", "dashboard:read", "questionnaires:read", "questionnaires:update", "questionnaires:submit", "forms:read"],
   employer: ["cases:create", "cases:read", "cases:update", "beneficiaries:create", "beneficiaries:read", "companies:read", "companies:update", "documents:create", "documents:read", "documents:delete", "messages:create", "messages:read", "messages:update", "notifications:read", "notifications:update", "notifications:delete", "appointments:create", "appointments:read", "appointments:update", "calendar:read", "dashboard:read", "questionnaires:read", "questionnaires:update", "questionnaires:submit", "forms:read"],
-  team_lead: ["users:read", "cases:*", "clients:create", "clients:read", "clients:update", "beneficiaries:create", "beneficiaries:read", "beneficiaries:update", "companies:read", "documents:*", "document_intelligence:*", "messages:*", "notifications:*", "payments:read", "payments:update", "billing:read", "billing:report", "dashboard:*", "analytics:*", "reports:*", "search:*", "teams:*", "tasks:*", "appointments:*", "calendar:*", "workflows:read", "workflows:create", "workflows:update", "questionnaires:*", "forms:read", "forms:create", "forms:update", "forms:approve", "ai:create", "ai:read", "ai:review", "compliance:lint", "leads:read", "consultation_routing:read", "consultation_routing:update"],
+  team_lead: ["users:read", "cases:*", "clients:create", "clients:read", "clients:update", "beneficiaries:create", "beneficiaries:read", "beneficiaries:update", "companies:read", "documents:*", "document_intelligence:*", "messages:*", "notifications:*", "payments:read", "payments:update", "billing:read", "billing:report", "dashboard:*", "analytics:*", "reports:*", "search:*", "teams:*", "tasks:*", "appointments:*", "calendar:*", "workflows:read", "workflows:create", "workflows:update", "questionnaires:*", "forms:read", "forms:create", "forms:update", "forms:approve", "ai:create", "ai:read", "ai:review", "compliance:lint", "leads:read", "consultation_routing:read", "consultation_routing:update", "settings:view", "settings:manage_workflow", "settings:manage_notifications"],
 };
 
 function expandPermission(resource, action) {

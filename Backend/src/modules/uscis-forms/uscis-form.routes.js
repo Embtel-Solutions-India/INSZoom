@@ -25,6 +25,7 @@ router.get("/case", authenticate, authorizePermissions("forms:read"), ctrl.getAl
 router.get("/case/:caseId", authenticate, authorizePermissions("forms:read"), ctrl.getCaseForms);
 router.post("/case/:caseId", authenticate, authorizePermissions("forms:create"), ctrl.createCaseForm);
 router.get("/case/:caseId/:formId/render", authenticate, authorizePermissions("forms:read"), ctrl.renderCaseForm);
+router.post("/case/:caseId/:formId/autofill", authenticate, authorizePermissions("forms:update"), ctrl.autofillCaseForm);
 router.get("/case/:caseId/:formId/validation", authenticate, authorizePermissions("forms:read"), ctrl.validateCaseForm);
 router.get("/case/:caseId/:formId/comparison", authenticate, authorizePermissions("forms:read"), ctrl.compareCaseForm);
 router.put("/case/:caseId/:formId/draft", authenticate, authorizePermissions("forms:update"), ctrl.saveDraft);
@@ -97,5 +98,8 @@ router.put("/:id/approve", authenticate, authorizeRoles("super_admin", "admin"),
 router.put("/:id/activate", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:approve"), ctrl.activateTemplate);
 router.put("/:id/archive", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.archiveTemplate);
 router.put("/:id/rollback", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:approve"), ctrl.rollbackTemplate);
+// Any forms:read holder may request a mapping review (no state change);
+// only an admin can act on it (existing Approve/Activate gate above).
+router.post("/:id/mapping-review-request", authenticate, authorizePermissions("forms:read"), ctrl.requestMappingReview);
 
 module.exports = router;
