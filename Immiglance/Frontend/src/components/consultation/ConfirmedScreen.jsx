@@ -30,14 +30,14 @@ export default function ConfirmedScreen({ booking }) {
 
   return (
     <div className="text-center py-8">
-      <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-5">
-        <svg width="26" height="26" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-emerald-600"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+      <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5">
+        <svg width="26" height="26" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="text-primary"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
       </div>
-      <h2 className="text-xl font-extrabold text-slate-900 mb-2">You're booked!</h2>
-      <p className="text-slate-500 text-sm mb-1">
+      <h2 className="text-xl font-extrabold text-foreground mb-2">You're booked!</h2>
+      <p className="text-muted-foreground text-sm mb-1">
         {new Date(booking.startAt).toLocaleString("en-US", { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: booking.timezone })}
       </p>
-      <p className="text-slate-400 text-xs mb-8">
+      <p className="text-muted-foreground text-xs mb-8">
         {booking.locationType === "phone" ? "We'll call you at the number you provided." : "We'll follow up with your video call link."}
       </p>
 
@@ -45,15 +45,14 @@ export default function ConfirmedScreen({ booking }) {
         <a
           href={icsUrl}
           download="consultation.ics"
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-50 transition no-underline"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-border text-foreground font-bold text-sm hover:bg-secondary transition no-underline"
         >
           Add to calendar
         </a>
         <button
           type="button"
           onClick={() => navigate(`/consultation/booking/${booking.bookingToken}`)}
-          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white font-bold text-sm transition cursor-pointer"
-          style={{ backgroundColor: "var(--eligibility-primary, #0B1F3A)" }}
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition cursor-pointer"
         >
           Manage booking
         </button>
@@ -61,7 +60,7 @@ export default function ConfirmedScreen({ booking }) {
       <button
         type="button"
         onClick={() => navigate("/")}
-        className="mt-6 text-sm font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+        className="mt-6 text-sm font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
       >
         Return to home
       </button>

@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { verifyAccessToken } = require("../modules/auth/token.service");
 const { getCachedUser, setCachedUser } = require("../config/redis");
+const { isIdleTimedOut } = require("./idleSessionGuard");
 
 async function authenticate(req, res, next) {
   try {
@@ -27,6 +28,16 @@ async function authenticate(req, res, next) {
 
     if (!user || !user.isActive || (user.tokenVersion || 0) !== (decoded.tokenVersion || 0)) {
       return res.status(401).json({ success: false, message: "User not found or deactivated" });
+    }
+
+    // security.session.idleTimeoutMinutes — live setting, re-read every
+    // request (see middleware/idleSessionGuard.js).
+    if (await isIdleTimedOut(user._id.toString())) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expired due to inactivity. Please sign in again.",
+        code: "SESSION_IDLE_TIMEOUT",
+      });
     }
 
     req.user = user;

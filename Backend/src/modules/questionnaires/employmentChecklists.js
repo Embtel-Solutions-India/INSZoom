@@ -117,6 +117,16 @@ const REPEATABLE_FIELDS = {
   "employee.recommenders": [
     { key: "linkedinUrl", label: "LinkedIn Profile URL", type: "text" },
   ],
+  // O-1A Criterion 8A's "10 professional profiles" — kept distinct from
+  // employee.recommenders above (EB-1B's already-shipped 6-7-entry,
+  // LinkedIn-only shape) since reusing that path here would silently add
+  // name/title/organization fields to EB-1B's checklist too.
+  "employee.o1aRecommenders": [
+    { key: "name", label: "Name", type: "text" },
+    { key: "title", label: "Professional Title", type: "text" },
+    { key: "organization", label: "Organization", type: "text" },
+    { key: "linkedinUrl", label: "LinkedIn / Contact Details", type: "text" },
+  ],
   // Distinct from "employee.dependents" above (H-1B's shape) — see the
   // comment on this path in eb1b.js's fieldCatalog().
   "employee.eb1bDependents": [
@@ -530,6 +540,17 @@ function buildL1aBusinessPlanChecklist() {
 // that field's answer via the same condition engine L-1A already uses for
 // its stock-ownership-certificate and LOI/MOU conditional documents, so a
 // non-selected sub-type's group is hidden entirely, not shown-as-optional.
+// P_CLASSIFICATIONS ("P-1A"/"P-1B"/"P-3") is the case-level visaType a real P
+// case is stored with (config/visaCategories.js has no bare "P" entry) — the
+// hyphen-stripped forms are what resolveCaseQuestionnaires/
+// getQuestionnaireForCase actually compare against after normalizing the
+// case's visaType.
+const P_VISA_TYPES = [
+  "P",
+  ...p.P_CLASSIFICATIONS,
+  ...p.P_CLASSIFICATIONS.map((value) => value.replace(/-/g, "")),
+];
+
 function buildPEmployerChecklist() {
   const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
   const documentSectionOrder = [];
@@ -563,6 +584,13 @@ function buildPEmployerChecklist() {
     key: "p_employer_checklist",
     title: "Employer Checklist for P Visa",
     visaType: "P",
+    // Unlike H1B/L1A (one case-level visaType per questionnaire), a P case's
+    // visaType is stored as its actual sub-classification (P-1A/P-1B/P-3,
+    // see config/visaCategories.js) — this one shared checklist must resolve
+    // for any of them. Both hyphenated and hyphen-stripped forms are listed
+    // since resolveCaseQuestionnaires/getQuestionnaireForCase strip hyphens
+    // from the case's visaType before matching against this array.
+    visaTypes: P_VISA_TYPES,
     checklistRole: "employer",
     isDefault: true,
     description: "",
@@ -586,6 +614,7 @@ function buildPEmployeeChecklist() {
     key: "p_employee_checklist",
     title: "Employee Checklist for P Visa",
     visaType: "P",
+    visaTypes: P_VISA_TYPES,
     checklistRole: "employee",
     isDefault: true,
     description: "",
@@ -627,19 +656,20 @@ function o1CriteriaQuestions(criteria, variantLabel, variantValue, groupIntro, v
       criterion.subgroups.forEach((subgroup) => {
         const title = `${variantLabel} Criterion ${criterion.number}${subgroup.letter}`;
         if (!documentSectionOrder.includes(title)) documentSectionOrder.push(title);
-        if (subgroup.type === "textarea") {
+        if (subgroup.type === "repeating_group") {
           const nextOrder = (counters.get(title) || 0) + 1;
           counters.set(title, nextOrder);
           questions.push(buildQuestion(
             o1.slug(`${variantValue}_c${criterion.number}${subgroup.letter}_${subgroup.title}`),
             subgroup.label,
-            "textarea",
+            "repeating_group",
             title,
             nextOrder,
             {
               description: withIntro(`${criterion.heading} ${subgroup.description}`),
               required: false,
-              metadata: { criterionNumber: criterion.number, subgroup: subgroup.letter },
+              repeatable: true,
+              metadata: { criterionNumber: criterion.number, subgroup: subgroup.letter, sourcePath: subgroup.repeatablePath, repeatableFields: REPEATABLE_FIELDS[subgroup.repeatablePath] || [] },
               visibility,
               conditionalLogic: gate,
             }
@@ -689,6 +719,19 @@ function o1CriteriaQuestions(criteria, variantLabel, variantValue, groupIntro, v
 // employer checklist and gates the employee checklist's O-1A/O-1B criteria
 // via employer_oClassification, exactly like P1A/P1B/P3 gate on
 // employer_pClassification.
+// A real O-1 case's visaType is stored as its actual sub-classification
+// (O-1A/O-1B — config/visaCategories.js has no bare "O-1"/"O1" entry), not
+// the generic "O1" tag this shared questionnaire carries — same
+// resolveCaseQuestionnaires/getQuestionnaireForCase gap found and fixed for
+// P (see P_VISA_TYPES above). Both hyphenated and hyphen-stripped forms are
+// listed since those functions strip hyphens/spaces from the case's
+// visaType before matching against this array.
+const O1_VISA_TYPES = [
+  "O1",
+  ...o1.O_CLASSIFICATIONS,
+  ...o1.O_CLASSIFICATIONS.map((value) => value.replace(/-/g, "")),
+];
+
 function buildO1EmployerChecklist() {
   const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
   const documentSectionOrder = [];
@@ -704,6 +747,7 @@ function buildO1EmployerChecklist() {
     key: "o1_employer_checklist",
     title: "Employer Checklist for O-1 Visa",
     visaType: "O1",
+    visaTypes: O1_VISA_TYPES,
     checklistRole: "employer",
     isDefault: true,
     description: "",
@@ -734,6 +778,7 @@ function buildO1EmployeeChecklist() {
     key: "o1_employee_checklist",
     title: "Employee Checklist for O-1 Visa",
     visaType: "O1",
+    visaTypes: O1_VISA_TYPES,
     checklistRole: "employee",
     isDefault: true,
     description: "",

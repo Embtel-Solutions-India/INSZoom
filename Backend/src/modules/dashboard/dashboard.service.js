@@ -9,6 +9,7 @@ const Company = require("../../models/Company");
 const Conversation = require("../../models/Conversation");
 const Dashboard = require("../../models/Dashboard");
 const Document = require("../../models/Document");
+const DocumentExtraction = require("../../models/DocumentExtraction");
 const Message = require("../../models/Message");
 const Notification = require("../../models/Notification");
 const Payment = require("../../models/Payment");
@@ -126,29 +127,66 @@ async function executiveMetrics(query = {}) {
 
 async function caseAnalytics(query = {}, user) {
   const match = { ...dateRange(query), ...scopedCaseFilter(user) };
-  const [total, active, closed, byStage, byVisaType, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
+  const [total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
     Case.countDocuments(match),
     Case.countDocuments({ ...match, status: "active" }),
     Case.countDocuments({ ...match, status: { $in: ["closed", "approved"] } }),
     groupCount(Case, "stage", match),
     groupCount(Case, "visaType", match),
+    groupCount(Case, "plan.tier", match),
     groupCount(Case, "status", match),
     groupCount(Case, "priority", match),
-    Case.aggregate([{ $match: { ...match, uscisDecision: "rfe" } }, { $group: { _id: "$visaType", rfeCount: { $sum: 1 } } }]),
+    // Per visa type: total cases, how many hit an RFE, and the resulting
+    // rate — the previous version only counted RFE'd cases (pre-filtering
+    // on uscisDecision: "rfe" before grouping), so it had no totalCases to
+    // divide by and no rfeRate/visaType fields at all. That left the
+    // Overview tab's RFE Rate stat card computing NaN (it sums
+    // item.totalCases, which never existed) and the RFE & AI tab's trends
+    // table rendering blank Visa Type / 0% columns.
+    Case.aggregate([
+      { $match: match },
+      { $group: { _id: "$visaType", totalCases: { $sum: 1 }, rfeCount: { $sum: { $cond: [{ $eq: ["$uscisDecision", "rfe"] }, 1, 0] } } } },
+      { $project: {
+        _id: 0,
+        visaType: { $ifNull: ["$_id", "Unspecified"] },
+        totalCases: 1,
+        rfeCount: 1,
+        rfeRate: { $cond: [{ $gt: ["$totalCases", 0] }, { $multiply: [{ $divide: ["$rfeCount", "$totalCases"] }, 100] }, 0] },
+      } },
+      { $sort: { rfeCount: -1 } },
+    ]),
     Case.aggregate([
       { $match: { ...match, filingDate: { $exists: true }, uscisDecisionDate: { $exists: true } } },
       { $project: { visaType: 1, processingDays: { $divide: [{ $subtract: ["$uscisDecisionDate", "$filingDate"] }, 86400000] } } },
       { $group: { _id: "$visaType", avgProcessingDays: { $avg: "$processingDays" }, minProcessingDays: { $min: "$processingDays" }, maxProcessingDays: { $max: "$processingDays" }, count: { $sum: 1 } } },
     ]),
   ]);
-  return { total, active, closed, byStage, byVisaType, byStatus, priority, rfeTrends, processingTimes };
+  return { total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes };
 }
 
 async function revenueAnalytics(query = {}) {
   const match = dateRange(query);
-  const [totals, byPackage, monthlyRevenue, byStatus] = await Promise.all([
+  const [totals, byPackage, byVisaType, monthlyRevenue, byStatus] = await Promise.all([
     paymentTotals(match),
     Payment.aggregate([{ $match: match }, { $group: { _id: "$package", revenue: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } }, outstanding: { $sum: "$remainingAmount" }, count: { $sum: 1 } } }]),
+    // Revenue has no visaType field of its own (it's a property of the
+    // linked Case) — resolvedCase mirrors the caseId/case dual-field
+    // lookup pattern used elsewhere (see case-manager-analytics.service.js's
+    // caseIdsWithBalanceDue) since not every Payment document is guaranteed
+    // to have both populated.
+    Payment.aggregate([
+      { $match: match },
+      { $addFields: { resolvedCase: { $ifNull: ["$caseId", "$case"] } } },
+      { $lookup: { from: "cases", localField: "resolvedCase", foreignField: "_id", as: "caseData" } },
+      { $unwind: { path: "$caseData", preserveNullAndEmptyArrays: true } },
+      { $group: {
+        _id: { $ifNull: ["$caseData.visaType", "Unspecified"] },
+        revenue: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } },
+        outstanding: { $sum: "$remainingAmount" },
+        count: { $sum: 1 },
+      } },
+      { $sort: { revenue: -1 } },
+    ]),
     Payment.aggregate([
       { $match: match },
       { $group: { _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } }, count: { $sum: 1 }, value: { $sum: { $cond: [{ $gt: ["$amountPaid", 0] }, "$amountPaid", { $ifNull: ["$paidAmount", 0] }] } } } },
@@ -157,7 +195,7 @@ async function revenueAnalytics(query = {}) {
     ]),
     groupCount(Payment, "paymentStatus", match),
   ]);
-  return { totals, byPackage, monthlyRevenue, byStatus };
+  return { totals, byPackage, byVisaType, monthlyRevenue, byStatus };
 }
 
 async function documentAnalytics(query = {}, user) {
@@ -238,6 +276,25 @@ async function userAnalytics(query = {}) {
   return { total, byRole, growth, activeSessions, lockedAccounts };
 }
 
+async function evidenceAnalytics(query = {}, user) {
+  const match = { ...dateRange(query), ...scopedCaseFilter(user) };
+  const [aiExtraction, evidenceAssembly] = await Promise.all([
+    // DocumentExtraction has its own createdAt, unrelated to a case's
+    // filter scope — this is a system-wide AI pipeline health metric, not
+    // scoped per case manager/client, so it only applies dateRange().
+    groupCount(DocumentExtraction, "processingStatus", dateRange(query)),
+    // "Evidence assembly" readiness, grouped by pipeline stage — real
+    // filingReadinessScore values already tracked on Case (see
+    // filingReadinessScore in models/Case.js), not a fabricated metric.
+    Case.aggregate([
+      { $match: match },
+      { $group: { _id: "$stage", count: { $sum: 1 }, avgReadinessScore: { $avg: "$filingReadinessScore" } } },
+      { $sort: { count: -1 } },
+    ]),
+  ]);
+  return { aiExtraction, evidenceAssembly };
+}
+
 function buildInsights({ cases, revenue, documents, workflows, questionnaires, messages, appointments }) {
   const insights = [];
   if (documents.missingDocuments > 0) insights.push({ type: "risk", title: "Missing documents are blocking progress", value: documents.missingDocuments });
@@ -251,7 +308,7 @@ function buildInsights({ cases, revenue, documents, workflows, questionnaires, m
 }
 
 async function buildAnalytics(query, user) {
-  const [cases, revenue, users, documents, workflows, questionnaires, messages, appointments] = await Promise.all([
+  const [cases, revenue, users, documents, workflows, questionnaires, messages, appointments, evidence] = await Promise.all([
     caseAnalytics(query, user),
     revenueAnalytics(query),
     userAnalytics(query),
@@ -260,8 +317,9 @@ async function buildAnalytics(query, user) {
     questionnaireAnalytics(query, user),
     messagingAnalytics(query, user),
     appointmentAnalytics(query, user),
+    evidenceAnalytics(query, user),
   ]);
-  return { cases, revenue, users, documents, workflows, questionnaires, messages, appointments };
+  return { cases, revenue, users, documents, workflows, questionnaires, messages, appointments, evidence };
 }
 
 async function roleDashboard(user, query = {}) {

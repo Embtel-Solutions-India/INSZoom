@@ -4,16 +4,18 @@
 // Settings.prohibitedTerms) is always the preferred source of truth — see
 // entityConfig.service.resolveDisclaimer / resolveProhibitedTerms.
 
-// {msoEntityShortName} / {lawFirmEntityName} are substituted at resolve time.
-// When the law firm entity isn't configured yet, the firm-clause sentence is
-// swapped for FALLBACK_DISCLAIMER_UNCONFIGURED_FIRM_CLAUSE instead of ever
-// interpolating an empty name into client-facing legal copy.
+// {lawFirmEntityName} is substituted at resolve time. When the law firm
+// entity isn't configured yet, the firm-clause sentence is swapped for
+// FALLBACK_DISCLAIMER_UNCONFIGURED_FIRM_CLAUSE instead of ever interpolating
+// an empty name into client-facing legal copy. The organization name itself
+// is hardcoded (Immiglance is not a white-labeled, multi-tenant product), so
+// it can never drift to a stale/legacy name via Settings data.
 const FALLBACK_DISCLAIMER_TEMPLATE =
-  "{msoEntityShortName} is not a law firm and does not provide legal advice. " +
+  "Immiglance is not a law firm and does not provide legal advice. " +
   "Legal services are provided exclusively by {lawFirmEntityName}, an independent, attorney-supervised law firm.";
 
 const FALLBACK_DISCLAIMER_UNCONFIGURED_FIRM_CLAUSE =
-  "{msoEntityShortName} is not a law firm and does not provide legal advice. " +
+  "Immiglance is not a law firm and does not provide legal advice. " +
   "Where legal services are provided, they are provided exclusively by an independent, attorney-supervised law firm.";
 
 // Release-blocking terms (PRD). Case-insensitive, word-boundary matched by

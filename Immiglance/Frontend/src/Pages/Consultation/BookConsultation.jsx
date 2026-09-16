@@ -12,8 +12,8 @@ import { localDateKey } from "../../utils/localDateKey";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function BookConsultation() {
-  // PHASE 4: the existing public quiz flow (EligibilityResults.jsx) links
-  // here as /consultation/book/:leadId — a URL param, unchanged. The new
+  // PHASE 4: the public quiz flow (EligibilityQuiz.jsx) links here as
+  // /consultation/book/:leadId — a URL param, unchanged. The new
   // logged-in intake flow (Intake.jsx) links here as
   // /consultation/book?leadId=... — a query param, since it navigates
   // directly rather than via a route with its own :leadId segment. Both are
@@ -154,8 +154,7 @@ export default function BookConsultation() {
                   type="button"
                   onClick={handleConfirm}
                   disabled={!isContactValid || bookMutation.isPending}
-                  className="w-full inline-flex items-center justify-center px-6 py-3.5 rounded-xl text-primary-foreground font-bold text-sm transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-                  style={{ backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
+                  className="w-full inline-flex items-center justify-center px-6 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {bookMutation.isPending ? "Confirming…" : "Confirm booking"}
                 </button>

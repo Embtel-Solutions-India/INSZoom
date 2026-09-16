@@ -18,8 +18,8 @@ export default function QuizProgress({ step, totalSteps, label }) {
         aria-valuemax={100}
       >
         <div
-          className="h-full rounded-full transition-all duration-500 ease-out"
-          style={{ width: `${pct}%`, backgroundColor: "var(--eligibility-accent, hsl(var(--primary)))" }}
+          className="h-full rounded-full bg-primary transition-all duration-500 ease-out"
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>

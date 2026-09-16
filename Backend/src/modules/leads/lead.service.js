@@ -134,18 +134,14 @@ async function createLead(payload = {}, req) {
 // the prospect confirmation email, fires telemetry, and enqueues CRM sync
 // (fire-and-forget — never awaited by the caller, so submit() stays fast).
 async function createQuizLead(payload, req) {
-  const lead = await LeadModel.create({
+  const finalFields = {
     fullName: payload.fullName,
     email: payload.email,
     phone: payload.phone,
     visaPathway: payload.visaPathway,
     source: payload.source || "public_quiz",
-    // Lead.leadNumber has a unique (sparse) index. Every other lead-creation
-    // path here already assigns one via CaseNumberService.nextLeadNumber() -
-    // this was the one path that didn't, so the first-ever quiz submission
-    // wrote leadNumber:null, and every quiz submission after that one hit an
-    // E11000 duplicate-key error on this same index and surfaced as a 500.
-    leadNumber: await CaseNumberService.nextLeadNumber(),
+    sessionId: payload.sessionId,
+    isDraft: false,
     utm: payload.utm,
     profileAnswers: payload.profileAnswers,
     criteriaAnswers: payload.criteriaAnswers,
@@ -153,7 +149,26 @@ async function createQuizLead(payload, req) {
     disclaimerAcceptedVersion: payload.disclaimerAcceptedVersion,
     ipHash: payload.ipHash,
     userAgent: req?.headers?.["user-agent"],
-  });
+  };
+
+  // A completed quiz that was previously autosaved as a draft (same
+  // sessionId, see saveDraftLead below) finalizes that same document instead
+  // of creating a second, duplicate Lead — the draft simply "graduates".
+  let lead = payload.sessionId
+    ? await LeadModel.findOneAndUpdate({ sessionId: payload.sessionId, isDraft: true }, { $set: finalFields }, { new: true })
+    : null;
+
+  if (!lead) {
+    lead = await LeadModel.create({
+      ...finalFields,
+      // Lead.leadNumber has a unique (sparse) index. Every other lead-creation
+      // path here already assigns one via CaseNumberService.nextLeadNumber() -
+      // this was the one path that didn't, so the first-ever quiz submission
+      // wrote leadNumber:null, and every quiz submission after that one hit an
+      // E11000 duplicate-key error on this same index and surfaced as a 500.
+      leadNumber: await CaseNumberService.nextLeadNumber(),
+    });
+  }
 
   const publicConfig = await entityConfigService.getPublicConfig().catch(() => ({}));
   // Fire-and-forget: SMTP round-trip (compounded with Atlas M0 latency) must
@@ -187,6 +202,39 @@ async function createQuizLead(payload, req) {
   crmSyncService.syncLead(lead, req).catch(() => {});
 
   return lead;
+}
+
+// Autosaves an in-progress public quiz as a draft Lead, keyed by sessionId —
+// so a visitor who closes the tab partway through still leaves a real,
+// visible lead behind (see EligibilityQuiz.jsx's per-step draft calls and its
+// pagehide/visibilitychange safety net). Upserted repeatedly as the visitor
+// advances; createQuizLead() above finalizes the same document (isDraft:
+// false) when/if they actually complete the quiz, rather than creating a
+// second document. Deliberately $set-only, skipping any field the caller
+// didn't send, so a later, sparser draft save never wipes out an earlier one.
+async function saveDraftLead(payload = {}, req) {
+  if (!payload.sessionId) {
+    throw Object.assign(new Error("sessionId is required"), { status: 422 });
+  }
+  const fields = {
+    sessionId: payload.sessionId,
+    isDraft: true,
+    fullName: clean(payload.fullName || payload.name) || undefined,
+    email: payload.email ? clean(payload.email).toLowerCase() : undefined,
+    phone: payload.phone ? clean(payload.phone) : undefined,
+    visaPathway: payload.visaPathway || undefined,
+    visaInterest: payload.visaPathway || undefined,
+    source: payload.source || "public_quiz_draft",
+    profileAnswers: payload.profileAnswers,
+    userAgent: req?.headers?.["user-agent"],
+  };
+  Object.keys(fields).forEach((key) => fields[key] === undefined && delete fields[key]);
+
+  return LeadModel.findOneAndUpdate(
+    { sessionId: payload.sessionId, isDraft: true },
+    { $set: fields, $setOnInsert: { leadNumber: await CaseNumberService.nextLeadNumber() } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  );
 }
 
 // PHASE 4 — shared field-mapping helper for the two new lead-creation paths
@@ -287,4 +335,5 @@ module.exports = {
   createQuizLead,
   createLeadFromQuiz,
   createLeadFromIntake,
+  saveDraftLead,
 };

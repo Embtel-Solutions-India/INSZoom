@@ -1,7 +1,7 @@
 // Sent to the prospect after they cancel their own consultation via the
 // token-based manage link.
-function subject(data = {}) {
-  return `Your consultation with ${data.msoEntityShortName || "us"} has been cancelled`;
+function subject() {
+  return "Your consultation with Immiglance has been cancelled";
 }
 
 function bodyLines(data = {}) {

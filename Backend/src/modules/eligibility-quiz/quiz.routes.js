@@ -34,6 +34,13 @@ router.get("/visas", publicQuizLimiter, ctrl.getVisas);
 // logged-in user who already has a case (see CASE_EXISTS below).
 router.post("/submit", publicQuizLimiter, optionalAuthenticate, submitRules, validate, ctrl.submit);
 
+// Public draft autosave — fired after every answered quiz step (and as a
+// pagehide/visibilitychange safety net) so an abandoned-mid-quiz visitor
+// still leaves a real, visible Lead behind. Only sessionId is required;
+// everything else is whatever's been filled in so far.
+const draftRules = [body("sessionId").trim().notEmpty().withMessage("sessionId is required")];
+router.post("/draft", publicQuizLimiter, draftRules, validate, ctrl.saveDraft);
+
 const staffRoles = ["super_admin", "admin"];
 
 router.get("/leads", authenticate, authorizeRoles(...staffRoles), authorizePermissions("leads:read"), ctrl.listLeads);

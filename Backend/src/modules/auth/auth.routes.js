@@ -5,9 +5,10 @@ const validate = require("../../middleware/validate");
 const authenticate = require("../../middleware/authenticate");
 const authorizeRoles = require("../../middleware/authorizeRoles");
 const auditAuth = require("../../middleware/auditAuth");
+const dynamicPasswordRule = require("./dynamicPasswordRule");
 
 const emailRule = body("email").isEmail().normalizeEmail().withMessage("Valid email required");
-const passwordRule = body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters");
+const passwordRule = dynamicPasswordRule("password");
 
 router.post(
   "/register",
@@ -66,16 +67,16 @@ router.get("/session-context", authenticate, ctrl.getSessionContext);
 router.put(
   "/change-password",
   authenticate,
-  [body("currentPassword").notEmpty(), body("newPassword").isLength({ min: 8 })],
+  [body("currentPassword").notEmpty(), dynamicPasswordRule("newPassword")],
   validate,
   auditAuth("auth.change_password"),
   ctrl.changePassword
 );
 
 router.put("/updatedetails", authenticate, ctrl.updateDetails);
-router.put("/updatepassword", authenticate, [body("currentPassword").notEmpty(), body("newPassword").isLength({ min: 8 })], validate, ctrl.changePassword);
+router.put("/updatepassword", authenticate, [body("currentPassword").notEmpty(), dynamicPasswordRule("newPassword")], validate, ctrl.changePassword);
 router.post("/forgot-password", [emailRule], validate, auditAuth("password.reset_requested"), ctrl.forgotPassword);
-router.post("/reset-password", [body("token").notEmpty(), body("newPassword").isLength({ min: 8 })], validate, auditAuth("password.reset_completed"), ctrl.resetPassword);
+router.post("/reset-password", [body("token").notEmpty(), dynamicPasswordRule("newPassword")], validate, auditAuth("password.reset_completed"), ctrl.resetPassword);
 router.post("/verify-email", [body("token").notEmpty()], validate, ctrl.verifyEmail);
 router.post("/resend-verification", authenticate, ctrl.resendVerification);
 
@@ -83,7 +84,7 @@ router.get("/invite/:token", ctrl.getInviteDetails);
 router.post(
   "/invite/:token/accept",
   [
-    body("password").isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
+    dynamicPasswordRule("password"),
     body("confirmPassword").notEmpty(),
     body("username").optional({ checkFalsy: true }).trim()
       .matches(/^[a-zA-Z0-9._-]{3,30}$/)

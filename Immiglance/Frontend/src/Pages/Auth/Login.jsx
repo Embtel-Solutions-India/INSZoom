@@ -25,14 +25,13 @@ const HIDE_NATIVE_REVEAL_CSS = `
 const ROLE_TABS = [
   { key: "client", label: "Client", heading: "Welcome back", sub: "Sign in to track your case in the client portal." },
   { key: "attorney", label: "Attorney", heading: "Attorney sign-in", sub: "Attorney portal access." },
-  { key: "team", label: "Team member", heading: "Team member sign-in", sub: "Sign in with your staff credentials — you'll land on your team dashboard automatically." },
+  { key: "team", label: "Team member", heading: "Team member sign-in", sub: "" },
 ];
 
 export default function Login() {
   const [roleTab,      setRoleTab]      = useState("client");
   const [email,       setEmail]       = useState("");
   const [caseId,      setCaseId]      = useState("");
-  const [username,    setUsername]    = useState("");
   const [loginMethod, setLoginMethod] = useState("email");
   const [password,    setPassword]    = useState("");
   const [error,       setError]       = useState("");
@@ -82,17 +81,12 @@ export default function Login() {
   const handleLogin = async () => {
     const normalizedCaseId = caseId.trim();
     const normalizedEmail = email.trim();
-    const normalizedUsername = username.trim();
     if (loginMethod === "caseId" && (!normalizedCaseId || !password)) {
       setError("Please enter your Case ID and password.");
       return;
     }
     if (loginMethod === "email" && (!normalizedEmail || !password)) {
       setError("Please enter your email and password.");
-      return;
-    }
-    if (loginMethod === "username" && (!normalizedUsername || !password)) {
-      setError("Please enter your username and password.");
       return;
     }
     setError(""); setPendingInvite(false); setResendSent(false); setLoading(true);
@@ -106,9 +100,7 @@ export default function Login() {
       await login(
         loginMethod === "caseId"
           ? { caseId: normalizedCaseId, password }
-          : loginMethod === "username"
-            ? { username: normalizedUsername, password }
-            : { email: normalizedEmail, password }
+          : { email: normalizedEmail, password }
       );
     } catch (err) {
       const msg = (err.message || "").toLowerCase();
@@ -201,37 +193,37 @@ export default function Login() {
         <ThemeToggle />
       </div>
 
-      <div className="relative z-10 flex min-h-screen flex-col px-5 py-8 sm:px-10 sm:py-10 lg:flex-row lg:px-14 xl:px-[72px]">
-        <div className="flex justify-center pb-6 lg:flex-1 lg:flex-col lg:justify-end lg:pb-2 lg:pr-8">
+      <div className="relative z-10 flex h-screen flex-col px-5 py-3 sm:px-10 sm:py-4 lg:flex-row lg:px-14 xl:px-[72px]">
+        <div className="flex justify-center pb-3 lg:flex-1 lg:flex-col lg:justify-end lg:pb-2 lg:pr-8">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <ShieldIcon className="h-7 w-7" />
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <ShieldIcon className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xl font-black uppercase tracking-[0.28em] text-foreground sm:text-2xl">Immiglance</p>
-              <p className="mt-1 text-sm font-black uppercase tracking-[0.26em] text-primary">Client Portal</p>
+              <p className="text-lg font-black uppercase tracking-[0.28em] text-foreground sm:text-xl">Immiglance</p>
+              <p className="mt-0.5 text-xs font-black uppercase tracking-[0.26em] text-primary">Client Portal</p>
             </div>
           </div>
         </div>
 
-        <section className="flex flex-1 items-center justify-center lg:justify-end lg:pr-8 xl:pr-14">
-          <div className="w-full max-w-[464px] rounded-[18px] bg-card/90 px-6 pb-9 pt-9 shadow-[0_24px_70px_rgba(92,124,173,0.22)] ring-1 ring-card/85 backdrop-blur-md sm:px-10 sm:pb-11 sm:pt-11 lg:px-14">
-            <div className="mb-8 flex flex-col items-center text-center">
-              <div className="mb-7 grid h-[78px] w-[78px] place-items-center rounded-full bg-primary/10 text-primary">
-                <ShieldIcon className="h-11 w-11" strokeWidth={2.4} />
+        <section className="flex flex-1 items-center justify-center overflow-hidden lg:justify-end lg:pr-8 xl:pr-14">
+          <div className="w-full max-w-[464px] max-h-full overflow-y-auto rounded-[18px] bg-card/90 px-6 pb-5 pt-5 shadow-[0_24px_70px_rgba(92,124,173,0.22)] ring-1 ring-card/85 backdrop-blur-md sm:px-10 sm:pb-6 sm:pt-6 lg:px-12">
+            <div className="mb-4 flex flex-col items-center text-center">
+              <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+                <ShieldIcon className="h-7 w-7" strokeWidth={2.4} />
               </div>
-              <h1 className="text-2xl font-black leading-none text-foreground sm:text-[28px]">{activeTab.heading}</h1>
-              <p className="mt-5 text-base font-bold text-muted-foreground">{activeTab.sub}</p>
+              <h1 className="text-xl font-black leading-none text-foreground sm:text-2xl">{activeTab.heading}</h1>
+              {activeTab.sub && <p className="mt-2 text-sm font-bold text-muted-foreground">{activeTab.sub}</p>}
             </div>
 
             {/* Role entry tabs */}
-            <div className="mb-6 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
+            <div className="mb-4 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
               {ROLE_TABS.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => { setRoleTab(tab.key); setError(""); }}
-                  className={`rounded-lg px-2 py-2 text-xs sm:text-sm font-bold transition cursor-pointer ${
+                  onClick={() => { setRoleTab(tab.key); setError(""); setLoginMethod("email"); }}
+                  className={`rounded-lg px-2 py-1.5 text-xs sm:text-sm font-bold transition cursor-pointer ${
                     roleTab === tab.key ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -241,7 +233,7 @@ export default function Login() {
             </div>
 
             {roleTab === "attorney" ? (
-              <div className="rounded-xl border border-dashed border-border bg-secondary px-5 py-8 text-center">
+              <div className="rounded-xl border border-dashed border-border bg-secondary px-5 py-6 text-center">
                 <p className="text-sm font-semibold text-foreground mb-1.5">Attorney portal — coming soon</p>
                 <p className="text-sm text-muted-foreground leading-relaxed">
                   A dedicated attorney workspace isn't live yet. In the meantime, attorneys can access case
@@ -250,55 +242,61 @@ export default function Login() {
               </div>
             ) : (
               <>
-                {/* Google */}
-                <button
-                  onClick={handleGoogle}
-                  disabled={loading || googleLoading}
-                  className="flex items-center justify-center gap-3 w-full py-3 mb-5
-                    bg-card border border-border rounded-xl text-sm font-semibold text-foreground
-                    hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
-                >
-                  {googleLoading ? "Redirecting to Google…" : (
-                    <>
-                      <GoogleIcon />
-                      Continue with Google
-                    </>
-                  )}
-                </button>
+                {/* Google + Case ID sign-in are client-only — team members
+                    always sign in with their staff email + password, no
+                    alternate identifiers. */}
+                {roleTab === "client" && (
+                  <>
+                    <button
+                      onClick={handleGoogle}
+                      disabled={loading || googleLoading}
+                      className="flex items-center justify-center gap-3 w-full py-2.5 mb-3
+                        bg-card border border-border rounded-xl text-sm font-semibold text-foreground
+                        hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                    >
+                      {googleLoading ? "Redirecting to Google…" : (
+                        <>
+                          <GoogleIcon />
+                          Continue with Google
+                        </>
+                      )}
+                    </button>
 
-                {/* Divider */}
-                <div className="flex items-center gap-3 mb-5">
-                  <span className="flex-1 h-px bg-border" />
-                  <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Or sign in with portal credentials</span>
-                  <span className="flex-1 h-px bg-border" />
-                </div>
+                    <div className="flex items-center gap-3 mb-3">
+                      <span className="flex-1 h-px bg-border" />
+                      <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">Or sign in with portal credentials</span>
+                      <span className="flex-1 h-px bg-border" />
+                    </div>
+                  </>
+                )}
 
                 <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-                <div className="mb-4 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
-                  {[
-                    { key: "email", label: "Email" },
-                    { key: "caseId", label: "Case ID" },
-                    { key: "username", label: "Username" },
-                  ].map((option) => (
-                    <button
-                      key={option.key}
-                      type="button"
-                      onClick={() => {
-                        setLoginMethod(option.key);
-                        setError("");
-                        setPendingInvite(false);
-                        setResendSent(false);
-                      }}
-                      className={`rounded-lg px-3 py-2 text-sm font-bold transition cursor-pointer ${
-                        loginMethod === option.key
-                          ? "bg-card text-primary shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                {roleTab === "client" && (
+                  <div className="mb-3 grid grid-cols-2 rounded-xl border border-border bg-secondary p-1">
+                    {[
+                      { key: "email", label: "Email" },
+                      { key: "caseId", label: "Case ID" },
+                    ].map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => {
+                          setLoginMethod(option.key);
+                          setError("");
+                          setPendingInvite(false);
+                          setResendSent(false);
+                        }}
+                        className={`rounded-lg px-3 py-2 text-sm font-bold transition cursor-pointer ${
+                          loginMethod === option.key
+                            ? "bg-card text-primary shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {loginMethod === "email" ? (
                   <FieldWrap icon={<MailIcon />}>
@@ -310,23 +308,7 @@ export default function Login() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       autoComplete="email"
-                      className="w-full h-[52px] pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground
-                        border border-input rounded-lg bg-card/90 outline-none
-                        hover:border-ring/50 focus:border-primary focus:ring-4 focus:ring-ring/10
-                        transition-all duration-150"
-                    />
-                  </FieldWrap>
-                ) : loginMethod === "caseId" ? (
-                  <FieldWrap icon={<CaseIdIcon />}>
-                    <input
-                      type="text"
-                      id="login-case-id"
-                      name="caseId"
-                      placeholder="Case ID"
-                      value={caseId}
-                      onChange={(e) => setCaseId(e.target.value)}
-                      autoComplete="username"
-                      className="w-full h-[52px] pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground
+                      className="w-full h-12 pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground
                         border border-input rounded-lg bg-card/90 outline-none
                         hover:border-ring/50 focus:border-primary focus:ring-4 focus:ring-ring/10
                         transition-all duration-150"
@@ -336,13 +318,13 @@ export default function Login() {
                   <FieldWrap icon={<CaseIdIcon />}>
                     <input
                       type="text"
-                      id="login-username"
-                      name="username"
-                      placeholder="Username"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
+                      id="login-case-id"
+                      name="caseId"
+                      placeholder="Case ID"
+                      value={caseId}
+                      onChange={(e) => setCaseId(e.target.value)}
                       autoComplete="username"
-                      className="w-full h-[52px] pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground
+                      className="w-full h-12 pl-10 pr-4 text-sm text-foreground placeholder-muted-foreground
                         border border-input rounded-lg bg-card/90 outline-none
                         hover:border-ring/50 focus:border-primary focus:ring-4 focus:ring-ring/10
                         transition-all duration-150"
@@ -361,7 +343,7 @@ export default function Login() {
                 />
 
                 {/* Forgot */}
-                <div className="text-right mb-5 -mt-1">
+                <div className="text-right mb-3 -mt-1">
                   <Link to="/forgot-password" className="text-xs text-primary hover:underline font-medium">
                     Forgot password?
                   </Link>
@@ -401,7 +383,7 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={loading || googleLoading}
-                  className="h-[52px] w-full mb-3 rounded-lg bg-primary text-sm font-black text-primary-foreground
+                  className="h-12 w-full mb-2.5 rounded-lg bg-primary text-sm font-black text-primary-foreground
                     shadow-[0_12px_28px_rgba(37,99,235,0.28)] transition hover:bg-primary/90 focus:outline-none
                     focus:ring-4 focus:ring-ring/20 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -413,7 +395,7 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => navigate("/signup")}
-                    className="w-full py-3 bg-card border border-border text-foreground
+                    className="w-full py-2.5 bg-card border border-border text-foreground
                       text-sm font-semibold rounded-xl hover:bg-secondary
                       transition-all duration-200 cursor-pointer"
                   >
@@ -423,9 +405,9 @@ export default function Login() {
               </>
             )}
 
-            <div className="my-9 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+            <div className="my-4 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
 
-            <div className="flex flex-wrap items-center justify-center gap-2 text-sm font-bold text-muted-foreground sm:gap-3 sm:text-base">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-muted-foreground sm:gap-3 sm:text-sm">
               <ShieldIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
               <span>Secure</span>
               <span className="text-muted-foreground/60">&bull;</span>
@@ -434,7 +416,7 @@ export default function Login() {
               <span>Compliant</span>
             </div>
 
-            <p className="mt-6 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
+            <p className="mt-3 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
           </div>
         </section>
       </div>
@@ -445,7 +427,7 @@ export default function Login() {
 /* ── Shared field wrapper ── */
 function FieldWrap({ icon, children }) {
   return (
-    <div className="relative mb-4">
+    <div className="relative mb-3">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
         {icon}
       </span>

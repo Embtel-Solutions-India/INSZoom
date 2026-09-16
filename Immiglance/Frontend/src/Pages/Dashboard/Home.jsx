@@ -1,29 +1,21 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import useHasCase from "../../hooks/useHasCase";
-import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import StartAssessmentButton from "../../components/StartAssessmentButton";
-import OfferCard from "../../components/OfferCard";
+import { leadsApi } from "../../services/api";
 import {
-  ATTORNEY_REVIEW_PACKAGE,
-  FULL_ATTORNEY_FILING_PACKAGE,
-  SELF_FILING_PACKAGE,
-  getPriceRangesByTier,
-  formatCentsRange,
-} from "../../config/pricingCatalog";
-import { PLANS } from "../../config/planConfig";
-import { leadsApi, referralApi, tokenStore } from "../../services/api";
-import {
-  IconGift,
   IconSparkles,
   IconUsers,
   IconArrowRight,
-  IconHandThumbsUp,
-  IconCelebrate,
   IconSchool,
   IconBriefcase,
   IconIdCard,
+  IconStar,
+  IconGlobe,
+  IconDollarSign,
+  IconSuitcase,
+  IconBuilding,
 } from "../../utils/iconComponents";
 
 const CATEGORIES = [
@@ -92,41 +84,21 @@ const WHO_WE_HELP = [
   { icon: IconIdCard, label: "Green Card", desc: "EB & family-based permanent residency" },
 ];
 
-/* ── Packages — priced from the catalog. Actual price depends on visa type, so
-   this shows a range (lowest to highest across all visa types) rather than a
-   fixed number; the exact price for a case is only shown once a visa type is
-   known, via the questionnaire/case flow, never selected directly here. ──── */
-const TIER_RANGES = getPriceRangesByTier();
-const OFFERS = [
-  {
-    icon: IconSparkles,
-    title: SELF_FILING_PACKAGE,
-    description: "Guided self-file kit with templates, checklists, and optional attorney review.",
-    price: formatCentsRange(TIER_RANGES[SELF_FILING_PACKAGE].min, TIER_RANGES[SELF_FILING_PACKAGE].max),
-    features: PLANS.find((p) => p.id === SELF_FILING_PACKAGE)?.features || [],
-  },
-  {
-    icon: IconGift,
-    title: ATTORNEY_REVIEW_PACKAGE,
-    description: "Package includes full document review and a one-hour attorney consultation.",
-    price: formatCentsRange(TIER_RANGES[ATTORNEY_REVIEW_PACKAGE].min, TIER_RANGES[ATTORNEY_REVIEW_PACKAGE].max),
-    features: PLANS.find((p) => p.id === ATTORNEY_REVIEW_PACKAGE)?.features || [],
-  },
-  {
-    icon: IconHandThumbsUp,
-    title: FULL_ATTORNEY_FILING_PACKAGE,
-    description: "End-to-end attorney-led filing, USCIS forms, and case management.",
-    price: formatCentsRange(TIER_RANGES[FULL_ATTORNEY_FILING_PACKAGE].min, TIER_RANGES[FULL_ATTORNEY_FILING_PACKAGE].max),
-    features: PLANS.find((p) => p.id === FULL_ATTORNEY_FILING_PACKAGE)?.features || [],
-  },
-];
-
-/* ── Referral benefits ───────────────────────────────────────────────────────── */
-const REFERRAL_BENEFITS = [
-  { icon: IconUsers, title: "Refer Your Friend", description: "Earn a 10% reward credit for every successful referral when your friend completes their visa application with us." },
-  { icon: IconGift, title: "Your Friend Saves", description: "Your friend gets 10% discount on their first visa application package. Win-win!" },
-  { icon: IconSparkles, title: "Unlimited Earning", description: "No limits on how many friends you can refer. Keep earning rewards for every successful referral." },
-  { icon: IconArrowRight, title: "Easy Process", description: "Share your unique referral code, your friend signs up, and get rewarded when they complete their application." },
+/* ── Visa categories — auto-scrolling showcase. Same categories as the
+   CATEGORY GRID above, restyled with an icon for the scroll track; kept as
+   its own array (rather than decorating CATEGORIES in place) since the grid
+   above intentionally stays plain/minimal. Deliberately no per-item color —
+   every card shares one neutral black/grey/white treatment, matching the
+   app's monochrome theme instead of a multi-color badge per category. ──── */
+const VISA_SCROLL_ITEMS = [
+  { code: "EB-1A", title: "Extraordinary Ability", desc: "Self-petition green card for individuals with extraordinary ability.", icon: IconStar },
+  { code: "EB-1B", title: "Outstanding Researcher / Professor", desc: "Employer-sponsored green card for internationally recognized researchers and professors.", icon: IconSchool },
+  { code: "EB-2 NIW", title: "National Interest Waiver", desc: "Green card for advanced-degree professionals whose work benefits the U.S. national interest.", icon: IconGlobe },
+  { code: "O-1A", title: "Extraordinary Ability (Temporary)", desc: "Nonimmigrant work visa for individuals with extraordinary ability, sponsored by an employer or agent.", icon: IconSparkles },
+  { code: "EB-5", title: "Immigrant Investor", desc: "Green card through a qualifying investment in a U.S. business that creates jobs.", icon: IconDollarSign },
+  { code: "E-2", title: "Treaty Investor", desc: "Visa for treaty-country nationals investing a substantial amount in a U.S. business they direct and develop.", icon: IconBriefcase },
+  { code: "H-1B", title: "Specialty Occupation", desc: "Employer-sponsored work visa for professionals in a specialty occupation.", icon: IconSuitcase },
+  { code: "L-1A", title: "Intracompany Transferee (Executive/Manager)", desc: "Visa for executives and managers transferring within a multinational company.", icon: IconBuilding },
 ];
 
 /* ── FAQ ──────────────────────────────────────────────────────────────────────── */
@@ -166,54 +138,68 @@ function FAQItem({ q, a }) {
   );
 }
 
+function ContactResultModal({ status, message, onClose }) {
+  const isError = status === "error";
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        className="w-full max-w-sm rounded-2xl border border-border bg-card p-7 text-center shadow-2xl
+          shadow-black/20 animate-[homeModalIn_0.18s_ease-out]"
+      >
+        <div
+          className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${
+            isError ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"
+          }`}
+        >
+          {isError ? (
+            <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.18A2 2 0 004 21h16a2 2 0 001.89-2.96L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          ) : (
+            <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </div>
+        <h3 className="font-serif text-xl font-bold text-foreground mb-2">
+          {isError ? "Something went wrong" : "You're all set"}
+        </h3>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-6">{message}</p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full px-6 py-3 rounded-lg bg-primary text-primary-foreground font-bold hover:opacity-90 transition-colors cursor-pointer"
+        >
+          OK
+        </button>
+      </div>
+      <style>{`@keyframes homeModalIn { from { opacity: 0; transform: scale(0.96) translateY(4px); } to { opacity: 1; transform: scale(1) translateY(0); } }`}</style>
+    </div>
+  );
+}
+
 export default function Home() {
   const { user } = useAuth();
   const { hasCase } = useHasCase();
-  const navigate = useNavigate();
-  const isLoggedIn = !!tokenStore.getAccess();
 
   const [email, setEmail] = useState("");
   const [contactLoading, setContactLoading] = useState(false);
-  const [referral, setReferral] = useState(null);
-  const [copied, setCopied] = useState(false);
-
-  // Package selection only ever happens through the questionnaire/case
-  // flow — the Packages section's CTA just routes: to the intake
-  // questionnaire if the visitor hasn't selected a visa type / has no case
-  // yet, or to their dashboard if they've already decided a visa type and
-  // service plan.
-  const { data: myCase } = useMyCase({ enabled: isLoggedIn });
-  const { data: myProfile } = useMyProfile({ enabled: isLoggedIn });
-  const visaType = myProfile?.visaType || myProfile?.assessmentRecommendedVisa || myCase?.visaType || "";
-  const hasDecidedPlan = isLoggedIn && Boolean(myCase?._id) && Boolean(visaType) && Boolean(myCase?.plan?.tier);
-  const goToNextStep = () => navigate(hasDecidedPlan ? "/dashboard" : "/dashboard/intake");
+  const [contactResult, setContactResult] = useState(null);
+  // Pauses the visa-category scroll track while the pointer is anywhere over
+  // it (hovering any one card is enough, same as the original BAIS portal
+  // behavior) — toggled by the track wrapper's onMouseEnter/onMouseLeave.
+  const [scrollPaused, setScrollPaused] = useState(false);
 
   useEffect(() => {
     document.title = "Immiglance | Attorney-Managed Case Evaluation & Client Portal";
-    // Best-effort: load the logged-in user's real referral code.
-    referralApi.me().then(setReferral).catch(() => setReferral(null));
   }, []);
-
-  const referralCode = referral?.referralCode || "Sign in to get your code";
-  const referralLink = referral?.referralCode
-    ? `${window.location.origin}/signup?ref=${referral.referralCode}`
-    : `${window.location.origin}/signup`;
-
-  const copyReferral = async () => {
-    if (!referral?.referralCode) { navigate("/login"); return; }
-    try {
-      await navigator.clipboard.writeText(referralLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* clipboard unavailable */ }
-  };
-
-  const shareWhatsApp = () => {
-    const text = encodeURIComponent(
-      `Get 10% off your US visa package with Immiglance! Use my referral link: ${referralLink}`
-    );
-    window.open(`https://wa.me/?text=${text}`, "_blank");
-  };
 
   const handleContactRequest = async (e) => {
     e.preventDefault();
@@ -227,12 +213,19 @@ export default function Home() {
         message: "Contact request submitted from the Home page.",
         source: "Home Page — Contact Request",
       });
-      // The backend persists the lead and sends the internal notification
-      // email itself — the client never needs an email address/mailto link.
-      alert("Thank you! We'll contact you shortly.");
+      // The backend persists the lead (it shows up in the admin portal's
+      // Leads inbox) and sends the internal notification email itself — the
+      // client never needs an email address/mailto link.
+      setContactResult({
+        status: "success",
+        message: "Thanks for reaching out — a member of our team will be in touch with you shortly.",
+      });
       setEmail("");
     } catch (error) {
-      alert(error.message || "Unable to send your request. Please try again.");
+      setContactResult({
+        status: "error",
+        message: error.message || "We couldn't send your request. Please try again.",
+      });
     } finally {
       setContactLoading(false);
     }
@@ -433,74 +426,72 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ══ PACKAGES ══ */}
-      <section id="packages" className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-16">
-          <h2 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-2">
-            Packages built for every budget
-          </h2>
-          <p className="text-muted-foreground mb-10 max-w-2xl">
-            Flexible, affordable visa assistance packages. Exact pricing depends on your visa type
-            and is confirmed once your case is set up.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {OFFERS.map((offer, idx) => (
-              <OfferCard key={idx} {...offer} cta={goToNextStep} ctaText="Get Started" />
+      {/* ══ VISA CATEGORIES (auto-scroll, pauses on hover) ══ */}
+      <section className="border-t border-border py-16 sm:py-20 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 mb-10">
+          <span className="inline-block mb-3 text-xs font-bold uppercase tracking-widest text-primary">
+            What We Handle
+          </span>
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-foreground">
+              Every Visa Category We Handle
+            </h2>
+            <p className="text-muted-foreground text-sm max-w-sm">
+              Hover a card to pause. We cover every major US visa and green card category.
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="relative"
+          onMouseEnter={() => setScrollPaused(true)}
+          onMouseLeave={() => setScrollPaused(false)}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-16 sm:w-24 bg-linear-to-r from-background to-transparent z-10 pointer-events-none" aria-hidden="true" />
+          <div className="absolute right-0 top-0 bottom-0 w-16 sm:w-24 bg-linear-to-l from-background to-transparent z-10 pointer-events-none" aria-hidden="true" />
+          <div
+            className="flex gap-5 px-6"
+            style={{
+              width: "max-content",
+              animation: "homeVisaScrollTrack 32s linear infinite",
+              animationPlayState: scrollPaused ? "paused" : "running",
+            }}
+          >
+            {[...VISA_SCROLL_ITEMS, ...VISA_SCROLL_ITEMS].map((v, i) => (
+              <Link
+                key={i}
+                to={`/eligibility?src=${encodeURIComponent(`Home Page — Scroll — ${v.code}`)}`}
+                className="w-72 sm:w-80 shrink-0 bg-card border border-card-border rounded-2xl p-6
+                  hover:border-foreground/30 hover:shadow-sm transition-all duration-300 no-underline"
+              >
+                <div className="w-14 h-14 rounded-2xl border border-border flex items-center justify-center mb-4">
+                  <v.icon size={24} className="text-foreground" />
+                </div>
+                <span className="inline-block text-[0.68rem] font-bold px-2.5 py-1 rounded-full bg-secondary text-foreground mb-3">
+                  {v.code}
+                </span>
+                <h3 className="text-lg font-extrabold text-foreground mb-2">{v.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{v.desc}</p>
+              </Link>
             ))}
           </div>
         </div>
-      </section>
 
-      {/* ══ REFER A FRIEND ══ */}
-      <section className="border-t border-border bg-secondary/40">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-16">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-4">
-                Refer a friend
-              </h2>
-              <p className="text-muted-foreground mb-8 leading-relaxed">
-                Know someone who needs visa assistance? Share your unique referral code and earn
-                rewards for every successful referral. Help your friends while earning!
-              </p>
-              <div className="space-y-4">
-                {REFERRAL_BENEFITS.map((b) => (
-                  <div key={b.title} className="flex gap-4">
-                    <div className="shrink-0">
-                      <b.icon size={22} className="text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-foreground text-sm mb-0.5">{b.title}</h3>
-                      <p className="text-sm text-muted-foreground">{b.description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="p-8 sm:p-10 rounded-2xl bg-primary text-primary-foreground">
-              <h3 className="text-xl font-bold mb-4">Your Referral Code</h3>
-              <div className="mb-6 p-4 bg-primary-foreground/20 rounded-lg backdrop-blur">
-                <p className="text-sm text-primary-foreground/80 mb-2">Your unique code:</p>
-                <p className="text-2xl font-mono font-bold break-all">{referralCode}</p>
-                {referral?.successfulReferrals > 0 && (
-                  <p className="text-xs text-primary-foreground/80 mt-2 flex items-center gap-1.5">
-                    <IconCelebrate size={14} className="text-primary-foreground/80" /> {referral.successfulReferrals} successful referral(s) so far
-                  </p>
-                )}
-              </div>
-              <p className="text-primary-foreground/80 text-sm mb-6 leading-relaxed">
-                Share your link with friends. When they sign up and complete their application,
-                you both get 10% off!
-              </p>
-              <button onClick={copyReferral} className="w-full px-4 py-3 rounded-lg bg-card text-primary font-bold hover:bg-accent transition-colors mb-3 cursor-pointer">
-                {copied ? "Copied!" : referral?.referralCode ? "Copy Referral Link" : "Sign in to get your code"}
-              </button>
-              <button onClick={shareWhatsApp} className="w-full px-4 py-3 rounded-lg border-2 border-primary-foreground text-primary-foreground font-bold hover:bg-primary-foreground/10 transition-colors cursor-pointer">
-                Share on WhatsApp
-              </button>
-            </div>
-          </div>
+        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <StartAssessmentButton size="lg" pageSource="Home Page — Visa Scroll">
+            Not sure which visa fits? Take the free assessment
+          </StartAssessmentButton>
+          <a
+            href="#about"
+            className="inline-flex items-center gap-2 px-7 py-3 border border-border text-foreground
+              hover:bg-secondary text-sm font-semibold rounded-xl transition-all duration-200 no-underline active:scale-95"
+          >
+            Learn More About Immiglance
+            <IconArrowRight size={14} />
+          </a>
         </div>
+
+        <style>{`@keyframes homeVisaScrollTrack { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
       </section>
 
       {/* ══ FAQ + CONTACT ══ */}
@@ -518,9 +509,9 @@ export default function Home() {
               </div>
             </div>
             <div>
-              <div className="p-8 sm:p-10 rounded-2xl bg-primary text-primary-foreground h-full flex flex-col justify-center">
-                <h2 className="text-xl sm:text-2xl font-bold mb-3">Still have questions?</h2>
-                <p className="text-primary-foreground/80 mb-6 leading-relaxed">
+              <div className="p-8 sm:p-10 rounded-2xl bg-secondary border border-border h-full flex flex-col justify-center">
+                <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3">Still have questions?</h2>
+                <p className="text-muted-foreground mb-6 leading-relaxed">
                   Our team is ready to help. Leave your email and we'll reach out for a free
                   15-minute consultation.
                 </p>
@@ -531,12 +522,12 @@ export default function Home() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="flex-1 px-4 py-3 rounded-lg bg-card text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary-foreground/40"
+                    className="flex-1 px-4 py-3 rounded-lg border border-border bg-card text-foreground placeholder-muted-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition-all"
                   />
                   <button
                     type="submit"
                     disabled={contactLoading}
-                    className="px-6 py-3 rounded-lg bg-accent text-accent-foreground font-bold hover:opacity-90 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-bold hover:opacity-90 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     {contactLoading ? "Sending…" : "Contact Us"}
                   </button>
@@ -558,6 +549,14 @@ export default function Home() {
           <span>A case evaluation &amp; client portal platform.</span>
         </div>
       </footer>
+
+      {contactResult && (
+        <ContactResultModal
+          status={contactResult.status}
+          message={contactResult.message}
+          onClose={() => setContactResult(null)}
+        />
+      )}
     </div>
   );
 }

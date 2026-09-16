@@ -52,25 +52,72 @@ const VISA_PATHWAYS = [
   { key: "F-1", label: "F-1 — Student", category: "temporary" },
 ];
 
+// The 5 fixed qualifying questions asked after the contact/category/visa
+// steps (see EligibilityQuiz.jsx) — generic across every visa pathway, same
+// as the questions they replace. Rendered by ChoiceStep.jsx, one per screen.
 const DEFAULT_PROFILE_QUESTIONS = [
   {
-    key: "field",
-    label: "What field or industry do you work in?",
-    type: "text",
+    key: "location",
+    label: "Where are you currently located?",
+    type: "select",
+    options: ["Inside the United States", "Outside the United States"],
     required: true,
   },
   {
-    key: "currentStatus",
-    label: "What is your current visa/immigration status?",
+    key: "immigrationStatus",
+    label: "What is your current immigration/visa status?",
     type: "select",
-    options: ["F-1 (Student)", "H-1B", "L-1", "O-1", "TN", "J-1", "B-1/B-2", "Other / None"],
+    options: [
+      "I currently have a U.S. visa/status",
+      "I don't currently have a U.S. visa/status",
+      "My visa/status has expired or is expiring soon",
+      "Not Sure",
+    ],
+    required: true,
+  },
+  {
+    key: "profession",
+    label: "What is your current profession or industry?",
+    type: "select",
+    options: [
+      "Technology / IT",
+      "Engineering",
+      "Healthcare",
+      "Finance / Banking",
+      "Education / Research",
+      "Business / Consulting",
+      "Manufacturing",
+      "Other",
+    ],
     required: true,
   },
   {
     key: "goal",
-    label: "What's your primary goal?",
+    label: "What is your primary goal for this application?",
     type: "select",
-    options: ["Work authorization now", "Green card / permanent residence", "Explore my options"],
+    options: [
+      "Start working in the U.S.",
+      "Continue/extend my stay in the U.S.",
+      "Transfer to a U.S. office",
+      "Obtain a Green Card",
+      "Join my family in the U.S.",
+      "Start or expand a business",
+      "Explore my immigration options",
+      "Other",
+    ],
+    required: true,
+  },
+  {
+    key: "timeline",
+    label: "How soon are you planning to start your immigration process?",
+    type: "select",
+    options: [
+      "Immediately",
+      "Within 1–3 months",
+      "Within 3–6 months",
+      "More than 6 months",
+      "Just exploring my options",
+    ],
     required: true,
   },
 ];

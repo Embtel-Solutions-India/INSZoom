@@ -101,8 +101,7 @@ export default function ManageBooking() {
                 type="button"
                 disabled={!selectedSlot || rescheduleMutation.isPending}
                 onClick={() => rescheduleMutation.mutate(selectedSlot?.startAt)}
-                className="w-full px-6 py-3.5 rounded-xl text-primary-foreground font-bold text-sm disabled:opacity-40 cursor-pointer"
-                style={{ backgroundColor: "var(--eligibility-primary, hsl(var(--primary)))" }}
+                className="w-full px-6 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-40 cursor-pointer"
               >
                 {rescheduleMutation.isPending ? "Saving…" : "Confirm new time"}
               </button>

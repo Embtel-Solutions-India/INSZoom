@@ -95,13 +95,24 @@ async function submit(payload = {}, req) {
     questionEngineService.resolveScoringConfig(visaPathway),
   ]);
 
-  const scoreResult = scoringService.score(payload.criteriaAnswers, scoringConfig, {
-    scaleLabelsByKey: questionEngineService.scaleLabelsByKey(definition),
-    scoringConfigVersion: scoringConfig.version,
-    quizDefinitionVersion: definition.version,
-  });
+  // The public quiz no longer collects 0-3 "evidence strength" answers (see
+  // EligibilityQuiz.jsx — replaced by the 5 fixed qualifying questions in
+  // profileAnswers instead). Scoring/tier logic still runs for any visa an
+  // admin has configured with real criteriaAnswers via the DB-authored quiz
+  // CRUD, but a criteria-less submit skips it entirely rather than producing
+  // a meaningless "Tier D" on every single lead.
+  const hasCriteriaAnswers = payload.criteriaAnswers.length > 0;
+  const scoreResult = hasCriteriaAnswers
+    ? scoringService.score(payload.criteriaAnswers, scoringConfig, {
+        scaleLabelsByKey: questionEngineService.scaleLabelsByKey(definition),
+        scoringConfigVersion: scoringConfig.version,
+        quizDefinitionVersion: definition.version,
+      })
+    : null;
 
-  const recommendation = await recommendationService.build(scoreResult, scoringConfig);
+  const recommendation = scoreResult
+    ? await recommendationService.build(scoreResult, scoringConfig)
+    : { pathwayString: `${visaPathway} consultation`, alternativePathways: [], nextStep: `Let's go over your ${visaPathway} options in a free consultation.` };
 
   let disclaimerAcceptedVersion;
   if (payload.disclaimerAccepted) {
@@ -123,8 +134,8 @@ async function submit(payload = {}, req) {
     utm: payload.utm,
     sessionId: payload.sessionId,
     profileAnswers: payload.profileAnswers,
-    criteriaAnswers: scoreResult.evidenceStrength.map(({ key, value, met, developable }) => ({ key, value, met, developable })),
-    scoreResult,
+    criteriaAnswers: scoreResult ? scoreResult.evidenceStrength.map(({ key, value, met, developable }) => ({ key, value, met, developable })) : [],
+    scoreResult: scoreResult || undefined,
     disclaimerAcceptedVersion,
     nextStep: recommendation.nextStep,
     ipHash,
@@ -133,20 +144,30 @@ async function submit(payload = {}, req) {
   telemetryService.track({
     name: "quiz.completed",
     sessionId: payload.sessionId,
-    properties: { visaPathway, tier: scoreResult.tier, criteriaMetCount: scoreResult.criteriaMetCount },
+    properties: { visaPathway, tier: scoreResult?.tier, criteriaMetCount: scoreResult?.criteriaMetCount },
     utm: payload.utm,
     ip: req?.ip,
   }).catch(() => {});
 
   return {
-    tier: scoreResult.tier,
+    tier: scoreResult?.tier,
     pathwayString: recommendation.pathwayString,
     alternativePathways: recommendation.alternativePathways,
-    evidenceStrength: scoreResult.evidenceStrength,
+    evidenceStrength: scoreResult?.evidenceStrength || [],
     nextStep: recommendation.nextStep,
     leadId: lead._id,
-    routing: scoreResult.routing,
+    routing: scoreResult?.routing,
   };
+}
+
+// Public, unauthenticated draft autosave — see EligibilityQuiz.jsx (fires on
+// every step advance) and lead.service.js's saveDraftLead (the actual
+// upsert). Deliberately does none of submit()'s scoring/email/notification
+// side effects; it only ever needs to persist whatever's been answered so
+// far.
+async function saveDraft(payload = {}, req) {
+  const lead = await leadService.saveDraftLead(payload, req);
+  return { leadId: lead._id };
 }
 
 const Lead = require("../../models/Lead");
@@ -347,7 +368,7 @@ async function rejectLead(id, rejectionReason, req) {
 }
 
 module.exports = {
-  getDefinitionPayload, listVisaPathways, submit, listLeads, getLead,
+  getDefinitionPayload, listVisaPathways, submit, saveDraft, listLeads, getLead,
   markLeadSeen, updateLeadStatus, assignLead, addLeadNote,
   confirmConsultation, completeConsultation, approveLead, rejectLead,
 };

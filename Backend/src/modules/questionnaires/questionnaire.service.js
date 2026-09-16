@@ -1903,7 +1903,12 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
         module: "cases",
         category: "immigration",
         visaType: definition.visaType,
-        visaTypes: [definition.visaType],
+        // A definition may serve several case-level visa sub-codes under one
+        // shared questionnaire (e.g. the P checklist covers P-1A/P-1B/P-3
+        // cases) — definition.visaTypes lets it declare the full match set;
+        // falling back to [definition.visaType] keeps every other
+        // single-code definition (H1B, L1A, ...) unchanged.
+        visaTypes: definition.visaTypes || [definition.visaType],
         isActive: true,
         isTemplate: true,
         templateCategory: definition.visaType,
@@ -1956,6 +1961,11 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
       }
       if (definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
         questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
+        changed = true;
+      }
+      const definitionVisaTypes = definition.visaTypes || [definition.visaType];
+      if (JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
+        questionnaire.visaTypes = definitionVisaTypes;
         changed = true;
       }
       const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);

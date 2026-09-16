@@ -281,16 +281,18 @@ class CaseLifecycleOrchestrator {
     }
   }
 
-  static async initializeCase(caseData, user, req) {
-    await this.ensureBeneficiary(caseData, user, req);
-    await caseData.save();
-    let knowledge = null;
+  // Runs orchestrate() (questionnaire assignment + canonical rebuild + form
+  // template resolution) for one case id, recording an orchestration-failed
+  // knowledgePlan on that same case (never rethrowing) exactly like
+  // initializeCase's own principal-case try/catch below — factored out so
+  // the child-case loop doesn't duplicate that error handling.
+  static async orchestrateOne(caseId, user, req) {
     try {
-      knowledge = await require("./immigration-knowledge-engine.service").orchestrate(caseData._id, user, req, {
+      return await require("./immigration-knowledge-engine.service").orchestrate(caseId, user, req, {
         reason: "case_initialized",
       });
     } catch (error) {
-      const current = await Case.findById(caseData._id);
+      const current = await Case.findById(caseId);
       if (current) {
         current.knowledgePlan = {
           ...(current.knowledgePlan?.toObject?.() || current.knowledgePlan || {}),
@@ -301,6 +303,31 @@ class CaseLifecycleOrchestrator {
         };
         caseService.addAuditEntry(current, "immigration_knowledge_orchestration_failed", "Immigration orchestration failed without rolling back case creation", user, { error: error.message }, req);
         await current.save();
+      }
+      return null;
+    }
+  }
+
+  static async initializeCase(caseData, user, req) {
+    await this.ensureBeneficiary(caseData, user, req);
+    await caseData.save();
+    const knowledge = await this.orchestrateOne(caseData._id, user, req);
+    // For an employer_employee/family case structure, the principal is a
+    // container record (company/petitioner info) - the questionnaire that
+    // actually matters for the OTHER side (employee/beneficiary) belongs to
+    // each CHILD case, exactly like provisionRequiredForms below already
+    // treats child cases as the real per-beneficiary filing case for forms.
+    // Without this loop, orchestrate()'s assignQuestionnaires() only ever
+    // ran against the principal, so the employee/beneficiary side never got
+    // an explicit questionnaireReferences assignment at case creation -
+    // reachable only via getQuestionnaireForCase's lazy isDefault-template
+    // fallback when someone happened to load it, never a recorded
+    // assignment. orchestrateOne() is idempotent (assignQuestionnaires()
+    // skips a questionnaire whose id is already an active reference), so
+    // calling this again on a later initializeCase re-run is safe.
+    if (caseData.childCases?.length) {
+      for (const childCaseId of caseData.childCases) {
+        await this.orchestrateOne(childCaseId, user, req);
       }
     }
     await this.provisionRequiredForms(caseData, user, req);

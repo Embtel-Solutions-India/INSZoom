@@ -75,7 +75,8 @@
     "pdfjs-dist": "^6.1.200",
     "socket.io": "^4.7.5",
     "stripe": "^16.12.0",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

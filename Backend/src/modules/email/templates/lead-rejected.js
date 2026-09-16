@@ -8,7 +8,7 @@ function subject(data = {}) {
 function bodyLines(data = {}) {
   return [
     `Hi ${data.fullName || "there"},`,
-    `Thank you for taking the time to speak with ${data.msoEntityShortName || "our team"}. After reviewing your consultation, we won't be able to move forward with your case at this time.`,
+    "Thank you for taking the time to speak with Immiglance. After reviewing your consultation, we won't be able to move forward with your case at this time.",
     `We wish you the best in your immigration journey.`,
   ].filter(Boolean);
 }

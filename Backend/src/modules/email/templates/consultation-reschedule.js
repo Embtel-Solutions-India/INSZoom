@@ -1,8 +1,7 @@
 // Sent to the prospect after they reschedule their own consultation via the
-// token-based manage link. Neutral host language only — see
-// consultation-confirmation.js for the pattern this mirrors.
-function subject(data = {}) {
-  return `Your consultation with ${data.msoEntityShortName || "us"} has been rescheduled`;
+// token-based manage link.
+function subject() {
+  return "Your consultation with Immiglance has been rescheduled";
 }
 
 function bodyLines(data = {}) {

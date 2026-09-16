@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { body } = require("express-validator");
 const authenticate = require("../../middleware/authenticate");
+const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const ctrl = require("./form-registry.controller");
 
@@ -15,6 +16,18 @@ router.post(
   [body("decision").isIn(["ADD", "NOT_APPLICABLE"]).withMessage("decision must be ADD or NOT_APPLICABLE"), body("reason").optional().trim()],
   validate,
   ctrl.decideConditionalFormMapping
+);
+
+// Phase 1/2 (registry-driven form visibility + on-demand USCIS fetch) - full
+// paths /api/cases/:id/forms-overview and /api/cases/:id/forms/acquire.
+router.get("/:id/forms-overview", authenticate, authorizePermissions("forms:read"), ctrl.getFormsOverview);
+router.post(
+  "/:id/forms/acquire",
+  authenticate,
+  authorizePermissions("forms:create"),
+  [body("formNumber").trim().notEmpty().withMessage("formNumber is required")],
+  validate,
+  ctrl.acquireCaseForm
 );
 
 module.exports = router;

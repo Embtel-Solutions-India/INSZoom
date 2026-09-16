@@ -69,6 +69,25 @@ class FormMappingService {
     return this.applyMappingGraph(template, mappingVersion);
   }
 
+  // Read-only fallback for AutoFillService's biographicFallback option -
+  // finds the best template at the biographic-activation tier
+  // (BiographicMappingService) when loadTemplate() finds no fully-"active"
+  // template. Never returned unless explicitly opted into by the caller;
+  // existing callers of loadTemplate are completely unaffected.
+  static async findBiographicTemplate(formType) {
+    const normalizedFormType = this.normalizeFormType(formType);
+    const template = await USCISFormTemplate.findOne({
+      $or: [{ formCode: normalizedFormType }, { formNumber: normalizedFormType }],
+      mappingStatus: "biographic_active",
+    })
+      .select("-definition")
+      .sort({ editionDate: -1, updatedAt: -1 })
+      .lean();
+    if (!template) return null;
+    const mappingVersion = await this.loadMappingVersion(template);
+    return this.applyMappingGraph(template, mappingVersion);
+  }
+
   static normalizeMappings(field = {}) {
     const mappings = [];
     if (Array.isArray(field.mappings) && field.mappings.length) mappings.push(...field.mappings);

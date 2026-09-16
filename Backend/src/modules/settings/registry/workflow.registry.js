@@ -1,0 +1,68 @@
+const { z } = require("zod");
+
+// §4.9 Workflow & SLAs. Enforced by modules/cases/assignment.service.js
+// (strategy) and modules/workflow-sla/sla.service.js (due-date math +
+// breach flagging), both reading via SettingsEngineService.getEffective.
+module.exports = [
+  {
+    key: "workflow.assignmentStrategy",
+    category: "workflow",
+    group: "Assignment",
+    label: "Case assignment strategy",
+    type: "enum",
+    enumValues: ["manual", "round_robin", "load_balanced"],
+    default: "manual",
+    validation: z.enum(["manual", "round_robin", "load_balanced"]),
+    scopes: ["system", "team"],
+    requiresPermission: "settings:manage_workflow",
+    affects: "case assignment service (new-case creation)",
+  },
+  {
+    key: "workflow.autoAssign.enabled",
+    category: "workflow",
+    group: "Assignment",
+    label: "Auto-assign new cases",
+    type: "boolean",
+    default: false,
+    validation: z.boolean(),
+    scopes: ["system", "team"],
+    requiresPermission: "settings:manage_workflow",
+    affects: "case assignment service",
+  },
+  {
+    key: "workflow.sla.intakeMaxDays",
+    category: "workflow",
+    group: "SLA",
+    label: "Intake SLA (max days)",
+    type: "number",
+    default: 7,
+    validation: z.number().int().min(1).max(365),
+    scopes: ["system"],
+    requiresPermission: "settings:manage_workflow",
+    affects: "SLA due-date engine",
+  },
+  {
+    key: "workflow.sla.rfeResponseDays",
+    category: "workflow",
+    group: "SLA",
+    label: "RFE response SLA (days)",
+    type: "number",
+    default: 14,
+    validation: z.number().int().min(1).max(365),
+    scopes: ["system"],
+    requiresPermission: "settings:manage_workflow",
+    affects: "SLA due-date engine",
+  },
+  {
+    key: "workflow.sla.docCollectionDays",
+    category: "workflow",
+    group: "SLA",
+    label: "Document collection SLA (days)",
+    type: "number",
+    default: 10,
+    validation: z.number().int().min(1).max(365),
+    scopes: ["system"],
+    requiresPermission: "settings:manage_workflow",
+    affects: "SLA due-date engine",
+  },
+];

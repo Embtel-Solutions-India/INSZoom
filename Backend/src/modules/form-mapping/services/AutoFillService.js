@@ -185,6 +185,12 @@ class AutoFillService {
       generatedAt: new Date(),
       canonicalReadiness: readiness,
       mappingValidation: mapped.template?.mappingGraph?.validation || {},
+      // "biographic" when this run used a BiographicMappingService-tier
+      // template (mappingStatus:"biographic_active") via
+      // generate()'s biographicFallback option or an already-provisioned
+      // biographic CaseForm - "curated" for every other (existing,
+      // unchanged) case.
+      autofillTier: options.usingBiographicTier ? "biographic" : "curated",
       updatedFieldCount: merged.updatedFields.length,
       skippedFieldCount: merged.skippedFields.length,
       missingFieldCount: merged.missingFields.length,
@@ -203,6 +209,7 @@ class AutoFillService {
   static async generate(caseId, formType, user, req, options = {}) {
     const existingCaseForm = await this.findCaseForm(caseId, formType);
     let template;
+    let usingBiographicTier = false;
     if (existingCaseForm?.formTemplateId) {
       template = await existingCaseForm.populate({ path: "formTemplateId", select: "-definition" }).then((item) => item.formTemplateId.toObject());
       const lockedMapping = await FormMappingService.loadMappingVersion(
@@ -210,8 +217,23 @@ class AutoFillService {
         existingCaseForm.formVersionLock?.mappingVersionId || existingCaseForm.mappingVersionId,
       );
       template = FormMappingService.applyMappingGraph(template, lockedMapping);
+      usingBiographicTier = template.mappingStatus === "biographic_active";
     } else {
-      template = await FormMappingService.loadTemplate(formType, options.version);
+      try {
+        template = await FormMappingService.loadTemplate(formType, options.version);
+      } catch (err) {
+        // Only ever taken when the caller explicitly opts in - every
+        // existing caller of generate() (that does not pass
+        // biographicFallback: true) keeps throwing the same 404 it always
+        // has, unchanged.
+        if (err.status === 404 && options.biographicFallback) {
+          template = await FormMappingService.findBiographicTemplate(formType);
+          if (!template) throw err; // no biographic-tier template either - rethrow the original 404
+          usingBiographicTier = true;
+        } else {
+          throw err;
+        }
+      }
     }
     const canonicalData = await CanonicalDataService.build(caseId, user, req);
     const readiness = canonicalData.validation || {};
@@ -248,7 +270,7 @@ class AutoFillService {
     const previousFieldValues = caseForm.fieldValues || {};
     const fieldIds = options.fieldIds || options.selectedFieldIds;
     const merged = this.mergeMappedFields(caseForm, template, mapped, canonicalData, { ...options, fieldIds });
-    const populationReport = this.buildPopulationReport(mapped, merged, readiness, { ...options, fieldIds });
+    const populationReport = this.buildPopulationReport(mapped, merged, readiness, { ...options, fieldIds, usingBiographicTier });
     const nextVersion = (caseForm.versionNumber || 0) + 1;
     caseForm.set("formTemplateId", template._id);
     caseForm.set("formCode", template.formCode || template.formNumber);

@@ -120,7 +120,14 @@ const O1A_CRITERIA = [
       {
         letter: "A",
         title: "Recommendation Letter Signers",
-        type: "textarea",
+        // "10 professional profiles ... Name/title/organization/LinkedIn" is
+        // a repeating group of structured profiles, not one free-text blob —
+        // see employee.o1aRecommenders in employmentChecklists.js's
+        // REPEATABLE_FIELDS (kept distinct from employee.recommenders, which
+        // is EB-1B's already-shipped 6-7-entry, LinkedIn-only shape; reusing
+        // that path here would silently add fields to EB-1B's checklist too).
+        type: "repeating_group",
+        repeatablePath: "employee.o1aRecommenders",
         label: "A. Recommendation Letter Signers",
         description: "Please provide 10 professional profiles (with LinkedIn or contact details) of people who can sign strong recommendation letters, such as: Senior executives or managers; Clients or peers working with you or worked with you.",
       },
@@ -280,13 +287,26 @@ function normalizeEmployer(payload = {}) {
       jobTitle: clean(payload.position?.jobTitle || payload.jobTitle),
       offeredSalary: payload.position?.offeredSalary ?? payload.offeredSalary ?? "",
       salaryUnit: payload.position?.salaryUnit || payload.salaryUnit || "",
-      jobLocation: clean(payload.position?.jobLocation || payload.jobLocation),
       dutiesDescription: clean(payload.position?.dutiesDescription || payload.dutiesDescription),
       natureOfEvent: clean(payload.position?.natureOfEvent || payload.natureOfEvent),
     },
     endClient: {
       name: clean(payload.endClient?.name || payload.endClientName),
     },
+    // Repeating group — same shape as h1b.js's workLocations — so the client
+    // can list every address the beneficiary will work at, each tagged with
+    // the company/end-client name it belongs to (source: "mention all the
+    // addresses... along with the company/end client name").
+    workLocations: Array.isArray(payload.workLocations) && payload.workLocations.length
+      ? payload.workLocations.map((location) => ({
+        companyName: clean(location.companyName),
+        street: clean(location.street),
+        county: clean(location.county),
+        city: clean(location.city),
+        state: clean(location.state),
+        zipCode: clean(location.zipCode),
+      }))
+      : [{ companyName: "", street: "", county: "", city: "", state: "", zipCode: "" }],
   };
 }
 
@@ -294,14 +314,23 @@ function employerConditionalDocuments() {
   return {};
 }
 
+const emptyO1aRecommender = () => ({ name: "", title: "", organization: "", linkedinUrl: "" });
+
 function normalizeEmployee(payload = {}, profile = {}) {
   const otherInfoIn = payload.otherInformation || {};
   const hasDependents = otherInfoIn.hasDependents || payload.hasDependents || "";
   const currentVisaStatus = payload.immigrationStatus?.currentVisaStatus || payload.currentVisaStatus || profile.currentVisaStatus || profile.immigrationStatus || "";
   const socialSecurityNumber = clean(payload.personal?.socialSecurityNumber || payload.socialSecurityNumber || profile.socialSecurityNumber || profile.ssn);
   const eadNumber = clean(payload.personal?.eadNumber || payload.eadNumber);
+  // O-1A Criterion 8A — "10 professional profiles" (see O1A_CRITERIA above);
+  // distinct from eb1b.js's employee.recommenders (6-7 LinkedIn-only entries)
+  // per employmentChecklists.js's REPEATABLE_FIELDS comment.
+  const o1aRecommenders = Array.isArray(payload.o1aRecommenders) && payload.o1aRecommenders.length
+    ? payload.o1aRecommenders.map((item) => ({ ...emptyO1aRecommender(), ...item }))
+    : Array.from({ length: 10 }, emptyO1aRecommender);
 
   return {
+    o1aRecommenders,
     personal: {
       lastName: clean(payload.personal?.lastName || payload.lastName || profile.lastName),
       firstName: clean(payload.personal?.firstName || payload.firstName || profile.firstName),
@@ -394,7 +423,11 @@ function fieldCatalog() {
     { path: "employer.position.offeredSalary", label: "Salary as per offer letter", section: "employer", required: true },
     { path: "employer.position.salaryUnit", label: "Offered Salary is per Hour/Week/Bi-weekly/Month/Year?", section: "employer", required: true, type: "select", options: SALARY_UNITS },
     { path: "employer.endClient.name", label: "End Client name if applicable - (Legal Business Name of the secondary entity must contain at least 5 characters)", section: "employer" },
-    { path: "employer.position.jobLocation", label: "Job Location (Complete address) - Mention all the addresses in which the beneficiary is going to work along with the company/end client name", section: "employer", required: true, type: "textarea" },
+    // Repeating group (same shape/path as H-1B's employer.workLocations) —
+    // the source explicitly requires "all the addresses in which the
+    // beneficiary is going to work," which a single free-text field can't
+    // represent as separate, addable rows.
+    { path: "employer.workLocations", label: "Job Location(s) (Company/End Client Name + Complete Address)", section: "employer", required: true, repeatable: true },
     { path: "employer.position.dutiesDescription", label: "Detailed Job description and responsibilities (should be same on offer letter)", section: "employer", required: true, type: "textarea" },
     { path: "employer.position.natureOfEvent", label: "Explain the Nature of the event", section: "employer", required: true, type: "textarea" },
 
