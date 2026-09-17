@@ -126,6 +126,11 @@ jobs:
               \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
               \"tar -xzf ${DEPLOY_DIR}/immiglance-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
 
+              \"echo 'Updating backend source...'\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom fetch origin main\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom checkout main\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom pull --ff-only origin main\",
+
               \"echo 'Deploying Admin frontend...'\",
               \"rm -rf /home/ubuntu/INSZoom/Admin/frontend/dist\",
               \"mkdir -p /home/ubuntu/INSZoom/Admin/frontend/dist\",
