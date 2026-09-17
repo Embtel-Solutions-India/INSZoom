@@ -27,11 +27,8 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
 import { tokenStore } from "../services/api";
+import { STAFF_ROLES, redirectToOwnPortal } from "../utils/portalRedirect";
 
-const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:3002";
-const ATTORNEY_PORTAL_URL = import.meta.env.VITE_ATTORNEY_PORTAL_URL || "http://localhost:5174";
-
-const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const CLIENT_PORTAL_ROLES = ["client", "user", "employer", "employee", "beneficiary"];
 const RESTRICTED_PORTAL_PATHS = ["/dashboard", "/dashboard/documents", "/dashboard/profile"];
 
@@ -47,10 +44,18 @@ export default function AuthGate() {
   // (React may invoke the render body more than once, e.g. under Strict
   // Mode) — it belongs in its own effect, gated on the same condition the
   // render body below re-checks to decide what to show meanwhile.
+  //
+  // The token is handed over in the URL (exactly like the isAttorney branch
+  // below) rather than relying on the refresh-token cookie being readable
+  // from the Admin origin too — that assumption doesn't always hold in
+  // production (different subdomain/cookie policy, browsers blocking
+  // "third-party" cookies on a plain cross-site navigation, etc.), and was
+  // confirmed as the cause of an already-authenticated staff member landing
+  // back on Admin's own /login after being sent here with no credential.
   const isStaff = authStatus === "authenticated" && Boolean(context) && STAFF_ROLES.includes(context.role);
   useEffect(() => {
-    if (isStaff) window.location.href = ADMIN_URL;
-  }, [isStaff]);
+    if (isStaff) redirectToOwnPortal(context.role, tokenStore.getAccess());
+  }, [isStaff, context?.role]);
 
   // Attorneys belong to neither portal this app routes between — they get
   // the third app. The access token is handed over in the URL so the
@@ -60,11 +65,7 @@ export default function AuthGate() {
   // client-side. Mirrors the isStaff redirect directly above.
   const isAttorney = authStatus === "authenticated" && Boolean(context) && context.role === "attorney";
   useEffect(() => {
-    if (!isAttorney) return;
-    const token = tokenStore.getAccess();
-    window.location.href = token
-      ? `${ATTORNEY_PORTAL_URL}/auth/sso?token=${encodeURIComponent(token)}`
-      : `${ATTORNEY_PORTAL_URL}/login`;
+    if (isAttorney) redirectToOwnPortal("attorney", tokenStore.getAccess());
   }, [isAttorney]);
 
   // ── Loading state (also covers the staff/attorney redirects firing above) ─

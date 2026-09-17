@@ -303,7 +303,8 @@ async function dispatchEmailChannel(notification, payload, actor) {
   const emailDelivery = (notification.delivery || []).find((entry) => entry.channel === "email");
   if (!payload.emailTemplate || !emailDelivery) return;
 
-  const recipientEmail = payload.emailTo || (notification.userId ? (await User.findById(notification.userId).select("email").lean())?.email : null);
+  const recipientUser = notification.userId ? await User.findById(notification.userId).select("email role").lean() : null;
+  const recipientEmail = payload.emailTo || recipientUser?.email;
   if (!recipientEmail) {
     emailDelivery.status = "failed";
     emailDelivery.error = "No recipient email address could be resolved";
@@ -317,6 +318,9 @@ async function dispatchEmailChannel(notification, payload, actor) {
     userId: notification.userId,
     triggeredBy: actor?._id,
     source: notification.source,
+    // Only meaningful when emailTo wasn't an override — an override (rare)
+    // means the actual recipient isn't necessarily recipientUser.
+    recipientRole: payload.emailTo ? undefined : recipientUser?.role,
   }).catch((error) => ({ sent: false, error }));
 
   if (result.sent) {

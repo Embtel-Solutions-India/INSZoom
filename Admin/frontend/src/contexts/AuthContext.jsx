@@ -128,6 +128,38 @@ export const AuthProvider = ({ children }) => {
     }
   }, [])
 
+  // SSO landing from Immiglance (AuthGate.jsx's isStaff redirect): the token
+  // arrives in the URL rather than a typed password. It is never trusted
+  // client-side — it's handed to the backend via /auth/me, and only a 200
+  // with a genuine admin-portal role establishes the session. Mirrors
+  // Attorney's own loginWithToken() exactly, since this app previously had
+  // no equivalent and relied on the refresh-token cookie alone being shared
+  // across origins, which isn't guaranteed (different subdomain policies,
+  // browsers blocking third-party cookies, etc.) and was the root cause of
+  // an already-logged-in staff member landing back on this app's own /login.
+  const loginWithToken = useCallback(async (token) => {
+    authVersionRef.current += 1
+    setAccessToken(token)
+    try {
+      const response = await api.get('/auth/me')
+      const userData = response.data.user
+      if (!permissionUtils.canAccessAdminPortal(userData)) {
+        setAccessToken(null)
+        throw new Error('This account is for the client portal only. Please sign in through the client portal.')
+      }
+      localStorage.setItem('loginTime', Date.now().toString())
+      setToken(token)
+      setUser(userData)
+      setLoading(false)
+      return userData
+    } catch (error) {
+      setAccessToken(null)
+      setToken(null)
+      setUser(null)
+      throw error
+    }
+  }, [])
+
   const logout = useCallback(async () => {
     authVersionRef.current += 1
     await unregisterCurrentDevice().catch(() => {})
@@ -196,6 +228,7 @@ export const AuthProvider = ({ children }) => {
     token,
     loading,
     login,
+    loginWithToken,
     logout,
     hasPermission,
     hasRole,
@@ -207,7 +240,7 @@ export const AuthProvider = ({ children }) => {
     isInternalStaff,
     isExternalUser,
     isAuthenticated: !!user
-  }), [user, token, loading, login, logout, hasPermission, hasRole, canModifyUser, canCreateUserRole, canAccessModule, hasResourcePermission, getSidebarMenuItems, isInternalStaff, isExternalUser])
+  }), [user, token, loading, login, loginWithToken, logout, hasPermission, hasRole, canModifyUser, canCreateUserRole, canAccessModule, hasResourcePermission, getSidebarMenuItems, isInternalStaff, isExternalUser])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

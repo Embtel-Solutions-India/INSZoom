@@ -65,8 +65,19 @@ export function AuthProvider({ children }) {
   // backend doesn't loop retries silently forever.
   const verifySessionRef = useRef(null);
   const verifySession = useCallback(async (autoRetry = true) => {
-    const access = tokenStore.getAccess();
-    if (!access) {
+    // The access token only ever lives in an in-memory variable (never
+    // persisted), so it is gone on every hard page load/reload/new tab —
+    // that alone must NOT mean "logged out": tokenStore.hasSession() is a
+    // non-sensitive localStorage marker ("did we last have a real session?")
+    // that survives exactly for this reason. When it's set, fall through to
+    // the real authApi.me() call below instead of bailing out here — the
+    // underlying request() helper (services/api.js) already knows to
+    // silently refresh the access token from the httpOnly cookie before
+    // that call goes out. Skipping straight to UNAUTHENTICATED whenever the
+    // in-memory token was momentarily empty (every reload) logged an
+    // otherwise-valid session out of the UI without ever checking the
+    // cookie — a real, reproducible bug, not just a race.
+    if (!tokenStore.getAccess() && !tokenStore.hasSession()) {
       setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
       return;
     }

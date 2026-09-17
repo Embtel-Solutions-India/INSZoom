@@ -94,6 +94,16 @@ if (storageProvider === "local" && process.env.NODE_ENV === "production") {
 const env = {
   nodeEnv,
   port: process.env.PORT || 7000,
+  // Dev/testing-phase guard: real case managers, team leads, admins, and
+  // attorneys are real people with real inboxes, and every case/task/
+  // notification created while testing this app was otherwise emailing them
+  // for real. Client-facing emails still send normally — only team-member
+  // and attorney recipients are suppressed. Defaults to suppressing (opt
+  // OUT via EMAIL_SUPPRESS_STAFF_AND_ATTORNEY=false once ready to go live);
+  // does not touch which templates exist or which code paths call them —
+  // see email.service.js's sendTemplateEmail(), which is the one place this
+  // is enforced.
+  emailSuppressStaffAndAttorney: process.env.EMAIL_SUPPRESS_STAFF_AND_ATTORNEY !== "false",
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/immigration_crm",
   clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",
