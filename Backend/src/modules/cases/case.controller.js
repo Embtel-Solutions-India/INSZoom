@@ -1000,7 +1000,7 @@ exports.createCase = async (req, res, next) => {
           category: "general",
           visibility: "team",
         }] : [],
-        legacySource: "INSZoom",
+        legacySource: "Admin",
       };
 
       const principalTargetRole = caseStructure === "family" ? "petitioner" : caseStructure === "employer_employee" ? "employer" : null;
@@ -2557,7 +2557,7 @@ exports.createCaseWithClient = async (req, res, next) => {
           lockedAt: new Date(),
           lockedBy: req.user._id,
         },
-        source: "INSZoom",
+        source: "Admin",
         createdBy: req.user._id,
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -2637,7 +2637,7 @@ exports.createCaseWithClient = async (req, res, next) => {
         category: "general",
         visibility: "team",
       }] : [],
-      legacySource: "INSZoom",
+      legacySource: "Admin",
     });
 
     await caseService.hydrateCaseRelationships(newCase, req.user, req);

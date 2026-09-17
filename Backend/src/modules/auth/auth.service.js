@@ -88,7 +88,7 @@ async function registerClient(payload, req) {
       throw error;
     }
     // Same idea, for a client whose case was created by staff via the
-    // INSZoom portal (see cases:createCaseWithClient) — they have a User
+    // Admin portal (see cases:createCaseWithClient) — they have a User
     // record but no password yet, so ordinary signup should redirect them
     // to activation instead of a dead-end 409.
     if (isPendingClientInvite(exists)) {

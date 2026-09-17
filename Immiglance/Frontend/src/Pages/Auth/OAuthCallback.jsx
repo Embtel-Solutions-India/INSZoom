@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { tokenStore } from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
 
-const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
+const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:3002";
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 
 export default function OAuthCallback() {
@@ -36,15 +36,15 @@ export default function OAuthCallback() {
     tokenStore.set(accessToken);
     setUserFromOAuth({ _id: userId, email, displayName, role });
 
-    // PHASE 3: staff roles go straight to INSZoom (external — Google login
-    // has no role gate the way INSZoom's own login does, so any staff
+    // PHASE 3: staff roles go straight to Admin (external — Google login
+    // has no role gate the way Admin's own login does, so any staff
     // account landing here must be redirected off this origin entirely).
     // Client roles navigate to a protected route; AuthGate then checks
     // session-context and redirects to /dashboard, /onboarding/intake, or
     // /legacy-holding as appropriate. Fixes the prior bug where every role
     // (including staff) landed on the Immiglance client dashboard.
     if (STAFF_ROLES.includes(role)) {
-      window.location.href = INSZOOM_URL;
+      window.location.href = ADMIN_URL;
     } else {
       navigate("/dashboard", { replace: true });
     }

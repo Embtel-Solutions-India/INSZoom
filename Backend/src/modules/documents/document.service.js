@@ -472,7 +472,7 @@ async function createDocumentMetadata({ body = {}, user, req }) {
     tags: normalizeTags(body.tags),
     uploadedByUser: user._id,
     uploadedBy: body.uploadedBy || uploadedByLabel(user),
-    legacySource: body.legacySource || "INSZoom",
+    legacySource: body.legacySource || "Admin",
     metadata: normalizeMetadata(body.metadata),
   });
   addAuditEntry(document, "create_metadata", user, body, req);

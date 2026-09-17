@@ -3,6 +3,6 @@ module.exports = {
   bodyLines: ({ caseManagerName, clientName, caseNumber, completionPercentage }) => [
     `Hi ${caseManagerName || "Case Manager"},`,
     `${clientName || "A client"} submitted their intake information for case ${caseNumber || ""}.`,
-    `Current intake completion is ${completionPercentage || 0}%. Please review the client profile, questionnaire responses, uploaded documents, and missing document list in INSZoom.`,
+    `Current intake completion is ${completionPercentage || 0}%. Please review the client profile, questionnaire responses, uploaded documents, and missing document list in Admin.`,
   ],
 };

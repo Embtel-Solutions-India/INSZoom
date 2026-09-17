@@ -146,7 +146,7 @@ exports.createMessage = async (req, res, next) => {
 
     const message = await messageService.sendMessage({
       conversation,
-      body: { ...req.body, legacySource: req.body.legacySource || "INSZoom" },
+      body: { ...req.body, legacySource: req.body.legacySource || "Admin" },
       files: req.files || [],
       user: req.user,
       req,

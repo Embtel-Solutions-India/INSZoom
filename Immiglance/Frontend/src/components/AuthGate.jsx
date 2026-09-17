@@ -26,8 +26,10 @@ import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
+import { tokenStore } from "../services/api";
 
-const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
+const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:3002";
+const ATTORNEY_PORTAL_URL = import.meta.env.VITE_ATTORNEY_PORTAL_URL || "http://localhost:5174";
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const CLIENT_PORTAL_ROLES = ["client", "user", "employer", "employee", "beneficiary"];
@@ -47,11 +49,26 @@ export default function AuthGate() {
   // render body below re-checks to decide what to show meanwhile.
   const isStaff = authStatus === "authenticated" && Boolean(context) && STAFF_ROLES.includes(context.role);
   useEffect(() => {
-    if (isStaff) window.location.href = INSZOOM_URL;
+    if (isStaff) window.location.href = ADMIN_URL;
   }, [isStaff]);
 
-  // ── Loading state (also covers the staff redirect firing above) ─────────
-  if (authLoading || isStaff) {
+  // Attorneys belong to neither portal this app routes between — they get
+  // the third app. The access token is handed over in the URL so the
+  // attorney portal (a separate origin, so it cannot read this one's
+  // in-memory token) can establish the session without a second login; it
+  // verifies the token against GET /api/auth/me before trusting it, never
+  // client-side. Mirrors the isStaff redirect directly above.
+  const isAttorney = authStatus === "authenticated" && Boolean(context) && context.role === "attorney";
+  useEffect(() => {
+    if (!isAttorney) return;
+    const token = tokenStore.getAccess();
+    window.location.href = token
+      ? `${ATTORNEY_PORTAL_URL}/auth/sso?token=${encodeURIComponent(token)}`
+      : `${ATTORNEY_PORTAL_URL}/login`;
+  }, [isAttorney]);
+
+  // ── Loading state (also covers the staff/attorney redirects firing above) ─
+  if (authLoading || isStaff || isAttorney) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
         <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
@@ -88,7 +105,7 @@ export default function AuthGate() {
     );
   }
 
-  // Staff roles are handled by the useEffect above (isStaff / INSZOOM_URL) —
+  // Staff roles are handled by the useEffect above (isStaff / ADMIN_URL) —
   // by this point in the render, `isStaff` is guaranteed false, since the
   // loading branch already returned for that case.
 

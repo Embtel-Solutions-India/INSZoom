@@ -153,7 +153,12 @@ async function getAssignableUsers(currentUser, role, options = {}) {
   if (!normalizedRole || normalizedRole !== "client") {
     const filter = { isActive: true };
     filter.role = normalizedRole ? normalizedRole : { $in: ASSIGNABLE_ROLES };
-    if (normalizeRole(currentUser.role) === "team_lead" && currentUser.teamId) filter.teamId = currentUser.teamId;
+    // Attorneys are firm-wide external counsel with no teamId, so the
+    // team_lead scoping below would return an empty list for them — a team
+    // lead must still be able to pick an attorney to grant case access to.
+    if (normalizeRole(currentUser.role) === "team_lead" && currentUser.teamId && normalizedRole !== "attorney") {
+      filter.teamId = currentUser.teamId;
+    }
     const staffUsers = await User.find(filter).select(USER_SELECT).sort({ name: 1, displayName: 1, email: 1 });
     users.push(...staffUsers.map((staffUser) => staffUser.toObject()));
   }

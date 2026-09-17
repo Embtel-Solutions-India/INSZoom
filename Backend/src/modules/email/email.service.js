@@ -12,6 +12,7 @@ const TEMPLATES = {
   "client-intake-submitted-case-manager": require("./templates/client-intake-submitted-case-manager"),
   "employee-case-invitation": require("./templates/employee-case-invitation"),
   "staff-invitation": require("./templates/staff-invitation"),
+  "attorney-assignment": require("./templates/attorney-assignment"),
   "client-portal-invitation": require("./templates/client-portal-invitation"),
   "password-reset": require("./templates/password-reset"),
   "family-beneficiary-invitation": require("./templates/family-beneficiary-invitation"),

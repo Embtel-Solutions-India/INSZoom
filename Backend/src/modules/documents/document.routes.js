@@ -8,7 +8,10 @@ const upload = require("../uploads/upload.middleware");
 const requirePortalCapability = require("../../middleware/requirePortalCapability");
 const ctrl = require("./document.controller");
 
-const allDocumentRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee", "beneficiary"];
+// "attorney" reads documents for cases granted to it via
+// Case.attorneyAccess[] — the per-case check is canAccessCase (see
+// modules/cases/case.service.js), which this role list gates entry to.
+const allDocumentRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee", "beneficiary", "attorney"];
 const staffRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const reviewRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 

@@ -228,7 +228,7 @@ const clientSchema = new mongoose.Schema(
 
     syncStatus: { type: String, enum: ["local", "synced", "pending", "failed"], default: "local", index: true },
     lastSyncedAt: Date,
-    source: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", "import", ""], default: "shared" },
+    source: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", "import", ""], default: "shared" },
 
     timeline: [timelineSchema],
     notes: [noteSchema],

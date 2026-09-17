@@ -71,5 +71,6 @@ router.use("/compliance", require("../modules/compliance/compliance.routes"));
 router.use("/entity-config", require("../modules/entity-config/entityConfig.routes"));
 router.use("/data-rights", require("../modules/data-rights/dataRights.routes"));
 router.use("/telemetry", require("../modules/telemetry/telemetry.routes"));
+router.use("/attorney", require("../modules/attorney/attorney.routes"));
 
 module.exports = router;

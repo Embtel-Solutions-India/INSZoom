@@ -1,5 +1,5 @@
 // Phase H3 AC8 (partial) - the generate/download/preview endpoints the
-// INSZoom USCISForms Generate/Download/Preview controls call are actually
+// Admin USCISForms Generate/Download/Preview controls call are actually
 // registered with the expected method+path and wired to the right
 // controller function. DB-free route-table introspection (same pattern as
 // uscis-forms/tests/interactive-form-review.routes.test.js) rather than a

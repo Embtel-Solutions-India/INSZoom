@@ -113,8 +113,16 @@ module.exports = [
     label: "Idle session timeout (minutes)",
     description: "Force re-authentication after this many minutes of inactivity.",
     type: "number",
-    default: 30,
-    validation: z.number().int().min(1).max(1440),
+    // 7 days (10080 min), matching the access/refresh JWT lifetime
+    // (env.jwtAccessExpires/jwtRefreshExpires, both "7d") and the product
+    // requirement that a login stay valid for a full week — this was the
+    // ONE actually-enforced control cutting sessions short at 30 minutes of
+    // inactivity while the tokens themselves were already good for 7 days
+    // (security.session.absoluteTimeoutHours and security.jwt.
+    // accessTtlMinutes below are declared but never read anywhere in the
+    // codebase — not the cause, and not touched here).
+    default: 10080,
+    validation: z.number().int().min(1).max(10080),
     scopes: ["system"],
     requiresPermission: "settings:manage_security",
     affects: "middleware/authenticate.js",

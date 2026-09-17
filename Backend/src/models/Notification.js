@@ -83,7 +83,7 @@ const notificationSchema = new mongoose.Schema(
     expiresAt: Date,
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    source: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", "system", "workflow", ""], default: "shared" },
+    source: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", "system", "workflow", ""], default: "shared" },
     auditHistory: [notificationAuditSchema],
   },
   { timestamps: true }

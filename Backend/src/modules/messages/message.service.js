@@ -397,7 +397,7 @@ async function createOrGetDirectConversation(receiverId, user, req) {
       participants: [buildParticipant(user), buildParticipant(receiver)],
       subject: `Conversation with ${userDisplayName(receiver)}`,
       type: "direct",
-      legacySource: "INSZoom",
+      legacySource: "Admin",
     });
     addAuditEntry(conversation, "create", user, { receiverId }, req);
     await conversation.save();

@@ -20,7 +20,7 @@ const emailLogSchema = new mongoose.Schema(
     triggeredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
     data: mongoose.Schema.Types.Mixed,
-    source: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", "system"], default: "shared" },
+    source: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", "system"], default: "shared" },
   },
   { timestamps: true }
 );

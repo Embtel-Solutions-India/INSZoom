@@ -227,7 +227,7 @@ const VISA_CATEGORIES = {
   "EB-2 PERM": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-2 (PERM Labor Certification)" },
   "EB-2 NIW": { caseStructure: "single", forms: ["i-140", "i-485"], label: "EB-2 National Interest Waiver" },
   // Plain "EB-2" is not a registry visaType (the registry only has the two
-  // subtypes above), but pre-existing UI (INSZoom's CreateCaseModal) offers
+  // subtypes above), but pre-existing UI (Admin's CreateCaseModal) offers
   // it as a generic choice — recognized here as an alias for the standard
   // PERM-based pathway so it doesn't 400 at case creation.
   "EB-2": { caseStructure: "employer_employee", forms: ["i-140", "i-485"], label: "EB-2 (Advanced Degree/Exceptional Ability)" },

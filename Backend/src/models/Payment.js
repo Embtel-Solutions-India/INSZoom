@@ -235,7 +235,7 @@ const paymentSchema = new mongoose.Schema(
       lastWebhookAt: Date,
     },
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     auditHistory: [auditHistorySchema],
   },
   { timestamps: true }
