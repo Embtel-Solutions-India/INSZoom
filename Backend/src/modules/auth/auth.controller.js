@@ -407,6 +407,7 @@ async function forgotPassword(req, res, next) {
         data: { name: user.name || user.displayName, token },
         userId: user._id,
         source: "shared",
+        recipientRole: user.role,
       });
     }
     res.json({

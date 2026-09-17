@@ -126,7 +126,7 @@ function manageUrlFor(token) {
 }
 
 async function notifyHost(appointment, config, lead) {
-  const host = await User.findById(config.hostUserId).select("email name displayName").lean();
+  const host = await User.findById(config.hostUserId).select("email name displayName role").lean();
   if (!host) return;
 
   await emailService.sendTemplateEmail("consultation-host-notify", {
@@ -141,6 +141,7 @@ async function notifyHost(appointment, config, lead) {
       criteriaMetCount: lead?.scoreResult?.criteriaMetCount,
     },
     source: "shared",
+    recipientRole: host.role,
   }).catch(() => null);
 
   await notificationService.createNotification({

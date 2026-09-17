@@ -1,5 +1,68 @@
 const EmailLog = require("../../models/EmailLog");
 const { getProvider } = require("./providers");
+const env = require("../../config/env");
+
+// Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
+// comment for the why). Every template's INTRINSIC recipient — the person
+// the template was written to address, not a guess — classified once here.
+// "password-reset" and "consultation-host-notify" are the two templates
+// actually reused across more than one audience in practice; their real call
+// sites pass an explicit `recipientRole` (see auth.controller.js's
+// forgotPassword, consultation.service.js's notifyHost,
+// notification.service.js's dispatchEmailChannel) which overrides this
+// static table whenever it's known — see resolveAudience() below.
+const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const TEMPLATE_AUDIENCE = {
+  "case-created-client": "client",
+  "case-created-team-lead": "team_member",
+  "case-assigned-case-manager": "team_member",
+  "client-intake-submitted-case-manager": "team_member",
+  "employee-case-invitation": "client",
+  "staff-invitation": "team_member",
+  "attorney-assignment": "attorney",
+  "client-portal-invitation": "client",
+  "password-reset": "client",
+  "family-beneficiary-invitation": "client",
+  "quiz-lead-confirmation": "client",
+  "quiz-lead-internal": "team_member",
+  "consultation-confirmation": "client",
+  "consultation-reschedule": "client",
+  "consultation-cancel": "client",
+  "consultation-host-notify": "team_member",
+  "lead-approved": "client",
+  "lead-rejected": "client",
+  "document-rejected": "client",
+  "document-requested": "client",
+  "signature-required": "client",
+  "filing-submitted": "client",
+  "receipt-received": "client",
+  "rfe-received": "client",
+  "case-approved": "client",
+  "case-denied": "client",
+  "case-stage-changed": "client",
+  "payment-required": "client",
+  "payment-failed": "client",
+  "case-manager-assigned": "team_member",
+  "case-manager-reassigned": "team_member",
+  "case-closed": "client",
+  "interview-scheduled": "client",
+  "biometrics-scheduled": "client",
+  "questionnaire-assigned": "client",
+  "additional-info-requested": "client",
+  "case-on-hold": "client",
+};
+
+// recipientRole (an actual User.role, when the caller has it handy) always
+// wins over the static table above — it reflects who this particular send
+// is actually going to, not just who the template is usually for.
+function resolveAudience(templateKey, recipientRole) {
+  if (recipientRole) {
+    if (recipientRole === "attorney") return "attorney";
+    if (STAFF_ROLES.includes(recipientRole)) return "team_member";
+    return "client";
+  }
+  return TEMPLATE_AUDIENCE[templateKey] || "client";
+}
 
 // Reusable template registry — one file per template under ./templates.
 // Adding a new email anywhere in the app means adding a template file here
@@ -135,10 +198,29 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
  * point for the rest of the app — no controller/service should ever build
  * HTML or talk to a provider directly.
  */
-async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments } = {}) {
+async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
   const template = TEMPLATES[templateKey];
   if (!template) throw new Error(`Unknown email template: ${templateKey}`);
   if (!to) return { skipped: true, reason: "missing_recipient" };
+
+  // Dev/testing-phase gate — team-member and attorney recipients are
+  // suppressed (still logged, never actually dispatched); client recipients
+  // are unaffected. Nothing about the template registry, the call site, or
+  // the caller's own logic changes — this only intercepts the final
+  // provider dispatch. Flip EMAIL_SUPPRESS_STAFF_AND_ATTORNEY=false in
+  // Backend/.env when it's time to actually email real staff/attorneys
+  // again.
+  if (env.emailSuppressStaffAndAttorney) {
+    const audience = resolveAudience(templateKey, recipientRole);
+    if (audience !== "client") {
+      const log = await EmailLog.create({
+        templateKey, to, cc, subject: template.subject(data), status: "skipped",
+        caseId, userId, triggeredBy, data, source,
+        error: `Suppressed: ${audience} recipient (dev/testing phase — see EMAIL_SUPPRESS_STAFF_AND_ATTORNEY)`,
+      });
+      return { sent: false, skipped: true, reason: "audience_suppressed", audience, log };
+    }
+  }
 
   const subject = template.subject(data);
   const lines = template.bodyLines(data);

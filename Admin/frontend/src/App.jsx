@@ -10,6 +10,7 @@ import PageLoader from './components/PageLoader'
 import Layout from './layouts/Layout'
 
 const Login = lazy(() => import('./pages/Login'))
+const SSOHandler = lazy(() => import('./pages/SSOHandler'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const EODReports = lazy(() => import('./pages/EODReports'))
@@ -43,6 +44,7 @@ function App() {
           <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/sso" element={<SSOHandler />} />
             <Route path="/" element={<Layout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route 
