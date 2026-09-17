@@ -63,6 +63,8 @@ jobs:
 
       - name: Build Admin Frontend
         working-directory: Admin/frontend
+        env:
+          VITE_API_URL: ${{ secrets.BAIS_VITE_API_URL }}
         run: npm run build
 
       - name: Package Admin Frontend
