@@ -30,7 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             Immiglance/Frontend/package-lock.json
-            INSZoom/frontend/package-lock.json
+            Admin/frontend/package-lock.json
             Backend/package-lock.json
 
       - name: Install Immiglance Frontend dependencies
@@ -58,17 +58,17 @@ jobs:
             -C Immiglance/Frontend/dist .
 
       - name: Install Admin Frontend dependencies
-        working-directory: INSZoom/frontend
+        working-directory: Admin/frontend
         run: npm ci --include=optional
 
       - name: Build Admin Frontend
-        working-directory: INSZoom/frontend
+        working-directory: Admin/frontend
         run: npm run build
 
       - name: Package Admin Frontend
         run: |
           tar -czf /tmp/admin-frontend.tar.gz \
-            -C INSZoom/frontend/dist .
+            -C Admin/frontend/dist .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -127,9 +127,9 @@ jobs:
               \"tar -xzf ${DEPLOY_DIR}/immiglance-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
 
               \"echo 'Deploying Admin frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/INSZoom/frontend/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/INSZoom/frontend/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/admin-frontend.tar.gz -C /home/ubuntu/INSZoom/INSZoom/frontend/dist\",
+              \"rm -rf /home/ubuntu/INSZoom/Admin/frontend/dist\",
+              \"mkdir -p /home/ubuntu/INSZoom/Admin/frontend/dist\",
+              \"tar -xzf ${DEPLOY_DIR}/admin-frontend.tar.gz -C /home/ubuntu/INSZoom/Admin/frontend/dist\",
 
               \"echo 'Installing backend production dependencies...'\",
               \"cd /home/ubuntu/INSZoom/Backend && npm ci --omit=dev\",
