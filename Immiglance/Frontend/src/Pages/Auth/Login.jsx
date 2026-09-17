@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
 import ThemeToggle from "../../components/ThemeToggle";
-import loginBackground from "../../assets/admin-login-liberty.png";
-import loginBackgroundWebp from "../../assets/admin-login-liberty.webp";
+import BrandMark from "../../components/BrandMark";
 
 // Edge/IE inject their own native reveal-password icon on type="password"
 // inputs (the ::-ms-reveal pseudo-element) — matches Admin's Login.jsx,
@@ -69,14 +68,20 @@ export default function Login() {
     clearGoogleAuthError();
   }, [googleAuthError, clearGoogleAuthError]);
 
-  // Catches every other way this page can end up with an authenticated user
-  // in context - not just the Google path above, but also a bookmarked/
-  // back-navigated visit to /login while already signed in. PHASE 3:
-  // AuthGate handles routing — just navigate to any protected route.
-  useEffect(() => {
-    if (!user || authLoading) return;
-    navigate("/dashboard", { replace: true });
-  }, [user, authLoading, navigate]);
+  // Never paint the login form for an already-authenticated visitor, not
+  // even for a frame — covers a bookmarked/back-navigated visit to /login
+  // while already signed in, not just the Google path above. While the
+  // session check is in flight, render nothing; once it resolves to a
+  // logged-in user, redirect declaratively instead of painting the form
+  // first and navigating away a tick later. AuthGate (wrapping /dashboard)
+  // takes it from there — staff/attorney get bounced to their own app,
+  // clients land on the right destination for their case state.
+  if (authLoading) {
+    return <div className="min-h-screen bg-background" />;
+  }
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleLogin = async () => {
     const normalizedCaseId = caseId.trim();
@@ -158,65 +163,23 @@ export default function Login() {
   const activeTab = ROLE_TABS.find((t) => t.key === roleTab) || ROLE_TABS[0];
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 py-8">
       <style>{HIDE_NATIVE_REVEAL_CSS}</style>
-      <picture>
-        <source srcSet={loginBackgroundWebp} type="image/webp" />
-        <img
-          src={loginBackground}
-          alt=""
-          width={1672}
-          height={941}
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </picture>
-      <div className="absolute inset-0 bg-primary/[0.14]" />
-      <div className="absolute inset-0 bg-slate-900/10" />
-      <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-white/54 to-transparent" />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 78% 42% at 18% 100%, rgba(255,255,255,0.96) 0%, rgba(246,250,255,0.88) 34%, rgba(229,240,255,0.54) 58%, rgba(229,240,255,0.18) 74%, rgba(229,240,255,0) 92%)",
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(0deg, rgba(255,255,255,0.88) 0%, rgba(248,251,255,0.72) 12%, rgba(236,246,255,0.42) 24%, rgba(236,246,255,0.16) 36%, rgba(236,246,255,0) 52%)",
-        }}
-      />
 
-      <div className="absolute right-5 top-5 z-20 sm:right-10 sm:top-10">
+      <div className="absolute right-5 top-5">
         <ThemeToggle />
       </div>
 
-      <div className="relative z-10 flex h-screen flex-col px-5 py-3 sm:px-10 sm:py-4 lg:flex-row lg:px-14 xl:px-[72px]">
-        <div className="flex justify-center pb-3 lg:flex-1 lg:flex-col lg:justify-end lg:pb-2 lg:pr-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <ShieldIcon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-lg font-black uppercase tracking-[0.28em] text-foreground sm:text-xl">Immiglance</p>
-              <p className="mt-0.5 text-xs font-black uppercase tracking-[0.26em] text-primary">Client Portal</p>
-            </div>
+      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto card">
+        <div className="flex items-center gap-3 mb-6">
+          <BrandMark size="w-10 h-10" />
+          <div>
+            <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
+            <p className="text-sm text-muted-foreground">Client Portal</p>
           </div>
         </div>
 
-        <section className="flex flex-1 items-center justify-center overflow-hidden lg:justify-end lg:pr-8 xl:pr-14">
-          <div className="w-full max-w-[464px] max-h-full overflow-y-auto rounded-[18px] bg-card/90 px-6 pb-5 pt-5 shadow-[0_24px_70px_rgba(92,124,173,0.22)] ring-1 ring-card/85 backdrop-blur-md sm:px-10 sm:pb-6 sm:pt-6 lg:px-12">
-            <div className="mb-4 flex flex-col items-center text-center">
-              <div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-                <ShieldIcon className="h-7 w-7" strokeWidth={2.4} />
-              </div>
-              <h1 className="text-xl font-black leading-none text-foreground sm:text-2xl">{activeTab.heading}</h1>
-              {activeTab.sub && <p className="mt-2 text-sm font-bold text-muted-foreground">{activeTab.sub}</p>}
-            </div>
-
-            {/* Role entry tabs */}
+        {/* Role entry tabs */}
             <div className="mb-4 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
               {ROLE_TABS.map((tab) => (
                 <button
@@ -232,25 +195,22 @@ export default function Login() {
               ))}
             </div>
 
-            {roleTab === "attorney" ? (
-              // The attorney workspace is its own app now. Signing in here
-              // still works — AuthGate detects role "attorney" and hands the
-              // session straight over to the attorney portal (SSO, no second
-              // login) — but linking directly saves the round trip.
-              <div className="rounded-xl border border-dashed border-border bg-secondary px-5 py-6 text-center">
-                <p className="text-sm font-semibold text-foreground mb-1.5">Attorney Portal</p>
-                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                  Attorneys have a dedicated workspace for assigned cases, documents, forms and case-manager
-                  feedback.
-                </p>
-                <a
-                  href={`${import.meta.env.VITE_ATTORNEY_PORTAL_URL || "http://localhost:5174"}/login`}
-                  className="inline-block rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
-                >
-                  Go to the Attorney Portal
-                </a>
-              </div>
-            ) : (
+            <div className="mb-4 text-center">
+              <h2 className="text-xl font-bold text-foreground">{activeTab.heading}</h2>
+              {activeTab.sub && <p className="mt-1 text-sm text-muted-foreground">{activeTab.sub}</p>}
+            </div>
+
+            {(
+              // The attorney tab used to show a static "go to the attorney
+              // portal" link instead of a real form — now that the attorney
+              // portal exists and AuthGate already knows how to hand a
+              // session over to it (isAttorney branch below, SSO token in
+              // the URL), an attorney can just sign in with the same
+              // email/password form as every other tab right here: login()
+              // authenticates against the same backend, the "already
+              // authenticated" redirect effect above sends them to
+              // /dashboard, and AuthGate's isAttorney check takes it from
+              // there — one sign-in, no extra click, no second login screen.
               <>
                 {/* Google + Case ID sign-in are client-only — team members
                     always sign in with their staff email + password, no
@@ -427,10 +387,8 @@ export default function Login() {
             </div>
 
             <p className="mt-3 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
-          </div>
-        </section>
       </div>
-    </main>
+    </div>
   );
 }
 

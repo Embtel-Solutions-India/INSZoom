@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { isEmployeeAccount } from "../utils/auth";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
+import BrandMark from "./BrandMark";
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 const MenuIcon = () => (
@@ -152,13 +153,8 @@ export default function Navbar() {
 
         {/* ── Logo ── */}
         <Link to="/" className="flex items-center gap-2 shrink-0 group no-underline min-w-0">
-          <div className="w-8 h-8 rounded-full border border-border
-            flex items-center justify-center text-foreground shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 7l-10 10M7 7h10v10" />
-            </svg>
-          </div>
-          <span className="text-lg text-foreground">Immiglance</span>
+          <BrandMark size="w-8 h-8" />
+          <span className="text-lg font-sans font-extrabold tracking-tight text-foreground">Immiglance</span>
         </Link>
 
         {/* ── Desktop nav — public marketing links (Home, How It Works,

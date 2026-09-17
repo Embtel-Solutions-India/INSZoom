@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, Scale, LogOut, Menu, X, Moon, Sun } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, LogOut, Menu, X, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import NotificationBell from '../components/NotificationBell'
+import BrandMark from '../components/BrandMark'
 import useUnreadCounts from '../hooks/useUnreadCounts'
 
 // Same sidebar/header shape as Admin/Immiglance's own Layout.jsx — same
@@ -45,9 +46,7 @@ export default function AppLayout() {
       >
         <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground shrink-0">
-              <Scale className="w-4 h-4" />
-            </div>
+            <BrandMark size="w-9 h-9" />
             <div className="min-w-0">
               <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Attorney Portal</h1>
               <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Immiglance</p>

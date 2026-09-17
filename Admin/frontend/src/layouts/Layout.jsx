@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { requestPermissionAndGetToken } from '../services/notificationService'
+import BrandMark from '../components/BrandMark'
 import {
   LayoutDashboard,
   Briefcase,
@@ -145,9 +146,7 @@ const Layout = () => {
       >
         <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground font-serif font-bold text-sm shrink-0">
-              I
-            </div>
+            <BrandMark size="w-9 h-9" />
             <div className="min-w-0">
               <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Immiglance</h1>
               <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Internal CRM</p>
