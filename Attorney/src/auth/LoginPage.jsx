@@ -1,15 +1,28 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Scale, Loader2 } from 'lucide-react'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { useAuth } from './AuthContext'
+import BrandMark from '../components/BrandMark'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+
+  // Never show the login form to an already-authenticated attorney, not even
+  // for a frame — while the session check is still in flight, render nothing
+  // (RequireAttorney's own spinner covers the same window on every other
+  // route; this page isn't wrapped by it, so it needs its own equivalent).
+  // Only once we positively know there's no session does the form render.
+  if (authLoading) {
+    return <div className="min-h-screen bg-background" />
+  }
+  if (user) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -31,12 +44,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md card">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-serif font-bold">
-            <Scale className="w-5 h-5" />
-          </div>
+          <BrandMark size="w-10 h-10" />
           <div>
-            <h1 className="text-lg font-bold text-foreground font-serif">Attorney Portal</h1>
-            <p className="text-sm text-muted-foreground">Immiglance</p>
+            <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
+            <p className="text-sm text-muted-foreground">Attorney Portal</p>
           </div>
         </div>
 
