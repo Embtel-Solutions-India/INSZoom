@@ -1,6 +1,6 @@
 // E2E fixture seeder/teardown for the Playwright golden-path suite.
 //
-// The pre-existing e2e spec (INSZoom/frontend/e2e/uscis-form-render.spec.js)
+// The pre-existing e2e spec (Admin/frontend/e2e/uscis-form-render.spec.js)
 // pins hardcoded case IDs, which its own comments record as having gone stale
 // every time the dev DB is reset. This script exists so the golden-path specs
 // create their own throwaway staff accounts instead, and delete them again.
@@ -21,6 +21,11 @@ const STAFF_FIXTURES = [
   { key: "superAdmin", role: "super_admin", name: "E2E Audit Super Admin" },
   { key: "teamLead", role: "team_lead", name: "E2E Audit Team Lead" },
   { key: "caseManager", role: "case_manager", name: "E2E Audit Case Manager" },
+  { key: "attorney", role: "attorney", name: "E2E Audit Attorney" },
+  // A second attorney, so access-isolation tests can prove attorney A cannot
+  // reach a case granted only to attorney B (not merely that an ungranted
+  // case 403s for everyone).
+  { key: "attorneyOther", role: "attorney", name: "E2E Audit Attorney Two" },
 ];
 
 async function connect() {

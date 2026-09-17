@@ -81,6 +81,32 @@ const assignmentHistorySchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Attorney Portal access grants — deliberately distinct from
+// `assignedAttorney`/`immigrationLifecycle.tracking.filing.filingAttorney`
+// (both are "who is attorney of record for forms/filing," single-valued)
+// and from `assignmentHistory` (a log of primary_owner/team_lead/
+// case_manager/agent changes, not a multi-value "who currently has portal
+// access" set). Multiple attorneys can hold simultaneously active access;
+// a revoked entry is kept (status flips, not removed) so the grant/revoke
+// history stays visible instead of being silently lost.
+//
+// No compound index is declared on this field. Case.js already sits at
+// MongoDB's 64-index-per-collection ceiling (see
+// Backend/docs/MONGODB_STARTUP_LOAD_FINDINGS.md §6) — adding one here would
+// just be the 76th failed autoIndex/syncIndexes attempt, not a working
+// index. Tracked as a follow-up alongside that existing index-count cleanup
+// in Attorney/docs/attorney-portal-completion-report.md.
+const attorneyAccessSchema = new mongoose.Schema(
+  {
+    attorneyId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    assignedAt: { type: Date, default: Date.now },
+    status: { type: String, enum: ["active", "revoked"], default: "active" },
+    revokedAt: { type: Date },
+  },
+  { _id: true }
+);
+
 const keyDateSchema = new mongoose.Schema(
   {
     label: String,
@@ -566,6 +592,7 @@ const caseSchema = new mongoose.Schema(
     // every case. Phase H6.
     assignedAttorney: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     assignmentHistory: [assignmentHistorySchema],
+    attorneyAccess: [attorneyAccessSchema],
     companyId: { type: mongoose.Schema.Types.ObjectId, ref: "Company", index: true },
     teamId: { type: mongoose.Schema.Types.ObjectId, ref: "Team", index: true },
 
@@ -801,7 +828,7 @@ const caseSchema = new mongoose.Schema(
     },
     filingReadinessScore: { type: Number, min: 0, max: 100, default: 0 },
     lastSyncedAt: { type: Date, default: null },
-    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     // Set only by Backend/src/seeds/* on records those seeds actually CREATE.
     // Unrelated to `legacySource` (sync-origin marker). Consumed only by
     // DELETE /api/admin/demo-data.

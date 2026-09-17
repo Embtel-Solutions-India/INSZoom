@@ -90,7 +90,7 @@ const conversationSchema = new mongoose.Schema(
       reviewedAt: Date,
     },
     deletedAt: Date,
-    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     auditHistory: [conversationAuditSchema],
   },
   { timestamps: true }

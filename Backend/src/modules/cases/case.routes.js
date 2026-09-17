@@ -5,6 +5,9 @@ const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const ctrl = require("./case.controller");
+const attorneyCtrl = require("../attorney/attorney.controller");
+const staffFeedbackCtrl = require("../feedback/feedback.controller");
+const upload = require("../uploads/upload.middleware");
 const { PRIORITIES } = require("./case.constants");
 const { PACKAGE_NAMES } = require("../../config/packages");
 
@@ -124,6 +127,52 @@ router.post("/:id/workflow/generate-forms", authenticate, authorizeRoles("super_
 router.post("/:id/workflow/generate-package", authenticate, authorizeRoles("super_admin", "admin", "case_manager"), authorizePermissions("forms:update"), ctrl.generateCasePackage);
 router.post("/:id/workflow/generate-word-package", authenticate, authorizeRoles("super_admin", "admin", "case_manager"), authorizePermissions("forms:update"), ctrl.generateCaseWordPackage);
 router.put("/:id/reopen", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.reopenCase);
+
+// ── Attorney Portal: access grants + the Case Manager side of the
+// attorney<->CM feedback thread. The attorney's own side of these lives
+// under /api/attorney/* (modules/attorney/attorney.routes.js); these are
+// the staff-facing counterparts, so they use the existing staff role/
+// permission guards rather than requireAttorneyAccess.
+router.get("/:caseId/attorney-access", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:read"), attorneyCtrl.getCaseAttorneyAccess);
+router.patch(
+  "/:caseId/attorney-access",
+  authenticate,
+  authorizeRoles(...managerRoles),
+  authorizePermissions("cases:assign"),
+  body("attorneyId").isMongoId().withMessage("attorneyId must be a valid ID"),
+  body("action").isIn(["grant", "revoke"]).withMessage("action must be 'grant' or 'revoke'"),
+  validate,
+  attorneyCtrl.setCaseAttorneyAccess
+);
+router.get("/:caseId/feedback", authenticate, authorizeRoles(...staffRoles), authorizePermissions("feedback:read"), staffFeedbackCtrl.listFeedback);
+router.post(
+  "/:caseId/feedback",
+  authenticate,
+  authorizeRoles(...staffRoles),
+  authorizePermissions("feedback:create"),
+  upload.array("attachments", 5),
+  body("message").optional().isString(),
+  validate,
+  staffFeedbackCtrl.createFeedback
+);
+router.post(
+  "/:caseId/feedback/:feedbackId/reply",
+  authenticate,
+  authorizeRoles(...staffRoles),
+  authorizePermissions("feedback:create"),
+  upload.array("attachments", 5),
+  body("message").optional().isString(),
+  validate,
+  staffFeedbackCtrl.replyToFeedback
+);
+router.patch("/:caseId/feedback/mark-read", authenticate, authorizeRoles(...staffRoles), authorizePermissions("feedback:update"), staffFeedbackCtrl.markFeedbackRead);
+router.get(
+  "/:caseId/feedback/:feedbackId/attachments/:attachmentId",
+  authenticate,
+  authorizeRoles(...staffRoles),
+  authorizePermissions("feedback:read"),
+  staffFeedbackCtrl.getFeedbackAttachment
+);
 
 router.post("/:id/document-references", authenticate, authorizeRoles(...staffRoles), body("documentId").notEmpty(), validate, ctrl.addDocumentReference);
 router.post("/:id/uscis-form-references", authenticate, authorizeRoles(...staffRoles), body("refId").notEmpty(), validate, ctrl.addUSCISFormReference);

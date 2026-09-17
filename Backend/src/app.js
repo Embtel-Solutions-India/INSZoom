@@ -44,11 +44,28 @@ app.use(
   })
 );
 
+// This single limiter used to guard every route with no exceptions,
+// including session-lifecycle endpoints (/auth/login, /auth/me, /auth/refresh)
+// that aren't the thing brute-force protection is actually for. With three
+// apps (Immiglance/Admin/Attorney) each polling notifications/unread-counts
+// on their own interval, a handful of open tabs on one dev machine shares one
+// IP and one 300-request/15-minute budget — exhausted in minutes, surfacing
+// as 429s on /auth/me that look like (but aren't) a login problem. Real
+// brute-force defense on login already exists and is stronger than an IP
+// limit anyway: auth.service.js's per-ACCOUNT lockout (settings-driven,
+// security.maxLoginAttempts/lockoutDurationMinutes) stops credential
+// stuffing against a specific account regardless of which IP it comes from,
+// where an IP limit can't. So: exempt the session-lifecycle endpoints from
+// this counter (real login abuse is handled by that lockout, not this), and
+// raise the general ceiling to something a multi-app, multi-tab, polling-
+// heavy session can actually live under without tripping on normal use.
+const EXEMPT_FROM_RATE_LIMIT = new Set(["/api/auth/login", "/api/auth/me", "/api/auth/refresh", "/api/auth/logout"]);
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 2000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => EXEMPT_FROM_RATE_LIMIT.has(req.path),
 }));
 // Register the custom :safe-url token globally before any format string
 // references it. morgan's options object has no "tokens" key — custom tokens

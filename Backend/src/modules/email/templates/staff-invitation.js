@@ -2,8 +2,8 @@
 // invited staff member sets their password on the SAME accept-invite page
 // the client-side employee-invite flow uses (Immiglance's /accept-invite) —
 // once logged in, AuthGate's existing isStaff redirect sends them straight
-// to INSZoom automatically, so no separate staff-specific accept page was
-// needed.
+// to Admin (the internal staff CRM, formerly "INSZoom") automatically, so
+// no separate staff-specific accept page was needed.
 const env = require("../../../config/env");
 
 const FRONTEND_URL = process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";

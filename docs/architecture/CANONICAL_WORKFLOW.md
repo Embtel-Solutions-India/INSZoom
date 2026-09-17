@@ -10,12 +10,13 @@
 
 ---
 
-## 0. The three apps (recap)
+## 0. The four apps (recap)
 
 | App | Role | Location |
 |-----|------|----------|
 | **Immiglance** | Client Portal (React) | `Immiglance/Frontend` |
-| **INSZoom** | Internal CRM — team lead, case manager, admin (React) | `INSZoom/frontend` |
+| **Admin** (formerly "INSZoom" — renamed) | Internal CRM — team lead, case manager, admin (React) | `Admin/frontend` |
+| **Attorney Portal** | External-counsel portal — read-oriented case review, Tasks, and a staff-only Messages/Feedback thread with the case manager, for cases explicitly granted via `Case.attorneyAccess[]` (React) | `Attorney/` |
 | **Backend** | Shared Express/Mongo API — all business logic | `Backend/src` |
 
 One MongoDB database, one source of truth per entity. No duplicated collections, models, or business logic.
@@ -32,7 +33,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
   **lifecycle orchestrator** `case-lifecycle-orchestrator.service.js`.
 
 ### Step 2 — Case appears on the Team Lead portal + emails go out
-- A new case surfaces in INSZoom for the **team lead** (`realtimeGateway.emitToRole("team_lead", "case:created", …)`).
+- A new case surfaces in Admin for the **team lead** (`realtimeGateway.emitToRole("team_lead", "case:created", …)`).
 - **Two emails fire on creation** (already wired in `case-lifecycle-orchestrator.service.js → notifyCaseCreated`):
   - **To the client** — template `case-created-client` ("your case has been created").
   - **To the team lead** — template `case-created-team-lead`, linking to `/crm-cases/:id?assign=case_manager`.
@@ -61,7 +62,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 
 ### Step 6 — Client hits Submit → data shown to the Case Manager on that case
 - On submit, the client's answers + documents become visible to the assigned case
-  manager **inside that specific case** in INSZoom (`CRMCaseDetail.jsx`, `Documents.jsx`).
+  manager **inside that specific case** in Admin (`CRMCaseDetail.jsx`, `Documents.jsx`).
 - **Email to case manager** — template `client-intake-submitted-case-manager`.
 - Backend: `Backend/src/modules/client-intake/`.
 
@@ -80,7 +81,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 
 ### Step 9 — Forms are editable by the Case Manager
 - The case manager can review and **edit every field** before finalizing.
-- Backend: `form-mapping` + `form-generation`; model `CaseForm.js`. Frontend: `INSZoom/frontend/src/pages/USCISForms.jsx`.
+- Backend: `form-mapping` + `form-generation`; model `CaseForm.js`. Frontend: `Admin/frontend/src/pages/USCISForms.jsx`.
 
 ### Step 10 — On completion, generate the Word document
 - When a form is complete it is **imported into a Word document**.
@@ -101,8 +102,8 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 
 The **same questionnaire/checklist per visa type** must appear, identically, in every one of:
 
-1. INSZoom **admin Questionnaire page** — `INSZoom/frontend/src/pages/QuestionnaireTemplates.jsx`
-2. INSZoom **Case → Documents sub-page** — `INSZoom/frontend/src/pages/CRMCaseDetail.jsx`, `Documents.jsx`
+1. Admin **admin Questionnaire page** — `Admin/frontend/src/pages/QuestionnaireTemplates.jsx`
+2. Admin **Case → Documents sub-page** — `Admin/frontend/src/pages/CRMCaseDetail.jsx`, `Documents.jsx`
 3. **Every "pending documents" section** (both portals)
 4. Immiglance **client Dashboard** — `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx`
 5. Immiglance **Profile** — `Profile.jsx`
@@ -149,8 +150,9 @@ For each one:
 
 ## 5. Reusable agent prompt (paste this to start a work session)
 
-> You are working on **ImmigrationCRM** (Immiglance client portal + INSZoom internal CRM +
-> shared Backend, one MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
+> You are working on **ImmigrationCRM** (Immiglance client portal + Admin internal CRM,
+> formerly named INSZoom + Attorney Portal (external counsel) + shared Backend, one
+> MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
 > treat the latter as the authoritative end-to-end flow.
 >
 > The canonical flow is: client fills intake → selects package → **Case created with

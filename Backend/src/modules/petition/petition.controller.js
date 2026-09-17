@@ -1,11 +1,38 @@
 const PetitionPackage = require("../../models/PetitionPackage");
 const PackageDefinition = require("../../models/PackageDefinition");
 const Document = require("../../models/Document");
+const Case = require("../../models/Case");
 const storageService = require("../uploads/storage.service");
+const caseService = require("../cases/case.service");
 const PetitionAssemblyService = require("./services/PetitionAssemblyService");
 
 function handle(res, error) {
   return res.status(error.status || 500).json({ success: false, message: error.message, code: error.code });
+}
+
+// SECURITY FIX: every read endpoint below (listPackages/getPackage/
+// getValidation/preview/download) previously fetched by caseId/packageId
+// with NO check that req.user may access that case — only the route-level
+// forms:read PERMISSION was checked, identical for every case. Any
+// authenticated account holding forms:read (effectively every staff role)
+// could list, view, or download the assembled PDF/Word petition for any
+// OTHER case, not just ones they're assigned to. See
+// PetitionAssemblyService.loadAuthorizedPackage for the mutation-side fix
+// (same root cause, same shared caseService.canAccessCase check).
+async function loadAuthorizedCase(caseId, user) {
+  const caseData = await Case.findById(caseId);
+  if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
+  if (!caseService.canAccessCase(user, caseData)) {
+    throw Object.assign(new Error("Not authorized to access petitions for this case"), { status: 403 });
+  }
+  return caseData;
+}
+
+async function loadAuthorizedPackage(packageId, user) {
+  const petitionPackage = await PetitionPackage.findById(packageId);
+  if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+  await loadAuthorizedCase(petitionPackage.caseId, user);
+  return petitionPackage;
 }
 
 exports.assemble = async (req, res) => {
@@ -19,6 +46,7 @@ exports.assemble = async (req, res) => {
 
 exports.listPackages = async (req, res) => {
   try {
+    await loadAuthorizedCase(req.params.caseId, req.user);
     const packages = await PetitionPackage.find({ caseId: req.params.caseId }).sort({ versionNumber: -1 });
     res.json({ success: true, data: packages });
   } catch (error) {
@@ -28,8 +56,7 @@ exports.listPackages = async (req, res) => {
 
 exports.getPackage = async (req, res) => {
   try {
-    const petitionPackage = await PetitionPackage.findById(req.params.id);
-    if (!petitionPackage) return res.status(404).json({ success: false, message: "Package not found" });
+    const petitionPackage = await loadAuthorizedPackage(req.params.id, req.user);
     res.json({ success: true, data: petitionPackage });
   } catch (error) {
     handle(res, error);
@@ -38,8 +65,7 @@ exports.getPackage = async (req, res) => {
 
 exports.getValidation = async (req, res) => {
   try {
-    const petitionPackage = await PetitionPackage.findById(req.params.id);
-    if (!petitionPackage) return res.status(404).json({ success: false, message: "Package not found" });
+    const petitionPackage = await loadAuthorizedPackage(req.params.id, req.user);
     // Mirrors form-generation's existing precedent (PDFValidationService:
     // valid = errors.length === 0 — warnings alone don't count as invalid):
     // only "blocked" (has blocking errors) is a failure response.
@@ -58,8 +84,7 @@ async function resolveOutputDocument(petitionPackage, format) {
 
 exports.preview = async (req, res) => {
   try {
-    const petitionPackage = await PetitionPackage.findById(req.params.id);
-    if (!petitionPackage) return res.status(404).json({ success: false, message: "Package not found" });
+    const petitionPackage = await loadAuthorizedPackage(req.params.id, req.user);
     const document = await resolveOutputDocument(petitionPackage, "pdf");
     if (!document?.storageKey) return res.status(404).json({ success: false, message: "Mailing PDF has not been assembled yet" });
     const buffer = await storageService.readBuffer(document.storageKey);
@@ -73,8 +98,7 @@ exports.preview = async (req, res) => {
 
 exports.download = async (req, res) => {
   try {
-    const petitionPackage = await PetitionPackage.findById(req.params.id);
-    if (!petitionPackage) return res.status(404).json({ success: false, message: "Package not found" });
+    const petitionPackage = await loadAuthorizedPackage(req.params.id, req.user);
     const format = ["word", "docx"].includes(req.query.format) ? "word" : "pdf";
     const document = await resolveOutputDocument(petitionPackage, format);
     if (!document?.storageKey) return res.status(404).json({ success: false, message: `${format === "word" ? "Presentation draft" : "Mailing PDF"} has not been assembled yet` });

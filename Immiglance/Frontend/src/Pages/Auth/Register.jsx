@@ -7,7 +7,7 @@ import loginBackground from "../../assets/admin-login-liberty.png";
 import loginBackgroundWebp from "../../assets/admin-login-liberty.webp";
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
-const INSZOOM_URL = import.meta.env.VITE_INSZOOM_URL || "http://localhost:3002";
+const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:3002";
 
 /* ── Icons ── */
 const UserIcon = () => (
@@ -180,7 +180,7 @@ export default function Register() {
   // since postLoginDest.js's getPostLoginDest is deprecated.
   useEffect(() => {
     if (!user || authLoading) return;
-    if (STAFF_ROLES.includes(user.role)) window.location.href = INSZOOM_URL;
+    if (STAFF_ROLES.includes(user.role)) window.location.href = ADMIN_URL;
   }, [user, authLoading]);
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });

@@ -99,9 +99,22 @@ function castObjectId(value) {
   return value;
 }
 
+// An attorney reaches a case through exactly one door: an active entry in
+// Case.attorneyAccess[] granted by a Case Manager/Admin. Deliberately NOT
+// via assignedAttorney (that field is the forms/G-28 attorney-of-record, a
+// different concept — see models/Case.js) and never via any of the generic
+// ownership checks below. Exported so middleware/requireAttorneyAccess.js
+// and the attorney case-list query share one definition of "has access".
+function hasActiveAttorneyAccess(caseData, attorneyId) {
+  return (caseData?.attorneyAccess || []).some(
+    (grant) => grant?.status === "active" && sameId(grant.attorneyId?._id || grant.attorneyId, attorneyId)
+  );
+}
+
 function canAccessCase(user, caseData) {
   if (!user || !caseData) return false;
   const role = normalizeRole(user.role);
+  if (role === "attorney") return hasActiveAttorneyAccess(caseData, user._id);
   if (isRestrictedPortalRole(role)) return canAccessRestrictedChildCase(user, caseData, role);
   if (isAdmin(user)) return true;
   if (sameId(caseData.user, user._id)) return true;
@@ -128,6 +141,18 @@ function canAccessCase(user, caseData) {
 function applyCaseRoleFilter(filter, user) {
   const role = normalizeRole(user.role);
   if (isAdmin(user)) return filter;
+  // Attorney: only cases with an active grant in attorneyAccess[]. Without
+  // this branch an attorney fell through to the generic client filter at the
+  // bottom (user/clientProfile/petitionerUser), which returns nothing — no
+  // leak, but no assigned cases either. Mirrors canAccessCase's attorney
+  // branch so a list and a detail fetch can never disagree.
+  if (role === "attorney") {
+    filter.$and = [
+      ...(filter.$and || []),
+      { attorneyAccess: { $elemMatch: { attorneyId: user._id, status: "active" } } },
+    ];
+    return filter;
+  }
   if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
   else if (role === "team_lead") filter.$and = [...(filter.$and || []), { $or: [{ assignedTeamLead: user._id }, { primaryOwner: user._id }, ...(user.teamId ? [{ teamId: user.teamId }] : [])] }];
   else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
@@ -497,6 +522,8 @@ function populateCaseQuery(query) {
     { path: "createdBy", select: "name displayName email role" },
     { path: "internalNotes.author", select: "name displayName role" },
     { path: "timeline.createdBy", select: "name displayName role" },
+    { path: "attorneyAccess.attorneyId", select: "name displayName email role" },
+    { path: "attorneyAccess.assignedBy", select: "name displayName email" },
   ]);
 }
 
@@ -719,6 +746,7 @@ module.exports = {
   resolveCaseSearchFilter,
   buildCaseSort,
   canAccessCase,
+  hasActiveAttorneyAccess,
   archiveCase,
   bulkUpdateCases,
   getAccessibleCaseOrThrow,

@@ -6,7 +6,7 @@
 
 This workspace contains the complete Immigration CRM Platform.
 
-The platform consists of three applications that together form one enterprise system.
+The platform consists of four applications that together form one enterprise system.
 
 1. Immiglance
 
@@ -14,23 +14,30 @@ The platform consists of three applications that together form one enterprise sy
    * Used by immigration clients.
    * Handles onboarding, questionnaires, document uploads, payments, appointments, messaging, and case tracking.
 
-2. INSZoom
+2. Admin
 
-   * Internal CRM
-   * Used by Case Managers, Attorneys, Paralegals, Finance Team, HR, and Administrators.
-   * Handles case management, workflow automation, USCIS forms, analytics, document review, attorney collaboration, reporting, and administration.
+   * Internal CRM (formerly named "INSZoom" — renamed; the directory, package names, env vars, DB enum values, and code comments have all been updated to "Admin")
+   * Used by Case Managers, Team Leads, Paralegals, Finance Team, HR, and Administrators.
+   * Handles case management, workflow automation, USCIS forms, analytics, document review, reporting, and administration.
 
-3. Backend
+3. Attorney Portal
+
+   * External-counsel portal, standalone app (`Attorney/`), a peer of Immiglance and Admin — not a page inside either.
+   * Used by attorneys granted access to specific cases (`Case.attorneyAccess[]`, granted/revoked from Admin's case detail page).
+   * Handles: case review (read-oriented — Overview, Documents, USCIS Forms, Petition, USCIS Tracking, Timeline), Tasks (self-assigned only), and Messages/Feedback — a staff-only dialogue with the case manager (never the client-facing Conversation system Immiglance/Admin use for client messaging).
+   * See `Attorney/docs/ATTORNEY_PORTAL.md` for the full reference.
+
+4. Backend
 
    * Shared backend.
-   * This will become the single backend used by both Immiglance and INSZoom.
+   * The single backend used by Immiglance, Admin, and the Attorney Portal.
    * All business logic must eventually live here.
 
 ---
 
 # Project Goal
 
-The objective is NOT simply to recreate INSZoom.
+The objective is NOT simply to recreate INSZoom (the internal CRM's original name, before it was renamed to Admin).
 
 The objective is to build an enterprise Immigration Operating System that combines:
 
@@ -45,7 +52,7 @@ The objective is to build an enterprise Immigration Operating System that combin
 * Professor Portal
 * Enterprise Analytics
 
-The finished product should exceed INSZoom in functionality.
+The finished product should exceed the original INSZoom in functionality.
 
 ---
 
@@ -100,7 +107,7 @@ Never implement admin-only functionality here.
 
 ---
 
-INSZoom/
+Admin/ (formerly INSZoom/)
 
 Internal CRM only.
 
@@ -113,12 +120,28 @@ Responsibilities
 * Workflows
 * USCIS Forms
 * Analytics
-* Attorney Workspace
 * Document Review
 * Reports
 * Settings
+* Granting/revoking attorney access to a case (`Case.attorneyAccess[]`) and the staff side of the attorney Messages/Feedback thread — the actual attorney workspace lives in the separate Attorney Portal app, not here.
 
 Never implement client-only functionality here.
+
+---
+
+Attorney/
+
+External-counsel portal only. A standalone app, not a route inside Admin or Immiglance.
+
+Responsibilities
+
+* Read-oriented case review (Overview, Documents, USCIS Forms, Petition, USCIS Tracking, Timeline) for cases explicitly granted to the signed-in attorney
+* Tasks (self-assigned only — an attorney can never assign work to someone else)
+* Messages/Feedback — staff-only dialogue with the case manager (file attachments, Enter-to-send); structurally separate from the client-facing Conversation system
+
+Never give this app access to the client-facing Conversation system, billing/payments, user management, or case creation.
+
+See `Attorney/docs/ATTORNEY_PORTAL.md` for the full reference.
 
 ---
 
@@ -244,7 +267,7 @@ Never modify unrelated modules.
 
 # Migration Rules
 
-Immiglance and INSZoom currently contain duplicate functionality.
+Immiglance and Admin currently contain duplicate functionality.
 
 During migration:
 
@@ -334,6 +357,6 @@ Before implementing any feature:
 * Explain the proposed solution.
 * Modify only the required files.
 * Keep commits focused on one feature at a time.
-* Ensure both Immiglance and INSZoom remain functional after every change.
+* Ensure Immiglance, Admin, and the Attorney Portal all remain functional after every change.
 
 Treat this project as an enterprise SaaS platform, not as two independent applications.

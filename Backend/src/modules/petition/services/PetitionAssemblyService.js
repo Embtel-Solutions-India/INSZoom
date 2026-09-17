@@ -69,6 +69,27 @@ function maskTail(value, keep = 4) {
 }
 
 class PetitionAssemblyService {
+  // SECURITY FIX: saveLetterEdit/reorderExhibits/unlock/recordFiling/
+  // recordReceipt all fetched a PetitionPackage by id and mutated it
+  // WITHOUT ever checking whether `user` may access the case it belongs
+  // to — despite every one of them already receiving `user` as a parameter.
+  // Any staff account holding forms:update/forms:approve (effectively any
+  // case_manager/team_lead/admin) could finalize, unlock, re-file, or edit
+  // letters on a petition package for a case they have no assignment to,
+  // just by knowing/guessing its ObjectId. finalize() already re-derives
+  // caseData but never called canAccessCase on it either. This helper is
+  // now the one place that loads a package and verifies access — mirrors
+  // the same canAccessCase() every other case-scoped module already uses.
+  static async loadAuthorizedPackage(packageId, user) {
+    const petitionPackage = await PetitionPackage.findById(packageId);
+    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const caseData = await Case.findById(petitionPackage.caseId);
+    if (!caseData || !caseService.canAccessCase(user, caseData)) {
+      throw Object.assign(new Error("Not authorized to access this petition package"), { status: 403 });
+    }
+    return { petitionPackage, caseData };
+  }
+
   static async resolveDefinition({ definitionKey, caseData }) {
     if (definitionKey) return PackageDefinition.findOne({ key: definitionKey, status: "active" });
     const candidates = await PackageDefinition.find({ status: "active" });
@@ -387,6 +408,9 @@ class PetitionAssemblyService {
     }
     const definition = await PackageDefinition.findOne({ key: petitionPackage.packageDefinitionKey });
     const caseData = await Case.findById(petitionPackage.caseId);
+    if (!caseData || !caseService.canAccessCase(user, caseData)) {
+      throw Object.assign(new Error("Not authorized to access this petition package"), { status: 403 });
+    }
 
     // Regenerate the mailing PDF clean (no draft watermark) for the final,
     // filing-ready copy. Forms/certifications are re-resolved fresh (they're
@@ -472,8 +496,7 @@ class PetitionAssemblyService {
   // stay correct, while `sections[].contentHtml` keeps just the prose for
   // the editor.
   static async saveLetterEdit(packageId, sectionKey, html, user, req) {
-    const petitionPackage = await PetitionPackage.findById(packageId);
-    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
     if (petitionPackage.lock?.locked) throw Object.assign(new Error("This petition package is finalized and locked — unlock it before editing"), { status: 409, code: "PACKAGE_LOCKED" });
     const section = petitionPackage.sections.find((entry) => entry.key === sectionKey);
     if (!section) throw Object.assign(new Error(`Section "${sectionKey}" not found on this package`), { status: 404 });
@@ -508,8 +531,7 @@ class PetitionAssemblyService {
   // until the next assemble/finalize — recomputing them would mean a full
   // mailing-PDF rebuild on every drag, too slow for a live reorder.
   static async reorderExhibits(packageId, order, user, req) {
-    const petitionPackage = await PetitionPackage.findById(packageId);
-    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
     if (petitionPackage.lock?.locked) throw Object.assign(new Error("This petition package is finalized and locked — unlock it before reordering exhibits"), { status: 409, code: "PACKAGE_LOCKED" });
 
     const definition = await PackageDefinition.findOne({ key: petitionPackage.packageDefinitionKey });
@@ -543,8 +565,7 @@ class PetitionAssemblyService {
   }
 
   static async unlock(packageId, { reason }, user, req) {
-    const petitionPackage = await PetitionPackage.findById(packageId);
-    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
     petitionPackage.lock = { locked: false, lockedAt: null, lockedBy: null, reason };
     petitionPackage.status = "assembled";
     petitionPackage.history.push({ versionNumber: petitionPackage.versionNumber, status: "assembled", action: "UNLOCK", actorId: userId(user), changeSummary: reason });
@@ -554,8 +575,7 @@ class PetitionAssemblyService {
   }
 
   static async recordFiling(packageId, { method, addressUsed, shippedAt, trackingNumber }, user, req) {
-    const petitionPackage = await PetitionPackage.findById(packageId);
-    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
     petitionPackage.status = "filed";
     petitionPackage.filing = { ...petitionPackage.filing, method, addressUsed, shippedAt, trackingNumber, filedBy: userId(user) };
     petitionPackage.history.push({ versionNumber: petitionPackage.versionNumber, status: "filed", action: "RECORD_FILING", actorId: userId(user), changeSummary: `${method} ${trackingNumber || ""}`.trim() });
@@ -565,8 +585,7 @@ class PetitionAssemblyService {
   }
 
   static async recordReceipt(packageId, { receiptNumber }, user, req) {
-    const petitionPackage = await PetitionPackage.findById(packageId);
-    if (!petitionPackage) throw Object.assign(new Error("Package not found"), { status: 404 });
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
     petitionPackage.filing = { ...petitionPackage.filing, receiptNumber };
     petitionPackage.history.push({ versionNumber: petitionPackage.versionNumber, status: petitionPackage.status, action: "RECORD_RECEIPT", actorId: userId(user), changeSummary: receiptNumber });
     await petitionPackage.save();

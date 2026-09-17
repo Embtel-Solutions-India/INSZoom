@@ -7,7 +7,7 @@ const ctrl = require("./settingsEngine.controller");
 // separate path from the original /api/settings whole-document CRUD
 // (modules/settings/settings.controller.js), which stays untouched so
 // nothing currently depending on it breaks. This is the new engine's
-// surface; the INSZoom Settings UI is the only intended caller.
+// surface; the Admin Settings UI is the only intended caller.
 router.get("/catalog", authenticate, requireSettingPermission("settings:view"), ctrl.getCatalog);
 router.get("/audit", authenticate, requireSettingPermission("settings:audit_view"), ctrl.listAudit);
 router.get("/:key/history", authenticate, requireSettingPermission("settings:view"), ctrl.getHistory);

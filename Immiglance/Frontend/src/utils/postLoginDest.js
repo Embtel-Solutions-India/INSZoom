@@ -8,7 +8,7 @@
  * It will be removed in a future cleanup phase.
  *
  * Previous behavior:
- * - getPostLoginDest(user): routed staff to INSZoom, clients to /dashboard
+ * - getPostLoginDest(user): routed staff to Admin, clients to /dashboard
  * - resolvePostLoginDest(user): added an async casesApi.my() call to check
  *   whether a client has a case, then routed to /dashboard or /dashboard/intake
  *

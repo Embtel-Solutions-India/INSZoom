@@ -9,7 +9,7 @@ const onlineUsers = new Map();
 // Bounds concurrent DB lookups during the connection-auth cache-miss path.
 // A backend restart disconnects every open socket.io client at once; each
 // reconnects on its own first retry attempt (socket.io-client defaults —
-// see INSZoom/Immiglance SocketContext), so without this, a fleet of N
+// see Admin/Immiglance SocketContext), so without this, a fleet of N
 // simultaneously-reconnecting sockets across N distinct users would all
 // call User.findById in the same instant, racing normal HTTP API traffic
 // for the same MongoDB pool (see docs/MONGODB_STARTUP_LOAD_FINDINGS.md).

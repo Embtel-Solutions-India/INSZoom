@@ -1,4 +1,8 @@
 const NOTIFICATION_TYPES = [
+  // Attorney Portal — case-scoped attorney <-> case manager dialogue and
+  // access grants (see models/Feedback.js, Case.attorneyAccess[]).
+  "attorney_feedback",
+  "attorney_access_granted",
   "case",
   "document",
   "payment",

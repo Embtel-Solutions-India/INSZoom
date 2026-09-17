@@ -141,7 +141,7 @@ const messageSchema = new mongoose.Schema(
     pinnedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     deletedAt: Date,
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     auditHistory: [messageAuditSchema],
   },
   { timestamps: true }

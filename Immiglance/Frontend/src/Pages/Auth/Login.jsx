@@ -8,7 +8,7 @@ import loginBackground from "../../assets/admin-login-liberty.png";
 import loginBackgroundWebp from "../../assets/admin-login-liberty.webp";
 
 // Edge/IE inject their own native reveal-password icon on type="password"
-// inputs (the ::-ms-reveal pseudo-element) — matches INSZoom's Login.jsx,
+// inputs (the ::-ms-reveal pseudo-element) — matches Admin's Login.jsx,
 // which this page's visual design now mirrors exactly (see PasswordField).
 const HIDE_NATIVE_REVEAL_CSS = `
   input[type="password"]::-ms-reveal,
@@ -21,7 +21,7 @@ const HIDE_NATIVE_REVEAL_CSS = `
 // selected renders the same login form and calls the same login() below;
 // the authenticated account's real role (via AuthGate reading
 // GET /api/auth/session-context) is what decides the post-login destination
-// (client portal vs. INSZOOM staff app), never what the user clicked here.
+// (client portal vs. Admin staff app), never what the user clicked here.
 const ROLE_TABS = [
   { key: "client", label: "Client", heading: "Welcome back", sub: "Sign in to track your case in the client portal." },
   { key: "attorney", label: "Attorney", heading: "Attorney sign-in", sub: "Attorney portal access." },
@@ -54,7 +54,7 @@ export default function Login() {
   // PHASE 3: routing is now decided exclusively by AuthGate
   // (src/components/AuthGate.jsx) via GET /api/auth/session-context — this
   // just lands the session on a protected route and lets AuthGate take it
-  // from there (staff → INSZoom, client with no case → /onboarding/intake,
+  // from there (staff → Admin, client with no case → /onboarding/intake,
   // etc.).
   useEffect(() => {
     if (!googleRedirectUser) return;
@@ -233,12 +233,22 @@ export default function Login() {
             </div>
 
             {roleTab === "attorney" ? (
+              // The attorney workspace is its own app now. Signing in here
+              // still works — AuthGate detects role "attorney" and hands the
+              // session straight over to the attorney portal (SSO, no second
+              // login) — but linking directly saves the round trip.
               <div className="rounded-xl border border-dashed border-border bg-secondary px-5 py-6 text-center">
-                <p className="text-sm font-semibold text-foreground mb-1.5">Attorney portal — coming soon</p>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  A dedicated attorney workspace isn't live yet. In the meantime, attorneys can access case
-                  details through the team member sign-in.
+                <p className="text-sm font-semibold text-foreground mb-1.5">Attorney Portal</p>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                  Attorneys have a dedicated workspace for assigned cases, documents, forms and case-manager
+                  feedback.
                 </p>
+                <a
+                  href={`${import.meta.env.VITE_ATTORNEY_PORTAL_URL || "http://localhost:5174"}/login`}
+                  className="inline-block rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
+                >
+                  Go to the Attorney Portal
+                </a>
               </div>
             ) : (
               <>

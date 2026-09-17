@@ -10,6 +10,12 @@ const CANONICAL_ROLES = [
   // as its own dedicated role, kept separate so a beneficiary is never
   // conflated with an employer-sponsored employee.
   "beneficiary",
+  // External counsel with portal access scoped to whichever cases a Case
+  // Manager/Admin has explicitly granted (Case.attorneyAccess[]) — see
+  // Attorney/PHASE0_FINDINGS.md. Not a staff role (no authority over
+  // other accounts, no case creation/assignment) and not a client-portal
+  // role (different app, different data shape) — its own peer entry.
+  "attorney",
 ];
 
 const LEGACY_ROLES = [];
@@ -24,6 +30,7 @@ const ROLE_HIERARCHY = {
   client: 4,
   user: 4,
   beneficiary: 4,
+  attorney: 4,
 };
 
 function normalizeRole(role) {

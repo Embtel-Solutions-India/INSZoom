@@ -36,7 +36,11 @@ exports.createFiling = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Unknown or unresolved filing type" });
     }
 
-    const caseNumber = await generateCaseNumber(req.body.legacySource === "INSZoom" ? "INS" : "Immiglance");
+    // "INS" is the pre-existing case-number prefix scheme for staff-created
+    // filings — kept as-is (a numbering-scheme change is a separate decision
+    // from the INSZoom->Admin app rename); only the comparison value is
+    // updated to match the renamed legacySource enum (models/*.js).
+    const caseNumber = await generateCaseNumber(req.body.legacySource === "Admin" ? "INS" : "Immiglance");
     const caseData = await Case.create({
       caseNumber,
       caseId: caseNumber,

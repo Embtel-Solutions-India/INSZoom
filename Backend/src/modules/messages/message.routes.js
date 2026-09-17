@@ -8,6 +8,10 @@ const upload = require("../uploads/upload.middleware");
 const requirePortalCapability = require("../../middleware/requirePortalCapability");
 const ctrl = require("./message.controller");
 
+// Attorney deliberately excluded — this conversation type includes the
+// client as a participant (resolveCaseConversationRouting), and attorneys
+// must never share a thread with a client. Their equivalent, staff-only
+// channel is models/Feedback.js (see modules/attorney/, modules/feedback/).
 const messageRoles = ["super_admin", "admin", "team_lead", "case_manager", "client", "user", "employer", "employee"];
 
 router.get("/case/:caseId", authenticate, authorizePermissions("messages:read"), ctrl.getOrCreateThread);

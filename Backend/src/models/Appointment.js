@@ -123,7 +123,7 @@ const appointmentSchema = new mongoose.Schema(
     leadTier: { type: String, enum: ["A", "B", "C", "D", null], default: null },
     aiSuggestionMetadata: mongoose.Schema.Types.Mixed,
     publicBooking: { type: Boolean, default: false, index: true },
-    legacySource: { type: String, enum: ["Immiglance", "BAIS", "INSZoom", "shared", ""], default: "shared" },
+    legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     auditHistory: [auditHistorySchema],
   },
   { timestamps: true }

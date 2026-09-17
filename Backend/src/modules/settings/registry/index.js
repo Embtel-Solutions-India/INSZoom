@@ -7,7 +7,7 @@
 // integrations.registry.js/roles.registry.js were deleted (their content
 // had zero live runtime consumers, confirmed before deleting) and replaced
 // by firm/users/portal/intake/email/invoice below, matching Docketwise/
-// INSZoom's real settings taxonomy. workflow/modules/ai/data/billing are
+// Admin's real settings taxonomy. workflow/modules/ai/data/billing are
 // UNCHANGED — their keys already have live consumers (SLA sweep, feature
 // flags, AI budget, retention sweep) that this pass did not touch, and
 // there was no reason to.
