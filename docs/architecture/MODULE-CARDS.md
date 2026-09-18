@@ -2,6 +2,8 @@
 
 Scope note: cards are provided for every node that either (a) exceeds a qualitative "touches 5+ other confirmed-finding nodes" threshold, or (b) is manually classified business-critical (Case, User, CaseForm, USCISFormTemplate, AuthSession, the errorHandler classifier). This is not a claim of exhaustive coverage of all 64 models — see `COVERAGE.md` for what is and isn't covered.
 
+Structure note: the platform is now **five apps** — `Immiglance/Landing` (public + pre-auth), `Immiglance/Client` (authenticated client portal), `Admin/frontend`, `Attorney/`, and the shared `Backend/`. The single `Immiglance/Frontend` app these cards were originally written against was split into Landing and Client and no longer exists; "Immiglance" frontend consumers named below resolve to `Immiglance/Client` unless stated otherwise. See `docs/REPOSITORY_REARCHITECTURE_IMPLEMENTATION.md`.
+
 ---
 
 ### MODULE: Case (model)
@@ -9,7 +11,7 @@ Scope note: cards are provided for every node that either (a) exceeds a qualitat
 **Collection**: `cases`
 **Declared indexes**: 127 (including implicit field-level) — **exceeds MongoDB's 64-per-collection hard limit**; positions 65-128 (all explicit compound + text indexes at lines 851-897) do not exist on the live collection.
 **Direct consumers (services)**: case.service.js, case.controller.js, case-lifecycle-orchestrator.service.js, CollaborationService.js + TimelineService.js, CanonicalProfileService.js, EligibilityEngineService.js, AutoFillService.js, workflow.service.js, ImmigrationTimelineService.js — 9 distinct services.
-**Frontend consumers**: Admin (formerly INSZoom) CRMCases.jsx, CRMCaseDetail.jsx, Dashboard.jsx, USCISForms.jsx; Immiglance Dashboard.jsx, Documents.jsx, postLoginDest.js; Attorney Portal's read-only case-detail tabs (Overview/Documents/Forms/Petition/Tracking/Timeline) — 7+ distinct pages across three portals.
+**Frontend consumers**: Admin (formerly INSZoom) CRMCases.jsx, CRMCaseDetail.jsx, Dashboard.jsx, USCISForms.jsx; Immiglance Client Dashboard.jsx, Documents.jsx; Immiglance Landing's `useHasCase` (via `casesApi.my()`); Attorney Portal's read-only case-detail tabs (Overview/Documents/Forms/Petition/Tracking/Timeline) — 7+ distinct pages across four frontends (Landing, Client, Admin, Attorney).
 **Models touched via populate/ref**: Client (unrestricted), User, Beneficiary, CaseForm, Questionnaire, Answer, Document, Payment, Notification.
 **Endpoints**: all `/api/cases/*` (case.routes.js), `/api/eligibility/*`, `/api/cases/:caseId/forms/*` (autoFillRoutes), `/api/canonical/cases/:caseId/*`, `/api/cases/:caseId/timeline` (shadowed).
 **Circular-dependency flag**: CanonicalProfileService.rebuild() loads and saves its own independent copy of a Case document (only given the id) — the in-code comment at `immigration-knowledge-engine.service.js:476-482` documents this bumps `__v` underneath any other in-flight caseData mutation, which is a real (not hypothetical) VersionError source distinct from the confirmed auth-refresh one.

@@ -6,31 +6,44 @@
 
 This workspace contains the complete Immigration CRM Platform.
 
-The platform consists of four applications that together form one enterprise system.
+The platform consists of five applications that together form one enterprise system.
 
-1. Immiglance
+"Immiglance" is the client-facing product. It is **two separate applications**, split apart from the
+single `Immiglance/Frontend/` app that used to hold both: `Immiglance/Landing/` (public, never behind
+an auth gate) and `Immiglance/Client/` (everything behind `AuthGate`). See
+`docs/REPOSITORY_REARCHITECTURE_IMPLEMENTATION.md` for the split and what is still deferred.
 
-   * Client Portal
-   * Used by immigration clients.
-   * Handles onboarding, questionnaires, document uploads, payments, appointments, messaging, and case tracking.
+1. Immiglance Landing (`Immiglance/Landing/`, dev port 5173)
 
-2. Admin
+   * Public marketing site and every pre-authentication entry point.
+   * Used by anonymous visitors and by anyone signing in or signing up — clients, staff, and attorneys alike.
+   * Handles the marketing home page, login/signup, OAuth callback, invite acceptance, forgot/reset password, the eligibility quiz, and consultation booking/management.
+   * This is the **only** app that originates a session; every other app receives one.
+
+2. Immiglance Client (`Immiglance/Client/`, dev port 5175)
+
+   * The authenticated Client Portal.
+   * Used by immigration clients (and invited employees/beneficiaries).
+   * Handles onboarding/intake, questionnaires, document uploads and review, payments, plan and filing-type selection, messaging, notifications, QuickBooks, FedEx, and case tracking.
+   * Everything here sits behind `AuthGate`, the single routing authority for authenticated sessions.
+
+3. Admin
 
    * Internal CRM (formerly named "INSZoom" — renamed; the directory, package names, env vars, DB enum values, and code comments have all been updated to "Admin")
    * Used by Case Managers, Team Leads, Paralegals, Finance Team, HR, and Administrators.
    * Handles case management, workflow automation, USCIS forms, analytics, document review, reporting, and administration.
 
-3. Attorney Portal
+4. Attorney Portal
 
-   * External-counsel portal, standalone app (`Attorney/`), a peer of Immiglance and Admin — not a page inside either.
+   * External-counsel portal, standalone app (`Attorney/`), a peer of the Immiglance apps and Admin — not a page inside any of them.
    * Used by attorneys granted access to specific cases (`Case.attorneyAccess[]`, granted/revoked from Admin's case detail page).
    * Handles: case review (read-oriented — Overview, Documents, USCIS Forms, Petition, USCIS Tracking, Timeline), Tasks (self-assigned only), and Messages/Feedback — a staff-only dialogue with the case manager (never the client-facing Conversation system Immiglance/Admin use for client messaging).
    * See `Attorney/docs/ATTORNEY_PORTAL.md` for the full reference.
 
-4. Backend
+5. Backend
 
    * Shared backend.
-   * The single backend used by Immiglance, Admin, and the Attorney Portal.
+   * The single backend used by Landing, Client, Admin, and the Attorney Portal.
    * All business logic must eventually live here.
 
 ---
@@ -88,22 +101,69 @@ Future
 
 Immiglance/
 
-Client Portal only.
+The client-facing product, as two independently-runnable Vite apps plus a thin wrapper
+`package.json` that delegates into both (`npm run dev:landing`, `npm run dev:client`,
+`npm run build`, …). There is no `Immiglance/Frontend/` any more — it was split into the two
+folders below.
+
+```
+Immiglance/
+├── package.json     # wrapper scripts only; not an npm workspace
+├── Landing/         # public + pre-auth      (dev :5173)
+└── Client/          # authenticated portal   (dev :5175)
+```
+
+---
+
+Immiglance/Landing/
+
+Public marketing site and pre-authentication entry points only.
 
 Responsibilities
 
-* Authentication
+* Marketing home page (`/`)
+* Login, Signup, OAuth callback, Accept Invite, Forgot/Reset Password
+* Eligibility quiz
+* Consultation booking and management
+* Bouncing an already-authenticated staff/attorney session to its own portal (`utils/portalRedirect.js`)
+
+Never put an authenticated client screen here — it must be reachable by a completely anonymous
+visitor, which means it cannot assume a session exists.
+
+Never implement admin-only functionality here. (One legacy exception survives at
+`Landing/src/Pages/Admin/` — a pre-split duplicate of the Admin app, kept only because the
+homepage footer still links to it. It is scheduled for removal; do not extend it.)
+
+---
+
+Immiglance/Client/
+
+The authenticated Client Portal only. Everything here is behind `AuthGate`.
+
+Responsibilities
+
 * Client Dashboard
 * Case Tracking
+* Onboarding / Intake
 * Questionnaires
-* Document Upload
-* Payments
+* Document Upload and Document Review
+* Payments, Plan Selection, Filing-Type Selection
 * Messaging
 * Notifications
 * Appointments
 * Profile
+* QuickBooks, FedEx
+
+Never put a pre-authentication page here — login, signup, invite acceptance and password reset all
+live in Landing.
 
 Never implement admin-only functionality here.
+
+**Shared code note:** `services/api.js`, `context/AuthContext.jsx`, `context/SocketContext.jsx`,
+`context/ThemeContext.jsx`, `services/notificationService.js`, `hooks/useHasCase.js`,
+`utils/{auth,portalRedirect,iconComponents,visaDisplay}.js`, `components/{PageLoader,ThemeToggle}.jsx`
+and `src/index.css` are **duplicated verbatim** in Landing and Client, pending the centralized-auth
+phase. If you change one of these files, change **both copies**.
 
 ---
 
@@ -267,7 +327,12 @@ Never modify unrelated modules.
 
 # Migration Rules
 
-Immiglance and Admin currently contain duplicate functionality.
+Immiglance (Landing + Client) and Admin currently contain duplicate functionality.
+
+Separately, the Landing/Client split deliberately left a set of files duplicated verbatim across the
+two apps (listed under `Immiglance/Client/` above) rather than extracting them to a shared package.
+That duplication is a documented stopgap, not a pattern to copy — it is scheduled to be resolved in
+the centralized-authentication phase. Until then, edit both copies together.
 
 During migration:
 
@@ -357,6 +422,6 @@ Before implementing any feature:
 * Explain the proposed solution.
 * Modify only the required files.
 * Keep commits focused on one feature at a time.
-* Ensure Immiglance, Admin, and the Attorney Portal all remain functional after every change.
+* Ensure Immiglance Landing, Immiglance Client, Admin, and the Attorney Portal all remain functional after every change (all four build with `npm run build` in their own folder).
 
 Treat this project as an enterprise SaaS platform, not as two independent applications.

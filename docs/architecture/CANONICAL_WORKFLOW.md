@@ -10,14 +10,19 @@
 
 ---
 
-## 0. The four apps (recap)
+## 0. The five apps (recap)
 
-| App | Role | Location |
-|-----|------|----------|
-| **Immiglance** | Client Portal (React) | `Immiglance/Frontend` |
-| **Admin** (formerly "INSZoom" — renamed) | Internal CRM — team lead, case manager, admin (React) | `Admin/frontend` |
-| **Attorney Portal** | External-counsel portal — read-oriented case review, Tasks, and a staff-only Messages/Feedback thread with the case manager, for cases explicitly granted via `Case.attorneyAccess[]` (React) | `Attorney/` |
-| **Backend** | Shared Express/Mongo API — all business logic | `Backend/src` |
+| App | Role | Location | Dev port |
+|-----|------|----------|----------|
+| **Immiglance Landing** | Public marketing site + every pre-authentication entry point — login, signup, OAuth callback, accept-invite, forgot/reset password, eligibility quiz, consultation booking (React) | `Immiglance/Landing` | 5173 |
+| **Immiglance Client** | The authenticated Client Portal — everything behind `AuthGate` (React) | `Immiglance/Client` | 5175 |
+| **Admin** (formerly "INSZoom" — renamed) | Internal CRM — team lead, case manager, admin (React) | `Admin/frontend` | 3002 |
+| **Attorney Portal** | External-counsel portal — read-oriented case review, Tasks, and a staff-only Messages/Feedback thread with the case manager, for cases explicitly granted via `Case.attorneyAccess[]` (React) | `Attorney/` | 5174 |
+| **Backend** | Shared Express/Mongo API — all business logic | `Backend/src` | 7000 |
+
+Landing and Client were split out of what used to be a single `Immiglance/Frontend` app; that folder
+no longer exists. Landing is the only app that *originates* a session — Client, Admin and Attorney all
+*receive* one. See `docs/REPOSITORY_REARCHITECTURE_IMPLEMENTATION.md`.
 
 One MongoDB database, one source of truth per entity. No duplicated collections, models, or business logic.
 
@@ -28,7 +33,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 ### Step 1 — Client completes the intake questionnaire and selects a package → a Case is created
 - The client fills the **existing onboarding questionnaire** and reaches **Plan / Package selection**.
 - When the client selects a package, **a Case is created and its `visaType` is set from the visa the client chose.**
-- Frontend: `Immiglance/Frontend/src/Pages/Dashboard/PlanSelection.jsx` → `casesApi` (`services/api.js`).
+- Frontend: `Immiglance/Client/src/Pages/Dashboard/PlanSelection.jsx` → `casesApi` (`services/api.js`).
 - Backend: case creation runs through `Backend/src/modules/cases/*` and the
   **lifecycle orchestrator** `case-lifecycle-orchestrator.service.js`.
 
@@ -45,7 +50,7 @@ One MongoDB database, one source of truth per entity. No duplicated collections,
 - Lifecycle stage moves `case_assigned → case_manager_review` (`case-lifecycle-orchestrator.service.js`).
 
 ### Step 4 — Client fills personal info + documents in the Client Portal
-- In Immiglance the client completes personal details and uploads required documents.
+- In Immiglance Client the client completes personal details and uploads required documents.
 - Pages: `Pages/Dashboard/Intake.jsx`, `Documents.jsx`, `Profile.jsx`, `Dashboard.jsx`.
 - The **required document set is driven by the visa type** (see §2 single-source-of-truth).
 
@@ -104,10 +109,10 @@ The **same questionnaire/checklist per visa type** must appear, identically, in 
 
 1. Admin **admin Questionnaire page** — `Admin/frontend/src/pages/QuestionnaireTemplates.jsx`
 2. Admin **Case → Documents sub-page** — `Admin/frontend/src/pages/CRMCaseDetail.jsx`, `Documents.jsx`
-3. **Every "pending documents" section** (both portals)
-4. Immiglance **client Dashboard** — `Immiglance/Frontend/src/Pages/Dashboard/Dashboard.jsx`
-5. Immiglance **Profile** — `Profile.jsx`
-6. Immiglance **Documents** — `Documents.jsx`
+3. **Every "pending documents" section** (Admin + Immiglance Client)
+4. Immiglance Client **client Dashboard** — `Immiglance/Client/src/Pages/Dashboard/Dashboard.jsx`
+5. Immiglance Client **Profile** — `Profile.jsx`
+6. Immiglance Client **Documents** — `Documents.jsx`
 
 **Assignment is automatic from the client's visa-type selection** (Step 1). The
 mechanism already exists: `Questionnaire` model has `visaType` / `visaTypes` /
@@ -117,7 +122,7 @@ mechanism already exists: `Questionnaire` model has `visaType` / `visaTypes` /
 ### ⚠️ Known divergence to fix (found during audit)
 The checklist currently lives in **multiple, already-out-of-sync places**:
 - `Backend/src/config/visaChecklists.js` — **50 lines, 5 visa types, fewer docs**
-- `Immiglance/Frontend/src/config/visaChecklists.js` — **221 lines, ~10+ visa types, more docs** (claims to "mirror" the backend but does not)
+- `Immiglance/Client/src/config/visaChecklists.js` — **221 lines, ~10+ visa types, more docs** (claims to "mirror" the backend but does not)
 - `Backend/src/modules/questionnaires/employmentChecklists.js`
 - `Backend/src/modules/employment-workflow/questionnaires/{h1b,l1a,shared,registry}.js`
 - Seeded default templates inside `questionnaire.service.js` (`ensureDefaultVisaTemplates`)
@@ -150,9 +155,9 @@ For each one:
 
 ## 5. Reusable agent prompt (paste this to start a work session)
 
-> You are working on **ImmigrationCRM** (Immiglance client portal + Admin internal CRM,
-> formerly named INSZoom + Attorney Portal (external counsel) + shared Backend, one
-> MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
+> You are working on **ImmigrationCRM** (Immiglance Landing (public/pre-auth) + Immiglance
+> Client (authenticated client portal) + Admin internal CRM, formerly named INSZoom +
+> Attorney Portal (external counsel) + shared Backend, one MongoDB). Read `../../AGENTS.md` and `CANONICAL_WORKFLOW.md` first and
 > treat the latter as the authoritative end-to-end flow.
 >
 > The canonical flow is: client fills intake → selects package → **Case created with
@@ -172,4 +177,5 @@ For each one:
 > When I give you a checklist for a visa type: verify it's 100% accurate in every
 > location above; if not, fix it in the canonical backend source, propagate everywhere,
 > and verify visa-type auto-assignment. Follow `AGENTS.md`: analyze first, explain the
-> plan, keep both portals working, no duplicate logic, report changed files.
+> plan, keep all four frontends (Landing, Client, Admin, Attorney) working, no duplicate
+> logic, report changed files.

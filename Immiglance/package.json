@@ -1,10 +1,19 @@
 {
-  "name": "immiglance-client-portal",
+  "name": "immiglance",
   "private": true,
   "scripts": {
-    "dev": "cd Frontend && npm run dev",
-    "build": "cd Frontend && npm run build",
-    "lint": "cd Frontend && npm run lint",
-    "preview": "cd Frontend && npm run preview"
+    "dev:landing": "cd Landing && npm run dev",
+    "dev:client": "cd Client && npm run dev",
+    "build": "npm run build:landing && npm run build:client",
+    "build:landing": "cd Landing && npm run build",
+    "build:client": "cd Client && npm run build",
+    "lint": "npm run lint:landing && npm run lint:client",
+    "lint:landing": "cd Landing && npm run lint",
+    "lint:client": "cd Client && npm run lint",
+    "test": "npm run test:landing && npm run test:client",
+    "test:landing": "cd Landing && npm run test",
+    "test:client": "cd Client && npm run test",
+    "preview:landing": "cd Landing && npm run preview",
+    "preview:client": "cd Client && npm run preview"
   }
 }

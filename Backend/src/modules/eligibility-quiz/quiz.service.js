@@ -221,8 +221,8 @@ function invalidTransitionError(fromStatus, action) {
 // notification "read" state works (not a per-admin read receipt).
 // Every lead mutation below re-populates consultationId/assignedTo before
 // returning — the admin frontend replaces its whole in-memory lead object
-// with whatever these return (see AdminPortal.jsx's handle* callbacks), so
-// an unpopulated response here would silently wipe out consultation/assignee
+// with whatever these return, so an unpopulated response here would
+// silently wipe out consultation/assignee
 // details that listLeads()/getLead() had already populated, the moment a
 // user opens (markLeadSeen) or acts on a lead.
 async function repopulateLead(lead) {
