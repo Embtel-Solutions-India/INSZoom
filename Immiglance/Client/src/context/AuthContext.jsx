@@ -188,6 +188,36 @@ export function AuthProvider({ children }) {
 
   // Invited employee sets their own password via the emailed link, then is
   // logged straight in — the employer never sees or sets this password.
+  // Landing on(5173)'s CrossAppRedirect hands an already-authenticated
+  // session over via /auth/sso?token=... instead of a bare cross-origin
+  // navigation — mirrors Admin's/Attorney's own loginWithToken() exactly.
+  // Without this, this app had no way to establish a session handed to it
+  // from Landing: the access token only ever lived in Landing's in-memory
+  // variable/localStorage marker (both origin-scoped), so a fresh load here
+  // saw neither and verifySession() gave up immediately without even trying
+  // the shared refresh cookie — the cause of the /login <-> /dashboard
+  // redirect loop after a successful login on Landing.
+  const loginWithToken = useCallback(async (token) => {
+    tokenStore.set(token);
+    setAuthStatus(AUTH_STATUS.LOADING);
+    try {
+      const [{ user: u, features }, sessionCtx] = await Promise.all([authApi.me(), authApi.sessionContext()]);
+      if (!sessionCtx?.success) {
+        throw new Error("This sign-in link is no longer valid.");
+      }
+      setUser(u ? { ...u, features } : u);
+      setSessionContext(sessionCtx);
+      setAuthStatus(AUTH_STATUS.AUTHENTICATED);
+      return u;
+    } catch (err) {
+      tokenStore.clear();
+      setUser(null);
+      setSessionContext(null);
+      setAuthStatus(AUTH_STATUS.UNAUTHENTICATED);
+      throw err;
+    }
+  }, []);
+
   const acceptInvite = useCallback(async (token, password, confirmPassword, username) => {
     const data = await authApi.acceptInvite(token, password, confirmPassword, username);
     tokenStore.set(data.accessToken);
@@ -198,9 +228,18 @@ export function AuthProvider({ children }) {
   }, [fetchAndSetSessionContext]);
 
   const logout = useCallback(async () => {
+    // POST /auth/logout requires a valid Authorization header (it's the
+    // call that revokes the refresh-token session server-side and clears
+    // the httpOnly refresh cookie — see auth.controller.js's logout()) — it
+    // must fire while the access token is still in memory. Clearing local
+    // session state first (the previous order) sent this request with no
+    // token at all; `authenticate` middleware 401'd it before it ever
+    // reached the controller, the error was silently swallowed by .catch(),
+    // and the server-side session/cookie were never actually revoked — the
+    // 7-day refresh session kept working right through a "logged out" UI.
     await unregisterCurrentDevice().catch(() => {});
-    clearSession();
     await authApi.logout().catch(() => {});
+    clearSession();
   }, [clearSession]);
 
   // Backend-mediated OAuth authorization-code flow: this is a full-page
@@ -240,11 +279,11 @@ export function AuthProvider({ children }) {
     () => ({
       user, authStatus, authLoading: authStatus === AUTH_STATUS.LOADING, retryAuth: verifySession,
       sessionContext,
-      signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      signup, login, loginWithToken, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     }),
     [
-      user, authStatus, verifySession, sessionContext, signup, login, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
+      user, authStatus, verifySession, sessionContext, signup, login, loginWithToken, acceptInvite, loginWithGoogle, logout, setUserFromOAuth, updateUser,
       googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError,
     ]
   );

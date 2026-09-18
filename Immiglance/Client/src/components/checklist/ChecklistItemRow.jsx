@@ -65,7 +65,7 @@ export default function ChecklistItemRow({ id, type = "field", label, required =
 
       {statusReason && status === STATUS.NEEDS_ATTENTION && (
         <p role="alert" className="mt-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
-          <span className="font-extrabold uppercase tracking-wide">Attorney note:</span> {statusReason}
+          <span className="font-bold uppercase tracking-wide">Attorney note:</span> {statusReason}
         </p>
       )}
 

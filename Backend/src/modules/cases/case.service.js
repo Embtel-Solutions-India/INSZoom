@@ -111,11 +111,35 @@ function hasActiveAttorneyAccess(caseData, attorneyId) {
   );
 }
 
+// Family/sponsor (K-1/K-3) beneficiary ownership, in one place so
+// canAccessCase and applyCaseRoleFilter can never disagree about which cases a
+// beneficiary owns. Reads only the family fields — employerUser/employeeUser
+// are never consulted here.
+function isFamilyBeneficiaryOf(user, caseData) {
+  return sameId(caseData.beneficiaryUser, user._id)
+    || sameId(caseData.user, user._id)
+    || Boolean(caseData.beneficiaryInvite?.email && caseData.beneficiaryInvite.email === user.email);
+}
+
 function canAccessCase(user, caseData) {
   if (!user || !caseData) return false;
   const role = normalizeRole(user.role);
   if (role === "attorney") return hasActiveAttorneyAccess(caseData, user._id);
-  if (isRestrictedPortalRole(role)) return canAccessRestrictedChildCase(user, caseData, role);
+  if (isRestrictedPortalRole(role)) {
+    if (canAccessRestrictedChildCase(user, caseData, role)) return true;
+    // Family/sponsor (K-1/K-3) beneficiaries created by
+    // family-workflow.controller.js#createFamilyCase are a SECOND PARTICIPANT
+    // ON ONE CASE (petitionerUser + beneficiaryUser), not a child case — so
+    // they carry no `caseRole`/`parentCase` and canAccessRestrictedChildCase
+    // above can never match them, which made the family branch at the bottom
+    // of this function unreachable for the beneficiary role and 403'd a
+    // beneficiary out of their OWN questionnaire (proven by
+    // h1b-e2e/tests/k1-golden-path.test.js's S2 step). Scoped to the family
+    // fields only and to role "beneficiary" only, so the "employee" restricted
+    // portal role keeps its existing child-case-only boundary exactly.
+    if (role === "beneficiary") return isFamilyBeneficiaryOf(user, caseData);
+    return false;
+  }
   if (isAdmin(user)) return true;
   if (sameId(caseData.user, user._id)) return true;
   if (sameId(caseData.employeeUser, user._id)) return true;
@@ -132,9 +156,10 @@ function canAccessCase(user, caseData) {
   if (role === "employee") return sameId(caseData.employeeUser, user._id) || sameId(caseData.user, user._id) || sameId(caseData.beneficiary?.user, user._id);
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
   // employer/employee checks immediately above under separate field names;
-  // employerUser/employeeUser are never read here.
+  // employerUser/employeeUser are never read here. The beneficiary side is
+  // handled earlier, in the restricted-portal-role branch above (a
+  // "beneficiary" role never reaches this line).
   if (sameId(caseData.petitionerUser, user._id)) return true;
-  if (role === "beneficiary") return sameId(caseData.beneficiaryUser, user._id) || sameId(caseData.user, user._id) || caseData.beneficiaryInvite?.email === user.email;
   return false;
 }
 
@@ -159,7 +184,24 @@ function applyCaseRoleFilter(filter, user) {
   else if (role === "employee") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
   // employer/employee branches immediately above under separate field names.
-  else if (role === "beneficiary") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
+  // A beneficiary owns their case through EITHER shape, so this must be the
+  // union of both or a list and a detail fetch disagree (canAccessCase's
+  // restricted-portal branch allows both):
+  //   - a child case (caseRole "beneficiary"), created by case.controller.js's
+  //     caseStructure: "family" path -> buildRestrictedCaseOwnershipFilter;
+  //   - a single two-participant case (petitionerUser + beneficiaryUser, no
+  //     caseRole), created by family-workflow.controller.js#createFamilyCase
+  //     -> the family fields, matching isFamilyBeneficiaryOf above.
+  else if (role === "beneficiary") {
+    filter.$and = [...(filter.$and || []), {
+      $or: [
+        buildRestrictedCaseOwnershipFilter(user, role),
+        { beneficiaryUser: user._id },
+        { user: user._id },
+        ...(user.email ? [{ "beneficiaryInvite.email": user.email }] : []),
+      ],
+    }];
+  }
   else {
     filter.$and = [...(filter.$and || []), { $or: [{ user: user._id }, { clientProfile: user._id }, { petitionerUser: user._id }] }];
   }

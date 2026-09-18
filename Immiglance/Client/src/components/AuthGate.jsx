@@ -82,7 +82,7 @@ export default function AuthGate() {
   if (authStatus === "error") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
-        <h1 className="text-2xl font-extrabold text-slate-900 mb-3">We're having trouble connecting</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-3">We're having trouble connecting</h1>
         <p className="text-slate-500 text-base max-w-md">
           This isn't a sign you've been logged out — we just couldn't reach the server to confirm your session. Please refresh the page.
         </p>
@@ -98,7 +98,7 @@ export default function AuthGate() {
   if (!CLIENT_PORTAL_ROLES.includes(context.role)) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-5rem)] px-6 text-center">
-        <h1 className="text-2xl font-extrabold text-slate-900 mb-3">Access unavailable</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-3">Access unavailable</h1>
         <p className="text-slate-500 text-base max-w-md">
           This account role is not enabled for the client portal.
         </p>
@@ -146,6 +146,12 @@ export default function AuthGate() {
   // this canonical path before AuthGate ever runs, so this is the one path
   // to check — no need to special-case the legacy URL here too.
   const isIntakePath = location.pathname === "/onboarding/intake";
+  // Intake.jsx's short-form submit lands the still-case-less client here
+  // (see submitEvaluation's navigate call) before a Case exists — must be
+  // allowed through the same way isIntakePath is, or this branch's
+  // catch-all below would bounce them straight back to intake before they
+  // can book.
+  const isPreCaseBookingPath = location.pathname === "/consultation/book";
 
   // ── Client: has a case → dashboard (bounce out of intake specifically,
   // render normally on any other already-AuthGate-wrapped path) ───────────
@@ -161,8 +167,9 @@ export default function AuthGate() {
     return <Navigate to="/legacy-holding" replace />;
   }
 
-  // ── Client: no case, not legacy → intake questionnaire ───────────────────
-  if (!isIntakePath) {
+  // ── Client: no case, not legacy → intake questionnaire (or, once intake
+  // is submitted, consultation booking) ─────────────────────────────────
+  if (!isIntakePath && !isPreCaseBookingPath) {
     return <Navigate to="/onboarding/intake" replace />;
   }
   return <Outlet />;

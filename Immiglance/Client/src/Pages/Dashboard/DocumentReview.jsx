@@ -36,7 +36,7 @@ function FieldRow({ extraction, field, onDone }) {
   return (
     <div className="rounded-xl border border-border bg-secondary/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-black text-foreground">{field.label || field.key}</p>
+        <p className="text-sm font-bold text-foreground">{field.label || field.key}</p>
         {confidencePill(field.confidenceScore ?? field.confidence)}
       </div>
       {conflictIssue && (
@@ -51,9 +51,9 @@ function FieldRow({ extraction, field, onDone }) {
           onChange={(event) => setValue(event.target.value)}
           disabled={busy}
         />
-        <button type="button" disabled={busy} onClick={() => act("edit")} className="rounded-lg border border-border px-3 py-1.5 text-xs font-black text-foreground hover:bg-secondary">Save Edit</button>
-        <button type="button" disabled={busy} onClick={() => act("approve")} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-black text-primary-foreground hover:opacity-90">Approve</button>
-        <button type="button" disabled={busy} onClick={() => act("reject")} className="rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-black text-destructive hover:bg-destructive/10">Reject</button>
+        <button type="button" disabled={busy} onClick={() => act("edit")} className="rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary">Save Edit</button>
+        <button type="button" disabled={busy} onClick={() => act("approve")} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:opacity-90">Approve</button>
+        <button type="button" disabled={busy} onClick={() => act("reject")} className="rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/10">Reject</button>
       </div>
     </div>
   );
@@ -66,7 +66,7 @@ function ExtractionCard({ extraction, onDone }) {
     <section className="rounded-2xl border border-card-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
         <div>
-          <h3 className="text-base font-black text-foreground">{extraction.documentType || "Document"}</h3>
+          <h3 className="text-base font-bold text-foreground">{extraction.documentType || "Document"}</h3>
           <p className="text-xs text-muted-foreground">Case: {extraction.caseId?.caseNumber || extraction.caseId?._id || extraction.caseId || "—"}</p>
         </div>
         {confidencePill(extraction.confidence)}
@@ -111,7 +111,7 @@ export default function DocumentReview() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-black text-foreground">Document Review Queue</h1>
+        <h1 className="text-2xl font-bold text-foreground">Document Review Queue</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Fields extracted from uploaded documents across every document type and visa type, awaiting confirmation before they're written into a case or questionnaire.
         </p>

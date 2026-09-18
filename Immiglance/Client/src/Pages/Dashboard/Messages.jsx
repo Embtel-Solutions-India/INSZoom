@@ -243,7 +243,7 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
       className={`w-full flex items-start gap-3 px-4 py-4 text-left border-b border-border transition hover:bg-secondary cursor-pointer
         ${isActive ? "bg-accent border-l-2 border-l-primary" : ""}`}>
       <div className="w-9 h-9 rounded-full bg-primary
-        flex items-center justify-center text-primary-foreground text-xs font-extrabold shrink-0">
+        flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0">
         {initials(peer)}
       </div>
       <div className="flex-1 min-w-0">
@@ -253,7 +253,7 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
         </div>
         <p className="text-xs text-muted-foreground truncate mt-0.5">{caseLabel}</p>
         {unread > 0 && (
-          <span className="inline-block mt-1.5 text-[0.6rem] font-extrabold bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
+          <span className="inline-block mt-1.5 text-[0.6rem] font-bold bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
             {unread} new
           </span>
         )}
@@ -278,7 +278,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
 
   return (
     <div className={`flex gap-3 ${isOwn ? "flex-row-reverse" : ""}`}>
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold shrink-0
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0
         ${isOwn ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
         {initials(msg.senderId?.displayName || msg.senderId?.email || "?")}
       </div>
@@ -734,19 +734,19 @@ export default function Messages() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Banner */}
-      <div className="bg-primary text-primary-foreground shrink-0">
+      <div className="border-b border-border shrink-0">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 flex items-center gap-3">
           {showMobile && activeThread && (
-            <button onClick={() => setShowMobile(false)} className="sm:hidden mr-1 text-primary-foreground/80 hover:text-primary-foreground">
+            <button onClick={() => setShowMobile(false)} className="sm:hidden mr-1 text-muted-foreground hover:text-foreground">
               <Ic.Back />
             </button>
           )}
-          <Ic.Msg />
+          <span className="text-primary"><Ic.Msg /></span>
           <div>
-            <p className="text-primary-foreground/70 text-[0.7rem] font-semibold uppercase tracking-widest">Communication</p>
-            <h1 className="text-xl font-extrabold leading-tight">Messages</h1>
+            <p className="text-muted-foreground text-[0.7rem] font-semibold uppercase tracking-widest">Communication</p>
+            <h1 className="font-serif text-xl font-bold text-foreground leading-tight">Messages</h1>
           </div>
-          <button onClick={loadThreads} className="ml-auto text-primary-foreground/70 hover:text-primary-foreground transition" title="Refresh">
+          <button onClick={loadThreads} className="ml-auto text-muted-foreground hover:text-foreground transition" title="Refresh">
             <Ic.Refresh />
           </button>
         </div>
@@ -762,7 +762,7 @@ export default function Messages() {
           <div className={`w-full sm:w-72 border-r border-border flex flex-col shrink-0
             ${showMobile ? "hidden sm:flex" : "flex"}`}>
             <div className="px-4 py-3.5 border-b border-border flex items-center justify-between">
-              <p className="font-extrabold text-foreground text-sm">Conversations</p>
+              <p className="font-bold text-foreground text-sm">Conversations</p>
               <span className="text-xs text-muted-foreground">{threads.length}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
@@ -836,7 +836,7 @@ export default function Messages() {
                     <Ic.Back />
                   </button>
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-extrabold">
+                    <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
                       {isAdmin ? initials(activeThread.clientId?.displayName || activeThread.clientId?.email || "C") : "US"}
                     </div>
                     {presence?.isOnline && (
@@ -844,7 +844,7 @@ export default function Messages() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-extrabold text-foreground text-sm truncate">
+                    <p className="font-bold text-foreground text-sm truncate">
                       {isAdmin
                         ? (activeThread.clientId?.displayName || activeThread.clientId?.email || "Client")
                         : "Immiglance Case Team"}

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { consultationApi } from "../../services/api";
 import EligibilityShell from "../../components/eligibility/EligibilityShell";
@@ -11,33 +11,31 @@ import { localDateKey } from "../../utils/localDateKey";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Adapted from Landing's own BookConsultation.jsx — this flow used to run on
+// Landing's origin even for a logged-in client (Intake.jsx would navigate
+// there, crossing origins via a hard redirect). It now lives here instead,
+// so a client never leaves the Client app between finishing the short intake
+// form and booking their consultation. Landing's version still exists for
+// the separate anonymous EligibilityQuiz.jsx funnel, which has no
+// equivalent here and isn't being duplicated.
+//
+// leadId/fullName/email/phone all arrive as URL query params — Intake.jsx's
+// submitEvaluation() passes them that way rather than via React Router
+// state, since state doesn't survive a cross-origin navigation and this
+// page previously lived on a different origin than Intake.jsx.
 export default function BookConsultation() {
-  // PHASE 4: the public quiz flow (EligibilityQuiz.jsx) links here as
-  // /consultation/book/:leadId — a URL param, unchanged. The new
-  // logged-in intake flow (Intake.jsx) links here as
-  // /consultation/book?leadId=... — a query param, since it navigates
-  // directly rather than via a route with its own :leadId segment. Both are
-  // supported; the URL param wins if somehow both are present.
-  const { leadId: paramLeadId } = useParams();
   const [searchParams] = useSearchParams();
-  const leadId = paramLeadId || searchParams.get("leadId") || undefined;
-  const location = useLocation();
-  // Same-origin navigations (EligibilityQuiz.jsx, both in Landing) pass
-  // contact via router state.contact. The logged-in Intake flow
-  // (Immiglance/Client/src/Pages/Dashboard/Intake.jsx) navigates here across
-  // origins via a hard redirect, which drops router state entirely — it
-  // passes the same fields as query params instead, read here as a fallback.
-  const statePrefill = location.state?.contact || {};
+  const leadId = searchParams.get("leadId") || undefined;
   const prefill = {
-    fullName: statePrefill.fullName || searchParams.get("fullName") || "",
-    email: statePrefill.email || searchParams.get("email") || "",
-    phone: statePrefill.phone || searchParams.get("phone") || "",
+    fullName: searchParams.get("fullName") || "",
+    email: searchParams.get("email") || "",
+    phone: searchParams.get("phone") || "",
   };
 
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [contact, setContact] = useState({ fullName: prefill.fullName || "", email: prefill.email || "", phone: prefill.phone || "" });
+  const [contact, setContact] = useState({ fullName: prefill.fullName, email: prefill.email, phone: prefill.phone });
   const [note, setNote] = useState("");
   const [conflictError, setConflictError] = useState("");
 

@@ -1,0 +1,29 @@
+import { useEffect, useState } from "react";
+import { complianceApi } from "../../services/api";
+
+// Persistent, always-visible non-attorney disclaimer — a fixed banner, never
+// a dismiss-forever footer link, per the compliance requirement that it be
+// visible on every quiz/consultation screen. Mirrors Landing's own
+// DisclaimerBanner byte-for-byte (this app's pre-case consultation-booking
+// flow needs the same compliance coverage Landing's does).
+export default function DisclaimerBanner() {
+  const [text, setText] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    complianceApi.disclaimer()
+      .then((res) => { if (mounted) setText(res.data?.text || ""); })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  if (!text) return null;
+
+  return (
+    <div className="bg-secondary border-b border-border">
+      <p className="max-w-3xl mx-auto px-4 py-2.5 text-center text-[0.72rem] leading-snug text-muted-foreground">
+        {text}
+      </p>
+    </div>
+  );
+}

@@ -3,8 +3,7 @@ import { useNavigate, Link, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
-import ThemeToggle from "../../components/ThemeToggle";
-import BrandMark from "../../components/BrandMark";
+import AuthShell from "../../components/auth/AuthShell";
 
 // Edge/IE inject their own native reveal-password icon on type="password"
 // inputs (the ::-ms-reveal pseudo-element) — matches Admin's Login.jsx,
@@ -163,31 +162,20 @@ export default function Login() {
   const activeTab = ROLE_TABS.find((t) => t.key === roleTab) || ROLE_TABS[0];
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-background px-4 py-8">
+    <AuthShell>
       <style>{HIDE_NATIVE_REVEAL_CSS}</style>
 
-      <div className="absolute right-5 top-5">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-md max-h-[92vh] overflow-y-auto card">
-        <div className="flex items-center gap-3 mb-6">
-          <BrandMark size="w-10 h-10" />
-          <div>
-            <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
-            <p className="text-sm text-muted-foreground">Client Portal</p>
-          </div>
-        </div>
-
+      {(
+        <>
         {/* Role entry tabs */}
-            <div className="mb-4 grid grid-cols-3 rounded-xl border border-border bg-secondary p-1">
+            <div className="mb-4 flex items-center gap-1 border-b border-border">
               {ROLE_TABS.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
                   onClick={() => { setRoleTab(tab.key); setError(""); setLoginMethod("email"); }}
-                  className={`rounded-lg px-2 py-1.5 text-xs sm:text-sm font-bold transition cursor-pointer ${
-                    roleTab === tab.key ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  className={`flex-1 -mb-px border-b-2 pb-2.5 text-xs sm:text-sm font-bold transition cursor-pointer ${
+                    roleTab === tab.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {tab.label}
@@ -242,7 +230,7 @@ export default function Login() {
 
                 <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
                 {roleTab === "client" && (
-                  <div className="mb-3 grid grid-cols-2 rounded-xl border border-border bg-secondary p-1">
+                  <div className="mb-3 flex items-center gap-4">
                     {[
                       { key: "email", label: "Email" },
                       { key: "caseId", label: "Case ID" },
@@ -256,10 +244,10 @@ export default function Login() {
                           setPendingInvite(false);
                           setResendSent(false);
                         }}
-                        className={`rounded-lg px-3 py-2 text-sm font-bold transition cursor-pointer ${
+                        className={`text-xs font-bold transition cursor-pointer pb-1 border-b-2 ${
                           loginMethod === option.key
-                            ? "bg-card text-primary shadow-sm"
-                            : "text-muted-foreground hover:text-foreground"
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
                         }`}
                       >
                         {option.label}
@@ -387,8 +375,9 @@ export default function Login() {
             </div>
 
             <p className="mt-3 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
-      </div>
-    </div>
+        </>
+      )}
+    </AuthShell>
   );
 }
 

@@ -13,7 +13,7 @@ function StatCard({ label, value }) {
   return (
     <div className="bg-card rounded-2xl border border-card-border shadow-sm p-5">
       <p className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="text-2xl font-extrabold text-foreground mt-1">{value}</p>
+      <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
     </div>
   );
 }
@@ -188,7 +188,7 @@ export default function Payments() {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6">
-          <p className="font-extrabold text-foreground">No payment plan found</p>
+          <p className="font-bold text-foreground">No payment plan found</p>
           <p className="text-sm text-muted-foreground mt-1">Complete your intake and select a package first.</p>
         </div>
       </div>
@@ -207,12 +207,10 @@ export default function Payments() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-primary text-primary-foreground">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-7">
-          <p className="text-primary-foreground/70 text-xs font-bold uppercase tracking-widest">Payment Center</p>
-          <h1 className="text-2xl font-extrabold mt-1">Your Payment Summary</h1>
-          <p className="text-primary-foreground/80 text-sm mt-1">Pay your selected package in full or in installments.</p>
-        </div>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-2">
+        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-widest">Payment Center</p>
+        <h1 className="font-serif text-2xl font-bold text-foreground mt-1">Your Payment Summary</h1>
+        <p className="text-muted-foreground text-sm mt-1">Pay your selected package in full or in installments.</p>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
@@ -234,7 +232,7 @@ export default function Payments() {
             <div className="flex items-center gap-3">
               <IconGift size={22} className="text-primary shrink-0" />
               <div>
-                <p className="font-extrabold text-primary text-sm">
+                <p className="font-bold text-primary text-sm">
                   {payment.discountLabel || "Referral discount applied"}
                   {payment.appliedReferralCode ? ` · ${payment.appliedReferralCode}` : ""}
                 </p>
@@ -243,7 +241,7 @@ export default function Payments() {
                 </p>
               </div>
             </div>
-            <p className="text-lg font-extrabold text-primary">You pay {money(total, currency)}</p>
+            <p className="text-lg font-bold text-primary">You pay {money(total, currency)}</p>
           </div>
         )}
 
@@ -251,7 +249,7 @@ export default function Payments() {
         <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-lg font-extrabold text-foreground">Payment Progress</h2>
+              <h2 className="text-lg font-bold text-foreground">Payment Progress</h2>
               <p className="text-sm text-muted-foreground mt-1">{progress}% of your package fee has been paid.</p>
             </div>
             <span className={`text-xs font-bold px-3 py-1.5 rounded-full border ${PAYMENT_STATUS_BADGE[payment.paymentStatus] || PAYMENT_STATUS_BADGE.not_started}`}>
@@ -266,7 +264,7 @@ export default function Payments() {
         {/* Make a payment */}
         {remaining > 0 ? (
           <div className="bg-card rounded-2xl border border-card-border shadow-sm p-6">
-            <h2 className="text-lg font-extrabold text-foreground">Make a Payment</h2>
+            <h2 className="text-lg font-bold text-foreground">Make a Payment</h2>
             <p className="text-sm text-muted-foreground mt-1">Choose how you'd like to pay your remaining balance.</p>
 
             {/* Plan selector */}
@@ -278,7 +276,7 @@ export default function Payments() {
                     setScheduleTouched(true);
                     setScheduleKey(opt.key);
                   }}
-                  className={`flex-1 min-w-0 py-3 px-4 rounded-xl border-2 text-sm font-extrabold text-center transition cursor-pointer
+                  className={`flex-1 min-w-0 py-3 px-4 rounded-xl border-2 text-sm font-bold text-center transition cursor-pointer
                     ${scheduleKey === opt.key
                       ? "border-primary bg-primary/10 text-primary shadow-sm"
                       : "border-border bg-card text-muted-foreground hover:border-border hover:bg-secondary"}`}
@@ -315,12 +313,12 @@ export default function Payments() {
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border pt-5">
               <div>
                 <p className="text-sm text-muted-foreground">You will be charged now</p>
-                <p className="text-2xl font-extrabold text-foreground">{money(payNowCents, currency)}</p>
+                <p className="text-2xl font-bold text-foreground">{money(payNowCents, currency)}</p>
               </div>
               <button
                 onClick={handlePay}
                 disabled={!canPay}
-                className="px-7 py-3 rounded-xl bg-primary text-primary-foreground font-extrabold hover:opacity-90 transition
+                className="px-7 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:opacity-90 transition
                   disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 {paying ? "Redirecting to Stripe…" : `Pay ${money(payNowCents, currency)} with Stripe`}
@@ -329,7 +327,7 @@ export default function Payments() {
           </div>
         ) : (
           <div className="bg-primary/10 border border-primary/20 rounded-2xl p-6">
-            <p className="font-extrabold text-primary flex items-center gap-2">Your package is fully paid. <IconCelebrate size={18} className="text-primary" /></p>
+            <p className="font-bold text-primary flex items-center gap-2">Your package is fully paid. <IconCelebrate size={18} className="text-primary" /></p>
             <p className="text-sm text-primary/80 mt-1">Thank you — there is no remaining balance.</p>
           </div>
         )}
@@ -337,7 +335,7 @@ export default function Payments() {
         {/* History */}
         <div className="bg-card rounded-2xl border border-card-border shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
-            <h2 className="font-extrabold text-foreground">Payment History</h2>
+            <h2 className="font-bold text-foreground">Payment History</h2>
           </div>
           <div className="divide-y divide-border">
             {successfulTransactions.length === 0 ? (

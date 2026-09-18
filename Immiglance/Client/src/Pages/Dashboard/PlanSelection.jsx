@@ -6,6 +6,7 @@ import { PLANS } from "../../config/planConfig";
 import { getAmountCents, formatCents } from "../../config/pricingCatalog";
 import { IconArrowRight } from "../../utils/iconComponents";
 import ApplicantTypeSelector from "../../components/ApplicantTypeSelector";
+import SignaturePad from "../../components/SignaturePad";
 
 const Ic = {
   Check: ({ className = "" }) => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" className={className}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"/></svg>,
@@ -15,6 +16,15 @@ export default function PlanSelection() {
   const navigate      = useNavigate();
   const [selected, setSelected] = useState("");
   const [saving, setSaving]     = useState(false);
+  // "plan" -> "sign": the plan is saved to the case before this component
+  // ever shows the signing step, so signCaseId is always set by the time
+  // the user reaches it.
+  const [step, setStep]         = useState("plan");
+  const [signCaseId, setSignCaseId] = useState(null);
+  const [signedName, setSignedName] = useState("");
+  const [signatureDataUrl, setSignatureDataUrl] = useState(null);
+  const [signing, setSigning]   = useState(false);
+  const [signError, setSignError] = useState("");
 
   // Pricing is per visa type — load the user's selected/recommended visa.
   const { data: profile } = useMyProfile();
@@ -45,13 +55,82 @@ export default function PlanSelection() {
           amount: getAmountCents(visaType, selected),
           currency: "USD",
         });
+        setSignCaseId(myCase._id);
+        setStep("sign");
+      } else {
+        navigate("/dashboard/payments");
       }
-      navigate("/dashboard/payments");
     } catch (error) {
       console.error(error);
+    } finally {
       setSaving(false);
     }
   };
+
+  const handleSignDeclaration = async () => {
+    if (!signCaseId || !signedName.trim() || !signatureDataUrl || signing) return;
+    setSigning(true);
+    setSignError("");
+    try {
+      await casesApi.signDeclaration(signCaseId, { signedName: signedName.trim() });
+      navigate("/dashboard/payments");
+    } catch (error) {
+      setSignError(error.message || "Unable to save your signature. Please try again.");
+      setSigning(false);
+    }
+  };
+
+  if (step === "sign") {
+    const canSign = Boolean(signedName.trim() && signatureDataUrl);
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b border-border">
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
+            <p className="text-muted-foreground text-xs font-bold uppercase tracking-widest">Service plan</p>
+            <h1 className="text-xl font-bold text-foreground mt-1">Sign your declaration</h1>
+            <p className="text-muted-foreground text-sm mt-1">Confirm your plan selection by signing below.</p>
+          </div>
+        </header>
+
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+          <div className="rounded-2xl border border-card-border bg-card p-6">
+            <p className="text-xs text-muted-foreground mb-5">
+              By typing your name and signing below, you confirm that your selected plan and the information
+              provided in your case are true and accurate to the best of your knowledge.
+            </p>
+
+            <label className="block text-sm font-semibold text-foreground mb-1">Type your full legal name</label>
+            <input
+              type="text"
+              value={signedName}
+              onChange={(e) => setSignedName(e.target.value)}
+              placeholder="e.g. Priya Nair"
+              className="w-full h-11 px-3.5 mb-4 rounded-lg border border-input bg-background text-sm text-foreground
+                font-serif italic outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition"
+            />
+
+            <SignaturePad onChange={setSignatureDataUrl} />
+
+            {signError && <p className="mt-4 text-sm font-semibold text-destructive">{signError}</p>}
+
+            <div className="mt-6 flex items-center justify-between">
+              <button type="button" onClick={() => setStep("plan")} className="text-sm font-semibold text-muted-foreground hover:text-foreground transition">
+                ← Back
+              </button>
+              <button
+                type="button"
+                disabled={!canSign || signing}
+                onClick={handleSignDeclaration}
+                className="h-11 px-6 rounded-lg bg-primary text-primary-foreground text-sm font-bold shadow-sm transition hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {signing ? "Saving…" : "Confirm & Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

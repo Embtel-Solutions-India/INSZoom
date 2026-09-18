@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
-import loginBackground from "../../assets/admin-login-liberty.png";
-import loginBackgroundWebp from "../../assets/admin-login-liberty.webp";
+import AuthShell from "../../components/auth/AuthShell";
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const ADMIN_URL = import.meta.env.VITE_ADMIN_URL || "http://localhost:3002";
@@ -58,25 +57,10 @@ const GoogleIcon = () => (
     <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
   </svg>
 );
-const PhoneCallIcon = () => (
-  <svg width="22" height="22" fill="none" stroke="#3b9cf6" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"
-      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498A1 1 0 0121 17.72V19a2 2 0 01-2 2H17C9.716 21 3 14.284 3 7V5z"/>
-  </svg>
-);
-const MapPinIcon = () => (
-  <svg width="22" height="22" fill="none" stroke="#6366f1" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"
-      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"
-      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-  </svg>
-);
-
 /* ── Reusable input field ── */
 function Field({ icon, type = "text", placeholder, value, onChange, rightEl, name, autoComplete }) {
   return (
-    <div className="relative flex items-center w-full mb-4">
+    <div className="relative flex items-center w-full mb-3">
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
         {icon}
       </span>
@@ -88,7 +72,7 @@ function Field({ icon, type = "text", placeholder, value, onChange, rightEl, nam
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="w-full pl-10 pr-10 py-3 text-sm text-foreground placeholder-muted-foreground
+        className="w-full pl-10 pr-10 py-2.5 text-sm text-foreground placeholder-muted-foreground
           border border-border rounded-xl bg-card outline-none box-border
           hover:border-ring/50
           focus:border-ring focus:ring-2 focus:ring-ring/15
@@ -99,32 +83,6 @@ function Field({ icon, type = "text", placeholder, value, onChange, rightEl, nam
           {rightEl}
         </span>
       )}
-    </div>
-  );
-}
-
-/* ── Contact info card ── */
-function ContactCard({ icon, title, lines, animClass }) {
-  return (
-    <div className={`
-      ${animClass}
-      flex items-start gap-4 w-full
-      px-5 py-4 bg-card border border-border rounded-2xl
-      shadow-sm
-      hover:shadow-md hover:-translate-y-0.5
-      transition-all duration-250
-    `}>
-      <div className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div>
-        <p className="text-[15px] font-semibold text-foreground mb-1">{title}</p>
-        {lines.map((line, i) => (
-          typeof line === "string"
-            ? <p key={i} className="text-[13px] text-muted-foreground leading-relaxed my-0.5">{line}</p>
-            : <span key={i}>{line}</span>
-        ))}
-      </div>
     </div>
   );
 }
@@ -255,65 +213,7 @@ export default function Register() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .card-anim-1 { opacity: 0; animation: fadeUp 0.5s ease forwards 0.2s; }
-        .card-anim-2 { opacity: 0; animation: fadeUp 0.5s ease forwards 0.4s; }
-      `}</style>
-
-      <picture>
-        <source srcSet={loginBackgroundWebp} type="image/webp" />
-        <img
-          src={loginBackground}
-          alt=""
-          width={1672}
-          height={941}
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </picture>
-      <div className="absolute inset-0 bg-primary/[0.14]" />
-      <div className="absolute inset-0 bg-slate-900/10" />
-      <div className="absolute inset-y-0 right-0 w-1/2 bg-gradient-to-l from-white/54 to-transparent" />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 78% 42% at 18% 100%, rgba(255,255,255,0.96) 0%, rgba(246,250,255,0.88) 34%, rgba(229,240,255,0.54) 58%, rgba(229,240,255,0.18) 74%, rgba(229,240,255,0) 92%)",
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(0deg, rgba(255,255,255,0.88) 0%, rgba(248,251,255,0.72) 12%, rgba(236,246,255,0.42) 24%, rgba(236,246,255,0.16) 36%, rgba(236,246,255,0) 52%)",
-        }}
-      />
-
-      <div className="relative z-10 flex min-h-screen flex-col px-5 py-8 sm:px-10 sm:py-10 lg:flex-row lg:px-14 xl:px-[72px]">
-        <div className="flex justify-center pb-6 lg:flex-1 lg:flex-col lg:justify-end lg:pb-2 lg:pr-8">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-              </svg>
-            </div>
-            <div>
-              <p className="text-xl font-black uppercase tracking-[0.28em] text-foreground sm:text-2xl">Immiglance</p>
-              <p className="mt-1 text-sm font-black uppercase tracking-[0.26em] text-primary">Client Portal</p>
-            </div>
-          </div>
-        </div>
-
-        <section className="flex flex-1 items-center justify-center lg:justify-end lg:pr-8 xl:pr-14">
-          <div className="w-full max-w-[464px] rounded-[18px] bg-card/90 px-6 pb-9 pt-9 shadow-[0_24px_70px_rgba(92,124,173,0.22)] ring-1 ring-card/85 backdrop-blur-md sm:px-10 sm:pb-11 sm:pt-11 lg:px-14">
-            <h1 className="text-2xl sm:text-3xl font-serif font-bold text-foreground mb-1 text-center">Create your account</h1>
-            <p className="text-sm text-muted-foreground mb-6 text-center">Join our clients on their immigration journey</p>
-
+    <AuthShell title="Create your account" subtitle="Join our clients on their immigration journey">
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             {/* Name + Phone row — stacks on very small screens */}
             <div className="flex flex-col sm:flex-row gap-0 sm:gap-4">
@@ -350,19 +250,19 @@ export default function Register() {
               autoComplete="off"
             />
             {form.referralCode && (
-              <p className="-mt-2 mb-4 text-xs text-primary font-semibold flex items-center gap-1.5">
+              <p className="-mt-1.5 mb-3 text-xs text-primary font-semibold flex items-center gap-1.5">
                 <GiftIcon /> You'll get 10% off your package — and your referrer earns a reward too.
               </p>
             )}
 
             {success && (
-              <div role="status" className="mb-4 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-3 flex items-center gap-2">
+              <div role="status" className="mb-3 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
                 <CheckIcon /> {success}
               </div>
             )}
 
             {/* Divider */}
-            <div className="flex items-center gap-2.5 mb-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2.5 mb-3 text-xs text-muted-foreground">
               <span className="flex-1 h-px bg-border" />
               <span className="font-medium whitespace-nowrap">or sign up with</span>
               <span className="flex-1 h-px bg-border" />
@@ -370,7 +270,7 @@ export default function Register() {
 
             {/* Google */}
             <button type="button" onClick={handleGoogle} disabled={loading || googleLoading}
-              className="flex items-center justify-center gap-2.5 w-full py-3 mb-3
+              className="flex items-center justify-center gap-2.5 w-full py-2.5 mb-2.5
                 bg-card border border-border rounded-xl text-sm font-semibold text-foreground
                 hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
               {googleLoading ? "Redirecting to Google…" : (
@@ -383,7 +283,7 @@ export default function Register() {
 
             {/* Submit */}
             <button type="submit" disabled={loading || googleLoading}
-              className="w-full py-3 bg-primary hover:opacity-90
+              className="w-full py-2.5 bg-primary hover:opacity-90
                 text-primary-foreground text-sm font-bold rounded-xl
                 shadow-sm transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {loading ? "Creating account…" : "Create Account"}
@@ -422,28 +322,13 @@ export default function Register() {
 
             {/* Login redirect */}
             <button type="button" onClick={() => navigate("/login")}
-              className="w-full py-3 bg-card border border-border text-foreground
+              className="w-full py-2.5 bg-card border border-border text-foreground
                 text-sm font-semibold rounded-xl hover:bg-secondary
                 transition-all duration-200 cursor-pointer">
               <span className="inline-flex items-center gap-1.5">Already have an account? Sign in <ArrowRightIcon /></span>
             </button>
 
-            <div className="my-8 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-
-            <div className="flex flex-col gap-3">
-              <ContactCard animClass="card-anim-1" icon={<PhoneCallIcon />} title="Call Us" lines={["(510) 770-8700"]} />
-              <ContactCard
-                animClass="card-anim-2"
-                icon={<MapPinIcon />}
-                title="Visit Us"
-                lines={["39159 Paseo Padre Pkwy STE 115, Fremont, CA 94538, United States"]}
-              />
-            </div>
-
-            <p className="mt-6 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
-          </div>
-        </section>
-      </div>
-    </main>
+            <p className="mt-3 text-center text-xs text-muted-foreground">© 2026 Immiglance</p>
+    </AuthShell>
   );
 }

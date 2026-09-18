@@ -24,7 +24,7 @@ export default function PasswordField({
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <div className="relative flex items-center w-full mb-4">
+    <div className="relative flex items-center w-full mb-3">
       {icon && (
         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
           {icon}
@@ -38,7 +38,7 @@ export default function PasswordField({
         value={value}
         onChange={onChange}
         autoComplete={autoComplete}
-        className="immiglance-password-input w-full pl-10 pr-12 py-3 text-sm text-foreground placeholder-muted-foreground
+        className="immiglance-password-input w-full pl-10 pr-12 py-2.5 text-sm text-foreground placeholder-muted-foreground
           border border-border rounded-xl bg-card outline-none box-border
           hover:border-ring/50
           focus:border-ring focus:ring-2 focus:ring-ring/15

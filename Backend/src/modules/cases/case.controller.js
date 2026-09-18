@@ -2419,6 +2419,35 @@ exports.updatePlan = async (req, res, next) => {
   }
 };
 
+// PUT /cases/:id/sign-declaration — captures the client's typed name +
+// drawn signature (the signature image itself isn't persisted server-side
+// yet, only the typed name/timestamp; see PlanSelection.jsx's Review & Sign
+// step). Mirrors updatePlan's exact auth pattern above. signedAt is always
+// set server-side, never trusted from the request body.
+exports.signDeclaration = async (req, res, next) => {
+  try {
+    if (caseService.isRestrictedPortalRole(req.user?.role)) {
+      return res.status(403).json({ success: false, message: "Not authorized to sign this case's declaration" });
+    }
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) {
+      return res.status(403).json({ success: false, message: "Not authorized to modify this case" });
+    }
+    const signedName = String(req.body.signedName || "").trim();
+    if (!signedName) {
+      return res.status(400).json({ success: false, message: "signedName is required" });
+    }
+    caseData.signedDeclaration = { signedName, signedAt: new Date() };
+    caseService.addActivity(caseData, "Declaration Signed", `Signed by ${signedName}`, req.user);
+    await caseData.save();
+    await caseService.writeAuditLog("sign_declaration", caseData, req.user, { signedName }, req);
+    res.json({ success: true, message: "Declaration signed", signedDeclaration: caseData.signedDeclaration });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
 exports.saveAssessment = async (req, res, next) => {
   try {
     const caseData = await getCaseOr404(req.params.id, res);

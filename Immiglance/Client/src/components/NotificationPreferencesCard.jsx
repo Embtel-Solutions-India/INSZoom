@@ -47,7 +47,7 @@ export default function NotificationPreferencesCard() {
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-400">Notification preferences</p>
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Notification preferences</p>
       <div className="mt-3 space-y-2">
         {CHANNEL_LABELS.map(({ channel, label }) => {
           const enabled = isChannelEnabled(preferences, channel);

@@ -187,6 +187,7 @@ router.put("/:id/checklist/:idx", authenticate, authorizeRoles(...staffRoles), c
 router.post("/:id/checklist/generate", authenticate, authorizeRoles(...staffRoles), ctrl.generateCaseChecklist);
 
 router.put("/:id/plan", authenticate, ctrl.updatePlan);
+router.put("/:id/sign-declaration", authenticate, ctrl.signDeclaration);
 router.put("/:id/assessment", authenticate, ctrl.saveAssessment);
 
 module.exports = router;
