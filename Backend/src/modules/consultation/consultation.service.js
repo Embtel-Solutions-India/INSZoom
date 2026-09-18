@@ -198,8 +198,8 @@ async function book({ leadId, name, email, phone, startAt, note, source, visaTyp
     lead.consultation.scheduledAt = appointment.startAt;
     if (note) lead.consultation.notes = note;
     await lead.save();
-    // Mirrors lead.service.js's "lead:created" push (see LeadsInbox) so an
-    // already-open admin Leads Inbox reflects the new booking — including
+    // Mirrors lead.service.js's "lead:created" push so an already-open
+    // admin Leads Inbox reflects the new booking — including
     // the consultation date/time — live, with no manual refresh needed.
     await lead.populate("consultationId");
     realtimeGateway.emitToRole("admin", "lead:updated", lead);
