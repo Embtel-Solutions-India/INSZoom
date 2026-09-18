@@ -155,7 +155,7 @@ function FileChip({ file, onRemove, extraction }) {
   };
   return (
     <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm shadow-sm group">
-      <span className={`text-[0.6rem] font-extrabold px-1.5 py-0.5 rounded ${extColors[ext] || "bg-secondary text-secondary-foreground"}`}>
+      <span className={`text-[0.6rem] font-bold px-1.5 py-0.5 rounded ${extColors[ext] || "bg-secondary text-secondary-foreground"}`}>
         {ext}
       </span>
       <span className="text-foreground font-medium truncate max-w-[160px]" title={file.name}>{file.name}</span>
@@ -238,7 +238,7 @@ function UploadZone({ docId, category, label, description, required, accept, col
             {description && <p className="text-[0.7rem] text-muted-foreground leading-snug">{description}</p>}
           </div>
           {required
-            ? <span className={`text-[0.62rem] font-extrabold uppercase px-2 py-0.5 rounded-full ${color.tag}`}>Required</span>
+            ? <span className={`text-[0.62rem] font-bold uppercase px-2 py-0.5 rounded-full ${color.tag}`}>Required</span>
             : <span className="text-[0.62rem] font-bold uppercase px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">Optional</span>}
         </div>
         {hasFiles && (
@@ -312,7 +312,7 @@ function CategoryCard({ cat, files, extractions, onUpload, onRemove }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-base font-bold text-foreground">{cat.label}</h3>
-            <span className={`text-xs font-extrabold ${uploaded === total ? "text-primary" : cat.color.text}`}>
+            <span className={`text-xs font-bold ${uploaded === total ? "text-primary" : cat.color.text}`}>
               {uploaded}/{total} uploaded
             </span>
           </div>

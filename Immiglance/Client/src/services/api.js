@@ -477,6 +477,7 @@ export const casesApi = {
 
   // Plan
   updatePlan: (caseId, payload) => api.put(`/cases/${caseId}/plan`, payload),
+  signDeclaration: (caseId, payload) => api.put(`/cases/${caseId}/sign-declaration`, payload),
 
   // Assessment
   saveAssessment: (caseId, payload) =>

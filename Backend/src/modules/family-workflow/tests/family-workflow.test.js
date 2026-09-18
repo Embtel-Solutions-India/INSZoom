@@ -59,9 +59,13 @@ test("employer-guardrail: employment-workflow routes are unchanged (still regist
     "POST /:id/submit",
     "POST /:id/requests",
   ].forEach((route) => assert.ok(registered.includes(route), `${route} is missing from employment-workflow.routes.js — it must be untouched`));
-  // +1 for POST /:id/resend-employee-invite (account-recovery task: regenerates
-  // an invite token and re-sends the same employee-case-invitation email).
-  assert.equal(registered.length, 9, "employment-workflow.routes.js must have exactly the same route count as before this task, plus the new resend-employee-invite route");
+  // Count raised 9 -> 14 by the later, unrelated participant-management task
+  // (GET /:id/participants, POST /:id/participants/employees, POST
+  // /:id/participants/:participantId/decline, DELETE
+  // /:id/participants/:participantId, POST /:id/participants/:participantId/replace).
+  // The guardrail's intent is unchanged: the family path must not add to or
+  // remove from the employer/employee route set.
+  assert.equal(registered.length, 14, "employment-workflow.routes.js must keep exactly its current route set — the family path must never add to or remove from it");
 });
 
 test("employer-guardrail: a beneficiary role cannot reach employer-only endpoints either", async () => {
@@ -118,13 +122,30 @@ test("family path: routes are registered and role-gated (beneficiary cannot crea
 
   const createRoute = familyRoutes.stack.find((layer) => layer.route?.path === "/cases" && layer.route.methods.post).route;
   const authorize = createRoute.stack[1].handle; // [0]=authenticate, [1]=authorizeRoles
-  let rejectedStatus;
-  authorize({ user: { role: "beneficiary" } }, { status(code) { rejectedStatus = code; return this; }, json() { return this; } }, () => {});
-  assert.equal(rejectedStatus, 403, "beneficiary role must be rejected by the route-level gate on POST /cases");
 
-  let nextCalled = false;
-  authorize({ user: { role: "client" } }, {}, () => { nextCalled = true; });
-  assert.equal(nextCalled, true, "client role must pass the route-level gate on POST /cases");
+  // Case creation is staff-only on BOTH workflows — employment-workflow.routes.js's
+  // own POST /cases carries the identical authorizeRoles("super_admin", "admin",
+  // "team_lead", "case_manager") gate. This test previously asserted that a
+  // "client" (petitioner) could self-initiate; that was the pre-Phase-1-9 shape,
+  // changed for the employer path and the family path together. A petitioner
+  // still reaches their own case through POST /:id/invite-beneficiary, which
+  // does allow "client" — asserted below.
+  const gateResult = (role) => {
+    let status = null;
+    let passed = false;
+    authorize({ user: { role } }, { status(code) { status = code; return this; }, json() { return this; } }, () => { passed = true; });
+    return { status, passed };
+  };
+
+  assert.equal(gateResult("beneficiary").status, 403, "beneficiary role must be rejected by the route-level gate on POST /cases");
+  assert.equal(gateResult("client").status, 403, "POST /cases is staff-only, exactly as on employment-workflow.routes.js");
+  assert.equal(gateResult("case_manager").passed, true, "staff must pass the route-level gate on POST /cases");
+
+  // The petitioner's own entry point into the family workflow.
+  const inviteRoute = familyRoutes.stack.find((layer) => layer.route?.path === "/:id/invite-beneficiary" && layer.route.methods.post).route;
+  let inviteAllowsClient = false;
+  inviteRoute.stack[1].handle({ user: { role: "client" } }, { status() { return this; }, json() { return this; } }, () => { inviteAllowsClient = true; });
+  assert.equal(inviteAllowsClient, true, "a client/petitioner must be able to invite their beneficiary");
 });
 
 // ── Roles, Case fields, visa types (Stage 1, additive) ──
@@ -333,6 +354,10 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
   assert.ok(metWithinTwoYears.required, "met-within-two-years is required per the required-map");
 });
 
-test("employer/employee templates are unaffected in count (still 9 — H1B x2, L1A x3, P x2, O1 x2)", () => {
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 9);
+// Count raised 9 -> 11 by the later, unrelated EB1-B task (eb1b.js added an
+// employer + an employee checklist); nothing in the family path touches these.
+// The guardrail's intent is unchanged: the family work must not add to, remove
+// from, or otherwise disturb the employer/employee template set.
+test("employer/employee templates are unaffected in count (11 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2)", () => {
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 11);
 });

@@ -96,7 +96,7 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
           <p className="text-sm text-muted-foreground mt-1">Add eligible services to this case without creating a new case.</p>
         </div>
         {purchasedPremium && (
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-primary">
+          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
             {purchasedPremium.paymentStatus === "paid" ? "Paid" : purchasedPremium.status?.replace(/_/g, " ")}
           </span>
         )}
@@ -113,10 +113,10 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
           <div className="rounded-xl border border-card-border bg-secondary p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="font-extrabold text-foreground">Premium Processing (Form I-907)</p>
+                <p className="font-bold text-foreground">Premium Processing (Form I-907)</p>
                 <p className="text-sm text-muted-foreground">Processing Time: {premium.processingTime}</p>
               </div>
-              <p className="text-2xl font-black text-foreground">{moneyFromCents(premium.totalFeeCents)}</p>
+              <p className="text-2xl font-bold text-foreground">{moneyFromCents(premium.totalFeeCents)}</p>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <div className="rounded-lg bg-card p-3">
@@ -153,7 +153,7 @@ function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, erro
             type="button"
             onClick={() => onPurchase(premium.key)}
             disabled={!premium.eligibility?.available || purchasing}
-            className="rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
+            className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
           >
             {purchasing ? "Starting checkout..." : "Add Upgrade"}
           </button>
@@ -222,7 +222,7 @@ function PaymentSummaryCard({ plan }) {
             <Ic.Passport />
           </div>
           <div>
-            <h3 className="font-extrabold text-foreground text-sm">Payment Summary</h3>
+            <h3 className="font-bold text-foreground text-sm">Payment Summary</h3>
             <p className="text-xs text-muted-foreground">
               {PLAN_LABELS[plan.tier] || "No plan selected"}
             </p>
@@ -232,7 +232,7 @@ function PaymentSummaryCard({ plan }) {
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-muted-foreground">Total Fee</span>
-            <span className="text-sm font-extrabold text-foreground">{formattedAmount}</span>
+            <span className="text-sm font-bold text-foreground">{formattedAmount}</span>
           </div>
 
           <div className="flex items-center justify-between gap-3">
@@ -248,7 +248,7 @@ function PaymentSummaryCard({ plan }) {
 
           <Link
             to="/dashboard/payments"
-            className="block text-center mt-4 rounded-xl bg-primary/10 border border-primary/20 text-primary font-extrabold text-sm py-2.5 no-underline hover:bg-primary/15 transition"
+            className="block text-center mt-4 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-sm py-2.5 no-underline hover:bg-primary/15 transition"
           >
             View Payment Details
           </Link>
@@ -305,7 +305,7 @@ function ActivityFeed({ caseData, profileSavedAt }) {
         <div className="w-8 h-8 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center">
           <Ic.Clock />
         </div>
-        <h3 className="font-extrabold text-foreground text-sm">Recent Activity</h3>
+        <h3 className="font-bold text-foreground text-sm">Recent Activity</h3>
       </div>
       <ul className="divide-y divide-border">
         {items.map((item, i) => {
@@ -339,7 +339,7 @@ function CaseInfo({ caseData, profileData }) {
         <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
           <Ic.Shield />
         </div>
-        <h3 className="font-extrabold text-foreground text-sm">Case Information</h3>
+        <h3 className="font-bold text-foreground text-sm">Case Information</h3>
       </div>
 
       <div className="px-5 py-4 space-y-3">
@@ -363,10 +363,10 @@ function CaseInfo({ caseData, profileData }) {
 
       {/* Assigned agent */}
       <div className="px-5 py-4 border-t border-border bg-secondary">
-        <p className="text-[0.68rem] font-extrabold uppercase tracking-wider text-muted-foreground mb-3">Assigned Agent</p>
+        <p className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground mb-3">Assigned Agent</p>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-primary
-            flex items-center justify-center text-primary-foreground font-extrabold text-sm shrink-0">
+            flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
             {agentInitials(caseData.assignedAgent)}
           </div>
           <div className="min-w-0">
@@ -466,7 +466,7 @@ function ExpertLettersCard({ letters }) {
           <Ic.Star />
         </div>
         <div>
-          <h3 className="font-extrabold text-foreground text-sm">Expert Letters</h3>
+          <h3 className="font-bold text-foreground text-sm">Expert Letters</h3>
           <p className="text-xs text-muted-foreground">{letters.filter(l => l.status === "signed_letter_received").length}/{letters.length} received</p>
         </div>
       </div>
@@ -513,7 +513,7 @@ function AttorneyReviewCard({ review }) {
           <Ic.Shield />
         </div>
         <div>
-          <h3 className="font-extrabold text-foreground text-sm">Attorney Review</h3>
+          <h3 className="font-bold text-foreground text-sm">Attorney Review</h3>
           <p className="text-xs text-muted-foreground">{review.attorneyName || "Attorney assigned by Immiglance"}</p>
         </div>
       </div>
@@ -556,7 +556,7 @@ function MyTasksCard({ caseData }) {
           <Ic.Alert />
         </div>
         <div>
-          <h3 className="font-extrabold text-foreground text-sm">My Tasks</h3>
+          <h3 className="font-bold text-foreground text-sm">My Tasks</h3>
           <p className="text-xs text-muted-foreground">{openTasks.length} open request{openTasks.length === 1 ? "" : "s"}</p>
         </div>
       </div>
@@ -635,6 +635,29 @@ function CaseDetailsCard({ caseData, profileData, user }) {
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Submitted</p>
           <p className="text-sm font-semibold text-foreground">{submitted}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Signed Declaration (client-facing summary card, matches Immiglance
+   reference) — only rendered once PlanSelection.jsx's Review & Sign step has
+   actually captured one; a case with no declaration yet renders nothing
+   here rather than a placeholder. ── */
+function SignedDeclarationCard({ caseData }) {
+  const declaration = caseData?.signedDeclaration;
+  if (!declaration?.signedName) return null;
+  return (
+    <div className="bg-card rounded-lg border border-card-border p-6">
+      <h2 className="font-serif text-lg font-bold text-foreground mb-4">Signed Declaration</h2>
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0 rounded-xl border border-border bg-secondary px-5 py-4">
+          <p className="font-serif italic text-xl text-foreground truncate">{declaration.signedName}</p>
+        </div>
+        <div className="shrink-0">
+          <p className="text-sm font-semibold text-foreground">{declaration.signedName}</p>
+          <p className="text-xs text-muted-foreground">Signed {fmtDate(declaration.signedAt)}</p>
         </div>
       </div>
     </div>
@@ -823,6 +846,8 @@ export default function Dashboard() {
         </div>
 
         <CaseDetailsCard caseData={activeCaseData} profileData={profileData} user={user} />
+
+        <SignedDeclarationCard caseData={activeCaseData} />
 
         {!profileComplete && (
           <div className="bg-accent border border-accent-foreground/20 rounded-lg px-5 py-4 flex items-center justify-between gap-4">

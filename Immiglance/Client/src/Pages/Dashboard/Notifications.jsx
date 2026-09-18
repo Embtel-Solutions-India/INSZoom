@@ -38,16 +38,14 @@ export default function Notifications() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="bg-primary text-primary-foreground">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7">
-          <p className="text-primary-foreground/70 text-xs font-bold uppercase tracking-widest">
-            Notification Center
-          </p>
-          <h1 className="text-2xl font-serif font-bold mt-1">Your Updates</h1>
-          <p className="text-primary-foreground/80 text-sm mt-1">
-            Track case updates, document notices, payment reminders, and messages.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-2">
+        <p className="text-muted-foreground text-xs font-semibold uppercase tracking-widest">
+          Notification Center
+        </p>
+        <h1 className="text-2xl font-serif font-bold text-foreground mt-1">Your Updates</h1>
+        <p className="text-muted-foreground text-sm mt-1">
+          Track case updates, document notices, payment reminders, and messages.
+        </p>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-7">

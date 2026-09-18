@@ -97,7 +97,7 @@ export default function PaymentSuccess() {
         }`}>
           {isConfirming ? "…" : isSuccess ? <IconCheckmark size={26} className="text-primary" /> : "!"}
         </div>
-        <h1 className={`text-2xl font-extrabold ${isSuccess ? "text-primary" : "text-accent-foreground"}`}>
+        <h1 className={`text-2xl font-bold ${isSuccess ? "text-primary" : "text-accent-foreground"}`}>
           {isConfirming ? "Confirming Payment" : isSuccess ? "Payment Successful" : "Payment Processing"}
         </h1>
         <p className="text-muted-foreground mt-2">{message}</p>

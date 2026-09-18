@@ -9,6 +9,7 @@ import ThemeToggle from "../components/ThemeToggle";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
+  { label: "Tasks",      to: "/dashboard/tasks",     icon: TasksIcon },
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Messages",   to: "/dashboard/messages",  icon: MessagesIcon },
@@ -51,9 +52,10 @@ export default function PortalLayout() {
       >
         <div className="h-16 flex items-center gap-2.5 px-4 border-b border-sidebar-border">
           <Link to="/" className="flex items-center gap-2.5 no-underline min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-full bg-sidebar-primary flex items-center justify-center shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sidebar-primary-foreground">
-                <path d="M17 7l-10 10M7 7h10v10" />
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                <polyline points="16 7 22 7 22 13" />
               </svg>
             </div>
             {!collapsed && <span className="font-bold text-sidebar-foreground truncate">Immiglance</span>}
@@ -61,19 +63,19 @@ export default function PortalLayout() {
         </div>
 
         {!collapsed && (
-          <p className="px-4 pt-4 pb-1 text-[0.68rem] font-bold uppercase tracking-widest text-muted-foreground">
+          <p className="px-4 pt-5 pb-2 text-[0.68rem] font-bold uppercase tracking-widest text-muted-foreground">
             Case Portal
           </p>
         )}
 
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-2.5 py-2 space-y-1 overflow-y-auto">
           {visibleNavItems.map(({ label, to, icon: Icon }) => (
             <NavLink
               key={label}
               to={to}
               end={to === "/dashboard"}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm font-semibold no-underline transition-colors
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold no-underline transition-colors
                 ${isActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`
               }
               title={collapsed ? label : undefined}
@@ -134,6 +136,9 @@ export default function PortalLayout() {
 /* ── Sidebar icons ── */
 function OverviewIcon(props) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+}
+function TasksIcon(props) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /></svg>;
 }
 function ProfileIcon(props) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;

@@ -4,11 +4,16 @@ const ThemeContext = createContext(undefined);
 
 const STORAGE_KEY = 'immiglance-theme';
 
+// Always defaults to light regardless of the visitor's OS/browser dark-mode
+// preference — matches Admin's and Attorney's ThemeContext, which never
+// auto-detected system preference to begin with. Dark mode is opt-in only,
+// via the ThemeToggle button; once toggled, the explicit choice is what
+// persists here on the next visit, never a system-preference guess.
 function getInitialTheme() {
   if (typeof window === 'undefined') return 'light';
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === 'light' || stored === 'dark') return stored;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export function ThemeProvider({ children }) {

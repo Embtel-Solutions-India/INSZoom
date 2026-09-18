@@ -36,7 +36,7 @@ export default function ApplicantTypeSelector({ suggested, className = "" }) {
 
   return (
     <div className={`rounded-2xl border border-border bg-card p-5 shadow-sm ${className}`}>
-      <p className="text-sm font-extrabold text-foreground">Who is this application for?</p>
+      <p className="text-sm font-bold text-foreground">Who is this application for?</p>
       <p className="mt-1 text-xs text-muted-foreground">This decides whether you see employer tools (for sponsoring employees) or the standard self-applicant flow. You can change it later.</p>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {OPTIONS.map((option) => (
@@ -46,13 +46,13 @@ export default function ApplicantTypeSelector({ suggested, className = "" }) {
             onClick={() => setValue(option.value)}
             className={`rounded-xl border p-4 text-left transition ${value === option.value ? "border-primary/30 bg-accent shadow-sm" : "border-border bg-card hover:bg-secondary"}`}
           >
-            <p className="text-sm font-black text-foreground">{option.label}</p>
+            <p className="text-sm font-bold text-foreground">{option.label}</p>
             <p className="mt-1 text-xs font-semibold text-muted-foreground">{option.description}</p>
           </button>
         ))}
       </div>
       {dirty ? (
-        <button type="button" onClick={confirm} disabled={saving} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-black text-primary-foreground hover:opacity-90 disabled:opacity-50">
+        <button type="button" onClick={confirm} disabled={saving} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50">
           {saving ? "Saving..." : "Confirm"}
         </button>
       ) : saved ? (

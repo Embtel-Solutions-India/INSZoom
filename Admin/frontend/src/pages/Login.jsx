@@ -59,15 +59,25 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8">
       <style>{HIDE_NATIVE_REVEAL_CSS}</style>
+
+      {/* Brand lockup sits outside the card, in its own block, so it never
+          shifts when the card below resizes (an error banner appearing,
+          etc.) — mirrors the same pattern the Immiglance client portal's
+          Login/Signup pages use. */}
+      <div className="flex items-center gap-3 mb-6">
+        <BrandMark size="w-10 h-10" />
+        <div>
+          <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
+          <p className="text-sm text-muted-foreground">Internal CRM</p>
+        </div>
+      </div>
+
       <div className="w-full max-w-md card">
-        <div className="flex items-center gap-3 mb-6">
-          <BrandMark size="w-10 h-10" />
-          <div>
-            <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
-            <p className="text-sm text-muted-foreground">Internal CRM</p>
-          </div>
+        <div className="mb-6">
+          <h2 className="text-lg font-bold text-foreground font-serif">Login</h2>
+          <p className="text-sm text-muted-foreground">For Immiglance team members</p>
         </div>
 
         {error && (

@@ -148,7 +148,15 @@ const checklistItemSchema = new mongoose.Schema(
     description: String,
     required: { type: Boolean, default: true },
     category: { type: String, default: "general" },
-    targetRole: { type: String, enum: ["employee", "employer", "client", "both", "business_plan", "case_manager", "team_lead", "admin", ""], default: "client", index: true },
+    // "petitioner"/"beneficiary" are the family/sponsor (K-1/K-3) equivalents of
+    // "employer"/"employee" and are already valid on questionnaireReferenceSchema
+    // below and on Questionnaire.checklistRole. They were missing here, so every
+    // family document requirement produced by document-requirement.resolver.js's
+    // fileQuestionToRequirement (which copies targetRole straight from the source
+    // questionnaire's checklistRole) threw a Mongoose ValidationError the moment
+    // it was pushed onto checklistItems/documentChecklist — i.e. K-1 checklists
+    // could never be persisted onto a case at all.
+    targetRole: { type: String, enum: ["employee", "employer", "client", "both", "business_plan", "case_manager", "team_lead", "admin", "petitioner", "beneficiary", ""], default: "client", index: true },
     status: {
       type: String,
       enum: ["pending", "requested", "submitted", "uploaded", "approved", "rejected"],
@@ -718,6 +726,15 @@ const caseSchema = new mongoose.Schema(
       currency: { type: String, default: "USD" },
       paidAt: Date,
       paymentRef: String,
+    },
+
+    // Client's typed-name + drawn-signature declaration, captured right
+    // after plan selection (see case.controller.js's signDeclaration and
+    // PlanSelection.jsx's Review & Sign step). signedAt is always set
+    // server-side — never trust a client-supplied timestamp.
+    signedDeclaration: {
+      signedName: String,
+      signedAt: Date,
     },
 
     assessmentAnswers: { type: mongoose.Schema.Types.Mixed, default: null },

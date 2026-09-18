@@ -198,9 +198,18 @@ export function AuthProvider({ children }) {
   }, [fetchAndSetSessionContext]);
 
   const logout = useCallback(async () => {
+    // POST /auth/logout requires a valid Authorization header (it's the
+    // call that revokes the refresh-token session server-side and clears
+    // the httpOnly refresh cookie — see auth.controller.js's logout()) — it
+    // must fire while the access token is still in memory. Clearing local
+    // session state first (the previous order) sent this request with no
+    // token at all; `authenticate` middleware 401'd it before it ever
+    // reached the controller, the error was silently swallowed by .catch(),
+    // and the server-side session/cookie were never actually revoked — the
+    // 7-day refresh session kept working right through a "logged out" UI.
     await unregisterCurrentDevice().catch(() => {});
-    clearSession();
     await authApi.logout().catch(() => {});
+    clearSession();
   }, [clearSession]);
 
   // Backend-mediated OAuth authorization-code flow: this is a full-page

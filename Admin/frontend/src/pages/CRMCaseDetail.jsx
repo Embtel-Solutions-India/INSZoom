@@ -348,6 +348,19 @@ const CRMCaseDetail = () => {
   const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer', { enabled: overviewActive })
   const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: overviewActive })
   const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: overviewActive })
+  // Family/sponsor (K-1/K-3) cases carry the petitioner/beneficiary pair of
+  // checklists instead of employer/employee (see Backend
+  // src/modules/questionnaires/familyChecklists.js — checklistRole "petitioner"
+  // / "beneficiary"). Without these two the staff overview rendered nothing at
+  // all for a K-1 case. Gated on the case actually being a family case so no
+  // other visa type pays for two extra requests or shows extra loading cards;
+  // the same three shapes the client portal's resolveApplicableChecklistRoles
+  // treats as "family".
+  const isFamilyCase = Boolean(
+    caseData && (caseData.caseStructure === 'family' || caseData.petitionerUser || caseData.beneficiaryUser)
+  )
+  const petitionerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'petitioner', { enabled: overviewActive && isFamilyCase })
+  const beneficiaryQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', { enabled: overviewActive && isFamilyCase })
   // Server-computed checklist completeness (calculateDetailedProgress, via
   // listCaseChecklists) — the same numbers Immiglance's client portal shows, matched
   // by responseId to the questionnaires resolved above.
@@ -1876,6 +1889,20 @@ const CRMCaseDetail = () => {
                 fieldQuestions={businessPlanQuestionnaire.fieldQuestions}
                 answerMap={businessPlanQuestionnaire.answerMap}
                 loading={businessPlanQuestionnaire.loading}
+              />
+              <QuestionnaireAnswersPanel
+                title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
+                questionnaire={petitionerQuestionnaire.questionnaire}
+                fieldQuestions={petitionerQuestionnaire.fieldQuestions}
+                answerMap={petitionerQuestionnaire.answerMap}
+                loading={petitionerQuestionnaire.loading}
+              />
+              <QuestionnaireAnswersPanel
+                title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
+                questionnaire={beneficiaryQuestionnaire.questionnaire}
+                fieldQuestions={beneficiaryQuestionnaire.fieldQuestions}
+                answerMap={beneficiaryQuestionnaire.answerMap}
+                loading={beneficiaryQuestionnaire.loading}
               />
 
               <div className="card">

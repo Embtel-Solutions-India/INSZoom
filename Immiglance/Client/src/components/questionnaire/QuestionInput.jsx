@@ -42,7 +42,7 @@ export function AutofillButton({ documentType, caseId, disabled, onUploaded }) {
         type="button"
         disabled={disabled || uploading}
         onClick={() => inputRef.current?.click()}
-        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-extrabold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {uploading ? `Reading your ${AUTOFILL_LABELS[documentType]}...` : <><IconSparkles size={14} className="text-emerald-700" /> Autofill from {AUTOFILL_LABELS[documentType]}</>}
       </button>
@@ -110,14 +110,14 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
             })}
           </div>
           {!disabled && (
-            <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-extrabold text-rose-600">
+            <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-bold text-rose-600">
               Remove entry
             </button>
           )}
         </div>
       ))}
       {!disabled && (
-        <button type="button" onClick={addRow} className="rounded-xl border border-emerald-200 px-4 py-2 text-sm font-extrabold text-emerald-700 hover:bg-emerald-50">
+        <button type="button" onClick={addRow} className="rounded-xl border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50">
           Add entry
         </button>
       )}
@@ -180,7 +180,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
             type="button"
             disabled={disabled}
             onClick={() => onChange(option.value)}
-            className={`rounded-xl border px-4 py-2 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`rounded-xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
               value === option.value ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             }`}
           >
@@ -247,7 +247,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
       <div className="space-y-2">
         <input id={question.key} name={question.key} className={INPUT_CLASS} type="file" multiple={multiple} disabled={disabled} onChange={(event) => onFileChange(Array.from(event.target.files || []))} />
         {Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-slate-500">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
-        {saving && <p className="text-xs font-extrabold text-emerald-600">Uploading files...</p>}
+        {saving && <p className="text-xs font-bold text-emerald-600">Uploading files...</p>}
       </div>
     );
   }

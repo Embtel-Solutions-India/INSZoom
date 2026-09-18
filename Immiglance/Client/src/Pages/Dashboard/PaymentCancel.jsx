@@ -4,7 +4,7 @@ export default function PaymentCancel() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="bg-card rounded-2xl border border-destructive/30 p-8 text-center shadow-sm max-w-md">
-        <h1 className="text-2xl font-extrabold text-destructive">
+        <h1 className="text-2xl font-bold text-destructive">
           Payment Cancelled
         </h1>
         <p className="text-muted-foreground mt-2">
