@@ -1,5 +1,6 @@
 const path = require("path");
 const multer = require("multer");
+const env = require("../../config/env");
 const Case = require("../../models/Case");
 const CaseAssignmentEvent = require("../../models/CaseAssignmentEvent");
 const Client = require("../../models/Client");
@@ -377,7 +378,10 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
   const caseManagerName = caseManager?.name || caseManager?.displayName || "your case manager";
   const isReassignment = Boolean(previousCaseManagerId);
   const emailTemplate = isReassignment ? "case-manager-reassigned" : "case-manager-assigned";
-  const portalLink = `${process.env.IMMIGLANCE_FRONTEND_URL || "http://localhost:5173"}/dashboard/case/${caseData._id}`;
+  // env.clientUrl is the Client portal's own origin — /dashboard/* has
+  // always lived there, never in Landing, so this must never fall back to
+  // Landing's port regardless of which env var names get set.
+  const portalLink = `${env.clientUrl}/dashboard/case/${caseData._id}`;
 
   await notificationService.createNotification({
     userId: caseData.user,

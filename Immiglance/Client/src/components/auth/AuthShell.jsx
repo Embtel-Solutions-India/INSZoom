@@ -2,11 +2,10 @@ import ThemeToggle from "../ThemeToggle";
 import BrandMark from "../BrandMark";
 
 // Shared shell for every pre-authentication card (Login, Register, ...).
-// The brand lockup renders in normal document flow *above and outside* the
+// Ported from Immiglance/Landing along with the pages themselves — the
+// brand lockup renders in normal document flow *above and outside* the
 // card, in its own fixed-height block, so it never shifts on screen when
-// the card below it changes height (a validation error appearing, a role
-// tab switch, etc.) — previously the logo was the first child *inside* the
-// same vertically-centered card, so any height change visibly moved it.
+// the card below it changes height (a validation error appearing, etc.).
 export default function AuthShell({ title, subtitle, children }) {
   return (
     <div className="relative h-screen overflow-hidden flex flex-col items-center justify-center bg-background px-4 py-4">

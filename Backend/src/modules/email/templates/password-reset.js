@@ -3,7 +3,13 @@
 // email + the stored hash/expiry, nothing role-specific.
 const env = require("../../../config/env");
 
-const FRONTEND_URL = process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
+// env.clientUrl is the Client portal's own origin (CLIENT_URL env var) —
+// /reset-password lives there (ported from Landing so Client is a fully
+// self-contained portal, matching Admin/Attorney). Every role shares this
+// one flow; a staff account resetting their password still ends up here,
+// then AuthGate's existing isStaff redirect sends them on to Admin once
+// logged in.
+const FRONTEND_URL = env.clientUrl;
 
 function subject() {
   return "Reset your Immiglance password";

@@ -5,7 +5,18 @@
 // feed back into or override a registry applicability decision. See the
 // VisaFormMapping implementation plan for the full rationale.
 const VisaFormMapping = require("../../models/VisaFormMapping");
+const Questionnaire = require("../../models/Questionnaire");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
+
+// A CONDITIONAL mapping's formNumber that also has its own non-default,
+// explicit-assignment-only client checklist (see i131Checklist.js's file
+// banner for why I-131's Questionnaire is deliberately never isDefault).
+// I-907/G-28/I-539/I-539A have no such entry - they have no client-facing
+// checklist need, so this map (and the branch that reads it below) is a
+// no-op for them, never a behavior change to their existing flow.
+const CONDITIONAL_FORM_CHECKLIST_KEYS = {
+  "I-131": "i131_checklist",
+};
 
 // Mirrors the whitelist in VisaFormMapping.js exactly - a trigger may only
 // ever reference one of these. premiumProcessing gets the same fallback
@@ -199,6 +210,36 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
         processingPath: caseData.processingPath || "",
       };
       await uscisFormService.ensureAssignedForms(caseData, user, req, { templates: [template] });
+    }
+    // The one integration point where "approved" also means "client may
+    // now see the checklist" (§26 of the I-131 spec) - not every CONDITIONAL
+    // form needs this (I-907/G-28/I-539/I-539A have no entry in
+    // CONDITIONAL_FORM_CHECKLIST_KEYS, so this stays a no-op for them,
+    // exactly as before this addition). Runs regardless of templateStatus:
+    // the client-facing questionnaire (real Q&A + document checklist) does
+    // not depend on the USCISFormTemplate/CaseForm existing yet - it can be
+    // answered and its documents uploaded before the PDF template is
+    // acquired/activated, same as any other visa's checklist is answerable
+    // before "Generate USCIS Forms" is ever clicked. Assigning twice (a
+    // reopened/re-approved decision) is a safe no-op: assignQuestionnaire
+    // only ever pushes a new questionnaireReferences entry, and
+    // resolveCaseQuestionnaires' own dedup (by responseId) already
+    // prevents a duplicate checklist row from ever being shown - never a
+    // second, parallel record kept elsewhere.
+    const checklistKey = CONDITIONAL_FORM_CHECKLIST_KEYS[mapping.formNumber];
+    if (checklistKey) {
+      const questionnaire = await Questionnaire.findOne({ key: checklistKey, latestVersion: true });
+      const hasActiveReference = (caseData.questionnaireReferences || []).some(
+        (reference) => reference.active !== false && questionnaire && String(reference.questionnaireId) === String(questionnaire._id)
+      );
+      if (questionnaire && !hasActiveReference) {
+        await require("../questionnaires/questionnaire.service").assignQuestionnaire(
+          questionnaire,
+          { caseId: caseData._id, targetRole: questionnaire.checklistRole },
+          user,
+          req
+        );
+      }
     }
     return { decisionRecord, templateStatus };
   }

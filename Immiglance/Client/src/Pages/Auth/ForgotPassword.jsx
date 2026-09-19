@@ -58,8 +58,6 @@ export default function ForgotPassword() {
     }
   };
 
-  const handleKey = (e) => { if (e.key === "Enter") handleSubmit(); };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6 py-10">
       <div className="w-full max-w-md bg-card rounded-2xl shadow-xl p-8">
@@ -83,8 +81,9 @@ export default function ForgotPassword() {
               Enter the email address on your account and we'll send you a link to reset your password.
             </p>
 
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
             <Field icon={<MailIcon />} type="email" name="email" placeholder="Email address"
-              value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={handleKey} autoComplete="email" />
+              value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
 
             {error && (
               <div role="alert" className="mb-4 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-xl px-4 py-3">
@@ -92,11 +91,12 @@ export default function ForgotPassword() {
               </div>
             )}
 
-            <button onClick={handleSubmit} disabled={submitting}
+            <button type="submit" disabled={submitting}
               className="w-full py-3 bg-primary hover:opacity-90 text-primary-foreground text-sm font-bold rounded-xl
                 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer">
               {submitting ? "Sending…" : "Send Reset Link"}
             </button>
+            </form>
 
             <button onClick={() => navigate("/login")}
               className="w-full mt-3 py-3 bg-card border border-border text-foreground

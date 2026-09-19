@@ -169,8 +169,8 @@ export function AuthProvider({ children }) {
     setSessionContext(sessionCtx?.success ? sessionCtx : null);
   }, []);
 
-  const signup = useCallback(async (name, email, password, referralCode, phone, accountType = "client") => {
-    const data = await authApi.register(name, email, password, referralCode, phone, accountType);
+  const signup = useCallback(async (name, email, password, referralCode, phone, accountType = "client", sessionId) => {
+    const data = await authApi.register(name, email, password, referralCode, phone, accountType, sessionId);
     tokenStore.set(data.accessToken);
     setUser(data.user);
     await fetchAndSetSessionContext();

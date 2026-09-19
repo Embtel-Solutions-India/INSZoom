@@ -9,7 +9,20 @@ import SSOHandler from "./components/SSOHandler";
 // Client = the authenticated client application. Carved out of the
 // pre-split Immiglance/Frontend/src/App.jsx; every route below is
 // byte-for-byte the same path/element pairing it had there, with the public
-// half moved to the Landing app.
+// marketing/quiz half in the Landing app.
+//
+// Login/Register/Forgot-Reset-Password/Accept-Invite/OAuth-callback moved
+// here FROM Landing (ported, not re-invented) so this app is a fully
+// self-contained portal exactly like Admin's and Attorney's — Landing no
+// longer renders any auth UI at all, it only redirects "Client Login"
+// cross-origin to /login below. See Immiglance/Landing's Navbar.jsx and
+// App.jsx for the corresponding removal + forwarding routes.
+const Login = lazy(() => import("./Pages/Auth/Login"));
+const Register = lazy(() => import("./Pages/Auth/Register"));
+const OAuthCallback = lazy(() => import("./Pages/Auth/OAuthCallback"));
+const AcceptInvite = lazy(() => import("./Pages/Auth/AcceptInvite"));
+const ForgotPassword = lazy(() => import("./Pages/Auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./Pages/Auth/ResetPassword"));
 const Dashboard = lazy(() => import("./Pages/Dashboard/Dashboard"));
 const Tasks = lazy(() => import("./Pages/Dashboard/Tasks"));
 const Profile = lazy(() => import("./Pages/Dashboard/Profile"));
@@ -18,6 +31,7 @@ const Payments = lazy(() => import("./Pages/Dashboard/Payments"));
 const DocumentReview = lazy(() => import("./Pages/Dashboard/DocumentReview"));
 const Intake = lazy(() => import("./Pages/Dashboard/Intake"));
 const BookConsultation = lazy(() => import("./Pages/Dashboard/BookConsultation"));
+const WaitingForApproval = lazy(() => import("./Pages/Dashboard/WaitingForApproval"));
 const FilingTypeSelection = lazy(() => import("./Pages/Dashboard/FilingTypeSelection"));
 const PlanSelection = lazy(() => import("./Pages/Dashboard/PlanSelection"));
 const Messages = lazy(() => import("./Pages/Dashboard/Messages"));
@@ -37,6 +51,18 @@ export default function App() {
             the token itself is the credential, verified against the backend
             inside SSOHandler before any session is established. */}
         <Route path="/auth/sso" element={<SSOHandler />} />
+
+        {/* Auth pages — public, deliberately outside AuthGate (which would
+            otherwise try to redirect an unauthenticated visitor straight
+            back to /login, looping). Each page's own "already logged in"
+            guard (see Login.jsx/Register.jsx) handles the authenticated
+            case instead. */}
+        <Route path="/login"           element={<Login />} />
+        <Route path="/signup"          element={<Register />} />
+        <Route path="/accept-invite"   element={<AcceptInvite />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password"  element={<ResetPassword />} />
+        <Route path="/auth/callback"   element={<OAuthCallback />} />
 
         {/* Client portal — themed sidebar + top-bar shell (PortalLayout).
             PHASE 3: routing based on auth + case status is still decided
@@ -85,22 +111,24 @@ export default function App() {
         <Route element={<AuthGate />}>
           <Route path="/onboarding/intake" element={<Intake />} />
           <Route path="/consultation/book" element={<BookConsultation />} />
+          {/* journeyState WAITING_FOR_CASE / CASE_REJECTED land here — see
+              AuthGate.jsx's journey-state branch and WaitingForApproval.jsx. */}
+          <Route path="/waiting-for-approval" element={<WaitingForApproval />} />
         </Route>
-        {/* Legacy URL — Register.jsx (brand-new signup, now in the Landing
-            app) still navigates here directly by habit/comment ("can't have
-            a case yet"). Forwards to the one canonical, AuthGate-aware
-            intake route above rather than duplicating <Intake/> under two
-            paths with two different routing checks. */}
+        {/* Legacy URL — Register.jsx (brand-new signup) still navigates here
+            directly by habit/comment ("can't have a case yet"). Forwards to
+            the one canonical, AuthGate-aware intake route above rather than
+            duplicating <Intake/> under two paths with two different routing
+            checks. */}
         <Route path="/dashboard/intake" element={<Navigate to="/onboarding/intake" replace />} />
 
-        {/* Repository-split shim — every public/pre-authentication path
-            ("/", "/login", "/signup", "/accept-invite", "/forgot-password",
-            "/reset-password", "/auth/callback", "/legacy-holding",
-            "/eligibility/*", the rest of "/consultation/*" besides
-            "/consultation/book" above — e.g. "/consultation/booking/:token",
-            reached via an emailed token link independent of login state)
-            moved to the Landing app on a different origin. AuthGate's own
-            <Navigate to="/login" /> / "/accept-invite" / "/legacy-holding"
+        {/* Repository-split shim — the remaining public/pre-authentication
+            paths ("/", "/legacy-holding", "/eligibility/*", the rest of
+            "/consultation/*" besides "/consultation/book" above — e.g.
+            "/consultation/booking/:token", reached via an emailed token link
+            independent of login state) live in the Landing app on a
+            different origin — the public marketing site and the anonymous
+            eligibility quiz. AuthGate's own <Navigate to="/legacy-holding" />
             redirects are unmodified; this catch-all is what forwards them to
             Landing instead of 404-ing. No token or session state is handed
             over — see components/CrossAppRedirect.jsx. */}

@@ -12,11 +12,28 @@ const passwordRule = dynamicPasswordRule("password");
 
 router.post(
   "/register",
-  [emailRule, passwordRule, body("name").optional().trim().isLength({ min: 2 }), body("displayName").optional().trim().isLength({ min: 2 }), body("accountType").optional().isIn(["client", "employee", "employer"])],
+  [
+    emailRule,
+    passwordRule,
+    body("name").optional().trim().isLength({ min: 2 }),
+    body("displayName").optional().trim().isLength({ min: 2 }),
+    body("accountType").optional().isIn(["client", "employee", "employer"]),
+    // The public eligibility quiz's anonymous sessionId (see
+    // Immiglance/Landing/src/utils/eligibilitySession.js) — optional, used
+    // only to associate a pre-existing Lead with this new account (see
+    // auth.service.js's findLinkableLead). Never trusted as an identity
+    // claim by itself; a mismatched/unknown sessionId is just a no-op.
+    body("sessionId").optional({ checkFalsy: true }).trim().isLength({ max: 200 }),
+  ],
   validate,
   auditAuth("auth.register"),
   ctrl.register
 );
+
+// POST /auth/check-email — public, same global rate limiter every route
+// gets (see app.js) as /login and /register. UX hint only for the
+// email-first sign-in step; see auth.controller.js's checkEmail.
+router.post("/check-email", [emailRule], validate, auditAuth("auth.check_email"), ctrl.checkEmail);
 
 router.post(
   "/staff/register",

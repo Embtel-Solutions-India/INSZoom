@@ -173,8 +173,13 @@ export const api = {
 
 // ── Auth ────────────────────────────────────────────
 export const authApi = {
-  register: (displayName, email, password, referralCode, phone, accountType = "client") =>
-    api.post("/auth/register", { displayName, email, password, referralCode, phone, accountType }),
+  register: (displayName, email, password, referralCode, phone, accountType = "client", sessionId) =>
+    api.post("/auth/register", { displayName, email, password, referralCode, phone, accountType, sessionId }),
+  // Email-first sign-in's UX hint — never an authorization decision. See
+  // Backend/src/modules/auth/auth.service.js's checkEmail comment: /login
+  // remains the sole, fully self-validating source of truth regardless of
+  // what this returns.
+  checkEmail: (email) => api.post("/auth/check-email", { email }),
   login: (emailOrPayload, password) => api.post(
     "/auth/login",
     typeof emailOrPayload === "object" && emailOrPayload !== null

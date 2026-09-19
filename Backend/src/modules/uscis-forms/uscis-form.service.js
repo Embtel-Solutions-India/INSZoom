@@ -78,7 +78,7 @@ async function activeTemplatesCached() {
   // stalled-primary path entirely (verified: ~8.6s on primary vs ~0.1-0.6s
   // with this on the same live cluster).
   const templates = await USCISFormTemplate.find({ status: "active", activeFlag: { $ne: false }, officialStatus: { $ne: "deprecated" } })
-    .select("_id formCode formNumber version editionDate activeMappingVersion mappingVersion activeMappingVersionId latestMappingVersionId validationVersion renderingVersion visaTypes supportedVisaCategories assignmentRules activeFlag officialStatus status title")
+    .select("_id formCode formNumber version editionDate activeMappingVersion mappingVersion activeMappingVersionId latestMappingVersionId validationVersion renderingVersion visaTypes supportedVisaCategories assignmentRules activeFlag officialStatus status title lastChecked")
     .read("secondaryPreferred")
     .lean();
   templateCache.activeTemplates = templates;

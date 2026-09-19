@@ -152,6 +152,7 @@ export default function AuthGate() {
   // catch-all below would bounce them straight back to intake before they
   // can book.
   const isPreCaseBookingPath = location.pathname === "/consultation/book";
+  const isWaitingForApprovalPath = location.pathname === "/waiting-for-approval";
 
   // ── Client: has a case → dashboard (bounce out of intake specifically,
   // render normally on any other already-AuthGate-wrapped path) ───────────
@@ -167,8 +168,29 @@ export default function AuthGate() {
     return <Navigate to="/legacy-holding" replace />;
   }
 
-  // ── Client: no case, not legacy → intake questionnaire (or, once intake
-  // is submitted, consultation booking) ─────────────────────────────────
+  // ── Client: no case, journey-state-driven routing ────────────────────────
+  // journeyState (GET /api/auth/session-context — see auth.controller.js's
+  // JOURNEY_STATE_BY_LEAD_STATUS) tells us WHY there's no case yet, derived
+  // from the real Lead this account is linked to, so a returning client is
+  // never bounced back into intake/consultation booking they already
+  // completed. Inserted at this one point in the precedence chain, after
+  // isLegacyNoCaseAccount and before the final /onboarding/intake fallback
+  // — no other branch above is reordered.
+  if (context.journeyState === "WAITING_FOR_CASE" || context.journeyState === "CASE_REJECTED") {
+    if (!isWaitingForApprovalPath) {
+      return <Navigate to="/waiting-for-approval" replace />;
+    }
+    return <Outlet />;
+  }
+  if (context.journeyState === "CONSULTATION_BOOKED" || context.journeyState === "CONSULTATION_REQUIRED") {
+    if (!isPreCaseBookingPath) {
+      return <Navigate to={`/consultation/book?leadId=${context.leadId}`} replace />;
+    }
+    return <Outlet />;
+  }
+
+  // ── Client: no case, no leadId at all → intake questionnaire (or, once
+  // intake is submitted, consultation booking) ────────────────────────────
   if (!isIntakePath && !isPreCaseBookingPath) {
     return <Navigate to="/onboarding/intake" replace />;
   }

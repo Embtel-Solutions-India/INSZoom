@@ -19,6 +19,7 @@ const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("./employmentChecklists");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
+const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -1818,6 +1819,14 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...EMPLOYMENT_CHECKLIST_DEFINITIONS,
   ...FAMILY_CHECKLIST_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
+  // I-131 — deliberately NOT isDefault and scoped to a pseudo visaType that
+  // never matches a real case (see i131Checklist.js's own banner). Still
+  // provisioned through this same ensureDefaultVisaTemplates() reconciler
+  // as every other definition, so its idempotent create-or-patch guarantee
+  // applies here too — the difference is entirely in when a client can
+  // reach it (an explicit questionnaireReferences assignment only), not in
+  // how the template record itself is seeded.
+  I131_CHECKLIST_DEFINITION,
 ];
 
 function slugSection(title) {
