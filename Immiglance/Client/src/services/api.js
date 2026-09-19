@@ -173,14 +173,17 @@ export const api = {
 
 // ── Auth ────────────────────────────────────────────
 export const authApi = {
-  register: (displayName, email, password, referralCode, phone, accountType = "client") =>
-    api.post("/auth/register", { displayName, email, password, referralCode, phone, accountType }),
+  register: (displayName, email, password, referralCode, phone, accountType = "client", sessionId) =>
+    api.post("/auth/register", { displayName, email, password, referralCode, phone, accountType, sessionId }),
   login: (emailOrPayload, password) => api.post(
     "/auth/login",
     typeof emailOrPayload === "object" && emailOrPayload !== null
       ? emailOrPayload
       : { email: emailOrPayload, password }
   ),
+  // Email-first login step's UX hint ONLY — login() above independently and
+  // fully validates the real credential regardless of what this returns.
+  checkEmail: (email) => api.post("/auth/check-email", { email }),
   googleToken: (idToken) => api.post("/auth/google-token", { idToken }),
   logout: () => api.post("/auth/logout", {}),
   me: () => api.get("/auth/me"),

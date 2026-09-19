@@ -6,7 +6,12 @@
 // no separate staff-specific accept page was needed.
 const env = require("../../../config/env");
 
-const FRONTEND_URL = process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
+// env.clientUrl is the Client portal's own origin (CLIENT_URL env var) —
+// /accept-invite lives there now (ported from Landing). AuthGate's existing
+// isStaff redirect still sends an invited staff member on to Admin
+// automatically once they log in, so no separate staff-specific accept
+// page is needed.
+const FRONTEND_URL = env.clientUrl;
 
 function subject() {
   return "You've been invited to join the firm's team";

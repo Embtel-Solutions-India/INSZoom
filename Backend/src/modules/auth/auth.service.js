@@ -1,6 +1,7 @@
 const User = require("../../models/User");
 const Client = require("../../models/Client");
 const Case = require("../../models/Case");
+const Lead = require("../../models/Lead");
 const Referral = require("../../models/Referral");
 const tokenService = require("./token.service");
 const sessionService = require("./session.service");
@@ -12,6 +13,23 @@ const { invalidateUserCache } = require("../../config/redis");
 const { isPendingInvite } = require("./employeeInvite.service");
 const { isPendingClientInvite } = require("./clientInvite.service");
 const settingsEngine = require("../settings/settingsEngine.service");
+
+// Same list AuthGate.jsx (Immiglance/Client) already defines as
+// CLIENT_PORTAL_ROLES — kept in sync manually since the frontend and this
+// module can't share a literal; a staff/admin/attorney account must never
+// be confirmed to exist through checkEmail (role-enumeration risk), and
+// registerClient's own duplicate-email check already implicitly scopes to
+// "any role" for a different reason (blocking a real duplicate outright).
+const CLIENT_PORTAL_ROLES = ["client", "user", "employer", "employee", "beneficiary"];
+
+// Lead.status values that mean "not yet converted to a Case, still a real
+// prospect" — used both here (to avoid re-linking an already-converted or
+// closed-out Lead) and mirrored by getSessionContext's journeyState mapping.
+const LINKABLE_LEAD_STATUSES = [
+  "new", "contacted", "consultation_requested",
+  "booked", "consultation_scheduled",
+  "consultation_confirmed", "consultation_completed", "approved", "rejected",
+];
 
 // Settings → Security → Account lockout (settings/registry/security.registry.js).
 // Replaces 3 previously-hardcoded "5 attempts / 15 minutes" blocks
@@ -70,6 +88,66 @@ async function issueTokens(user, req, options = {}) {
   return { ...authPayload(user, accessToken, refreshToken, options), refreshToken };
 }
 
+// Backs POST /auth/check-email — the email-first login step's UX hint ONLY.
+// This must never become an authorization decision anywhere it's consumed:
+// /auth/login independently re-validates the full credential regardless of
+// what this returned, and a client could skip this call entirely without
+// changing login behavior at all. Scoped to CLIENT_PORTAL_ROLES so a staff/
+// admin/attorney email always reports exists:false here — this endpoint has
+// no legitimate reason to confirm a non-client role exists, and existing
+// precedent (registerClient's own duplicate check, immediately below)
+// already reveals "this client email exists" for this exact login/signup
+// UX, so this doesn't introduce a new anti-enumeration exposure beyond what
+// already exists — it's scoped strictly narrower (role-filtered, and only
+// {exists, hasPassword, pendingInvite} are ever returned; never userId,
+// role, leadId, or caseId).
+//
+// pendingInvite deliberately does NOT reuse isPendingInvite/isPendingClientInvite
+// (role === X && !password) — that check can't tell a real staff-issued
+// invite apart from a Google-only account, which also has no password.
+// inviteTokenHash is only ever set by createClientInviteToken/
+// createEmployeeInviteToken, so it's a precise signal a Google signup never
+// has. An expired invite still counts as "pending" here (the UX is "resend
+// invite", same as an unexpired one) — expiry only matters when the token
+// is actually redeemed.
+async function checkEmail(rawEmail) {
+  const email = String(rawEmail || "").trim().toLowerCase();
+  if (!email) return { exists: false, hasPassword: false, pendingInvite: false };
+  const user = await User.findOne({ email, role: { $in: CLIENT_PORTAL_ROLES } }).select("+password +inviteTokenHash");
+  if (!user) return { exists: false, hasPassword: false, pendingInvite: false };
+  return {
+    exists: true,
+    hasPassword: Boolean(user.password),
+    pendingInvite: !user.password && Boolean(user.inviteTokenHash),
+  };
+}
+
+// Finds a not-yet-converted anonymous Lead to associate with a brand-new
+// signup, by sessionId first (Immiglance/Landing/src/utils/eligibilitySession.js's
+// getSessionId() — sessionStorage-scoped, so this is the strongest signal
+// when it's present), falling back to an email match only if the sessionId
+// lookup finds nothing (e.g. the quiz was done in a since-closed tab).
+// Guards against double-linking: skips any Lead a different User has
+// already claimed via leadId. Never throws — a failed/no-op lookup here
+// must never block signup.
+async function findLinkableLead(sessionId, email) {
+  try {
+    const query = { status: { $in: LINKABLE_LEAD_STATUSES } };
+    let lead = null;
+    if (sessionId) {
+      lead = await Lead.findOne({ ...query, sessionId }).sort({ createdAt: -1 });
+    }
+    if (!lead && email) {
+      lead = await Lead.findOne({ ...query, email }).sort({ createdAt: -1 });
+    }
+    if (!lead) return null;
+    const alreadyClaimed = await User.findOne({ leadId: lead._id }).select("_id");
+    return alreadyClaimed ? null : lead;
+  } catch (error) {
+    return null;
+  }
+}
+
 async function registerClient(payload, req) {
   const email = payload.email?.toLowerCase();
   const exists = await User.findOne({ email }).select("+password");
@@ -120,6 +198,18 @@ async function registerClient(payload, req) {
     { user: user._id, email: user.email, fullName: user.name || user.displayName, primaryPhone: user.phone, source: "shared" },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
+
+  // Associate a pre-existing anonymous Lead (public eligibility quiz +
+  // possibly an already-booked consultation) with this brand-new account,
+  // by sessionId first, email as fallback — see findLinkableLead above.
+  // Reuses the existing User.leadId field (the same one createLeadFromIntake
+  // already sets for the logged-in intake flow) rather than a new
+  // relationship; never blocks/fails signup if the lookup finds nothing.
+  const linkableLead = await findLinkableLead(payload.sessionId, email);
+  if (linkableLead) {
+    user.leadId = linkableLead._id;
+    await user.save();
+  }
 
   return issueTokens(user, req, { message: "Account created successfully" });
 }
@@ -430,6 +520,8 @@ async function changePassword(userId, currentPassword, newPassword) {
 module.exports = {
   authPayload,
   issueTokens,
+  checkEmail,
+  findLinkableLead,
   registerClient,
   registerStaff,
   login,

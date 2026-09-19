@@ -2,6 +2,24 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import BrandMark from "./BrandMark";
+import { getSessionId } from "../utils/eligibilitySession";
+
+// Login/Signup now live entirely in the Client app (a different origin) —
+// see Immiglance/Client/src/Pages/Auth/. "Client Login" is a plain
+// cross-origin navigation, not a same-app route, mirroring the existing
+// VITE_ADMIN_URL/VITE_ATTORNEY_PORTAL_URL pattern (utils/portalRedirect.js).
+// VITE_CLIENT_URL already exists for CrossAppRedirect.jsx's own use.
+const CLIENT_URL = import.meta.env.VITE_CLIENT_URL || "http://localhost:5175";
+
+// The quiz's anonymous sessionId lives in this origin's sessionStorage,
+// which Client's origin can never read directly — carried over as a URL
+// param instead so a visitor who already took the quiz here doesn't lose
+// that association if they log in/sign up from this link. Safe to always
+// send: a sessionId with no matching Lead is just a no-op (see
+// Backend/src/modules/auth/auth.service.js's findLinkableLead).
+function clientLoginUrl() {
+  return `${CLIENT_URL}/login?sessionId=${encodeURIComponent(getSessionId())}`;
+}
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 const MenuIcon = () => (
@@ -55,13 +73,13 @@ export default function Navbar() {
 
           <ThemeToggle className="hidden sm:inline-flex" />
 
-          <Link
-            to="/login"
+          <a
+            href={clientLoginUrl()}
             className="hidden sm:flex text-sm font-semibold px-4 py-2 rounded-lg
               text-foreground hover:text-primary transition-all no-underline"
           >
             Client Login
-          </Link>
+          </a>
           <Link
             to="/eligibility?src=Navbar"
             className="text-sm font-bold px-4 py-2 rounded-lg
@@ -94,11 +112,11 @@ export default function Navbar() {
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Link to="/login"
+            <a href={clientLoginUrl()}
               className="flex-1 text-center text-sm font-semibold py-2.5 rounded-xl border
                 border-border text-foreground hover:bg-secondary transition no-underline">
               Client Login
-            </Link>
+            </a>
             <Link to="/eligibility?src=Navbar"
               className="flex-1 text-center text-sm font-bold py-2.5 rounded-xl
                 bg-primary text-primary-foreground

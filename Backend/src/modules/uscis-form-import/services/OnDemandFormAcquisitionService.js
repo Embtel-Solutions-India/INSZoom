@@ -18,8 +18,21 @@ const CanonicalBiographicAutofill = require("../../uscis-forms/CanonicalBiograph
 const uscisFormService = require("../../uscis-forms/uscis-form.service");
 const CaseForm = require("../../../models/CaseForm");
 const VisaFormMapping = require("../../../models/VisaFormMapping");
+const USCISFormTemplate = require("../../../models/USCISFormTemplate");
+const logger = require("../../../utils/logger");
 
 const versionService = new FormVersionService();
+
+// Same-process concurrency guard for ensureCurrentUSCISForm: without this,
+// N simultaneous callers for the same formCode (e.g. several case-managers'
+// tabs, or a case's "Acquire" click firing twice) would each independently
+// decide "no local template" or "edition looks stale" and race into N
+// downloads/imports. Cross-process/duplicate-document safety already exists
+// further down the pipeline (USCISFormImporterService's checksum-based
+// duplicate detection, CaseForm's unique index) — this just avoids paying
+// for N redundant USCIS fetches within one Node process by having every
+// concurrent caller await the same in-flight promise and share its result.
+const inFlightEnsures = new Map();
 
 function normalizeFormCode(value = "") {
   return String(value).trim().toUpperCase();
@@ -99,30 +112,16 @@ async function resolveOfficialPdf(formNumber) {
   );
 }
 
-// Idempotent: if an active template for this formCode already exists, it is
-// returned as-is — never re-fetched/re-imported/duplicated (mirrors
-// findLatestActiveTemplate's own idempotency, which this is built on top
-// of). Otherwise: resolve → download → import (via the existing,
-// unmodified USCISFormImporterService) → optionally activate.
-async function acquireAndActivate(formNumber, user, req) {
-  const formCode = normalizeFormCode(formNumber);
-  const existing = await uscisFormService.findLatestActiveTemplate(formCode);
-  if (existing) return { template: existing, alreadyActive: true, requiresActivation: false };
-
-  const resolved = await resolveOfficialPdf(formCode);
-  const importResult = await USCISFormImporterService.importFromUrl(
-    {
-      pdfUrl: resolved.pdfUrl,
-      formType: formCode,
-      source: "on_demand_acquisition",
-      officialPageUrl: resolved.officialPageUrl,
-      editionDate: resolved.editionDate,
-    },
-    user,
-    req
-  );
-  let template = importResult.template;
-
+// Shared by both "form never seen before" and "new edition detected"
+// acquisition paths — a freshly-imported template (via
+// USCISFormImporterService for a missing form, or via
+// USCISScannerService.scanForm for a newly-detected edition) always lands
+// in draft/review status; this is the one place that tries to move it to
+// production-active, or failing that, to the biographic-fallback tier.
+// Extracted from the original acquireAndActivate (no behavior change) so
+// ensureCurrentUSCISForm's new-edition branch reuses it instead of
+// duplicating the approve/activate/biographic-tier sequence.
+async function activateOrPromote(template, user, req) {
   const autoActivate = String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true";
   let activationBlockedReason = null;
   if (autoActivate && template.status !== "active") {
@@ -138,6 +137,7 @@ async function acquireAndActivate(formNumber, user, req) {
     }
     try {
       template = await versionService.activate(template._id, user, req);
+      logger.info("uscis_form_activated", { formCode: template.formCode, templateId: String(template._id), version: template.version });
     } catch (error) {
       // Also confirmed live: activate() additionally requires
       // template.mappingStatus === "active" - i.e. a human-reviewed field-
@@ -150,6 +150,7 @@ async function acquireAndActivate(formNumber, user, req) {
       // the template stays at "review" and this is reported back as
       // requiresActivation, not silently swallowed or forced through.
       activationBlockedReason = error.message;
+      logger.info("uscis_form_mapping_review_required", { formCode: template.formCode, templateId: String(template._id), reason: error.message });
     }
   }
 
@@ -170,12 +171,154 @@ async function acquireAndActivate(formNumber, user, req) {
   uscisFormService.invalidateTemplateCache();
   return {
     template,
-    alreadyActive: false,
     requiresActivation: template.status !== "active",
     activationBlockedReason,
     biographicReady: template.mappingStatus === "biographic_active",
     coverage: biographicMapping?.coverage || null,
   };
+}
+
+// The "form has never been acquired at all" path — resolve → download →
+// import (via the existing, unmodified USCISFormImporterService) →
+// activateOrPromote. Extracted from the original acquireAndActivate (no
+// behavior change) so ensureCurrentUSCISForm's "missing" branch and the
+// legacy acquireAndActivate entry point share one implementation.
+async function acquireMissingForm(formCode, user, req) {
+  logger.info("uscis_form_download_started", { formCode });
+  const resolved = await resolveOfficialPdf(formCode);
+  const importResult = await USCISFormImporterService.importFromUrl(
+    {
+      pdfUrl: resolved.pdfUrl,
+      formType: formCode,
+      source: "on_demand_acquisition",
+      officialPageUrl: resolved.officialPageUrl,
+      editionDate: resolved.editionDate,
+    },
+    user,
+    req
+  );
+  logger.info("uscis_form_download_completed", { formCode, templateId: String(importResult.template._id) });
+  const activation = await activateOrPromote(importResult.template, user, req);
+  return { ...activation, alreadyActive: false };
+}
+
+// ensureCurrentUSCISForm — the single entry point that both "a case needs a
+// form it has never had" and "an explicit staleness check" now go through.
+// This is the piece that was missing: the old acquireAndActivate (below)
+// only ever asked "does any active local template exist?" — if yes, it
+// returned immediately and NEVER checked USCIS for a newer edition. That
+// edition-diff logic already existed, correctly, inside the decoupled
+// background monitoring job (USCISScannerService.scanForm/scanAll +
+// FormComparisonService) — this wires the same, unmodified scanner function
+// into the case-triggered path instead of duplicating its logic.
+//
+// forceCheck:true (used by the explicit "Acquire from USCIS" action) always
+// asks USCIS. forceCheck:false (available for future callers) additionally
+// skips the network call entirely when the existing template was checked
+// within USCIS_ENSURE_CHECK_TTL_MS — this is what keeps ordinary read paths
+// (forms-overview, page loads) from ever triggering a USCIS request; none
+// of them call this function at all today, and if one ever does, this TTL
+// is what stops it from becoming a per-request network call.
+async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
+  const formCode = normalizeFormCode(formNumber);
+  const dedupeKey = `${formCode}:${options.forceCheck ? "force" : "ttl"}`;
+  if (inFlightEnsures.has(dedupeKey)) {
+    logger.info("uscis_form_acquisition_deduplicated", { formCode });
+    return inFlightEnsures.get(dedupeKey);
+  }
+  const run = ensureCurrentUSCISFormInner(formCode, user, req, options).finally(() => {
+    inFlightEnsures.delete(dedupeKey);
+  });
+  inFlightEnsures.set(dedupeKey, run);
+  return run;
+}
+
+async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
+  const forceCheck = Boolean(options.forceCheck);
+  const ttlMs = Number(process.env.USCIS_ENSURE_CHECK_TTL_MS || 12 * 60 * 60 * 1000);
+  const existing = await uscisFormService.findLatestActiveTemplate(formCode);
+
+  if (!existing) {
+    logger.info("uscis_form_check_started", { formCode, reason: "missing" });
+    const result = await acquireMissingForm(formCode, user, req);
+    logger.info("uscis_form_check_completed", { formCode, outcome: "acquired" });
+    return result;
+  }
+
+  const lastCheckedAt = existing.lastChecked ? new Date(existing.lastChecked).getTime() : 0;
+  if (!forceCheck && Date.now() - lastCheckedAt < ttlMs) {
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: false };
+  }
+
+  // A component/supplement formNumber (e.g. an I-129 classification
+  // supplement) has no standalone uscis.gov page of its own to check —
+  // nothing to compare against, so the existing template stands.
+  const pageUrl = guessedFormPageUrl(formCode);
+  if (!pageUrl) {
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: false };
+  }
+
+  logger.info("uscis_form_check_started", { formCode, reason: forceCheck ? "forced" : "ttl_expired" });
+  let scanResult;
+  try {
+    scanResult = await USCISScannerService.scanForm({ formType: formCode, pageUrl }, user, req);
+  } catch (error) {
+    // USCIS unreachable — the existing, previously-validated template is
+    // still safe to keep serving. Never let a network failure here break a
+    // case that already has a working form.
+    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: error.message });
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: error.message };
+  }
+
+  if (scanResult.action === "scan_failed") {
+    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: scanResult.error });
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: scanResult.error };
+  }
+
+  if (scanResult.action === "no_change_detected") {
+    logger.info("uscis_form_check_completed", { formCode, outcome: "no_change" });
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true };
+  }
+
+  // action === "draft_version_created": USCIS has published a different
+  // edition. scanForm already created the new template in draft/review
+  // status WITHOUT touching the existing active one (never a silent
+  // replacement), and already ran FormComparisonService against the old
+  // version — reuse that comparison report rather than re-deriving it.
+  logger.info("uscis_form_version_detected", { formCode, previousTemplateId: String(existing._id), newTemplateId: String(scanResult.templateId) });
+  const newTemplate = await USCISFormTemplate.findById(scanResult.templateId);
+  const activation = await activateOrPromote(newTemplate, user, req);
+  if (activation.template.status === "active") {
+    logger.info("uscis_form_mapping_migrated", { formCode, templateId: String(activation.template._id) });
+  }
+  logger.info("uscis_form_check_completed", { formCode, outcome: activation.template.status === "active" ? "new_edition_activated" : "new_edition_pending_review" });
+
+  const currentTemplate = activation.template.status === "active" ? activation.template : existing;
+  return {
+    template: currentTemplate,
+    previousTemplate: existing,
+    newTemplateId: newTemplate._id,
+    alreadyActive: false,
+    requiresActivation: activation.requiresActivation,
+    activationBlockedReason: activation.activationBlockedReason,
+    biographicReady: activation.biographicReady,
+    coverage: activation.coverage,
+    comparisonReport: scanResult.comparisonReport,
+    checked: true,
+    versionChanged: true,
+  };
+}
+
+// Legacy entry point, kept for backward compatibility with every existing
+// caller (acquireForCase below, and any other code that imports this
+// directly) — now a thin delegation to ensureCurrentUSCISForm with
+// forceCheck:true, since an explicit "Acquire from USCIS" click should
+// always ask USCIS, not rely on the TTL fast path. Return shape unchanged:
+// {template, alreadyActive, requiresActivation, activationBlockedReason,
+// biographicReady, coverage} — callers destructuring exactly those fields
+// are unaffected by the additional fields ensureCurrentUSCISForm may return.
+async function acquireAndActivate(formNumber, user, req) {
+  return ensureCurrentUSCISForm(formNumber, user, req, { forceCheck: true });
 }
 
 // Full case-scoped flow: acquire+activate the template, provision it onto
@@ -188,6 +331,26 @@ async function acquireAndActivate(formNumber, user, req) {
 async function acquireForCase(caseId, formNumber, user, req) {
   const caseData = await uscisFormService.getAccessibleCase(caseId, user, { requestId: req?.requestId });
   const formCode = normalizeFormCode(formNumber);
+
+  // Server-side enforcement of the same agency gate
+  // form-registry.controller.js's deriveUiStatus already applies client-side
+  // (it only ever offers "Acquire from USCIS" when
+  // VisaFormMapping.agency === "USCIS" — confirmed live against this DB's
+  // real registry: DOS's DS-160/DS-156E, DOL's ETA-9035/ETA-790, and
+  // SEVP/school-issued I-20/DS-2019 all have real mappings with a non-USCIS
+  // agency and no uscis.gov page at all). The UI not showing the button is
+  // a UX nicety, not a trust boundary — this is the actual boundary: reject
+  // the request outright rather than letting it fall through to
+  // resolveOfficialPdf, which would guess a nonsensical uscis.gov URL for a
+  // form that was never USCIS's to begin with and fail late/confusingly.
+  const mapping = await VisaFormMapping.findOne({ formNumber: formCode, active: true }).select("agency").lean();
+  if (mapping?.agency && mapping.agency !== "USCIS") {
+    throw enterpriseError(
+      `${formCode} is a ${mapping.agency} form, not a downloadable USCIS PDF — it can't be fetched from uscis.gov. See the VisaFormMapping registry entry for how to obtain it.`,
+      422,
+      "USCIS_FORM_WRONG_AGENCY"
+    );
+  }
 
   const acquisition = await acquireAndActivate(formCode, user, req);
   const { template, requiresActivation, activationBlockedReason, biographicReady, coverage } = acquisition;
@@ -290,6 +453,7 @@ async function acquireForCase(caseId, formNumber, user, req) {
 
 module.exports = {
   resolveOfficialPdf,
+  ensureCurrentUSCISForm,
   acquireAndActivate,
   acquireForCase,
   guessedFormPageUrl,

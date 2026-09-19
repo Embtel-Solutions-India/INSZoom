@@ -1,7 +1,9 @@
 const env = require("../../../config/env");
 
-const FRONTEND_URL =
-  process.env.IMMIGLANCE_FRONTEND_URL || env.clientOrigins[0] || "http://localhost:5173";
+// env.clientUrl is the Client portal's own origin (CLIENT_URL env var) —
+// /accept-invite lives there (ported from Landing so Client is a fully
+// self-contained portal, matching Admin/Attorney).
+const FRONTEND_URL = env.clientUrl;
 
 function subject() {
   return "Your immigration case is ready — activate your Immiglance portal account";

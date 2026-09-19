@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const Case = require("../../models/Case");
+const Lead = require("../../models/Lead");
 const authService = require("./auth.service");
 const sessionService = require("./session.service");
 const passwordResetService = require("./passwordReset.service");
@@ -67,6 +68,20 @@ async function register(req, res, next) {
     const { refreshToken, responseBody } = splitRefreshToken(result);
     setRefreshCookie(res, refreshToken);
     res.status(201).json(responseBody);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /auth/check-email — the email-first sign-in step's UX hint. See
+// authService.checkEmail's own comment: this is never an authorization
+// decision, only ever {exists, hasPassword, pendingInvite}, and /auth/login
+// remains the sole, fully self-validating source of truth for whether a
+// credential is actually correct.
+async function checkEmail(req, res, next) {
+  try {
+    const result = await authService.checkEmail(req.body.email);
+    res.status(200).json({ success: true, ...result });
   } catch (error) {
     next(error);
   }
@@ -307,6 +322,9 @@ function me(req, res) {
  *   leadId: string | null,
  *   mustSetPassword: boolean,
  *   caseRole: string | null,
+ *   journeyState?: "CONSULTATION_REQUIRED" | "CONSULTATION_BOOKED" | "WAITING_FOR_CASE" | "CASE_REJECTED",
+ *     // present only when hasCase is false AND leadId is set — see
+ *     // resolveJourneyState/JOURNEY_STATE_BY_LEAD_STATUS below.
  * }
  */
 async function getSessionContext(req, res, next) {
@@ -348,6 +366,14 @@ async function getSessionContext(req, res, next) {
       }
     }
 
+    // journeyState — only computed on the no-case path; AuthGate.jsx checks
+    // hasCase before ever consulting this, exactly as it did before this
+    // field existed. Derived from the existing Lead.status enum (no schema
+    // change) via resolveJourneyState below; absent entirely when the user
+    // has no leadId at all (preserves the exact prior /onboarding/intake
+    // behavior for that case).
+    const journeyState = hasCase ? null : await resolveJourneyState(user.leadId);
+
     return res.status(200).json({
       success: true,
       userId: user._id.toString(),
@@ -359,10 +385,39 @@ async function getSessionContext(req, res, next) {
       leadId: user.leadId ? user.leadId.toString() : null,
       mustSetPassword: user.mustSetPassword || false,
       caseRole: user.caseRole || null,
+      ...(journeyState ? { journeyState } : {}),
     });
   } catch (error) {
     next(error);
   }
+}
+
+// Maps the existing Lead.status enum to a small, stable, frontend-facing
+// vocabulary — AuthGate.jsx only ever needs to branch on these 4 values,
+// never on the raw Lead.status (which can gain new values on the backend
+// without the frontend needing a change). "rejected" is deliberately its
+// own value, never folded into WAITING_FOR_CASE, even though today's
+// WaitingForApproval.jsx page renders similar copy for both — the states
+// must stay distinguishable for a future rejection-specific UI.
+const JOURNEY_STATE_BY_LEAD_STATUS = {
+  new: "CONSULTATION_REQUIRED",
+  contacted: "CONSULTATION_REQUIRED",
+  consultation_requested: "CONSULTATION_REQUIRED",
+  booked: "CONSULTATION_BOOKED",
+  consultation_scheduled: "CONSULTATION_BOOKED",
+  consultation_confirmed: "WAITING_FOR_CASE",
+  consultation_completed: "WAITING_FOR_CASE",
+  approved: "WAITING_FOR_CASE",
+  converted: "WAITING_FOR_CASE",
+  rejected: "CASE_REJECTED",
+  closed: "CASE_REJECTED",
+};
+
+async function resolveJourneyState(leadId) {
+  if (!leadId) return null;
+  const lead = await Lead.findById(leadId).select("status").lean();
+  if (!lead) return null;
+  return JOURNEY_STATE_BY_LEAD_STATUS[lead.status] || null;
 }
 
 async function updateDetails(req, res, next) {
@@ -510,6 +565,7 @@ async function acceptInvite(req, res, next) {
 
 module.exports = {
   register,
+  checkEmail,
   registerStaff,
   googleToken,
   googleOAuthStart,

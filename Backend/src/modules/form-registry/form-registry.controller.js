@@ -110,7 +110,22 @@ function deriveUiStatus({ bucket, templateStatus, decision, caseForm, agency }) 
     if (caseForm.formTemplateId?.mappingStatus === "biographic_active") return "BIOGRAPHIC_READY";
     return (caseForm.completion?.percent || 0) > 0 || caseForm.status !== "pending" ? "AUTOFILLED" : "PROVISIONED";
   }
-  if (bucket === "conditional") return decision === "NOT_APPLICABLE" ? "REFERENCE" : "CONDITIONAL_PENDING";
+  if (bucket === "conditional") {
+    if (decision === "NOT_APPLICABLE") return "REFERENCE";
+    // Approved (decision "ADD") but no CaseForm exists yet: recordConditionalDecision
+    // only provisions a CaseForm when a fully-active template is already on
+    // file (ensureAssignedForms' single-template path never routes a
+    // status:"review"/mappingStatus:"biographic_active" template - see
+    // OnDemandFormAcquisitionService.acquireForCase's own comment on why
+    // that's a deliberate, separate path). A freshly-registered form like
+    // I-131 will commonly be in exactly this state right after approval -
+    // offer the same "Acquire from USCIS" action the autoCreate bucket
+    // already uses (same endpoint, same agency gate) rather than leaving
+    // the Case Manager with an "Approved" chip and no way to actually get
+    // the form provisioned.
+    if (decision === "ADD" && agency === "USCIS") return "ACQUIRE_FROM_USCIS";
+    return "CONDITIONAL_PENDING";
+  }
   if (bucket === "laterStage") return "LATER_STAGE";
   if (bucket === "reference") return "REFERENCE";
   // bucket === "autoCreate"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
@@ -31,12 +31,6 @@ const LockIcon = () => (
   <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"
       d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-  </svg>
-);
-const GiftIcon = () => (
-  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6"
-      d="M12 8v13m0-13a4 4 0 10-4-4 4 4 0 004 4zm0 0a4 4 0 114-4 4 4 0 01-4 4zM5 8h14v3H5V8zm1 3h12v9a1 1 0 01-1 1H7a1 1 0 01-1-1v-9z"/>
   </svg>
 );
 const CheckIcon = () => (
@@ -90,9 +84,18 @@ function Field({ icon, type = "text", placeholder, value, onChange, rightEl, nam
 /* ── Main component ── */
 export default function Register() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // The anonymous eligibility-quiz session id, if this signup was reached
+  // via a cross-origin redirect from Landing (see Landing's Navbar.jsx /
+  // Login.jsx "New user? Create account"). Landing's quiz session lives in
+  // Landing's own sessionStorage, which this app's origin can't read
+  // directly, so it's carried over as a URL param instead — see
+  // Backend/src/modules/auth/auth.service.js's findLinkableLead. Safe to
+  // always send: a sessionId with no matching Lead is just a no-op.
+  const sessionId = searchParams.get("sessionId") || undefined;
   const { signup, loginWithGoogle, googleRedirectUser, clearGoogleRedirectUser, googleAuthError, clearGoogleAuthError, user, authLoading } = useAuth();
 
-  const [form,    setForm]    = useState({ fullName: "", phone: "", email: "", password: "", confirmPassword: "", referralCode: "" });
+  const [form,    setForm]    = useState({ firstName: "", lastName: "", phone: "", email: "", password: "", confirmPassword: "" });
   const [error,   setError]   = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -103,18 +106,8 @@ export default function Register() {
 
   useEffect(() => {
     document.title = "Sign Up | Immiglance";
-    // Prefill referral code from a shared link (?ref=CODE)
-    const ref = new URLSearchParams(window.location.search).get("ref");
-    if (ref) setForm((f) => ({ ...f, referralCode: ref.trim().toUpperCase() }));
   }, []);
 
-  // signInWithRedirect leaves this page and comes back to it after Google
-  // completes - pick up the result here instead of inline in handleGoogle,
-  // mirroring exactly where the old popup flow's `navigate()` call was.
-  // PHASE 3: routing is now decided exclusively by AuthGate
-  // (src/components/AuthGate.jsx) via GET /api/auth/session-context — this
-  // just lands the session on a protected route (AuthGate handles staff vs.
-  // client vs. no-case routing from there), rather than assuming "new user."
   useEffect(() => {
     if (!googleRedirectUser) return;
     clearGoogleRedirectUser();
@@ -134,8 +127,6 @@ export default function Register() {
   // this effect would fire the instant signup() sets `user` - well before
   // that pause elapses - cutting the confirmation message short. Staff have
   // no such pause to protect, so this branch is safe to resolve immediately.
-  // PHASE 3: inlines the same STAFF_ROLES check AuthGate itself uses,
-  // since postLoginDest.js's getPostLoginDest is deprecated.
   useEffect(() => {
     if (!user || authLoading) return;
     if (STAFF_ROLES.includes(user.role)) window.location.href = ADMIN_URL;
@@ -144,17 +135,18 @@ export default function Register() {
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
   async function handleSubmit() {
-    const { fullName, phone, email, password, confirmPassword, referralCode } = form;
+    const { firstName, lastName, phone, email, password, confirmPassword } = form;
     setError(""); setSuccess(""); setPendingInvite(false); setResendSent(false);
-    if (!fullName || !phone || !email || !password || !confirmPassword) { setError("All fields are required."); return; }
-    if (!/^\+?[\d\s\-]{8,15}$/.test(phone)) { setError("Enter a valid phone number."); return; }
+    if (!firstName || !lastName || !phone || !email || !password || !confirmPassword) { setError("All fields are required."); return; }
+    if (!/^\+?[\d\s-]{8,15}$/.test(phone)) { setError("Enter a valid phone number."); return; }
     if (!email.includes("@")) { setError("Enter a valid email address."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
 
     setLoading(true);
     try {
-      await signup(fullName, email, password, referralCode.trim().toUpperCase() || undefined, phone);
+      const fullName = `${firstName} ${lastName}`.trim();
+      await signup(fullName, email, password, undefined, phone, "client", sessionId);
       setSuccess("Account created! Redirecting…");
       // A brand-new signup can't have a case yet - go straight to the
       // intake wizard rather than /dashboard (which would just bounce here
@@ -192,20 +184,8 @@ export default function Register() {
   async function handleGoogle() {
     setError(""); setGoogleLoading(true);
     try {
-      // On most browsers this triggers a full-page redirect to Google -
-      // this component unmounts here on success, and the result is handled
-      // by the useEffect above once Google redirects back to this page. On
-      // Edge it opens a popup instead and resolves inline (see firebase.js's
-      // redirectWillLoseState) - no separate handling needed here either
-      // way, since context sets googleRedirectUser in both cases.
       await loginWithGoogle();
     } catch (err) {
-      // auth/popup-closed-by-user means the user dismissed the popup (Edge
-      // path only) - not an error worth surfacing.
-      if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") {
-        setGoogleLoading(false);
-        return;
-      }
       console.error("Google sign-in error:", err?.code, err?.message);
       setError("Unable to continue with Google. Please try again or use email sign-up.");
       setGoogleLoading(false);
@@ -214,21 +194,43 @@ export default function Register() {
 
   return (
     <AuthShell title="Create your account" subtitle="Join our clients on their immigration journey">
+            {/* Google — first, per the reference layout */}
+            <button type="button" onClick={handleGoogle} disabled={loading || googleLoading}
+              className="flex items-center justify-center gap-2.5 w-full py-2.5 mb-3
+                bg-card border border-border rounded-xl text-sm font-semibold text-foreground
+                hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
+              {googleLoading ? "Redirecting to Google…" : (
+                <>
+                  <GoogleIcon />
+                  Continue with Google
+                </>
+              )}
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-3 text-xs text-muted-foreground">
+              <span className="flex-1 h-px bg-border" />
+              <span className="font-medium whitespace-nowrap">or</span>
+              <span className="flex-1 h-px bg-border" />
+            </div>
+
             <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            {/* Name + Phone row — stacks on very small screens */}
+            <Field icon={<MailIcon />} type="email" name="email" placeholder="Email Address"
+              value={form.email} onChange={set("email")} autoComplete="email" />
+
+            {/* Name row — stacks on very small screens */}
             <div className="flex flex-col sm:flex-row gap-0 sm:gap-4">
               <div className="flex-1">
-                <Field icon={<UserIcon />} name="full-name" placeholder="Full Name"
-                  value={form.fullName} onChange={set("fullName")} autoComplete="name" />
+                <Field icon={<UserIcon />} name="first-name" placeholder="First Name"
+                  value={form.firstName} onChange={set("firstName")} autoComplete="given-name" />
               </div>
               <div className="flex-1">
-                <Field icon={<PhoneIcon />} name="phone" type="tel" placeholder="Phone Number"
-                  value={form.phone} onChange={set("phone")} autoComplete="tel" />
+                <Field icon={<UserIcon />} name="last-name" placeholder="Last Name"
+                  value={form.lastName} onChange={set("lastName")} autoComplete="family-name" />
               </div>
             </div>
 
-            <Field icon={<MailIcon />} type="email" name="email" placeholder="Email Address"
-              value={form.email} onChange={set("email")} autoComplete="email" />
+            <Field icon={<PhoneIcon />} type="tel" name="phone" placeholder="Phone Number"
+              value={form.phone} onChange={set("phone")} autoComplete="tel" />
 
             <PasswordField
               icon={<LockIcon />} name="password"
@@ -242,44 +244,11 @@ export default function Register() {
               autoComplete="new-password"
             />
 
-            {/* Optional referral code — gives both you and your friend 10% off */}
-            <Field
-              icon={<GiftIcon />} name="referral-code" placeholder="Referral Code (optional)"
-              value={form.referralCode}
-              onChange={(e) => setForm({ ...form, referralCode: e.target.value.toUpperCase() })}
-              autoComplete="off"
-            />
-            {form.referralCode && (
-              <p className="-mt-1.5 mb-3 text-xs text-primary font-semibold flex items-center gap-1.5">
-                <GiftIcon /> You'll get 10% off your package — and your referrer earns a reward too.
-              </p>
-            )}
-
             {success && (
               <div role="status" className="mb-3 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-2.5 flex items-center gap-2">
                 <CheckIcon /> {success}
               </div>
             )}
-
-            {/* Divider */}
-            <div className="flex items-center gap-2.5 mb-3 text-xs text-muted-foreground">
-              <span className="flex-1 h-px bg-border" />
-              <span className="font-medium whitespace-nowrap">or sign up with</span>
-              <span className="flex-1 h-px bg-border" />
-            </div>
-
-            {/* Google */}
-            <button type="button" onClick={handleGoogle} disabled={loading || googleLoading}
-              className="flex items-center justify-center gap-2.5 w-full py-2.5 mb-2.5
-                bg-card border border-border rounded-xl text-sm font-semibold text-foreground
-                hover:bg-secondary transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer">
-              {googleLoading ? "Redirecting to Google…" : (
-                <>
-                  <GoogleIcon />
-                  Continue with Google
-                </>
-              )}
-            </button>
 
             {/* Submit */}
             <button type="submit" disabled={loading || googleLoading}
@@ -321,8 +290,8 @@ export default function Register() {
             )}
 
             {/* Login redirect */}
-            <button type="button" onClick={() => navigate("/login")}
-              className="w-full py-2.5 bg-card border border-border text-foreground
+            <button type="button" onClick={() => navigate(sessionId ? `/login?sessionId=${encodeURIComponent(sessionId)}` : "/login")}
+              className="w-full mt-3 py-2.5 bg-card border border-border text-foreground
                 text-sm font-semibold rounded-xl hover:bg-secondary
                 transition-all duration-200 cursor-pointer">
               <span className="inline-flex items-center gap-1.5">Already have an account? Sign in <ArrowRightIcon /></span>
