@@ -156,7 +156,11 @@ const checklistItemSchema = new mongoose.Schema(
     // questionnaire's checklistRole) threw a Mongoose ValidationError the moment
     // it was pushed onto checklistItems/documentChecklist — i.e. K-1 checklists
     // could never be persisted onto a case at all.
-    targetRole: { type: String, enum: ["employee", "employer", "client", "both", "business_plan", "case_manager", "team_lead", "admin", "petitioner", "beneficiary", ""], default: "client", index: true },
+    // "joint_sponsor" - the I-864 Affidavit of Support may be filed by a
+    // third party distinct from the petitioner (used when the petitioner
+    // alone doesn't meet the income threshold, e.g. IR-1/CR-1/F2A/F2B) -
+    // additive, every existing value/consumer unaffected.
+    targetRole: { type: String, enum: ["employee", "employer", "client", "both", "business_plan", "case_manager", "team_lead", "admin", "petitioner", "beneficiary", "joint_sponsor", ""], default: "client", index: true },
     status: {
       type: String,
       enum: ["pending", "requested", "submitted", "uploaded", "approved", "rejected"],
@@ -176,8 +180,48 @@ const checklistItemSchema = new mongoose.Schema(
     // when the document applies once it's merged into the case-level
     // checklist, since the live questionnaire re-fetch isn't always used.
     condition: mongoose.Schema.Types.Mixed,
+    // Only present for criterion-grouped checklists (currently EB-1A — see
+    // config/eb1a.js's toCaseChecklistItems()). Groups this item under one
+    // of Case.criteriaStatus's entries below; undefined for every other
+    // visa's checklist items.
+    criterionId: { type: String, index: true },
   },
   { _id: true }
+);
+
+// Manual, staff-only per-criterion verdict for a criterion-grouped checklist
+// (currently EB-1A's 10 evidentiary criteria). Deliberately separate from
+// checklistItemSchema above: a criterion is satisfied or not as a judgment
+// call over ALL of its evidence items together, not a property of any one
+// item, and must never be auto-derived from upload count alone (see
+// eb1aChecklist.service.js's buildCriteriaView — "evidence uploaded" and
+// "criterion qualified" are intentionally different statuses here).
+const criterionStatusSchema = new mongoose.Schema(
+  {
+    criterionId: { type: String, required: true },
+    visaType: { type: String, default: "EB1A" },
+    status: {
+      type: String,
+      enum: [
+        "NOT_STARTED",
+        "IN_PROGRESS",
+        "EVIDENCE_UPLOADED",
+        "READY_FOR_REVIEW",
+        "QUALIFIED",
+        "NOT_APPLICABLE",
+        "COMPARABLE_EVIDENCE_REVIEW",
+        "COMPARABLE_EVIDENCE_ACCEPTED",
+        "COMPARABLE_EVIDENCE_REJECTED",
+        "REVIEW_REQUIRED",
+      ],
+      default: "NOT_STARTED",
+    },
+    comparableEvidenceDescription: String,
+    reviewerNotes: String,
+    markedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    markedAt: Date,
+  },
+  { _id: false }
 );
 
 const referenceSchema = new mongoose.Schema(
@@ -214,7 +258,7 @@ const questionnaireReferenceSchema = new mongoose.Schema(
     responseId: String,
     questionnaireTemplateId: { type: mongoose.Schema.Types.ObjectId },
     title: String,
-    targetRole: { type: String, enum: ["employer", "employee", "client", "business_plan", "case_manager", "team_lead", "admin", "petitioner", "beneficiary", ""], default: "" },
+    targetRole: { type: String, enum: ["employer", "employee", "client", "business_plan", "case_manager", "team_lead", "admin", "petitioner", "beneficiary", "joint_sponsor", ""], default: "" },
     participantId: { type: mongoose.Schema.Types.ObjectId, index: true },
     participantRole: { type: String, index: true },
     // Checklist lifecycle: not_started -> in_progress -> completed -> submitted -> (returned -> in_progress) | approved.
@@ -392,7 +436,7 @@ const caseParticipantSchema = new mongoose.Schema(
   {
     role: {
       type: String,
-      enum: ["employer", "employee", "beneficiary", "dependent", "petitioner", "client", "business", "case_manager", "team_lead", "admin", ""],
+      enum: ["employer", "employee", "beneficiary", "dependent", "petitioner", "joint_sponsor", "client", "business", "case_manager", "team_lead", "admin", ""],
       required: true,
       index: true,
     },
@@ -552,6 +596,24 @@ const caseSchema = new mongoose.Schema(
       acceptedAt: Date,
       invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
+    // I-864 joint sponsor - a third party distinct from petitionerUser,
+    // added only when the petitioner/sponsor alone doesn't meet the I-864
+    // income threshold. Mirrors beneficiaryUser/beneficiaryInvite's own
+    // self-service-invite shape exactly, so a joint sponsor can complete
+    // their own checklist independently without the petitioner relaying
+    // their financial information. Sponsor-by-default (no joint sponsor
+    // added yet) is simply petitionerUser - this field stays unset in that
+    // case, never a duplicate person record.
+    jointSponsorUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    jointSponsorInvite: {
+      email: { type: String, lowercase: true, trim: true },
+      name: String,
+      phone: String,
+      status: { type: String, enum: ["not_sent", "sent", "accepted", "expired", ""], default: "" },
+      invitedAt: Date,
+      acceptedAt: Date,
+      invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     // Mirrors employeeCompletionMode's request-level concept ("employer_completes"
     // vs "invite"), but persisted on the case since the family flow has no
     // separate questionnaireData.masterData assignment-mode convention to piggyback on.
@@ -633,6 +695,23 @@ const caseSchema = new mongoose.Schema(
 
     documentChecklist: [checklistItemSchema],
     checklistItems: [checklistItemSchema],
+    // Manual per-criterion review verdicts for a criterion-grouped checklist
+    // (currently EB-1A only — see criterionStatusSchema above and
+    // eb1aChecklist.service.js). Empty for every other visa's cases.
+    criteriaStatus: [criterionStatusSchema],
+    // "3 qualifying criteria met" is only the evidentiary threshold, not
+    // overall case approval — kept as its own explicit stage so nothing
+    // conflates the two (see eb1aChecklist.service.js / spec's Test 10).
+    criteriaBasedReview: {
+      finalMeritsReviewStatus: {
+        type: String,
+        enum: ["NOT_STARTED", "IN_REVIEW", "SUPPORTED", "NEEDS_MORE_EVIDENCE", "NOT_SUPPORTED", "ATTORNEY_REVIEW"],
+        default: "NOT_STARTED",
+      },
+      finalMeritsNotes: String,
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      updatedAt: Date,
+    },
     documentReferences: [{ type: mongoose.Schema.Types.ObjectId, ref: "Document" }],
     googleDrive: {
       syncStatus: { type: String, enum: ["not_started", "queued", "syncing", "synced", "failed", "not_configured"], default: "not_started", index: true },

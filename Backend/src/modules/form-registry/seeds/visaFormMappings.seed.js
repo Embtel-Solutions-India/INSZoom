@@ -15,8 +15,19 @@ const AUTO = "AUTO_CREATE";
 const COND = "CONDITIONAL";
 const LATER = "LATER_STAGE";
 const REF = "REFERENCE";
+const NA = "NOT_APPLICABLE";
 
 const STANDALONE = "STANDALONE_FORM";
+// FORM_COMPONENT: a page/section embedded inside another form's SAME PDF
+// (e.g. I-129's H/O-P/L/Q/R/E Classification Supplements and the H-1B Data
+// Collection Supplement - confirmed via docs/forms/H0_I-129_template_seed_prompt.md
+// that these are pages inside the one I-129 USCISFormTemplate, never their
+// own PDF/template). Never independently provisionable - see NOT_APPLICABLE
+// below.
+const FORM_COMPONENT = "FORM_COMPONENT";
+// SUPPLEMENT: a genuinely separate USCIS form/PDF (its own USCISFormTemplate)
+// that is nonetheless legally dependent on a parent form and can never be
+// filed on its own (I-130A, I-539A, I-864A, I-918 Supplement A/B).
 const SUPPLEMENT = "SUPPLEMENT";
 const ONLINE = "ONLINE_APPLICATION";
 const GOVDOC = "GOVERNMENT_DOCUMENT";
@@ -58,23 +69,28 @@ function AUTO_CREATE_ALIAS(t) { return t === AUTO ? AUTO : "__never__"; }
 function i129Petition(visaType, opts = {}) {
   return m(visaType, "I-129", "Petition for a Nonimmigrant Worker", "USCIS", opts.provisioningType || AUTO, STANDALONE, { formTemplateFormCode: "i-129", initialCaseCreation: true, ...opts });
 }
+// componentType FORM_COMPONENT + provisioningType NOT_APPLICABLE: these are
+// pages inside the one I-129 PDF (never their own CaseForm/template), so
+// they must never be independently resolvable/provisionable/visible - see
+// FORM_COMPONENT's definition above. initialCaseCreation left false (they
+// were never real CaseForm-creation triggers to begin with).
 function i129HSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129OPSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129LSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129QSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, ...opts });
+  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129RSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, ...opts });
+  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129ESupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129", notes: "Only when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
+  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
 }
 function ds160(visaType, opts = {}) {
   return m(visaType, "DS-160", "Online Nonimmigrant Visa Application", "DOS", opts.provisioningType || COND, ONLINE, {
@@ -130,7 +146,7 @@ const add = (...items) => mappings.push(...items);
 add(
   i129Petition("H-1B", { verificationSource: "uscis.gov/i-129", verificationDate: new Date(), sourceVerified: true }),
   i129HSupplement("H-1B"),
-  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package for H-1B/H-1B1." }),
+  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF for H-1B/H-1B1, not a standalone form or separate CaseForm." }),
   m("H-1B", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true, notes: "LCA - includes the ETA-9035E electronic filing variant of the same DOL application." }),
   ds160("H-1B"),
   i539("H-1B"),
@@ -140,14 +156,14 @@ add(
 
 add(
   i129Petition("H-1B1 Chile", { provisioningType: COND, initialCaseCreation: false, notes: "Only where the USCIS COS/extension route applies; H-1B1 is more commonly filed via consular DS-160, not I-129." }),
-  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129", notes: "Only when I-129 is actually used for this H-1B1 case." }),
+  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when I-129 is actually used for this H-1B1 case." }),
   m("H-1B1 Chile", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Chile", { provisioningType: AUTO, initialCaseCreation: true, notes: "Consular visa route is the typical H-1B1 path." }),
   i907("H-1B1 Chile")
 );
 add(
   i129Petition("H-1B1 Singapore", { provisioningType: COND, initialCaseCreation: false }),
-  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129" }),
+  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129" }),
   m("H-1B1 Singapore", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Singapore", { provisioningType: AUTO, initialCaseCreation: true }),
   i907("H-1B1 Singapore")

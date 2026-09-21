@@ -55,6 +55,7 @@ function participantAssignee(caseData, role, participantId) {
   if (normalizedRole === "employee") return caseData?.employeeUser || caseData?.user || caseData?.clientProfile;
   if (normalizedRole === "beneficiary") return caseData?.beneficiaryUser || caseData?.user || caseData?.clientProfile;
   if (normalizedRole === "petitioner") return caseData?.petitionerUser || caseData?.user || caseData?.clientProfile;
+  if (normalizedRole === "joint_sponsor") return caseData?.jointSponsorUser || caseData?.user || caseData?.clientProfile;
   return caseData?.user || caseData?.clientProfile;
 }
 

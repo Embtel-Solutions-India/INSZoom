@@ -15,6 +15,7 @@
 
 const k1 = require("../family-workflow/questionnaires/k1");
 const k3 = require("../family-workflow/questionnaires/k3");
+const familyBasedImmigrantPetition = require("../family-workflow/questionnaires/familyBasedImmigrantPetition");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -151,11 +152,93 @@ function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSect
   };
 }
 
+// I-864 joint sponsor - a third party distinct from the petitioner,
+// collected only when the petitioner alone doesn't meet the income
+// threshold. Its own role/checklist (not folded into "petitioner") per the
+// new "joint_sponsor" enum value on Case.js/Questionnaire.js.
+function buildFamilyJointSponsorChecklist(definition, visaTypeKey, title, docSectionTitle) {
+  const visibility = { roles: ["joint_sponsor", ...STAFF_ROLES], portals: ["client", "admin"] };
+  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "joint_sponsor", visibility, definition.REPEATABLE_FIELDS);
+  const docs = familyDocumentQuestions(definition.jointSponsorDocuments, docSectionTitle, visibility);
+  return {
+    key: `${definition.key}_joint_sponsor_checklist`,
+    title,
+    visaType: visaTypeKey,
+    checklistRole: "joint_sponsor",
+    // Not isDefault - only assigned when the petitioner's own I-864 income
+    // doesn't meet the threshold and a joint sponsor is actually added to
+    // the case, mirroring i131Checklist.js's own "never isDefault, assigned
+    // explicitly" convention for a conditionally-needed checklist.
+    isDefault: false,
+    description: "",
+    sections: [...fieldResult.sectionOrder, docSectionTitle],
+    questions: [...fieldResult.questions, ...docs],
+  };
+}
+
+// Every visaType familyBased() (Backend/src/modules/form-registry/seeds/
+// visaFormMappings.seed.js) already generates a correct I-130/I-864/I-485
+// VisaFormMapping package for - the checklist content (I-130/Green Card/
+// I-864, all real, business-supplied, see familyBasedImmigrantPetition.js)
+// has no visa-specific variation, so every one of them gets the same 5
+// checklist templates. Each of the THREE separate source definitions
+// (i130/greenCard/i864) needs its own key override per visaType (their
+// shared base `key`s - "i130"/"green_card"/"i864" - would otherwise collide
+// across all 12 visa types, exactly the bug fixed earlier this session for
+// the single merged definition).
+const FAMILY_VISA_TYPES = ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"];
+function visaSlug(visaType) {
+  return visaType.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+function withKey(definition, key) {
+  return { ...definition, key };
+}
+
+// The business's explicit composition rule (never "assign all three
+// checklists always"): I-130's beneficiary checklist and the Green Card
+// checklist collect materially the same beneficiary information (identity/
+// address/marital history/children) from the same real intake - assigning
+// both would ask the beneficiary to answer it twice. Petition Only never
+// needs the Green Card/I-864 checklists at all (nothing beyond the petition
+// itself is being filed yet).
+//
+// Returns the exact Questionnaire.key values FAMILY_CHECKLIST_DEFINITIONS
+// above actually produces for this visaType, so a caller (case creation,
+// the processing-path-change handler) can look them up and assign via the
+// shared dedup-safe helper without re-deriving the key formula itself.
+function resolveFamilyChecklistKeys(visaType, processingPath) {
+  const slug = visaSlug(visaType);
+  const i130Petitioner = `i130_${slug}_petitioner_checklist`;
+  const i130Beneficiary = `i130_${slug}_beneficiary_checklist`;
+  const greenCardBeneficiary = `green_card_${slug}_beneficiary_checklist`;
+  const i864Sponsor = `i864_${slug}_petitioner_checklist`;
+  if (processingPath === "ADJUSTMENT_OF_STATUS" || processingPath === "CONSULAR") {
+    return [i130Petitioner, greenCardBeneficiary, i864Sponsor];
+  }
+  // PETITION_ONLY, "", or anything else not yet chosen - petition-only is
+  // the safe default (never silently assumes the client wants the fuller
+  // Green Card package).
+  return [i130Petitioner, i130Beneficiary];
+}
+
 const FAMILY_CHECKLIST_DEFINITIONS = [
   buildFamilyPetitionerChecklist(k1, "K1", "Information Required from U.S Sponsor/Petitioner (Required from US Citizen)", "From US Sponsor/ Petitioner:"),
   buildFamilyBeneficiaryChecklist(k1, "K1", "Information Required from Beneficiary (Required from Fiancee of US Citizen)", "Documents required from Beneficiary:"),
   buildFamilyPetitionerChecklist(k3, "K3", "Information Required from U.S Sponsor/Petitioner (Required from US Citizen)", "From US Sponsor/ Petitioner:"),
   buildFamilyBeneficiaryChecklist(k3, "K3", "Information Required from Beneficiary (Required from Spouse of US Citizen)", "Documents required from Beneficiary:"),
+  ...FAMILY_VISA_TYPES.flatMap((visaType) => {
+    const slug = visaSlug(visaType);
+    const i130Definition = withKey(familyBasedImmigrantPetition.i130, `i130_${slug}`);
+    const greenCardDefinition = withKey(familyBasedImmigrantPetition.greenCard, `green_card_${slug}`);
+    const i864Definition = withKey(familyBasedImmigrantPetition.i864, `i864_${slug}`);
+    return [
+      buildFamilyPetitionerChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Petitioner Information", "Documents required from Petitioner:"),
+      buildFamilyBeneficiaryChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Beneficiary Information", "Documents required from Beneficiary:"),
+      buildFamilyBeneficiaryChecklist(greenCardDefinition, visaType, "Green Card Checklist", "Documents Required:"),
+      buildFamilyPetitionerChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Sponsor/Petitioner", "List of documents from the petitioner:"),
+      buildFamilyJointSponsorChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Joint Sponsor", "Documents Required from Joint Sponsor:"),
+    ];
+  }),
 ];
 
-module.exports = { FAMILY_CHECKLIST_DEFINITIONS };
+module.exports = { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, resolveFamilyChecklistKeys, visaSlug };

@@ -185,6 +185,11 @@ router.post("/:id/request-documents", authenticate, authorizeRoles(...managerRol
 router.post("/:id/checklist/:idx/upload", authenticate, ctrl.checklistUploadMiddleware, ctrl.uploadChecklistFile);
 router.put("/:id/checklist/:idx", authenticate, authorizeRoles(...staffRoles), ctrl.updateChecklistItem);
 router.post("/:id/checklist/generate", authenticate, authorizeRoles(...staffRoles), ctrl.generateCaseChecklist);
+router.post("/:id/checklist/:idx/link-existing-document", authenticate, authorizeRoles(...staffRoles), ctrl.linkExistingChecklistDocument);
+
+router.get("/:id/eb1a-criteria", authenticate, ctrl.getEb1aCriteria);
+router.put("/:id/eb1a-criteria/:criterionId", authenticate, authorizeRoles(...staffRoles), ctrl.updateEb1aCriterion);
+router.put("/:id/final-merits", authenticate, authorizeRoles(...staffRoles), ctrl.updateEb1aFinalMerits);
 
 router.put("/:id/plan", authenticate, ctrl.updatePlan);
 router.put("/:id/sign-declaration", authenticate, ctrl.signDeclaration);

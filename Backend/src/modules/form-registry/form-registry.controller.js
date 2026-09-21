@@ -176,28 +176,44 @@ function toOverviewEntry(bucket, entry, caseFormsByCode) {
 // (that's listCaseForms' narrower job, still used as-is by the interactive
 // workspace/renderCaseForm). Read-only; provisioning/acquisition are
 // separate POST actions below and in uscis-form-import.
+//
+// Independent-USCIS-forms-only, per the VisaFormMapping architecture
+// correction: this is the Case Manager/Team Lead/Admin-facing "USCIS Forms"
+// list (all three share this one endpoint/component), so it must never show
+// a USCIS supplement (I-129 H Classification Supplement, ...), a genuinely
+// dependent USCIS form (I-130A, I-539A, I-864A, I-918 Supplement A/B), or a
+// non-USCIS document (DS-160, ETA-9035, I-20, I-983) as if it were an
+// independently filed form. Uses resolveVisaFormMappings (parent-visa-aware
+// - e.g. P-1A inherits P-1's I-129 when P-1A has no mapping of its own) and
+// filters through isIndependentUSCISForm before building rows.
 exports.getFormsOverview = async (req, res, next) => {
   try {
     const caseData = await loadAuthorizedCase(req);
-    const resolved = await visaFormMappingService.resolveApplicableMappings(caseData);
+    const resolved = await visaFormMappingService.resolveVisaFormMappings(caseData);
+    const independentEntries = visaFormMappingService.independentFormsFrom(resolved);
     const existingForms = await CaseForm.find({ caseId: caseData._id })
       .select("formCode status formEditionDate completion formTemplateId")
       .populate({ path: "formTemplateId", select: "mappingStatus" })
       .lean();
     const caseFormsByCode = new Map(existingForms.map((form) => [String(form.formCode).toUpperCase(), form]));
 
-    const items = [
-      ...resolved.autoCreate.map((entry) => toOverviewEntry("autoCreate", entry, caseFormsByCode)),
-      ...resolved.conditional.map((entry) => toOverviewEntry("conditional", entry, caseFormsByCode)),
-      ...resolved.laterStage.map((entry) => toOverviewEntry("laterStage", entry, caseFormsByCode)),
-      ...resolved.reference.map((entry) => toOverviewEntry("reference", entry, caseFormsByCode)),
-    ].sort((left, right) => (left.displayOrder || 0) - (right.displayOrder || 0) || String(left.formNumber).localeCompare(String(right.formNumber)));
+    const bucketByMappingId = new Map();
+    for (const bucketName of ["autoCreate", "conditional", "laterStage", "reference"]) {
+      for (const entry of resolved[bucketName]) bucketByMappingId.set(String(entry.mapping._id), bucketName);
+    }
+
+    const items = independentEntries
+      .map((entry) => toOverviewEntry(bucketByMappingId.get(String(entry.mapping._id)), entry, caseFormsByCode))
+      .sort((left, right) => (left.displayOrder || 0) - (right.displayOrder || 0) || String(left.formNumber).localeCompare(String(right.formNumber)));
 
     res.json({
       success: true,
       data: {
         items,
-        diagnostics: visaFormMappingService.templateDiagnostics(resolved.autoCreate),
+        diagnostics: visaFormMappingService.templateDiagnostics(resolved.autoCreate.filter((entry) => visaFormMappingService.isIndependentUSCISForm(entry.mapping))),
+        resolvedVisaType: resolved.resolvedVisaType,
+        usedParentFallback: resolved.usedParentFallback,
+        unresolved: resolved.unresolved,
         // Bulk "provision + curated-autofill everything available right
         // now" already exists as its own well-tested endpoint
         // (CaseLifecycleOrchestrator.generateForms, wired to the Forms

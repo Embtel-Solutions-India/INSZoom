@@ -10,6 +10,7 @@ import useCaseDocumentChecklist from "../../hooks/useCaseDocumentChecklist";
 import useCaseChecklists from "../../hooks/useCaseChecklists";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import { buildCaseCategories } from "../../components/DocumentChecklist";
+import Eb1aCriteriaChecklist from "../../components/Eb1aCriteriaChecklist";
 import ChecklistItemRow from "../../components/checklist/ChecklistItemRow";
 import DocumentUploadControl from "../../components/checklist/DocumentUploadControl";
 import StatusLegend from "../../components/checklist/StatusLegend";
@@ -703,6 +704,23 @@ export default function Documents() {
   // this popup at all.
   const employerSectionsComplete = employerBusinessPlanSections.length > 0 && !employerBusinessPlanSections.some((section) => section.items.some(itemIsMissingRequired));
   const showHandoffModal = showHandoffJunction && !activeEmployeeMode && employerSectionsComplete && !handoffModalDismissed;
+
+  // EB-1A is self-petitioned/single-person and legally a "satisfy at least 3
+  // of 10 criteria" classification, not a flat document list — it gets its
+  // own criterion-grouped checklist page instead of falling through to the
+  // generic category-grouped `sections` render below (or to whichever
+  // caseRole-specific workspace would otherwise apply). See
+  // config/eb1a.js / eb1aChecklist.service.js on the backend.
+  const isEb1aCase = String(visaType || "").replace(/[\s_-]+/g, "").toUpperCase() === "EB1A";
+  if (isEb1aCase && activeCaseId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+          <Eb1aCriteriaChecklist caseId={activeCaseId} />
+        </div>
+      </div>
+    );
+  }
 
   // Phase 9 — the caseRole=principal/employee/beneficiary child-Case
   // architecture. Additive: only engages for a genuinely new-architecture

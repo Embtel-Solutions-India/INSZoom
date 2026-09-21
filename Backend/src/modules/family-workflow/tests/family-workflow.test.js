@@ -6,7 +6,7 @@ const familyRoutes = require("../family-workflow.routes");
 const employmentCtrl = require("../../employment-workflow/employment-workflow.controller");
 const employmentRoutes = require("../../employment-workflow/employment-workflow.routes");
 const familyRegistry = require("../questionnaires/registry");
-const { FAMILY_CHECKLIST_DEFINITIONS } = require("../../questionnaires/familyChecklists");
+const { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, resolveFamilyChecklistKeys } = require("../../questionnaires/familyChecklists");
 const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("../../questionnaires/employmentChecklists");
 const { VISA_TYPES } = require("../../../config/visaTypes");
 const Questionnaire = require("../../../models/Questionnaire");
@@ -203,12 +203,62 @@ test("family registry matches K-1/K-3 and nothing else", () => {
   assert.equal(familyRegistry.hasDefinition("O1"), false);
 });
 
-test("family templates: 4 templates registered (K1 real content x petitioner/beneficiary, K3 x petitioner/beneficiary)", () => {
-  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, 4);
-  FAMILY_CHECKLIST_DEFINITIONS.forEach((def) => {
+test("family templates: 4 K1/K3 templates registered (K1 real content x petitioner/beneficiary, K3 x petitioner/beneficiary)", () => {
+  const k1k3Definitions = FAMILY_CHECKLIST_DEFINITIONS.filter((def) => ["K1", "K3"].includes(def.visaType));
+  assert.equal(k1k3Definitions.length, 4);
+  k1k3Definitions.forEach((def) => {
     assert.ok(["petitioner", "beneficiary"].includes(def.checklistRole));
-    assert.ok(["K1", "K3"].includes(def.visaType));
   });
+});
+
+// I-130/Green Card/I-864 correction: three SEPARATE real checklists (not
+// one merged one), each family visaType (familyBased()'s full 12-type list
+// in visaFormMappings.seed.js) gets 5 templates - I-130 petitioner, I-130
+// beneficiary, Green Card (beneficiary), I-864 sponsor, I-864 joint sponsor.
+test("family templates: every familyBased() visaType gets 5 I-130/Green-Card/I-864 checklists (60 total)", () => {
+  const familyBasedDefinitions = FAMILY_CHECKLIST_DEFINITIONS.filter((def) => FAMILY_VISA_TYPES.includes(def.visaType));
+  assert.equal(familyBasedDefinitions.length, FAMILY_VISA_TYPES.length * 5);
+  for (const visaType of FAMILY_VISA_TYPES) {
+    const rolesForVisa = familyBasedDefinitions.filter((def) => def.visaType === visaType).map((def) => def.checklistRole);
+    assert.deepEqual(rolesForVisa.sort(), ["beneficiary", "beneficiary", "joint_sponsor", "petitioner", "petitioner"]);
+  }
+  // Keys must be unique across all 12 visa types x 3 source definitions
+  // (i130/green_card/i864) even though each visaType shares identical
+  // content - a real regression caught during implementation (all 4
+  // visa types initially collided on the same literal key when there was
+  // only one merged definition).
+  const keys = FAMILY_CHECKLIST_DEFINITIONS.map((def) => def.key);
+  assert.equal(new Set(keys).size, keys.length);
+  // The joint sponsor checklist is conditionally assigned (only when a
+  // joint sponsor is actually added to the case), never a default
+  // checklist every case gets - mirrors i131Checklist.js's convention.
+  familyBasedDefinitions.filter((def) => def.checklistRole === "joint_sponsor").forEach((def) => {
+    assert.equal(def.isDefault, false);
+  });
+});
+
+// The business's explicit composition rule: Petition Only never gets the
+// Green Card/I-864 checklists; the Green Card path never gets the I-130
+// beneficiary checklist (Green Card's own beneficiary questionnaire is a
+// superset of it - never ask the beneficiary the same thing twice).
+test("resolveFamilyChecklistKeys composes checklists by filing path, never all three checklists at once", () => {
+  const petitionOnly = resolveFamilyChecklistKeys("IR-1", "");
+  assert.deepEqual(petitionOnly, ["i130_ir1_petitioner_checklist", "i130_ir1_beneficiary_checklist"]);
+
+  for (const processingPath of ["ADJUSTMENT_OF_STATUS", "CONSULAR"]) {
+    const greenCardPath = resolveFamilyChecklistKeys("IR-1", processingPath);
+    assert.deepEqual(greenCardPath, ["i130_ir1_petitioner_checklist", "green_card_ir1_beneficiary_checklist", "i864_ir1_petitioner_checklist"]);
+    assert.ok(!greenCardPath.includes("i130_ir1_beneficiary_checklist"), "Green Card path must never also assign the I-130 beneficiary checklist");
+  }
+
+  // Every key resolveFamilyChecklistKeys can return must correspond to a
+  // real, registered template - no dangling reference.
+  const allKeys = new Set(FAMILY_CHECKLIST_DEFINITIONS.map((def) => def.key));
+  for (const visaType of FAMILY_VISA_TYPES) {
+    for (const processingPath of ["", "PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR"]) {
+      resolveFamilyChecklistKeys(visaType, processingPath).forEach((key) => assert.ok(allKeys.has(key), `${key} must be a registered checklist`));
+    }
+  }
 });
 
 // K-3 real content (this phase) — its own separate templates, Q&A identical

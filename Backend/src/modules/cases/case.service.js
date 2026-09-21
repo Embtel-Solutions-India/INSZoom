@@ -160,6 +160,9 @@ function canAccessCase(user, caseData) {
   // handled earlier, in the restricted-portal-role branch above (a
   // "beneficiary" role never reaches this line).
   if (sameId(caseData.petitionerUser, user._id)) return true;
+  // I-864 joint sponsor - same one-case-multiple-participants shape as
+  // petitionerUser immediately above, own field.
+  if (sameId(caseData.jointSponsorUser, user._id)) return true;
   return false;
 }
 
@@ -199,6 +202,16 @@ function applyCaseRoleFilter(filter, user) {
         { beneficiaryUser: user._id },
         { user: user._id },
         ...(user.email ? [{ "beneficiaryInvite.email": user.email }] : []),
+      ],
+    }];
+  }
+  // I-864 joint sponsor - mirrors the beneficiary branch immediately above
+  // under its own field names (Case.jointSponsorUser/jointSponsorInvite).
+  else if (role === "joint_sponsor") {
+    filter.$and = [...(filter.$and || []), {
+      $or: [
+        { jointSponsorUser: user._id },
+        ...(user.email ? [{ "jointSponsorInvite.email": user.email }] : []),
       ],
     }];
   }

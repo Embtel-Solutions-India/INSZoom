@@ -20,6 +20,16 @@ const questionnaireService = require("../questionnaires/questionnaire.service");
 const inviteTokenService = require("../auth/employeeInvite.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const registry = require("./questionnaires/registry");
+const familyChecklists = require("../questionnaires/familyChecklists");
+// Same find-or-create-client-user helpers case.controller.js's createCase
+// already uses for the employer/employee path - reused here rather than
+// re-invented, so a newly created petitioner gets the identical account
+// setup (invite token, referral code) any other client does.
+const { generateOpaqueToken, hashToken } = require("../auth/password.service");
+const { generateUniqueReferralCode } = require("../../utils/referralCode");
+
+const VALID_PROCESSING_PATHS = new Set(["PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR", ""]);
+const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 function clean(value) {
   return value === undefined || value === null ? "" : String(value).trim();
@@ -139,31 +149,56 @@ async function sendBeneficiaryInvite(caseData, { email, name, phone }, actorUser
 // assignQuestionnaires dedup-then-assign pattern. Never creates a
 // Questionnaire template — a missing template is a reported skip, not a
 // fallback to creation.
+// K-1/K-3 (registry.hasDefinition true) keep the original simple
+// "one petitioner checklist + one beneficiary checklist, matched by
+// checklistRole+visaType" behavior, unchanged. Every other family visaType
+// (IR-1/CR-1/F2A/F2B/IR-2..5/CR-2/F1/F3/F4 - familyBased() in
+// visaFormMappings.seed.js) instead uses familyChecklists.js's
+// resolveFamilyChecklistKeys(), which returns the EXACT checklist keys for
+// the case's chosen filing path (Case.processingPath) - I-130-only for
+// Petition Only, or I-130 petitioner + Green Card + I-864 sponsor for the
+// Green Card path (deliberately never the I-130 beneficiary checklist
+// alongside Green Card - see familyChecklists.js's own comment). Looking
+// up by exact key (not a checklistRole+visaType regex) also avoids any
+// ambiguity between the three separate checklists that can share a
+// checklistRole for the same visaType.
 async function ensureFamilyChecklistReferences(caseData, user, req, options = {}) {
   const results = [];
   const visaType = String(caseData.visaType || "").replace(/[-\s]/g, "").toUpperCase();
-  for (const targetRole of ["petitioner", "beneficiary"]) {
+
+  const assign = async (targetRole, questionnaire) => {
+    if (!questionnaire) return null;
     const hasActive = (caseData.questionnaireReferences || []).some(
-      (ref) => ref.targetRole === targetRole && ref.active !== false
+      (ref) => String(ref.questionnaireId) === String(questionnaire._id) && ref.active !== false
     );
-    if (hasActive) { results.push({ targetRole, status: "already_present" }); continue; }
-
-    const questionnaire = await Questionnaire.findOne({
-      status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true,
-      isDefault: true, checklistRole: targetRole,
-      $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }],
-    }).sort({ version: -1 });
-
-    if (!questionnaire) { results.push({ targetRole, status: "template_not_found" }); continue; }
-
-    // options.dryRun (backfill script only — the live createFamilyCase call
-    // site never passes it, so its behavior is unchanged): report what would
-    // be assigned without writing anything.
-    if (options.dryRun) { results.push({ targetRole, status: "would_assign", questionnaireId: questionnaire._id }); continue; }
-
-    const assignedTo = targetRole === "petitioner" ? caseData.petitionerUser : (caseData.beneficiaryUser || caseData.petitionerUser);
-    await questionnaireService.assignQuestionnaire(questionnaire, { caseId: caseData._id, targetRole, assignedTo }, user, req);
+    if (hasActive) { results.push({ targetRole, status: "already_present", questionnaireId: questionnaire._id }); return null; }
+    if (options.dryRun) { results.push({ targetRole, status: "would_assign", questionnaireId: questionnaire._id }); return null; }
+    const assignedTo = targetRole === "petitioner" ? caseData.petitionerUser
+      : targetRole === "joint_sponsor" ? (caseData.jointSponsorUser || caseData.petitionerUser)
+      : (caseData.beneficiaryUser || caseData.petitionerUser);
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole, assignedTo }, user, req);
     results.push({ targetRole, status: "assigned", questionnaireId: questionnaire._id });
+    return questionnaire;
+  };
+
+  if (registry.hasDefinition(visaType)) {
+    for (const targetRole of ["petitioner", "beneficiary"]) {
+      const questionnaire = await Questionnaire.findOne({
+        status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true,
+        isDefault: true, checklistRole: targetRole,
+        $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }],
+      }).sort({ version: -1 });
+      if (!questionnaire) { results.push({ targetRole, status: "template_not_found" }); continue; }
+      await assign(targetRole, questionnaire);
+    }
+    return results;
+  }
+
+  const keys = familyChecklists.resolveFamilyChecklistKeys(caseData.visaType, caseData.processingPath);
+  for (const key of keys) {
+    const questionnaire = await Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) { results.push({ key, status: "template_not_found" }); continue; }
+    await assign(questionnaire.checklistRole, questionnaire);
   }
   return results;
 }
@@ -188,10 +223,48 @@ exports.getMyWorkspace = async (req, res, next) => {
 
 exports.createFamilyCase = async (req, res, next) => {
   try {
-    // Only a non-beneficiary account may initiate — the U.S. citizen
-    // petitioner, never the invited beneficiary (mirrors the employer-side
-    // employee-can-never-initiate rule).
+    // The route itself (family-workflow.routes.js) restricts this to staff
+    // roles - a Case Manager creates the case ON BEHALF OF the actual
+    // petitioner, who is never the logged-in staff user. petitionerUser is
+    // therefore resolved from req.body's petitioner contact info (find an
+    // existing client User by email, else create one with a setup-invite
+    // token), mirroring case.controller.js's createCase's own
+    // find-or-create-clientUser pattern exactly - req.user._id only ever
+    // becomes createdBy below, never petitionerUser. (isFamilyCapable's
+    // "never a beneficiary account" check is kept as a defensive no-op for
+    // this staff-only route; it was written for a since-superseded
+    // client-self-initiation design.)
     if (!isFamilyCapable(req.user)) return res.status(403).json({ success: false, message: "Only the petitioner can start a family-visa case" });
+    const petitionerEmail = clean(req.body.petitioner?.email || req.body.petitionerEmail || req.body.clientEmail).toLowerCase();
+    const petitionerName = req.body.petitioner?.name || req.body.petitionerName || req.body.clientName;
+    const petitionerPhone = clean(req.body.petitioner?.phone || req.body.petitionerPhone || req.body.clientPhone);
+    if (!petitionerEmail) return res.status(400).json({ success: false, message: "Petitioner email is required" });
+
+    let petitionerUser = await User.findOne({ email: petitionerEmail });
+    let petitionerSetupToken = null;
+    if (petitionerUser) {
+      petitionerUser.name = petitionerUser.name || petitionerName;
+      petitionerUser.displayName = petitionerUser.displayName || petitionerName;
+      if (petitionerPhone && !petitionerUser.phone) petitionerUser.phone = petitionerPhone;
+      await petitionerUser.save();
+    } else {
+      petitionerSetupToken = generateOpaqueToken();
+      const referralCode = await generateUniqueReferralCode(User);
+      [petitionerUser] = await User.create([{
+        email: petitionerEmail,
+        name: petitionerName,
+        displayName: petitionerName,
+        phone: petitionerPhone || undefined,
+        role: "client",
+        referralCode,
+        isActive: false,
+        isEmailVerified: false,
+        mustSetPassword: true,
+        inviteTokenHash: hashToken(petitionerSetupToken),
+        inviteTokenExpiresAt: new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS),
+      }]);
+    }
+
     const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
     const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
     const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
@@ -208,17 +281,32 @@ exports.createFamilyCase = async (req, res, next) => {
     );
     const caseNumber = await generateCaseNumber();
     const visaType = req.body.visaType || "K-1";
+    // Client-facing wording never says "I-130"/"processingPath" (see
+    // Immiglance intake) - it maps its own plain-language choice onto this
+    // same enum before the request reaches here, so this stays the single
+    // source of truth for both the client and staff-facing (Admin
+    // CreateCaseModal) surfaces. Invalid/unrecognized values are rejected
+    // rather than silently coerced - never guess the client's intent.
+    if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
+      return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
+    }
     let caseData = await Case.create({
       caseNumber,
       caseId: caseNumber,
       visaType,
       visaCategory: req.body.visaCategory || "Family",
       petitionType: req.body.petitionType || visaType,
+      // "I am filing for my: ..." (Phase 3) - structured, synced onto the
+      // same field VisaFormMapping's trigger DSL already whitelists, so
+      // I-130A's spouse-only trigger can key off it for visa types (F2A/
+      // F2B) where the classification alone doesn't imply "spouse".
+      petitionSubType: req.body.relationship || req.body.petitionSubType || "",
+      processingPath: req.body.processingPath || "",
       clientName: beneficiary.fullName || beneficiaryName || beneficiaryEmail,
       clientEmail: beneficiaryEmail,
       user: beneficiaryUser?._id,
       beneficiaryUser: beneficiaryUser?._id,
-      petitionerUser: req.user._id,
+      petitionerUser: petitionerUser._id,
       createdBy: req.user._id,
       beneficiary: beneficiary._id,
       beneficiaryInvite: { email: beneficiaryEmail, name: beneficiaryName, phone: beneficiaryPhone, status: "", invitedBy: req.user._id },
@@ -228,7 +316,10 @@ exports.createFamilyCase = async (req, res, next) => {
     });
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
     await beneficiary.save();
-    caseService.addTimelineEvent(caseData, "case", "Family Case Created", `${req.user.name || req.user.displayName || "Petitioner"} created a family-visa case for ${beneficiaryEmail}.`, req.user, { beneficiaryEmail });
+    petitionerUser.primaryCaseId = petitionerUser.primaryCaseId || caseData._id;
+    petitionerUser.caseIds = [...new Set([...(petitionerUser.caseIds || []), caseData._id].map(String))];
+    await petitionerUser.save();
+    caseService.addTimelineEvent(caseData, "case", "Family Case Created", `${req.user.name || req.user.displayName || "Staff"} created a family-visa case for petitioner ${petitionerEmail} / beneficiary ${beneficiaryEmail}.`, req.user, { petitionerEmail, beneficiaryEmail });
     await caseData.save();
 
     if (completionMode === "invite_beneficiary") {
@@ -238,6 +329,28 @@ exports.createFamilyCase = async (req, res, next) => {
       await caseData.save();
     }
     await ensureFamilyChecklistReferences(caseData, req.user, req);
+    // A newly created petitioner (petitionerSetupToken set) needs the same
+    // "set up your account" email case.controller.js's createCase sends its
+    // own new clientUser - fire-and-forget, mirrors that call site exactly
+    // (setImmediate + .catch(() =&gt; null), never blocks the response).
+    if (petitionerSetupToken) {
+      setImmediate(async () => {
+        await notificationService.createNotification({
+          userId: petitionerUser._id,
+          type: "case_created",
+          category: "case",
+          title: "Your Immigration Case Is Ready",
+          message: `${caseData.caseNumber} - ${caseData.visaType}`,
+          caseId: caseData._id,
+          link: "/accept-invite",
+          priority: "medium",
+          source: "shared",
+          emailTemplate: "client-portal-invitation",
+          emailTo: petitionerEmail,
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, token: petitionerSetupToken },
+        }, req.user, req).catch(() => null);
+      });
+    }
     // assignQuestionnaire (inside ensureFamilyChecklistReferences) re-fetches
     // and saves its OWN copy of this Case document, bumping __v underneath
     // us — reload before responding so the returned `case` reflects the

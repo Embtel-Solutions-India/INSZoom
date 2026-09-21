@@ -34,6 +34,22 @@ const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
 const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
+const eb1aChecklistService = require("./eb1aChecklist.service");
+const { EB1A_CRITERIA } = require("../../config/eb1a");
+
+const EB1A_CRITERION_STATUSES = new Set([
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "EVIDENCE_UPLOADED",
+  "READY_FOR_REVIEW",
+  "QUALIFIED",
+  "NOT_APPLICABLE",
+  "COMPARABLE_EVIDENCE_REVIEW",
+  "COMPARABLE_EVIDENCE_ACCEPTED",
+  "COMPARABLE_EVIDENCE_REJECTED",
+  "REVIEW_REQUIRED",
+]);
+const FINAL_MERITS_STATUSES = new Set(["NOT_STARTED", "IN_REVIEW", "SUPPORTED", "NEEDS_MORE_EVIDENCE", "NOT_SUPPORTED", "ATTORNEY_REVIEW"]);
 
 const checklistAllowedMimeTypes = new Set([
   "image/jpeg",
@@ -1331,6 +1347,14 @@ exports.updateCase = async (req, res, next) => {
       "petitionSubType",
       "clientName",
       "clientEmail",
+      // Which family-based filing path this case is pursuing (Petition
+      // Only / Adjustment of Status / Consular) - drives which of the
+      // I-130/Green-Card/I-864 checklists are assigned (see
+      // family-workflow.controller.js's ensureFamilyChecklistReferences,
+      // re-triggered below when this changes) and which independent USCIS
+      // forms the registry resolves (VisaFormMapping's processingPaths
+      // gating - unchanged, already reads this field).
+      "processingPath",
     ];
     const changes = {};
 
@@ -1387,6 +1411,15 @@ exports.updateCase = async (req, res, next) => {
       await require("./immigration-knowledge-engine.service").orchestrate(caseData._id, req.user, req, {
         reason: "case_classification_changed",
       });
+    }
+    // Re-run family checklist composition when the filing path itself
+    // changes (e.g. a client who started "Petition Only" later decides to
+    // pursue the Green Card) - additive only: assignQuestionnaireIfNotActive
+    // (inside ensureFamilyChecklistReferences) never removes/duplicates an
+    // already-assigned checklist, it only assigns whichever new ones the
+    // new path now calls for.
+    if (changes.processingPath && (caseData.petitionerUser || caseData.beneficiaryUser)) {
+      await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
     }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
 
@@ -2381,6 +2414,114 @@ exports.generateCaseChecklist = async (req, res, next) => {
     await caseData.save();
     await caseService.writeAuditLog("generate_checklist", caseData, req.user, { visaType }, req);
     res.json({ success: true, message: "Checklist regenerated", checklistItems: caseData.checklistItems, documentChecklist: caseData.documentChecklist });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// EB-1A criterion-grouped checklist — "X of 10 criteria qualified", computed
+// from checklistItems (grouped by criterionId) + the manual criteriaStatus
+// verdicts below. See eb1aChecklist.service.js for why this is never
+// derived from raw upload count.
+exports.getEb1aCriteria = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to view this case" });
+    res.json({ success: true, ...eb1aChecklistService.buildCriteriaView(caseData) });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Staff-only manual verdict for one EB-1A criterion — the only way a
+// criterion can ever become QUALIFIED (never auto-set from an upload).
+exports.updateEb1aCriterion = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const { criterionId } = req.params;
+    if (!EB1A_CRITERIA.some((criterion) => criterion.criterionId === criterionId)) {
+      return res.status(400).json({ success: false, message: "Unknown EB-1A criterion" });
+    }
+    const { status, notes, comparableEvidenceDescription } = req.body;
+    if (status !== undefined && !EB1A_CRITERION_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, message: "Invalid criterion status" });
+    }
+    caseData.criteriaStatus = caseData.criteriaStatus || [];
+    let entry = caseData.criteriaStatus.find((item) => item.criterionId === criterionId);
+    if (!entry) {
+      entry = { criterionId, visaType: "EB1A" };
+      caseData.criteriaStatus.push(entry);
+      entry = caseData.criteriaStatus[caseData.criteriaStatus.length - 1];
+    }
+    if (status !== undefined) entry.status = status;
+    if (notes !== undefined) entry.reviewerNotes = notes;
+    if (comparableEvidenceDescription !== undefined) entry.comparableEvidenceDescription = comparableEvidenceDescription;
+    entry.markedBy = req.user._id;
+    entry.markedAt = new Date();
+    caseService.addTimelineEvent(caseData, "eb1a_criterion", "EB-1A Criterion Reviewed", `Criterion ${criterionId} marked ${entry.status}`, req.user, { criterionId, status: entry.status });
+    caseService.addAuditEntry(caseData, "update_eb1a_criterion", "EB-1A criterion updated", req.user, { criterionId, status: entry.status }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("update_eb1a_criterion", caseData, req.user, { criterionId, status: entry.status }, req);
+    res.json({ success: true, message: "Criterion updated", ...eb1aChecklistService.buildCriteriaView(caseData) });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Deliberately separate from criteria QUALIFIED status — "3 criteria met" is
+// only the evidentiary threshold, never equated with overall case approval.
+exports.updateEb1aFinalMerits = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const { status, notes } = req.body;
+    if (status !== undefined && !FINAL_MERITS_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, message: "Invalid final merits status" });
+    }
+    caseData.criteriaBasedReview = caseData.criteriaBasedReview || {};
+    if (status !== undefined) caseData.criteriaBasedReview.finalMeritsReviewStatus = status;
+    if (notes !== undefined) caseData.criteriaBasedReview.finalMeritsNotes = notes;
+    caseData.criteriaBasedReview.updatedBy = req.user._id;
+    caseData.criteriaBasedReview.updatedAt = new Date();
+    caseService.addTimelineEvent(caseData, "eb1a_final_merits", "Final Merits Review Updated", `Final merits marked ${caseData.criteriaBasedReview.finalMeritsReviewStatus}`, req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus });
+    caseService.addAuditEntry(caseData, "update_final_merits", "Final merits review updated", req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("update_final_merits", caseData, req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus }, req);
+    res.json({ success: true, message: "Final merits review updated", criteriaBasedReview: caseData.criteriaBasedReview });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Lets staff attach a document already uploaded against one checklist item
+// onto a second one, instead of the client re-uploading the same file — the
+// one document, multiple criteria case (e.g. the same expert letter
+// supporting both "original contributions" and "leading role").
+exports.linkExistingChecklistDocument = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const sourceIdx = parseInt(req.params.idx, 10);
+    const sourceItem = caseData.checklistItems[sourceIdx];
+    if (!sourceItem) return res.status(404).json({ success: false, message: "Source checklist item not found" });
+    const sourceFile = sourceItem.uploadedFiles.find((file) => String(file._id) === String(req.body.fileId));
+    if (!sourceFile) return res.status(404).json({ success: false, message: "File not found on source checklist item" });
+    const targetItem = caseData.checklistItems.id(req.body.targetItemId);
+    if (!targetItem) return res.status(404).json({ success: false, message: "Target checklist item not found" });
+    const alreadyLinked = targetItem.uploadedFiles.some((file) => String(file.document) === String(sourceFile.document) && sourceFile.document);
+    if (!alreadyLinked) {
+      targetItem.uploadedFiles.push({ ...sourceFile.toObject(), _id: undefined, uploadedAt: new Date() });
+      if (["pending", "requested"].includes(targetItem.status)) targetItem.status = "submitted";
+      targetItem.submittedAt = targetItem.submittedAt || new Date();
+    }
+    caseData.documentChecklist = caseData.checklistItems;
+    caseService.addTimelineEvent(caseData, "checklist", "Existing Document Linked", `"${sourceFile.originalName}" linked to "${targetItem.name}"`, req.user, { sourceIdx, targetItemId: req.body.targetItemId });
+    caseService.addAuditEntry(caseData, "link_checklist_document", "Existing document linked to another checklist item", req.user, { sourceIdx, targetItemId: req.body.targetItemId }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("link_checklist_document", caseData, req.user, { sourceIdx, targetItemId: req.body.targetItemId }, req);
+    res.json({ success: true, message: "Document linked", item: targetItem });
   } catch (error) {
     handleError(error, next);
   }

@@ -172,6 +172,14 @@ export function AuthProvider({ children }) {
   const signup = useCallback(async (name, email, password, referralCode, phone, accountType = "client", sessionId) => {
     const data = await authApi.register(name, email, password, referralCode, phone, accountType, sessionId);
     tokenStore.set(data.accessToken);
+    // LOADING (not left at UNAUTHENTICATED) for this window — mirrors
+    // loginWithToken below. AuthGate reads authStatus, not `user`; without
+    // this it still sees "unauthenticated" for the brief gap between this
+    // setUser and the AUTHENTICATED flip a few lines down, and bounces the
+    // already-authenticated visitor Login.jsx just navigated to /dashboard
+    // straight back to /login (a visible /dashboard -> /login -> /dashboard
+    // loop) before self-correcting once sessionContext resolves.
+    setAuthStatus(AUTH_STATUS.LOADING);
     setUser(data.user);
     await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
@@ -180,6 +188,8 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (emailOrPayload, password) => {
     const data = await authApi.login(emailOrPayload, password);
     tokenStore.set(data.accessToken);
+    // See signup's identical comment above — same AuthGate race, same fix.
+    setAuthStatus(AUTH_STATUS.LOADING);
     setUser(data.user);
     await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);
@@ -221,6 +231,8 @@ export function AuthProvider({ children }) {
   const acceptInvite = useCallback(async (token, password, confirmPassword, username) => {
     const data = await authApi.acceptInvite(token, password, confirmPassword, username);
     tokenStore.set(data.accessToken);
+    // See login's identical comment above — same AuthGate race, same fix.
+    setAuthStatus(AUTH_STATUS.LOADING);
     setUser(data.user);
     await fetchAndSetSessionContext();
     setAuthStatus(AUTH_STATUS.AUTHENTICATED);

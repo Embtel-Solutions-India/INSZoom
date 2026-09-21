@@ -478,6 +478,13 @@ export const casesApi = {
   generateChecklist: (caseId, visaType) =>
     api.post(`/cases/${caseId}/checklist/generate`, { visaType }),
 
+  // EB-1A criterion-grouped checklist
+  getEb1aCriteria: (caseId) => api.get(`/cases/${caseId}/eb1a-criteria`),
+  updateEb1aCriterion: (caseId, criterionId, payload) =>
+    api.put(`/cases/${caseId}/eb1a-criteria/${criterionId}`, payload),
+  updateEb1aFinalMerits: (caseId, payload) =>
+    api.put(`/cases/${caseId}/final-merits`, payload),
+
   // Plan
   updatePlan: (caseId, payload) => api.put(`/cases/${caseId}/plan`, payload),
   signDeclaration: (caseId, payload) => api.put(`/cases/${caseId}/sign-declaration`, payload),

@@ -779,6 +779,30 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
   return { responseId, case: caseData, questionnaire };
 }
 
+// assignQuestionnaire itself has no dedup - every call unconditionally
+// pushes a new questionnaireReferences entry. Extracted from
+// visaFormMapping.service.js's recordConditionalDecision, which needed
+// exactly this guard before it could safely call assignQuestionnaire more
+// than once for the same case (e.g. a case manager approves an I-131
+// decision twice, or a filing-path change re-runs checklist assignment) -
+// now shared and tested instead of every call site hand-rolling its own
+// copy. Loads the caseData fresh only when the caller didn't already have
+// it (recordConditionalDecision already has caseData loaded and saved by
+// the time it calls this).
+async function assignQuestionnaireIfNotActive(questionnaire, payload, user, req) {
+  const caseData = payload.caseId ? await Case.findById(payload.caseId) : payload.caseData;
+  if (!caseData) {
+    const error = new Error("Case not found");
+    error.status = 404;
+    throw error;
+  }
+  const hasActiveReference = (caseData.questionnaireReferences || []).some(
+    (reference) => reference.active !== false && String(reference.questionnaireId) === String(questionnaire._id)
+  );
+  if (hasActiveReference) return null;
+  return assignQuestionnaire(questionnaire, { ...payload, caseId: caseData._id }, user, req);
+}
+
 // FIX (blocking in-memory sort on large questionnaires): every question-list
 // read below filters `active` and sorts by pageKey/sectionKey/order, backed
 // by the questionnaire_1_active_1_pageKey_1_sectionKey_1_order_1 index. That
@@ -2586,6 +2610,7 @@ module.exports = {
   approveQuestionnaireDefinition,
   approveResponse,
   assignQuestionnaire,
+  assignQuestionnaireIfNotActive,
   buildResponseState,
   bulkCreateQuestions,
   calculateDetailedProgress,

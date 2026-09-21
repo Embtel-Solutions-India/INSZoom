@@ -192,6 +192,15 @@ export const casesApi = {
   approveQuestionnaire: (id, payload) =>
     api.post(`/cases/${id}/approve-questionnaire`, payload),
   addons: (id) => api.get(`/cases/${id}/addons`),
+
+  // EB-1A criterion-grouped checklist
+  getEb1aCriteria: (id) => api.get(`/cases/${id}/eb1a-criteria`),
+  updateEb1aCriterion: (id, criterionId, payload) =>
+    api.put(`/cases/${id}/eb1a-criteria/${criterionId}`, payload),
+  updateEb1aFinalMerits: (id, payload) =>
+    api.put(`/cases/${id}/final-merits`, payload),
+  linkExistingChecklistDocument: (id, idx, payload) =>
+    api.post(`/cases/${id}/checklist/${idx}/link-existing-document`, payload),
 }
 
 export const usersApi = {
@@ -206,6 +215,14 @@ export const lifecycleApi = {
 
 export const employmentWorkflowApi = {
   createRequest: (caseId, payload) => api.post(`/employment-workflow/${caseId}/requests`, payload),
+}
+
+// Staff-only family/sponsor-visa (K-1/K-3/IR-1/CR-1/F2A/F2B/...) case
+// creation - POST /family-workflow/cases previously had no frontend caller
+// anywhere in the app; CreateCaseModal.jsx now uses this for any visa type
+// whose caseStructure is "family".
+export const familyWorkflowApi = {
+  createCase: (payload) => api.post('/family-workflow/cases', payload),
 }
 
 export const questionnairesApi = {

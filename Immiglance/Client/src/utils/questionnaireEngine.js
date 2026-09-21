@@ -249,17 +249,28 @@ export function resolveApplicableChecklistRoles(caseData, user) {
   // function's existing "access-boundary, not visa-type" design — and
   // mutually exclusive with the employer/employee branch below, since a
   // case is never both shapes.
-  if (caseData?.petitionerUser || caseData?.beneficiaryUser) {
+  if (caseData?.petitionerUser || caseData?.beneficiaryUser || caseData?.jointSponsorUser) {
     const userId = String(user?._id || "");
     const isPetitioner = Boolean(userId) && String(caseData.petitionerUser?._id || caseData.petitionerUser || "") === userId;
     const isBeneficiary = (Boolean(userId) && String(caseData.beneficiaryUser?._id || caseData.beneficiaryUser || "") === userId)
       || (String(user?.role || "").toLowerCase() === "beneficiary" && Boolean(caseData.beneficiaryInvite?.email) && caseData.beneficiaryInvite.email === user?.email);
+    // I-864 joint sponsor — a third party distinct from the petitioner,
+    // identified the same way (own case-level user field + own invite
+    // email), never folded into "petitioner". Without this branch, a
+    // joint-sponsor-role login fell through to `return null` below, which
+    // Documents.jsx treats as "no restriction" — every checklist assigned
+    // to the case, including the petitioner's and beneficiary's, would
+    // have been shown unfiltered. Checked alongside isPetitioner/
+    // isBeneficiary, not instead of them, since a case has all three at once.
+    const isJointSponsor = (Boolean(userId) && String(caseData.jointSponsorUser?._id || caseData.jointSponsorUser || "") === userId)
+      || (String(user?.role || "").toLowerCase() === "joint_sponsor" && Boolean(caseData.jointSponsorInvite?.email) && caseData.jointSponsorInvite.email === user?.email);
     if (isPetitioner) {
       const roles = ["petitioner"];
       if (caseData.familyCompletionMode === "petitioner_completes") roles.push("beneficiary");
       return roles;
     }
     if (isBeneficiary) return ["beneficiary"];
+    if (isJointSponsor) return ["joint_sponsor"];
   }
 
   const normalizedRole = String(user?.role || "client").toLowerCase();
