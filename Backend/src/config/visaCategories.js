@@ -265,7 +265,11 @@ const VISA_CATEGORIES = {
   // ─── GREEN CARD / CITIZENSHIP WORKFLOWS (STANDALONE CASE TYPES) ───────────
   "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
   "Conditional Green Card Removal": { caseStructure: "single", forms: ["i-751"], label: "Removal of Conditions on Residence" },
-  "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal/Replacement" },
+  // label is staff-facing (CreateCaseModal.jsx's case-type dropdown, CRM
+  // displays) - the client never sees this string; the client sees the
+  // Questionnaire's own title, "Renew, Replace, Correct or Update Green
+  // Card" (greenCardRenewalChecklist.js), never "I-90".
+  "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal / Replacement / Correction / Update" },
   "Re-entry Permit": { caseStructure: "single", forms: ["i-131"], label: "Re-entry Permit" },
   Naturalization: { caseStructure: "single", forms: ["n-400"], label: "Naturalization" },
   "Certificate of Citizenship": { caseStructure: "single", forms: ["n-600"], label: "Certificate of Citizenship" },

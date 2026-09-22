@@ -626,6 +626,43 @@ const caseSchema = new mongoose.Schema(
       beneficiarySubmittedAt: Date,
       readyForReviewAt: Date,
     },
+    // Explicit case-level approval/activation state for the optional
+    // "Green Card – National Visa Center (NVC) / Consular Processing
+    // Checklist" (gc_nvc_<slug>_checklist - see familyChecklists.js's
+    // resolveGcNvcChecklistKey and family-workflow.controller.js's
+    // approveGcNvcChecklist). This checklist always EXISTS as a template
+    // once processingPath === "CONSULAR", but is never assigned/visible to
+    // the beneficiary until a Case Manager explicitly approves it here -
+    // approved stays false forever for every other case/path.
+    gcNvcChecklist: {
+      approved: { type: Boolean, default: false },
+      approvedAt: Date,
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+    // Explicit case-level approval/activation state for the optional
+    // Naturalization (Form N-400) add-on process (n400Checklist.js's
+    // n400_checklist, case.controller.js's approveN400Process). Visa-
+    // agnostic by design (never gated by visaType/processingPath - see
+    // n400Checklist.js's file banner for why this is NOT routed through
+    // the VisaFormMapping CONDITIONAL/recordConditionalDecision mechanism,
+    // which requires an exact caseData.visaType match) - attachable to any
+    // existing case regardless of its own visa type. approved stays false
+    // until a Case Manager explicitly adds/approves it.
+    n400Process: {
+      approved: { type: Boolean, default: false },
+      approvedAt: Date,
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+    // Same pattern as n400Process immediately above, for the optional
+    // Certificate of Citizenship (Form N-600) add-on process
+    // (n600Checklist.js's n600_checklist, case.controller.js's
+    // approveN600Process). Visa-agnostic; approved stays false until a
+    // Case Manager explicitly adds/approves it.
+    n600Process: {
+      approved: { type: Boolean, default: false },
+      approvedAt: Date,
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
 
     currentStage: { type: Number, default: 0, min: 0, max: 7 },
     stage: { type: String, enum: CRM_STAGES, default: "intake", index: true },

@@ -70,6 +70,8 @@ router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermiss
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);
 
 router.put("/:id/stage", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updateCaseStage);
+router.post("/:id/n400-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN400Process);
+router.post("/:id/n600-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN600Process);
 router.post("/:id/notes", authenticate, authorizeRoles(...staffRoles), body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addInternalNote);
 router.post("/:id/external-notes", authenticate, body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addExternalNote);
 router.put(

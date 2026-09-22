@@ -110,7 +110,7 @@ exports.ensureDefaultTemplates = async (req, res, next) => {
 
 exports.getCaseQuestionnaire = async (req, res, next) => {
   try {
-    const result = await questionnaireService.getQuestionnaireForCase(req.params.caseId, req.user, req.query.targetRole, { participantId: req.query.participantId });
+    const result = await questionnaireService.getQuestionnaireForCase(req.params.caseId, req.user, req.query.targetRole, { participantId: req.query.participantId, referenceId: req.query.referenceId });
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

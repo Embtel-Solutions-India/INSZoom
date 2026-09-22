@@ -13,6 +13,7 @@ const l1a = require("../employment-workflow/questionnaires/l1a");
 const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
+const i140 = require("../employment-workflow/questionnaires/i140");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -61,6 +62,8 @@ const SECTION_PREFIX_MAP = [
   ["dependents", "Dependents"],
   ["filingCapType", "Filing Details"],
   ["filingType", "Filing Details"],
+  ["laborCertification.", "Labor Certification"],
+  ["i140SpouseChildren", "Dependents"],
 ];
 
 const YES_NO_FIELDS = new Set([
@@ -870,6 +873,66 @@ function buildEb1bEmployeeChecklist() {
   };
 }
 
+// EB-2 and EB-3 both file the same Form I-140 as their independent petition
+// regardless of subtype - ONE shared petitioner checklist + ONE shared
+// beneficiary checklist, resolved for either visa type via this array
+// (mirrors P_VISA_TYPES' own "one questionnaire, several visaTypes"
+// convention above). Deliberately does NOT include EB-2 NIW/EB-2 PERM/EB-3
+// Skilled Worker/Professional/Other Worker - those already have their own,
+// unrelated mappings and are not touched by this.
+const I140_VISA_TYPES = ["EB-2", "EB-3", "EB2", "EB3"];
+
+function buildI140EmployerChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(i140.petitionerDocuments, visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    i140.fieldCatalog().filter((entry) => entry.section === "employer"),
+    visibility,
+  );
+  return {
+    key: "i140_petitioner_checklist",
+    title: "Petitioner Checklist for I-140",
+    visaType: "EB-2",
+    visaTypes: I140_VISA_TYPES,
+    checklistRole: "employer",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
+  };
+}
+
+function buildI140EmployeeChecklist() {
+  const visibility = { roles: ["employee", ...STAFF_ROLES], portals: ["employee", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const beneficiaryDocumentQuestions = documentQuestions(i140.beneficiaryDocuments, visibility, documentSectionOrder, counters);
+  // Dependent documents are gated behind the same "include spouse/children"
+  // field the fieldCatalog's i140SpouseChildren repeating group is gated on
+  // - never shown/required unless the beneficiary actually includes one.
+  const dependentGate = { mode: "all", rules: [{ questionKey: "employee_otherInformation_hasDependents", operator: "equals", value: "yes" }], groups: [] };
+  const dependentDocumentQuestions = documentQuestions(i140.dependentDocuments, visibility, documentSectionOrder, counters)
+    .map((question) => ({ ...question, conditionalLogic: dependentGate }));
+  const documentQuestionList = [...beneficiaryDocumentQuestions, ...dependentDocumentQuestions];
+  const fieldResult = fieldQuestionsFromCatalog(
+    i140.fieldCatalog().filter((entry) => entry.section === "employee"),
+    visibility,
+  );
+  return {
+    key: "i140_beneficiary_checklist",
+    title: "Beneficiary Checklist for I-140",
+    visaType: "EB-2",
+    visaTypes: I140_VISA_TYPES,
+    checklistRole: "employee",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
+  };
+}
+
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
   buildH1bEmployeeChecklist(),
@@ -882,6 +945,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildO1EmployeeChecklist(),
   buildEb1bEmployerChecklist(),
   buildEb1bEmployeeChecklist(),
+  buildI140EmployerChecklist(),
+  buildI140EmployeeChecklist(),
 ];
 
 module.exports = { EMPLOYMENT_CHECKLIST_DEFINITIONS };

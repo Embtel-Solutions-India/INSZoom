@@ -19,7 +19,11 @@ const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("./employmentChecklists");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
+const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
+const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
+const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
+const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -1843,6 +1847,7 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...EMPLOYMENT_CHECKLIST_DEFINITIONS,
   ...FAMILY_CHECKLIST_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
+  ...GREEN_CARD_RENEWAL_DEFINITIONS,
   // I-131 — deliberately NOT isDefault and scoped to a pseudo visaType that
   // never matches a real case (see i131Checklist.js's own banner). Still
   // provisioned through this same ensureDefaultVisaTemplates() reconciler
@@ -1851,6 +1856,22 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // reach it (an explicit questionnaireReferences assignment only), not in
   // how the template record itself is seeded.
   I131_CHECKLIST_DEFINITION,
+  // N-565 — same "optional independent form, CM-approved only" pattern as
+  // I-131 immediately above (see n565Checklist.js's own banner). Registered
+  // under the Single Person category only ("Naturalization"/"Certificate
+  // of Citizenship" VisaFormMapping rows - visaFormMappings.seed.js), never
+  // family/employer-employee/other visa-specific workflows.
+  N565_CHECKLIST_DEFINITION,
+  // N-400 — an optional add-on process, visa-agnostic (see n400Checklist.js's
+  // banner: unlike I-131/N-565, this is NOT reached through the
+  // VisaFormMapping CONDITIONAL mechanism, since that requires an exact
+  // caseData.visaType match and N-400 must be attachable to a case of any
+  // visa type - reached only through case.controller.js's approveN400Process).
+  N400_CHECKLIST_DEFINITION,
+  // N-600 — same visa-agnostic, Case-Manager-approved add-on pattern as
+  // N-400 immediately above (see n600Checklist.js's own banner). Reached
+  // only through case.controller.js's approveN600Process.
+  N600_CHECKLIST_DEFINITION,
 ];
 
 function slugSection(title) {
@@ -2111,10 +2132,25 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const requestedParticipant = options.participantId
     ? participantService.findParticipant(caseData, { role: targetRole, participantId: options.participantId })
     : participantService.participantForUser(caseData, user, targetRole);
-  const eligibleReferences = (caseData.questionnaireReferences || [])
+  let eligibleReferences = (caseData.questionnaireReferences || [])
     .filter((reference) => reference.active !== false && reference.status !== "returned")
     .filter((reference) => !targetRole || reference.targetRole === targetRole)
     .filter((reference) => !options.participantId || String(reference.participantId || "") === String(options.participantId));
+  // Disambiguates between multiple active references that legitimately
+  // share the same targetRole (e.g. the family workflow's Green Card
+  // Beneficiary checklist and the separate, optional GC-NVC Beneficiary
+  // checklist are both checklistRole "beneficiary" once GC-NVC is
+  // approved) — without this, "most recently assigned" below would
+  // silently swap which one a caller sees depending on assignment order.
+  // referenceId is questionnaireReferences[]._id, already unique and
+  // already returned by listCaseChecklists, so any caller that already
+  // knows exactly which checklist it wants (e.g. the client portal's
+  // per-checklist tab) can pin to it directly with no extra lookup. Only
+  // engaged by callers that pass this; every existing call site (which
+  // never does) keeps its current behavior unchanged.
+  if (options.referenceId) {
+    eligibleReferences = eligibleReferences.filter((reference) => String(reference._id) === String(options.referenceId));
+  }
   const activeReference = eligibleReferences
     .sort((left, right) => new Date(right.sentAt || right.submittedAt || 0) - new Date(left.sentAt || left.submittedAt || 0))[0];
   const visaType = String(caseData.visaType || "").replace(/[-\s]/g, "").toUpperCase();
@@ -2392,6 +2428,7 @@ async function listCaseChecklists(caseId, user) {
     return {
       referenceId: entry.referenceId,
       questionnaireId: entry.questionnaire._id,
+      key: entry.questionnaire.key,
       title: entry.title || entry.questionnaire.title,
       targetRole: entry.targetRole || entry.questionnaire.checklistRole,
       participantId: entry.participantId,

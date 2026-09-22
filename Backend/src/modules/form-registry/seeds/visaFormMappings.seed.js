@@ -417,6 +417,15 @@ function eb3Perm(visaType) {
   );
 }
 eb3Perm("EB-3 Skilled Worker"); eb3Perm("EB-3 Professional"); eb3Perm("EB-3 Other Worker");
+// Bare "EB-2"/"EB-3" (no subtype selected) - previously had zero rows at
+// all (confirmed unresolved by design, per the VisaFormMapping correction -
+// never guessing NIW vs. PERM for a case type that's genuinely ambiguous
+// between the two). I-140 itself, though, is common to every EB-2/EB-3
+// subtype including PERM - and bare EB-2/EB-3 is PERM-based by default
+// (NIW already has its own distinct "EB-2 NIW" visaType value a case would
+// use instead) - so this reuses the SAME eb3Perm() factory as the EB-3
+// subtypes immediately above, rather than a new mapping implementation.
+eb3Perm("EB-2"); eb3Perm("EB-3");
 
 // ===================== EB-4 =====================
 add(
@@ -490,6 +499,17 @@ add(m("Re-entry Permit", "I-131", "Application for Travel Documents, Parole Docu
 add(m("Naturalization", "N-400", "Application for Naturalization", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-400", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-400", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-600." }));
 add(m("Certificate of Citizenship", "N-600", "Application for Certificate of Citizenship", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-600", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-600", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-400." }));
 add(m("Replacement Citizenship Certificate", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-565", initialCaseCreation: true, immigrationNature: "CITIZENSHIP" }));
+// N-565 as an OPTIONAL add-on to an EXISTING Naturalization/Certificate of
+// Citizenship case (as opposed to "Replacement Citizenship Certificate"
+// immediately above, which is its own dedicated, AUTO_CREATE case type) -
+// CONDITIONAL, never auto-created; a Case Manager explicitly adds it via
+// visaFormMapping.service.js's recordConditionalDecision (the same
+// mechanism I-131 already uses), which also assigns n565Checklist.js's
+// client checklist (see CONDITIONAL_FORM_CHECKLIST_KEYS). Deliberately
+// registered ONLY under these two Single Person, citizenship-document case
+// types - never EB-1/EB-2/EB-3/H-1B/L-1/family/employer-employee.
+add(m("Naturalization", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", COND, STANDALONE, { formTemplateFormCode: "n-565", immigrationNature: "CITIZENSHIP", notes: "Optional, Case-Manager-added replacement/correction/update service for an existing Naturalization case - never auto-created." }));
+add(m("Certificate of Citizenship", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", COND, STANDALONE, { formTemplateFormCode: "n-565", immigrationNature: "CITIZENSHIP", notes: "Optional, Case-Manager-added replacement/correction/update service for an existing Certificate of Citizenship case - never auto-created." }));
 
 // ===================== I-824 (post-approval, common cross-visa) =====================
 // Not tied to a single visaType - the spec explicitly requires this to

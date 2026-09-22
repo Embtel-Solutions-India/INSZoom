@@ -215,12 +215,19 @@ test("family templates: 4 K1/K3 templates registered (K1 real content x petition
 // one merged one), each family visaType (familyBased()'s full 12-type list
 // in visaFormMappings.seed.js) gets 5 templates - I-130 petitioner, I-130
 // beneficiary, Green Card (beneficiary), I-864 sponsor, I-864 joint sponsor.
-test("family templates: every familyBased() visaType gets 5 I-130/Green-Card/I-864 checklists (60 total)", () => {
+// Count raised 5 -> 6 by the later, unrelated GC-NVC task (a 6th, separate,
+// optional beneficiary checklist - "Green Card – National Visa Center (NVC)
+// / Consular Processing Checklist" - built from the business's real DS-260
+// source, never part of resolveFamilyChecklistKeys()'s automatic
+// composition, only ever assigned via approveGcNvcChecklist). The
+// guardrail's intent is unchanged: every familyBased() visaType must get
+// exactly this fixed template set, no more, no less.
+test("family templates: every familyBased() visaType gets 6 I-130/Green-Card/I-864/GC-NVC checklists (72 total)", () => {
   const familyBasedDefinitions = FAMILY_CHECKLIST_DEFINITIONS.filter((def) => FAMILY_VISA_TYPES.includes(def.visaType));
-  assert.equal(familyBasedDefinitions.length, FAMILY_VISA_TYPES.length * 5);
+  assert.equal(familyBasedDefinitions.length, FAMILY_VISA_TYPES.length * 6);
   for (const visaType of FAMILY_VISA_TYPES) {
     const rolesForVisa = familyBasedDefinitions.filter((def) => def.visaType === visaType).map((def) => def.checklistRole);
-    assert.deepEqual(rolesForVisa.sort(), ["beneficiary", "beneficiary", "joint_sponsor", "petitioner", "petitioner"]);
+    assert.deepEqual(rolesForVisa.sort(), ["beneficiary", "beneficiary", "beneficiary", "joint_sponsor", "petitioner", "petitioner"]);
   }
   // Keys must be unique across all 12 visa types x 3 source definitions
   // (i130/green_card/i864) even though each visaType shares identical
@@ -405,9 +412,12 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
 });
 
 // Count raised 9 -> 11 by the later, unrelated EB1-B task (eb1b.js added an
-// employer + an employee checklist); nothing in the family path touches these.
-// The guardrail's intent is unchanged: the family work must not add to, remove
-// from, or otherwise disturb the employer/employee template set.
-test("employer/employee templates are unaffected in count (11 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2)", () => {
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 11);
+// employer + an employee checklist), then 11 -> 13 by the later, unrelated
+// EB-2/EB-3 I-140 task (i140.js added one shared petitioner + one shared
+// beneficiary checklist, resolved for both EB-2 and EB-3 via visaTypes, not
+// duplicated per visa type); nothing in the family path touches any of these.
+// The guardrail's intent is unchanged: the family work must not add to,
+// remove from, or otherwise disturb the employer/employee template set.
+test("employer/employee templates are unaffected in count (13 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2)", () => {
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 13);
 });

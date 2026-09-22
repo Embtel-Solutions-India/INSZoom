@@ -223,6 +223,10 @@ export const employmentWorkflowApi = {
 // whose caseStructure is "family".
 export const familyWorkflowApi = {
   createCase: (payload) => api.post('/family-workflow/cases', payload),
+  // Case Manager approval gate for the optional "Green Card – National Visa
+  // Center (NVC) / Consular Processing Checklist" - never auto-assigned
+  // merely because processingPath is CONSULAR, see approveGcNvcChecklist.
+  approveGcNvcChecklist: (caseId) => api.post(`/family-workflow/${caseId}/gc-nvc-checklist/approve`),
 }
 
 export const questionnairesApi = {

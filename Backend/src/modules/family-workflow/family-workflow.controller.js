@@ -403,6 +403,47 @@ exports.submitParticipantInfo = async (req, res, next) => {
   }
 };
 
+// Case Manager approval gate for the optional "Green Card – National Visa
+// Center (NVC) / Consular Processing Checklist" (gc_nvc_<slug>_checklist).
+// This checklist exists as a real, registered Questionnaire template for
+// every CONSULAR-eligible family visa (see familyChecklists.js) but is
+// deliberately excluded from resolveFamilyChecklistKeys()'s automatic
+// composition - it is never assigned, and therefore never visible to the
+// beneficiary (resolveApplicableChecklistRoles filters purely on which
+// checklists are actually assigned), until a Case Manager explicitly hits
+// this endpoint. Reuses the existing dedup-safe assignQuestionnaireIfNotActive
+// - clicking "Approve" a second time assigns nothing new and simply
+// re-confirms the same already-approved state, never duplicating the
+// questionnaireReferences entry.
+exports.approveGcNvcChecklist = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.id);
+    if (!caseData || !canAccessFamilyCase(req.user, caseData)) {
+      return res.status(404).json({ success: false, message: "Case not found" });
+    }
+    if (caseData.processingPath !== "CONSULAR") {
+      return res.status(400).json({
+        success: false,
+        code: "NOT_CONSULAR_PATH",
+        message: "The GC-NVC checklist only applies to cases whose filing path is Consular Processing / NVC.",
+      });
+    }
+    const key = familyChecklists.resolveGcNvcChecklistKey(caseData.visaType);
+    const questionnaire = await Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: `No GC-NVC checklist template found for visa type ${caseData.visaType}` });
+    }
+    const assignedTo = caseData.beneficiaryUser || caseData.petitionerUser;
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole: "beneficiary", assignedTo }, req.user, req);
+    caseData.gcNvcChecklist = { approved: true, approvedAt: caseData.gcNvcChecklist?.approvedAt || new Date(), approvedBy: caseData.gcNvcChecklist?.approvedBy || req.user._id };
+    caseService.addTimelineEvent(caseData, "case_manager", "GC-NVC Checklist Approved", "Green Card – National Visa Center (NVC) / Consular Processing Checklist enabled for the beneficiary.", req.user);
+    await caseData.save();
+    res.json({ success: true, case: caseData, gcNvcChecklist: caseData.gcNvcChecklist });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.isFamilyCapable = isFamilyCapable;
 exports.canAccessFamilyCase = canAccessFamilyCase;
 exports.ensureFamilyChecklistReferences = ensureFamilyChecklistReferences;

@@ -17,6 +17,7 @@ const { resolveWithHierarchyFallback } = require("../../config/visaHierarchy");
 // no-op for them, never a behavior change to their existing flow.
 const CONDITIONAL_FORM_CHECKLIST_KEYS = {
   "I-131": "i131_checklist",
+  "N-565": "n565_checklist",
 };
 
 // Mirrors the whitelist in VisaFormMapping.js exactly - a trigger may only

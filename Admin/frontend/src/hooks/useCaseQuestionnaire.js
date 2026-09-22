@@ -9,6 +9,11 @@ import { questionnairesApi } from '../services/api'
 // this app only needs to display live answers today, not collect them.
 export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
   const enabled = options.enabled !== false
+  // Disambiguates when 2+ active checklists share the same targetRole (e.g.
+  // Green Card Beneficiary + the optional GC-NVC Beneficiary checklist) -
+  // see questionnaire.service.js's getQuestionnaireForCase. Omitted for
+  // every case that has only one, which keeps its current behavior.
+  const referenceId = options.referenceId
   const [state, setState] = useState({
     questionnaire: null,
     documentQuestions: [],
@@ -26,6 +31,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     setState((prev) => ({ ...prev, loading: true, error: null }))
     try {
       const params = targetRole ? { targetRole } : {}
+      if (referenceId) params.referenceId = referenceId
       const response = await questionnairesApi.getForCase(caseId, params)
       const data = response.data.data
       setState({
@@ -39,7 +45,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     } catch (error) {
       setState((prev) => ({ ...prev, loading: false, error: error.response?.data?.message || error.message || 'Failed to load questionnaire' }))
     }
-  }, [caseId, targetRole, enabled])
+  }, [caseId, targetRole, enabled, referenceId])
 
   useEffect(() => {
     load()

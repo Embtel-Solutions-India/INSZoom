@@ -136,7 +136,7 @@ function buildFamilyPetitionerChecklist(definition, visaTypeKey, title, docSecti
   };
 }
 
-function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSectionTitle) {
+function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSectionTitle, options = {}) {
   const visibility = { roles: ["beneficiary", ...STAFF_ROLES], portals: ["client", "admin"] };
   const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "beneficiary", visibility, definition.REPEATABLE_FIELDS);
   const docs = familyDocumentQuestions(definition.beneficiaryDocuments, docSectionTitle, visibility);
@@ -145,7 +145,13 @@ function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSect
     title,
     visaType: visaTypeKey,
     checklistRole: "beneficiary",
-    isDefault: true,
+    // isDefault: false for the optional GC-NVC checklist (see
+    // buildGcNvcChecklist below) - never auto-resolved/auto-assigned by
+    // getQuestionnaireForCase's default-template fallback, only ever
+    // reached via its own explicit key lookup after Case Manager approval.
+    // Every existing caller (Green Card AOS, I-130, etc.) omits `options`
+    // and keeps the original isDefault: true, unchanged.
+    isDefault: options.isDefault !== false,
     description: "",
     sections: [...fieldResult.sectionOrder, docSectionTitle],
     questions: [...fieldResult.questions, ...docs],
@@ -213,12 +219,29 @@ function resolveFamilyChecklistKeys(visaType, processingPath) {
   const greenCardBeneficiary = `green_card_${slug}_beneficiary_checklist`;
   const i864Sponsor = `i864_${slug}_petitioner_checklist`;
   if (processingPath === "ADJUSTMENT_OF_STATUS" || processingPath === "CONSULAR") {
+    // Deliberately the SAME automatic baseline for both paths - the
+    // separate, optional "Green Card – National Visa Center (NVC) /
+    // Consular Processing Checklist" (gc_nvc_<slug>_checklist, see
+    // resolveGcNvcChecklistKey below) is NEVER included here. It must not
+    // become client-visible merely because processingPath === CONSULAR -
+    // it is only ever assigned via family-workflow.controller.js's
+    // approveGcNvcChecklist, on explicit Case Manager approval.
     return [i130Petitioner, greenCardBeneficiary, i864Sponsor];
   }
   // PETITION_ONLY, "", or anything else not yet chosen - petition-only is
   // the safe default (never silently assumes the client wants the fuller
   // Green Card package).
   return [i130Petitioner, i130Beneficiary];
+}
+
+// The optional GC-NVC checklist's key, for the ONE explicit call site that
+// is allowed to assign it (approveGcNvcChecklist) - deliberately not part
+// of resolveFamilyChecklistKeys()'s automatic composition above. Matches
+// buildFamilyBeneficiaryChecklist's own `${definition.key}_beneficiary_checklist`
+// formula exactly (definition.key here is `gc_nvc_${slug}`, set via
+// withKey() below) - not a separately-invented format.
+function resolveGcNvcChecklistKey(visaType) {
+  return `gc_nvc_${visaSlug(visaType)}_beneficiary_checklist`;
 }
 
 const FAMILY_CHECKLIST_DEFINITIONS = [
@@ -231,14 +254,26 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
     const i130Definition = withKey(familyBasedImmigrantPetition.i130, `i130_${slug}`);
     const greenCardDefinition = withKey(familyBasedImmigrantPetition.greenCard, `green_card_${slug}`);
     const i864Definition = withKey(familyBasedImmigrantPetition.i864, `i864_${slug}`);
+    const gcNvcDefinition = withKey(familyBasedImmigrantPetition.gcNvc, `gc_nvc_${slug}`);
     return [
       buildFamilyPetitionerChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Petitioner Information", "Documents required from Petitioner:"),
       buildFamilyBeneficiaryChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Beneficiary Information", "Documents required from Beneficiary:"),
       buildFamilyBeneficiaryChecklist(greenCardDefinition, visaType, "Green Card Checklist", "Documents Required:"),
       buildFamilyPetitionerChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Sponsor/Petitioner", "List of documents from the petitioner:"),
       buildFamilyJointSponsorChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Joint Sponsor", "Documents Required from Joint Sponsor:"),
+      // Optional, Case-Manager-approved only - see resolveGcNvcChecklistKey
+      // and family-workflow.controller.js's approveGcNvcChecklist. Not
+      // returned by resolveFamilyChecklistKeys, so ensureFamilyChecklistReferences
+      // (case creation / processingPath change) never auto-assigns it.
+      buildFamilyBeneficiaryChecklist(
+        gcNvcDefinition,
+        visaType,
+        "Green Card – National Visa Center (NVC) / Consular Processing Checklist",
+        "Documents Required:",
+        { isDefault: false }
+      ),
     ];
   }),
 ];
 
-module.exports = { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, resolveFamilyChecklistKeys, visaSlug };
+module.exports = { FAMILY_CHECKLIST_DEFINITIONS, FAMILY_VISA_TYPES, resolveFamilyChecklistKeys, resolveGcNvcChecklistKey, visaSlug };

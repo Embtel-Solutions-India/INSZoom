@@ -10,6 +10,13 @@
 //   3. "Sponsor/Petitioner & Beneficiary/Principal Immigrant Checklist for
 //      I-864" -> i864 export: sponsor-only (defaults to the petitioner,
 //      see familyChecklists.js) + the joint-sponsor variant.
+//   4. "Checklist for DS-260" (Green Card via the National Visa Center /
+//      consular processing) -> gcNvc export: beneficiary-only. A SEPARATE
+//      document from the Green Card (AOS) checklist above, not a rename of
+//      it - materially different document list and questionnaire content
+//      (see its own section below). Never auto-assigned; offered only for
+//      CONSULAR-path cases and requires explicit Case Manager approval
+//      (family-workflow.controller.js's approveGcNvcChecklist).
 //
 // familyChecklists.js composes these into the case's actual checklist set
 // based on the case's chosen filing path (Case.processingPath) - see its
@@ -438,6 +445,351 @@ function jointSponsorFieldCatalog() {
 const I864_REPEATABLE_FIELDS = {};
 
 // ============================================================
+// 4. GC-NVC — "Checklist for DS-260" (Green Card via the National Visa
+//    Center / consular processing) — beneficiary-only, same shape as the
+//    Green Card (AOS) checklist above but a SEPARATE, materially different
+//    business document: no I-20/EAD/I-797 or medical-exam document, but a
+//    dedicated police-verification-letter document, and a much larger
+//    DS-260-specific questionnaire (address/contact/travel/employment
+//    history, the full DOS "security and background" question set, SSN
+//    election, and the petitioner-info restatement DS-260 itself asks for).
+//    This is NOT a rename/replacement of the AOS Green Card checklist —
+//    both exist side by side; see familyChecklists.js for how/when each is
+//    assigned (AOS gets green_card_*, CONSULAR additionally OFFERS this one,
+//    gated on explicit Case Manager approval — never auto-assigned).
+// ============================================================
+
+const gcNvcDocuments = [
+  { name: "2x2 Passport Size photo", documentType: "gc_nvc_passport_photo", required: true, category: "identity", targetRole: "beneficiary", status: "requested" },
+  { name: "Biographic page of passport", documentType: "gc_nvc_passport_biographic_page", required: true, category: "identity", targetRole: "beneficiary", status: "requested" },
+  { name: "Birth certificate", documentType: "gc_nvc_birth_certificate", required: true, category: "identity", targetRole: "beneficiary", status: "requested" },
+  { name: "Marriage certificate", documentType: "gc_nvc_marriage_certificate", required: false, category: "immigration", targetRole: "beneficiary", status: "requested" },
+  { name: "Marriage termination documents (such as divorce decree, death certificate), if applicable", documentType: "gc_nvc_marriage_termination_documents", required: false, category: "immigration", targetRole: "beneficiary", status: "requested" },
+  { name: "Police verification letter", documentType: "gc_nvc_police_verification_letter", required: true, category: "immigration", targetRole: "beneficiary", status: "requested" },
+];
+
+const GC_NVC_PERSONAL = "Part 1: Personal Information";
+const GC_NVC_ADDRESS = "Part 2: Address History Information";
+const GC_NVC_CONTACT = "Part 3: Contact History";
+const GC_NVC_PARENTS = "Part 4: Family Information — Parents";
+const GC_NVC_SPOUSE = "Part 5: Spouse Information";
+const GC_NVC_CHILDREN = "Part 6: Children Information";
+const GC_NVC_TRAVEL = "Part 7: Previous U.S. Travel Information";
+const GC_NVC_EMPLOYMENT = "Part 8: Applicant's Employment Information";
+const GC_NVC_EDUCATION = "Part 9: Applicant's Educational Information";
+const GC_NVC_ADDITIONAL = "Part 10: Additional Information";
+const GC_NVC_SECURITY = "Part 11: Security and Background Information";
+const GC_NVC_SSN = "Part 12: Social Security Number Information";
+const GC_NVC_PETITIONER = "Part 13: Petitioner Information";
+
+// Part 11 - the DOS security/background question set (53 yes/no questions,
+// verbatim, in source order). The source gates one shared "explain below"
+// textarea on "if you answer yes to ANY of the above" - the existing
+// conditionalLogicFromEntry() only evaluates rules against fields already
+// converted to questions, and a 53-way "any" trigger would be unusually
+// heavy for this engine's simple visibility check, so that instruction is
+// preserved as the explanation field's own description text (always
+// visible/optional) rather than a 53-rule conditional - no question content
+// is invented or dropped, only how its trigger is expressed.
+const GC_NVC_SECURITY_QUESTIONS = [
+  "Do you have a communicable disease of public health significance such as tuberculosis (TB)?",
+  "Do you have documentation to establish that you have received vaccinations in accordance with U.S. law?",
+  "Do you have a mental or physical disorder that poses or is likely to pose a threat to the safety or welfare of yourself or others?",
+  "Are you or have you ever been a drug abuser or addict?",
+  "Have you ever been arrested or convicted for any offense or crime, even though subject or a pardon, amnesty, or other similar action?",
+  "Have you ever violated, or engaged in a conspiracy to violate, any law relating to controlled substances?",
+  "Are you the spouse, son, or daughter of an individual who has violated any controlled substance trafficking law, and have knowingly benefited from the trafficking activities in the past five years?",
+  "Are you coming to the United States to engage in prostitution or unlawful commercialized vice or have you been engaged in prostitution or procuring prostitutes within the past 10 years?",
+  "Have you ever been involved in, or do you seek to engage in, money laundering?",
+  "Have you ever committed or conspired to commit a human trafficking offense in the United States or outside the United States?",
+  "Have you ever knowingly aided, abetted, assisted, or colluded with an individual who has been identified by the President of the United States as a person who plays a significant role in a severe form of trafficking in persons?",
+  "Are you the spouse, son, or daughter of an individual who has committed or conspired to commit a human trafficking offense in the United States or outside the United States and have you within the last five years, knowingly benefited from the trafficking activities?",
+  "Do you seek to engage in espionage, sabotage, export control violations, or any other illegal activity while in the United States?",
+  "Do you seek to engage in terrorist activities while in the United States or have you ever engaged in terrorist activities?",
+  "Have you ever or do you intend to provide financial assistance or other support to terrorists or terrorist organizations?",
+  "Are you a member or representative of a terrorist organization?",
+  "Have you ever ordered, incited, committed, assisted, or otherwise participated in genocide?",
+  "Have you ever committed, ordered, incited, assisted, or otherwise participated in torture?",
+  "Have you committed, ordered, incited, assisted, or otherwise participated in extrajudicial killings, political killings, or other acts of violence?",
+  "Have you ever engaged in the recruitment of or the use of child soldiers?",
+  "Have you, while serving as a government official, been responsible for or directly carried out, at any time, particularly severe violations of religious freedom?",
+  "Are you a member of or affiliated with the Communist or other totalitarian party?",
+  "Have you ever directly or indirectly assisted or supported any of the groups in Columbia known as the Revolutionary Armed Forces of Columbia (FARC), National Liberation Army (ELN), or United Self-Defense Forces of Columbia (AUC)?",
+  "Have you ever, through abuse of governmental or political position converted for personal gain, confiscated or expropriated property in a foreign nation to which a United States national had claim of ownership?",
+  "Are you the spouse, minor child, or agent of an individual who has through abuse of governmental or political position converted for personal gain, confiscated or expropriated property in a foreign nation to which a United States national had claim of ownership?",
+  "Have you ever been directly involved in the establishment or enforcement of population controls forcing a woman to undergo an abortion against her free choice or a man or a woman to undergo sterilization against his or her free choice?",
+  "Have you ever disclosed or trafficked in confidential U.S. business information obtained in connection with U.S. participation in the Chemical Weapons Convention?",
+  "Are you the spouse, minor child, or agent of an individual who has disclosed or trafficked in confidential U.S. business information obtained in connection with U.S. participation in the Chemical Weapons Convention?",
+  "Have you ever sought to obtain or assist others to obtain a visa, entry into the United States, or any other United States immigration benefit by fraud or willful misrepresentation or other unlawful means?",
+  "Have you ever been the subject of a removal or deportation hearing?",
+  "Have you failed to attend a hearing on removability or inadmissibility within the last five years?",
+  "Have you ever been unlawfully present, overstayed the amount of time granted by an immigration official or otherwise violated the terms of a U.S. visa?",
+  "Are you subject to a civil penalty under INA 274C?",
+  "Have you been ordered removed from the U.S. during the last five years?",
+  "Have you been ordered removed from the U.S. for a second time within the last 20 years?",
+  "Have you ever been unlawfully present and ordered removed from the U.S. during the last ten years?",
+  "Have you ever been convicted of an aggravated felony and been ordered removed from the U.S.?",
+  "Have you ever been unlawfully present in the U.S. for more than 180 days (but no more than one year) and have voluntarily departed the U.S. within the last three years?",
+  "Have you ever been unlawfully present in the U.S. for more than one year or more than one year in the aggregate at any time during the last 10 years?",
+  "Have you ever withheld custody of a U.S. citizen child outside the United States from a person granted legal custody by a U.S. court?",
+  "Have you ever intentionally assisted another person in withholding custody of a U.S. citizen child outside the United States from a person granted legal custody by a U.S. court?",
+  "Have you voted in the United States in violation of any law or regulation?",
+  "Have you ever renounced United States citizenship for the purpose of avoiding taxation?",
+  "Have you attended a public elementary school or a public secondary school on student (F) status after November 30, 1996 without reimbursing the school?",
+  "Do you seek to enter the United States for the purpose of performing skilled or unskilled labor but have not yet been certified by the Secretary of Labor?",
+  "Are you a graduate of a foreign medical school seeking to perform medical services in the United States but have not yet passed the National Board of Medical Examiners examination or its equivalent?",
+  "Are you a health care worker seeking to perform such work in the United States but have not yet received certification from the Commission on Graduates of Foreign Nursing Schools or from an equivalent approved independent credentialing organization?",
+  "Are you permanently ineligible for U.S. citizenship?",
+  "Have you ever departed the United States in order to evade military service during a time of war?",
+  "Are you coming to the U.S. to practice polygamy?",
+  "Are you a former exchange visitor (J) who has not yet fulfilled the two-year foreign residence requirement?",
+  "Has the Secretary of Homeland Security of the United States ever determined that you knowingly made a frivolous application for asylum?",
+  "Are you likely to become a public charge after you are admitted to the United States?",
+];
+
+function gcNvcSecurityQuestionEntries() {
+  return GC_NVC_SECURITY_QUESTIONS.map((label, index) => ({
+    path: `beneficiary.dsSecurityQ${index + 1}`,
+    label,
+    section: "beneficiary",
+    sectionTitle: GC_NVC_SECURITY,
+    type: "radio",
+    options: ["Yes", "No"],
+  }));
+}
+
+function gcNvcFieldCatalog() {
+  const entries = [
+    // Part 1
+    { path: "beneficiary.dsFirstName", label: "First Name as per passport", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsLastName", label: "Last Name as per passport", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsOtherNames", label: "Other Names used (if any)", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, required: false },
+    { path: "beneficiary.dsSex", label: "Sex", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "select", options: ["Male", "Female"] },
+    { path: "beneficiary.dsDateOfBirth", label: "Date of Birth", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "date" },
+    { path: "beneficiary.dsMaritalStatus", label: "Current Marital Status", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "select", options: ["Single", "Married", "Divorced", "Widowed", "Annulled", "Separated"] },
+    { path: "beneficiary.dsCityOfBirth", label: "City of Birth", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsStateOfBirth", label: "State/Province of Birth", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, required: false },
+    { path: "beneficiary.dsCountryOfBirth", label: "Country of Birth", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsCountryOfCitizenship", label: "Country of Citizenship", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsHasOtherNationality", label: "Do you hold or have you held any nationality other than the one you have indicated above?", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsOtherNationalityDetails", label: "Country Name and Passport Number (other nationality)", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, required: false, condition: { field: "beneficiary.dsHasOtherNationality", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsPassportNumber", label: "Current Passport Number", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+    { path: "beneficiary.dsPassportIssuanceDate", label: "Passport Issuance Date", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "date" },
+    { path: "beneficiary.dsPassportExpiryDate", label: "Passport Expiry Date", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL, type: "date" },
+    { path: "beneficiary.dsPassportIssuingCountry", label: "Country that issued the Passport", section: "beneficiary", sectionTitle: GC_NVC_PERSONAL },
+
+    // Part 2
+    { path: "beneficiary.dsPresentStreet", label: "Present Address — Street Address", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsPresentCity", label: "Present Address — City", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsPresentState", label: "Present Address — State/Province", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsPresentZip", label: "Present Address — Postal Zone/ZIP Code", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsPresentCountry", label: "Present Address — Country/Region", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsPresentAddressStartDate", label: "Start Date of living at Present Address (Month and Year)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, type: "date" },
+    { path: "beneficiary.dsMailingStreet", label: "Mailing Address — Street number and Name (if different from Present Address)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsMailingCity", label: "Mailing Address — City", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsMailingState", label: "Mailing Address — State/Province", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsMailingZip", label: "Mailing Address — Postal Zone/ZIP Code", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsMailingCountry", label: "Mailing Address — Country/Region", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsAddressHistory", label: "All addresses where you have lived since the age of sixteen", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, repeatable: true },
+    { path: "beneficiary.dsUsAddressContactName", label: "Name of person currently living at intended U.S. address (if known)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsUsAddressStreet", label: "U.S. Street number and Name (intended address in the United States)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsUsAddressCity", label: "U.S. Address — City", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsUsAddressState", label: "U.S. Address — State/Province", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS },
+    { path: "beneficiary.dsUsAddressZip", label: "U.S. Address — Postal Zone/ZIP Code", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsUsAddressPhone", label: "U.S. Address — Phone Number (if known)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryContact", label: "Green Card Delivery Address — Contact Person (if different from above)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryAddress", label: "Green Card Delivery Address", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryCity", label: "Green Card Delivery — City", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryState", label: "Green Card Delivery — State", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryZip", label: "Green Card Delivery — ZIP Code", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+    { path: "beneficiary.dsGcDeliveryPhone", label: "Green Card Delivery — Phone Number (if known)", section: "beneficiary", sectionTitle: GC_NVC_ADDRESS, required: false },
+
+    // Part 3
+    { path: "beneficiary.dsPrimaryPhone", label: "Primary Phone Number", section: "beneficiary", sectionTitle: GC_NVC_CONTACT },
+    { path: "beneficiary.dsSecondaryPhone", label: "Secondary Phone Number (if available)", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, required: false },
+    { path: "beneficiary.dsWorkPhone", label: "Work Phone Number (if available)", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, required: false },
+    { path: "beneficiary.dsHasOtherPhones", label: "Have you used any other telephone numbers during the last 5 years?", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsOtherPhones", label: "Other telephone numbers used in the last 5 years", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, required: false, condition: { field: "beneficiary.dsHasOtherPhones", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsCurrentEmail", label: "Current Email Address", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, type: "email" },
+    { path: "beneficiary.dsHasOtherEmails", label: "Have you used any other email addresses during the last 5 years?", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsOtherEmails", label: "Other email addresses used in the last 5 years", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, required: false, condition: { field: "beneficiary.dsHasOtherEmails", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsSocialMedia", label: "Social Media platforms used within the last 5 years (provider and identifier)", section: "beneficiary", sectionTitle: GC_NVC_CONTACT, required: false, repeatable: true },
+
+    // Part 4
+    { path: "beneficiary.dsFatherLastName", label: "Father's Last Name", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsFatherFirstName", label: "Father's First Name", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsFatherDateOfBirth", label: "Father's Date of Birth", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, type: "date" },
+    { path: "beneficiary.dsFatherCityStateCountryOfBirth", label: "Father's City, State & Country of Birth", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsFatherIsLiving", label: "Is your father still living?", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsFatherAddress", label: "Father's Full Address", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, required: false, condition: { field: "beneficiary.dsFatherIsLiving", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsFatherYearOfDeath", label: "Father's Year of Death", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, required: false, condition: { field: "beneficiary.dsFatherIsLiving", operator: "equals", value: "No" } },
+    { path: "beneficiary.dsMotherLastName", label: "Mother's Last Name", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsMotherFirstName", label: "Mother's First Name", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsMotherDateOfBirth", label: "Mother's Date of Birth", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, type: "date" },
+    { path: "beneficiary.dsMotherCityStateCountryOfBirth", label: "Mother's City, State & Country of Birth", section: "beneficiary", sectionTitle: GC_NVC_PARENTS },
+    { path: "beneficiary.dsMotherIsLiving", label: "Is your mother still living?", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsMotherAddress", label: "Mother's Full Address", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, required: false, condition: { field: "beneficiary.dsMotherIsLiving", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMotherYearOfDeath", label: "Mother's Year of Death", section: "beneficiary", sectionTitle: GC_NVC_PARENTS, required: false, condition: { field: "beneficiary.dsMotherIsLiving", operator: "equals", value: "No" } },
+
+    // Part 5
+    { path: "beneficiary.dsSpouseLastName", label: "Current Spouse — Last Name", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseFirstName", label: "Current Spouse — First Name", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseDateOfBirth", label: "Current Spouse — Date of Birth", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, type: "date" },
+    { path: "beneficiary.dsSpouseCityStateCountryOfBirth", label: "Current Spouse — City, State & Country of Birth", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseAddress", label: "Current Spouse — Address", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseOccupation", label: "Current Spouse — Occupation", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseSupportExplanation", label: "If Spouse is not employed, who supports her/him?", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseMarriageDate", label: "Date of Marriage", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, type: "date" },
+    { path: "beneficiary.dsSpouseMarriagePlace", label: "City, State & Country of Marriage", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false },
+    { path: "beneficiary.dsSpouseImmigratingWithApplicant", label: "Is your spouse immigrating with you?", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsSpouseImmigratingLater", label: "Is your spouse immigrating to the U.S. at a later date to join you?", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, type: "radio", options: ["Yes", "No"], condition: { field: "beneficiary.dsSpouseImmigratingWithApplicant", operator: "equals", value: "No" } },
+    { path: "beneficiary.dsPreviousSpouseCount", label: "Number of previous spouses", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, type: "number" },
+    { path: "beneficiary.dsPreviousSpouses", label: "Previous Spouse(s) details", section: "beneficiary", sectionTitle: GC_NVC_SPOUSE, required: false, repeatable: true },
+
+    // Part 6
+    { path: "beneficiary.dsHasChildren", label: "Do you have any children?", section: "beneficiary", sectionTitle: GC_NVC_CHILDREN, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsChildrenCount", label: "Number of Children", section: "beneficiary", sectionTitle: GC_NVC_CHILDREN, required: false, type: "number", condition: { field: "beneficiary.dsHasChildren", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsChildren", label: "Children details", section: "beneficiary", sectionTitle: GC_NVC_CHILDREN, required: false, repeatable: true, condition: { field: "beneficiary.dsHasChildren", operator: "equals", value: "Yes" } },
+
+    // Part 7
+    { path: "beneficiary.dsHasBeenToUs", label: "Have you ever been in the U.S.?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsAlienRegistrationIssued", label: "Were you issued an Alien Registration Number?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, type: "radio", options: ["Yes", "No"], condition: { field: "beneficiary.dsHasBeenToUs", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsAlienRegistrationNumber", label: "Alien Registration Number", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, condition: { field: "beneficiary.dsAlienRegistrationIssued", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsPriorUsVisits", label: "Last five U.S. visits — date arrived and length of stay", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, repeatable: true },
+    { path: "beneficiary.dsEverIssuedUsVisa", label: "Have you ever been issued a U.S. Visa?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsVisaIssuedDate", label: "Date Visa Was Issued", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, type: "date", condition: { field: "beneficiary.dsEverIssuedUsVisa", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsVisaClassification", label: "Visa Classification (if known)", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, condition: { field: "beneficiary.dsEverIssuedUsVisa", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsVisaNumber", label: "Visa Number (if known)", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, condition: { field: "beneficiary.dsEverIssuedUsVisa", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsVisaLostOrStolen", label: "Have any of your U.S. visas ever been lost or stolen?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, type: "radio", options: ["Yes", "No"], condition: { field: "beneficiary.dsEverIssuedUsVisa", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsVisaCancelledOrRevoked", label: "Have any of your U.S. visas ever been cancelled or revoked?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, required: false, type: "radio", options: ["Yes", "No"], condition: { field: "beneficiary.dsEverIssuedUsVisa", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsRefusedVisaOrAdmission", label: "Have you ever been refused a U.S. visa, been refused admission to the U.S., or withdrawn your application for admission at the port of entry?", section: "beneficiary", sectionTitle: GC_NVC_TRAVEL, type: "radio", options: ["Yes", "No"] },
+
+    // Part 8
+    { path: "beneficiary.dsPrimaryOccupationTitle", label: "Primary Occupation title", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT },
+    { path: "beneficiary.dsNotEmployedSupportExplanation", label: "If NOT EMPLOYED, how are you supporting yourself?", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false },
+    { path: "beneficiary.dsHasOtherOccupations", label: "Do you have any other occupations?", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsOtherOccupationTitle", label: "Other Occupation Title", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, condition: { field: "beneficiary.dsHasOtherOccupations", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsOtherEmployerName", label: "Other Employer or School Name", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, condition: { field: "beneficiary.dsHasOtherOccupations", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsOtherEmployerAddress", label: "Other Employer or School — Street Address, City, State/Province, ZIP, Country, Telephone", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, condition: { field: "beneficiary.dsHasOtherOccupations", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsIntendedUsOccupationTitle", label: "Occupation (title) you intend to work in the U.S.", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT },
+    { path: "beneficiary.dsIntendedNotEmployedExplanation", label: "If NOT EMPLOYED in the U.S., how will you support yourself?", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false },
+    { path: "beneficiary.dsIntendedEmployerName", label: "Intended U.S. Employer or School Name", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false },
+    { path: "beneficiary.dsIntendedEmployerAddress", label: "Intended U.S. Employer or School — Street Address, City, State/Province, ZIP, Country, Telephone", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false },
+    { path: "beneficiary.dsRequiresTwoYearsTraining", label: "Does this job require at least 2 years of Training?", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsTrainingJobTitle", label: "Training — Job title", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, condition: { field: "beneficiary.dsRequiresTwoYearsTraining", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsTrainingWorkDescription", label: "Training — Describe the type of work you are doing (be as specific as possible)", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, condition: { field: "beneficiary.dsRequiresTwoYearsTraining", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsTrainingDateFrom", label: "Training — Employment Date From", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, type: "date", condition: { field: "beneficiary.dsRequiresTwoYearsTraining", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsTrainingDateTo", label: "Training — Employment Date To", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, type: "date", condition: { field: "beneficiary.dsRequiresTwoYearsTraining", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsPreviouslyEmployed", label: "Were you previously employed?", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsEmploymentHistory", label: "Employment history for the last 10 years", section: "beneficiary", sectionTitle: GC_NVC_EMPLOYMENT, required: false, repeatable: true, condition: { field: "beneficiary.dsPreviouslyEmployed", operator: "equals", value: "Yes" } },
+
+    // Part 9
+    { path: "beneficiary.dsAttendedSecondaryOrAbove", label: "Have you attended any educational institutions at a secondary level or above?", section: "beneficiary", sectionTitle: GC_NVC_EDUCATION, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsInstitutionCount", label: "Number of Educational Institutions Attended so far", section: "beneficiary", sectionTitle: GC_NVC_EDUCATION, required: false, type: "number", condition: { field: "beneficiary.dsAttendedSecondaryOrAbove", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsEducationHistory", label: "Educational institutions attended at a secondary level or above", section: "beneficiary", sectionTitle: GC_NVC_EDUCATION, required: false, repeatable: true, condition: { field: "beneficiary.dsAttendedSecondaryOrAbove", operator: "equals", value: "Yes" } },
+
+    // Part 10
+    { path: "beneficiary.dsTraveledLast5Years", label: "Have you traveled to any countries/regions within the last 5 years?", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsCountriesTraveled", label: "List of countries traveled in the last 5 years", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, condition: { field: "beneficiary.dsTraveledLast5Years", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsServedInMilitary", label: "Have you ever served in the military?", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsMilitaryCountry", label: "Military — Name of Country/Region", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMilitaryBranch", label: "Military — Branch of Service", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMilitaryRank", label: "Military — Rank/Position", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMilitarySpecialty", label: "Military — Specialty", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMilitaryDateFrom", label: "Military — Date of Service From", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, type: "date", condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsMilitaryDateTo", label: "Military — Date of Service To", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, required: false, type: "date", condition: { field: "beneficiary.dsServedInMilitary", operator: "equals", value: "Yes" } },
+    { path: "beneficiary.dsBelongedToOrganization", label: "Have you belonged to, contributed to, or worked for any professional, social or charitable organization?", section: "beneficiary", sectionTitle: GC_NVC_ADDITIONAL, type: "radio", options: ["Yes", "No"] },
+
+    // Part 11 - generated below via gcNvcSecurityQuestionEntries()
+    { path: "beneficiary.dsSecurityExplanation", label: "If you answered Yes to any question in this section, please explain", section: "beneficiary", sectionTitle: GC_NVC_SECURITY, required: false, description: "Required only if any answer above is Yes." },
+
+    // Part 12
+    { path: "beneficiary.dsPreviouslyAppliedForSsn", label: "Have you ever applied for a Social Security number?", section: "beneficiary", sectionTitle: GC_NVC_SSN, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsWantsSsnIssued", label: "Do you want the Social Security Administration to issue a Social Security number and card?", section: "beneficiary", sectionTitle: GC_NVC_SSN, type: "radio", options: ["Yes", "No"] },
+    { path: "beneficiary.dsAuthorizesSsnDisclosure", label: "Do you authorize disclosure of information from this form to DHS, the Social Security Administration, and other required U.S. Government agencies for the purpose of assigning an SSN and issuing a Social Security card, and authorize SSA to share your SSN with DHS?", section: "beneficiary", sectionTitle: GC_NVC_SSN, type: "radio", options: ["Yes", "No"] },
+
+    // Part 13 - restated on the beneficiary's own DS-260, per the source.
+    { path: "beneficiary.dsPetitionerRelation", label: "Petitioner is my (relation)", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerFirstName", label: "Petitioner's First Name", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerLastName", label: "Petitioner's Last/Surname", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerAddress", label: "Petitioner's Address", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerCity", label: "Petitioner's Address — City", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerState", label: "Petitioner's Address — State/Province", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER, required: false },
+    { path: "beneficiary.dsPetitionerZip", label: "Petitioner's Address — Postal Zone/ZIP Code", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER, required: false },
+    { path: "beneficiary.dsPetitionerCountry", label: "Petitioner's Address — Country/Region", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER },
+    { path: "beneficiary.dsPetitionerTelephone", label: "Petitioner's Telephone", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER, required: false },
+    { path: "beneficiary.dsPetitionerMobile", label: "Petitioner's Mobile/Cell Telephone", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER, required: false },
+    { path: "beneficiary.dsPetitionerEmail", label: "Petitioner's Email Address", section: "beneficiary", sectionTitle: GC_NVC_PETITIONER, required: false, type: "email" },
+  ];
+  const allEntries = [...entries.slice(0, entries.findIndex((e) => e.sectionTitle === GC_NVC_SECURITY) + 1), ...gcNvcSecurityQuestionEntries(), ...entries.slice(entries.findIndex((e) => e.sectionTitle === GC_NVC_SECURITY) + 1)];
+  return allEntries.map((entry) => ({ ...entry, required: entry.condition ? false : entry.required !== false }));
+}
+
+const GC_NVC_REPEATABLE_FIELDS = {
+  "beneficiary.dsAddressHistory": [
+    { key: "streetAndNumber", label: "Street and Number", type: "text" },
+    { key: "city", label: "City", type: "text" },
+    { key: "provinceState", label: "Province/State", type: "text" },
+    { key: "country", label: "Country", type: "text" },
+    { key: "from", label: "From (Month/Year)", type: "date" },
+    { key: "to", label: "To (Month/Year)", type: "date" },
+  ],
+  "beneficiary.dsSocialMedia": [
+    { key: "platform", label: "Social Media Provider/Platform", type: "text" },
+    { key: "identifier", label: "Social Media Identifier", type: "text" },
+  ],
+  "beneficiary.dsPreviousSpouses": [
+    { key: "fullName", label: "Full Name", type: "text" },
+    { key: "dateOfBirth", label: "Date of Birth", type: "date" },
+    { key: "dateOfMarriage", label: "Date of Marriage", type: "date" },
+    { key: "cityStateCountryOfMarriage", label: "City, State & Country of Marriage", type: "text" },
+    { key: "dateMarriageEnded", label: "Date Marriage Legally Ended", type: "date" },
+    { key: "cityStateCountryMarriageEnded", label: "City, State & Country where Marriage Ended", type: "text" },
+  ],
+  "beneficiary.dsChildren": [
+    { key: "lastName", label: "Last Name", type: "text" },
+    { key: "firstName", label: "First Name", type: "text" },
+    { key: "dateOfBirth", label: "Date of Birth", type: "date" },
+    { key: "cityStateCountryOfBirth", label: "City, State and Country of Birth", type: "text" },
+    { key: "presentAddress", label: "Full Present Address", type: "text" },
+    { key: "immigratingWithApplicant", label: "Is this child immigrating to the U.S. with you?", type: "radio" },
+    { key: "immigratingLater", label: "Is this child immigrating to the U.S. at a later date to join you?", type: "radio" },
+  ],
+  "beneficiary.dsPriorUsVisits": [
+    { key: "dateArrived", label: "Date Arrived", type: "date" },
+    { key: "lengthOfStay", label: "Length of Stay (months or years)", type: "text" },
+  ],
+  "beneficiary.dsEmploymentHistory": [
+    { key: "employerName", label: "Full Name of Employer", type: "text" },
+    { key: "employerAddress", label: "Full Address of Employer", type: "text" },
+    { key: "occupation", label: "Occupation", type: "text" },
+    { key: "supervisorName", label: "Supervisor Full Name", type: "text" },
+    { key: "phone", label: "Telephone Number", type: "text" },
+    { key: "from", label: "From (Month/Year)", type: "date" },
+    { key: "to", label: "To (Month/Year)", type: "date" },
+  ],
+  "beneficiary.dsEducationHistory": [
+    { key: "institutionName", label: "Full Name of Institution", type: "text" },
+    { key: "institutionAddress", label: "Full Address of Institution", type: "text" },
+    { key: "courseOfStudy", label: "Course of Study", type: "text" },
+    { key: "degree", label: "Degree/Diploma", type: "text" },
+    { key: "from", label: "Date of Attendance From (Month/Year)", type: "date" },
+    { key: "to", label: "Date of Attendance To (Month/Year)", type: "date" },
+  ],
+};
+
+const gcNvc = {
+  key: "gc_nvc",
+  // Beneficiary-only per the source (DS-260 is filed by/about the
+  // beneficiary; Part 13 restates petitioner info but is still part of the
+  // beneficiary's own form) - no separate petitioner checklist.
+  petitionerDocuments: [],
+  beneficiaryDocuments: gcNvcDocuments,
+  fieldCatalog: gcNvcFieldCatalog,
+  REPEATABLE_FIELDS: GC_NVC_REPEATABLE_FIELDS,
+};
+
+// ============================================================
 // Definition objects — shaped for familyChecklists.js's existing
 // buildFamilyPetitionerChecklist/buildFamilyBeneficiaryChecklist/
 // buildFamilyJointSponsorChecklist (unchanged) to consume.
@@ -470,4 +822,4 @@ const i864 = {
   REPEATABLE_FIELDS: I864_REPEATABLE_FIELDS,
 };
 
-module.exports = { key, matches, i130, greenCard, i864 };
+module.exports = { key, matches, i130, greenCard, i864, gcNvc };

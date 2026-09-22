@@ -35,6 +35,7 @@ const CaseNumberService = require("../../services/CaseNumberService");
 const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
+const uscisFormService = require("../uscis-forms/uscis-form.service");
 const { EB1A_CRITERIA } = require("../../config/eb1a");
 
 const EB1A_CRITERION_STATUSES = new Set([
@@ -1458,6 +1459,101 @@ exports.updateCaseStage = async (req, res, next) => {
     });
   } catch (error) {
     handleError(error, next);
+  }
+};
+
+// Optional add-on process: Naturalization (Form N-400). Attachable to ANY
+// existing case regardless of its own visaType/processingPath - deliberately
+// NOT routed through visaFormMapping.service.js's recordConditionalDecision
+// (which requires an exact caseData.visaType match, the right mechanism for
+// I-131/N-565 but wrong here per the integration spec's explicit "do not
+// hardcode N-400 to IR-1/EB-2/EB-3" rule). Mirrors family-workflow.controller.js's
+// approveGcNvcChecklist pattern (explicit Case-level approval flag +
+// direct assignQuestionnaireIfNotActive), generalized to work for every
+// case shape since N-400 isn't family-specific either. The Form N-400 PDF
+// is provisioned through the exact same generic path AUTO_CREATE/CONDITIONAL
+// forms already use (uscisFormService.ensureAssignedForms) - no second
+// form-storage system. Idempotent: assignQuestionnaireIfNotActive and
+// ensureAssignedForms both dedupe on their own, so re-approving is a safe
+// no-op (no duplicate questionnaireReferences or CaseForm).
+exports.approveN400Process = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const questionnaire = await Questionnaire.findOne({ key: "n400_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-400 checklist template found" });
+    }
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole: "client" }, req.user, req);
+
+    const template = await uscisFormService.findLatestActiveTemplate("n-400");
+    if (template) {
+      template._visaFormMapping = {
+        mappingId: null,
+        provisioningType: "OPTIONAL_ADD_ON",
+        createdReason: "Optional Naturalization (Form N-400) process added by Case Manager",
+        visaType: caseData.visaType,
+        processingPath: caseData.processingPath || "",
+      };
+      await uscisFormService.ensureAssignedForms(caseData, req.user, req, { templates: [template] });
+    }
+
+    caseData.n400Process = {
+      approved: true,
+      approvedAt: caseData.n400Process?.approvedAt || new Date(),
+      approvedBy: caseData.n400Process?.approvedBy || req.user._id,
+    };
+    caseService.addTimelineEvent(caseData, "case_manager", "N-400 Naturalization Process Added", "Naturalization / U.S. Citizenship checklist and Form N-400 enabled for the client.", req.user);
+    await caseData.save();
+    res.json({ success: true, case: caseData, n400Process: caseData.n400Process });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Optional add-on process: Certificate of Citizenship (Form N-600). Same
+// visa-agnostic pattern as approveN400Process immediately above (see that
+// function's own comment, and n600Checklist.js's file banner, for why this
+// is deliberately NOT routed through visaFormMapping.service.js's
+// recordConditionalDecision). The U.S.-citizen parent's information/
+// documents live INSIDE this same client checklist (§7/§19 of the
+// integration prompt) - no second participant/login/checklist is created.
+exports.approveN600Process = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const questionnaire = await Questionnaire.findOne({ key: "n600_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-600 checklist template found" });
+    }
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole: "client" }, req.user, req);
+
+    const template = await uscisFormService.findLatestActiveTemplate("n-600");
+    if (template) {
+      template._visaFormMapping = {
+        mappingId: null,
+        provisioningType: "OPTIONAL_ADD_ON",
+        createdReason: "Optional Certificate of Citizenship (Form N-600) process added by Case Manager",
+        visaType: caseData.visaType,
+        processingPath: caseData.processingPath || "",
+      };
+      await uscisFormService.ensureAssignedForms(caseData, req.user, req, { templates: [template] });
+    }
+
+    caseData.n600Process = {
+      approved: true,
+      approvedAt: caseData.n600Process?.approvedAt || new Date(),
+      approvedBy: caseData.n600Process?.approvedBy || req.user._id,
+    };
+    caseService.addTimelineEvent(caseData, "case_manager", "N-600 Certificate of Citizenship Process Added", "Certificate of Citizenship checklist and Form N-600 enabled for the client.", req.user);
+    await caseData.save();
+    res.json({ success: true, case: caseData, n600Process: caseData.n600Process });
+  } catch (error) {
+    next(error);
   }
 };
 
