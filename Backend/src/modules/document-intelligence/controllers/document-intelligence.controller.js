@@ -281,6 +281,15 @@ exports.casePrefillSummary = async (req, res, next) => {
   }
 };
 
+exports.caseScanOptions = async (req, res, next) => {
+  try {
+    const summary = await service.caseScanOptions(req.params.caseId, req.user);
+    res.json({ success: true, ...summary });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.reviewMasterDataField = async (req, res, next) => {
   try {
     const entry = await service.reviewMasterDataField(req.params.caseId, req.params.prefillId, req.params.action, req.body, req.user, req);

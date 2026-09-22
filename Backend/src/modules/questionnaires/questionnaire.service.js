@@ -1953,9 +1953,14 @@ async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
 }
 
 async function ensureDefaultVisaTemplatesUncached(user, req) {
-  const results = [];
   const systemUser = user || { _id: undefined, role: "super_admin" };
-  for (const definition of VISA_TEMPLATE_DEFINITIONS) {
+  // Each definition only ever touches its own Questionnaire (unique `key`)
+  // and that Questionnaire's own Questions, so the definitions are fully
+  // independent of one another and safe to reconcile concurrently — this is
+  // what actually cuts wall-clock time with ~20 definitions today. The other
+  // half of the fix (bulkWrite instead of one round trip per question) is
+  // below; see its comment for why that part mattered most.
+  const results = await Promise.all(VISA_TEMPLATE_DEFINITIONS.map(async (definition) => {
     let questionnaire = await Questionnaire.findOne({ key: definition.key, latestVersion: true });
     if (!questionnaire) {
       questionnaire = await Questionnaire.create({
@@ -2073,16 +2078,30 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
       const existingByKey = new Map(existingQuestions.map((question) => [question.key, question]));
       const definitionKeys = new Set(definition.questions.map((question) => question.key));
 
+      // One awaited create/save per question (some definitions carry 70+)
+      // was the actual cost driver here: hundreds of sequential DB round
+      // trips per full reconciliation, which is what turned a "make sure
+      // these exist" check into a multi-minute page load. Collapsing the
+      // same create-or-patch-or-retire decisions into a single bulkWrite
+      // keeps the exact per-question logic below, just batched into one
+      // round trip instead of one per question. `ordered: false` so one
+      // bad op (e.g. a stale duplicate key racing a concurrent reconcile)
+      // doesn't abort the rest of the batch.
+      const ops = [];
       for (const question of definition.questions) {
         const existing = existingByKey.get(question.key);
         if (!existing) {
-          await Question.create({
-            ...question,
-            questionnaire: questionnaire._id,
-            questionnaireKey: questionnaire.key,
-            questionnaireVersion: questionnaire.version,
-            createdBy: systemUser._id,
-            updatedBy: systemUser._id,
+          ops.push({
+            insertOne: {
+              document: {
+                ...question,
+                questionnaire: questionnaire._id,
+                questionnaireKey: questionnaire.key,
+                questionnaireVersion: questionnaire.version,
+                createdBy: systemUser._id,
+                updatedBy: systemUser._id,
+              },
+            },
           });
           continue;
         }
@@ -2092,24 +2111,44 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
           patch.isActive = true;
         }
         if (Object.keys(patch).length) {
-          Object.assign(existing, patch, { updatedBy: systemUser._id });
-          await existing.save();
+          ops.push({
+            updateOne: {
+              filter: { _id: existing._id },
+              update: { $set: { ...patch, updatedBy: systemUser._id } },
+            },
+          });
         }
       }
 
       // A question the master definition no longer lists is retired, not
       // deleted — any client answer or admin edit referencing it stays
       // intact; it simply stops rendering/being required going forward.
-      // Same immutability concern as the reconciliation loop above (it also
-      // mutates and saves a live question), so it stays inside this same
+      // Same immutability concern as the reconciliation above (it also
+      // mutates a live question), so it stays inside this same
       // published-status guard rather than running unconditionally.
       for (const existing of existingQuestions) {
         if (definitionKeys.has(existing.key)) continue;
         if (existing.active === false && existing.isActive === false) continue;
-        existing.active = false;
-        existing.isActive = false;
-        existing.updatedBy = systemUser._id;
-        await existing.save();
+        ops.push({
+          updateOne: {
+            filter: { _id: existing._id },
+            update: { $set: { active: false, isActive: false, updatedBy: systemUser._id } },
+          },
+        });
+      }
+
+      if (ops.length) {
+        try {
+          await Question.bulkWrite(ops, { ordered: false });
+        } catch (error) {
+          // E11000 on the {questionnaire, key} unique index means another
+          // concurrent reconcile already inserted the same question -
+          // harmless, the content converged either way. Anything else is a
+          // real failure and must still surface.
+          if (error?.code !== 11000 && !(error?.writeErrors || []).every((writeError) => writeError.code === 11000)) {
+            throw error;
+          }
+        }
       }
     } else {
       logger.info("questionnaire_definition_reconcile_skipped_published", {
@@ -2119,8 +2158,8 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
       });
     }
 
-    results.push(questionnaire);
-  }
+    return questionnaire;
+  }));
   return results;
 }
 

@@ -337,11 +337,15 @@ export const documentIntelligenceApi = {
   casePrefillSummary: (caseId) => api.get(`/document-intelligence/case/${caseId}/prefill-summary`),
   reviewMasterDataField: (caseId, prefillId, action, payload = {}) =>
     api.post(`/document-intelligence/case/${caseId}/masterdata-field/${prefillId}/${action}`, payload),
-  // Only resume/passport are offered — the two document types with a
-  // hand-authored field mapping (see Backend's autofill-document-types.js).
-  // There is deliberately no generic "any supporting document" autofill
-  // trigger; a normal checklist upload already gets OCR-processed in the
-  // background and surfaces later via casePrefillSummary.
+  // Which of this case's actual, currently-applicable checklist documents
+  // Smart Scan (SmartScanStep.jsx) can offer to scan — backend intersects
+  // the case's real file-type checklist questions against the OCR-capable
+  // document-type allowlist, so this is never a static/hardcoded list here.
+  caseScanOptions: (caseId) => api.get(`/document-intelligence/case/${caseId}/scan-options`),
+  // Smart Scan offers whatever caseScanOptions() above returns for this
+  // case — no longer just resume/passport (that was true before the
+  // document-intelligence field-mapping expansion; AUTOFILL_DOCUMENT_TYPES
+  // on the backend now covers most H-1B/L-1A/K-1/K-3 checklist documents).
   autofillFromDocument: (caseId, documentType, file) => {
     const fd = new FormData();
     fd.append("file", file);

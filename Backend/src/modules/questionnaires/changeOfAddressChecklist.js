@@ -124,7 +124,7 @@ const SECTIONS = [INFO_SECTION, PRESENT_SECTION, PREVIOUS_SECTION, MAILING_SECTI
 const TITLE = "Change of Address";
 const DESCRIPTION = "Tell us your previous and new physical address so we can update your immigration records.";
 
-function buildVariant({ key, checklistRole, actualRoles, canonicalPrefix }) {
+function buildVariant({ key, checklistRole, actualRoles, portals, canonicalPrefix }) {
   // visibility.roles must list every ACTUAL portal role this template can
   // be assigned under (the questionnaireReference's own targetRole, set at
   // attach time by case.controller.js's addChangeOfAddress) - not just the
@@ -133,7 +133,14 @@ function buildVariant({ key, checklistRole, actualRoles, canonicalPrefix }) {
   // same "contact.*" canonical namespace - see file banner), so a single
   // fixed checklistRole here would otherwise wrongly block two of those
   // three actual users from seeing their own checklist.
-  const visibility = { roles: [...actualRoles, ...STAFF_ROLES], portals: [...actualRoles, "admin"] };
+  // visibility.portals is a DIFFERENT, coarser concept than roles - it's
+  // which frontend APP surfaces this question (Question.js's own strict
+  // enum: only "client"/"admin"/"employer"/"employee" are valid values -
+  // "beneficiary"/"petitioner"/"joint_sponsor" are NOT, since those roles
+  // all use the client-portal app, exactly like familyChecklists.js's own
+  // petitioner/beneficiary/joint_sponsor checklists already set
+  // portals:["client","admin"], never portals:["petitioner","admin"] etc.
+  const visibility = { roles: [...actualRoles, ...STAFF_ROLES], portals: [...portals, "admin"] };
   return {
     key,
     title: TITLE,
@@ -147,10 +154,10 @@ function buildVariant({ key, checklistRole, actualRoles, canonicalPrefix }) {
 }
 
 const CHANGE_OF_ADDRESS_DEFINITIONS = [
-  buildVariant({ key: "change_of_address_person_checklist", checklistRole: "client", actualRoles: ["client", "employee", "beneficiary"], canonicalPrefix: "contact" }),
-  buildVariant({ key: "change_of_address_employer_checklist", checklistRole: "employer", actualRoles: ["employer"], canonicalPrefix: "company" }),
-  buildVariant({ key: "change_of_address_petitioner_checklist", checklistRole: "petitioner", actualRoles: ["petitioner"], canonicalPrefix: "petitioner" }),
-  buildVariant({ key: "change_of_address_joint_sponsor_checklist", checklistRole: "joint_sponsor", actualRoles: ["joint_sponsor"], canonicalPrefix: "jointSponsor" }),
+  buildVariant({ key: "change_of_address_person_checklist", checklistRole: "client", actualRoles: ["client", "employee", "beneficiary"], portals: ["client", "employee"], canonicalPrefix: "contact" }),
+  buildVariant({ key: "change_of_address_employer_checklist", checklistRole: "employer", actualRoles: ["employer"], portals: ["employer"], canonicalPrefix: "company" }),
+  buildVariant({ key: "change_of_address_petitioner_checklist", checklistRole: "petitioner", actualRoles: ["petitioner"], portals: ["client"], canonicalPrefix: "petitioner" }),
+  buildVariant({ key: "change_of_address_joint_sponsor_checklist", checklistRole: "joint_sponsor", actualRoles: ["joint_sponsor"], portals: ["client"], canonicalPrefix: "jointSponsor" }),
 ];
 
 // Maps a Case.changeOfAddressComponents targetRole to the checklist key

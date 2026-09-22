@@ -16,7 +16,8 @@ import DocumentUploadControl from "../../components/checklist/DocumentUploadCont
 import StatusLegend from "../../components/checklist/StatusLegend";
 import EmployeeHandoffModal from "../../components/checklist/EmployeeHandoffModal";
 import CaseIntakeExtras from "../../components/checklist/CaseIntakeExtras";
-import QuestionInput, { AutofillButton } from "../../components/questionnaire/QuestionInput";
+import SmartScanStep from "../../components/checklist/SmartScanStep";
+import QuestionInput from "../../components/questionnaire/QuestionInput";
 import PrefillBadge from "../../components/PrefillBadge";
 import PrincipalCaseWorkspace from "../../components/questionnaire/PrincipalCaseWorkspace";
 import EmployeeSelfServiceView from "../../components/questionnaire/EmployeeSelfServiceView";
@@ -220,7 +221,7 @@ export default function Documents() {
   const roleChecklistCount = visibleChecklists.filter((item) => item.targetRole === effectiveRole).length;
   const effectiveReferenceId = roleChecklistCount > 1 ? (activeReferenceId || visibleChecklists.find((item) => item.targetRole === effectiveRole)?.referenceId) : undefined;
 
-  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments } = useDocumentChecklist({ caseId: activeCaseId });
+  const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments, markUploaded } = useDocumentChecklist({ caseId: activeCaseId });
 
   // Legacy single-role path — inert (caseId withheld, no fetch) once the new
   // architecture takes over for this case.
@@ -255,6 +256,15 @@ export default function Documents() {
   const [submitError, setSubmitError] = useState("");
   const [activeSectionId, setActiveSectionId] = useState("");
   const sectionRefs = useRef({});
+  // Conditional-section-unlock UX — which section IDs just newly appeared
+  // (e.g. a questionnaire answer unlocked a new document category), so the
+  // rail nav can flag them and the page can auto-scroll to the first one.
+  const [newSectionIds, setNewSectionIds] = useState(() => new Set());
+  const prevSectionIdsRef = useRef(new Set());
+  // Smart Scan gate — "scan" shows SmartScanStep in place of the checklist
+  // below; "checklist" shows the normal checklist. See shouldShowScanStep
+  // further down (computed after every hook in this component has run).
+  const [scanStep, setScanStep] = useState("scan");
 
   // Handoff junction state — drives the EmployeeHandoffModal below.
   const assignment = activeCase?.questionnaireData?.masterData?.employeeQuestionnaireAssignment || {};
@@ -414,9 +424,10 @@ export default function Documents() {
       roleGroup: section.roleGroup,
       total: section.items.length,
       done: section.items.filter(itemIsDone).length,
+      isNew: newSectionIds.has(section.id),
     })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sections, files]
+    [sections, files, newSectionIds]
   );
 
   const overall = sectionCounts.reduce((acc, section) => ({ done: acc.done + section.done, total: acc.total + section.total }), { done: 0, total: 0 });
@@ -451,6 +462,30 @@ export default function Documents() {
   useEffect(() => {
     if (!activeSectionId && sections.length) setActiveSectionId(sections[0].id);
   }, [activeSectionId, sections]);
+
+  // Detects sections that newly appeared since the last render (a
+  // conditional checklist section unlocking after a questionnaire answer
+  // changes) and briefly flags + auto-scrolls to the first one. Must update
+  // prevSectionIdsRef BEFORE the initial-render early return, or the very
+  // first population of `sections` from empty would be misread as "every
+  // section just unlocked."
+  useEffect(() => {
+    const currentIds = new Set(sections.map((section) => section.id));
+    const previousIds = prevSectionIdsRef.current;
+    const isInitialRender = previousIds.size === 0;
+    prevSectionIdsRef.current = currentIds;
+    if (isInitialRender) return undefined;
+    const addedIds = [...currentIds].filter((id) => !previousIds.has(id));
+    if (!addedIds.length) return undefined;
+    setNewSectionIds(new Set(addedIds));
+    const firstNewSection = sectionRefs.current[addedIds[0]];
+    if (firstNewSection) {
+      firstNewSection.scrollIntoView({ behavior: "smooth", block: "start" });
+      setActiveSectionId(addedIds[0]);
+    }
+    const timer = setTimeout(() => setNewSectionIds(new Set()), 4000);
+    return () => clearTimeout(timer);
+  }, [sections]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -642,13 +677,6 @@ export default function Documents() {
         <h2 id={`${section.id}-heading`} className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</h2>
         <span className="text-xs font-semibold text-muted-foreground">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
       </div>
-      {!locked && section.autofillSources?.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-2">
-          {section.autofillSources.map((documentType) => (
-            <AutofillButton key={documentType} documentType={documentType} caseId={activeCaseId} disabled={!activeCaseId} onUploaded={(section.qaSource || legacyQA).handleAutofillResult} />
-          ))}
-        </div>
-      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {section.items.map((item) => {
           const { status, reason } = itemStatus(item);
@@ -769,6 +797,30 @@ export default function Documents() {
     );
   }
 
+  // Smart Scan gate. Computed as a plain value (not a hook) after every
+  // hook call in this component — confirmed no useState/useEffect/useMemo/
+  // useCallback/useRef appears between here and the top of the function —
+  // so the early return below can never skip a hook. Matches the two other
+  // early returns already in this component (the employer-case-resolution
+  // branch and the employee/beneficiary caseRole branch just above).
+  const shouldShowScanStep = scanStep === "scan" && Boolean(activeCaseId) && !allRolesSubmitted && !questionnaireLoading;
+
+  const handleScanComplete = (completedScans) => {
+    completedScans.forEach(({ documentType, status, document }) => {
+      if (status === "done" && document) markUploaded(documentType, document);
+    });
+    reloadDocuments();
+    setScanStep("checklist");
+  };
+
+  if (shouldShowScanStep) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SmartScanStep caseId={activeCaseId} onScanComplete={handleScanComplete} onSkip={() => setScanStep("checklist")} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <a href="#checklist-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow">
@@ -801,6 +853,15 @@ export default function Documents() {
                 </div>
                 <span className="text-sm font-semibold text-foreground">{overall.done} of {overall.total} complete</span>
               </div>
+              {!allRolesSubmitted && (
+                <button
+                  type="button"
+                  onClick={() => setScanStep("scan")}
+                  className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-secondary"
+                >
+                  Re-scan
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSaveProgress}
@@ -884,8 +945,11 @@ export default function Documents() {
                       }`}
                     >
                       <span className="truncate">{section.label}</span>
-                      <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
-                        {section.done}/{section.total}
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {section.isNew && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-label="New section unlocked" />}
+                        <span className={`text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
+                          {section.done}/{section.total}
+                        </span>
                       </span>
                     </button>
                   ))}
@@ -903,8 +967,11 @@ export default function Documents() {
                   }`}
                 >
                   <span className="truncate">{section.label}</span>
-                  <span className={`shrink-0 text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
-                    {section.done}/{section.total}
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {section.isNew && <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-label="New section unlocked" />}
+                    <span className={`text-xs font-semibold ${section.done === section.total ? "text-primary" : "text-muted-foreground"}`}>
+                      {section.done}/{section.total}
+                    </span>
                   </span>
                 </button>
               ))

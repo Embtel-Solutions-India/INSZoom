@@ -17,23 +17,38 @@ const analysisRepository = require("../repositories/document-analysis.repository
 const repository = require("../repositories/document-intelligence.repository");
 const logger = require("../../../utils/logger");
 
-// Registers the Google Document AI provider under the same key
-// DOCUMENT_INTELLIGENCE_PROVIDER=google_document_ai already resolves to.
-// This lives here rather than in document-intelligence.routes.js because
-// THIS module — not the routes file — is the actual shared dependency of
-// every path that resolves the registry: the HTTP controller requires this
-// service directly, and so does the async queue processor
-// (processors/document-intelligence.processor.js), which never touches the
-// routes file at all. Registering only from routes.js meant the queue path
-// happened to work only because Express loads all route files (and
-// therefore that side effect) before the server starts accepting requests —
-// true in the running app, but not for any other consumer (a script, a
-// test, a future worker process) that requires this service without going
-// through the full app bootstrap. This only wires up a function reference —
-// no client is constructed and no network call is made here, so a missing/
-// invalid Google config can't crash startup; it only surfaces (as a
-// controlled 503) the first time an actual classify/extract call resolves
-// this provider.
+// Registers every document-intelligence provider under the key
+// DOCUMENT_INTELLIGENCE_PROVIDER can resolve to. This lives here rather than
+// in document-intelligence.routes.js because THIS module — not the routes
+// file — is the actual shared dependency of every path that resolves the
+// registry: the HTTP controller requires this service directly, and so does
+// the async queue processor (processors/document-intelligence.processor.js),
+// which never touches the routes file at all. Registering only from
+// routes.js meant the queue path happened to work only because Express
+// loads all route files (and therefore that side effect) before the server
+// starts accepting requests — true in the running app, but not for any
+// other consumer (a script, a test, a future worker process) that requires
+// this service without going through the full app bootstrap. This only
+// wires up a function reference — no client is constructed and no network
+// call is made here, so a missing/invalid provider config can't crash
+// startup; it only surfaces (as a controlled 503) the first time an actual
+// classify/extract call resolves that provider.
+//
+// Gemini's own low-level client (services/gemini.service.js) already existed
+// and already works — it just wasn't wired into THIS registry (it's used by
+// the separate, general-purpose `ai` module's own registry instead). This
+// registers it here too so DOCUMENT_INTELLIGENCE_PROVIDER=gemini is usable,
+// without changing which provider is actually active: that's controlled by
+// Backend/.env's DOCUMENT_INTELLIGENCE_PROVIDER, currently
+// "google_document_ai", left untouched by this change.
+try {
+  require("../providers/document-intelligence-provider.registry").register(
+    "gemini",
+    require("./gemini.service")
+  );
+} catch (error) {
+  logger.error("gemini_provider_registration_failed", { error });
+}
 try {
   require("../providers/document-intelligence-provider.registry").register(
     "google_document_ai",
@@ -45,6 +60,7 @@ try {
 const { EVIDENCE_CATEGORIES, confidenceBand, normalizeDocumentType } = require("../schemas/document-intelligence.schema");
 const { aggregateConfidence, toFieldExtractions } = require("../validators/extraction.validator");
 const { mappingsFor } = require("../config/field-mapping.registry");
+const { AUTOFILL_DOCUMENT_TYPES } = require("../config/autofill-document-types");
 
 const REQUIRED_FIELDS_BY_TYPE = {
   passport: ["passportNumber", "firstName", "lastName", "nationality", "dateOfBirth", "issueDate", "expiryDate"],
@@ -1186,6 +1202,76 @@ async function prefillSummaryForCase(caseId, user) {
   return { caseId, items: [...answerItems, ...masterDataItems] };
 }
 
+// Human labels for the handful of slot names that read badly auto-titled
+// (acronyms) - everything else falls through to a plain title-cased version
+// of the slot name itself, so a new AUTOFILL_DOCUMENT_TYPES entry never
+// needs a matching entry added here to show up correctly.
+const SCAN_LABEL_OVERRIDES = {
+  i94: "I-94",
+  employee_i94_copy: "I-94",
+  approval_notice: "Approval notice (I-797)",
+  previous_i797_notices: "Approval notice (I-797)",
+  lca: "LCA (ETA-9035)",
+  certified_lca_eta9035: "LCA (ETA-9035)",
+  credential_evaluation: "Credential evaluation report",
+  credential_evaluation_report: "Credential evaluation report",
+};
+
+function scanOptionLabel(slotName) {
+  return SCAN_LABEL_OVERRIDES[slotName] || String(slotName || "").replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+// Matches DocumentUploadControl.jsx's existing default `accept` prop - the
+// same file types every other checklist upload slot already takes.
+const DEFAULT_SCAN_MIME_TYPES = [".pdf", ".jpg", ".jpeg", ".png", ".docx", ".doc"];
+
+// GET /case/:caseId/scan-options - which of this case's ACTUAL, currently-
+// applicable checklist documents (conditionals already evaluated, exactly
+// like the Documents page itself sees them) can be scanned by Smart Scan.
+// Intersects the case's real file-type checklist questions against
+// AUTOFILL_DOCUMENT_TYPES (the existing /autofill allowlist - reused, not
+// duplicated) rather than exposing every document type a generic knowledge
+// plan might ever mention.
+async function caseScanOptions(caseId, user) {
+  const caseData = await Case.findById(caseId);
+  if (!caseData) {
+    const error = new Error("Case not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  if (!caseService.canAccessCase(user, caseData)) {
+    const error = new Error("Not authorized to access this case");
+    error.statusCode = 403;
+    throw error;
+  }
+  let target;
+  try {
+    // targetRole intentionally omitted - lets participantForUser resolve the
+    // requesting user's own role/checklist automatically, exactly like a
+    // normal Documents-page load with no explicit role override does.
+    target = await questionnaireService.getQuestionnaireForCase(caseId, user, undefined);
+  } catch (error) {
+    // A case that exists (checked above) but has no matched questionnaire
+    // template yet is a real, expected state (e.g. an unusual visa type) -
+    // Smart Scan should just have nothing to offer, not error the page out.
+    // Every other failure (including the impossible-here case/access errors
+    // getQuestionnaireForCase would also throw) still propagates.
+    if (error.status === 404) return { caseId, items: [] };
+    throw error;
+  }
+  const fileQuestions = (target.questions || []).filter((question) => question.type === "file" || question.type === "file-multiple");
+  const applicableSlotNames = new Set(fileQuestions.map((question) => question.metadata?.documentType || question.key));
+  const items = AUTOFILL_DOCUMENT_TYPES
+    .filter((slotName) => applicableSlotNames.has(slotName))
+    .map((slotName) => ({
+      documentType: slotName,
+      label: scanOptionLabel(slotName),
+      extractableFields: Object.keys(mappingsFor(normalizeDocumentType(slotName))),
+      mimeTypes: DEFAULT_SCAN_MIME_TYPES,
+    }));
+  return { caseId, items };
+}
+
 async function reviewMasterDataField(caseId, prefillId, action, payload, user, req) {
   const caseData = await Case.findById(caseId);
   if (!caseData) {
@@ -1246,6 +1332,7 @@ module.exports = {
   uploadAndExtractNow,
   uploadAndExtractNowDetailed,
   prefillSummaryForCase,
+  caseScanOptions,
   reviewMasterDataField,
   applyQuestionnairePrefill,
 };
