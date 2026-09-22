@@ -15,8 +15,19 @@ const AUTO = "AUTO_CREATE";
 const COND = "CONDITIONAL";
 const LATER = "LATER_STAGE";
 const REF = "REFERENCE";
+const NA = "NOT_APPLICABLE";
 
 const STANDALONE = "STANDALONE_FORM";
+// FORM_COMPONENT: a page/section embedded inside another form's SAME PDF
+// (e.g. I-129's H/O-P/L/Q/R/E Classification Supplements and the H-1B Data
+// Collection Supplement - confirmed via docs/forms/H0_I-129_template_seed_prompt.md
+// that these are pages inside the one I-129 USCISFormTemplate, never their
+// own PDF/template). Never independently provisionable - see NOT_APPLICABLE
+// below.
+const FORM_COMPONENT = "FORM_COMPONENT";
+// SUPPLEMENT: a genuinely separate USCIS form/PDF (its own USCISFormTemplate)
+// that is nonetheless legally dependent on a parent form and can never be
+// filed on its own (I-130A, I-539A, I-864A, I-918 Supplement A/B).
 const SUPPLEMENT = "SUPPLEMENT";
 const ONLINE = "ONLINE_APPLICATION";
 const GOVDOC = "GOVERNMENT_DOCUMENT";
@@ -58,23 +69,28 @@ function AUTO_CREATE_ALIAS(t) { return t === AUTO ? AUTO : "__never__"; }
 function i129Petition(visaType, opts = {}) {
   return m(visaType, "I-129", "Petition for a Nonimmigrant Worker", "USCIS", opts.provisioningType || AUTO, STANDALONE, { formTemplateFormCode: "i-129", initialCaseCreation: true, ...opts });
 }
+// componentType FORM_COMPONENT + provisioningType NOT_APPLICABLE: these are
+// pages inside the one I-129 PDF (never their own CaseForm/template), so
+// they must never be independently resolvable/provisionable/visible - see
+// FORM_COMPONENT's definition above. initialCaseCreation left false (they
+// were never real CaseForm-creation triggers to begin with).
 function i129HSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129OPSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129LSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package, not a standalone form.", ...opts });
+  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129QSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, ...opts });
+  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129RSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, ...opts });
+  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
 }
 function i129ESupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129", notes: "Only when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
+  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
 }
 function ds160(visaType, opts = {}) {
   return m(visaType, "DS-160", "Online Nonimmigrant Visa Application", "DOS", opts.provisioningType || COND, ONLINE, {
@@ -130,7 +146,7 @@ const add = (...items) => mappings.push(...items);
 add(
   i129Petition("H-1B", { verificationSource: "uscis.gov/i-129", verificationDate: new Date(), sourceVerified: true }),
   i129HSupplement("H-1B"),
-  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", AUTO, SUPPLEMENT, { parentForm: "I-129", initialCaseCreation: true, notes: "Part of the I-129 filing package for H-1B/H-1B1." }),
+  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF for H-1B/H-1B1, not a standalone form or separate CaseForm." }),
   m("H-1B", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true, notes: "LCA - includes the ETA-9035E electronic filing variant of the same DOL application." }),
   ds160("H-1B"),
   i539("H-1B"),
@@ -140,14 +156,14 @@ add(
 
 add(
   i129Petition("H-1B1 Chile", { provisioningType: COND, initialCaseCreation: false, notes: "Only where the USCIS COS/extension route applies; H-1B1 is more commonly filed via consular DS-160, not I-129." }),
-  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129", notes: "Only when I-129 is actually used for this H-1B1 case." }),
+  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when I-129 is actually used for this H-1B1 case." }),
   m("H-1B1 Chile", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Chile", { provisioningType: AUTO, initialCaseCreation: true, notes: "Consular visa route is the typical H-1B1 path." }),
   i907("H-1B1 Chile")
 );
 add(
   i129Petition("H-1B1 Singapore", { provisioningType: COND, initialCaseCreation: false }),
-  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", COND, SUPPLEMENT, { parentForm: "I-129" }),
+  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129" }),
   m("H-1B1 Singapore", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Singapore", { provisioningType: AUTO, initialCaseCreation: true }),
   i907("H-1B1 Singapore")
@@ -332,9 +348,20 @@ add(
 );
 
 // ===================== SB-1 =====================
+// Corrected (this task) - DS-117 is a real, official, downloadable/
+// fillable PDF (issued by the Department of State, not USCIS) that the
+// applicant/Case Manager completes through the SAME PDF/CaseForm
+// architecture every other standalone form uses - it was previously
+// mis-tagged ONLINE_APPLICATION (that componentType is for DS-260/CEAC,
+// which genuinely has no downloadable PDF). DS-260 was previously
+// LATER_STAGE (an informational "will apply eventually" entry with no
+// Case Manager decision gate) - corrected to CONDITIONAL so it only
+// activates once a Case Manager explicitly records the SB-1 returning-
+// resident-status decision via recordConditionalDecision (never merely
+// because the case exists - integration prompt §7/§10).
 add(
-  m("SB-1", "DS-117", "Application to Determine Returning Resident Status", "DOS", AUTO, ONLINE, { initialCaseCreation: true, immigrationNature: IMMIGRANT }),
-  m("SB-1", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "post_returning_resident_determination" }),
+  m("SB-1", "DS-117", "Application to Determine Returning Resident Status", "DOS", AUTO, STANDALONE, { formTemplateFormCode: "ds-117", initialCaseCreation: true, immigrationNature: IMMIGRANT, stage: "returning_resident_determination" }),
+  m("SB-1", "DS-260", "Immigrant Visa and Alien Registration Application", "DOS", COND, ONLINE, { processingPaths: ["CONSULAR", "NVC"], immigrationNature: IMMIGRANT, stage: "immigrant_visa_processing", notes: "Online DOS/CEAC application, not a downloadable PDF - never auto-created; requires the Case Manager to record the SB-1 returning-resident-status decision as approved first." }),
   m("SB-1", "I-551", "Permanent Resident Card", "USCIS", REF, REFDOC, { initialCaseCreation: false, immigrationNature: "PERMANENT_RESIDENT_DOCUMENT" }),
   m("SB-1", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", REF, REFDOC, { initialCaseCreation: false, notes: "Prior re-entry permit, if applicable - reference only in this context." })
 );
@@ -401,6 +428,15 @@ function eb3Perm(visaType) {
   );
 }
 eb3Perm("EB-3 Skilled Worker"); eb3Perm("EB-3 Professional"); eb3Perm("EB-3 Other Worker");
+// Bare "EB-2"/"EB-3" (no subtype selected) - previously had zero rows at
+// all (confirmed unresolved by design, per the VisaFormMapping correction -
+// never guessing NIW vs. PERM for a case type that's genuinely ambiguous
+// between the two). I-140 itself, though, is common to every EB-2/EB-3
+// subtype including PERM - and bare EB-2/EB-3 is PERM-based by default
+// (NIW already has its own distinct "EB-2 NIW" visaType value a case would
+// use instead) - so this reuses the SAME eb3Perm() factory as the EB-3
+// subtypes immediately above, rather than a new mapping implementation.
+eb3Perm("EB-2"); eb3Perm("EB-3");
 
 // ===================== EB-4 =====================
 add(
@@ -474,6 +510,17 @@ add(m("Re-entry Permit", "I-131", "Application for Travel Documents, Parole Docu
 add(m("Naturalization", "N-400", "Application for Naturalization", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-400", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-400", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-600." }));
 add(m("Certificate of Citizenship", "N-600", "Application for Certificate of Citizenship", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-600", initialCaseCreation: true, immigrationNature: "CITIZENSHIP", verificationSource: "uscis.gov/n-600", verificationDate: new Date(), sourceVerified: true, notes: "Must never also auto-create N-400." }));
 add(m("Replacement Citizenship Certificate", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "n-565", initialCaseCreation: true, immigrationNature: "CITIZENSHIP" }));
+// N-565 as an OPTIONAL add-on to an EXISTING Naturalization/Certificate of
+// Citizenship case (as opposed to "Replacement Citizenship Certificate"
+// immediately above, which is its own dedicated, AUTO_CREATE case type) -
+// CONDITIONAL, never auto-created; a Case Manager explicitly adds it via
+// visaFormMapping.service.js's recordConditionalDecision (the same
+// mechanism I-131 already uses), which also assigns n565Checklist.js's
+// client checklist (see CONDITIONAL_FORM_CHECKLIST_KEYS). Deliberately
+// registered ONLY under these two Single Person, citizenship-document case
+// types - never EB-1/EB-2/EB-3/H-1B/L-1/family/employer-employee.
+add(m("Naturalization", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", COND, STANDALONE, { formTemplateFormCode: "n-565", immigrationNature: "CITIZENSHIP", notes: "Optional, Case-Manager-added replacement/correction/update service for an existing Naturalization case - never auto-created." }));
+add(m("Certificate of Citizenship", "N-565", "Application for Replacement Naturalization/Citizenship Document", "USCIS", COND, STANDALONE, { formTemplateFormCode: "n-565", immigrationNature: "CITIZENSHIP", notes: "Optional, Case-Manager-added replacement/correction/update service for an existing Certificate of Citizenship case - never auto-created." }));
 
 // ===================== I-824 (post-approval, common cross-visa) =====================
 // Not tied to a single visaType - the spec explicitly requires this to

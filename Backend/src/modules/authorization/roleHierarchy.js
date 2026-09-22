@@ -10,6 +10,11 @@ const CANONICAL_ROLES = [
   // as its own dedicated role, kept separate so a beneficiary is never
   // conflated with an employer-sponsored employee.
   "beneficiary",
+  // I-864 joint sponsor - a third party distinct from the petitioner,
+  // invited the same self-service way "beneficiary" already is. Kept
+  // separate so a joint sponsor's own financial checklist is never
+  // conflated with the petitioner's.
+  "joint_sponsor",
   // External counsel with portal access scoped to whichever cases a Case
   // Manager/Admin has explicitly granted (Case.attorneyAccess[]) — see
   // Attorney/PHASE0_FINDINGS.md. Not a staff role (no authority over
@@ -30,6 +35,7 @@ const ROLE_HIERARCHY = {
   client: 4,
   user: 4,
   beneficiary: 4,
+  joint_sponsor: 4,
   attorney: 4,
 };
 

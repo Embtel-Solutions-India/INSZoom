@@ -34,6 +34,26 @@ const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
 const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
+const eb1aChecklistService = require("./eb1aChecklist.service");
+const uscisFormService = require("../uscis-forms/uscis-form.service");
+const addressChangeService = require("../canonical/services/AddressChangeService");
+const canonicalSyncService = require("../canonical/services/CanonicalSyncService");
+const { CHECKLIST_KEY_BY_TARGET_ROLE } = require("../questionnaires/changeOfAddressChecklist");
+const { EB1A_CRITERIA } = require("../../config/eb1a");
+
+const EB1A_CRITERION_STATUSES = new Set([
+  "NOT_STARTED",
+  "IN_PROGRESS",
+  "EVIDENCE_UPLOADED",
+  "READY_FOR_REVIEW",
+  "QUALIFIED",
+  "NOT_APPLICABLE",
+  "COMPARABLE_EVIDENCE_REVIEW",
+  "COMPARABLE_EVIDENCE_ACCEPTED",
+  "COMPARABLE_EVIDENCE_REJECTED",
+  "REVIEW_REQUIRED",
+]);
+const FINAL_MERITS_STATUSES = new Set(["NOT_STARTED", "IN_REVIEW", "SUPPORTED", "NEEDS_MORE_EVIDENCE", "NOT_SUPPORTED", "ATTORNEY_REVIEW"]);
 
 const checklistAllowedMimeTypes = new Set([
   "image/jpeg",
@@ -977,6 +997,13 @@ exports.createCase = async (req, res, next) => {
         caseType: "immigration",
         petitionType: trimmedVisaType,
         petitionSubType: extension ? cleanString(extension) : undefined,
+        // SB-1 (Returning Resident Visa) is inherently a consular process -
+        // there is no adjustment-of-status path for someone applying from
+        // abroad for returning-resident status - so this is SB-1's own
+        // sensible default, not a generic branch affecting any other visa.
+        // Staff can still change it later via the same generic
+        // processingPath field every other case already exposes.
+        processingPath: trimmedVisaType === "SB-1" ? "CONSULAR" : undefined,
         package: normalizedPackage,
         primaryPackage: normalizedPackage || undefined,
         plan: {
@@ -1331,6 +1358,14 @@ exports.updateCase = async (req, res, next) => {
       "petitionSubType",
       "clientName",
       "clientEmail",
+      // Which family-based filing path this case is pursuing (Petition
+      // Only / Adjustment of Status / Consular) - drives which of the
+      // I-130/Green-Card/I-864 checklists are assigned (see
+      // family-workflow.controller.js's ensureFamilyChecklistReferences,
+      // re-triggered below when this changes) and which independent USCIS
+      // forms the registry resolves (VisaFormMapping's processingPaths
+      // gating - unchanged, already reads this field).
+      "processingPath",
     ];
     const changes = {};
 
@@ -1388,6 +1423,15 @@ exports.updateCase = async (req, res, next) => {
         reason: "case_classification_changed",
       });
     }
+    // Re-run family checklist composition when the filing path itself
+    // changes (e.g. a client who started "Petition Only" later decides to
+    // pursue the Green Card) - additive only: assignQuestionnaireIfNotActive
+    // (inside ensureFamilyChecklistReferences) never removes/duplicates an
+    // already-assigned checklist, it only assigns whichever new ones the
+    // new path now calls for.
+    if (changes.processingPath && (caseData.petitionerUser || caseData.beneficiaryUser)) {
+      await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
+    }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
 
     res.json({ success: true, message: "Case updated", case: lifecycle.case, caseSummary: caseService.summarizeCase(lifecycle.case), workflow: lifecycle });
@@ -1425,6 +1469,212 @@ exports.updateCaseStage = async (req, res, next) => {
     });
   } catch (error) {
     handleError(error, next);
+  }
+};
+
+// Optional add-on process: Naturalization (Form N-400). Attachable to ANY
+// existing case regardless of its own visaType/processingPath - deliberately
+// NOT routed through visaFormMapping.service.js's recordConditionalDecision
+// (which requires an exact caseData.visaType match, the right mechanism for
+// I-131/N-565 but wrong here per the integration spec's explicit "do not
+// hardcode N-400 to IR-1/EB-2/EB-3" rule). Mirrors family-workflow.controller.js's
+// approveGcNvcChecklist pattern (explicit Case-level approval flag +
+// direct assignQuestionnaireIfNotActive), generalized to work for every
+// case shape since N-400 isn't family-specific either. The Form N-400 PDF
+// is provisioned through the exact same generic path AUTO_CREATE/CONDITIONAL
+// forms already use (uscisFormService.ensureAssignedForms) - no second
+// form-storage system. Idempotent: assignQuestionnaireIfNotActive and
+// ensureAssignedForms both dedupe on their own, so re-approving is a safe
+// no-op (no duplicate questionnaireReferences or CaseForm).
+exports.approveN400Process = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const questionnaire = await Questionnaire.findOne({ key: "n400_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-400 checklist template found" });
+    }
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole: "client" }, req.user, req);
+
+    const template = await uscisFormService.findLatestActiveTemplate("n-400");
+    if (template) {
+      template._visaFormMapping = {
+        mappingId: null,
+        provisioningType: "OPTIONAL_ADD_ON",
+        createdReason: "Optional Naturalization (Form N-400) process added by Case Manager",
+        visaType: caseData.visaType,
+        processingPath: caseData.processingPath || "",
+      };
+      await uscisFormService.ensureAssignedForms(caseData, req.user, req, { templates: [template] });
+    }
+
+    caseData.n400Process = {
+      approved: true,
+      approvedAt: caseData.n400Process?.approvedAt || new Date(),
+      approvedBy: caseData.n400Process?.approvedBy || req.user._id,
+    };
+    caseService.addTimelineEvent(caseData, "case_manager", "N-400 Naturalization Process Added", "Naturalization / U.S. Citizenship checklist and Form N-400 enabled for the client.", req.user);
+    await caseData.save();
+    res.json({ success: true, case: caseData, n400Process: caseData.n400Process });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Optional add-on process: Certificate of Citizenship (Form N-600). Same
+// visa-agnostic pattern as approveN400Process immediately above (see that
+// function's own comment, and n600Checklist.js's file banner, for why this
+// is deliberately NOT routed through visaFormMapping.service.js's
+// recordConditionalDecision). The U.S.-citizen parent's information/
+// documents live INSIDE this same client checklist (§7/§19 of the
+// integration prompt) - no second participant/login/checklist is created.
+exports.approveN600Process = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const questionnaire = await Questionnaire.findOne({ key: "n600_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-600 checklist template found" });
+    }
+    await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData, targetRole: "client" }, req.user, req);
+
+    const template = await uscisFormService.findLatestActiveTemplate("n-600");
+    if (template) {
+      template._visaFormMapping = {
+        mappingId: null,
+        provisioningType: "OPTIONAL_ADD_ON",
+        createdReason: "Optional Certificate of Citizenship (Form N-600) process added by Case Manager",
+        visaType: caseData.visaType,
+        processingPath: caseData.processingPath || "",
+      };
+      await uscisFormService.ensureAssignedForms(caseData, req.user, req, { templates: [template] });
+    }
+
+    caseData.n600Process = {
+      approved: true,
+      approvedAt: caseData.n600Process?.approvedAt || new Date(),
+      approvedBy: caseData.n600Process?.approvedBy || req.user._id,
+    };
+    caseService.addTimelineEvent(caseData, "case_manager", "N-600 Certificate of Citizenship Process Added", "Certificate of Citizenship checklist and Form N-600 enabled for the client.", req.user);
+    await caseData.save();
+    res.json({ success: true, case: caseData, n600Process: caseData.n600Process });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const CHANGE_OF_ADDRESS_ROLES = new Set(["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client"]);
+
+// Optional add-on component: Change of Address (internal reference AR-11).
+// Unlike N-400/N-600 (always the single "client" role), this is attachable
+// to ANY of the six existing participant roles, and the same case can have
+// it active for more than one participant at once (e.g. employee AND
+// employer independently) - see changeOfAddressChecklist.js's file banner.
+// assignQuestionnaireIfNotActive's dedup is questionnaireId-only (confirmed
+// insufficient here - it would block a second, different-participant
+// attach on the same questionnaire template), so this does its own
+// (targetRole, participantId)-scoped dedup against
+// Case.changeOfAddressComponents and calls assignQuestionnaire directly.
+exports.addChangeOfAddress = async (req, res, next) => {
+  try {
+    const { targetRole, participantId, submissionMethod } = req.body;
+    if (!CHANGE_OF_ADDRESS_ROLES.has(targetRole)) {
+      return res.status(400).json({ success: false, code: "INVALID_TARGET_ROLE", message: `targetRole must be one of: ${[...CHANGE_OF_ADDRESS_ROLES].join(", ")}` });
+    }
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const checklistKey = CHECKLIST_KEY_BY_TARGET_ROLE[targetRole];
+    const questionnaire = await Questionnaire.findOne({ key: checklistKey, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: `No Change of Address checklist template found for ${targetRole}` });
+    }
+
+    const already = (caseData.changeOfAddressComponents || []).some((component) =>
+      component.targetRole === targetRole &&
+      String(component.participantId || "") === String(participantId || "") &&
+      component.status !== "approved" // an already-approved component is a completed, historical event - a fresh attach starts a new one, it never collides with it.
+    );
+    if (already) {
+      return res.json({ success: true, case: caseData });
+    }
+
+    // assignQuestionnaire does its own internal Case.findById + .save() -
+    // it never sees or writes through this in-memory `caseData`. Re-fetch
+    // afterward rather than keep mutating the now-stale local object,
+    // otherwise this function's own save below would silently overwrite
+    // the questionnaireReferences push assignQuestionnaire just made.
+    await questionnaireService.assignQuestionnaire(questionnaire, { caseId: caseData._id, targetRole, participantId }, req.user, req);
+    const freshCaseData = await Case.findById(caseData._id);
+    freshCaseData.changeOfAddressComponents = freshCaseData.changeOfAddressComponents || [];
+    freshCaseData.changeOfAddressComponents.push({
+      targetRole,
+      participantId: participantId || undefined,
+      questionnaireId: questionnaire._id,
+      status: "added",
+      submissionMethod: submissionMethod || "",
+      addedAt: new Date(),
+      addedBy: req.user._id,
+    });
+    caseService.addTimelineEvent(freshCaseData, "case_manager", "Change of Address Added", `Change of Address checklist enabled for ${targetRole}.`, req.user);
+    await freshCaseData.save();
+    res.json({ success: true, case: freshCaseData });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Case Manager review/approval step - the point at which the client's
+// submitted address actually becomes authoritative. Never auto-approved on
+// client submission (confirmed decision - see the plan). Order matters:
+// capture the OUTGOING address (still the live canonical value at this
+// point) BEFORE approveResponse+syncCase overwrite it.
+exports.approveChangeOfAddress = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const component = (caseData.changeOfAddressComponents || []).find((item) => String(item._id) === String(req.params.componentId));
+    if (!component) return res.status(404).json({ success: false, code: "COMPONENT_NOT_FOUND", message: "Change of Address component not found on this case" });
+
+    const reference = (caseData.questionnaireReferences || []).find((item) =>
+      String(item.questionnaireId) === String(component.questionnaireId) &&
+      item.targetRole === component.targetRole &&
+      String(item.participantId || "") === String(component.participantId || "")
+    );
+    // responseId is always present from the moment of assignment (see
+    // assignQuestionnaire) - it is NOT a signal that the client has
+    // submitted anything. reference.status is: the existing, generic
+    // questionnaireReferences lifecycle (not_started -> in_progress ->
+    // completed -> submitted -> ...) that saveAnswers/submitResponse
+    // already maintain for every questionnaire, reused here rather than
+    // inventing a second submission-tracking signal.
+    if (!reference || !["submitted", "completed", "approved"].includes(reference.status)) {
+      return res.status(409).json({ success: false, code: "NOT_SUBMITTED", message: "The client has not submitted this Change of Address yet" });
+    }
+
+    await addressChangeService.captureOutgoingAddress(caseData._id, { targetRole: component.targetRole }, req.user, req);
+    await questionnaireService.approveResponse(reference.responseId, { approved: true }, req.user, req);
+    await canonicalSyncService.syncCase(caseData._id, req.user, req, "change_of_address_approved");
+
+    const freshCaseData = await Case.findById(caseData._id);
+    const freshComponent = freshCaseData.changeOfAddressComponents.find((item) => String(item._id) === String(component._id));
+    if (freshComponent) {
+      freshComponent.status = "approved";
+      freshComponent.approvedAt = new Date();
+      freshComponent.approvedBy = req.user._id;
+    }
+    caseService.addTimelineEvent(freshCaseData, "case_manager", "Change of Address Approved", `New address approved for ${component.targetRole} and synchronized to applicable USCIS forms.`, req.user);
+    await freshCaseData.save();
+    res.json({ success: true, case: freshCaseData });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -2381,6 +2631,114 @@ exports.generateCaseChecklist = async (req, res, next) => {
     await caseData.save();
     await caseService.writeAuditLog("generate_checklist", caseData, req.user, { visaType }, req);
     res.json({ success: true, message: "Checklist regenerated", checklistItems: caseData.checklistItems, documentChecklist: caseData.documentChecklist });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// EB-1A criterion-grouped checklist — "X of 10 criteria qualified", computed
+// from checklistItems (grouped by criterionId) + the manual criteriaStatus
+// verdicts below. See eb1aChecklist.service.js for why this is never
+// derived from raw upload count.
+exports.getEb1aCriteria = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to view this case" });
+    res.json({ success: true, ...eb1aChecklistService.buildCriteriaView(caseData) });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Staff-only manual verdict for one EB-1A criterion — the only way a
+// criterion can ever become QUALIFIED (never auto-set from an upload).
+exports.updateEb1aCriterion = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const { criterionId } = req.params;
+    if (!EB1A_CRITERIA.some((criterion) => criterion.criterionId === criterionId)) {
+      return res.status(400).json({ success: false, message: "Unknown EB-1A criterion" });
+    }
+    const { status, notes, comparableEvidenceDescription } = req.body;
+    if (status !== undefined && !EB1A_CRITERION_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, message: "Invalid criterion status" });
+    }
+    caseData.criteriaStatus = caseData.criteriaStatus || [];
+    let entry = caseData.criteriaStatus.find((item) => item.criterionId === criterionId);
+    if (!entry) {
+      entry = { criterionId, visaType: "EB1A" };
+      caseData.criteriaStatus.push(entry);
+      entry = caseData.criteriaStatus[caseData.criteriaStatus.length - 1];
+    }
+    if (status !== undefined) entry.status = status;
+    if (notes !== undefined) entry.reviewerNotes = notes;
+    if (comparableEvidenceDescription !== undefined) entry.comparableEvidenceDescription = comparableEvidenceDescription;
+    entry.markedBy = req.user._id;
+    entry.markedAt = new Date();
+    caseService.addTimelineEvent(caseData, "eb1a_criterion", "EB-1A Criterion Reviewed", `Criterion ${criterionId} marked ${entry.status}`, req.user, { criterionId, status: entry.status });
+    caseService.addAuditEntry(caseData, "update_eb1a_criterion", "EB-1A criterion updated", req.user, { criterionId, status: entry.status }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("update_eb1a_criterion", caseData, req.user, { criterionId, status: entry.status }, req);
+    res.json({ success: true, message: "Criterion updated", ...eb1aChecklistService.buildCriteriaView(caseData) });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Deliberately separate from criteria QUALIFIED status — "3 criteria met" is
+// only the evidentiary threshold, never equated with overall case approval.
+exports.updateEb1aFinalMerits = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const { status, notes } = req.body;
+    if (status !== undefined && !FINAL_MERITS_STATUSES.has(status)) {
+      return res.status(400).json({ success: false, message: "Invalid final merits status" });
+    }
+    caseData.criteriaBasedReview = caseData.criteriaBasedReview || {};
+    if (status !== undefined) caseData.criteriaBasedReview.finalMeritsReviewStatus = status;
+    if (notes !== undefined) caseData.criteriaBasedReview.finalMeritsNotes = notes;
+    caseData.criteriaBasedReview.updatedBy = req.user._id;
+    caseData.criteriaBasedReview.updatedAt = new Date();
+    caseService.addTimelineEvent(caseData, "eb1a_final_merits", "Final Merits Review Updated", `Final merits marked ${caseData.criteriaBasedReview.finalMeritsReviewStatus}`, req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus });
+    caseService.addAuditEntry(caseData, "update_final_merits", "Final merits review updated", req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("update_final_merits", caseData, req.user, { status: caseData.criteriaBasedReview.finalMeritsReviewStatus }, req);
+    res.json({ success: true, message: "Final merits review updated", criteriaBasedReview: caseData.criteriaBasedReview });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Lets staff attach a document already uploaded against one checklist item
+// onto a second one, instead of the client re-uploading the same file — the
+// one document, multiple criteria case (e.g. the same expert letter
+// supporting both "original contributions" and "leading role").
+exports.linkExistingChecklistDocument = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    const sourceIdx = parseInt(req.params.idx, 10);
+    const sourceItem = caseData.checklistItems[sourceIdx];
+    if (!sourceItem) return res.status(404).json({ success: false, message: "Source checklist item not found" });
+    const sourceFile = sourceItem.uploadedFiles.find((file) => String(file._id) === String(req.body.fileId));
+    if (!sourceFile) return res.status(404).json({ success: false, message: "File not found on source checklist item" });
+    const targetItem = caseData.checklistItems.id(req.body.targetItemId);
+    if (!targetItem) return res.status(404).json({ success: false, message: "Target checklist item not found" });
+    const alreadyLinked = targetItem.uploadedFiles.some((file) => String(file.document) === String(sourceFile.document) && sourceFile.document);
+    if (!alreadyLinked) {
+      targetItem.uploadedFiles.push({ ...sourceFile.toObject(), _id: undefined, uploadedAt: new Date() });
+      if (["pending", "requested"].includes(targetItem.status)) targetItem.status = "submitted";
+      targetItem.submittedAt = targetItem.submittedAt || new Date();
+    }
+    caseData.documentChecklist = caseData.checklistItems;
+    caseService.addTimelineEvent(caseData, "checklist", "Existing Document Linked", `"${sourceFile.originalName}" linked to "${targetItem.name}"`, req.user, { sourceIdx, targetItemId: req.body.targetItemId });
+    caseService.addAuditEntry(caseData, "link_checklist_document", "Existing document linked to another checklist item", req.user, { sourceIdx, targetItemId: req.body.targetItemId }, req);
+    await caseData.save();
+    await caseService.writeAuditLog("link_checklist_document", caseData, req.user, { sourceIdx, targetItemId: req.body.targetItemId }, req);
+    res.json({ success: true, message: "Document linked", item: targetItem });
   } catch (error) {
     handleError(error, next);
   }

@@ -47,9 +47,9 @@ function normalizeAutofillPrefill(prefill) {
   }));
 }
 
-export default function useQuestionnaireAnswers(caseId, targetRole, { disabled = false } = {}) {
+export default function useQuestionnaireAnswers(caseId, targetRole, { disabled = false, referenceId } = {}) {
   const { questionnaire, documentQuestions, fieldQuestions, answers: rawAnswers, responseId, progress: hookProgress, loading, error, refetch } =
-    useCaseQuestionnaire(caseId, targetRole);
+    useCaseQuestionnaire(caseId, targetRole, referenceId);
 
   const [answers, setAnswers] = useState({});
   const [prefillMeta, setPrefillMeta] = useState({});

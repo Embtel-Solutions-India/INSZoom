@@ -70,6 +70,10 @@ router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermiss
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);
 
 router.put("/:id/stage", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updateCaseStage);
+router.post("/:id/n400-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN400Process);
+router.post("/:id/n600-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN600Process);
+router.post("/:id/change-of-address/add", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.addChangeOfAddress);
+router.post("/:id/change-of-address/:componentId/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveChangeOfAddress);
 router.post("/:id/notes", authenticate, authorizeRoles(...staffRoles), body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addInternalNote);
 router.post("/:id/external-notes", authenticate, body("note").notEmpty().withMessage("Note is required"), validate, ctrl.addExternalNote);
 router.put(
@@ -185,6 +189,11 @@ router.post("/:id/request-documents", authenticate, authorizeRoles(...managerRol
 router.post("/:id/checklist/:idx/upload", authenticate, ctrl.checklistUploadMiddleware, ctrl.uploadChecklistFile);
 router.put("/:id/checklist/:idx", authenticate, authorizeRoles(...staffRoles), ctrl.updateChecklistItem);
 router.post("/:id/checklist/generate", authenticate, authorizeRoles(...staffRoles), ctrl.generateCaseChecklist);
+router.post("/:id/checklist/:idx/link-existing-document", authenticate, authorizeRoles(...staffRoles), ctrl.linkExistingChecklistDocument);
+
+router.get("/:id/eb1a-criteria", authenticate, ctrl.getEb1aCriteria);
+router.put("/:id/eb1a-criteria/:criterionId", authenticate, authorizeRoles(...staffRoles), ctrl.updateEb1aCriterion);
+router.put("/:id/final-merits", authenticate, authorizeRoles(...staffRoles), ctrl.updateEb1aFinalMerits);
 
 router.put("/:id/plan", authenticate, ctrl.updatePlan);
 router.put("/:id/sign-declaration", authenticate, ctrl.signDeclaration);

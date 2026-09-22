@@ -7,7 +7,7 @@ import { questionnairesApi } from "../services/api";
 // already evaluates conditionalLogic/showIf server-side (isQuestionVisible),
 // so refetching after a save is how newly-visible/hidden questions surface;
 // no client-side conditional evaluator is needed.
-export default function useCaseQuestionnaire(caseId, targetRole) {
+export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
   const [state, setState] = useState({
     questionnaire: null,
     documentQuestions: [],
@@ -38,6 +38,12 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
     setState((prev) => ({ ...prev, loading: true, error: attempt > 0 ? prev.error : null }));
     try {
       const params = targetRole ? { targetRole } : {};
+      // Disambiguates when 2+ active checklists share the same targetRole
+      // (e.g. Green Card Beneficiary + the optional GC-NVC Beneficiary
+      // checklist) - see questionnaire.service.js's getQuestionnaireForCase.
+      // Omitted (undefined) for every case that has only one, so behavior
+      // there is unchanged.
+      if (referenceId) params.referenceId = referenceId;
       const response = await questionnairesApi.getForCase(caseId, params);
       const data = response.data;
       setState({
@@ -56,7 +62,7 @@ export default function useCaseQuestionnaire(caseId, targetRole) {
       }
       setState((prev) => ({ ...prev, loading: false, error: error.message || "Failed to load questionnaire" }));
     }
-  }, [caseId, targetRole]);
+  }, [caseId, targetRole, referenceId]);
 
   useEffect(() => {
     load();

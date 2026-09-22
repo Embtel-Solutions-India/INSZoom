@@ -3,8 +3,12 @@ const Question = require("./Question");
 
 // "petitioner"/"beneficiary" are the family/sponsor-visa (K-1/K-3) two-party
 // path — additive, mirrors "employer"/"employee" as a separate pair, never
-// reused/overloaded onto them.
-const CHECKLIST_ROLES = ["employer", "employee", "petitioner", "beneficiary", "client", "business_plan", "case_manager", "team_lead", "admin", ""];
+// reused/overloaded onto them. "joint_sponsor" is additive too - a third
+// party distinct from the petitioner who co-signs an I-864 Affidavit of
+// Support when the petitioner alone doesn't meet the income threshold
+// (IR-1/CR-1/F2A/F2B) - previously had no role of its own and would
+// otherwise be silently folded into "petitioner".
+const CHECKLIST_ROLES = ["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client", "business_plan", "case_manager", "team_lead", "admin", ""];
 
 // Assigns or removes a *different* checklist (Questionnaire) when this
 // questionnaire's answers satisfy `condition` — evaluated on submit by

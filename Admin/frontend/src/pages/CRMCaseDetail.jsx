@@ -3,8 +3,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
+import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import AttorneyMessagesPanel from '../components/AttorneyMessagesPanel'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import { useAuth } from '../contexts/AuthContext'
@@ -359,8 +360,38 @@ const CRMCaseDetail = () => {
   const isFamilyCase = Boolean(
     caseData && (caseData.caseStructure === 'family' || caseData.petitionerUser || caseData.beneficiaryUser)
   )
+  // "Renew, Replace, Correct or Update Green Card" (Form I-90) - an
+  // EXISTING Green Card holder's own single-party service, unrelated to
+  // the family petition/AOS/GC-NVC workflows above (no petitioner/
+  // beneficiary split - checklistRole "client", same single-party
+  // mechanism as EB-1A/EB-2 NIW/etc.).
+  const isGreenCardRenewalCase = caseData?.visaType === 'Green Card Renewal'
+  const greenCardRenewalQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', { enabled: overviewActive && isGreenCardRenewalCase })
   const petitionerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'petitioner', { enabled: overviewActive && isFamilyCase })
   const beneficiaryQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', { enabled: overviewActive && isFamilyCase })
+  // I-864 joint sponsor - a third party distinct from the petitioner, only
+  // ever present once one is actually added to the case (Case.jointSponsorUser).
+  // Same pattern as the two panels above, gated additionally on that field
+  // so a case with no joint sponsor never pays for the extra request.
+  const showJointSponsorPanel = isFamilyCase && Boolean(caseData?.jointSponsorUser)
+  const jointSponsorQuestionnaire = useCaseQuestionnaire(caseData?._id, 'joint_sponsor', { enabled: overviewActive && showJointSponsorPanel })
+  // Filing Path (Case.processingPath) - which of the I-130/Green-Card/I-864
+  // checklists apply (see family-workflow.controller.js's
+  // ensureFamilyChecklistReferences, re-run server-side when this changes).
+  const [filingPath, setFilingPath] = useState('')
+  const [savingFilingPath, setSavingFilingPath] = useState(false)
+  useEffect(() => { setFilingPath(caseData?.processingPath || '') }, [caseData?.processingPath])
+  const handleSaveFilingPath = async () => {
+    setSavingFilingPath(true)
+    try {
+      await casesApi.update(id, { processingPath: filingPath })
+      await fetchCaseDetail()
+    } catch (err) {
+      console.error('Error saving filing path:', err)
+    } finally {
+      setSavingFilingPath(false)
+    }
+  }
   // Server-computed checklist completeness (calculateDetailedProgress, via
   // listCaseChecklists) — the same numbers Immiglance's client portal shows, matched
   // by responseId to the questionnaires resolved above.
@@ -373,6 +404,33 @@ const CRMCaseDetail = () => {
     }).catch(() => { if (mounted) setChecklistsProgress([]) })
     return () => { mounted = false }
   }, [caseData?._id, overviewActive])
+  // Optional "Green Card – National Visa Center (NVC) / Consular Processing
+  // Checklist" (gc_nvc_<slug>_checklist) - exists as a template for every
+  // CONSULAR-eligible family case, but is only ASSIGNED (and therefore only
+  // findable in checklistsProgress) once a Case Manager explicitly approves
+  // it via approveGcNvcChecklist. It shares checklistRole "beneficiary"
+  // with the Green Card checklist, so it's looked up by its own
+  // referenceId (from checklistsProgress) rather than by role alone - see
+  // useCaseQuestionnaire's referenceId option.
+  const gcNvcEligible = isFamilyCase && caseData?.processingPath === 'CONSULAR'
+  const gcNvcChecklistEntry = checklistsProgress.find((item) => item.key?.startsWith('gc_nvc_'))
+  const gcNvcApproved = Boolean(caseData?.gcNvcChecklist?.approved)
+  const gcNvcQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', {
+    enabled: overviewActive && gcNvcApproved && Boolean(gcNvcChecklistEntry),
+    referenceId: gcNvcChecklistEntry?.referenceId,
+  })
+  const [approvingGcNvc, setApprovingGcNvc] = useState(false)
+  const handleApproveGcNvcChecklist = async () => {
+    setApprovingGcNvc(true)
+    try {
+      await familyWorkflowApi.approveGcNvcChecklist(caseData._id)
+      await fetchCaseDetail()
+    } catch (err) {
+      console.error('Error approving GC-NVC checklist:', err)
+    } finally {
+      setApprovingGcNvc(false)
+    }
+  }
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId].filter(Boolean)
   const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
   // Scoped to upload (file-type) questions only — c.progress mixes in
@@ -1904,6 +1962,83 @@ const CRMCaseDetail = () => {
                 answerMap={beneficiaryQuestionnaire.answerMap}
                 loading={beneficiaryQuestionnaire.loading}
               />
+              {showJointSponsorPanel && (
+                <QuestionnaireAnswersPanel
+                  title={`${caseData.visaType || 'Family'} Visa — Joint Sponsor (I-864) Checklist`}
+                  questionnaire={jointSponsorQuestionnaire.questionnaire}
+                  fieldQuestions={jointSponsorQuestionnaire.fieldQuestions}
+                  answerMap={jointSponsorQuestionnaire.answerMap}
+                  loading={jointSponsorQuestionnaire.loading}
+                />
+              )}
+
+              {isGreenCardRenewalCase && (
+                <QuestionnaireAnswersPanel
+                  title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
+                  questionnaire={greenCardRenewalQuestionnaire.questionnaire}
+                  fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
+                  answerMap={greenCardRenewalQuestionnaire.answerMap}
+                  loading={greenCardRenewalQuestionnaire.loading}
+                />
+              )}
+
+              {gcNvcEligible && !gcNvcApproved && (
+                <div className="card">
+                  <h3 className="text-lg font-semibold text-foreground">Green Card – National Visa Center (NVC) / Consular Processing Checklist</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Optional beneficiary checklist for the DS-260 / NVC process. It is not visible to the client
+                    until you approve it here — approving assigns it to the beneficiary and does not affect the
+                    Green Card checklist already assigned.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleApproveGcNvcChecklist}
+                    disabled={approvingGcNvc}
+                    className="btn-primary text-sm mt-3 disabled:opacity-50"
+                  >
+                    {approvingGcNvc ? 'Approving…' : 'Approve / Enable GC-NVC Checklist'}
+                  </button>
+                </div>
+              )}
+              {gcNvcApproved && (
+                <QuestionnaireAnswersPanel
+                  title="Green Card – National Visa Center (NVC) / Consular Processing Checklist"
+                  questionnaire={gcNvcQuestionnaire.questionnaire}
+                  fieldQuestions={gcNvcQuestionnaire.fieldQuestions}
+                  answerMap={gcNvcQuestionnaire.answerMap}
+                  loading={gcNvcQuestionnaire.loading}
+                />
+              )}
+
+              {isFamilyCase && (
+                <div className="card">
+                  <h3 className="text-lg font-semibold text-foreground">Filing Path</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Which of the I-130/Green-Card/I-864 checklists apply. Changing this assigns any newly-applicable
+                    checklist(s) - it never removes or duplicates one already assigned.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-end gap-3">
+                    <select
+                      value={filingPath}
+                      onChange={(event) => setFilingPath(event.target.value)}
+                      className="input-field text-sm"
+                    >
+                      <option value="">Not selected</option>
+                      <option value="PETITION_ONLY">Petition Only (I-130)</option>
+                      <option value="ADJUSTMENT_OF_STATUS">Adjustment of Status / Green Card (I-485)</option>
+                      <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleSaveFilingPath}
+                      disabled={savingFilingPath || filingPath === (caseData.processingPath || '')}
+                      className="btn-primary text-sm disabled:opacity-50"
+                    >
+                      {savingFilingPath ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="card">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Client Intake Summary</h3>
@@ -2411,6 +2546,13 @@ const CRMCaseDetail = () => {
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
+        {/* EB-1A is a "satisfy at least 3 of 10 criteria" classification,
+            not a flat document list — Case Managers review/mark criteria
+            here instead of the generic flat "Required Documents" card. See
+            Backend's config/eb1a.js / eb1aChecklist.service.js. */}
+        {String(caseData?.visaType || '').replace(/[\s_-]+/g, '').toUpperCase() === 'EB1A' ? (
+          <Eb1aCriteriaPanel caseId={id} />
+        ) : (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-foreground">Required Documents</h3>
@@ -2446,6 +2588,7 @@ const CRMCaseDetail = () => {
             renderEmptyState('No required document checklist')
           )}
         </div>
+        )}
 
         <div className="card">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -7,6 +7,7 @@
 const VisaFormMapping = require("../../models/VisaFormMapping");
 const Questionnaire = require("../../models/Questionnaire");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
+const { resolveWithHierarchyFallback } = require("../../config/visaHierarchy");
 
 // A CONDITIONAL mapping's formNumber that also has its own non-default,
 // explicit-assignment-only client checklist (see i131Checklist.js's file
@@ -16,6 +17,7 @@ const uscisFormService = require("../uscis-forms/uscis-form.service");
 // no-op for them, never a behavior change to their existing flow.
 const CONDITIONAL_FORM_CHECKLIST_KEYS = {
   "I-131": "i131_checklist",
+  "N-565": "n565_checklist",
 };
 
 // Mirrors the whitelist in VisaFormMapping.js exactly - a trigger may only
@@ -139,12 +141,80 @@ function templateDiagnostics(autoCreateEntries) {
     }));
 }
 
+function isEmptyResolution(resolved) {
+  return !resolved.autoCreate.length && !resolved.conditional.length && !resolved.laterStage.length && !resolved.reference.length;
+}
+
+// Parent-visa-aware wrapper around resolveApplicableMappings - tries the
+// case's exact visaType first (unchanged behavior), and only when that
+// returns nothing at all (every bucket empty) walks up the canonical
+// visa hierarchy (visaHierarchy.js) to a parent classification, e.g.
+// P-1A -> P-1. A visa with its own dedicated mapping (L-1A, EB-2 NIW, ...)
+// never inherits its parent's/sibling's forms - the walker only advances
+// when the current level is genuinely empty. See §9/§12/§14 of the
+// VisaFormMapping architecture correction plan.
+async function resolveVisaFormMappings(caseData) {
+  // .toObject() first when available (a real Mongoose document's schema
+  // paths aren't reliably spread-safe otherwise) - readWhitelistedField
+  // above only ever reads plain scalar/nested fields off the result, so a
+  // plain object clone is sufficient and never needs Mongoose document
+  // methods.
+  const plainCase = typeof caseData.toObject === "function" ? caseData.toObject() : caseData;
+  const lookup = (visaType) => resolveApplicableMappings({ ...plainCase, visaType });
+  const { result, resolvedVisaType, usedFallback, unresolved } = await resolveWithHierarchyFallback(caseData.visaType, lookup, isEmptyResolution);
+  return { ...result, resolvedVisaType, usedParentFallback: usedFallback, unresolved };
+}
+
+// The ONLY predicate that decides "independent USCIS form" anywhere in the
+// app - agency must be USCIS, componentType must be STANDALONE_FORM (not a
+// SUPPLEMENT/FORM_COMPONENT/ONLINE_APPLICATION/GOVERNMENT_DOCUMENT/
+// REFERENCE_DOCUMENT), and parentForm must be unset. The parentForm check
+// is a defensive belt-and-suspenders layer: a mapping mis-tagged
+// STANDALONE_FORM without also clearing parentForm can never slip through
+// as independent.
+function isIndependentUSCISForm(mapping) {
+  return Boolean(mapping) && mapping.agency === "USCIS" && mapping.componentType === "STANDALONE_FORM" && !mapping.parentForm;
+}
+
+// Flattens resolveApplicableMappings'/resolveVisaFormMappings' 4 buckets
+// into the independent-forms-only projection every "USCIS Forms" surface
+// must use, deduped by formNumber (defensive - the hierarchy walker never
+// mixes an exact-match result with a parent-fallback result in the same
+// response, so this never actually fires today, but guards against any
+// future seed data that duplicates a formNumber across rows).
+function independentFormsFrom(resolved) {
+  const allEntries = [...resolved.autoCreate, ...resolved.conditional, ...resolved.laterStage, ...resolved.reference];
+  const seen = new Set();
+  const independent = [];
+  for (const entry of allEntries) {
+    if (!isIndependentUSCISForm(entry.mapping)) continue;
+    if (seen.has(entry.mapping.formNumber)) continue;
+    seen.add(entry.mapping.formNumber);
+    independent.push(entry);
+  }
+  return independent;
+}
+
 // Builds the exact shape ensureAssignedForms' merge step needs: real
 // USCISFormTemplate documents (not mapping records) for every AUTO_CREATE
 // entry that is TEMPLATE_AVAILABLE right now, tagged with the registry
 // provenance so the CaseForm creation loop can populate `provisioning`.
+// Uses resolveVisaFormMappings (parent-fallback aware) rather than the raw
+// exact-match resolver, so a case whose exact visaType has no mapping of
+// its own (e.g. P-1A) still gets its parent's (P-1's) forms auto-created.
+//
+// Deliberately NOT gated by isIndependentUSCISForm here: a genuinely
+// dependent form with its own real PDF/template (e.g. I-918 Supplement B,
+// AUTO_CREATE alongside its parent I-918 for every U-1 case) still needs its
+// own CaseForm - only I-129's FORM_COMPONENT supplements (embedded pages,
+// no separate template at all) must never get one, and those are already
+// excluded upstream by provisioningType NOT_APPLICABLE (visaFormMappings.seed.js),
+// which resolveApplicableMappings' bucketing never puts in `autoCreate` to
+// begin with. The independence filter belongs only where "is this
+// independently offered/listed as its own form" is the question - see
+// isIndependentUSCISForm's callers in form-registry.controller.js.
 async function registryAutoCreateTemplates(caseData) {
-  const { autoCreate } = await resolveApplicableMappings(caseData);
+  const { autoCreate } = await resolveVisaFormMappings(caseData);
   const templates = [];
   for (const entry of autoCreate) {
     if (entry.templateStatus !== "TEMPLATE_AVAILABLE") continue;
@@ -229,13 +299,15 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
     const checklistKey = CONDITIONAL_FORM_CHECKLIST_KEYS[mapping.formNumber];
     if (checklistKey) {
       const questionnaire = await Questionnaire.findOne({ key: checklistKey, latestVersion: true });
-      const hasActiveReference = (caseData.questionnaireReferences || []).some(
-        (reference) => reference.active !== false && questionnaire && String(reference.questionnaireId) === String(questionnaire._id)
-      );
-      if (questionnaire && !hasActiveReference) {
-        await require("../questionnaires/questionnaire.service").assignQuestionnaire(
+      // assignQuestionnaireIfNotActive (questionnaire.service.js) is the
+      // shared, tested version of the hasActiveReference guard this
+      // function used to hand-roll itself - now used by every checklist
+      // assignment site (this one, and family-checklist composition) so
+      // none of them can duplicate a questionnaireReferences entry.
+      if (questionnaire) {
+        await require("../questionnaires/questionnaire.service").assignQuestionnaireIfNotActive(
           questionnaire,
-          { caseId: caseData._id, targetRole: questionnaire.checklistRole },
+          { caseData, targetRole: questionnaire.checklistRole },
           user,
           req
         );
@@ -250,6 +322,9 @@ module.exports = {
   evaluateTrigger,
   isRegistryApplicable,
   resolveApplicableMappings,
+  resolveVisaFormMappings,
+  isIndependentUSCISForm,
+  independentFormsFrom,
   resolveTemplateStatus,
   templateDiagnostics,
   registryAutoCreateTemplates,

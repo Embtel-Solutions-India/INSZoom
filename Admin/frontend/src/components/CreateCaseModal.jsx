@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { casesApi, usersApi } from '../services/api'
+import { casesApi, usersApi, familyWorkflowApi } from '../services/api'
 import { X } from 'lucide-react'
 
 const VISA_TYPE_OPTIONS = [
@@ -21,6 +21,24 @@ const VISA_TYPE_OPTIONS = [
   { value: 'r1', label: 'R-1' },
   { value: 'k1', label: 'K-1' },
   { value: 'k3', label: 'K-3' },
+  // I-130/Green-Card/I-864 family-based classifications - previously
+  // absent from this dropdown entirely, so staff had no way to create
+  // these cases through the CRM at all (POST /family-workflow/cases had no
+  // frontend caller anywhere in the app until this change). Labels match
+  // visaCategories.js's own spelling exactly, since that's the real-world
+  // format Case.visaType/VisaFormMapping already key on.
+  { value: 'ir1', label: 'IR-1' },
+  { value: 'cr1', label: 'CR-1' },
+  { value: 'ir2', label: 'IR-2' },
+  { value: 'cr2', label: 'CR-2' },
+  { value: 'ir3', label: 'IR-3' },
+  { value: 'ir4', label: 'IR-4' },
+  { value: 'ir5', label: 'IR-5' },
+  { value: 'f1family', label: 'F1' },
+  { value: 'f2a', label: 'F2A' },
+  { value: 'f2b', label: 'F2B' },
+  { value: 'f3', label: 'F3' },
+  { value: 'f4', label: 'F4' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },
@@ -29,6 +47,27 @@ const VISA_TYPE_OPTIONS = [
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },
 ]
+
+// familyBased() (Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js)
+// visa types - each gets the "Filing Path" choice below, and is created via
+// familyWorkflowApi.createCase (POST /family-workflow/cases) rather than
+// the generic casesApi.create, since that's the only path that actually
+// assigns the I-130/Green-Card/I-864 checklists (see
+// family-workflow.controller.js's ensureFamilyChecklistReferences). K-1/K-3
+// are also family-structured but keep using casesApi.create - their
+// petitioner/beneficiary checklist has no filing-path variation.
+const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
+
+// Client-facing surfaces must never say "I-130"/"processingPath" - staff
+// already work with form numbers everywhere else in the CRM, so technical
+// labels are fine here.
+const FILING_PATH_OPTIONS = [
+  { value: 'PETITION_ONLY', label: 'Petition Only (I-130)' },
+  { value: 'ADJUSTMENT_OF_STATUS', label: 'Adjustment of Status / Green Card (I-485, filing in the U.S.)' },
+  { value: 'CONSULAR', label: 'Consular Processing / Green Card (DS-260, filing abroad)' },
+]
+
+const RELATIONSHIP_OPTIONS = ['Husband/wife', 'Parent', 'Brother/Sister', 'Child']
 
 const PACKAGE_OPTIONS = [
   { value: '', label: 'Not selected' },
@@ -50,6 +89,11 @@ const initialForm = {
   employerEmail: '',
   employerCompletionMode: '',
   caseDetails: '',
+  relationship: '',
+  filingPath: '',
+  beneficiaryEmail: '',
+  beneficiaryName: '',
+  beneficiaryPhone: '',
 }
 
 const normalizeInitialVisaType = (value) => {
@@ -84,6 +128,7 @@ const CreateCaseModal = ({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType)
+  const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
 
   useEffect(() => {
     usersApi.caseManagers()
@@ -104,6 +149,33 @@ const CreateCaseModal = ({
       // the visaType format Immiglance's self-registration intake sends, so both
       // paths render identically in the cases table and downstream forms.
       const visaTypeLabel = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)?.label || form.visaType
+
+      if (showFamilyPackageFields) {
+        // I-130/Green-Card/I-864 family package - a materially different
+        // backend path (POST /family-workflow/cases, not the generic
+        // POST /cases) since that's the only one that assigns the right
+        // I-130/Green-Card/I-864 checklists for the chosen filing path.
+        // Here, "Client Name/Email/Phone" above are the PETITIONER's own
+        // contact info (the person this case is filed for), not a
+        // logged-in account - createFamilyCase finds-or-creates that
+        // client User, never the staff member submitting this form.
+        const payload = {
+          visaType: visaTypeLabel,
+          petitionerName: form.clientName.trim(),
+          petitionerEmail: form.clientEmail.trim(),
+          petitionerPhone: form.clientPhone.trim(),
+          relationship: form.relationship,
+          processingPath: form.filingPath,
+          beneficiaryName: form.beneficiaryName.trim(),
+          beneficiaryEmail: form.beneficiaryEmail.trim(),
+          beneficiaryPhone: form.beneficiaryPhone.trim(),
+        }
+        const res = await familyWorkflowApi.createCase(payload)
+        const result = res.data || {}
+        onCreated?.({ ...result, case: result.case })
+        return
+      }
+
       const payload = {
         clientName: form.clientName.trim(),
         clientEmail: form.clientEmail.trim(),
@@ -159,7 +231,9 @@ const CreateCaseModal = ({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Name *</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">
+              {showFamilyPackageFields ? 'Petitioner Name *' : 'Client Name *'}
+            </label>
             <input
               type="text"
               required
@@ -171,7 +245,9 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Email *</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">
+              {showFamilyPackageFields ? 'Petitioner Email *' : 'Client Email *'}
+            </label>
             <input
               type="email"
               required
@@ -183,7 +259,9 @@ const CreateCaseModal = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Client Phone</label>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">
+              {showFamilyPackageFields ? 'Petitioner Phone' : 'Client Phone'}
+            </label>
             <input
               type="tel"
               value={form.clientPhone}
@@ -208,6 +286,77 @@ const CreateCaseModal = ({
             </select>
           </div>
 
+          {showFamilyPackageFields && (
+            <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Petitioner is filing for their *</label>
+                <select
+                  required
+                  value={form.relationship}
+                  onChange={handleChange('relationship')}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="" disabled>Select relationship</option>
+                  {RELATIONSHIP_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Filing Path *</label>
+                <select
+                  required
+                  value={form.filingPath}
+                  onChange={handleChange('filingPath')}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="" disabled>Select filing path</option>
+                  {FILING_PATH_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.beneficiaryName}
+                  onChange={handleChange('beneficiaryName')}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Full legal name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={form.beneficiaryEmail}
+                  onChange={handleChange('beneficiaryEmail')}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="beneficiary@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Phone</label>
+                <input
+                  type="tel"
+                  value={form.beneficiaryPhone}
+                  onChange={handleChange('beneficiaryPhone')}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Required to send an invitation"
+                />
+              </div>
+            </div>
+          )}
+
+          {!showFamilyPackageFields && (
+          <>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">Package</label>
             <select
@@ -234,6 +383,8 @@ const CreateCaseModal = ({
               ))}
             </select>
           </div>
+          </>
+          )}
 
           {showEmployerFields && (
             <div className="space-y-4 rounded-lg border border-border bg-muted p-3">

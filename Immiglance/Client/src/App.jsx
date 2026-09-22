@@ -109,6 +109,14 @@ export default function App() {
             a still-case-less client reach it without bouncing back to
             intake. */}
         <Route element={<AuthGate />}>
+          {/* Bare "/" — same AuthGate decision as every other protected
+              route: unauthenticated visitors are sent straight to /login
+              (one hop, no Login-page flash); authenticated ones fall
+              through to this element only once AuthGate has already
+              confirmed they belong on /dashboard (hasCase, not mid-intake
+              etc.) — anyone mid-onboarding is redirected by AuthGate itself
+              before reaching here. */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/onboarding/intake" element={<Intake />} />
           <Route path="/consultation/book" element={<BookConsultation />} />
           {/* journeyState WAITING_FOR_CASE / CASE_REJECTED land here — see
@@ -123,7 +131,7 @@ export default function App() {
         <Route path="/dashboard/intake" element={<Navigate to="/onboarding/intake" replace />} />
 
         {/* Repository-split shim — the remaining public/pre-authentication
-            paths ("/", "/legacy-holding", "/eligibility/*", the rest of
+            paths ("/legacy-holding", "/eligibility/*", the rest of
             "/consultation/*" besides "/consultation/book" above — e.g.
             "/consultation/booking/:token", reached via an emailed token link
             independent of login state) live in the Landing app on a

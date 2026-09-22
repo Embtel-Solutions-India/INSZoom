@@ -10,6 +10,7 @@ import useCaseDocumentChecklist from "../../hooks/useCaseDocumentChecklist";
 import useCaseChecklists from "../../hooks/useCaseChecklists";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import { buildCaseCategories } from "../../components/DocumentChecklist";
+import Eb1aCriteriaChecklist from "../../components/Eb1aCriteriaChecklist";
 import ChecklistItemRow from "../../components/checklist/ChecklistItemRow";
 import DocumentUploadControl from "../../components/checklist/DocumentUploadControl";
 import StatusLegend from "../../components/checklist/StatusLegend";
@@ -198,18 +199,32 @@ export default function Documents() {
   // responded — the two-wave "a few items, then the rest 15-30s later" load.
   // (Only meaningful on the legacy single-role path — see useNewArchitecture.)
   const [activeRole, setActiveRole] = useState(() => allowedRoles?.[0] || "");
+  // Tracks WHICH checklist is active, not just which role — two active
+  // checklists can share the same targetRole (e.g. Green Card Beneficiary +
+  // the optional GC-NVC Beneficiary checklist, once a Case Manager approves
+  // it). Without this, both tabs would appear selected simultaneously
+  // (both satisfy `activeRole === item.targetRole`) and the fetch below
+  // would arbitrarily resolve to whichever was assigned most recently,
+  // regardless of which tab was actually clicked.
+  const [activeReferenceId, setActiveReferenceId] = useState("");
   useEffect(() => {
     if (visibleChecklists.length && !visibleChecklists.some((item) => item.targetRole === activeRole)) {
       setActiveRole(visibleChecklists[0].targetRole || "");
+      setActiveReferenceId(visibleChecklists[0].referenceId || "");
     }
   }, [visibleChecklists, activeRole]);
   const effectiveRole = activeRole || allowedRoles?.[0] || loginRole;
+  // Only passed through when the active role actually has more than one
+  // assigned checklist right now - every other case (the overwhelming
+  // majority) keeps the exact same role-only fetch it always has.
+  const roleChecklistCount = visibleChecklists.filter((item) => item.targetRole === effectiveRole).length;
+  const effectiveReferenceId = roleChecklistCount > 1 ? (activeReferenceId || visibleChecklists.find((item) => item.targetRole === effectiveRole)?.referenceId) : undefined;
 
   const { files, handleUpload, handleRemove, uploadsInFlight: reusableUploadsInFlight, awaitUploads: awaitReusableUploads, error: documentsLoadError, reload: reloadDocuments } = useDocumentChecklist({ caseId: activeCaseId });
 
   // Legacy single-role path — inert (caseId withheld, no fetch) once the new
   // architecture takes over for this case.
-  const legacyQA = useQuestionnaireAnswers(useNewArchitecture ? null : activeCaseId, effectiveRole || undefined, { disabled: useNewArchitecture });
+  const legacyQA = useQuestionnaireAnswers(useNewArchitecture ? null : activeCaseId, effectiveRole || undefined, { disabled: useNewArchitecture, referenceId: effectiveReferenceId });
   const legacyReusable = useCaseDocumentChecklist(activeCase, effectiveRole);
   const legacyReusableCategories = useMemo(() => buildCaseCategories(legacyReusable.checklist), [legacyReusable.checklist]);
 
@@ -704,6 +719,23 @@ export default function Documents() {
   const employerSectionsComplete = employerBusinessPlanSections.length > 0 && !employerBusinessPlanSections.some((section) => section.items.some(itemIsMissingRequired));
   const showHandoffModal = showHandoffJunction && !activeEmployeeMode && employerSectionsComplete && !handoffModalDismissed;
 
+  // EB-1A is self-petitioned/single-person and legally a "satisfy at least 3
+  // of 10 criteria" classification, not a flat document list — it gets its
+  // own criterion-grouped checklist page instead of falling through to the
+  // generic category-grouped `sections` render below (or to whichever
+  // caseRole-specific workspace would otherwise apply). See
+  // config/eb1a.js / eb1aChecklist.service.js on the backend.
+  const isEb1aCase = String(visaType || "").replace(/[\s_-]+/g, "").toUpperCase() === "EB1A";
+  if (isEb1aCase && activeCaseId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+          <Eb1aCriteriaChecklist caseId={activeCaseId} />
+        </div>
+      </div>
+    );
+  }
+
   // Phase 9 — the caseRole=principal/employee/beneficiary child-Case
   // architecture. Additive: only engages for a genuinely new-architecture
   // case (caseRole is only ever set by Phase 5's createCase), so every case
@@ -790,20 +822,23 @@ export default function Documents() {
 
           {!useNewArchitecture && visibleChecklists.length > 1 && (
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Checklist role">
-              {visibleChecklists.map((item) => (
-                <button
-                  key={item.referenceId}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeRole === item.targetRole}
-                  onClick={() => setActiveRole(item.targetRole)}
-                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
-                    activeRole === item.targetRole ? "border-primary/30 bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:bg-secondary"
-                  }`}
-                >
-                  {item.title || roleLabel(item.targetRole)}
-                </button>
-              ))}
+              {visibleChecklists.map((item) => {
+                const isActive = activeRole === item.targetRole && (roleChecklistCount <= 1 || activeReferenceId === item.referenceId);
+                return (
+                  <button
+                    key={item.referenceId}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => { setActiveRole(item.targetRole); setActiveReferenceId(item.referenceId || ""); }}
+                    className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                      isActive ? "border-primary/30 bg-accent text-accent-foreground" : "border-border bg-card text-muted-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    {item.title || roleLabel(item.targetRole)}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
