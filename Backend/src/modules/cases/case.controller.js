@@ -36,6 +36,9 @@ const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
+const addressChangeService = require("../canonical/services/AddressChangeService");
+const canonicalSyncService = require("../canonical/services/CanonicalSyncService");
+const { CHECKLIST_KEY_BY_TARGET_ROLE } = require("../questionnaires/changeOfAddressChecklist");
 const { EB1A_CRITERIA } = require("../../config/eb1a");
 
 const EB1A_CRITERION_STATUSES = new Set([
@@ -994,6 +997,13 @@ exports.createCase = async (req, res, next) => {
         caseType: "immigration",
         petitionType: trimmedVisaType,
         petitionSubType: extension ? cleanString(extension) : undefined,
+        // SB-1 (Returning Resident Visa) is inherently a consular process -
+        // there is no adjustment-of-status path for someone applying from
+        // abroad for returning-resident status - so this is SB-1's own
+        // sensible default, not a generic branch affecting any other visa.
+        // Staff can still change it later via the same generic
+        // processingPath field every other case already exposes.
+        processingPath: trimmedVisaType === "SB-1" ? "CONSULAR" : undefined,
         package: normalizedPackage,
         primaryPackage: normalizedPackage || undefined,
         plan: {
@@ -1552,6 +1562,117 @@ exports.approveN600Process = async (req, res, next) => {
     caseService.addTimelineEvent(caseData, "case_manager", "N-600 Certificate of Citizenship Process Added", "Certificate of Citizenship checklist and Form N-600 enabled for the client.", req.user);
     await caseData.save();
     res.json({ success: true, case: caseData, n600Process: caseData.n600Process });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const CHANGE_OF_ADDRESS_ROLES = new Set(["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client"]);
+
+// Optional add-on component: Change of Address (internal reference AR-11).
+// Unlike N-400/N-600 (always the single "client" role), this is attachable
+// to ANY of the six existing participant roles, and the same case can have
+// it active for more than one participant at once (e.g. employee AND
+// employer independently) - see changeOfAddressChecklist.js's file banner.
+// assignQuestionnaireIfNotActive's dedup is questionnaireId-only (confirmed
+// insufficient here - it would block a second, different-participant
+// attach on the same questionnaire template), so this does its own
+// (targetRole, participantId)-scoped dedup against
+// Case.changeOfAddressComponents and calls assignQuestionnaire directly.
+exports.addChangeOfAddress = async (req, res, next) => {
+  try {
+    const { targetRole, participantId, submissionMethod } = req.body;
+    if (!CHANGE_OF_ADDRESS_ROLES.has(targetRole)) {
+      return res.status(400).json({ success: false, code: "INVALID_TARGET_ROLE", message: `targetRole must be one of: ${[...CHANGE_OF_ADDRESS_ROLES].join(", ")}` });
+    }
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const checklistKey = CHECKLIST_KEY_BY_TARGET_ROLE[targetRole];
+    const questionnaire = await Questionnaire.findOne({ key: checklistKey, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: `No Change of Address checklist template found for ${targetRole}` });
+    }
+
+    const already = (caseData.changeOfAddressComponents || []).some((component) =>
+      component.targetRole === targetRole &&
+      String(component.participantId || "") === String(participantId || "") &&
+      component.status !== "approved" // an already-approved component is a completed, historical event - a fresh attach starts a new one, it never collides with it.
+    );
+    if (already) {
+      return res.json({ success: true, case: caseData });
+    }
+
+    // assignQuestionnaire does its own internal Case.findById + .save() -
+    // it never sees or writes through this in-memory `caseData`. Re-fetch
+    // afterward rather than keep mutating the now-stale local object,
+    // otherwise this function's own save below would silently overwrite
+    // the questionnaireReferences push assignQuestionnaire just made.
+    await questionnaireService.assignQuestionnaire(questionnaire, { caseId: caseData._id, targetRole, participantId }, req.user, req);
+    const freshCaseData = await Case.findById(caseData._id);
+    freshCaseData.changeOfAddressComponents = freshCaseData.changeOfAddressComponents || [];
+    freshCaseData.changeOfAddressComponents.push({
+      targetRole,
+      participantId: participantId || undefined,
+      questionnaireId: questionnaire._id,
+      status: "added",
+      submissionMethod: submissionMethod || "",
+      addedAt: new Date(),
+      addedBy: req.user._id,
+    });
+    caseService.addTimelineEvent(freshCaseData, "case_manager", "Change of Address Added", `Change of Address checklist enabled for ${targetRole}.`, req.user);
+    await freshCaseData.save();
+    res.json({ success: true, case: freshCaseData });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Case Manager review/approval step - the point at which the client's
+// submitted address actually becomes authoritative. Never auto-approved on
+// client submission (confirmed decision - see the plan). Order matters:
+// capture the OUTGOING address (still the live canonical value at this
+// point) BEFORE approveResponse+syncCase overwrite it.
+exports.approveChangeOfAddress = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+
+    const component = (caseData.changeOfAddressComponents || []).find((item) => String(item._id) === String(req.params.componentId));
+    if (!component) return res.status(404).json({ success: false, code: "COMPONENT_NOT_FOUND", message: "Change of Address component not found on this case" });
+
+    const reference = (caseData.questionnaireReferences || []).find((item) =>
+      String(item.questionnaireId) === String(component.questionnaireId) &&
+      item.targetRole === component.targetRole &&
+      String(item.participantId || "") === String(component.participantId || "")
+    );
+    // responseId is always present from the moment of assignment (see
+    // assignQuestionnaire) - it is NOT a signal that the client has
+    // submitted anything. reference.status is: the existing, generic
+    // questionnaireReferences lifecycle (not_started -> in_progress ->
+    // completed -> submitted -> ...) that saveAnswers/submitResponse
+    // already maintain for every questionnaire, reused here rather than
+    // inventing a second submission-tracking signal.
+    if (!reference || !["submitted", "completed", "approved"].includes(reference.status)) {
+      return res.status(409).json({ success: false, code: "NOT_SUBMITTED", message: "The client has not submitted this Change of Address yet" });
+    }
+
+    await addressChangeService.captureOutgoingAddress(caseData._id, { targetRole: component.targetRole }, req.user, req);
+    await questionnaireService.approveResponse(reference.responseId, { approved: true }, req.user, req);
+    await canonicalSyncService.syncCase(caseData._id, req.user, req, "change_of_address_approved");
+
+    const freshCaseData = await Case.findById(caseData._id);
+    const freshComponent = freshCaseData.changeOfAddressComponents.find((item) => String(item._id) === String(component._id));
+    if (freshComponent) {
+      freshComponent.status = "approved";
+      freshComponent.approvedAt = new Date();
+      freshComponent.approvedBy = req.user._id;
+    }
+    caseService.addTimelineEvent(freshCaseData, "case_manager", "Change of Address Approved", `New address approved for ${component.targetRole} and synchronized to applicable USCIS forms.`, req.user);
+    await freshCaseData.save();
+    res.json({ success: true, case: freshCaseData });
   } catch (error) {
     next(error);
   }

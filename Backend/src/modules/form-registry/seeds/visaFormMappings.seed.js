@@ -348,9 +348,20 @@ add(
 );
 
 // ===================== SB-1 =====================
+// Corrected (this task) - DS-117 is a real, official, downloadable/
+// fillable PDF (issued by the Department of State, not USCIS) that the
+// applicant/Case Manager completes through the SAME PDF/CaseForm
+// architecture every other standalone form uses - it was previously
+// mis-tagged ONLINE_APPLICATION (that componentType is for DS-260/CEAC,
+// which genuinely has no downloadable PDF). DS-260 was previously
+// LATER_STAGE (an informational "will apply eventually" entry with no
+// Case Manager decision gate) - corrected to CONDITIONAL so it only
+// activates once a Case Manager explicitly records the SB-1 returning-
+// resident-status decision via recordConditionalDecision (never merely
+// because the case exists - integration prompt §7/§10).
 add(
-  m("SB-1", "DS-117", "Application to Determine Returning Resident Status", "DOS", AUTO, ONLINE, { initialCaseCreation: true, immigrationNature: IMMIGRANT }),
-  m("SB-1", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "post_returning_resident_determination" }),
+  m("SB-1", "DS-117", "Application to Determine Returning Resident Status", "DOS", AUTO, STANDALONE, { formTemplateFormCode: "ds-117", initialCaseCreation: true, immigrationNature: IMMIGRANT, stage: "returning_resident_determination" }),
+  m("SB-1", "DS-260", "Immigrant Visa and Alien Registration Application", "DOS", COND, ONLINE, { processingPaths: ["CONSULAR", "NVC"], immigrationNature: IMMIGRANT, stage: "immigrant_visa_processing", notes: "Online DOS/CEAC application, not a downloadable PDF - never auto-created; requires the Case Manager to record the SB-1 returning-resident-status decision as approved first." }),
   m("SB-1", "I-551", "Permanent Resident Card", "USCIS", REF, REFDOC, { initialCaseCreation: false, immigrationNature: "PERMANENT_RESIDENT_DOCUMENT" }),
   m("SB-1", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", REF, REFDOC, { initialCaseCreation: false, notes: "Prior re-entry permit, if applicable - reference only in this context." })
 );

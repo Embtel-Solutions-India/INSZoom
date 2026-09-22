@@ -216,7 +216,7 @@ const VISA_CATEGORIES = {
   // ─── HUMANITARIAN ──────────────────────────────────────────────────────────
   "U-1": { caseStructure: "single", forms: ["i-918"], label: "U-1 Victim of Qualifying Criminal Activity" },
   "U derivative": { caseStructure: "family", forms: ["i-918"], label: "U Derivative Family Member" },
-  "SB-1": { caseStructure: "single", forms: [], label: "SB-1 Returning Resident" },
+  "SB-1": { caseStructure: "single", forms: ["ds-117"], label: "Returning Resident Visa (SB-1)" },
 
   // ─── EB-1 (EMPLOYMENT-BASED, FIRST PREFERENCE) ────────────────────────────
   "EB-1A": { caseStructure: "single", forms: ["i-140", "i-485"], label: "EB-1A Extraordinary Ability" },

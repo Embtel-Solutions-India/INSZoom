@@ -1,5 +1,27 @@
 const mongoose = require("mongoose");
 
+// Historical address record - same shape Beneficiary.js/Client.js each
+// already define locally for their own addressHistory array (not a shared
+// import; this codebase's own established convention is one local copy
+// per model). Added so the employer role has the same "old address becomes
+// history, not silently overwritten" guarantee as beneficiary/client -
+// see canonical/services/AddressChangeService.js.
+const addressHistorySchema = new mongoose.Schema(
+  {
+    street: String,
+    street2: String,
+    city: String,
+    county: String,
+    state: String,
+    zipCode: String,
+    country: String,
+    fromDate: String,
+    toDate: String,
+    current: { type: Boolean, default: false },
+  },
+  { _id: true }
+);
+
 /**
  * Provenance schema for individual canonical fields.
  * Every field in canonicalData uses this schema to track
@@ -99,6 +121,7 @@ const employerProfileSchema = new mongoose.Schema(
         zipCode: { type: canonicalFieldSchema, default: () => ({}) },
         country: { type: canonicalFieldSchema, default: () => ({}) },
       },
+      addressHistory: { type: [addressHistorySchema], default: () => [] },
 
       // NAICS / business classification
       naicsCode: { type: canonicalFieldSchema, default: () => ({}) },

@@ -415,9 +415,11 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
 // employer + an employee checklist), then 11 -> 13 by the later, unrelated
 // EB-2/EB-3 I-140 task (i140.js added one shared petitioner + one shared
 // beneficiary checklist, resolved for both EB-2 and EB-3 via visaTypes, not
-// duplicated per visa type); nothing in the family path touches any of these.
-// The guardrail's intent is unchanged: the family work must not add to,
-// remove from, or otherwise disturb the employer/employee template set.
-test("employer/employee templates are unaffected in count (13 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2)", () => {
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 13);
+// duplicated per visa type), then 13 -> 15 by the later, unrelated TN task
+// (tn.js added its own employer + employee checklist); nothing in the
+// family path touches any of these. The guardrail's intent is unchanged:
+// the family work must not add to, remove from, or otherwise disturb the
+// employer/employee template set.
+test("employer/employee templates are unaffected in count (15 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2)", () => {
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 15);
 });

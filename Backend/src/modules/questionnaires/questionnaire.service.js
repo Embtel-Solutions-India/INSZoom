@@ -24,6 +24,8 @@ const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
 const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
 const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
+const { CHANGE_OF_ADDRESS_DEFINITIONS } = require("./changeOfAddressChecklist");
+const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -1872,6 +1874,15 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // N-400 immediately above (see n600Checklist.js's own banner). Reached
   // only through case.controller.js's approveN600Process.
   N600_CHECKLIST_DEFINITION,
+  // Change of Address - 4 generated variants, one per canonical namespace
+  // (see changeOfAddressChecklist.js's own banner). Reached only through
+  // case.controller.js's addChangeOfAddress.
+  ...CHANGE_OF_ADDRESS_DEFINITIONS,
+  // SB-1 — a REAL, standalone case-creation visaType (unlike N-400/N-565/
+  // N-600 above), isDefault:true, auto-resolved the moment a case exists
+  // with visaType "SB-1" - exactly like EB-1A/EB-2 NIW/Green Card Renewal.
+  // See sb1Checklist.js's own banner.
+  SB1_CHECKLIST_DEFINITION,
 ];
 
 function slugSection(title) {

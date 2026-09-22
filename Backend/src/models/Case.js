@@ -663,6 +663,35 @@ const caseSchema = new mongoose.Schema(
       approvedAt: Date,
       approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
+    // Optional "Change of Address" component (internal reference: AR-11) -
+    // an ARRAY, not a singular flag like n400Process/n600Process above,
+    // because the same case can have this attached independently per
+    // participant (e.g. the employee moves, and separately the employer's
+    // business address changes) - each entry is its own attach/approve
+    // lifecycle. Visa-agnostic and case-structure-agnostic by design
+    // (attachable to family, employer/employee, or single-person cases
+    // alike) - see case.controller.js's addChangeOfAddress and
+    // approveChangeOfAddress, and canonical/services/AddressChangeService.js.
+    // status mirrors questionnaireReferences' own existing status
+    // vocabulary rather than inventing a second status system - the client
+    // never has canonical/form authority until status reaches "approved"
+    // (Case Manager review gate, not auto-approved on client submission).
+    changeOfAddressComponents: [{
+      targetRole: { type: String, enum: ["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client"], required: true },
+      participantId: { type: mongoose.Schema.Types.ObjectId },
+      questionnaireId: { type: mongoose.Schema.Types.ObjectId, ref: "Questionnaire" },
+      responseId: String,
+      status: { type: String, enum: ["added", "client_completing", "submitted", "under_review", "approved"], default: "added" },
+      // Informational only (§17 of the integration prompt) - this system
+      // never files anything with USCIS itself either way; this just
+      // records which real-world channel the client/staff used, surfaced
+      // as copy in the Case Manager review UI.
+      submissionMethod: { type: String, enum: ["e-coa", "paper_ar11", ""], default: "" },
+      addedAt: Date,
+      addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      approvedAt: Date,
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    }],
 
     currentStage: { type: Number, default: 0, min: 0, max: 7 },
     stage: { type: String, enum: CRM_STAGES, default: "intake", index: true },

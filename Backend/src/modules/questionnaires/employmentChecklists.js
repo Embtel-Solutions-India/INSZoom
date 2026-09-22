@@ -14,6 +14,7 @@ const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const i140 = require("../employment-workflow/questionnaires/i140");
+const tn = require("../employment-workflow/questionnaires/tn");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -933,6 +934,71 @@ function buildI140EmployeeChecklist() {
   };
 }
 
+// TN (NAFTA/USMCA professional) — employer_employee, same conversion
+// pattern as I-140 immediately above (see tn.js's own file banner).
+//
+// visaTypes[] (not a single visaType), mirroring I-140's own shared-
+// checklist convention: this codebase's REAL, already-wired TN
+// identifiers are "TN Canada" and "TN Mexico" (visaCategories.js,
+// visaFormMappings.seed.js - both already correctly distinguish the
+// border/port-of-entry vs COS/extension filing paths per-country, from an
+// earlier session; untouched here). A bare "TN" is NOT an existing
+// case-creation value anywhere else in the codebase - registering the
+// checklist ONLY under that string would make it unreachable by any real
+// case. Included anyway (alongside the two real values) purely as a
+// forward-compatible extra match, at zero cost, in case a bare "TN" case
+// is ever created.
+// Both the real, spaced forms AND their space-stripped equivalents are
+// listed - getQuestionnaireForCase/resolveCaseQuestionnaires strip spaces/
+// dashes from the CASE's own visaType before matching against this array
+// (the same reason i140.js's own visaTypes[] lists both "EB-2" and "EB2"),
+// so "TN Canada" alone would never actually match "TN Canada" normalized
+// to "TNCANADA".
+const TN_VISA_TYPES = ["TN Canada", "TN Mexico", "TNCanada", "TNMexico", "TN"];
+function buildTnEmployerChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(tn.petitionerDocuments, visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    tn.fieldCatalog().filter((entry) => entry.section === "employer"),
+    visibility,
+  );
+  return {
+    key: "tn_employer_checklist",
+    title: "TN Visa – Employer Checklist",
+    visaType: "TN Canada",
+    visaTypes: TN_VISA_TYPES,
+    checklistRole: "employer",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
+  };
+}
+
+function buildTnEmployeeChecklist() {
+  const visibility = { roles: ["employee", ...STAFF_ROLES], portals: ["employee", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(tn.beneficiaryDocuments, visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    tn.fieldCatalog().filter((entry) => entry.section === "employee"),
+    visibility,
+  );
+  return {
+    key: "tn_employee_checklist",
+    title: "TN Visa – Employee/Beneficiary Checklist",
+    visaType: "TN Canada",
+    visaTypes: TN_VISA_TYPES,
+    checklistRole: "employee",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
+  };
+}
+
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
   buildH1bEmployeeChecklist(),
@@ -947,6 +1013,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildEb1bEmployeeChecklist(),
   buildI140EmployerChecklist(),
   buildI140EmployeeChecklist(),
+  buildTnEmployerChecklist(),
+  buildTnEmployeeChecklist(),
 ];
 
 module.exports = { EMPLOYMENT_CHECKLIST_DEFINITIONS };
