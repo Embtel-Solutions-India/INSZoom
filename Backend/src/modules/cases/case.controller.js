@@ -2134,9 +2134,12 @@ exports.removeEmployee = async (req, res, next) => {
 
 exports.getTeamLeadDashboard = async (req, res, next) => {
   try {
-    const teamFilter = req.user.role === "team_lead"
-      ? { $or: [{ assignedTeamLead: req.user._id }, ...(req.user.teamId ? [{ teamId: req.user.teamId }] : [])] }
-      : {};
+    // Team leads see every case system-wide (matches applyCaseRoleFilter in
+    // case.service.js) - this dashboard's queues previously scoped to
+    // assignedTeamLead/teamId, which meant the "unassigned cases" queue only
+    // ever showed cases already routed to this specific team lead, never
+    // genuinely-unassigned cases a team lead is supposed to triage.
+    const teamFilter = {};
     // Phase 7: the pending-assignment queue (unassignedCases/agingCases) must
     // only ever surface principal/single cases — a child case (caseRole
     // employee/beneficiary) is assigned by cascade from its principal, never

@@ -208,6 +208,28 @@ export const usersApi = {
   assignable: (role, params = {}) => api.get('/users/assignable', { params: { role, ...params } }),
 }
 
+// Staff side of the attorney<->case-team thread (Backend/src/modules/feedback,
+// models/Feedback.js). Client is never a participant — see that model's own
+// header comment. Mirrors the Attorney portal's attorneyApi.* shape exactly
+// (Attorney/src/services/api.js) so both sides of the same thread are driven
+// by symmetric client code.
+function toFeedbackFormData(message, files) {
+  const form = new FormData()
+  if (message) form.append('message', message)
+  ;(files || []).forEach((file) => form.append('attachments', file))
+  return form
+}
+
+export const feedbackApi = {
+  list: (caseId) => api.get(`/cases/${caseId}/feedback`),
+  send: (caseId, message, files = []) => api.post(`/cases/${caseId}/feedback`, toFeedbackFormData(message, files)),
+  reply: (caseId, feedbackId, message, files = []) =>
+    api.post(`/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files)),
+  markRead: (caseId) => api.patch(`/cases/${caseId}/feedback/mark-read`),
+  downloadAttachment: (caseId, feedbackId, attachmentId) =>
+    api.get(`/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob' }),
+}
+
 export const lifecycleApi = {
   tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
   saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),

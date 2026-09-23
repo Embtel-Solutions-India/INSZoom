@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
+import { SocketProvider } from './context/SocketContext'
 import { ThemeProvider } from './context/ThemeContext'
 import RequireAttorney from './auth/RequireAttorney'
 import LoginPage from './auth/LoginPage'
@@ -30,6 +31,7 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+        <SocketProvider>
           <PushRegistrar />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -60,6 +62,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+        </SocketProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>
