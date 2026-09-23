@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
+import { STAFF_ROLES } from "../../utils/portalRedirect";
 import PasswordField from "../../components/auth/PasswordField";
 import AuthShell from "../../components/auth/AuthShell";
 
@@ -81,10 +82,22 @@ export default function Login() {
   // while already signed in. AuthGate (wrapping /dashboard) takes it from
   // there — staff/attorney get bounced to their own app, clients land on
   // the right destination for their case state.
+  //
+  // Dev-only exception: on localhost, AuthGate deliberately does NOT bounce
+  // a staff/attorney session away (see its own comment) — it sends them
+  // back here instead, to this app's own login page. Without this check,
+  // that visit would loop right back to /dashboard on the very next render
+  // (this same `user` truthy check), landing on AuthGate's "account role
+  // not enabled" screen instead of the login form. Production is unaffected
+  // — a staff/attorney session there never reaches this page in the first
+  // place, it's bounced off /dashboard before ever redirecting here.
+  const isLocalDevStaffOrAttorneySession = user
+    && window.location.hostname === "localhost"
+    && (STAFF_ROLES.includes(user.role) || user.role === "attorney");
   if (authLoading) {
     return <div className="min-h-screen bg-background" />;
   }
-  if (user) {
+  if (user && !isLocalDevStaffOrAttorneySession) {
     return <Navigate to="/dashboard" replace />;
   }
 

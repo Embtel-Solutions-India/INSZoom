@@ -6,6 +6,7 @@ const CaseForm = require("../../models/CaseForm");
 const Company = require("../../models/Company");
 const DocumentExtraction = require("../../models/DocumentExtraction");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
+const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
 const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
 const FormMappingService = require("../form-mapping/services/FormMappingService");
@@ -450,6 +451,18 @@ async function reconcileConditionalForms(caseData, user, req, conditions) {
     const code = normalizeFormCode(caseForm.formCode);
     const conditionTrue = conditionByFormCode[caseForm.formCode] ?? conditionByFormCode[code];
     if (["locked", "filed"].includes(caseForm.status)) continue;
+    // A CaseForm this function itself auto-provisioned (via
+    // resolveConditionalTemplates above, which never sets `provisioning`)
+    // is the only kind whose lifecycle this hardcoded condition should
+    // govern. One that exists because a Case Manager deliberately fetched
+    // it on-demand (OnDemandFormAcquisitionService) or added it through the
+    // registry (recordConditionalDecision/provisionAvailableMapping) always
+    // carries a `provisioning` record - confirmed against a real case where
+    // an on-demand-fetched I-907 (no premium addon on the case at all) was
+    // silently archived here the next time ensureAssignedForms ran for an
+    // unrelated form, because this loop couldn't tell "auto-provisioned,
+    // condition lapsed" apart from "a human put this here on purpose."
+    if (caseForm.provisioning) continue;
     if (!conditionTrue && caseForm.status !== "archived") {
       caseForm.status = "archived";
       addAuditEntry(caseForm, "form_condition_no_longer_met", user, { formCode: caseForm.formCode }, req);
@@ -561,6 +574,16 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
         // path (see latestTemplatesByAssignmentRules above) - undefined,
         // as before, for assignmentRules/hardcoded-conditional creations.
         provisioning: template._visaFormMapping || undefined,
+        // Set only for a component CaseForm (registryAutoCreateTemplates
+        // tags the synthetic template it builds with _componentInfo) -
+        // undefined, as before, for every ordinary whole-form CaseForm.
+        // parentCaseFormId is linked in a second pass below, once every
+        // CaseForm this call is creating (core included) actually exists -
+        // this template array has no guaranteed ordering that would put a
+        // component's core before it.
+        parentFormCode: template._componentInfo?.parentFormCode || undefined,
+        componentCode: template._componentInfo?.componentCode || undefined,
+        componentType: template._componentInfo?.componentType || undefined,
       });
     } catch (error) {
       // A concurrent call (e.g. case creation's background provisioning
@@ -591,6 +614,26 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
     });
     created.push(caseForm);
   }
+
+  // Link every component CaseForm (just-created or already-existing, either
+  // way) to its parent's CaseForm id - a second pass rather than inline
+  // above because `templates` carries no guaranteed ordering that would put
+  // a component after its own core, and the core might already have
+  // existed from an earlier call anyway. Idempotent: a component that
+  // already has parentCaseFormId set is left untouched.
+  const componentTargets = [...existing, ...created].filter((form) => form.componentCode && !form.parentCaseFormId);
+  if (componentTargets.length) {
+    const parentFormCodes = [...new Set(componentTargets.map((form) => form.parentFormCode).filter(Boolean))];
+    const parentForms = await CaseForm.find({ caseId: caseData._id, formCode: { $in: parentFormCodes }, componentCode: null }).select("_id formCode participantId");
+    const parentByFormCode = new Map(parentForms.map((form) => [normalizeFormCode(form.formCode), form]));
+    for (const componentForm of componentTargets) {
+      const parent = parentByFormCode.get(normalizeFormCode(componentForm.parentFormCode));
+      if (!parent) continue; // core not provisioned (yet) - link resolves on a later call once it is
+      componentForm.parentCaseFormId = parent._id;
+      await componentForm.save();
+    }
+  }
+
   if (created.length) {
     caseService.addAuditEntry(caseData, "uscis_forms_assigned", "USCIS forms assigned by visa category", user, { forms: created.map((form) => form.formCode) }, req);
     await caseData.save();
@@ -636,8 +679,31 @@ function isReviewFacing(field, formCode) {
   return !isUscisUseOnly(field.fieldName, formCode);
 }
 
-function buildSections(template) {
-  const fields = (template.formFields || []).filter((field) => isReviewFacing(field, template.formCode)).map(normalizeField);
+// Resolves a component CaseForm's own fieldIds, live, from its current
+// USCISFormComponentDefinition (keyed by the shared parent formTemplateId,
+// so an edition change automatically stops matching a stale definition
+// rather than silently keeping an old field set). Returns null for an
+// ordinary, non-component CaseForm (undefined componentCode) - the signal
+// every caller below uses to mean "no filtering, show every field",
+// exactly the pre-component-architecture behavior.
+async function resolveComponentFieldIds(caseForm) {
+  if (!caseForm?.componentCode) return null;
+  const parentTemplateId = caseForm.formTemplateId?._id || caseForm.formTemplateId;
+  const definition = await USCISFormComponentDefinition.findOne({ parentTemplateId, componentCode: caseForm.componentCode, status: "ACTIVE" }).select("fieldIds").lean();
+  return definition?.fieldIds || [];
+}
+
+// componentFieldIds: optional array/Set of USCISFormComponentDefinition
+// fieldIds - when provided, restricts the returned sections to just that
+// field subset (a component-scoped CaseForm's view of its shared parent
+// template), otherwise behaves exactly as before (every existing caller
+// that doesn't pass it sees every field, unchanged).
+function buildSections(template, componentFieldIds) {
+  const fieldIdFilter = componentFieldIds ? new Set(componentFieldIds) : null;
+  const fields = (template.formFields || [])
+    .filter((field) => isReviewFacing(field, template.formCode))
+    .filter((field) => !fieldIdFilter || fieldIdFilter.has(field.fieldId || field.fieldName))
+    .map(normalizeField);
   if (template.sections?.length) {
     return template.sections
       .map((section, index) => ({
@@ -827,8 +893,8 @@ function validateField(field, value) {
   return errors;
 }
 
-function calculateCompletion(template, values) {
-  const sections = buildSections(template);
+function calculateCompletion(template, values, componentFieldIds) {
+  const sections = buildSections(template, componentFieldIds);
   const validationErrors = {};
   let totalFields = 0;
   let completedFields = 0;
@@ -886,8 +952,8 @@ function calculateCompletion(template, values) {
   };
 }
 
-function buildRenderModel(template, values, progress, user, caseForm) {
-  const sections = buildSections(template);
+function buildRenderModel(template, values, progress, user, caseForm, componentFieldIds) {
+  const sections = buildSections(template, componentFieldIds);
   const pageMap = new Map();
   const fieldIndex = {};
   const flatValues = flattenObject(values);
@@ -979,9 +1045,10 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
   const { values, newlyComputed } = options.caseFormOnly
     ? { values: deepMerge(caseForm.filledData || {}, expandFlatValues(caseForm.fieldValues || {})), newlyComputed: [] }
     : mergeFieldValues(template, caseForm, context);
-  const progress = calculateCompletion(template, values);
+  const componentFieldIds = await resolveComponentFieldIds(caseForm);
+  const progress = calculateCompletion(template, values, componentFieldIds);
   if (!options.caseFormOnly && !readOnlyOpen) caseForm.sourceAttribution = buildSourceAttribution(template, values, caseForm.sourceAttribution, context);
-  const renderModel = buildRenderModel(template, values, progress, user, caseForm);
+  const renderModel = buildRenderModel(template, values, progress, user, caseForm, componentFieldIds);
   if (!readOnlyOpen) {
     // ISSUE-001 addendum: persist ONLY the fields mergeFieldValues found no
     // existing value for anywhere, under the normalized fieldId, in each
@@ -1025,7 +1092,7 @@ async function renderCaseForm(caseId, caseFormId, user, req, options = {}) {
       version: template.version,
       editionDate: template.editionDate,
       instructions: template.instructions,
-      sections: buildSections(template),
+      sections: buildSections(template, componentFieldIds),
       pages: renderModel.renderer.pages,
       fieldIndex: renderModel.renderer.fieldIndex,
       structure: renderModel.structure,
@@ -1046,7 +1113,7 @@ async function validateCaseForm(caseId, caseFormId, user) {
   await getAccessibleCase(caseId, user);
   const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
   if (!caseForm) throw Object.assign(new Error("Case form not found"), { statusCode: 404 });
-  const progress = calculateCompletion(caseForm.formTemplateId, caseForm.fieldValues || caseForm.filledData || {});
+  const progress = calculateCompletion(caseForm.formTemplateId, caseForm.fieldValues || caseForm.filledData || {}, await resolveComponentFieldIds(caseForm));
   caseForm.completion = progress.completion;
   caseForm.sectionProgress = progress.sectionProgress;
   caseForm.validationErrors = progress.validationErrors;
@@ -1264,7 +1331,7 @@ async function saveCaseForm(caseId, caseFormId, payload, user, req, action = "sa
   }
   const incomingValues = expandFlatValues(payload.fieldValues || payload.filledData || {});
   const values = deepMerge(caseForm.fieldValues || {}, incomingValues);
-  const progress = calculateCompletion(caseForm.formTemplateId, values);
+  const progress = calculateCompletion(caseForm.formTemplateId, values, await resolveComponentFieldIds(caseForm));
   caseForm.fieldValues = values;
   caseForm.filledData = values;
   caseForm.completion = progress.completion;
@@ -1305,7 +1372,7 @@ async function reviewCaseForm(caseId, caseFormId, payload, user, req) {
   caseForm.reviewComments = payload.reviewComments || caseForm.reviewComments;
   if (payload.status) caseForm.status = payload.status === "approved" ? "approved" : payload.status;
   if (payload.markComplete) {
-    const progress = calculateCompletion(caseForm.formTemplateId, caseForm.fieldValues || {});
+    const progress = calculateCompletion(caseForm.formTemplateId, caseForm.fieldValues || {}, await resolveComponentFieldIds(caseForm));
     if (Object.keys(progress.validationErrors).length) {
       addAuditEntry(caseForm, "validation_failed", user, progress.validationErrors, req);
       await caseForm.save();

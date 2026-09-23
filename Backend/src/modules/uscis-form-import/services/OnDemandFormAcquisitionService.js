@@ -49,7 +49,11 @@ function enterpriseError(message, statusCode, code) {
 // string is a real VisaFormMapping.formNumber for an O-1A case, and it has
 // no uscis.gov page of its own - the supplement's pages ship inside its
 // parent form's own PDF/template, not as a separately fetchable form).
-const STANDALONE_FORM_CODE_PATTERN = /^[A-Z]{1,3}-\d{2,4}[A-Z]?$/;
+// Up to 2 trailing letters (not just 1) - real USCIS codes include e.g.
+// I-864EZ (confirmed live: uscis.gov/i-864ez is a genuine standalone form
+// page, not a supplement; the previous 1-letter-only pattern wrongly
+// rejected it as USCIS_FORM_NOT_STANDALONE).
+const STANDALONE_FORM_CODE_PATTERN = /^[A-Z]{1,3}-\d{2,4}[A-Z]{0,2}$/;
 
 // USCIS's own site convention for a form's individual page (confirmed
 // against real, live URLs — uscis.gov/i-129, uscis.gov/n-400, uscis.gov/
@@ -103,7 +107,28 @@ async function resolveOfficialPdf(formNumber) {
       if (meta.pdfUrl) return { pdfUrl: meta.pdfUrl, editionDate: meta.editionDate, officialPageUrl: match.pageUrl, formName: meta.formName };
     }
   } catch (error) {
-    // Directory fetch/parse failed too — fall through to the typed error.
+    // Directory fetch/parse failed too — fall through to the parent-page
+    // fallback below.
+  }
+  // Some lettered sub-forms (confirmed live: I-130A, I-918 Supplement A/B)
+  // have no page or directory entry of their own - USCIS distributes their
+  // PDF as a second download link on their PARENT form's own page (e.g.
+  // uscis.gov/i-130 links both I-130 and I-130A). Only tried for a code that
+  // looks like "<parent><1-2 letters>" - never for a bare form code, so this
+  // can't misfire into fetching an unrelated page.
+  const parentSuffixMatch = formCode.match(/^([A-Z]{1,3}-\d{2,4})([A-Z]{1,2})$/);
+  if (parentSuffixMatch) {
+    const parentFormCode = parentSuffixMatch[1];
+    const parentPageUrl = guessedFormPageUrl(parentFormCode);
+    if (parentPageUrl) {
+      try {
+        const html = await USCISScannerService.fetchPage(parentPageUrl);
+        const meta = USCISScannerService.extractFormPageMetadata(html, parentPageUrl, formCode);
+        if (meta.pdfUrl) return { pdfUrl: meta.pdfUrl, editionDate: meta.editionDate, officialPageUrl: parentPageUrl, formName: meta.formName };
+      } catch (error) {
+        // Parent page fetch/parse failed too - fall through to the typed error.
+      }
+    }
   }
   throw enterpriseError(
     `Could not locate a current PDF for ${formCode} on uscis.gov — import it manually via the form registry's Upload PDF flow.`,

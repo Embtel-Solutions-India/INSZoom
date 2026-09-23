@@ -290,6 +290,12 @@ export const uscisFormsApi = {
   // recordConditionalDecision) - "Add"/"Not applicable" actions on a
   // CONDITIONAL_PENDING forms-overview row.
   decideMapping: (caseId, mappingId, decision, reason) => api.post(`/cases/${caseId}/form-mappings/${mappingId}/decision`, { decision, reason }),
+  // Single-form, conflict-independent "Add" for an AVAILABLE_TO_PROVISION
+  // forms-overview row (mapping + template both ready, no CaseForm yet) -
+  // distinct from casesApi.generateForms(), which is correctly blocked by
+  // any unresolved canonical-profile conflict on the case even when it has
+  // nothing to do with this specific form.
+  provisionMapping: (caseId, mappingId) => api.post(`/cases/${caseId}/form-mappings/${mappingId}/provision`),
   // Biographic Activation tier: no state change, just a staff notification
   // asking an admin to complete a full curated mapping review for a
   // biographic_active template.

@@ -84,5 +84,21 @@ export default function useDocumentChecklist(context = {}) {
   // a client can never lose an in-progress upload by submitting too early.
   const awaitUploads = () => Promise.allSettled([...pendingUploads.current]);
 
-  return { files, extractions, handleUpload, handleRemove, uploadsInFlight, awaitUploads, loading, error, reload: load };
+  // Optimistic sync for a document Smart Scan already uploaded server-side
+  // via documentIntelligenceApi.autofillFromDocument (not through
+  // handleUpload — that endpoint does its own upload). Mirrors handleUpload's
+  // post-await state update above, with an added dedupe guard: unlike a
+  // fresh handleUpload call, a Smart Scan result can race the background
+  // load() refresh, so the same document could otherwise be appended twice.
+  const markUploaded = (documentType, docRecord) => {
+    if (!documentType || !docRecord?._id) return;
+    setFiles((prev) => {
+      const existing = prev[documentType] || [];
+      if (existing.some((doc) => doc._id === docRecord._id)) return prev;
+      return { ...prev, [documentType]: [...existing, docRecord] };
+    });
+    setExtractions((prev) => ({ ...prev, [docRecord._id]: { status: docRecord.intelligenceStatus || prev[docRecord._id]?.status || "queued" } }));
+  };
+
+  return { files, extractions, handleUpload, handleRemove, uploadsInFlight, awaitUploads, loading, error, reload: load, markUploaded };
 }

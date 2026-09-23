@@ -6,6 +6,7 @@
 // VisaFormMapping implementation plan for the full rationale.
 const VisaFormMapping = require("../../models/VisaFormMapping");
 const Questionnaire = require("../../models/Questionnaire");
+const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
 const { resolveWithHierarchyFallback } = require("../../config/visaHierarchy");
 
@@ -116,10 +117,37 @@ async function resolveApplicableMappings(caseData) {
   return { autoCreate, conditional, laterStage, reference };
 }
 
+// Resolves a mapping's componentCode to its real, currently-ACTIVE
+// USCISFormComponentDefinition against the parent form's CURRENT active
+// template - live, at read time, never cached on the mapping itself. This
+// is what makes a USCIS edition change safe: a new parent template version
+// simply has no ACTIVE component definitions yet (until
+// USCISFormComponentDiscoveryService is re-run against it), so this
+// resolves to null and the mapping correctly reports TEMPLATE_MISSING
+// rather than silently reusing a previous edition's page ranges.
+async function resolveActiveComponent(parentFormCode, componentCode) {
+  if (!parentFormCode || !componentCode) return null;
+  const parentTemplate = await uscisFormService.findLatestActiveTemplate(parentFormCode);
+  if (!parentTemplate) return null;
+  const component = await USCISFormComponentDefinition.findOne({ parentTemplateId: parentTemplate._id, componentCode, status: "ACTIVE" }).lean();
+  return component ? { component, parentTemplate } : null;
+}
+
 // TEMPLATE_MISSING | TEMPLATE_AVAILABLE | TEMPLATE_RULE_CONFLICT - see the
 // implementation plan (§ Applicability resolution) for what each means.
 // Never mutates or reclassifies the registry mapping.
 async function resolveTemplateStatus(mapping, caseData) {
+  // A component mapping (componentCode set) shares its parent's template -
+  // it has no formTemplateFormCode of its own by design (see the field's
+  // own doc comment on VisaFormMapping.js) - so its availability depends on
+  // the parent template existing/applying AND the specific component still
+  // being ACTIVE for that exact template version, not on formTemplateFormCode
+  // at all.
+  if (mapping.componentCode) {
+    const resolved = await resolveActiveComponent(mapping.parentForm, mapping.componentCode);
+    if (!resolved) return "TEMPLATE_MISSING";
+    return uscisFormService.templateAppliesToCase(resolved.parentTemplate, caseData) ? "TEMPLATE_AVAILABLE" : "TEMPLATE_RULE_CONFLICT";
+  }
   if (!mapping.formTemplateFormCode) return "TEMPLATE_MISSING";
   const template = await uscisFormService.findLatestActiveTemplate(mapping.formTemplateFormCode);
   if (!template) return "TEMPLATE_MISSING";
@@ -206,30 +234,83 @@ function independentFormsFrom(resolved) {
 // Deliberately NOT gated by isIndependentUSCISForm here: a genuinely
 // dependent form with its own real PDF/template (e.g. I-918 Supplement B,
 // AUTO_CREATE alongside its parent I-918 for every U-1 case) still needs its
-// own CaseForm - only I-129's FORM_COMPONENT supplements (embedded pages,
-// no separate template at all) must never get one, and those are already
-// excluded upstream by provisioningType NOT_APPLICABLE (visaFormMappings.seed.js),
-// which resolveApplicableMappings' bucketing never puts in `autoCreate` to
-// begin with. The independence filter belongs only where "is this
+// own CaseForm. The independence filter belongs only where "is this
 // independently offered/listed as its own form" is the question - see
 // isIndependentUSCISForm's callers in form-registry.controller.js.
+//
+// A componentCode entry (e.g. I-129's H Classification Supplement) is
+// different from both of the above: it has no USCISFormTemplate of its own
+// at all - it shares its parent's. For these, the "template" object pushed
+// here is the PARENT template itself (so formTemplateId correctly points at
+// the one real, shared PDF/template), annotated with `_componentInfo` so
+// ensureAssignedForms' create loop below can give the resulting CaseForm
+// its own distinct formCode (the componentCode) instead of colliding with
+// the parent's, and set parentFormCode/componentCode/componentType.
 async function registryAutoCreateTemplates(caseData) {
   const { autoCreate } = await resolveVisaFormMappings(caseData);
   const templates = [];
   for (const entry of autoCreate) {
     if (entry.templateStatus !== "TEMPLATE_AVAILABLE") continue;
-    const template = await uscisFormService.findLatestActiveTemplate(entry.mapping.formTemplateFormCode);
+    const template = await buildTemplateForMapping(entry.mapping, caseData, "AUTO_CREATE");
     if (!template) continue; // resolved TEMPLATE_AVAILABLE a moment ago; defensive re-check
-    template._visaFormMapping = {
-      mappingId: entry.mapping._id,
-      provisioningType: entry.mapping.provisioningType,
-      createdReason: `VisaFormMapping registry: ${entry.mapping.visaType} -> ${entry.mapping.formNumber} (AUTO_CREATE)`,
-      visaType: caseData.visaType,
-      processingPath: caseData.processingPath || "",
-    };
     templates.push(template);
   }
   return templates;
+}
+
+// Shared by registryAutoCreateTemplates (bulk) and provisionAvailableMapping
+// (single-form "Add") - the one place that turns a VisaFormMapping entry
+// into the "template" shape ensureAssignedForms' create loop consumes.
+// Component mappings (componentCode set) never have their own
+// USCISFormTemplate - they share the parent's - so this returns a fresh
+// plain object pointing at the real parent template/PDF, with formCode
+// overridden to the component's own stable identity (never the parent's),
+// tagged with _componentInfo so the create loop can set
+// parentFormCode/componentCode/componentType on the resulting CaseForm. A
+// STANDALONE_FORM/CONDITIONAL mapping with its own real template
+// (formTemplateFormCode set) is untouched, exactly as before this helper
+// existed.
+async function buildTemplateForMapping(mapping, caseData, reasonSuffix) {
+  let template;
+  if (mapping.componentCode) {
+    const resolved = await resolveActiveComponent(mapping.parentForm, mapping.componentCode);
+    if (!resolved) return null;
+    const parentTemplate = resolved.parentTemplate;
+    // A fresh, explicit plain object - never mutate the parent template doc
+    // in place. findLatestActiveTemplate's result may be the same cached
+    // instance activeTemplatesCached() hands out to every other caller in
+    // this process; overwriting its formCode here would corrupt that
+    // shared cache for the CORE I-129 resolution happening in the very
+    // same request.
+    template = {
+      _id: parentTemplate._id,
+      formCode: mapping.componentCode,
+      version: parentTemplate.version,
+      editionDate: parentTemplate.editionDate,
+      activeMappingVersion: parentTemplate.activeMappingVersion,
+      activeMappingVersionId: parentTemplate.activeMappingVersionId,
+      latestMappingVersionId: parentTemplate.latestMappingVersionId,
+      mappingVersion: parentTemplate.mappingVersion,
+      validationVersion: parentTemplate.validationVersion,
+      renderingVersion: parentTemplate.renderingVersion,
+      _componentInfo: {
+        parentFormCode: mapping.parentForm,
+        componentCode: mapping.componentCode,
+        componentType: mapping.componentType,
+      },
+    };
+  } else {
+    template = await uscisFormService.findLatestActiveTemplate(mapping.formTemplateFormCode);
+    if (!template) return null;
+  }
+  template._visaFormMapping = {
+    mappingId: mapping._id,
+    provisioningType: mapping.provisioningType,
+    createdReason: `VisaFormMapping registry: ${mapping.visaType} -> ${mapping.formNumber} (${reasonSuffix})`,
+    visaType: caseData.visaType,
+    processingPath: caseData.processingPath || "",
+  };
+  return template;
 }
 
 function assertNoClientProvidedForms(body = {}) {
@@ -318,6 +399,54 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
   return { decisionRecord, templateStatus: null };
 }
 
+// Single-form, conflict-independent provisioning for an AUTO_CREATE mapping
+// that's fully ready (TEMPLATE_AVAILABLE) but has no CaseForm yet. Mirrors
+// recordConditionalDecision's ADD path and OnDemandFormAcquisitionService's
+// single-template call above it - same ensureAssignedForms mechanism, not a
+// second creation path.
+//
+// Exists because the bulk "Generate USCIS Forms" endpoint
+// (CaseLifecycleOrchestrator.generateForms) is correctly gated on
+// unresolved canonical-profile conflicts (a real safety check - autofilling
+// from a value known to conflict with another source would write bad data),
+// but that gate has no way to know a conflict on, say, company.name has
+// nothing to do with a form like I-129 whose own mapping/template are
+// completely ready. A form stuck at templateStatus TEMPLATE_AVAILABLE with
+// no CaseForm had no path onto the case at all until a completely unrelated
+// conflict was resolved first - confirmed against a real production case.
+// This only ever creates the CaseForm; it does not autofill it (the
+// frontend follows up with the existing per-form Autofill action, which is
+// already conflict-independent).
+async function provisionAvailableMapping(caseData, mappingId, user, req) {
+  const mapping = await VisaFormMapping.findById(mappingId);
+  if (!mapping || !mapping.active) {
+    const error = new Error("Unknown or inactive form mapping");
+    error.status = 404;
+    throw error;
+  }
+  if (!isRegistryApplicable(mapping, caseData)) {
+    const error = new Error("This mapping is not applicable to this case");
+    error.status = 400;
+    throw error;
+  }
+  const templateStatus = await resolveTemplateStatus(mapping, caseData);
+  if (templateStatus !== "TEMPLATE_AVAILABLE") {
+    const error = new Error(`This form isn't ready to be added yet (status: ${templateStatus}).`);
+    error.status = 409;
+    error.code = "TEMPLATE_NOT_AVAILABLE";
+    throw error;
+  }
+  const template = await buildTemplateForMapping(mapping, caseData, "added by case manager, single-form");
+  if (!template) {
+    const error = new Error(`This form isn't ready to be added yet (status: ${templateStatus}).`);
+    error.status = 409;
+    error.code = "TEMPLATE_NOT_AVAILABLE";
+    throw error; // resolved TEMPLATE_AVAILABLE a moment ago; defensive re-check
+  }
+  const created = await uscisFormService.ensureAssignedForms(caseData, user, req, { templates: [template] });
+  return { mapping, templateStatus, created };
+}
+
 module.exports = {
   evaluateTrigger,
   isRegistryApplicable,
@@ -329,6 +458,7 @@ module.exports = {
   templateDiagnostics,
   registryAutoCreateTemplates,
   recordConditionalDecision,
+  provisionAvailableMapping,
   assertNoClientProvidedForms,
   readWhitelistedField,
 };

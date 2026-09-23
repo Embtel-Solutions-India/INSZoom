@@ -474,6 +474,7 @@ class CaseLifecycleOrchestrator {
     const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
     const uscisFormService = require("../uscis-forms/uscis-form.service");
     const AutoFillService = require("../form-mapping/services/AutoFillService");
+    const visaFormMappingService = require("../form-registry/visaFormMapping.service");
     const existingForms = await CaseForm.find({ caseId })
       .populate({ path: "formTemplateId", select: "_id formCode version status activeFlag" })
       .read("secondaryPreferred");
@@ -527,7 +528,34 @@ class CaseLifecycleOrchestrator {
     }
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req);
     const forms = await CaseForm.find({ caseId });
-    if (!forms.length) throw Object.assign(new Error(`No active USCIS form templates are configured for ${caseData.visaType}`), { status: 422 });
+    if (!forms.length) {
+      // Structured in place of the previous bare 422: reuses
+      // visaFormMapping.service.js's own resolver + diagnostics (the same
+      // ones the registry debug endpoint already surfaces per-mapping
+      // template status through) rather than re-deriving this - see
+      // resolveVisaFormMappings/templateDiagnostics. Confirmed against live
+      // data that "zero forms resolved" collapses two genuinely different
+      // situations a Case Manager needs to tell apart: a visa type with no
+      // registry coverage at all (resolvedVisaType stays null, unresolved
+      // true - e.g. a mistyped/invalid visaType), vs. one whose mapping
+      // resolves fine but whose forms haven't reached an active template yet
+      // (each entry's templateStatus explains why: TEMPLATE_MISSING never
+      // imported, TEMPLATE_RULE_CONFLICT imported but assignmentRules don't
+      // match this case).
+      const resolved = await visaFormMappingService.resolveVisaFormMappings(caseData);
+      const formDiagnostics = visaFormMappingService.templateDiagnostics(resolved.autoCreate);
+      throw Object.assign(new Error(`No active USCIS form templates are configured for ${caseData.visaType}`), {
+        status: 422,
+        code: "USCIS_FORMS_UNRESOLVED",
+        details: {
+          visaType: caseData.visaType,
+          resolvedVisaType: resolved.resolvedVisaType,
+          usedParentFallback: resolved.usedParentFallback,
+          unresolved: resolved.unresolved,
+          forms: formDiagnostics,
+        },
+      });
+    }
     const generated = [];
     const failed = [];
     for (const form of forms) {

@@ -768,7 +768,35 @@ const CRMCaseDetail = () => {
     } catch (error) {
       const data = error.response?.data || {}
       if (data.code === 'CANONICAL_NEEDS_REVIEW') {
-        setFormActionMessage(data.message || 'Canonical profile conflicts must be resolved before generating forms.')
+        // data.details.validation.conflicts carries the actual competing
+        // values per field (CanonicalValidationService.validate) — naming
+        // them beats the generic "conflicts must be resolved" message, since
+        // the CM otherwise has to go find the conflict UI just to see what's
+        // even disagreeing.
+        const conflicts = data.details?.validation?.conflicts || []
+        const conflictDetail = conflicts.length
+          ? ` ${conflicts.map(item => {
+              const values = [...new Set((item.candidates || []).map(candidate => candidate.value))]
+              return `${item.path}: ${values.map(value => `"${value}"`).join(' vs ')}`
+            }).join('; ')}`
+          : ''
+        setFormActionMessage(`${data.message || 'Canonical profile conflicts must be resolved before generating forms.'}${conflictDetail}`)
+        return
+      }
+      if (data.code === 'USCIS_FORMS_UNRESOLVED') {
+        // details.forms is visaFormMapping.service.js's own templateDiagnostics()
+        // output — a per-form reason (TEMPLATE_MISSING/TEMPLATE_RULE_CONFLICT/...)
+        // for why a mapped form never became a CaseForm.
+        const { resolvedVisaType, usedParentFallback, unresolved, forms } = data.details || {}
+        const formDetail = forms?.length
+          ? ` Forms affected: ${forms.map(item => `${item.formNumber} (${item.reason})`).join(', ')}.`
+          : ''
+        const resolutionDetail = unresolved
+          ? ' This visa type has no configured USCIS forms — check that the case’s visa type is set correctly.'
+          : usedParentFallback
+            ? ` Resolved via ${resolvedVisaType}'s form set, but none of those forms have an active template yet.`
+            : ''
+        setFormActionMessage(`${data.message || 'No active USCIS form templates are configured for this visa type.'}${resolutionDetail}${formDetail}`)
         return
       }
       const issues = data.issues?.length ? ` ${data.issues.map(item => item.message).join(' ')}` : ''
@@ -831,6 +859,36 @@ const CRMCaseDetail = () => {
     } catch (error) {
       const data = error.response?.data || {}
       setFormActionMessage(data.message || error.message || `Could not autofill ${item.formNumber}.`)
+    } finally {
+      setRowActionPending('')
+    }
+  }
+
+  // "Add" for an AVAILABLE_TO_PROVISION row - single-form, conflict-
+  // independent provisioning (visaFormMappingService.provisionAvailableMapping),
+  // distinct from generateCaseForms' bulk endpoint, which is correctly
+  // blocked by any unresolved canonical-profile conflict on the case even
+  // when it has nothing to do with this specific form. Autofills the newly
+  // created form immediately after, via the same already-conflict-independent
+  // per-form Autofill call handleAutofillForm uses, so this still behaves
+  // like "Add & Autofill" from the case manager's point of view.
+  const handleProvisionMapping = async (item) => {
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      const response = await uscisFormsApi.provisionMapping(id, item.mappingId)
+      const created = response?.data?.data?.created || []
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      const newCaseFormId = created[0]?._id
+      if (newCaseFormId) {
+        await uscisFormsApi.autofill(id, newCaseFormId).catch(() => null)
+        await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      }
+      setFormActionMessage(`${item.formNumber} was added to this case and auto-filled.`)
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not add ${item.formNumber}.`)
     } finally {
       setRowActionPending('')
     }
@@ -2887,10 +2945,10 @@ const CRMCaseDetail = () => {
                               )}
                               {item.uiStatus === 'AVAILABLE_TO_PROVISION' && (
                                 <button
-                                  onClick={generateCaseForms}
-                                  disabled={tabLoading.forms}
+                                  onClick={() => handleProvisionMapping(item)}
+                                  disabled={rowActionPending === item.mappingId}
                                   className="btn-primary text-xs"
-                                  title="Provisions and autofills every available form on this case"
+                                  title="Adds and auto-fills this one form, independently of any unresolved canonical conflict elsewhere on the case"
                                 >
                                   Add &amp; Autofill
                                 </button>

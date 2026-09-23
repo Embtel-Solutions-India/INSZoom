@@ -48,6 +48,7 @@ router.put("/:id/classification", authenticate, authorizeRoles(...reviewerRoles)
 router.post("/:id/reprocess", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("document_intelligence:update"), ctrl.reprocessExtraction);
 
 router.get("/case/:caseId/prefill-summary", authenticate, authorizeRoles(...casePrefillRoles), ctrl.casePrefillSummary);
+router.get("/case/:caseId/scan-options", authenticate, authorizeRoles(...casePrefillRoles), ctrl.caseScanOptions);
 router.post("/case/:caseId/masterdata-field/:prefillId/:action", authenticate, authorizeRoles(...casePrefillRoles), ctrl.reviewMasterDataField);
 
 module.exports = router;

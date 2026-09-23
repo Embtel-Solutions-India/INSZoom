@@ -109,6 +109,7 @@ const QUESTION_KEY_MAP = {
 };
 
 const OCR_FIELD_MAP = {
+  // ── Personal identity ──────────────────────────────────────────────────
   firstName: "person.firstName",
   givenName: "person.firstName",
   middleName: "person.middleName",
@@ -119,7 +120,14 @@ const OCR_FIELD_MAP = {
   dob: "person.dob",
   gender: "person.gender",
   nationality: "person.citizenship",
+  countryOfCitizenship: "person.citizenship",
   countryOfBirth: "person.countryOfBirth",
+  placeOfBirth: "person.countryOfBirth",
+  alienNumber: "person.alienNumber",
+  alienRegistrationNumber: "person.alienNumber",
+  aNumber: "person.alienNumber",
+
+  // ── Passport ────────────────────────────────────────────────────────────
   passportNumber: "person.passport.number",
   documentNumber: "person.passport.number",
   issuingCountry: "person.passport.country",
@@ -127,18 +135,117 @@ const OCR_FIELD_MAP = {
   issueDate: "person.passport.issueDate",
   expiryDate: "person.passport.expirationDate",
   expirationDate: "person.passport.expirationDate",
+  passportExpiry: "person.passport.expirationDate",
+
+  // ── Address — individual components only, never a combined string ──────
+  street: "contact.address.line1",
+  city: "contact.address.city",
+  state: "contact.address.state",
+  zipCode: "contact.address.zip",
+  postalCode: "contact.address.zip",
+
+  // ── Immigration ─────────────────────────────────────────────────────────
   visaType: "immigration.currentVisaType",
   classOfAdmission: "immigration.currentStatus",
+  currentStatus: "immigration.currentStatus",
   i94Number: "immigration.i94.number",
+  admissionDate: "immigration.i94.arrivalDate",
+  arrivalDate: "immigration.i94.arrivalDate",
+  i94ExpirationDate: "immigration.i94.expirationDate",
+  authorizedUntil: "immigration.i94.expirationDate",
+  receiptNumber: "immigration.receiptNumbers.0",
+  priorityDate: "immigration.priorityDate",
+  validFrom: "immigration.approvalPeriod.start",
+  validTo: "immigration.approvalPeriod.end",
+  classification: "immigration.classification",
+
+  // ── Employment ──────────────────────────────────────────────────────────
+  employerLegalName: "company.name",
+  legalBusinessName: "company.name",
+  employerName: "company.name",
+  employerFein: "company.ein",
+  employerEin: "company.ein",
+  ein: "company.ein",
+  socCode: "employment.socCode",
+  socTitle: "employment.socTitle",
+  jobTitle: "employment.positionTitle",
+  offeredWageRate: "employment.salary",
+  offeredSalary: "employment.salary",
+  actualWage: "employment.salary",
+  employmentBeginDate: "employment.startDate",
+  startDate: "employment.startDate",
+  employmentEndDate: "employment.endDate",
+  prevailingWageLevel: "employment.lcaWageLevel",
+  wageLevel: "employment.lcaWageLevel",
+
+  // ── Company / business ──────────────────────────────────────────────────
+  // legalName is intentionally the same target as employerLegalName above —
+  // both mean "the company's legal name" depending on which document it came
+  // from. registrationNumber is deliberately NOT mapped here: a state
+  // registration number is not an EIN, and no other canonical company field
+  // exists for it yet — mapping it to company.ein would be silently wrong.
+  legalName: "company.name",
+  formationDate: "company.yearEstablished",
+  entityType: "company.entityType",
+  jurisdiction: "company.address.state",
+
+  // ── Education (repeatable — first/most-recent entry) ────────────────────
+  university: "education.0.institution",
+  degree: "education.0.degree",
+  major: "education.0.field",
+  fieldOfStudy: "education.0.field",
+  graduationDate: "education.0.graduationDate",
+  usEquivalentDegree: "education.0.degree",
+
+  // ── Array-level (whole-history) mappings ─────────────────────────────────
   education: "education",
   educationHistory: "education",
   employment: "employment",
   employmentHistory: "employment",
+
+  // ── Achievements ────────────────────────────────────────────────────────
   publications: "achievements.publications",
   awards: "achievements.awards",
   skills: "achievements.skills",
   memberships: "achievements.memberships",
   patents: "achievements.patents",
+};
+
+// Document-scoped overrides: when the extraction's own (already-normalized —
+// see document-intelligence/schemas/document-intelligence.schema.js's
+// normalizeDocumentType, which runs upstream of every extraction.documentType
+// write) document type needs a field routed somewhere more specific than the
+// flat OCR_FIELD_MAP above, list it here. Keyed by the CANONICAL type name
+// only (e.g. "i94", not "employee_i94_copy") — normalization already
+// collapses every checklist-slot alias down to these before this file ever
+// sees them, so a raw-slot-name key here would just be dead code.
+const DOC_TYPE_OVERRIDES = {
+  i94: {
+    expirationDate: "immigration.i94.expirationDate",
+    admissionDate: "immigration.i94.arrivalDate",
+  },
+  approval_notice: {
+    validFrom: "immigration.approvalPeriod.start",
+    validTo: "immigration.approvalPeriod.end",
+    receiptNumber: "immigration.receiptNumbers.0",
+  },
+  degree: {
+    university: "education.0.institution",
+    degree: "education.0.degree",
+    major: "education.0.field",
+    graduationDate: "education.0.graduationDate",
+  },
+  // Prior/former employment, never the current sponsoring employer — kept
+  // out of OCR_FIELD_MAP's flat "employment.*" targets so a past-employer
+  // letter can never be mistaken for the case's current position.
+  employment_letter: {
+    employer: "employment.history.0.company",
+    jobTitle: "employment.history.0.title",
+  },
+  experience_letter: {
+    employer: "employment.history.0.company",
+    jobTitle: "employment.history.0.title",
+  },
 };
 
 function plain(document) {
@@ -280,7 +387,9 @@ class CanonicalBuilderService {
     extractions.forEach((extraction) => {
       const documentType = extraction.documentType || extraction.classification?.documentType || "other";
       (extraction.extractedData || []).forEach((field) => {
-        const targetPath = OCR_FIELD_MAP[field.path] || OCR_FIELD_MAP[field.key] || field.canonicalPath;
+        const fieldKey = field.key || field.path;
+        const scopedPath = DOC_TYPE_OVERRIDES[documentType]?.[fieldKey];
+        const targetPath = scopedPath || OCR_FIELD_MAP[field.path] || OCR_FIELD_MAP[field.key] || field.canonicalPath;
         if (!targetPath) return;
         const value = field.editedValue !== undefined ? field.editedValue : field.value;
         pushCandidate(candidates, targetPath, value, {

@@ -53,9 +53,6 @@ export default function AuthGate() {
   // confirmed as the cause of an already-authenticated staff member landing
   // back on Admin's own /login after being sent here with no credential.
   const isStaff = authStatus === "authenticated" && Boolean(context) && STAFF_ROLES.includes(context.role);
-  useEffect(() => {
-    if (isStaff) redirectToOwnPortal(context.role, tokenStore.getAccess());
-  }, [isStaff, context?.role]);
 
   // Attorneys belong to neither portal this app routes between — they get
   // the third app. The access token is handed over in the URL so the
@@ -64,12 +61,32 @@ export default function AuthGate() {
   // verifies the token against GET /api/auth/me before trusting it, never
   // client-side. Mirrors the isStaff redirect directly above.
   const isAttorney = authStatus === "authenticated" && Boolean(context) && context.role === "attorney";
+
+  // Every local Vite app shares the browser's plain "localhost" cookie
+  // domain regardless of port, so an Admin (or Attorney) session logged in
+  // on another local port leaks into this app's AuthContext too. In
+  // production that's exactly when the cross-origin bounce below should
+  // fire; on localhost it instead sends a locally-minted token off to
+  // whatever origin VITE_ADMIN_URL/VITE_ATTORNEY_PORTAL_URL happen to be set
+  // to in this dev .env (often a real deployed site), which can't validate
+  // it — "couldn't sign you in, network error" — and blocks testing this
+  // portal without first logging out of the other one. Skip the bounce on
+  // localhost and fall through to the same /login the unauthenticated
+  // branch below shows, so every portal can be exercised side by side.
+  const isLocalDev = window.location.hostname === "localhost";
+  const shouldBounceStaff = isStaff && !isLocalDev;
+  const shouldBounceAttorney = isAttorney && !isLocalDev;
+
   useEffect(() => {
-    if (isAttorney) redirectToOwnPortal("attorney", tokenStore.getAccess());
-  }, [isAttorney]);
+    if (shouldBounceStaff) redirectToOwnPortal(context.role, tokenStore.getAccess());
+  }, [shouldBounceStaff, context?.role]);
+
+  useEffect(() => {
+    if (shouldBounceAttorney) redirectToOwnPortal("attorney", tokenStore.getAccess());
+  }, [shouldBounceAttorney]);
 
   // ── Loading state (also covers the staff/attorney redirects firing above) ─
-  if (authLoading || isStaff || isAttorney) {
+  if (authLoading || shouldBounceStaff || shouldBounceAttorney) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-5rem)]">
         <div className="w-10 h-10 rounded-full border-4 border-emerald-200 border-t-emerald-600 animate-spin" />
@@ -91,7 +108,13 @@ export default function AuthGate() {
   }
 
   // ── Unauthenticated ──────────────────────────────────────────────────────
-  if (authStatus === "unauthenticated" || !context) {
+  // The dev-only (isStaff || isAttorney) clause here is what actually shows
+  // the client login page in that case, instead of falling through to the
+  // "this account role is not enabled for the client portal" branch below —
+  // treats a staff/attorney session on localhost exactly like no session at
+  // all, matching production's real behavior (that session never reaches a
+  // client portal route there either, it's bounced away first).
+  if (authStatus === "unauthenticated" || !context || ((isStaff || isAttorney) && isLocalDev)) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 

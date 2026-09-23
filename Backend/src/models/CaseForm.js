@@ -42,6 +42,20 @@ const caseFormSchema = new mongoose.Schema(
       visaType: String,
       processingPath: String,
     },
+    // Unset for every ordinary, whole-independent-form CaseForm (the
+    // overwhelming majority). Set only when this CaseForm represents one
+    // embedded page-range component of a parent USCIS PDF (see
+    // USCISFormComponentDefinition) - e.g. formCode "I129_H",
+    // parentFormCode "I-129", sharing the parent's own formTemplateId
+    // above (never a separate template/PDF of its own).
+    parentFormCode: { type: String, trim: true, default: null },
+    componentCode: { type: String, trim: true, default: null, index: true },
+    componentType: { type: String, enum: ["SUPPLEMENT", "FORM_COMPONENT", null], default: null },
+    // Explicit reference to the core CaseForm this component belongs to -
+    // not inferred from formCode/parentFormCode string-matching, so "what
+    // happens to I129_H if I-129 core is deleted/regenerated" is an
+    // ordinary, queryable relationship.
+    parentCaseFormId: { type: mongoose.Schema.Types.ObjectId, ref: "CaseForm", default: null, index: true },
     filledData: mongoose.Schema.Types.Mixed,
     fieldValues: { type: mongoose.Schema.Types.Mixed, default: {} },
     sourceAttribution: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -249,7 +263,18 @@ const FIELD_VALUES_SCHEMA_REFERENCE = Object.freeze({
 });
 
 caseFormSchema.index({ caseId: 1, formCode: 1 });
-caseFormSchema.index({ caseId: 1, formTemplateId: 1, participantId: 1 }, { unique: true, sparse: true });
+// Widened to include componentCode: a component CaseForm (e.g. I129_H)
+// deliberately shares its parent's formTemplateId (same underlying master
+// PDF/template - see componentCode on the schema below), so the previous
+// 3-field {caseId, formTemplateId, participantId} uniqueness would collide
+// the moment a second, component CaseForm was created for the same
+// case/participant as its already-existing core CaseForm. componentCode is
+// unset (undefined) on every existing/core CaseForm, so this widening is
+// purely additive - it only relaxes the constraint (letting a core and its
+// components coexist under the same template), it can never make an
+// already-valid document invalid, and every case/participant still gets at
+// most one CaseForm per (template, component) pair.
+caseFormSchema.index({ caseId: 1, formTemplateId: 1, participantId: 1, componentCode: 1 }, { unique: true, sparse: true });
 caseFormSchema.index({ caseId: 1, participantId: 1, formCode: 1 });
 caseFormSchema.index({ caseId: 1, formCode: 1, formEditionDate: 1 });
 caseFormSchema.index({ "syncState.requiresRegeneration": 1, updatedAt: -1 });
