@@ -4,6 +4,8 @@ const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
 const { isProtectedField } = require("./ProtectedFieldPolicy");
 const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
+const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
+const ComponentPageResolver = require("./ComponentPageResolver");
 
 class PDFRenderer {
   static loadPdfLib() {
@@ -159,6 +161,12 @@ class PDFRenderer {
     // whole-form flatten, or the NeedAppearances flag telling every viewer
     // to rebuild every remaining widget's appearance) can ever touch it.
     const flattenedBarcodeFields = flattenBarcodeAppearances(form, template.formCode);
+    // Must also run before flatten()/save() - both internally call pdf-lib's
+    // own form.updateFieldAppearances(), which throws RichTextFieldReadError
+    // for any empty rich-text field (confirmed live: I-485's real template).
+    // See RichTextFieldGuard.js for why disabling the flag on an empty field
+    // is safe and has no visible effect.
+    const disabledRichTextFields = disableEmptyRichTextFields(form);
     if (flatten) {
       form.flatten();
     } else {
@@ -168,6 +176,25 @@ class PDFRenderer {
       // ones (verified empirically: reload -> NeedAppearances round-trips as
       // true, see PDFRenderer.appearance.test.js).
       form.acroForm.dict.set(PDFName.of("NeedAppearances"), PDFBool.True);
+    }
+
+    // Page slicing - the actual page removal, applied only once every field
+    // has been written and appearances/flattening decided, and only right
+    // before the final save. Resolved through the single shared
+    // ComponentPageResolver (never a per-caller reimplementation, never a
+    // formCode-specific branch): a component CaseForm gets its own
+    // pageRanges; a core/independent CaseForm gets every page NOT claimed by
+    // one of its own active sibling components (Phase 2 add-on - null only
+    // when the template has no active components at all, in which case
+    // nothing is removed, preserving the original full-document behavior
+    // for every form with no registered components). Any resolution failure
+    // throws rather than silently falling back to rendering every page.
+    let componentPageCount = null;
+    const totalPages = pdf.getPageCount();
+    const pagesToKeep = await ComponentPageResolver.resolvePagesToKeep(caseForm, template, totalPages);
+    if (pagesToKeep) {
+      ComponentPageResolver.keepOnlyPages(pdf, pagesToKeep);
+      componentPageCount = pagesToKeep.length;
     }
 
     let output = Buffer.from(await pdf.save());
@@ -181,8 +208,11 @@ class PDFRenderer {
         failedFieldWrites,
         protectedFields,
         flattenedBarcodeFields,
+        disabledRichTextFields,
         flattened: Boolean(flatten),
         watermark: WatermarkService.normalize(watermark),
+        componentCode: caseForm.componentCode || null,
+        componentPageCount,
       },
     };
   }

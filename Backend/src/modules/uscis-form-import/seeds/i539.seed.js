@@ -12,6 +12,7 @@ const env = require("../../../config/env");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const storageService = require("../../uploads/storage.service");
 const importLocalForm = require("../scripts/importLocalForm");
+const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
 
 const FORM_CODE = "I-539";
 const VERSION = "2024-08-28";
@@ -72,6 +73,13 @@ async function seedI539Template({ file } = {}) {
   template.officialStatus = "current";
   template.editionDate = template.editionDate || EDITION_DATE;
   template.title = TITLE;
+  // Final phase durability fix: this seed never set visaTypes at all before
+  // this change - the literal root cause of I-539's `visaTypes: []` bug
+  // Phase 3 found and live-corrected. A fresh environment re-running this
+  // seed would otherwise silently reintroduce it. See
+  // deriveVisaTypesFromRegistry.js.
+  const registryVisaTypes = await deriveVisaTypesFromRegistry(FORM_CODE);
+  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), ...registryVisaTypes]));
   await template.save();
 
   return { template, fieldCount };

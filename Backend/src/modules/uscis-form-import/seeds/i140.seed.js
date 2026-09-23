@@ -15,6 +15,7 @@ const env = require("../../../config/env");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const storageService = require("../../uploads/storage.service");
 const importLocalForm = require("../scripts/importLocalForm");
+const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
 
 const FORM_CODE = "I-140";
 const VERSION = "2024-07-06";
@@ -74,7 +75,10 @@ async function seedI140Template({ file } = {}) {
   template.status = "active";
   template.activeFlag = true;
   template.officialStatus = "current";
-  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), ...VISA_TYPES]));
+  // Registry-derived, not hardcoded-only (final phase durability fix - see
+  // deriveVisaTypesFromRegistry.js). VISA_TYPES above is kept as a floor.
+  const registryVisaTypes = await deriveVisaTypesFromRegistry(FORM_CODE);
+  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), ...VISA_TYPES, ...registryVisaTypes]));
   template.editionDate = template.editionDate || EDITION_DATE;
   template.title = TITLE;
   await template.save();

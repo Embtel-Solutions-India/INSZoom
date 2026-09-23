@@ -17,6 +17,8 @@ const PDFRenderer = require("./PDFRenderer");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const AdobePdfService = require("../../pdf-services/AdobePdfService");
 const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
+const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
+const ComponentPageResolver = require("./ComponentPageResolver");
 
 function classifyField(field) {
   const ctor = field.constructor?.name || "";
@@ -126,6 +128,12 @@ class AdobeFormRenderer {
       skippedFields.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, type: kind, reason: "not yet verified against Adobe setformdata for this field type" });
     });
 
+    // Must run before this local pdf-lib save - pdf-lib's own internal
+    // appearance-regeneration pass (run by save() itself) throws
+    // RichTextFieldReadError for any empty rich-text field, confirmed live
+    // against I-485's real template; this crashes BEFORE the buffer ever
+    // reaches Adobe. See RichTextFieldGuard.js.
+    disableEmptyRichTextFields(sourceForm);
     const uploadBuffer = Buffer.from(await sourcePdf.save());
     let buffer = await AdobePdfService.fillPdf(uploadBuffer, jsonFormFieldsData);
 
@@ -143,6 +151,26 @@ class AdobeFormRenderer {
     const { PDFDocument: AdobeOutputPDFDocument } = PDFRenderer.loadPdfLib();
     const adobeOutputDoc = await AdobeOutputPDFDocument.load(buffer, { ignoreEncryption: true, updateMetadata: false });
     const flattenedBarcodeFields = flattenBarcodeAppearances(adobeOutputDoc.getForm(), template.formCode);
+    // Adobe's own output may still carry the rich-text flag on a field it
+    // didn't touch - guard this save the same way as the pre-upload one.
+    const disabledRichTextFields = disableEmptyRichTextFields(adobeOutputDoc.getForm());
+
+    // Page slicing - same shared resolver PDFRenderer.render() uses (both
+    // component AND core-boundary resolution, Phase 2 add-on), applied here
+    // as a post-process since Adobe fills the PDF externally (this engine
+    // never touches pdf-lib during the fill itself). Adobe is the DEFAULT
+    // download engine (env.adobe.fillEnabled), so without this, a component
+    // or core CaseForm's official download would still silently return the
+    // full parent PDF even after PDFRenderer.render() was fixed - both
+    // engines must honor the same render plan.
+    let componentPageCount = null;
+    const totalPages = adobeOutputDoc.getPageCount();
+    const pagesToKeep = await ComponentPageResolver.resolvePagesToKeep(caseForm, template, totalPages);
+    if (pagesToKeep) {
+      ComponentPageResolver.keepOnlyPages(adobeOutputDoc, pagesToKeep);
+      componentPageCount = pagesToKeep.length;
+    }
+
     buffer = Buffer.from(await adobeOutputDoc.save());
 
     const PDFFidelityService = require("./PDFFidelityService");
@@ -165,6 +193,7 @@ class AdobeFormRenderer {
         failedFieldWrites,
         skippedFields,
         flattenedBarcodeFields,
+        disabledRichTextFields,
         // Never even reaches jsonFormFieldsData - PDFFieldMapper.mapFields()
         // already excludes these (see ProtectedFieldPolicy.js) before this
         // function ever sees mappedFields. Surfaced here only for audit
@@ -174,6 +203,8 @@ class AdobeFormRenderer {
         checksumVerified: checksumResult.verified,
         flattened: false,
         watermark: null,
+        componentCode: caseForm.componentCode || null,
+        componentPageCount,
       },
       fidelityReport: fidelityResult.report,
     };
