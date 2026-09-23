@@ -19,9 +19,33 @@ jobs:
       S3_BUCKET: inszoom-bucket
       DEPLOY_DIR: /home/ubuntu/INSZoom/deploy-temp
 
+      # =====================================================
+      # COMMON IMMIGLANCE FRONTEND CONFIG
+      # =====================================================
+
+      VITE_API_URL: ${{ vars.IMMIGLANCE_VITE_API_URL }}
+      VITE_API_TIMEOUT_MS: ${{ vars.IMMIGLANCE_VITE_API_TIMEOUT_MS }}
+
+      VITE_FIREBASE_API_KEY: ${{ vars.IMMIGLANCE_VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.IMMIGLANCE_VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ vars.IMMIGLANCE_VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.IMMIGLANCE_VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.IMMIGLANCE_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ vars.IMMIGLANCE_VITE_FIREBASE_APP_ID }}
+      VITE_FIREBASE_VAPID_KEY: ${{ vars.IMMIGLANCE_VITE_FIREBASE_VAPID_KEY }}
+
     steps:
+
+      # =====================================================
+      # CHECKOUT
+      # =====================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # =====================================================
+      # NODE.JS
+      # =====================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,48 +53,91 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            Immiglance/Frontend/package-lock.json
+            Immiglance/Landing/package-lock.json
+            Immiglance/Client/package-lock.json
+            Attorney/package-lock.json
             Admin/frontend/package-lock.json
             Backend/package-lock.json
 
-      - name: Install Immiglance Frontend dependencies
-        working-directory: Immiglance/Frontend
+      # =====================================================
+      # LANDING
+      # =====================================================
+
+      - name: Install Landing dependencies
+        working-directory: Immiglance/Landing
         run: npm ci --include=optional
 
-      - name: Build Immiglance Frontend
-        working-directory: Immiglance/Frontend
+      - name: Build Landing
+        working-directory: Immiglance/Landing
         env:
-          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.BAIS_VITE_STRIPE_PUBLISHABLE_KEY }}
-          VITE_API_URL: ${{ secrets.BAIS_VITE_API_URL }}
-          VITE_INSZOOM_URL: ${{ secrets.BAIS_VITE_INSZOOM_URL }}
-          VITE_FIREBASE_VAPID_KEY: ${{ secrets.BAIS_VITE_FIREBASE_VAPID_KEY }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.BAIS_VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.BAIS_VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.BAIS_VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.BAIS_VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.BAIS_VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.BAIS_VITE_FIREBASE_APP_ID }}
+          VITE_ADMIN_URL: ${{ vars.IMMIGLANCE_VITE_ADMIN_URL }}
+          VITE_ATTORNEY_PORTAL_URL: ${{ vars.IMMIGLANCE_VITE_ATTORNEY_PORTAL_URL }}
+          VITE_CLIENT_URL: ${{ vars.IMMIGLANCE_VITE_CLIENT_URL }}
         run: npm run build
 
-      - name: Package Immiglance Frontend
+      - name: Package Landing
         run: |
-          tar -czf /tmp/immiglance-frontend.tar.gz \
-            -C Immiglance/Frontend/dist .
+          tar -czf /tmp/landing-frontend.tar.gz \
+            -C Immiglance/Landing/dist .
 
-      - name: Install Admin Frontend dependencies
+      # =====================================================
+      # CLIENT
+      # =====================================================
+
+      - name: Install Client dependencies
+        working-directory: Immiglance/Client
+        run: npm ci --include=optional
+
+      - name: Build Client
+        working-directory: Immiglance/Client
+        env:
+          VITE_ADMIN_URL: ${{ vars.IMMIGLANCE_VITE_ADMIN_URL }}
+          VITE_ATTORNEY_PORTAL_URL: ${{ vars.IMMIGLANCE_VITE_ATTORNEY_PORTAL_URL }}
+          VITE_LANDING_URL: ${{ vars.IMMIGLANCE_VITE_LANDING_URL }}
+        run: npm run build
+
+      - name: Package Client
+        run: |
+          tar -czf /tmp/client-frontend.tar.gz \
+            -C Immiglance/Client/dist .
+
+      # =====================================================
+      # ATTORNEY
+      # =====================================================
+
+      - name: Install Attorney dependencies
+        working-directory: Attorney
+        run: npm ci --include=optional
+
+      - name: Build Attorney
+        working-directory: Attorney
+        run: npm run build
+
+      - name: Package Attorney
+        run: |
+          tar -czf /tmp/attorney-frontend.tar.gz \
+            -C Attorney/dist .
+
+      # =====================================================
+      # ADMIN
+      # =====================================================
+
+      - name: Install Admin dependencies
         working-directory: Admin/frontend
         run: npm ci --include=optional
 
-      - name: Build Admin Frontend
+      - name: Build Admin
         working-directory: Admin/frontend
-        env:
-          VITE_API_URL: ${{ secrets.BAIS_VITE_API_URL }}
         run: npm run build
 
-      - name: Package Admin Frontend
+      - name: Package Admin
         run: |
           tar -czf /tmp/admin-frontend.tar.gz \
             -C Admin/frontend/dist .
+
+      # =====================================================
+      # AWS OIDC
+      # =====================================================
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -79,22 +146,52 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
-      - name: Upload Immiglance Frontend artifact
+      # =====================================================
+      # UPLOAD ARTIFACTS TO S3
+      # =====================================================
+
+      - name: Upload Landing artifact
         run: |
           aws s3 cp \
-            /tmp/immiglance-frontend.tar.gz \
-            s3://${S3_BUCKET}/inszoom-deploy/immiglance-frontend.tar.gz
+            /tmp/landing-frontend.tar.gz \
+            s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz
 
-      - name: Upload Admin Frontend artifact
+      - name: Upload Client artifact
+        run: |
+          aws s3 cp \
+            /tmp/client-frontend.tar.gz \
+            s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz
+
+      - name: Upload Attorney artifact
+        run: |
+          aws s3 cp \
+            /tmp/attorney-frontend.tar.gz \
+            s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz
+
+      - name: Upload Admin artifact
         run: |
           aws s3 cp \
             /tmp/admin-frontend.tar.gz \
             s3://${S3_BUCKET}/inszoom-deploy/admin-frontend.tar.gz
 
+      # =====================================================
+      # GENERATE PRESIGNED URLS
+      # =====================================================
+
       - name: Generate presigned URLs
         run: |
-          IMMIGLANCE_URL=$(aws s3 presign \
-            s3://${S3_BUCKET}/inszoom-deploy/immiglance-frontend.tar.gz \
+          LANDING_URL=$(aws s3 presign \
+            s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz \
+            --expires-in 1800 \
+            --region ${AWS_REGION})
+
+          CLIENT_URL=$(aws s3 presign \
+            s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz \
+            --expires-in 1800 \
+            --region ${AWS_REGION})
+
+          ATTORNEY_URL=$(aws s3 presign \
+            s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz \
             --expires-in 1800 \
             --region ${AWS_REGION})
 
@@ -103,8 +200,14 @@ jobs:
             --expires-in 1800 \
             --region ${AWS_REGION})
 
-          echo "IMMIGLANCE_URL=$IMMIGLANCE_URL" >> "$GITHUB_ENV"
+          echo "LANDING_URL=$LANDING_URL" >> "$GITHUB_ENV"
+          echo "CLIENT_URL=$CLIENT_URL" >> "$GITHUB_ENV"
+          echo "ATTORNEY_URL=$ATTORNEY_URL" >> "$GITHUB_ENV"
           echo "ADMIN_URL=$ADMIN_URL" >> "$GITHUB_ENV"
+
+      # =====================================================
+      # DEPLOY TO EC2
+      # =====================================================
 
       - name: Deploy application to EC2
         run: |
@@ -117,21 +220,37 @@ jobs:
               \"rm -rf ${DEPLOY_DIR}\",
               \"mkdir -p ${DEPLOY_DIR}\",
 
-              \"echo 'Downloading Immiglance frontend...'\",
-              \"curl -fL '${IMMIGLANCE_URL}' -o ${DEPLOY_DIR}/immiglance-frontend.tar.gz\",
+              \"echo 'Updating repository...'\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom fetch origin main\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom checkout main\",
+              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom pull --ff-only origin main\",
+
+              \"echo 'Downloading Landing frontend...'\",
+              \"curl -fL '${LANDING_URL}' -o ${DEPLOY_DIR}/landing-frontend.tar.gz\",
+
+              \"echo 'Downloading Client frontend...'\",
+              \"curl -fL '${CLIENT_URL}' -o ${DEPLOY_DIR}/client-frontend.tar.gz\",
+
+              \"echo 'Downloading Attorney frontend...'\",
+              \"curl -fL '${ATTORNEY_URL}' -o ${DEPLOY_DIR}/attorney-frontend.tar.gz\",
 
               \"echo 'Downloading Admin frontend...'\",
               \"curl -fL '${ADMIN_URL}' -o ${DEPLOY_DIR}/admin-frontend.tar.gz\",
 
-              \"echo 'Deploying Immiglance frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/immiglance-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Frontend/dist\",
+              \"echo 'Deploying Landing frontend...'\",
+              \"rm -rf /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
+              \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
+              \"tar -xzf ${DEPLOY_DIR}/landing-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
 
-              \"echo 'Updating backend source...'\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom fetch origin main\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom checkout main\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom pull --ff-only origin main\",
+              \"echo 'Deploying Client frontend...'\",
+              \"rm -rf /home/ubuntu/INSZoom/Immiglance/Client/dist\",
+              \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Client/dist\",
+              \"tar -xzf ${DEPLOY_DIR}/client-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Client/dist\",
+
+              \"echo 'Deploying Attorney frontend...'\",
+              \"rm -rf /home/ubuntu/INSZoom/Attorney/dist\",
+              \"mkdir -p /home/ubuntu/INSZoom/Attorney/dist\",
+              \"tar -xzf ${DEPLOY_DIR}/attorney-frontend.tar.gz -C /home/ubuntu/INSZoom/Attorney/dist\",
 
               \"echo 'Deploying Admin frontend...'\",
               \"rm -rf /home/ubuntu/INSZoom/Admin/frontend/dist\",
@@ -155,6 +274,10 @@ jobs:
 
           echo "SSM Command ID: $COMMAND_ID"
           echo "COMMAND_ID=$COMMAND_ID" >> "$GITHUB_ENV"
+
+      # =====================================================
+      # WAIT FOR DEPLOYMENT
+      # =====================================================
 
       - name: Wait for deployment
         run: |
