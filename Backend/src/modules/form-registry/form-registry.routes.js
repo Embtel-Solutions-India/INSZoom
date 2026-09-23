@@ -17,6 +17,12 @@ router.post(
   validate,
   ctrl.decideConditionalFormMapping
 );
+router.post(
+  "/:id/form-mappings/:mappingId/provision",
+  authenticate,
+  authorizePermissions("forms:create"),
+  ctrl.provisionMappedForm
+);
 
 // Phase 1/2 (registry-driven form visibility + on-demand USCIS fetch) - full
 // paths /api/cases/:id/forms-overview and /api/cases/:id/forms/acquire.

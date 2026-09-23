@@ -123,8 +123,16 @@ class FormMappingService {
     return MappingResolver.resolveConditionalRule(field.showWhen || field.conditionalLogic, canonicalData, filledData);
   }
 
-  static calculateCompletion(template, filledData, canonicalData = {}) {
-    const visibleFields = (template.formFields || []).filter((field) => MappingResolver.resolveConditionalRule(field.showWhen || field.conditionalLogic, canonicalData, filledData));
+  // fieldIds: optional array/Set - when provided (a component CaseForm's
+  // own field subset, see AutoFillService.generate's componentFieldIds),
+  // restricts completion to just those fields instead of every field on
+  // the shared parent template. Every existing caller that omits it keeps
+  // seeing the full-template completion it always has.
+  static calculateCompletion(template, filledData, canonicalData = {}, fieldIds) {
+    const fieldIdFilter = fieldIds ? new Set(fieldIds) : null;
+    const visibleFields = (template.formFields || [])
+      .filter((field) => !fieldIdFilter || fieldIdFilter.has(field.fieldId || field.fieldName))
+      .filter((field) => MappingResolver.resolveConditionalRule(field.showWhen || field.conditionalLogic, canonicalData, filledData));
     const totalFields = visibleFields.length;
     const requiredFields = visibleFields.filter((field) => field.required || field.validation?.required || field.validationRules?.required);
     const completedFields = visibleFields.filter((field) => !MappingResolver.isEmpty(MappingResolver.resolvePath(filledData, field.fieldId || field.fieldName))).length;

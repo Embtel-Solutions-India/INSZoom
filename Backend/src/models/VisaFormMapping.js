@@ -120,6 +120,20 @@ const visaFormMappingSchema = new mongoose.Schema(
     // never cached as a boolean here.
     formTemplateFormCode: { type: String, trim: true, lowercase: true, default: null },
 
+    // A stable identity, like formTemplateFormCode above, but pointing at a
+    // USCISFormComponentDefinition rather than a whole USCISFormTemplate -
+    // only meaningful for a SUPPLEMENT/FORM_COMPONENT row whose "form" is
+    // really a page-range section of its parent's own PDF (e.g. I-129's
+    // classification supplements), never for one with its own separate
+    // template (that case uses formTemplateFormCode exactly like a
+    // STANDALONE_FORM does - see I-539A, which already works this way).
+    // Resolved live against the parent's CURRENT active template version at
+    // read time (never cached here), the same "hint only, existence checked
+    // live" contract formTemplateFormCode documents above - an edition
+    // change re-discovers fresh USCISFormComponentDefinition documents
+    // under the same componentCode without this field needing to change.
+    componentCode: { type: String, trim: true, default: null },
+
     displayOrder: { type: Number, default: 0 },
 
     active: { type: Boolean, default: true, index: true },

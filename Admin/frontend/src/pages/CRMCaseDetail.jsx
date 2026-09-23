@@ -864,6 +864,36 @@ const CRMCaseDetail = () => {
     }
   }
 
+  // "Add" for an AVAILABLE_TO_PROVISION row - single-form, conflict-
+  // independent provisioning (visaFormMappingService.provisionAvailableMapping),
+  // distinct from generateCaseForms' bulk endpoint, which is correctly
+  // blocked by any unresolved canonical-profile conflict on the case even
+  // when it has nothing to do with this specific form. Autofills the newly
+  // created form immediately after, via the same already-conflict-independent
+  // per-form Autofill call handleAutofillForm uses, so this still behaves
+  // like "Add & Autofill" from the case manager's point of view.
+  const handleProvisionMapping = async (item) => {
+    try {
+      setRowActionPending(item.mappingId)
+      setFormActionMessage('')
+      const response = await uscisFormsApi.provisionMapping(id, item.mappingId)
+      const created = response?.data?.data?.created || []
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      const newCaseFormId = created[0]?._id
+      if (newCaseFormId) {
+        await uscisFormsApi.autofill(id, newCaseFormId).catch(() => null)
+        await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      }
+      setFormActionMessage(`${item.formNumber} was added to this case and auto-filled.`)
+    } catch (error) {
+      const data = error.response?.data || {}
+      setFormActionMessage(data.message || error.message || `Could not add ${item.formNumber}.`)
+    } finally {
+      setRowActionPending('')
+    }
+  }
+
   // "Add"/"Not applicable" for a CONDITIONAL_PENDING row - the existing
   // recordConditionalDecision endpoint.
   const handleDecideMapping = async (item, decision) => {
@@ -2915,10 +2945,10 @@ const CRMCaseDetail = () => {
                               )}
                               {item.uiStatus === 'AVAILABLE_TO_PROVISION' && (
                                 <button
-                                  onClick={generateCaseForms}
-                                  disabled={tabLoading.forms}
+                                  onClick={() => handleProvisionMapping(item)}
+                                  disabled={rowActionPending === item.mappingId}
                                   className="btn-primary text-xs"
-                                  title="Provisions and autofills every available form on this case"
+                                  title="Adds and auto-fills this one form, independently of any unresolved canonical conflict elsewhere on the case"
                                 >
                                   Add &amp; Autofill
                                 </button>

@@ -1,6 +1,7 @@
 const AuditLog = require("../../../models/AuditLog");
 const Case = require("../../../models/Case");
 const CaseForm = require("../../../models/CaseForm");
+const USCISFormComponentDefinition = require("../../../models/USCISFormComponentDefinition");
 const EmployeeProfile = require("../../../models/EmployeeProfile");
 const EmployerProfile = require("../../../models/EmployerProfile");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
@@ -167,7 +168,7 @@ class AutoFillService {
       updatedFields.push({ fieldId, previousValue, value, sourceField: attribution.sourceField, confidence: sourceAttribution[fieldId].confidence });
     });
 
-    const completion = FormMappingService.calculateCompletion(template, filledData, canonicalData);
+    const completion = FormMappingService.calculateCompletion(template, filledData, canonicalData, options.fieldIds);
     return {
       filledData,
       fieldValues,
@@ -268,12 +269,37 @@ class AutoFillService {
     }
 
     const previousFieldValues = caseForm.fieldValues || {};
-    const fieldIds = options.fieldIds || options.selectedFieldIds;
+    // A component CaseForm (see USCISFormComponentDefinition/uscis-
+    // form.service.js's resolveComponentFieldIds) must never autofill
+    // fields belonging to a sibling component sharing the same parent
+    // template - mergeMappedFields already supports an options.fieldIds
+    // scope (used elsewhere for "selected fields" runs); this just
+    // supplies it automatically from the CaseForm's own componentCode when
+    // the caller didn't explicitly pass one, so a plain generate(caseId,
+    // "I129_H_...", ...) call is component-scoped without every caller
+    // needing to know that.
+    const componentFieldIds = !options.fieldIds && !options.selectedFieldIds && caseForm.componentCode
+      ? (await USCISFormComponentDefinition.findOne({
+          parentTemplateId: caseForm.formTemplateId?._id || caseForm.formTemplateId || template._id,
+          componentCode: caseForm.componentCode,
+          status: "ACTIVE",
+        }).select("fieldIds").lean())?.fieldIds
+      : null;
+    const fieldIds = options.fieldIds || options.selectedFieldIds || componentFieldIds || undefined;
     const merged = this.mergeMappedFields(caseForm, template, mapped, canonicalData, { ...options, fieldIds });
     const populationReport = this.buildPopulationReport(mapped, merged, readiness, { ...options, fieldIds, usingBiographicTier });
     const nextVersion = (caseForm.versionNumber || 0) + 1;
     caseForm.set("formTemplateId", template._id);
-    caseForm.set("formCode", template.formCode || template.formNumber);
+    // A component CaseForm's formCode is its own componentCode (e.g.
+    // "I129_H_..."), deliberately different from the shared parent
+    // template's own formCode ("I-129") - resyncing it to template.formCode
+    // here (correct/harmless for every ordinary CaseForm, where the two
+    // already match) would silently collide it with its own parent's
+    // formCode, corrupting the exact field the unique index and every
+    // other component-identity check depends on. Confirmed empirically:
+    // this line overwrote a real I129_H CaseForm's formCode to "I-129" the
+    // first time this ran against one.
+    if (!caseForm.componentCode) caseForm.set("formCode", template.formCode || template.formNumber);
     caseForm.set("formVersion", template.version);
     caseForm.set("formEditionDate", template.editionDate);
     caseForm.set("mappingVersion", template.mappingVersion || 0);
@@ -604,7 +630,14 @@ class AutoFillService {
       removedFields.push(fieldId);
     });
     const canonicalData = await CanonicalDataService.build(caseId, user, req);
-    const completion = FormMappingService.calculateCompletion(template, filledData, canonicalData);
+    const componentFieldIds = caseForm.componentCode
+      ? (await USCISFormComponentDefinition.findOne({
+          parentTemplateId: caseForm.formTemplateId?._id || caseForm.formTemplateId || template._id,
+          componentCode: caseForm.componentCode,
+          status: "ACTIVE",
+        }).select("fieldIds").lean())?.fieldIds
+      : null;
+    const completion = FormMappingService.calculateCompletion(template, filledData, canonicalData, componentFieldIds);
     caseForm.set("filledData", filledData);
     caseForm.set("fieldValues", fieldValues);
     caseForm.set("sourceAttribution", sourceAttribution);

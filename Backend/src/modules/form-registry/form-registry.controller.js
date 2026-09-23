@@ -75,6 +75,22 @@ exports.decideConditionalFormMapping = async (req, res, next) => {
   }
 };
 
+// POST /api/cases/:id/form-mappings/:mappingId/provision - adds a single
+// AUTO_CREATE-mapped form (templateStatus TEMPLATE_AVAILABLE, no CaseForm
+// yet) independently of the bulk "Generate USCIS Forms" endpoint, which is
+// correctly gated on unresolved canonical-profile conflicts that may have
+// nothing to do with this specific form. See
+// visaFormMappingService.provisionAvailableMapping's own comment.
+exports.provisionMappedForm = async (req, res, next) => {
+  try {
+    const caseData = await loadAuthorizedCase(req);
+    const result = await visaFormMappingService.provisionAvailableMapping(caseData, req.params.mappingId, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
 // GET /api/form-registry/visa/:visaType - raw registry lookup, answers
 // "what forms belong to X" (§23 of the spec). Not case-scoped, no
 // authorization beyond authenticate (registry content is not sensitive).
