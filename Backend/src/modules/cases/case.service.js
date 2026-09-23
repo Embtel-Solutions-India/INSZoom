@@ -140,7 +140,13 @@ function canAccessCase(user, caseData) {
     if (role === "beneficiary") return isFamilyBeneficiaryOf(user, caseData);
     return false;
   }
-  if (isAdmin(user)) return true;
+  // Team leads can open any case, same as admin - matches
+  // applyCaseRoleFilter's system-wide list visibility (they're responsible
+  // for triaging newly-created cases and assigning a case manager/attorney,
+  // so access can't depend on already being assigned via
+  // assignedTeamLead/teamId - see applyCaseRoleFilter's comment for why the
+  // old, narrower check was circular).
+  if (isAdmin(user) || role === "team_lead") return true;
   if (sameId(caseData.user, user._id)) return true;
   if (sameId(caseData.employeeUser, user._id)) return true;
   if (sameId(caseData.employerUser, user._id)) return true;
@@ -151,7 +157,6 @@ function canAccessCase(user, caseData) {
   if (sameId(caseData.primaryOwner, user._id) || sameId(caseData.secondaryOwner, user._id)) return true;
   if (sameId(caseData.assignedTeamLead, user._id)) return true;
   if (role === "case_manager") return sameId(caseData.assignedCaseManager, user._id) || sameId(caseData.primaryOwner, user._id);
-  if (role === "team_lead" && user.teamId) return sameId(caseData.teamId, user.teamId);
   if (role === "employer") return sameId(caseData.employerUser, user._id) || sameId(caseData.companyId, user.companyId) || sameId(caseData.employer, user.companyId) || sameId(caseData.organization, user.companyId);
   if (role === "employee") return sameId(caseData.employeeUser, user._id) || sameId(caseData.user, user._id) || sameId(caseData.beneficiary?.user, user._id);
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
@@ -168,7 +173,17 @@ function canAccessCase(user, caseData) {
 
 function applyCaseRoleFilter(filter, user) {
   const role = normalizeRole(user.role);
-  if (isAdmin(user)) return filter;
+  // Team leads see every case, same as admin/super_admin - they're
+  // responsible for triaging newly-created cases and assigning a case
+  // manager/attorney, so their visibility can't depend on already being
+  // assigned (the old team_lead branch below required
+  // assignedTeamLead/teamId to already match, which no case satisfies
+  // until a team lead has already been assigned - circular, and the
+  // reason team leads saw zero cases before this fix). teamId-scoped
+  // visibility was considered and explicitly declined in favor of
+  // system-wide visibility, since Case.teamId/User.teamId aren't reliably
+  // populated today.
+  if (isAdmin(user) || role === "team_lead") return filter;
   // Attorney: only cases with an active grant in attorneyAccess[]. Without
   // this branch an attorney fell through to the generic client filter at the
   // bottom (user/clientProfile/petitionerUser), which returns nothing — no
@@ -182,7 +197,6 @@ function applyCaseRoleFilter(filter, user) {
     return filter;
   }
   if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
-  else if (role === "team_lead") filter.$and = [...(filter.$and || []), { $or: [{ assignedTeamLead: user._id }, { primaryOwner: user._id }, ...(user.teamId ? [{ teamId: user.teamId }] : [])] }];
   else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
   else if (role === "employee") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Send, CornerDownRight, Paperclip, X, FileText, Clock, CheckCheck, Download, MessageSquare } from 'lucide-react'
-import { attorneyApi } from '../services/api'
-import { useAuth } from '../auth/AuthContext'
-import { useSocket } from '../context/SocketContext'
+import { feedbackApi } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import { useSocket } from '../contexts/SocketContext'
 
-// The attorney's ONLY messaging surface — a staff-only thread (attorney <->
-// case manager/team lead/admin) backed by models/Feedback.js, never the
-// client-inclusive Conversation system. Used by both /messages/:caseId (the
-// cross-case hub) and the per-case Feedback tab. Styled and behaves like the
-// Admin/CRM portal's client Messaging UI (bubbles, attachments, live socket
-// updates) via Admin/frontend/src/components/CaseFeedbackChat.jsx, which
-// this mirrors — same backend thread, same UX, themed for this portal.
+// The case team's chat with the assigned attorney — backed by
+// Backend/src/models/Feedback.js (models/Message.js + Conversation.js are
+// the CLIENT-inclusive system used by Messaging.jsx and are never touched
+// here; the client is never a participant of this thread). Styled and
+// behaves like Messaging.jsx (bubbles, attachments, live socket updates)
+// but is intentionally its own, smaller implementation — Feedback threads
+// are two-party/staff-only and don't need Messaging.jsx's presence/typing/
+// infinite-scroll machinery.
 
 const idOf = (ref) => (ref && typeof ref === 'object' ? ref._id : ref)
 
@@ -50,13 +51,16 @@ function authorRoleLabel(item) {
   return role.replace(/_/g, ' ')
 }
 
+// Attachment bytes are served through an authenticated endpoint - fetched
+// once as a blob per component instance and cached for the session, same
+// approach as Messaging.jsx's loadAttachmentBlobUrl.
 function useAttachmentBlob(caseId) {
   const cacheRef = useRef(new Map())
   return useCallback(
     async (feedbackId, attachmentId) => {
       const key = `${feedbackId}:${attachmentId}`
       if (cacheRef.current.has(key)) return cacheRef.current.get(key)
-      const response = await attorneyApi.downloadAttachment(caseId, feedbackId, attachmentId)
+      const response = await feedbackApi.downloadAttachment(caseId, feedbackId, attachmentId)
       const url = URL.createObjectURL(response.data)
       cacheRef.current.set(key, url)
       return url
@@ -65,7 +69,7 @@ function useAttachmentBlob(caseId) {
   )
 }
 
-function AttachmentChip({ feedbackId, attachment, loadBlob }) {
+function AttachmentChip({ caseId, feedbackId, attachment, loadBlob }) {
   const isImage = (attachment.mimeType || '').startsWith('image/')
   const [url, setUrl] = useState(null)
   const [status, setStatus] = useState('idle')
@@ -106,7 +110,7 @@ function AttachmentChip({ feedbackId, attachment, loadBlob }) {
         <button
           type="button"
           onClick={() => (url ? setLightboxOpen(true) : ensureLoaded())}
-          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition"
+          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-muted hover:brightness-95 transition"
         >
           {status === 'ready' ? (
             <img src={url} alt={attachment.originalName} className="w-full h-full object-cover" />
@@ -138,24 +142,26 @@ function AttachmentChip({ feedbackId, attachment, loadBlob }) {
       type="button"
       onClick={download}
       disabled={status === 'loading'}
-      className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-secondary border border-border rounded-lg px-2.5 py-1.5 hover:bg-accent disabled:opacity-60"
+      className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-full hover:bg-blue-100 transition disabled:opacity-60"
     >
       <FileText className="w-3.5 h-3.5" />
       {attachment.originalName}
-      {attachment.fileSize ? <span className="text-muted-foreground">· {formatFileSize(attachment.fileSize)}</span> : null}
+      {attachment.fileSize ? <span className="text-blue-400">· {formatFileSize(attachment.fileSize)}</span> : null}
     </button>
   )
 }
 
-function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
+function Bubble({ item, caseId, selfId, loadBlob, onReply, onRetry }) {
   const outgoing = String(idOf(item.authorId)) === String(selfId)
   const isPending = Boolean(item.__pending)
   const isFailed = Boolean(item.__failed)
   const readByOthers = (item.readBy || []).filter((r) => String(idOf(r.userId)) !== String(idOf(item.authorId)))
   const parent = item.__parent
 
-  const avatarClasses = outgoing ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
-  const bubbleClasses = outgoing ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground border border-border'
+  const avatarClasses = outgoing ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground'
+  const bubbleClasses = outgoing
+    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+    : 'bg-secondary text-foreground border border-border'
 
   return (
     <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'} group`}>
@@ -180,14 +186,14 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
           {item.attachments?.length > 0 && (
             <div className={`flex flex-wrap gap-1.5 ${isPending ? 'opacity-60' : ''}`}>
               {item.attachments.map((attachment, index) => (
-                <AttachmentChip key={attachment._id || index} feedbackId={item._id} attachment={attachment} loadBlob={loadBlob} />
+                <AttachmentChip key={attachment._id || index} caseId={caseId} feedbackId={item._id} attachment={attachment} loadBlob={loadBlob} />
               ))}
             </div>
           )}
           {item.message && (
             <div
               onClick={isFailed ? () => onRetry(item) : undefined}
-              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm transition-opacity ${bubbleClasses} ${isPending ? 'opacity-60' : ''} ${isFailed ? 'ring-2 ring-destructive/50 cursor-pointer' : ''}`}
+              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm transition-opacity ${bubbleClasses} ${isPending ? 'opacity-60' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
             >
               {item.message}
             </div>
@@ -195,7 +201,7 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
           <div className={`flex items-center gap-2 px-1 ${outgoing ? 'justify-end' : ''}`}>
             <span className="text-[11px] text-muted-foreground">{formatTime(item.createdAt)}</span>
             {!isPending && !isFailed && (
-              <button type="button" onClick={() => onReply(item)} className="text-[11px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:underline">
+              <button type="button" onClick={() => onReply(item)} className="text-[11px] font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity hover:underline">
                 Reply
               </button>
             )}
@@ -205,7 +211,7 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
       {outgoing && (
         <div className="mt-0.5 mr-10 flex items-center gap-1 text-[11px] min-h-[14px]">
           {isFailed ? (
-            <button type="button" onClick={() => onRetry(item)} className="text-destructive font-medium hover:underline">
+            <button type="button" onClick={() => onRetry(item)} className="text-red-500 font-medium hover:underline">
               Failed to send · Tap to retry
             </button>
           ) : isPending ? (
@@ -213,7 +219,7 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
               <Clock className="w-3 h-3" /> Sending…
             </span>
           ) : (
-            <span className={`flex items-center gap-1 ${readByOthers.length > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+            <span className={`flex items-center gap-1 ${readByOthers.length > 0 ? 'text-blue-500' : 'text-muted-foreground'}`}>
               <CheckCheck className="w-3.5 h-3.5" /> {readByOthers.length > 0 ? 'Seen' : 'Sent'}
             </span>
           )}
@@ -223,7 +229,7 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
   )
 }
 
-export default function MessageThread({ caseId }) {
+export default function CaseFeedbackChat({ caseId }) {
   const { user } = useAuth()
   const { subscribe } = useSocket()
   const selfId = user?._id || user?.id
@@ -241,8 +247,8 @@ export default function MessageThread({ caseId }) {
 
   const load = useCallback(
     () =>
-      attorneyApi
-        .feedback(caseId)
+      feedbackApi
+        .list(caseId)
         .then(({ data }) => setItems(data.feedback || []))
         .catch((err) => setError(err.response?.data?.message || 'Could not load messages.')),
     [caseId]
@@ -251,9 +257,13 @@ export default function MessageThread({ caseId }) {
   useEffect(() => {
     setItems(null)
     setError('')
-    attorneyApi.markFeedbackRead(caseId).catch(() => {}).then(load)
+    feedbackApi.markRead(caseId).catch(() => {}).then(load)
   }, [caseId, load])
 
+  // Live append — see feedback.service.js's notifyRecipients. Only ever
+  // fires for messages authored by the OTHER party (the backend only emits
+  // to recipients, never back to the author), so no dedupe race against our
+  // own optimistic send below.
   useEffect(() => {
     const unsubscribe = subscribe('feedback:new', (incoming) => {
       if (String(incoming.caseId) !== String(caseId)) return
@@ -262,7 +272,7 @@ export default function MessageThread({ caseId }) {
         if (current.some((item) => String(item._id) === String(incoming._id))) return current
         return [...current, incoming]
       })
-      attorneyApi.markFeedbackRead(caseId).catch(() => {})
+      feedbackApi.markRead(caseId).catch(() => {})
     })
     return unsubscribe
   }, [subscribe, caseId])
@@ -271,18 +281,32 @@ export default function MessageThread({ caseId }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [items?.length])
 
-  const addFiles = (fileList) => setFiles((current) => [...current, ...Array.from(fileList || [])])
-  const onFileInputChange = (event) => { addFiles(event.target.files); event.target.value = '' }
+  const addFiles = (fileList) => {
+    setFiles((current) => [...current, ...Array.from(fileList || [])])
+  }
+  const onFileInputChange = (event) => {
+    addFiles(event.target.files)
+    event.target.value = ''
+  }
   const removeFile = (index) => setFiles((current) => current.filter((_, i) => i !== index))
 
-  const onDragEnter = (event) => { event.preventDefault(); dragCounterRef.current += 1; setIsDraggingFiles(true) }
+  const onDragEnter = (event) => {
+    event.preventDefault()
+    dragCounterRef.current += 1
+    setIsDraggingFiles(true)
+  }
   const onDragLeave = (event) => {
     event.preventDefault()
     dragCounterRef.current -= 1
     if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setIsDraggingFiles(false) }
   }
   const onDragOver = (event) => event.preventDefault()
-  const onDrop = (event) => { event.preventDefault(); dragCounterRef.current = 0; setIsDraggingFiles(false); addFiles(event.dataTransfer.files) }
+  const onDrop = (event) => {
+    event.preventDefault()
+    dragCounterRef.current = 0
+    setIsDraggingFiles(false)
+    addFiles(event.dataTransfer.files)
+  }
 
   const sendMessage = async (overrideItem = null) => {
     const text = overrideItem ? overrideItem.message : message.trim()
@@ -306,14 +330,21 @@ export default function MessageThread({ caseId }) {
       __files: attachFiles,
     }
 
-    setItems((current) => [...(current || []).filter((item) => item._id !== tempId), optimistic])
-    if (!overrideItem) { setMessage(''); setFiles([]); setReplyTo(null) }
+    setItems((current) => {
+      const withoutOld = (current || []).filter((item) => item._id !== tempId)
+      return [...withoutOld, optimistic]
+    })
+    if (!overrideItem) {
+      setMessage('')
+      setFiles([])
+      setReplyTo(null)
+    }
     setSending(true)
     setError('')
     try {
       const { data } = parent
-        ? await attorneyApi.replyFeedback(caseId, parent._id, text, attachFiles)
-        : await attorneyApi.sendFeedback(caseId, text, attachFiles)
+        ? await feedbackApi.reply(caseId, parent._id, text, attachFiles)
+        : await feedbackApi.send(caseId, text, attachFiles)
       const saved = data.feedback || data
       setItems((current) => (current || []).map((item) => (item._id === tempId ? saved : item)))
     } catch (err) {
@@ -333,6 +364,9 @@ export default function MessageThread({ caseId }) {
     }
   }
 
+  // Flat chronological list (not nested-by-thread) — reads like a real chat
+  // rather than the old indented-reply-list layout; a reply still shows a
+  // small "Replying to X" caption above its own bubble.
   const timeline = useMemo(() => {
     if (!items) return []
     const byId = new Map(items.map((item) => [String(item._id), item]))
@@ -353,19 +387,19 @@ export default function MessageThread({ caseId }) {
     >
       <div className="card !p-0 flex-1 flex flex-col overflow-hidden relative">
         {isDraggingFiles && (
-          <div className="absolute inset-0 z-10 bg-primary/10 border-2 border-dashed border-primary/50 rounded-2xl flex items-center justify-center pointer-events-none">
-            <p className="text-sm font-semibold text-primary bg-card px-4 py-2 rounded-lg shadow">Drop files to attach</p>
+          <div className="absolute inset-0 z-10 bg-blue-500/10 border-2 border-dashed border-blue-400 rounded-2xl flex items-center justify-center pointer-events-none">
+            <p className="text-sm font-semibold text-blue-600 bg-card px-4 py-2 rounded-lg shadow">Drop files to attach</p>
           </div>
         )}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
           {items === null ? (
             <div className="h-full flex items-center justify-center">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : timeline.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center gap-2">
               <MessageSquare className="w-8 h-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No messages on this case yet. Start the conversation with the case team below.</p>
+              <p className="text-sm text-muted-foreground">No messages with the attorney yet. Start the conversation below.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -382,7 +416,7 @@ export default function MessageThread({ caseId }) {
                         <div className="flex-1 h-px bg-border" />
                       </div>
                     )}
-                    <Bubble item={item} selfId={selfId} loadBlob={loadBlob} onReply={setReplyTo} onRetry={retry} />
+                    <Bubble item={item} caseId={caseId} selfId={selfId} loadBlob={loadBlob} onReply={setReplyTo} onRetry={retry} />
                   </div>
                 )
               })}
@@ -391,61 +425,48 @@ export default function MessageThread({ caseId }) {
         </div>
       </div>
 
-      <form onSubmit={(event) => { event.preventDefault(); sendMessage() }} className="card mt-3 space-y-3 shrink-0">
+      <div className="card mt-3 space-y-2 shrink-0">
         {replyTo && (
-          <div className="flex items-center justify-between rounded-lg bg-secondary border border-border px-3 py-2">
-            <p className="text-xs text-muted-foreground truncate">
-              Replying to <span className="font-semibold text-foreground">{authorName(replyTo)}</span>
-            </p>
-            <button type="button" onClick={() => setReplyTo(null)} className="text-xs font-semibold text-muted-foreground hover:text-foreground">
-              Cancel
-            </button>
+          <div className="flex items-center justify-between rounded-lg bg-muted px-3 py-1.5">
+            <p className="text-xs text-muted-foreground truncate">Replying to <span className="font-semibold">{authorName(replyTo)}</span></p>
+            <button onClick={() => setReplyTo(null)} className="text-xs font-semibold text-muted-foreground hover:text-foreground">Cancel</button>
           </div>
         )}
-
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {files.map((file, index) => (
-              <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1.5 text-xs bg-secondary border border-border rounded-lg px-2.5 py-1.5">
+              <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1.5 text-xs bg-muted border border-border rounded-lg px-2.5 py-1.5">
                 <FileText className="w-3.5 h-3.5 text-muted-foreground" />
                 {file.name}
-                <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>
-                  <X className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                </button>
+                <button onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}><X className="w-3 h-3" /></button>
               </span>
             ))}
           </div>
         )}
-
-        <label htmlFor="message-text" className="sr-only">Message</label>
         <textarea
-          id="message-text"
-          rows={3}
+          rows={2}
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Message the case team… (Enter to send, Shift+Enter for a new line)"
+          placeholder="Message the attorney… (Enter to send, Shift+Enter for a new line)"
           className="input-field"
         />
-
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-
+        {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="flex items-center justify-between">
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileInputChange} />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <Paperclip className="w-4 h-4" /> Attach
+          <button onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+            <Paperclip className="w-3.5 h-3.5" /> Attach
           </button>
-
-          <button type="submit" disabled={sending || (!message.trim() && !files.length)} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          <button
+            onClick={() => sendMessage()}
+            disabled={sending || (!message.trim() && !files.length)}
+            className="btn-primary flex items-center gap-1.5 text-xs disabled:opacity-50"
+          >
+            {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             {replyTo ? 'Send reply' : 'Send'}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   )
 }

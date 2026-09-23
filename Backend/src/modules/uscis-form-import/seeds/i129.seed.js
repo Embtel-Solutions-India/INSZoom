@@ -23,6 +23,7 @@ const env = require("../../../config/env");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const storageService = require("../../uploads/storage.service");
 const importLocalForm = require("../scripts/importLocalForm");
+const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
 
 const FORM_CODE = "I-129";
 const VERSION = "2026-02-27";
@@ -86,7 +87,15 @@ async function seedI129Template({ file } = {}) {
   template.status = "active";
   template.activeFlag = true;
   template.officialStatus = "current";
-  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), "H-1B", "L-1A", "L-1B"]));
+  // Registry-derived, not hardcoded (final phase durability fix) - a fresh
+  // environment re-running this seed must end up with the SAME complete
+  // visaTypes set Phase 2/3 already proved correct live, not the original
+  // 3-visa-type stub this literal array used to be. "H-1B"/"L-1A"/"L-1B"
+  // are kept as a floor via the union, purely so this never regresses
+  // below the minimum this seed has always guaranteed even if the registry
+  // query somehow returns nothing (e.g. mid-migration).
+  const registryVisaTypes = await deriveVisaTypesFromRegistry(FORM_CODE);
+  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), "H-1B", "L-1A", "L-1B", ...registryVisaTypes]));
   template.editionDate = template.editionDate || EDITION_DATE;
   template.title = TITLE;
   await template.save();

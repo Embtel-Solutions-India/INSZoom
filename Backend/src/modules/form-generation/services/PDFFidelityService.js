@@ -62,9 +62,52 @@ class PDFFidelityService {
     }
 
     const pageCount = pdf.getPageCount();
-    const expectedPageCount = template.pdfMetadata?.pageCount;
+    // A FORM_COMPONENT CaseForm's generated PDF is a deliberate page-range
+    // SLICE of its parent template (see ComponentPageResolver) - its real
+    // expected PAGE count is the component's own resolved page range, never
+    // the parent template's full pdfMetadata.pageCount. Resolved fresh here
+    // (rather than trusting the caller) so fidelity verification
+    // independently confirms the slice matches the component's own
+    // metadata, not just that render() ran without error.
+    //
+    // Field COUNT is deliberately NOT re-scoped to the component's own
+    // fieldIds, even though that sounds symmetric with the page-count fix -
+    // confirmed empirically that pdf-lib's removePage() does not prune the
+    // AcroForm's field definitions for fields whose only widget lived on a
+    // removed page (they become invisible/inert, not deleted), so
+    // form.getFields().length on a sliced component PDF still reports
+    // essentially the FULL parent's field count (~942 for an 8-page H
+    // slice out of 38 pages, not ~167). Comparing against the component's
+    // own small fieldIds count would make this check always fail on a
+    // correctly-sliced PDF - template.formFields.length remains correct
+    // for both independent forms and components.
+    // Bounds-check against the PARENT's original page count
+    // (template.pdfMetadata.pageCount), never the already-sliced buffer's
+    // own pageCount - by this point `buffer`/`pdf` IS the sliced output
+    // (this verify() runs on the final bytes, after ComponentPageResolver
+    // already removed the other pages), so re-validating a range like
+    // 13-20 against an already-8-page-sliced document would wrongly reject
+    // its own correct output as "page 20 doesn't exist." Applies to both a
+    // component (its own pageRanges) and a core form (Phase 2 add-on: its
+    // pages minus every active sibling component's pages) - both are now
+    // deliberately sliced, not just components.
+    const ComponentPageResolver = require("./ComponentPageResolver");
+    const parentTotalPages = template.pdfMetadata?.pageCount || pageCount;
+    let expectedPageCount;
+    let pageCountBasis;
+    if (caseForm?.componentCode) {
+      const componentDef = await ComponentPageResolver.findActiveComponentDefinition(caseForm, template);
+      const context = { parentFormCode: caseForm.parentFormCode || template.formCode, componentCode: caseForm.componentCode };
+      expectedPageCount = ComponentPageResolver.expandPageRanges(componentDef.pageRanges, parentTotalPages, context).length;
+      pageCountBasis = "from the component's resolved page range";
+    } else {
+      const corePages = await ComponentPageResolver.resolveCorePages(template, parentTotalPages);
+      expectedPageCount = corePages ? corePages.length : template.pdfMetadata?.pageCount;
+      pageCountBasis = corePages ? "from the core form's resolved page range (excluding active sibling components)" : "from template.pdfMetadata.pageCount";
+    }
+    const expectedFieldCount = (template.formFields || []).length;
     if (expectedPageCount && pageCount !== expectedPageCount) {
-      errors.push(`Page count mismatch: expected ${expectedPageCount} (from template.pdfMetadata.pageCount), got ${pageCount}`);
+      errors.push(`Page count mismatch: expected ${expectedPageCount} (${pageCountBasis}), got ${pageCount}`);
     }
 
     const form = pdf.getForm();
@@ -72,7 +115,6 @@ class PDFFidelityService {
     if (fieldCount === 0) {
       errors.push("Generated PDF has 0 AcroForm fields - refusing to treat this as a valid filled form");
     }
-    const expectedFieldCount = (template.formFields || []).length;
     if (expectedFieldCount > 0 && fieldCount > 0) {
       const ratio = fieldCount / expectedFieldCount;
       if (ratio < 0.9 || ratio > 1.1) {

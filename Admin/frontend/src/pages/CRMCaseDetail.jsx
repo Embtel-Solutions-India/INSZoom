@@ -6,7 +6,7 @@ import InfoModal from '../components/InfoModal'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
-import AttorneyMessagesPanel from '../components/AttorneyMessagesPanel'
+import CaseFeedbackChat from '../components/CaseFeedbackChat'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
@@ -22,7 +22,6 @@ import {
   AlertTriangle, 
   Plus,
   Save,
-  Lock,
   FolderOpen,
   Receipt,
   PenTool,
@@ -514,8 +513,6 @@ const CRMCaseDetail = () => {
   const [selectedPaymentId, setSelectedPaymentId] = useState('')
   const [showCreateLetterModal, setShowCreateLetterModal] = useState(false)
   const [letterType, setLetterType] = useState('')
-  const [newNote, setNewNote] = useState('')
-  const [isInternalNote, setIsInternalNote] = useState(true)
   const [infoRequestForm, setInfoRequestForm] = useState({
     target: 'employee',
     requestType: 'profile',
@@ -601,7 +598,7 @@ const CRMCaseDetail = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const requestedTab = params.get('tab')
-    if (['overview', 'documents', 'forms', 'petition', 'tracking', 'strategy', 'payments', 'letters', 'notes'].includes(requestedTab)) {
+    if (['overview', 'documents', 'forms', 'petition', 'tracking', 'strategy', 'payments', 'letters', 'feedback'].includes(requestedTab)) {
       setActiveTab(requestedTab)
     }
     if (!assignmentPrompted && params.get('assign')) {
@@ -1151,19 +1148,6 @@ const CRMCaseDetail = () => {
     setLetterType('')
   }
 
-  const handleAddNote = async () => {
-    try {
-      await api.post(`/cases/${id}/notes`, {
-        note: newNote,
-        isInternal: isInternalNote
-      })
-      setNewNote('')
-      setIsInternalNote(true)
-      fetchCaseDetail()
-    } catch (error) {
-      console.error('Error adding note:', error)
-    }
-  }
 
   const getStageColor = (stage) => {
     const colors = {
@@ -1903,15 +1887,15 @@ const CRMCaseDetail = () => {
           Expert Letters
         </button>
         <button
-          onClick={() => handleTabChange('notes')}
+          onClick={() => handleTabChange('feedback')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'notes'
+            activeTab === 'feedback'
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <MessageSquare className="w-4 h-4 inline mr-2" />
-          Notes & Activity
+          Feedback
         </button>
       </div>
 
@@ -2317,10 +2301,6 @@ const CRMCaseDetail = () => {
                   )}
                 </div>
               </div>
-
-              {(caseData.attorneyAccess || []).some((grant) => grant.status === 'active') && (
-                <AttorneyMessagesPanel caseId={id} />
-              )}
             </div>
 
             {/* Sidebar */}
@@ -3165,60 +3145,8 @@ const CRMCaseDetail = () => {
         </div>
       )}
 
-      {activeTab === 'notes' && (
-        <div className="space-y-6">
-          <div className="card">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Add Note</h3>
-            <div className="space-y-4">
-              <textarea
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                className="input-field min-h-[100px]"
-                placeholder="Enter your note..."
-              />
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="internal"
-                  checked={isInternalNote}
-                  onChange={(e) => setIsInternalNote(e.target.checked)}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="internal" className="text-sm text-muted-foreground">Internal note</label>
-              </div>
-              <button
-                onClick={handleAddNote}
-                className="btn-primary"
-                disabled={!newNote.trim()}
-              >
-                Add Note
-              </button>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Notes & Activity</h3>
-            {caseData.internalNotes?.length > 0 ? (
-              <div className="space-y-3">
-                {[...caseData.internalNotes].reverse().map((note, index) => (
-                  <div key={index} className="p-3 bg-muted rounded-lg">
-                    <div className="flex items-start gap-2">
-                      {note.isInternal && <Lock className="w-4 h-4 text-muted-foreground mt-1" />}
-                      <div className="flex-1">
-                        <p className="text-sm text-foreground">{note.note}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {note.author?.name} • {new Date(note.createdAt).toLocaleDateString()} {new Date(note.createdAt).toLocaleTimeString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              renderEmptyState('No notes yet')
-            )}
-          </div>
-        </div>
+      {activeTab === 'feedback' && (
+        <CaseFeedbackChat caseId={id} />
       )}
 
       {/* Staff Details Modal */}

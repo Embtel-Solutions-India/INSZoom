@@ -3,6 +3,7 @@ const Feedback = require("../../models/Feedback");
 const Case = require("../../models/Case");
 const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
+const realtimeGateway = require("../realtime/realtime.gateway");
 const logger = require("../../utils/logger");
 
 // Attorney <-> Case Manager dialogue on a case. The counterpart resolution
@@ -72,6 +73,13 @@ async function storeAttachments(files = [], { caseId, userId }) {
 async function notifyRecipients({ recipients, caseDoc, author, feedback, isReply }) {
   const caseLabel = caseDoc.caseNumber || caseDoc.caseId || String(caseDoc._id);
   const authorLabel = author.displayName || author.name || (isAttorneyRole(author.role) ? "The attorney" : "The case manager");
+
+  // Live thread append (mirrors message.service.js's own "message:new"
+  // pattern) — separate from the notification below, which only ever
+  // carries a text preview. This carries the real, fully-populated Feedback
+  // document so an open thread on the recipient's side can append it
+  // directly, with no reload/re-fetch needed to see a new message land.
+  recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "feedback:new", feedback));
 
   await Promise.all(
     recipients.map((userId) =>
@@ -156,9 +164,18 @@ async function createFeedback({ caseId, author, message, parentFeedbackId = null
   });
 
   const recipients = await resolveRecipients(caseDoc, author, parentFeedback);
+  // Populated for the live socket append (see notifyRecipients) - `feedback`
+  // itself only has a bare authorId ObjectId (Feedback.create()'s own
+  // return value is never populated), which would render as "Unknown" on a
+  // recipient's screen until their next reload. Built from `author` (the
+  // full req.user already in scope) rather than a second DB round-trip.
+  const populatedFeedback = {
+    ...feedback.toObject(),
+    authorId: { _id: author._id, name: author.name, displayName: author.displayName, email: author.email, role: author.role },
+  };
   // Fire-and-forget: the send must succeed for the author even if every
   // recipient's notification fails.
-  notifyRecipients({ recipients, caseDoc, author, feedback, isReply: Boolean(parentFeedback) }).catch((error) =>
+  notifyRecipients({ recipients, caseDoc, author, feedback: populatedFeedback, isReply: Boolean(parentFeedback) }).catch((error) =>
     logger.error("attorney_feedback_notify_failed", { error, feedbackId: String(feedback._id) })
   );
 

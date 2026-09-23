@@ -45,7 +45,26 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/auth/sso" element={<SSOHandler />} />
-            <Route path="/" element={<Layout />}>
+            {/* Layout (sidebar/header shell) must never mount before auth
+                resolves - it's the dashboard "chrome" itself, and used to sit
+                outside any auth check, so it rendered immediately on "/"
+                while AuthContext's session check was still pending, then
+                ProtectedRoute (only applied per-child-route below) redirected
+                to /login a moment later - a visible dashboard-then-login
+                flash. Wrapping Layout in the same ProtectedRoute used
+                everywhere else (module omitted, so only the
+                loading/authenticated check applies) mirrors how
+                Attorney/RequireAttorney and Immiglance Client/AuthGate both
+                already gate their own layout component, and blocks the
+                Outlet's children from rendering at all until auth is known. */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route 
                 path="dashboard" 

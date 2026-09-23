@@ -12,6 +12,7 @@ const env = require("../../../config/env");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const storageService = require("../../uploads/storage.service");
 const importLocalForm = require("../scripts/importLocalForm");
+const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
 
 const FORM_CODE = "I-907";
 const VERSION = "2024-04-01";
@@ -72,6 +73,12 @@ async function seedI907Template({ file } = {}) {
   template.officialStatus = "current";
   template.editionDate = template.editionDate || EDITION_DATE;
   template.title = TITLE;
+  // Final phase durability fix: this seed never set visaTypes at all before
+  // this change - I-907 (Premium Processing) was unreachable for every
+  // visa type in production until Phase 3's live correction. See
+  // deriveVisaTypesFromRegistry.js.
+  const registryVisaTypes = await deriveVisaTypesFromRegistry(FORM_CODE);
+  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), ...registryVisaTypes]));
   await template.save();
 
   return { template, fieldCount };
