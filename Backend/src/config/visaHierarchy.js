@@ -33,6 +33,18 @@ const VISA_HIERARCHY = {
   "EB-5": { children: ["EB-5 Regional Center", "EB-5 Standalone"] },
   "TN": { children: ["TN Canada", "TN Mexico"] },
   "H-1B1": { children: ["H-1B1 Chile", "H-1B1 Singapore"] },
+  // H4EXTENSION/H4EAD/H4EXTENSIONEAD are single-party filing-type
+  // variants of the same H-4 dependent status (filingTypes.js), each with
+  // its own dedicated VisaFormMapping rows (visaFormMappings.seed.js) that
+  // always win first — this parent link only matters as a fallback if one
+  // of those dedicated rows were ever removed.
+  "H-4": { children: ["H4EXTENSION", "H4EAD", "H4EXTENSIONEAD"] },
+  // COSF2 is the single-party filing-type variant of F-2 (filingTypes.js's
+  // COS_F2) — same fallback-only relationship as the H-4 entry above.
+  "F-1": { children: ["COSF1"] },
+  "F-2": { children: ["COSF2"] },
+  "B-1": { children: ["COSB1"] },
+  "B-2": { children: ["COSB2"] },
 };
 
 const PARENT_BY_CHILD = Object.entries(VISA_HIERARCHY).reduce((map, [parent, { children }]) => {

@@ -82,6 +82,12 @@ function buildScaffoldChecklist(filingType) {
   };
 }
 
-const SINGLE_PARTY_FILING_DEFINITIONS = listFilingTypes().map(buildScaffoldChecklist);
+// Filing types with real, authored content elsewhere (h4Checklist.js,
+// cosF2Checklist.js) are excluded here so they never get a competing
+// scaffold Questionnaire under the same `key`.
+const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2"];
+const SINGLE_PARTY_FILING_DEFINITIONS = listFilingTypes()
+  .filter((filingType) => !REAL_CONTENT_KEYS.includes(filingType.key))
+  .map(buildScaffoldChecklist);
 
 module.exports = { SINGLE_PARTY_FILING_DEFINITIONS, buildScaffoldChecklist };

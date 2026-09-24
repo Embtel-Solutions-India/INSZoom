@@ -186,6 +186,22 @@ const VISA_CATEGORIES = {
   "H-2B": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-2B Temporary Non-Agricultural Worker" },
   "H-3": { caseStructure: "employer_employee", forms: ["i-129"], label: "H-3 Trainee" },
   "H-4": { caseStructure: "single", forms: ["i-539"], label: "H-4 Dependent" },
+  // Single-party filing-type variants (filingTypes.js's H4_EXTENSION/
+  // H4_EAD/H4_EXTENSION_EAD) — distinct visaType strings stored on
+  // Case.visaType for cases created via single-party-filing.controller.js,
+  // kept in sync with the VisaFormMapping registry rows added for them
+  // (visaFormMappings.seed.js's H4EXTENSION/H4EAD/H4EXTENSIONEAD block).
+  "H4EXTENSION": { caseStructure: "single", forms: ["i-539"], label: "H-4 Extension" },
+  "H4EAD": { caseStructure: "single", forms: ["i-765"], label: "H-4 EAD" },
+  "H4EXTENSIONEAD": { caseStructure: "single", forms: ["i-539", "i-765"], label: "H-4 Extension + EAD" },
+  // Single-party filing-type variant (filingTypes.js's COS_F2) — distinct
+  // visaType string stored on Case.visaType for cases created via
+  // single-party-filing.controller.js, separate from the generic "F-2"
+  // entry above (used for F-2 cases created some other way, e.g. consular).
+  "COSF2": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to F-2" },
+  "COSF1": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to F-1" },
+  "COSB1": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-1" },
+  "COSB2": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-2" },
   "L-2": { caseStructure: "single", forms: ["i-539"], label: "L-2 Dependent" },
   "O-3": { caseStructure: "single", forms: ["i-539"], label: "O-3 Dependent" },
   "P-1": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-1 Internationally Recognized Athlete/Entertainment Group" },

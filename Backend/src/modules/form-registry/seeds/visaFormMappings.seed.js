@@ -204,6 +204,44 @@ add(
   ds160("H-4")
 );
 
+// ===================== H-4 SINGLE-PARTY FILING-TYPE VARIANTS =====================
+// filingTypes.js's H4_EXTENSION/H4_EAD/H4_EXTENSION_EAD are distinct,
+// explicitly-selected filing types (not the generic "H-4" dependent-status
+// case type above) — each gets its own visaType string and its own
+// AUTO_CREATE rows, so the filing-type selection itself is the gate rather
+// than a generic triggerCondition. See h4Checklist.util.js's
+// resolveH4Checklist for the single authoritative decision function this
+// mirrors: H4_EXTENSION -> I-539 only, H4_EAD -> I-765 only,
+// H4_EXTENSION_EAD -> both. I-539A is included as a CONDITIONAL supplement
+// (only relevant if a qualifying co-applicant/dependent is added to the
+// I-539 — never auto-created merely because I-539 exists).
+// NOTE: i539()'s own wrapper hardcodes provisioningType=CONDITIONAL as a
+// positional argument to m() and does not forward opts.provisioningType
+// (unlike i765(), which does) — so an AUTO_CREATE I-539 row for these
+// filing types must call m() directly rather than going through i539().
+// i539A() is deliberately left going through its own wrapper (stays
+// CONDITIONAL) since the supplement must never auto-create merely because
+// I-539 exists.
+function i539AutoCreate(visaType, opts = {}) {
+  return m(visaType, "I-539", "Application to Extend/Change Nonimmigrant Status", "USCIS", AUTO, STANDALONE, {
+    formTemplateFormCode: "i-539",
+    initialCaseCreation: true,
+    ...opts,
+  });
+}
+add(
+  i539AutoCreate("H4EXTENSION", { notes: "H-4 Extension filing type — I-539 is the primary and only USCIS form." }),
+  i539A("H4EXTENSION")
+);
+add(
+  i765("H4EAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "H-4 EAD filing type (standalone, no extension of H-4 status) — I-765 is the primary and only USCIS form." })
+);
+add(
+  i539AutoCreate("H4EXTENSIONEAD", { notes: "H-4 Extension + EAD combined filing type — I-539 filed together with I-765 per USCIS guidance." }),
+  i539A("H4EXTENSIONEAD"),
+  i765("H4EXTENSIONEAD", { provisioningType: AUTO, initialCaseCreation: true, notes: "Filed together with I-539 for this combined filing type." })
+);
+
 // ===================== L FAMILY =====================
 add(i129Petition("L-1A"), i129LSupplement("L-1A"), m("L-1A", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A"), i539("L-1A"), i907("L-1A"));
 add(i129Petition("L-1B"), i129LSupplement("L-1B"), m("L-1B", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1B"), i907("L-1B"));
@@ -301,6 +339,39 @@ add(
   i539("F-2")
 );
 
+// ===================== COS TO F-1 (SINGLE-PARTY FILING-TYPE VARIANT) =====================
+// filingTypes.js's COS_F1 is a distinct, explicitly-selected filing type —
+// not the generic "F-1" case type above (untouched: I-20 REF + DS-160 AUTO +
+// I-539 CONDITIONAL + I-765 CONDITIONAL for OPT/CPT). COSF1 gets its own
+// dedicated visaType and AUTO_CREATE I-539 row, mirroring COSF2/COSB1/COSB2
+// above. Deliberately NO I-765 here — per the governing task spec,
+// employment authorization (OPT/CPT) is a separate workflow and must never
+// be auto-attached just because the destination is F-1. No I-20/SEVIS-fee
+// row either — those are client supporting documents on the checklist
+// itself (cosF1Checklist.js), never USCIS CaseForms. I-539A/I-907/G-28 are
+// CONDITIONAL, Case-Manager-decision-only (recordConditionalDecision), same
+// pattern as every other visa's own i539A()/i907()/g28() rows.
+add(
+  i539AutoCreate("COSF1", { notes: "Change of Status to F-1 filing type — I-539 is the primary and only automatically-created USCIS form." }),
+  i539A("COSF1"),
+  i907("COSF1"),
+  g28("COSF1")
+);
+
+// ===================== COS TO F-2 (SINGLE-PARTY FILING-TYPE VARIANT) =====================
+// filingTypes.js's COS_F2 is a distinct, explicitly-selected filing type
+// (not the generic "F-2" dependent-status case type above) — gets its own
+// visaType string (COSF2) and its own AUTO_CREATE I-539 row, so the filing-
+// type selection itself is the gate, exactly mirroring H4EXTENSION's
+// pattern above. I-539A stays CONDITIONAL, never auto-created — this
+// platform models one applicant per case (see i539-h4-crosswalk.js's own
+// note); an additional qualifying co-applicant on the same I-539 is a
+// Case Manager decision (recordConditionalDecision), same as L-2/H-4.
+add(
+  i539AutoCreate("COSF2", { notes: "Change of Status to F-2 filing type — I-539 is the primary and only USCIS form." }),
+  i539A("COSF2")
+);
+
 // ===================== J FAMILY =====================
 add(
   m("J-1", "DS-2019", "Certificate of Eligibility for Exchange Visitor Status", "SCHOOL_OR_PROGRAM_SPONSOR", REF, REFDOC, { initialCaseCreation: false }),
@@ -333,6 +404,17 @@ add(
 add(ds160("B-1", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-1"));
 add(ds160("B-2", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-2"));
 add(ds160("B-1/B-2", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-1/B-2"));
+
+// ===================== COS TO B-1 / B-2 (SINGLE-PARTY FILING-TYPE VARIANTS) =====================
+// filingTypes.js's COS_B1/COS_B2 (and F1_TO_B2, which shares COS_B2's
+// visaType/content) are distinct, explicitly-selected filing types — not
+// the generic "B-1"/"B-2" case types above (those stay untouched, still
+// DS-160+CONDITIONAL-I-539 for a consular/generic case). Each gets its own
+// dedicated visaType and AUTO_CREATE I-539 row, mirroring COSF2/H4EXTENSION
+// above. No DS-160 (this is an in-country COS, not consular) and no I-539A
+// (this checklist has no co-applicant/dependent content).
+add(i539AutoCreate("COSB1", { notes: "Change of Status to B-1 filing type — I-539 is the primary and only USCIS form." }));
+add(i539AutoCreate("COSB2", { notes: "Change of Status to B-2 filing type (also used by the F1_TO_B2 registry key, which shares this visaType) — I-539 is the primary and only USCIS form." }));
 
 // ===================== U VISA =====================
 add(

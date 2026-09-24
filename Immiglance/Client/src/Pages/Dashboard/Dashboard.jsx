@@ -83,86 +83,6 @@ function moneyFromCents(value) {
   }).format(Number(value || 0) / 100);
 }
 
-function UpgradeServicesCard({ addons, purchased = [], loading, purchasing, error, onPurchase }) {
-  const premium = addons.find((item) => item.key === "premium_processing_i907");
-  const purchasedPremium = purchased.find((item) => item.key === "premium_processing_i907");
-  if (!premium && !purchasedPremium && !loading) return null;
-  return (
-    <div className="bg-card rounded-lg border border-card-border p-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-[0.72rem] font-bold uppercase tracking-wider text-primary">Upgrade Services</p>
-          <h2 className="font-serif text-lg font-bold text-foreground mt-1">Available Upgrades</h2>
-          <p className="text-sm text-muted-foreground mt-1">Add eligible services to this case without creating a new case.</p>
-        </div>
-        {purchasedPremium && (
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
-            {purchasedPremium.paymentStatus === "paid" ? "Paid" : purchasedPremium.status?.replace(/_/g, " ")}
-          </span>
-        )}
-      </div>
-      {loading ? (
-        <p className="mt-4 text-sm font-semibold text-muted-foreground">Checking available upgrades...</p>
-      ) : purchasedPremium ? (
-        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/10 p-4">
-          <p className="font-bold text-foreground">Premium Processing (I-907)</p>
-          <p className="text-sm text-primary mt-1">This upgrade is attached to your existing case.</p>
-        </div>
-      ) : premium ? (
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
-          <div className="rounded-xl border border-card-border bg-secondary p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-bold text-foreground">Premium Processing (Form I-907)</p>
-                <p className="text-sm text-muted-foreground">Processing Time: {premium.processingTime}</p>
-              </div>
-              <p className="text-2xl font-bold text-foreground">{moneyFromCents(premium.totalFeeCents)}</p>
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <div className="rounded-lg bg-card p-3">
-                <p className="text-xs text-muted-foreground">Government Fee</p>
-                <p className="font-bold text-foreground">{moneyFromCents(premium.governmentFeeCents)}</p>
-              </div>
-              <div className="rounded-lg bg-card p-3">
-                <p className="text-xs text-muted-foreground">Attorney Fee</p>
-                <p className="font-bold text-foreground">{moneyFromCents(premium.attorneyFeeCents)}</p>
-              </div>
-              <div className="rounded-lg bg-card p-3">
-                <p className="text-xs text-muted-foreground">Related Form</p>
-                <p className="font-bold text-foreground">{premium.form}</p>
-              </div>
-            </div>
-            <div className="mt-4 space-y-2">
-              {(premium.eligibility?.checks || []).map((check) => (
-                <div key={check.key} className="flex items-center gap-2 text-sm">
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full ${check.passed ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                    <Ic.Check />
-                  </span>
-                  <span className={check.passed ? "text-foreground" : "text-muted-foreground"}>{check.label}</span>
-                </div>
-              ))}
-            </div>
-            {!premium.eligibility?.available && (
-              <div className="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm font-semibold text-destructive">
-                Premium Processing is not available for this petition.
-              </div>
-            )}
-            {error && <p className="mt-3 text-sm font-semibold text-destructive">{error}</p>}
-          </div>
-          <button
-            type="button"
-            onClick={() => onPurchase(premium.key)}
-            disabled={!premium.eligibility?.available || purchasing}
-            className="rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted"
-          >
-            {purchasing ? "Starting checkout..." : "Add Upgrade"}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /* ── Loading skeletons (P1 Fix 9) ─────────────────────────────────────────────
    animate-pulse placeholders shown only during the initial case fetch —
    replaces what used to be a blank/"Pending"-valued render for that window. */
@@ -678,12 +598,6 @@ export default function Dashboard() {
     if (!location.state?.notice) return;
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
-  const [availableAddons, setAvailableAddons] = useState([]);
-  const [purchasedAddons, setPurchasedAddons] = useState([]);
-  const [addonsLoading, setAddonsLoading] = useState(false);
-  const [purchasingAddon, setPurchasingAddon] = useState(false);
-  const [addonError, setAddonError] = useState("");
-
   useEffect(() => {
     document.title = "Dashboard | Immiglance";
   }, []);
@@ -726,58 +640,6 @@ export default function Dashboard() {
       timeline: workflow?.timeline || normalizedCase.timeline,
     };
   }, [normalizedCase, workflow]);
-
-  // Addons only ever needed the case _id — previously nested inside
-  // loadCase()'s body, so it waited on the (unrelated) workflow fetch to
-  // resolve first. Now fires as soon as caseId is known, independently of
-  // the workflow query above and on its own loading state, same shape as
-  // before (setAddonsLoading/setAvailableAddons/setAddonError).
-  useEffect(() => {
-    if (isEmployee || !caseId) return;
-    let cancelled = false;
-    setAddonsLoading(true);
-    casesApi.addons(caseId)
-      .then((response) => {
-        if (cancelled) return;
-        setAvailableAddons(response.addons || []);
-        setPurchasedAddons(response.purchased || normalizedCase?.addons || []);
-        setAddonError("");
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setAvailableAddons([]);
-        setPurchasedAddons(normalizedCase?.addons || []);
-        setAddonError(error.message || "Unable to load upgrades.");
-      })
-      .finally(() => { if (!cancelled) setAddonsLoading(false); });
-    return () => { cancelled = true; };
-    // normalizedCase is deliberately excluded — addons only need to reload
-    // when the active case changes (caseId), not on every case-data refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, isEmployee]);
-
-  const handlePurchaseAddon = async (addonKey) => {
-    if (!caseId || purchasingAddon) return;
-    setPurchasingAddon(true);
-    setAddonError("");
-    try {
-      const response = await casesApi.purchaseAddon(caseId, addonKey);
-      if (response.checkout?.url) {
-        window.location.href = response.checkout.url;
-        return;
-      }
-      await refetchCase();
-      const refreshed = await casesApi.addons(caseId).catch(() => null);
-      if (refreshed) {
-        setAvailableAddons(refreshed.addons || []);
-        setPurchasedAddons(refreshed.purchased || []);
-      }
-    } catch (error) {
-      setAddonError(error.message || "Unable to start upgrade checkout.");
-    } finally {
-      setPurchasingAddon(false);
-    }
-  };
 
   const savedAt = profileData?.updatedAt;
 
@@ -863,17 +725,6 @@ export default function Dashboard() {
 
         {/* ── Quick Actions ── */}
         <QuickActions profileComplete={profileComplete} />
-
-        {!isEmployee && (
-          <UpgradeServicesCard
-            addons={availableAddons}
-            purchased={purchasedAddons}
-            loading={addonsLoading}
-            purchasing={purchasingAddon}
-            error={addonError}
-            onPurchase={handlePurchaseAddon}
-          />
-        )}
 
         {isEmployee && <MyTasksCard caseData={caseData} />}
 

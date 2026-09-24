@@ -329,7 +329,7 @@ class ImmigrationKnowledgeEngineService {
   // hasn't been linked to the case yet (e.g. an employee not yet invited),
   // so the assignment is never silently orphaned.
   static assigneeForRole(caseData, checklistRole) {
-    if (checklistRole === "employer" || checklistRole === "business_plan") {
+    if (checklistRole === "employer" || checklistRole === "business_plan" || checklistRole === "supporting_documents") {
       return caseData.employerUser || caseData.user || caseData.clientProfile;
     }
     if (checklistRole === "employee") {

@@ -7,8 +7,11 @@ const Question = require("./Question");
 // party distinct from the petitioner who co-signs an I-864 Affidavit of
 // Support when the petitioner alone doesn't meet the income threshold
 // (IR-1/CR-1/F2A/F2B) - previously had no role of its own and would
-// otherwise be silently folded into "petitioner".
-const CHECKLIST_ROLES = ["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client", "business_plan", "case_manager", "team_lead", "admin", ""];
+// otherwise be silently folded into "petitioner". "supporting_documents" is
+// additive too — the E-2 Treaty Investor visa's third checklist (a minimal,
+// document-only checklist), routed to the employer-side user exactly like
+// "business_plan" (see ImmigrationKnowledgeEngineService.assigneeForRole()).
+const CHECKLIST_ROLES = ["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client", "business_plan", "supporting_documents", "case_manager", "team_lead", "admin", ""];
 
 // Assigns or removes a *different* checklist (Questionnaire) when this
 // questionnaire's answers satisfy `condition` — evaluated on submit by

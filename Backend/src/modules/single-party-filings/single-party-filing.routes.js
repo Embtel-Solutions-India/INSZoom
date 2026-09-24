@@ -25,4 +25,14 @@ router.post(
   ctrl.createFiling
 );
 
+router.patch(
+  "/cases/:caseId/filing-type",
+  authenticate,
+  authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),
+  authorizePermissions("cases:update"),
+  body("filingTypeKey").isString().notEmpty(),
+  validate,
+  ctrl.changeFilingType
+);
+
 module.exports = router;

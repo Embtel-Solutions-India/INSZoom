@@ -93,6 +93,8 @@ test("regression: EB-1A/EB-1B/H-1B/L-1A/P/O-1 checklist definitions are unaffect
   const untouchedKeys = ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_employer_checklist", "l1a_employee_checklist", "eb1b_employer_checklist", "eb1b_employee_checklist"];
   untouchedKeys.forEach((key) => assert.ok(EMPLOYMENT_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`));
   // 13 -> 15 by the later, unrelated TN task (tn.js added its own employer
-  // + employee checklist) - see tnChecklists.test.js.
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 15, "H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2 = 15");
+  // + employee checklist) - see tnChecklists.test.js. 15 -> 18 by the later,
+  // unrelated E-2 task (e2.js added its own three checklists: visa,
+  // business_plan, supporting_documents) - see e2Checklists.test.js.
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 18, "H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2, E-2 x3 = 18");
 });
