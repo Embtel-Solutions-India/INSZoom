@@ -114,6 +114,21 @@ const FILING_TYPES = {
     visaType: "H4EXTENSION",
     questionnaireKey: "h4_extension_questionnaire",
   },
+  // Standalone H-4 EAD (no extension of H-4 status itself) — the third leg
+  // of the H4 decision matrix alongside H4_EXTENSION and
+  // H4_EXTENSION_EAD (see resolveH4Checklist in h4Checklist.util.js, the
+  // single source of truth for which of the three applies).
+  H4_EAD: {
+    key: "H4_EAD",
+    label: "H-4 EAD",
+    category: "ead",
+    includesEad: true,
+    isTransition: false,
+    fromStatus: null,
+    toStatus: null,
+    visaType: "H4EAD",
+    questionnaireKey: "h4_ead_questionnaire",
+  },
   H4_EXTENSION_EAD: {
     key: "H4_EXTENSION_EAD",
     label: "H-4 Extension + EAD",

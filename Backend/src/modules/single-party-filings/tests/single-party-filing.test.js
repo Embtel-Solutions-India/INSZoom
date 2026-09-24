@@ -27,9 +27,9 @@ function fakeRes() {
 
 // ── Stage 1: registry shape ──
 test("filing-type registry: registers the full expected set with category + transition metadata", () => {
-  const expectedKeys = ["COS_F1", "COS_F2", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EXTENSION_EAD"];
+  const expectedKeys = ["COS_F1", "COS_F2", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
   assert.deepEqual(Object.keys(FILING_TYPES).sort(), expectedKeys.sort());
-  assert.equal(listFilingTypes().length, 8);
+  assert.equal(listFilingTypes().length, 9);
 
   const cosF1 = getFilingType("COS_F1");
   assert.equal(cosF1.category, "change_of_status");
@@ -48,6 +48,11 @@ test("filing-type registry: registers the full expected set with category + tran
   const h4Ext = getFilingType("H4_EXTENSION");
   assert.equal(h4Ext.category, "extension");
   assert.equal(h4Ext.includesEad, false);
+
+  const h4Ead = getFilingType("H4_EAD");
+  assert.equal(h4Ead.category, "ead");
+  assert.equal(h4Ead.includesEad, true);
+  assert.equal(h4Ead.isTransition, false);
 
   const h4ExtEad = getFilingType("H4_EXTENSION_EAD");
   assert.equal(h4ExtEad.category, "extension");
@@ -86,17 +91,23 @@ test("groupedForSelection: separates transition (picker) entries from standalone
   assert.deepEqual(grouped.transitions.map((e) => e.key).sort(), ["COS_F1", "COS_F2", "F1_TO_B2"].sort());
   assert.deepEqual(
     grouped.standalone.map((e) => e.key).sort(),
-    ["COS_GENERIC", "F1_REINSTATEMENT", "EAD", "H4_EXTENSION", "H4_EXTENSION_EAD"].sort()
+    ["COS_GENERIC", "F1_REINSTATEMENT", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"].sort()
   );
   assert.ok(grouped.byCategory.change_of_status.length >= 4);
   assert.ok(grouped.byCategory.extension.length === 2);
-  assert.ok(grouped.byCategory.ead.length === 1);
+  assert.ok(grouped.byCategory.ead.length === 2, "EAD + H4_EAD");
   assert.ok(grouped.byCategory.reinstatement.length === 1);
 });
 
 // ── Stage 1: scaffold checklists — single-party, no second-party role ──
-test("single-party scaffold checklists: one checklist per filing type, checklistRole is the applicant only, clearly marked temporary", () => {
-  assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.length, 8, "exactly one checklist per registered filing type");
+// H4_EXTENSION/H4_EAD/H4_EXTENSION_EAD/COS_F2 are deliberately EXCLUDED from
+// the generic scaffold generator — they have real, authored content instead
+// (h4Checklist.js's H4_CHECKLIST_DEFINITIONS, cosF2Checklist.js's
+// COS_F2_CHECKLIST_DEFINITIONS, asserted separately below).
+test("single-party scaffold checklists: one scaffold per real-content-EXCLUDED filing type, checklistRole is the applicant only, clearly marked temporary", () => {
+  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F2"];
+  const scaffoldEligible = listFilingTypes().filter((ft) => !REAL_CONTENT_KEYS.includes(ft.key));
+  assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.length, scaffoldEligible.length, "exactly one scaffold per real-content-excluded filing type");
   const visaTypesSeen = new Set();
   SINGLE_PARTY_FILING_DEFINITIONS.forEach((def) => {
     assert.equal(def.checklistRole, "client", `${def.key} must have exactly the applicant role, no second party`);
@@ -105,18 +116,52 @@ test("single-party scaffold checklists: one checklist per filing type, checklist
     assert.ok(!visaTypesSeen.has(def.visaType), `${def.key}'s visaType ${def.visaType} must be unique across filing types`);
     visaTypesSeen.add(def.visaType);
   });
-  // Every registry entry must resolve to exactly one of these definitions by key.
-  listFilingTypes().forEach((filingType) => {
+  scaffoldEligible.forEach((filingType) => {
     const match = SINGLE_PARTY_FILING_DEFINITIONS.find((def) => def.key === filingType.questionnaireKey);
     assert.ok(match, `${filingType.key} must have a matching scaffold checklist (${filingType.questionnaireKey})`);
     assert.equal(match.visaType, filingType.visaType);
   });
 });
 
+test("H4 real-content checklists: exactly the three H4 filing types have real (non-scaffold) content, none also has a competing scaffold", () => {
+  const { H4_CHECKLIST_DEFINITIONS } = require("../../questionnaires/h4Checklist");
+  const H4_REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
+  assert.equal(H4_CHECKLIST_DEFINITIONS.length, 3);
+  H4_REAL_CONTENT_KEYS.forEach((key) => {
+    const filingType = getFilingType(key);
+    const realDef = H4_CHECKLIST_DEFINITIONS.find((d) => d.key === filingType.questionnaireKey);
+    assert.ok(realDef, `${key} must have real content under ${filingType.questionnaireKey}`);
+    assert.equal(realDef.visaType, filingType.visaType);
+    assert.equal(realDef.checklistRole, "client");
+    assert.equal(realDef.isDefault, true);
+    assert.ok(realDef.questions.length > 5, `${key} must have real (non-scaffold) content`);
+    assert.ok(
+      !SINGLE_PARTY_FILING_DEFINITIONS.some((scaffold) => scaffold.key === filingType.questionnaireKey),
+      `${key} must not also have a competing scaffold`
+    );
+  });
+});
+
+test("COS_F2 real-content checklist: one combined questionnaire (not a scaffold), checklistRole is the F-2 applicant only", () => {
+  const { COS_F2_CHECKLIST_DEFINITIONS } = require("../../questionnaires/cosF2Checklist");
+  assert.equal(COS_F2_CHECKLIST_DEFINITIONS.length, 1, "exactly one combined questionnaire, not one per role");
+  const filingType = getFilingType("COS_F2");
+  const realDef = COS_F2_CHECKLIST_DEFINITIONS[0];
+  assert.equal(realDef.key, filingType.questionnaireKey);
+  assert.equal(realDef.visaType, filingType.visaType);
+  assert.equal(realDef.checklistRole, "client");
+  assert.equal(realDef.isDefault, true);
+  assert.ok(realDef.questions.length > 5, "must have real (non-scaffold) content");
+  assert.ok(
+    !SINGLE_PARTY_FILING_DEFINITIONS.some((scaffold) => scaffold.key === filingType.questionnaireKey),
+    "COS_F2 must not also have a competing scaffold"
+  );
+});
+
 // ── Stage 2: route registration ──
-test("single-party-filing routes: exactly the two expected endpoints, no invite/second-party route", () => {
+test("single-party-filing routes: exactly the three expected endpoints, no invite/second-party route", () => {
   const registered = routesOf(router);
-  assert.deepEqual(registered.sort(), ["GET /types", "POST /cases"].sort());
+  assert.deepEqual(registered.sort(), ["GET /types", "POST /cases", "PATCH /cases/:caseId/filing-type"].sort());
   assert.ok(!registered.some((r) => /invite/i.test(r)), "no invite-style endpoint should exist for a single-party filing");
 });
 

@@ -11,6 +11,7 @@ const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
 const questionnaireService = require("../questionnaires/questionnaire.service");
+const uscisFormService = require("../uscis-forms/uscis-form.service");
 const { getFilingType, resolveTransitionFilingType, groupedForSelection } = require("../../config/filingTypes");
 
 exports.getFilingTypes = async (req, res, next) => {
@@ -98,6 +99,87 @@ exports.createFiling = async (req, res, next) => {
       filingType,
       questionnaire: questionnaire ? { key: questionnaire.key, title: questionnaire.title } : null,
       responseId: assignment?.responseId || null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Selection-change path (task spec §17) — e.g. an H-4 Extension-only case
+// later adds EAD, or vice versa. Never deletes/archives the client's
+// existing completed checklist answers or uploaded documents: the OLD
+// questionnaireReferences entry is marked `active: false` (so it stops
+// counting toward checklist-completion UI) but is left in the array,
+// exactly like every other "checklist superseded, not destroyed" path in
+// this codebase (assignQuestionnaireIfNotActive's own dedup guard relies on
+// this same `active` flag). Form provisioning reuses ensureAssignedForms's
+// own idempotency — switching H4EXTENSION -> H4EXTENSIONEAD adds I-765
+// without touching the already-provisioned I-539 CaseForm, and switching
+// back away from EAD never deletes an already-provisioned I-765 (no
+// existing lifecycle rule authorizes destructive removal — see §17/§8 of
+// the task spec).
+exports.changeFilingType = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.caseId);
+    if (!caseData) {
+      return res.status(404).json({ success: false, message: "Case not found" });
+    }
+    if (!caseService.canAccessCase(req.user, caseData)) {
+      return res.status(403).json({ success: false, message: "Not authorized to modify this case" });
+    }
+    const filingType = getFilingType(req.body.filingTypeKey);
+    if (!filingType) {
+      return res.status(400).json({ success: false, message: "Unknown filing type" });
+    }
+    const previousFilingTypeKey = caseData.petitionSubType;
+    if (previousFilingTypeKey === filingType.key) {
+      return res.json({ success: true, case: caseData, filingType, unchanged: true });
+    }
+
+    caseData.visaType = filingType.visaType;
+    caseData.visaCategory = filingType.category;
+    caseData.petitionType = filingType.label;
+    caseData.petitionSubType = filingType.key;
+    const previousQuestionnaireKey = previousFilingTypeKey ? getFilingType(previousFilingTypeKey)?.questionnaireKey : null;
+    if (previousQuestionnaireKey) {
+      const previousQuestionnaire = await Questionnaire.findOne({ key: previousQuestionnaireKey, latestVersion: true });
+      if (previousQuestionnaire) {
+        (caseData.questionnaireReferences || []).forEach((reference) => {
+          if (String(reference.questionnaireId) === String(previousQuestionnaire._id) && reference.active !== false) {
+            reference.active = false;
+          }
+        });
+      }
+    }
+    caseService.addTimelineEvent(
+      caseData,
+      "case",
+      "Filing Type Changed",
+      `${req.user.name || req.user.displayName || "Staff"} changed the filing type from ${previousFilingTypeKey || "none"} to ${filingType.label}.`,
+      req.user,
+      { previousFilingTypeKey, filingTypeKey: filingType.key }
+    );
+    await caseData.save();
+
+    await questionnaireService.ensureDefaultVisaTemplates();
+    const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
+    let assignment = null;
+    if (questionnaire) {
+      assignment = await questionnaireService.assignQuestionnaireIfNotActive(
+        questionnaire,
+        { caseData, assignedTo: req.user._id, message: `Auto-assigned on filing type change (${filingType.label}).` },
+        req.user,
+        req
+      );
+    }
+    const createdForms = await uscisFormService.ensureAssignedForms(assignment?.case || caseData, req.user, req);
+
+    res.json({
+      success: true,
+      case: assignment?.case || caseData,
+      filingType,
+      questionnaire: questionnaire ? { key: questionnaire.key, title: questionnaire.title } : null,
+      createdForms: createdForms.map((form) => form.formCode),
     });
   } catch (error) {
     next(error);

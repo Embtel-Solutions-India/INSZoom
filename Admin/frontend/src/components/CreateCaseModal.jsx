@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { casesApi, usersApi, familyWorkflowApi } from '../services/api'
+import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 
 const VISA_TYPE_OPTIONS = [
@@ -46,7 +46,28 @@ const VISA_TYPE_OPTIONS = [
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },
+  // Standalone single-party filing types (Backend/src/config/filingTypes.js) -
+  // no second party (no petitioner/beneficiary or employer/employee), so
+  // these go through singlePartyFilingsApi.createCase (POST
+  // /single-party-filings/cases) rather than the generic casesApi.create -
+  // see SINGLE_PARTY_FILING_TYPE_KEYS below.
+  { value: 'h4extension', label: 'H-4 Extension' },
+  { value: 'h4ead', label: 'H-4 EAD' },
+  { value: 'h4extensionead', label: 'H-4 Extension + EAD' },
+  { value: 'cosf2', label: 'Change of Status to F-2' },
 ]
+
+// Maps this modal's own visaType option value to the backend's
+// filingTypeKey (Backend/src/config/filingTypes.js's FILING_TYPES). Any
+// visaType present here is a single-party filing and is created via
+// singlePartyFilingsApi.createCase instead of casesApi.create - every other
+// visa type is unaffected.
+const SINGLE_PARTY_FILING_TYPE_KEYS = {
+  h4extension: 'H4_EXTENSION',
+  h4ead: 'H4_EAD',
+  h4extensionead: 'H4_EXTENSION_EAD',
+  cosf2: 'COS_F2',
+}
 
 // familyBased() (Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js)
 // visa types - each gets the "Filing Path" choice below, and is created via
@@ -149,6 +170,25 @@ const CreateCaseModal = ({
       // the visaType format Immiglance's self-registration intake sends, so both
       // paths render identically in the cases table and downstream forms.
       const visaTypeLabel = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)?.label || form.visaType
+
+      const filingTypeKey = SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType]
+      if (filingTypeKey) {
+        // Standalone single-party filing (H-4 Extension/EAD/Extension+EAD,
+        // COS to F-2, ...) - one request creates the Case AND auto-assigns
+        // its single applicant checklist (single-party-filing.controller.js's
+        // createFiling). No petitioner/beneficiary or employer fields exist
+        // for this path.
+        const payload = {
+          filingTypeKey,
+          clientName: form.clientName.trim(),
+          clientEmail: form.clientEmail.trim(),
+        }
+        if (form.clientPhone.trim()) payload.clientPhone = form.clientPhone.trim()
+        const res = await singlePartyFilingsApi.createCase(payload)
+        const result = res.data || {}
+        onCreated?.({ ...result, case: result.case })
+        return
+      }
 
       if (showFamilyPackageFields) {
         // I-130/Green-Card/I-864 family package - a materially different

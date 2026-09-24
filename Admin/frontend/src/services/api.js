@@ -251,6 +251,19 @@ export const familyWorkflowApi = {
   approveGcNvcChecklist: (caseId) => api.post(`/family-workflow/${caseId}/gc-nvc-checklist/approve`),
 }
 
+// Single-party individual filings (H-4 Extension / H-4 EAD / H-4 Extension +
+// EAD, COS to F-2, and any other standalone filingTypeKey from
+// filingTypes.js) - POST /single-party-filings/cases creates the Case AND
+// auto-assigns its single applicant checklist in one call (see
+// single-party-filing.controller.js's createFiling). CreateCaseModal.jsx
+// uses this only for those standalone filing-type visa options; every other
+// visa type keeps using casesApi.create.
+export const singlePartyFilingsApi = {
+  types: () => api.get('/single-party-filings/types'),
+  createCase: (payload) => api.post('/single-party-filings/cases', payload),
+  changeFilingType: (caseId, payload) => api.patch(`/single-party-filings/cases/${caseId}/filing-type`, payload),
+}
+
 export const questionnairesApi = {
   list: (params = {}) => api.get('/questionnaires', { params }),
   defaults: () => api.get('/questionnaires/defaults'),

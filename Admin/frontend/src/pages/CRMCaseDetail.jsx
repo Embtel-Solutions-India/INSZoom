@@ -441,8 +441,6 @@ const CRMCaseDetail = () => {
     answeredRequired: relevantChecklistProgress.reduce((sum, c) => sum + (c.documentProgress.answeredRequired || 0), 0),
     missingRequired: relevantChecklistProgress.flatMap((c) => c.documentProgress.missingRequired || []),
   }
-  const [availableAddons, setAvailableAddons] = useState([])
-  const [addonsLoading, setAddonsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [showStaffDetailsModal, setShowStaffDetailsModal] = useState(false)
@@ -628,17 +626,6 @@ const CRMCaseDetail = () => {
       } else {
         setChildCases(null)
       }
-      setAddonsLoading(true)
-      casesApi.addons(id)
-        .then((addonsResponse) => {
-          setAvailableAddons(addonsResponse.data?.addons || [])
-        })
-        .catch(() => {
-          setAvailableAddons([])
-        })
-        .finally(() => {
-          setAddonsLoading(false)
-        })
     } catch (error) {
       console.error('Error fetching case detail:', error)
     } finally {
@@ -1327,139 +1314,6 @@ const CRMCaseDetail = () => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
   }
 
-  const formatCents = (value) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0) / 100)
-
-  const renderAddonsPanel = () => {
-    const addons = caseData?.addons || []
-    const availablePremium = availableAddons.find((addon) => addon.key === 'premium_processing_i907')
-    if (!addons.length && !availablePremium && !addonsLoading) return null
-    return (
-      <div className="card">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Add-ons</h3>
-        {addonsLoading && (
-          <p className="text-sm font-medium text-muted-foreground">Checking available add-ons...</p>
-        )}
-        {!addons.length && availablePremium && (
-          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{availablePremium.form}</p>
-                <h4 className="text-base font-bold text-foreground">{availablePremium.service}</h4>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Available upgrade for this existing case. Client can purchase it from the client portal.
-                </p>
-                {!availablePremium.eligibility?.available && (
-                  <p className="mt-2 text-sm font-semibold text-amber-700">
-                    Not ready yet: missing one or more eligibility requirements.
-                  </p>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm sm:text-right">
-                <div className="rounded-lg bg-card px-3 py-2">
-                  <p className="text-muted-foreground">Government Fee</p>
-                  <p className="font-bold text-foreground">{formatCents(availablePremium.governmentFeeCents)}</p>
-                </div>
-                <div className="rounded-lg bg-card px-3 py-2">
-                  <p className="text-muted-foreground">Attorney Fee</p>
-                  <p className="font-bold text-foreground">{formatCents(availablePremium.attorneyFeeCents)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
-              {(availablePremium.eligibility?.checks || []).map((check) => (
-                <div key={check.key} className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm">
-                  <span className={`h-2.5 w-2.5 rounded-full ${check.passed ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                  <span className={check.passed ? 'font-medium text-muted-foreground' : 'font-medium text-amber-700'}>{check.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="space-y-4">
-          {addons.map((addon) => (
-            <div key={addon._id || addon.key} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">{addon.form}</p>
-                  <h4 className="text-base font-bold text-foreground">{addon.service}</h4>
-                  <p className="mt-1 text-sm text-muted-foreground">Status: <span className="font-semibold capitalize">{String(addon.status || 'pending').replace(/_/g, ' ')}</span></p>
-                  <p className="text-sm text-muted-foreground">Assigned To: <span className="font-semibold">{addon.assignedTo?.name || addon.assignedTo?.displayName || 'Not assigned'}</span></p>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm sm:text-right">
-                  <div className="rounded-lg bg-card px-3 py-2">
-                    <p className="text-muted-foreground">Government Fee</p>
-                    <p className="font-bold text-foreground">{formatCents(addon.governmentFeeCents)}</p>
-                    <p className="text-xs font-semibold text-emerald-700 capitalize">{addon.paymentStatus || 'pending'}</p>
-                  </div>
-                  <div className="rounded-lg bg-card px-3 py-2">
-                    <p className="text-muted-foreground">Attorney Fee</p>
-                    <p className="font-bold text-foreground">{formatCents(addon.attorneyFeeCents)}</p>
-                    <p className="text-xs font-semibold text-emerald-700 capitalize">{addon.paymentStatus || 'pending'}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                {(addon.requiredDocuments || []).map((document) => (
-                  <div key={document.documentType || document.name} className="rounded-lg border border-emerald-100 bg-card px-3 py-2 text-sm">
-                    <p className="font-semibold text-foreground">{document.name}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{document.status || 'requested'}</p>
-                  </div>
-                ))}
-              </div>
-              {addon.intake && (
-                <div className="mt-4 rounded-xl border border-emerald-100 bg-card p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Form I-907 Client Information</p>
-                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
-                    {[
-                      ['A-Number', addon.intake.alienRegistrationNumber],
-                      ['USCIS Online Account Number', addon.intake.uscisOnlineAccountNumber],
-                      ['Filer Family Name', addon.intake.filerFamilyName],
-                      ['Filer Given Name', addon.intake.filerGivenName],
-                      ['Company / Organization', addon.intake.companyOrganizationName],
-                      ['Mailing Street', addon.intake.mailingStreet],
-                      ['Mailing Apt/Ste/Flr', addon.intake.mailingApt],
-                      ['Mailing City', addon.intake.mailingCity],
-                      ['Mailing State', addon.intake.mailingState],
-                      ['Mailing ZIP Code', addon.intake.mailingZipCode],
-                      ['Mailing Province', addon.intake.mailingProvince],
-                      ['Mailing Postal Code', addon.intake.mailingPostalCode],
-                      ['Mailing Country', addon.intake.mailingCountry],
-                      ['Same Physical Address', addon.intake.samePhysicalAddress],
-                      ['Physical Street', addon.intake.physicalStreet],
-                      ['Physical Apt/Ste/Flr', addon.intake.physicalApt],
-                      ['Physical City', addon.intake.physicalCity],
-                      ['Physical State', addon.intake.physicalState],
-                      ['Physical ZIP Code', addon.intake.physicalZipCode],
-                      ['Physical Province', addon.intake.physicalProvince],
-                      ['Physical Postal Code', addon.intake.physicalPostalCode],
-                      ['Physical Country', addon.intake.physicalCountry],
-                      ['Related Form Number', addon.intake.relatedFormNumber],
-                      ['Related Receipt Number', addon.intake.relatedReceiptNumber],
-                      ['Additional Receipt Number', addon.intake.relatedReceiptNumber2],
-                      ['Petitioner / Applicant Family Name', addon.intake.petitionerFamilyName],
-                      ['Petitioner / Applicant Given Name', addon.intake.petitionerGivenName],
-                      ['Beneficiary Family Name', addon.intake.beneficiaryFamilyName],
-                      ['Beneficiary Given Name', addon.intake.beneficiaryGivenName],
-                      ['Point of Contact Family Name', addon.intake.pointOfContactFamilyName],
-                      ['Point of Contact Given Name', addon.intake.pointOfContactGivenName],
-                      ['Point of Contact Title', addon.intake.pointOfContactTitle],
-                      ['Company EIN', addon.intake.ein],
-                    ].map(([label, value]) => (
-                      <p key={label}>
-                        <span className="text-muted-foreground">{label}:</span>{' '}
-                        <span className="font-semibold text-foreground">{value || 'Needed'}</span>
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   const renderInformationRequestsPanel = () => {
     const requests = caseData?.informationRequests || []
     return (
@@ -1967,7 +1821,6 @@ const CRMCaseDetail = () => {
                 </div>
               </div>
 
-              {renderAddonsPanel()}
               {renderInformationRequestsPanel()}
               <QuestionnaireAnswersPanel
                 title="Employer Questionnaire"

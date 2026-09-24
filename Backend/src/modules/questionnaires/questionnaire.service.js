@@ -26,6 +26,8 @@ const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
 const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
 const { CHANGE_OF_ADDRESS_DEFINITIONS } = require("./changeOfAddressChecklist");
 const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
+const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
+const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -1883,6 +1885,21 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // with visaType "SB-1" - exactly like EB-1A/EB-2 NIW/Green Card Renewal.
   // See sb1Checklist.js's own banner.
   SB1_CHECKLIST_DEFINITION,
+  // H-4 Extension / H-4 EAD / H-4 Extension+EAD — three REAL, standalone
+  // case-creation visaTypes (H4EXTENSION/H4EAD/H4EXTENSIONEAD), each
+  // isDefault:true, auto-resolved the moment a case exists with that
+  // visaType - exactly like SB-1/EB-1A/EB-2 NIW/Green Card Renewal. Real
+  // authored content replacing singlePartyChecklists.js's generic scaffold
+  // for these three filing types — see h4Checklist.js's own banner.
+  ...H4_CHECKLIST_DEFINITIONS,
+  // COS to F-2 — a REAL, standalone case-creation visaType (COSF2),
+  // isDefault:true, auto-resolved the moment a case exists with that
+  // visaType - exactly like the H-4 filing types above. One combined
+  // questionnaire (F-2 applicant + F-1 principal + financial sponsor
+  // sections) sent only to the F-2 applicant — see cosF2Checklist.js's own
+  // banner for why this departs from family-workflow's one-per-role
+  // convention.
+  ...COS_F2_CHECKLIST_DEFINITIONS,
 ];
 
 function slugSection(title) {
