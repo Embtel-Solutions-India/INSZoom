@@ -54,7 +54,10 @@ const VISA_TYPE_OPTIONS = [
   { value: 'h4extension', label: 'H-4 Extension' },
   { value: 'h4ead', label: 'H-4 EAD' },
   { value: 'h4extensionead', label: 'H-4 Extension + EAD' },
+  { value: 'cosf1', label: 'Change of Status to F-1' },
   { value: 'cosf2', label: 'Change of Status to F-2' },
+  { value: 'cosb1', label: 'Change of Status to B-1' },
+  { value: 'cosb2', label: 'Change of Status to B-2' },
 ]
 
 // Maps this modal's own visaType option value to the backend's
@@ -66,7 +69,10 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
   h4extension: 'H4_EXTENSION',
   h4ead: 'H4_EAD',
   h4extensionead: 'H4_EXTENSION_EAD',
+  cosf1: 'COS_F1',
   cosf2: 'COS_F2',
+  cosb1: 'COS_B1',
+  cosb2: 'COS_B2',
 }
 
 // familyBased() (Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js)

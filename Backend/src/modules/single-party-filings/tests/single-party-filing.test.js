@@ -27,19 +27,36 @@ function fakeRes() {
 
 // ── Stage 1: registry shape ──
 test("filing-type registry: registers the full expected set with category + transition metadata", () => {
-  const expectedKeys = ["COS_F1", "COS_F2", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
+  const expectedKeys = ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
   assert.deepEqual(Object.keys(FILING_TYPES).sort(), expectedKeys.sort());
-  assert.equal(listFilingTypes().length, 9);
+  assert.equal(listFilingTypes().length, 11);
 
   const cosF1 = getFilingType("COS_F1");
   assert.equal(cosF1.category, "change_of_status");
   assert.equal(cosF1.isTransition, true);
   assert.equal(cosF1.toStatus, "F-1");
 
+  const cosB1 = getFilingType("COS_B1");
+  assert.equal(cosB1.isTransition, true);
+  assert.equal(cosB1.fromStatus, null, "COS_B1 accepts any current status");
+  assert.equal(cosB1.toStatus, "B-1");
+  assert.equal(cosB1.visaType, "COSB1");
+
+  const cosB2 = getFilingType("COS_B2");
+  assert.equal(cosB2.isTransition, true);
+  assert.equal(cosB2.fromStatus, null, "COS_B2 accepts any current status");
+  assert.equal(cosB2.toStatus, "B-2");
+  assert.equal(cosB2.visaType, "COSB2");
+
+  // F1_TO_B2 keeps its own registry key (more specific than the COS_B2
+  // wildcard) but now shares COS_B2's exact visaType/questionnaire content —
+  // see cosB1B2Checklist.js's banner for why.
   const f1ToB2 = getFilingType("F1_TO_B2");
   assert.equal(f1ToB2.isTransition, true);
   assert.equal(f1ToB2.fromStatus, "F-1");
   assert.equal(f1ToB2.toStatus, "B-2");
+  assert.equal(f1ToB2.visaType, "COSB2");
+  assert.equal(f1ToB2.questionnaireKey, "cos_b2_questionnaire");
 
   const ead = getFilingType("EAD");
   assert.equal(ead.category, "ead");
@@ -86,26 +103,44 @@ test("resolveTransitionFilingType: prefers a specific fromStatus match over a wi
   assert.equal(resolveTransitionFilingType("F-1", "H-1B").key, "COS_GENERIC", "an unmapped pair falls back to the generic COS entry rather than resolving to nothing");
 });
 
+// ── COS to B-1 / COS to B-2: current status remains fully dynamic ─────────
+test("resolveTransitionFilingType: COS_B1/COS_B2 accept ANY current status (not restricted to H-1B/F-1)", () => {
+  ["H-1B", "F-1", "L-1A", "H-4", "F-2", "O-1A"].forEach((fromStatus) => {
+    const toB1 = resolveTransitionFilingType(fromStatus, "B-1");
+    assert.equal(toB1.key, "COS_B1", `${fromStatus} -> B-1 must resolve to COS_B1`);
+    assert.equal(toB1.questionnaireKey, "cos_b1_questionnaire");
+
+    const toB2 = resolveTransitionFilingType(fromStatus, "B-2");
+    assert.equal(toB2.questionnaireKey, "cos_b2_questionnaire", `${fromStatus} -> B-2 must resolve to COS_TO_B2 content`);
+  });
+  // F-1 -> B-2 specifically resolves through the more specific F1_TO_B2 key,
+  // but with the exact same content as every other source status.
+  assert.equal(resolveTransitionFilingType("F-1", "B-2").key, "F1_TO_B2");
+  // Every other source status resolves through the COS_B2 wildcard itself.
+  assert.equal(resolveTransitionFilingType("H-1B", "B-2").key, "COS_B2");
+});
+
 test("groupedForSelection: separates transition (picker) entries from standalone (named-option) entries", () => {
   const grouped = groupedForSelection();
-  assert.deepEqual(grouped.transitions.map((e) => e.key).sort(), ["COS_F1", "COS_F2", "F1_TO_B2"].sort());
+  assert.deepEqual(grouped.transitions.map((e) => e.key).sort(), ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2"].sort());
   assert.deepEqual(
     grouped.standalone.map((e) => e.key).sort(),
     ["COS_GENERIC", "F1_REINSTATEMENT", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"].sort()
   );
-  assert.ok(grouped.byCategory.change_of_status.length >= 4);
+  assert.ok(grouped.byCategory.change_of_status.length >= 6);
   assert.ok(grouped.byCategory.extension.length === 2);
   assert.ok(grouped.byCategory.ead.length === 2, "EAD + H4_EAD");
   assert.ok(grouped.byCategory.reinstatement.length === 1);
 });
 
 // ── Stage 1: scaffold checklists — single-party, no second-party role ──
-// H4_EXTENSION/H4_EAD/H4_EXTENSION_EAD/COS_F2 are deliberately EXCLUDED from
-// the generic scaffold generator — they have real, authored content instead
-// (h4Checklist.js's H4_CHECKLIST_DEFINITIONS, cosF2Checklist.js's
-// COS_F2_CHECKLIST_DEFINITIONS, asserted separately below).
+// H4_EXTENSION/H4_EAD/H4_EXTENSION_EAD/COS_F2/COS_B1/COS_B2/F1_TO_B2 are
+// deliberately EXCLUDED from the generic scaffold generator — they have
+// real, authored content instead (h4Checklist.js's H4_CHECKLIST_DEFINITIONS,
+// cosF2Checklist.js's COS_F2_CHECKLIST_DEFINITIONS, cosB1B2Checklist.js's
+// COS_B1_B2_CHECKLIST_DEFINITIONS, asserted separately below).
 test("single-party scaffold checklists: one scaffold per real-content-EXCLUDED filing type, checklistRole is the applicant only, clearly marked temporary", () => {
-  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F2"];
+  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2"];
   const scaffoldEligible = listFilingTypes().filter((ft) => !REAL_CONTENT_KEYS.includes(ft.key));
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.length, scaffoldEligible.length, "exactly one scaffold per real-content-excluded filing type");
   const visaTypesSeen = new Set();
@@ -142,6 +177,22 @@ test("H4 real-content checklists: exactly the three H4 filing types have real (n
   });
 });
 
+test("COS_F1 real-content checklist: one combined questionnaire (not a scaffold), checklistRole is the F-1 applicant only", () => {
+  const { COS_F1_CHECKLIST_DEFINITIONS } = require("../../questionnaires/cosF1Checklist");
+  assert.equal(COS_F1_CHECKLIST_DEFINITIONS.length, 1, "exactly one combined questionnaire, not one per role");
+  const filingType = getFilingType("COS_F1");
+  const realDef = COS_F1_CHECKLIST_DEFINITIONS[0];
+  assert.equal(realDef.key, filingType.questionnaireKey);
+  assert.equal(realDef.visaType, filingType.visaType);
+  assert.equal(realDef.checklistRole, "client");
+  assert.equal(realDef.isDefault, true);
+  assert.ok(realDef.questions.length > 5, "must have real (non-scaffold) content");
+  assert.ok(
+    !SINGLE_PARTY_FILING_DEFINITIONS.some((scaffold) => scaffold.key === filingType.questionnaireKey),
+    "COS_F1 must not also have a competing scaffold"
+  );
+});
+
 test("COS_F2 real-content checklist: one combined questionnaire (not a scaffold), checklistRole is the F-2 applicant only", () => {
   const { COS_F2_CHECKLIST_DEFINITIONS } = require("../../questionnaires/cosF2Checklist");
   assert.equal(COS_F2_CHECKLIST_DEFINITIONS.length, 1, "exactly one combined questionnaire, not one per role");
@@ -156,6 +207,38 @@ test("COS_F2 real-content checklist: one combined questionnaire (not a scaffold)
     !SINGLE_PARTY_FILING_DEFINITIONS.some((scaffold) => scaffold.key === filingType.questionnaireKey),
     "COS_F2 must not also have a competing scaffold"
   );
+});
+
+test("COS_B1/COS_B2 real-content checklists: TWO independent records (never a shared one), each with real content, none also has a competing scaffold", () => {
+  const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("../../questionnaires/cosB1B2Checklist");
+  assert.equal(COS_B1_B2_CHECKLIST_DEFINITIONS.length, 2, "two independent checklist records, never a shared/parent one");
+  const [b1Def, b2Def] = COS_B1_B2_CHECKLIST_DEFINITIONS;
+
+  const cosB1 = getFilingType("COS_B1");
+  assert.equal(b1Def.key, cosB1.questionnaireKey);
+  assert.equal(b1Def.visaType, "COSB1");
+  assert.equal(b1Def.checklistRole, "client");
+  assert.equal(b1Def.isDefault, true);
+  assert.ok(b1Def.questions.length > 5);
+
+  const cosB2 = getFilingType("COS_B2");
+  assert.equal(b2Def.key, cosB2.questionnaireKey);
+  assert.equal(b2Def.visaType, "COSB2");
+  assert.equal(b2Def.checklistRole, "client");
+  assert.equal(b2Def.isDefault, true);
+  assert.ok(b2Def.questions.length > 5);
+
+  // Independent records: different keys/visaTypes/titles, so B-1 content can
+  // diverge from B-2 content later without touching the other.
+  assert.notEqual(b1Def.key, b2Def.key);
+  assert.notEqual(b1Def.visaType, b2Def.visaType);
+  assert.notEqual(b1Def.title, b2Def.title);
+
+  // Neither has a competing scaffold — F1_TO_B2 shares COSB2's key/content
+  // by design (not a separate scaffold), so it must not appear either.
+  [cosB1.questionnaireKey, cosB2.questionnaireKey].forEach((key) => {
+    assert.ok(!SINGLE_PARTY_FILING_DEFINITIONS.some((scaffold) => scaffold.key === key), `${key} must not also have a competing scaffold`);
+  });
 });
 
 // ── Stage 2: route registration ──

@@ -339,6 +339,25 @@ add(
   i539("F-2")
 );
 
+// ===================== COS TO F-1 (SINGLE-PARTY FILING-TYPE VARIANT) =====================
+// filingTypes.js's COS_F1 is a distinct, explicitly-selected filing type —
+// not the generic "F-1" case type above (untouched: I-20 REF + DS-160 AUTO +
+// I-539 CONDITIONAL + I-765 CONDITIONAL for OPT/CPT). COSF1 gets its own
+// dedicated visaType and AUTO_CREATE I-539 row, mirroring COSF2/COSB1/COSB2
+// above. Deliberately NO I-765 here — per the governing task spec,
+// employment authorization (OPT/CPT) is a separate workflow and must never
+// be auto-attached just because the destination is F-1. No I-20/SEVIS-fee
+// row either — those are client supporting documents on the checklist
+// itself (cosF1Checklist.js), never USCIS CaseForms. I-539A/I-907/G-28 are
+// CONDITIONAL, Case-Manager-decision-only (recordConditionalDecision), same
+// pattern as every other visa's own i539A()/i907()/g28() rows.
+add(
+  i539AutoCreate("COSF1", { notes: "Change of Status to F-1 filing type — I-539 is the primary and only automatically-created USCIS form." }),
+  i539A("COSF1"),
+  i907("COSF1"),
+  g28("COSF1")
+);
+
 // ===================== COS TO F-2 (SINGLE-PARTY FILING-TYPE VARIANT) =====================
 // filingTypes.js's COS_F2 is a distinct, explicitly-selected filing type
 // (not the generic "F-2" dependent-status case type above) — gets its own
@@ -385,6 +404,17 @@ add(
 add(ds160("B-1", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-1"));
 add(ds160("B-2", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-2"));
 add(ds160("B-1/B-2", { provisioningType: AUTO, initialCaseCreation: true }), i539("B-1/B-2"));
+
+// ===================== COS TO B-1 / B-2 (SINGLE-PARTY FILING-TYPE VARIANTS) =====================
+// filingTypes.js's COS_B1/COS_B2 (and F1_TO_B2, which shares COS_B2's
+// visaType/content) are distinct, explicitly-selected filing types — not
+// the generic "B-1"/"B-2" case types above (those stay untouched, still
+// DS-160+CONDITIONAL-I-539 for a consular/generic case). Each gets its own
+// dedicated visaType and AUTO_CREATE I-539 row, mirroring COSF2/H4EXTENSION
+// above. No DS-160 (this is an in-country COS, not consular) and no I-539A
+// (this checklist has no co-applicant/dependent content).
+add(i539AutoCreate("COSB1", { notes: "Change of Status to B-1 filing type — I-539 is the primary and only USCIS form." }));
+add(i539AutoCreate("COSB2", { notes: "Change of Status to B-2 filing type (also used by the F1_TO_B2 registry key, which shares this visaType) — I-539 is the primary and only USCIS form." }));
 
 // ===================== U VISA =====================
 add(

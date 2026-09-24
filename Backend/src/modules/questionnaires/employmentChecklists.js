@@ -15,6 +15,7 @@ const o1 = require("../employment-workflow/questionnaires/o1");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
+const e2 = require("../employment-workflow/questionnaires/e2");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -31,6 +32,7 @@ const DOCUMENT_CATEGORY_SECTIONS = {
   p3_evidence: "For P-3 (Culturally Unique Program)",
   financial: "Financial Documents",
   evidence: "Evidence Documents",
+  e2_supporting: "E-2 Supporting Documents",
 };
 
 // Ordered so more specific prefixes are checked before their parents
@@ -42,6 +44,29 @@ const SECTION_PREFIX_MAP = [
   ["businessPlan.usCompany.", "U.S. Company (Business Plan)"],
   ["businessPlan.executiveProfile.", "Executive / Beneficiary Profile"],
   ["businessPlan.marketAnalysis.", "Market, Competition & Growth Strategy"],
+  // E-2 Business Plan Checklist (checklistRole "business_plan").
+  ["e2BusinessPlan.personal.", "Personal & Immigration Information"],
+  ["e2BusinessPlan.business.", "Business Overview"],
+  ["e2BusinessPlan.investment.", "Investment Details"],
+  ["e2BusinessPlan.ownership.", "Ownership Structure"],
+  ["e2BusinessPlan.operations.", "Business Model & Operations"],
+  ["e2BusinessPlan.market.", "Market Analysis"],
+  ["e2BusinessPlan.hiring.", "Hiring Plan"],
+  ["e2BusinessPlan.financial.", "Financial Projections"],
+  ["e2BusinessPlan.background.", "Investor/Principal Background"],
+  ["e2BusinessPlan.lease.", "Lease & Location"],
+  ["e2BusinessPlan.licenses.", "Licenses & Registrations"],
+  ["e2BusinessPlan.marketing.", "Marketing & Growth"],
+  // E-2 Visa Checklist (checklistRole "employer").
+  ["e2.company.", "Employer Information"],
+  ["e2.signingPerson.", "Employer Information"],
+  ["e2.employee.", "Employee Information"],
+  ["e2.treaty.", "Treaty Information"],
+  ["e2.foreignEmployer.", "Employer Outside United States"],
+  ["e2.relationship.", "U.S./Foreign Company Relationship"],
+  ["e2.ownership.", "Ownership"],
+  ["e2.staff.", "Staff in the United States"],
+  ["e2.investor.", "Treaty Investor"],
   ["lca.", "LCA Filing"],
   ["company.", "Company Information"],
   ["usCompany.", "US Company"],
@@ -139,6 +164,45 @@ const REPEATABLE_FIELDS = {
     { key: "relation", label: "Relation to You", type: "text" },
     { key: "dateOfBirth", label: "Date of Birth", type: "date" },
     { key: "countryOfBirth", label: "Country of Birth", type: "text" },
+  ],
+  // E-2 Business Plan Checklist repeating groups.
+  "employer.e2BusinessPlan.ownership.partners": [
+    { key: "name", label: "Name", type: "text" },
+    { key: "percentage", label: "Percentage", type: "text" },
+    { key: "role", label: "Role", type: "text" },
+  ],
+  "employer.e2BusinessPlan.market.topCompetitors": [
+    { key: "name", label: "Competitor name", type: "text" },
+    { key: "strengths", label: "Strengths", type: "text" },
+    { key: "weaknesses", label: "Weaknesses", type: "text" },
+  ],
+  "employer.e2BusinessPlan.hiring.employeesByYear": [
+    { key: "year", label: "Year", type: "select", options: ["Year 1", "Year 2", "Year 3", "Year 4", "Year 5"] },
+    { key: "numberOfEmployees", label: "Number of Employees to Hire", type: "text" },
+  ],
+  "employer.e2BusinessPlan.hiring.jobTitlesAndRoles": [
+    { key: "jobTitle", label: "Job Title", type: "text" },
+    { key: "role", label: "Role", type: "text" },
+  ],
+  "employer.e2BusinessPlan.hiring.salaryEstimates": [
+    { key: "jobTitle", label: "Job Title", type: "text" },
+    { key: "salary", label: "Estimated Salary", type: "text" },
+  ],
+  // E-2 Visa Checklist repeating groups.
+  "employer.e2.employee.jobLocations": [
+    { key: "street", label: "Street", type: "text" },
+    { key: "city", label: "City", type: "text" },
+    { key: "state", label: "State", type: "text" },
+    { key: "zipCode", label: "Zip Code", type: "text" },
+  ],
+  "employer.e2.employee.workLocationClients": [
+    { key: "companyName", label: "Company/End-Client Name", type: "text" },
+  ],
+  "employer.e2.ownership.owners": [
+    { key: "name", label: "Name", type: "text" },
+    { key: "nationality", label: "Nationality", type: "text" },
+    { key: "immigrationStatus", label: "Immigration Status", type: "text" },
+    { key: "percentOwnership", label: "Percent of Ownership", type: "text" },
   ],
 };
 
@@ -531,6 +595,64 @@ function buildL1aBusinessPlanChecklist() {
     // persisted as case.assessmentAnswers.newOfficePetition) via
     // ImmigrationKnowledgeEngineService.questionnaireApplies().
     assignmentRules: { requiresNewOfficePetition: true },
+  });
+}
+
+// E-2 Treaty Investor — three checklists (see e2.js's file banner for the
+// architecture decision): a consolidated employer/employee/treaty checklist
+// (checklistRole "employer"), a business plan checklist (checklistRole
+// "business_plan", reusing L-1A's role), and a minimal document-only
+// supporting-documents checklist (checklistRole "supporting_documents").
+function buildE2VisaChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const fieldResult = fieldQuestionsFromCatalog(
+    e2.fieldCatalog().filter((entry) => entry.path.startsWith("employer.e2.")),
+    visibility,
+  );
+  return definitionFromParts({
+    key: "e2_visa_checklist",
+    title: "E-2 Visa Checklist",
+    visaType: "E2",
+    checklistRole: "employer",
+    description: "Consolidated employer, employee, treaty, ownership, and staffing information for an E-2 Treaty Investor petition.",
+    documentSectionOrder: [],
+    documentQuestionList: [],
+    fieldResult,
+  });
+}
+
+function buildE2BusinessPlanChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const fieldResult = fieldQuestionsFromCatalog(
+    e2.fieldCatalog().filter((entry) => entry.path.startsWith("employer.e2BusinessPlan.")),
+    visibility,
+  );
+  return definitionFromParts({
+    key: "e2_business_plan_checklist",
+    title: "E-2 Business Plan Checklist",
+    visaType: "E2",
+    checklistRole: "business_plan",
+    description: "Business plan information supporting an E-2 Treaty Investor petition.",
+    documentSectionOrder: [],
+    documentQuestionList: [],
+    fieldResult,
+  });
+}
+
+function buildE2SupportingDocumentsChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(e2.supportingDocuments, visibility, documentSectionOrder, counters);
+  return definitionFromParts({
+    key: "e2_supporting_documents_checklist",
+    title: "E-2 Supporting Documents Checklist",
+    visaType: "E2",
+    checklistRole: "supporting_documents",
+    description: "Supporting documents required for an E-2 Treaty Investor petition.",
+    documentSectionOrder,
+    documentQuestionList,
+    fieldResult: { sectionOrder: [], questions: [] },
   });
 }
 
@@ -1005,6 +1127,9 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildL1aEmployerChecklist(),
   buildL1aEmployeeChecklist(),
   buildL1aBusinessPlanChecklist(),
+  buildE2VisaChecklist(),
+  buildE2BusinessPlanChecklist(),
+  buildE2SupportingDocumentsChecklist(),
   buildPEmployerChecklist(),
   buildPEmployeeChecklist(),
   buildO1EmployerChecklist(),

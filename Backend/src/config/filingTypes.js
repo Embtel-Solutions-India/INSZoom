@@ -81,6 +81,13 @@ const FILING_TYPES = {
     visaType: "F1REINSTATEMENT",
     questionnaireKey: "f1_reinstatement_questionnaire",
   },
+  // Kept as its own registry key (fromStatus:"F-1" still wins the specificity
+  // check in resolveTransitionFilingType over the wildcard COS_B2 below, so
+  // routing/case data referencing this key is unaffected) — but its content
+  // is now the same real COS_TO_B2 checklist every other source status gets
+  // (cos_b2_questionnaire), not a separate F-1-only scaffold. This avoids
+  // the exact "per-source-visa checklist" duplication (H1B_TO_B1/F1_TO_B1/
+  // L1_TO_B1-style) the COS-to-B1/B2 task explicitly forbids.
   F1_TO_B2: {
     key: "F1_TO_B2",
     label: "F-1 to B-2 Change of Status",
@@ -89,8 +96,38 @@ const FILING_TYPES = {
     isTransition: true,
     fromStatus: "F-1",
     toStatus: "B-2",
-    visaType: "F1TOB2",
-    questionnaireKey: "f1_to_b2_questionnaire",
+    visaType: "COSB2",
+    questionnaireKey: "cos_b2_questionnaire",
+  },
+  // Wildcard (any current status) -> B-1. See COS_F1/COS_F2 above for the
+  // same "fromStatus: null" pattern.
+  COS_B1: {
+    key: "COS_B1",
+    label: "Change of Status to B-1 (Business Visitor)",
+    category: "change_of_status",
+    includesEad: false,
+    isTransition: true,
+    fromStatus: null,
+    toStatus: "B-1",
+    visaType: "COSB1",
+    questionnaireKey: "cos_b1_questionnaire",
+  },
+  // Wildcard (any current status) -> B-2. F1_TO_B2 above is more specific
+  // (fromStatus:"F-1") and wins for that one pair, per
+  // resolveTransitionFilingType's specificity rule — but it now shares this
+  // same cos_b2_questionnaire content, so every current-status -> B-2 case
+  // gets identical COS_TO_B2 content regardless of which registry key it
+  // resolved through.
+  COS_B2: {
+    key: "COS_B2",
+    label: "Change of Status to B-2 (Tourist Visitor)",
+    category: "change_of_status",
+    includesEad: false,
+    isTransition: true,
+    fromStatus: null,
+    toStatus: "B-2",
+    visaType: "COSB2",
+    questionnaireKey: "cos_b2_questionnaire",
   },
   EAD: {
     key: "EAD",

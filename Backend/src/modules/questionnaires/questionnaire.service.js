@@ -27,7 +27,9 @@ const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
 const { CHANGE_OF_ADDRESS_DEFINITIONS } = require("./changeOfAddressChecklist");
 const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
+const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
+const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -1899,7 +1901,20 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // sections) sent only to the F-2 applicant — see cosF2Checklist.js's own
   // banner for why this departs from family-workflow's one-per-role
   // convention.
+  // COS to F-1 — a REAL, standalone case-creation visaType (COSF1),
+  // isDefault:true. One combined questionnaire (applicant + financial
+  // sponsor sections) sent only to the applicant — same rationale as
+  // cosF2Checklist.js's own banner. Current status stays free-text/dynamic
+  // (B-2/H-1B/H-4/L-1/F-2/etc. all resolve to this same checklist).
+  ...COS_F1_CHECKLIST_DEFINITIONS,
   ...COS_F2_CHECKLIST_DEFINITIONS,
+  // COS to B-1 / COS to B-2 — two INDEPENDENT real, standalone
+  // case-creation visaTypes (COSB1, COSB2), each isDefault:true. F1_TO_B2
+  // shares COSB2's visaType/content (see filingTypes.js's comment) rather
+  // than having its own separate checklist — see cosB1B2Checklist.js's own
+  // banner for why these two records must never be merged into one shared
+  // checklist.
+  ...COS_B1_B2_CHECKLIST_DEFINITIONS,
 ];
 
 function slugSection(title) {

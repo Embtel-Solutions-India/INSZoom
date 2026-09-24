@@ -348,6 +348,13 @@ const CRMCaseDetail = () => {
   const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer', { enabled: overviewActive })
   const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: overviewActive })
   const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: overviewActive })
+  // E-2 Treaty Investor's third checklist (Backend
+  // src/modules/employment-workflow/questionnaires/e2.js /
+  // src/modules/questionnaires/employmentChecklists.js — checklistRole
+  // "supporting_documents"). The E-2 Visa checklist itself reuses the
+  // existing "employer" role/hook above; only this document-only checklist
+  // needed its own role.
+  const supportingDocumentsQuestionnaire = useCaseQuestionnaire(caseData?._id, 'supporting_documents', { enabled: overviewActive })
   // Family/sponsor (K-1/K-3) cases carry the petitioner/beneficiary pair of
   // checklists instead of employer/employee (see Backend
   // src/modules/questionnaires/familyChecklists.js — checklistRole "petitioner"
@@ -430,7 +437,7 @@ const CRMCaseDetail = () => {
       setApprovingGcNvc(false)
     }
   }
-  const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId].filter(Boolean)
+  const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId, supportingDocumentsQuestionnaire.responseId].filter(Boolean)
   const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
   // Scoped to upload (file-type) questions only — c.progress mixes in
   // questionnaire field answers, which QuestionnaireAnswersPanel already
@@ -1842,6 +1849,13 @@ const CRMCaseDetail = () => {
                 fieldQuestions={businessPlanQuestionnaire.fieldQuestions}
                 answerMap={businessPlanQuestionnaire.answerMap}
                 loading={businessPlanQuestionnaire.loading}
+              />
+              <QuestionnaireAnswersPanel
+                title="E-2 Supporting Documents"
+                questionnaire={supportingDocumentsQuestionnaire.questionnaire}
+                fieldQuestions={supportingDocumentsQuestionnaire.fieldQuestions}
+                answerMap={supportingDocumentsQuestionnaire.answerMap}
+                loading={supportingDocumentsQuestionnaire.loading}
               />
               <QuestionnaireAnswersPanel
                 title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
