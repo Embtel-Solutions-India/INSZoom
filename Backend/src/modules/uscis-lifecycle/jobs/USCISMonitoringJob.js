@@ -5,6 +5,18 @@ async function runUSCISMonitoringJob(options = {}, user, req) {
 }
 
 function startUSCISMonitoringJob() {
+  // Confirmed empirically (this ran, unattended, against real uscis.gov):
+  // scanAll()'s full crawl walks the ENTIRE "all-forms" directory (up to
+  // USCIS_SYNC_MAX_PAGES pages) and attempts to import every form code it
+  // finds there - not just the forms this system already knows about - and
+  // each import can take 100+ seconds for a complex hybrid PDF (measured:
+  // I-129 alone). That is real, sustained external load against a
+  // government site plus many new DB writes/notifications, not something to
+  // default on for every developer's machine just because the manual
+  // "Sync Now" timeout bug (fixed separately - see beginScanRun/
+  // executeScanRun) is unrelated to this gate. Left as the original
+  // opt-in-outside-production behavior: explicit USCIS_MONITORING_ENABLED=
+  // true still enables it anywhere, including localhost.
   const configured = process.env.USCIS_MONITORING_ENABLED;
   const enabled = configured === "true" || (configured === undefined && process.env.NODE_ENV === "production");
   if (!enabled) return null;

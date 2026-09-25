@@ -304,6 +304,107 @@ async function getTemplatePdf(req, res, next) {
   }
 }
 
+// Component-scoped blank PDF (e.g. the I-129 H Classification Supplement's
+// own 8 pages, not the full 38-page parent). Cache-aside: serves the
+// previously-sliced PDF from storage when available and still fresh
+// (parentTemplateChecksum unchanged, cached within the last 24h); otherwise
+// slices fresh via Adobe combinepdf (AdobePdfService.slicePdf) and caches
+// the result. No automatic fallback to the full parent PDF on any failure -
+// per the task's own constraint, a slicing failure must throw, never
+// silently serve the wrong (unsliced) document.
+async function getComponentPdf(req, res, next) {
+  try {
+    const template = await USCISFormTemplate.findById(req.params.id).select("formCode version artifacts pdfStorageKey").lean();
+    if (!template) {
+      const error = new Error("USCIS form template not found");
+      error.statusCode = 404;
+      throw error;
+    }
+    const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+    const componentDef = await USCISFormComponentDefinition.findOne({
+      parentTemplateId: template._id,
+      componentCode: req.params.componentCode,
+      status: "ACTIVE",
+    });
+    if (!componentDef) {
+      const error = new Error(`No ACTIVE component "${req.params.componentCode}" found for this template`);
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const parentChecksum = template.artifacts?.form?.checksum || null;
+    const cacheFresh = componentDef.slicedPdfStorageKey
+      && componentDef.parentTemplateChecksum === parentChecksum
+      && componentDef.slicedPdfCachedAt
+      && (Date.now() - new Date(componentDef.slicedPdfCachedAt).getTime()) < 24 * 60 * 60 * 1000;
+
+    let buffer = null;
+    if (cacheFresh) {
+      try {
+        buffer = await storageService.readBuffer(componentDef.slicedPdfStorageKey);
+      } catch (readError) {
+        if (readError.code !== "ENOENT") throw readError;
+        buffer = null; // fall through to re-slice
+      }
+    }
+
+    if (!buffer) {
+      const key = template.artifacts?.form?.storageKey || template.pdfStorageKey;
+      if (!key) {
+        const error = new Error("This template has no stored PDF artifact");
+        error.statusCode = 404;
+        throw error;
+      }
+      const rawBuffer = await storageService.readBuffer(key);
+      // Root cause (confirmed empirically, see XfaPurgeGuard.js): a plain
+      // pdf-lib load+save only unlinks the AcroForm's /XFA dictionary key -
+      // it does not delete the orphaned XFA template package's own stream
+      // objects, which Adobe's combinepdf (and setformdata) still detect
+      // and reject as "Source PDF is a XFA Form and cannot be processed".
+      // Explicitly purging those objects (not just re-saving) is what
+      // actually makes the buffer acceptable to Adobe.
+      const PDFRenderer = require("../form-generation/services/PDFRenderer");
+      const { purgeOrphanedXfaObjects } = require("../form-generation/services/XfaPurgeGuard");
+      const { rebuildAcroFormFieldsFromWidgets } = require("../form-generation/services/AcroFormRepairGuard");
+      const { PDFDocument } = PDFRenderer.loadPdfLib();
+      const rawPdf = await PDFDocument.load(rawBuffer, { ignoreEncryption: true, updateMetadata: false });
+      purgeOrphanedXfaObjects(rawPdf);
+      const cleanedBuffer = Buffer.from(await rawPdf.save());
+      const AdobePdfService = require("../pdf-services/AdobePdfService");
+      const adobeRanges = componentDef.pageRanges.map((r) => ({ start: r.startPage, end: r.endPage }));
+      const slicedBuffer = await AdobePdfService.slicePdf(cleanedBuffer, adobeRanges);
+      // Root cause (confirmed empirically, see AcroFormRepairGuard.js):
+      // Adobe's combinepdf preserves every kept page's own Widget
+      // annotations, but drops the document-level AcroForm's /Fields index
+      // into them - repair it here too, on the blank viewer PDF, the same
+      // way as the filled-download path.
+      const slicedDoc = await PDFDocument.load(slicedBuffer, { ignoreEncryption: true, updateMetadata: false });
+      rebuildAcroFormFieldsFromWidgets(slicedDoc);
+      buffer = Buffer.from(await slicedDoc.save());
+
+      const crypto = require("crypto");
+      const slicedPdfChecksum = crypto.createHash("sha256").update(buffer).digest("hex");
+      const stored = await storageService.storeBuffer(
+        `uscis-forms/component-slices/${template._id}/${componentDef.componentCode}.pdf`,
+        buffer,
+        "application/pdf"
+      );
+      componentDef.slicedPdfStorageKey = stored.key;
+      componentDef.slicedPdfChecksum = slicedPdfChecksum;
+      componentDef.slicedPdfCachedAt = new Date();
+      componentDef.parentTemplateChecksum = parentChecksum;
+      await componentDef.save();
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${template.formCode}-${componentDef.componentCode}.pdf"`);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // Spec §40 GET /:id/url — mints a short-lived signed link to the official
 // PDF. See uscis-form-access.service.js for why this is a backend-signed
 // grant rather than a raw S3 presigned URL (objects are app-encrypted at
@@ -845,6 +946,7 @@ module.exports = {
   decideInteractiveForm,
   getAllCaseForms,
   getCaseForms,
+  getComponentPdf,
   getSyncHistory,
   getTemplatePdf,
   getVersions,

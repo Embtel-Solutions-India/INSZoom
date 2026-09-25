@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
@@ -2696,6 +2696,29 @@ const CRMCaseDetail = () => {
                               title="Re-run curated + biographic-fallback autofill for this form"
                             >
                               {rowActionPending === `caseform-${form._id}` ? 'Filling…' : 'Autofill'}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await formGenerationApi.downloadForm(form._id)
+                                  const blob = new Blob([response.data], { type: 'application/pdf' })
+                                  const url = URL.createObjectURL(blob)
+                                  const link = document.createElement('a')
+                                  link.href = url
+                                  const date = new Date().toISOString().slice(0, 10)
+                                  link.download = `${form.formCode}_${date}.pdf`
+                                  document.body.appendChild(link)
+                                  link.click()
+                                  document.body.removeChild(link)
+                                  URL.revokeObjectURL(url)
+                                } catch (error) {
+                                  setFormActionMessage(error.response?.data?.message || 'Unable to download this form.')
+                                }
+                              }}
+                              className="btn-secondary text-sm"
+                              title="Download the official, filled PDF (sliced to this form's own pages only)"
+                            >
+                              Download
                             </button>
                           </div>
                         </td>

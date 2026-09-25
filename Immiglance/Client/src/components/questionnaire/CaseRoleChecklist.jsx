@@ -27,7 +27,7 @@ import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 // — useCaseQuestionnaire has no request cache of its own.
 export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   const {
-    questionnaire, loading, error, sections, questionsBySection, answers, answerByKey,
+    questionnaire, initialLoading, refreshing, error, sections, questionsBySection, answers, answerByKey,
     prefillMeta, savingKey, saveAnswer, saveFiles, commitAll, handleAutofillResult,
     overallCompletion, missingRequiredCount, dirty, saveState, lastSavedAt, statusMessage,
   } = qa;
@@ -38,12 +38,19 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
     return { key, title: section.title, questions, autofillSources: matchingAutofillSources(questions) };
   }).filter((section) => section.questions.length > 0), [sections, questionsBySection]);
 
-  if (loading) return <p className="text-sm text-slate-400">Loading…</p>;
+  // Bug fix: this used to gate on `loading`, which is also true for a
+  // background refetch after a file upload (saveFiles -> refetch()) - that
+  // unmounted the entire already-visible checklist for 1-2s on every single
+  // upload. `initialLoading` is true only before the first successful fetch
+  // ever completes; a later refetch with existing data shows the subtle
+  // "Updating…" indicator below instead of replacing this content.
+  if (initialLoading) return <p className="text-sm text-slate-400">Loading…</p>;
   if (error) return <p className="text-sm text-red-600">{error.message || "Unable to load this checklist."}</p>;
   if (!questionnaire) return <p className="text-sm text-slate-400">No checklist is available for this visa type yet.</p>;
 
   return (
     <div className="space-y-6">
+      {refreshing && <p className="text-xs text-slate-400">Updating…</p>}
       {!readOnly && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
           <div>

@@ -18,7 +18,30 @@ const PDFFieldMapper = require("./PDFFieldMapper");
 const AdobePdfService = require("../../pdf-services/AdobePdfService");
 const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
 const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
+const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
+const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
+
+// Converts a flat, sorted, 1-based page list (ComponentPageResolver.
+// resolvePagesToKeep()'s return shape) into the contiguous {start, end}
+// ranges Adobe's combinepdf API requires.
+function toAdobeRanges(pages1Based) {
+  if (!pages1Based || !pages1Based.length) return null;
+  const sorted = [...pages1Based].sort((a, b) => a - b);
+  const ranges = [];
+  let start = sorted[0];
+  let end = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === end + 1) {
+      end = sorted[i];
+    } else {
+      ranges.push({ start, end });
+      start = end = sorted[i];
+    }
+  }
+  ranges.push({ start, end });
+  return ranges;
+}
 
 function classifyField(field) {
   const ctor = field.constructor?.name || "";
@@ -134,6 +157,15 @@ class AdobeFormRenderer {
     // against I-485's real template; this crashes BEFORE the buffer ever
     // reaches Adobe. See RichTextFieldGuard.js.
     disableEmptyRichTextFields(sourceForm);
+    // Confirmed empirically against the real Adobe API: a hybrid XFA+AcroForm
+    // USCIS PDF (e.g. I-129) still carries its orphaned XFA package after a
+    // plain pdf-lib save() - pdf-lib only unlinks the AcroForm's /XFA key, it
+    // does not delete the underlying stream objects - and Adobe's setformdata
+    // (and combinepdf) reject that leftover package with "Source PDF is a
+    // XFA Form and cannot be processed", intermittently manifesting as a
+    // generic Internal Server Error rather than the specific message. See
+    // XfaPurgeGuard.js for the full root-cause writeup.
+    purgeOrphanedXfaObjects(sourcePdf);
     const uploadBuffer = Buffer.from(await sourcePdf.save());
     let buffer = await AdobePdfService.fillPdf(uploadBuffer, jsonFormFieldsData);
 
@@ -154,24 +186,49 @@ class AdobeFormRenderer {
     // Adobe's own output may still carry the rich-text flag on a field it
     // didn't touch - guard this save the same way as the pre-upload one.
     const disabledRichTextFields = disableEmptyRichTextFields(adobeOutputDoc.getForm());
+    // Defensive, same reasoning as the pre-upload purge above - if Adobe's
+    // own output ever carries a residual XFA reference, the slice call
+    // below must not be the one to discover that the hard way.
+    purgeOrphanedXfaObjects(adobeOutputDoc);
 
     // Page slicing - same shared resolver PDFRenderer.render() uses (both
-    // component AND core-boundary resolution, Phase 2 add-on), applied here
-    // as a post-process since Adobe fills the PDF externally (this engine
-    // never touches pdf-lib during the fill itself). Adobe is the DEFAULT
-    // download engine (env.adobe.fillEnabled), so without this, a component
-    // or core CaseForm's official download would still silently return the
-    // full parent PDF even after PDFRenderer.render() was fixed - both
-    // engines must honor the same render plan.
+    // component AND core-boundary resolution, Phase 2 add-on). Adobe is the
+    // DEFAULT download engine (env.adobe.fillEnabled), so without this, a
+    // component or core CaseForm's official download would still silently
+    // return the full parent PDF even after PDFRenderer.render() was fixed -
+    // both engines must honor the same render plan. Slicing itself is
+    // Adobe-native (combinepdf), not pdf-lib's removePage - the pdf-lib
+    // document here is used ONLY for the barcode/rich-text guards above;
+    // page removal never touches pdf-lib in this engine. PDFRenderer.js's
+    // pdf-lib fallback path still uses ComponentPageResolver.keepOnlyPages
+    // unchanged.
     let componentPageCount = null;
     const totalPages = adobeOutputDoc.getPageCount();
     const pagesToKeep = await ComponentPageResolver.resolvePagesToKeep(caseForm, template, totalPages);
-    if (pagesToKeep) {
-      ComponentPageResolver.keepOnlyPages(adobeOutputDoc, pagesToKeep);
-      componentPageCount = pagesToKeep.length;
-    }
 
-    buffer = Buffer.from(await adobeOutputDoc.save());
+    // Save the barcode-fixed, rich-text-guarded output first (before
+    // slicing) - this is what Adobe combinepdf receives, still with every
+    // original page.
+    const fixedBuffer = Buffer.from(await adobeOutputDoc.save());
+
+    let acroFormRepair = null;
+    if (pagesToKeep) {
+      const adobeRanges = toAdobeRanges(pagesToKeep);
+      const sliced = await AdobePdfService.slicePdf(fixedBuffer, adobeRanges);
+      componentPageCount = adobeRanges.reduce((n, r) => n + (r.end - r.start + 1), 0);
+      // Root cause (confirmed empirically, see AcroFormRepairGuard.js):
+      // Adobe's combinepdf page-range extraction preserves every kept
+      // page's own Widget annotations intact, but does NOT reconstruct the
+      // document-level AcroForm's /Fields array to reference them - the
+      // sliced output's /Fields comes back empty even though the widgets
+      // themselves survive. Without this repair, every component/core
+      // download would fail PDFFidelityService's field-count check.
+      const slicedDoc = await AdobeOutputPDFDocument.load(sliced, { ignoreEncryption: true, updateMetadata: false });
+      acroFormRepair = rebuildAcroFormFieldsFromWidgets(slicedDoc);
+      buffer = Buffer.from(await slicedDoc.save());
+    } else {
+      buffer = fixedBuffer;
+    }
 
     const PDFFidelityService = require("./PDFFidelityService");
     const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template);
@@ -205,6 +262,7 @@ class AdobeFormRenderer {
         watermark: null,
         componentCode: caseForm.componentCode || null,
         componentPageCount,
+        acroFormRepair,
       },
       fidelityReport: fidelityResult.report,
     };

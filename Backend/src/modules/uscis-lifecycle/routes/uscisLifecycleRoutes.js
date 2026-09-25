@@ -11,6 +11,7 @@ router.get("/forms/:formType/versions", authorizePermissions("forms:read"), cont
 router.get("/forms/:formType/compare/:version", authorizePermissions("forms:read"), controller.compareVersion);
 router.post("/forms/import", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:create"), controller.importForm);
 router.post("/forms/scan", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.scan);
+router.get("/forms/scan/status/:syncRunId", authorizePermissions("forms:read"), controller.getScanStatus);
 router.post("/forms/:version/approve", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.approve);
 router.post("/forms/:version/activate", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.activate);
 router.post("/forms/:version/retire", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), controller.retire);

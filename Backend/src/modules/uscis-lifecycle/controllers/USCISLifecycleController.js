@@ -1,8 +1,10 @@
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
+const USCISFormSyncRun = require("../../../models/USCISFormSyncRun");
 const FormComparisonService = require("../services/FormComparisonService");
 const FormImportService = require("../services/FormImportService");
 const USCISScannerService = require("../services/USCISScannerService");
 const VersionManagementService = require("../services/VersionManagementService");
+const logger = require("../../../utils/logger");
 
 function respond(res, status, payload) {
   return res.status(status).json({ success: status < 400, ...payload });
@@ -81,7 +83,47 @@ exports.retire = async (req, res) => {
 
 exports.scan = async (req, res) => {
   try {
-    respond(res, 200, { data: await USCISScannerService.scanAll(req.body || {}, req.user, req) });
+    const options = req.body || {};
+    if (options.forms?.length) {
+      // Small, explicitly-scoped test/tooling path (a handful of named
+      // forms) - fast enough to stay synchronous, unchanged.
+      respond(res, 200, { data: await USCISScannerService.scanAll(options, req.user, req) });
+      return;
+    }
+    // The full directory-crawl-and-import scan is genuinely slow (measured
+    // against the live uscis.gov site: a single form's import alone took
+    // 135s, dominated by PDF field-scanning of the real hybrid XFA+AcroForm
+    // template - not a network/User-Agent block, which was checked directly
+    // and ruled out). A synchronous HTTP request can't wait that out, so the
+    // lock-check + USCISFormSyncRun row creation happens now (fast) and the
+    // response returns immediately; the slow work continues after the
+    // response via executeScanRun(), updating that same row.
+    const prepared = await USCISScannerService.beginScanRun(options, req.user, req);
+    if (prepared.inProgress) {
+      respond(res, 200, { data: prepared });
+      return;
+    }
+    respond(res, 202, {
+      data: {
+        syncRunId: prepared.syncRun._id,
+        status: "running",
+        message: "USCIS form synchronization started",
+        statusUrl: `/api/uscis/forms/scan/status/${prepared.syncRun._id}`,
+      },
+    });
+    USCISScannerService.executeScanRun(prepared, options, req.user, req).catch((error) => {
+      logger.error("uscis_background_scan_failed", { syncRunId: prepared.syncRun._id, error: error.message });
+    });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
+exports.getScanStatus = async (req, res) => {
+  try {
+    const syncRun = await USCISFormSyncRun.findById(req.params.syncRunId).lean();
+    if (!syncRun) return respond(res, 404, { message: "Sync run not found" });
+    respond(res, 200, { data: syncRun });
   } catch (error) {
     handle(res, error);
   }

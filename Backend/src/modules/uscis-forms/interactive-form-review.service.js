@@ -405,10 +405,46 @@ class InteractiveFormReviewService {
     // reads the real field instead of silently sending nothing.
     const pageDimensions = (template.formLayout?.pages || template.formStructure?.pages || [])
       .map((page) => ({ pageNumber: page.pageNumber, width: page.width, height: page.height, rotation: page.rotation || 0 }));
+
+    // Adobe-native form-slicing task: tells the viewer which pages of the
+    // template PDF actually belong to this CaseForm, so a component
+    // CaseForm never shows the full 38-page parent and the core CaseForm
+    // never shows a sibling component's pages. Additive only - every other
+    // field on this response is unchanged.
+    const ComponentPageResolver = require("../form-generation/services/ComponentPageResolver");
+    const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+    let viewerPageConstraint = { type: "full", pages: null, pageRanges: null };
+    try {
+      if (caseForm.componentCode) {
+        const componentDef = await USCISFormComponentDefinition.findOne({
+          parentTemplateId: template._id,
+          componentCode: caseForm.componentCode,
+          status: "ACTIVE",
+        }).select("pageRanges").lean();
+        if (componentDef) {
+          const totalPages = template.pdfMetadata?.pageCount || 0;
+          const pages = totalPages
+            ? ComponentPageResolver.expandPageRanges(componentDef.pageRanges, totalPages, { componentCode: caseForm.componentCode, parentFormCode: template.formCode })
+            : null;
+          viewerPageConstraint = { type: "component", pages, pageRanges: componentDef.pageRanges };
+        }
+      } else {
+        const totalPages = template.pdfMetadata?.pageCount || 0;
+        const corePages = totalPages ? await ComponentPageResolver.resolveCorePages(template, totalPages) : null;
+        if (corePages) viewerPageConstraint = { type: "core", pages: corePages, pageRanges: null };
+      }
+    } catch (constraintError) {
+      // Never let a page-constraint resolution failure break the workspace
+      // response - the viewer degrades to showing the full PDF (existing,
+      // pre-this-task behavior) rather than the request failing outright.
+      viewerPageConstraint = { type: "full", pages: null, pageRanges: null };
+    }
+
     return {
       ...rendered,
       caseForm,
       template: { ...rendered.template, layout: template.formLayout || {}, pageDimensions, structure: template.formStructure || template.structure, sections },
+      viewerPageConstraint,
       caseSummary: {
         _id: caseData._id,
         caseNumber: caseData.caseNumber || caseData.caseId,

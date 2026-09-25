@@ -128,13 +128,89 @@ class AdobePdfService {
     return Buffer.from(await res.arrayBuffer());
   }
 
+  // Adobe's API returns a generic "An Internal Server Error has occurred"
+  // for a meaningful fraction of calls against large, complex documents
+  // (confirmed empirically, repeatedly, against the real ~7MB/980-field
+  // I-129: identical inputs succeed on one call and fail on the next, with
+  // no discernible difference - this is Adobe-side transient capacity/
+  // reliability behavior, not a deterministic input problem, unlike the
+  // XFA rejection XfaPurgeGuard.js fixes). Retrying the WHOLE operation
+  // (fresh asset upload each time, not just re-polling the same job) was
+  // confirmed to reliably recover: 3/3 controlled retried attempts
+  // succeeded during diagnosis where un-retried single attempts failed
+  // roughly half the time.
+  static async _withRetry(operation, { retries = 3, delayMs = 6000 } = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        if (attempt < retries) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw lastError;
+  }
+
   // Composes the above into the one call other code needs: a PDF buffer and
   // a field/value map in, a filled PDF buffer out.
   static async fillPdf(buffer, jsonFormFieldsData) {
-    const assetId = await this.uploadAsset(buffer);
-    const location = await this.setFormData(assetId, jsonFormFieldsData);
-    const job = await this.waitForJob(location);
-    return this.downloadResult(job);
+    return this._withRetry(async () => {
+      const assetId = await this.uploadAsset(buffer);
+      const location = await this.setFormData(assetId, jsonFormFieldsData);
+      const job = await this.waitForJob(location);
+      return this.downloadResult(job);
+    });
+  }
+
+  // Adobe combinepdf with pageRanges is the canonical page-extraction call
+  // per the documented REST API. pageRanges is an array of {start, end}
+  // (1-based, inclusive) - the caller is responsible for converting from
+  // ComponentPageResolver's {startPage, endPage} shape (see
+  // AdobeFormRenderer.js's toAdobeRanges()). The method uploads the source
+  // PDF, posts a combinepdf job with one asset entry and the requested
+  // ranges, polls to completion, and returns the sliced PDF buffer. Unlike
+  // fillPdf (setformdata), combinepdf has no interactive form output.
+  //
+  // IMPORTANT, confirmed empirically (see AcroFormRepairGuard.js for the
+  // full writeup): combinepdf preserves each kept page's own Widget
+  // annotations completely intact, but does NOT reconstruct the document-
+  // level AcroForm's /Fields index into them - the returned PDF's /Fields
+  // array comes back empty even though the real widgets survive on the
+  // page. Every caller of slicePdf() on a form-bearing PDF MUST run
+  // AcroFormRepairGuard.rebuildAcroFormFieldsFromWidgets() on the result
+  // before treating its field count as meaningful.
+  static async slicePdf(buffer, pageRanges) {
+    if (!pageRanges || !pageRanges.length) {
+      this._fail("ADOBE_SLICE_INVALID_RANGES", "slicePdf requires at least one page range", 422);
+    }
+    return this._withRetry(async () => {
+      const assetId = await this.uploadAsset(buffer);
+      const headers = await this.authHeaders();
+      let res;
+      try {
+        res = await fetch(`${this.baseUrl()}/operation/combinepdf`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            assets: [{
+              assetID: assetId,
+              pageRanges: pageRanges.map((r) => ({ start: r.start, end: r.end })),
+            }],
+          }),
+        });
+      } catch (error) {
+        this._fail("ADOBE_SLICE_FAILED", `Adobe /operation/combinepdf request failed: ${error.message}`, 502);
+      }
+      if (res.status !== 201) {
+        const body = await res.text().catch(() => "");
+        this._fail("ADOBE_SLICE_FAILED", `Adobe combinepdf request failed (HTTP ${res.status}): ${body.slice(0, 500)}`, 502);
+      }
+      const location = res.headers.get("location");
+      if (!location) this._fail("ADOBE_SLICE_FAILED", "Adobe combinepdf returned 201 with no job-status location header", 502);
+      const job = await this.waitForJob(location);
+      return this.downloadResult(job);
+    });
   }
 
   static _fail(code, message, status) {

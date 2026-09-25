@@ -614,8 +614,23 @@ class USCISScannerService {
       };
     }
 
+    const prepared = await this.beginScanRun(options, user, req);
+    if (prepared.inProgress) return prepared;
+    return this.executeScanRun(prepared, options, user, req);
+  }
+
+  // Split out of scanAll() so the full directory-crawl-and-import scan (real,
+  // measured duration against the live uscis.gov site: 135s for a SINGLE
+  // form's importOfficialForm call alone, dominated by PDF field-scanning of
+  // the real hybrid XFA+AcroForm I-129 - not a network/User-Agent problem,
+  // confirmed by direct fetch() calls with the exact same UA succeeding in
+  // under a second) can be handed to the caller's HTTP response immediately
+  // (this part alone - the lock check + USCISFormSyncRun row creation - is
+  // fast) while the slow work runs after the response via executeScanRun().
+  // Callers that want the old fully-synchronous behavior (scheduled job,
+  // tests) still get it through scanAll() awaiting both halves in sequence.
+  static async beginScanRun(options = {}, user, req) {
     const startedAt = Date.now();
-    const results = [];
     const sourceUrls = options.sourceUrls || [OFFICIAL_SOURCES.formsDirectoryUrl];
     sourceUrls.forEach((url) => {
       const parsed = this.assertOfficialUscisUrl(url);
@@ -632,10 +647,10 @@ class USCISScannerService {
     }).sort({ startedAt: -1 }).lean();
     if (activeRun) {
       return {
+        inProgress: true,
         syncRunId: activeRun._id,
         scannedAt: activeRun.startedAt,
         officialSources: activeRun.sourceUrls,
-        inProgress: true,
         report: { status: "running", summary: activeRun.summary },
         results: [],
       };
@@ -650,6 +665,12 @@ class USCISScannerService {
       trigger: options.trigger || (user ? "api" : "scheduled"),
       metadata: { force: Boolean(options.force) },
     });
+    return { inProgress: false, syncRun, sourceUrls, startedAt };
+  }
+
+  static async executeScanRun(prepared, options = {}, user, req) {
+    const { syncRun, sourceUrls, startedAt } = prepared;
+    const results = [];
     const failures = [];
     const detectedByKey = new Map();
     let formsDiscovered = 0;

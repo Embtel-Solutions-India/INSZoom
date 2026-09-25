@@ -2,6 +2,46 @@ const providerRegistry = require("../providers/document-intelligence-provider.re
 const { normalizePassportExtractionDto } = require("../dto/passport-extraction.dto");
 const { PASSPORT_FIELDS, PASSPORT_JSON_SCHEMA_EXAMPLE } = require("../schemas/passport-extraction.schema");
 const { validatePassportExtraction } = require("../validators/passport.validator");
+const { parseMrzFromText } = require("./mrz-parser.service");
+
+// MRZ (machine-readable zone) field -> PASSPORT_FIELDS key. Deliberately
+// covers only what the MRZ actually encodes (ICAO 9303 TD3) - placeOfBirth,
+// issueDate and mrzData's own free-text counterpart have no MRZ source and
+// are left to whatever the configured provider (Document AI / Gemini)
+// extracted from the visible page text.
+const MRZ_TO_PASSPORT_FIELD = {
+  lastName: "lastName",
+  firstName: "firstName",
+  middleName: "middleName",
+  passportNumber: "passportNumber",
+  nationality: "nationality",
+  dateOfBirth: "dateOfBirth",
+  gender: "gender",
+  expiryDate: "expiryDate",
+  issuingCountry: "issuingCountry",
+};
+
+// MRZ is a deterministic, checksum-verified read of a fixed-format printed
+// field - once a field's own checksum passes, there is no more accurate
+// source available for it, so it overrides whatever the AI provider guessed
+// from the visible (non-MRZ) page text. A checksum failure means the OCR
+// text for that specific MRZ field is corrupted, not that the field is
+// blank - it is left as null here and the AI provider's own value for that
+// field (if any) is kept untouched rather than being cleared.
+function applyMrzOverrides(normalized) {
+  const mrz = parseMrzFromText(normalized.rawText);
+  if (!mrz) return normalized;
+  Object.entries(MRZ_TO_PASSPORT_FIELD).forEach(([mrzKey, fieldKey]) => {
+    const value = mrz[mrzKey];
+    if (value == null || !normalized.fields[fieldKey]) return;
+    normalized.fields[fieldKey] = { value, confidence: 100, source: "mrz" };
+  });
+  if (mrz.mrzData && normalized.fields.mrzData) {
+    normalized.fields.mrzData = { value: mrz.mrzData, confidence: 100, source: "mrz" };
+  }
+  normalized.entities.mrz = { checksums: mrz.checksums };
+  return normalized;
+}
 
 function passportExtractionPrompt(document) {
   return [
@@ -37,7 +77,7 @@ async function extract({ document, buffer, geminiResponse }) {
     buffer,
     mimeType: document.mimeType || document.fileType,
   });
-  return applyValidation(normalizePassportExtractionDto(response));
+  return applyValidation(applyMrzOverrides(normalizePassportExtractionDto(response)));
 }
 
 module.exports = {

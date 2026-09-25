@@ -101,9 +101,30 @@ class VersionManagementService {
     template.activatedAt = new Date();
     template.lifecycle = { ...(template.lifecycle || {}), activatedBy: this.userId(user), impactAnalysis: impact };
     await template.save();
-    await this.audit("VERSION_ACTIVATED", template, user, req, { impact });
+
+    // A new edition can shift every downstream component's page range (a
+    // page inserted/removed anywhere before a supplement moves it) - never
+    // trust the previous edition's USCISFormComponentDefinition rows for the
+    // template that is now active. Re-derive them from this edition's own
+    // PDF text. Idempotent (discoverComponentsForParentForm upserts keyed on
+    // {parentTemplateId, componentCode}) and registry-driven (reads
+    // VisaFormMapping, not a hardcoded component list), so this is safe to
+    // run on every activation, including one with no real component
+    // boundary changes. Non-fatal: the version is already active by this
+    // point, so a discovery failure here must not undo that - it only means
+    // this edition's components stay whatever they were (or absent) until
+    // someone re-runs discovery manually.
+    let componentDiscovery = null;
+    try {
+      const USCISFormComponentDiscoveryService = require("../../uscis-forms/services/USCISFormComponentDiscoveryService");
+      componentDiscovery = await USCISFormComponentDiscoveryService.discoverComponentsForParentForm(template.formCode);
+    } catch (discoveryError) {
+      componentDiscovery = { parentFormCode: template.formCode, error: discoveryError.message, componentsDiscovered: 0 };
+    }
+
+    await this.audit("VERSION_ACTIVATED", template, user, req, { impact, componentDiscovery });
     await this.notify(["super_admin", "admin", "case_manager", "attorney"], { title: "USCIS form version activated", message: `${template.formCode} ${template.version} is now active for new cases. Existing cases remain locked to prior editions.`, metadata: { versionId, impact } }, user, req);
-    return { template, impact };
+    return { template, impact, componentDiscovery };
   }
 
   static async retire(versionId, user, req) {
