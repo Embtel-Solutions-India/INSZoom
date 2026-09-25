@@ -19,6 +19,17 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
     error: null,
   });
   const saveTimers = useRef({});
+  // Bug fix: a file upload (saveFiles in useQuestionnaireAnswers) calls
+  // refetch() -> load() on success, which set `loading: true` for that
+  // refetch exactly the same as the very first load - every render-gate that
+  // did `if (loading) return <Loading />` was unmounting the ALREADY-VISIBLE
+  // questionnaire for the ~1-2s round trip, not just showing a spinner on
+  // first mount. `hasLoadedOnce` distinguishes "no data has ever arrived yet"
+  // (initialLoading - the real blank-screen case) from "data exists, a
+  // background refetch is in flight" (refreshing - must never unmount
+  // existing content). `loading` itself is left untouched for any consumer
+  // not yet migrated off it.
+  const hasLoadedOnce = useRef(false);
 
   // Phase 12 fix (P12-C1): this is a pure read (GET), so retrying it has no
   // side-effect risk, unlike saveAnswer below. A single transient failure
@@ -46,6 +57,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
       if (referenceId) params.referenceId = referenceId;
       const response = await questionnairesApi.getForCase(caseId, params);
       const data = response.data;
+      hasLoadedOnce.current = true;
       setState({
         questionnaire: data.questionnaire,
         documentQuestions: data.documentQuestions || [],
@@ -90,5 +102,17 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
     answerMap[answer.questionKey] = answer.value ?? answer.normalizedValue;
   });
 
-  return { ...state, answerMap, saveAnswer, refetch: load };
+  return {
+    ...state,
+    answerMap,
+    saveAnswer,
+    refetch: load,
+    // true only for the genuine blank-screen case (no successful fetch yet) -
+    // render gates should use this, never `loading`.
+    initialLoading: state.loading && !hasLoadedOnce.current,
+    // true while a background refetch (e.g. after a file upload) is in
+    // flight and data from a prior successful fetch already exists - use
+    // this only for a non-blocking indicator, never to unmount content.
+    refreshing: state.loading && hasLoadedOnce.current,
+  };
 }

@@ -46,6 +46,19 @@ const uscisFormComponentDefinitionSchema = new mongoose.Schema(
     discoverySource: { type: String, trim: true, default: "USCISFormComponentDiscoveryService" },
     discoveredAt: { type: Date, default: Date.now },
     verificationMethod: { type: String, trim: true },
+    // Adobe-native slice cache (Adobe-native form-slicing task) - the
+    // Adobe combinepdf-sliced blank component PDF, cached so the viewer's
+    // GET /uscis-forms/:id/component-pdf/:componentCode doesn't call Adobe
+    // on every open. All optional/sparse - no migration needed.
+    // parentTemplateChecksum guards staleness: if the parent PDF's own
+    // checksum (artifacts.form.checksum) changes (a new edition activated
+    // under the same template id, or this definition re-pointed at a
+    // different parentTemplateId), the cached slice no longer matches the
+    // source and must be regenerated.
+    slicedPdfStorageKey: { type: String, default: null },
+    slicedPdfChecksum: { type: String, default: null },
+    slicedPdfCachedAt: { type: Date, default: null },
+    parentTemplateChecksum: { type: String, default: null },
   },
   { timestamps: true }
 );

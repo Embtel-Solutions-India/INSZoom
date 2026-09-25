@@ -79,6 +79,10 @@ function authenticateOrSignedGrant(req, res, next) {
 }
 
 router.get("/:id/pdf", authenticateOrSignedGrant, ctrl.getTemplatePdf);
+// Component-scoped blank PDF (e.g. the I-129 H Classification Supplement's
+// own 8 pages, not the full 38-page parent) - Adobe combinepdf-sliced, with
+// an S3-backed cache (USCISFormComponentDefinition.slicedPdfStorageKey).
+router.get("/:id/component-pdf/:componentCode", authenticateOrSignedGrant, ctrl.getComponentPdf);
 // §40 GET /:id/url — mint a short-lived signed link to the official PDF.
 router.get("/:id/url", authenticate, authorizePermissions("forms:read"), ctrl.getTemplatePdfUrl);
 // §30 per-form health (?deep=true additionally verifies the stored SHA-256).

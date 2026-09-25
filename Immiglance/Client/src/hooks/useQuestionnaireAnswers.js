@@ -48,7 +48,7 @@ function normalizeAutofillPrefill(prefill) {
 }
 
 export default function useQuestionnaireAnswers(caseId, targetRole, { disabled = false, referenceId } = {}) {
-  const { questionnaire, documentQuestions, fieldQuestions, answers: rawAnswers, responseId, progress: hookProgress, loading, error, refetch } =
+  const { questionnaire, documentQuestions, fieldQuestions, answers: rawAnswers, responseId, progress: hookProgress, loading, initialLoading, refreshing, error, refetch } =
     useCaseQuestionnaire(caseId, targetRole, referenceId);
 
   const [answers, setAnswers] = useState({});
@@ -275,6 +275,8 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
   return {
     questionnaire,
     loading,
+    initialLoading,
+    refreshing,
     error,
     answers,
     answerByKey,

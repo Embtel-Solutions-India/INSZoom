@@ -95,17 +95,36 @@ class PDFFidelityService {
     const parentTotalPages = template.pdfMetadata?.pageCount || pageCount;
     let expectedPageCount;
     let pageCountBasis;
+    // AdobeFormRenderer.js's Adobe-native slicing (combinepdf) now correctly
+    // rebuilds the AcroForm's /Fields index to exactly the widgets that
+    // survive on the kept pages (see AcroFormRepairGuard.js) - this
+    // superseded the OLD pdf-lib removePage() behavior the comment below
+    // used to describe, where a sliced document's field COUNT stayed at
+    // essentially the full parent's ~942, since removePage() never pruned
+    // orphaned AcroForm field definitions. Confirmed empirically against the
+    // real I-129 H Classification Supplement: a correctly-sliced 8-page
+    // component now has exactly 159 real fields, not ~942 - comparing that
+    // against ±10% of the full template's ~980 fields would reject every
+    // correctly-sliced component/core PDF as a false "mismatch". The
+    // expected count must be scoped to the SAME page set the PDF was
+    // actually sliced to, for both a component (its own fieldIds, already
+    // computed by findActiveComponentDefinition/discovery) and a core form
+    // (fields whose own pageNumber falls in the core's resolved page list).
+    let expectedFieldCount;
     if (caseForm?.componentCode) {
       const componentDef = await ComponentPageResolver.findActiveComponentDefinition(caseForm, template);
       const context = { parentFormCode: caseForm.parentFormCode || template.formCode, componentCode: caseForm.componentCode };
       expectedPageCount = ComponentPageResolver.expandPageRanges(componentDef.pageRanges, parentTotalPages, context).length;
       pageCountBasis = "from the component's resolved page range";
+      expectedFieldCount = (componentDef.fieldIds || []).length;
     } else {
       const corePages = await ComponentPageResolver.resolveCorePages(template, parentTotalPages);
       expectedPageCount = corePages ? corePages.length : template.pdfMetadata?.pageCount;
       pageCountBasis = corePages ? "from the core form's resolved page range (excluding active sibling components)" : "from template.pdfMetadata.pageCount";
+      expectedFieldCount = corePages
+        ? (template.formFields || []).filter((f) => f.pageNumber != null && corePages.includes(f.pageNumber)).length
+        : (template.formFields || []).length;
     }
-    const expectedFieldCount = (template.formFields || []).length;
     if (expectedPageCount && pageCount !== expectedPageCount) {
       errors.push(`Page count mismatch: expected ${expectedPageCount} (${pageCountBasis}), got ${pageCount}`);
     }

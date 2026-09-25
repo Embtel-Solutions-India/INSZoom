@@ -658,12 +658,24 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   // still has real, editable AcroForm fields (manual_entry ones) a case
   // manager may need to see, so it still renders visually rather than
   // falling back to a flat list.
+  // Adobe-native form-slicing task: for a `component` CaseForm, the PDF
+  // loaded below is already the Adobe-sliced, component-only document (its
+  // own pdfPageCount is already correct - no extra filtering needed here).
+  // For a `core` CaseForm, the full parent PDF is still loaded (slicing it
+  // on every viewer open would mean an Adobe API call per open), so the
+  // page list is filtered client-side to viewerPageConstraint.pages instead.
+  const viewerPageConstraint = workspace?.viewerPageConstraint
   const pageNumbers = useMemo(() => {
     const fromDimensions = [...pageDimensionsByNumber.keys()]
     const fromFields = [...fieldsByPage.keys()]
     const fromPdf = pdfPageCount ? Array.from({ length: pdfPageCount }, (_, index) => index + 1) : []
-    return [...new Set([...fromDimensions, ...fromFields, ...fromPdf])].sort((a, b) => a - b)
-  }, [pageDimensionsByNumber, fieldsByPage, pdfPageCount])
+    const all = [...new Set([...fromDimensions, ...fromFields, ...fromPdf])].sort((a, b) => a - b)
+    if (viewerPageConstraint?.type === 'core' && viewerPageConstraint.pages) {
+      const allowed = new Set(viewerPageConstraint.pages)
+      return all.filter((page) => allowed.has(page))
+    }
+    return all
+  }, [pageDimensionsByNumber, fieldsByPage, pdfPageCount, viewerPageConstraint])
 
   const pageCompletion = useCallback((pageNumber) => {
     const fields = fieldsByPage.get(pageNumber) || []
@@ -672,6 +684,10 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }, [fieldsByPage, values])
 
   const templateId = workspace?.template?._id
+  // A `component` CaseForm (e.g. I-129's H Classification Supplement) loads
+  // its own Adobe-sliced, component-only PDF instead of the full parent -
+  // see viewerPageConstraint above.
+  const componentCode = viewerPageConstraint?.type === 'component' ? workspace?.caseForm?.componentCode : null
 
   useEffect(() => {
     if (!templateId) return undefined
@@ -679,7 +695,10 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     let objectUrl = null
     setTemplatePdfError('')
     setTemplatePdfUrl(null)
-    uscisFormsApi.templatePdf(templateId)
+    const request = componentCode
+      ? uscisFormsApi.componentTemplatePdf(templateId, componentCode)
+      : uscisFormsApi.templatePdf(templateId)
+    request
       .then((response) => {
         if (cancelled) return
         objectUrl = URL.createObjectURL(response.data)
@@ -690,7 +709,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [templateId])
+  }, [templateId, componentCode])
 
   const handlePdfLoadSuccess = useCallback((pdfDocument) => {
     pdfDocumentRef.current = pdfDocument

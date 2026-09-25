@@ -95,6 +95,13 @@ const USCISForms = () => {
   const [error, setError] = useState('')
   // P12-S2: replaces window.alert() calls previously fired below.
   const [infoModal, setInfoModal] = useState(null)
+  // The scan itself is a slow background job (see USCISScannerService -
+  // measured against the real uscis.gov site: a single form's import alone
+  // took 135s), so the backend now returns 202 immediately with a
+  // syncRunId rather than the finished report. This tracks that in-flight
+  // run so the button can show real progress instead of a stale success
+  // message the instant the request returns.
+  const [scanRun, setScanRun] = useState(null)
 
   // Tab 1: Form Templates
   const [templates, setTemplates] = useState([])
@@ -289,14 +296,54 @@ const USCISForms = () => {
 
   const handleCheckUpdates = async () => {
     try {
+      setError('')
       const response = await api.post('/uscis/forms/scan')
-      setInfoModal({ message: response.data.message || 'Form update check completed' })
-      fetchTemplates()
-      if (activeTab === 'lifecycle') fetchLifecycle()
+      const data = response.data.data || {}
+      if (data.inProgress) {
+        // Another scan (manual or the scheduled job) is already running -
+        // start polling that one instead of firing a redundant request.
+        setScanRun({ syncRunId: data.syncRunId, status: 'running' })
+        return
+      }
+      setScanRun({ syncRunId: data.syncRunId, status: 'running' })
     } catch (error) {
       setError('Failed to check for updates')
     }
   }
+
+  // Polls the sync run the button just started (or found already running)
+  // every 3s until it leaves the "running" state, then surfaces the real
+  // result and refreshes the lists - mirrors the fetchRegistryHealth
+  // loading-indicator pattern already used above, just over a longer job.
+  useEffect(() => {
+    if (!scanRun?.syncRunId || scanRun.status !== 'running') return
+    let cancelled = false
+    const poll = async () => {
+      try {
+        const response = await api.get(`/uscis/forms/scan/status/${scanRun.syncRunId}`)
+        const run = response.data.data
+        if (cancelled) return
+        if (run.status === 'running') {
+          setTimeout(poll, 3000)
+          return
+        }
+        setScanRun({ syncRunId: scanRun.syncRunId, status: run.status })
+        const summary = run.summary || {}
+        setInfoModal({
+          message: run.status === 'failed'
+            ? `USCIS sync failed: ${run.failures?.[0]?.error || 'see sync history for details'}`
+            : `Sync ${run.status}: ${summary.formsDiscovered || 0} form(s) checked, ${summary.newForms || 0} new, ${summary.updatedEditions || 0} updated edition(s), ${summary.missingMappings || 0} mapping gap(s).`
+        })
+        fetchTemplates()
+        if (activeTab === 'lifecycle') fetchLifecycle()
+      } catch (error) {
+        if (!cancelled) setScanRun(null)
+      }
+    }
+    poll()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanRun?.syncRunId, scanRun?.status])
 
   const handleLifecycleAction = async (templateId, action) => {
     try {
@@ -803,11 +850,20 @@ const USCISForms = () => {
           </div>
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">USCIS Version Review Dashboard</h3>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">USCIS Version Review Dashboard</h3>
+                {scanRun?.status === 'running' && (
+                  <p className="text-sm text-muted-foreground">Checking USCIS for updates…</p>
+                )}
+              </div>
               {['super_admin', 'admin'].includes(user.role) && (
-                <button onClick={handleCheckUpdates} className="btn-secondary flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4" />
-                  Run Scanner
+                <button
+                  onClick={handleCheckUpdates}
+                  disabled={scanRun?.status === 'running'}
+                  className="btn-secondary flex items-center gap-2 disabled:opacity-60"
+                >
+                  <RefreshCw className={`w-4 h-4 ${scanRun?.status === 'running' ? 'animate-spin' : ''}`} />
+                  {scanRun?.status === 'running' ? 'Syncing…' : 'Run Scanner'}
                 </button>
               )}
             </div>
@@ -910,10 +966,11 @@ const USCISForms = () => {
                 <>
                   <button
                     onClick={handleCheckUpdates}
-                    className="btn-secondary flex items-center gap-2"
+                    disabled={scanRun?.status === 'running'}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-60"
                   >
-                    <RefreshCw className="w-4 h-4" />
-                    Check for Updates
+                    <RefreshCw className={`w-4 h-4 ${scanRun?.status === 'running' ? 'animate-spin' : ''}`} />
+                    {scanRun?.status === 'running' ? 'Syncing…' : 'Check for Updates'}
                   </button>
                   <button
                     onClick={() => setShowImportDefinitionModal(true)}

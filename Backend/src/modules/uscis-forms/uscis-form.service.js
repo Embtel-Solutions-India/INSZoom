@@ -1188,7 +1188,7 @@ async function listCaseForms(caseId, user, req) {
   let forms;
   try {
     forms = await CaseForm.find({ caseId })
-      .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument")
+      .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument componentCode parentFormCode")
       // populate() queries formTemplateId (uscisformtemplates) as a genuinely
       // separate operation - it does not inherit the outer query's read()
       // setting, and this is exactly the collection that also stalled on the

@@ -307,6 +307,10 @@ export const clientIntakeApi = {
 
 export const uscisFormsApi = {
   templatePdf: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { responseType: 'blob' }),
+  // Component-scoped blank PDF (e.g. the I-129 H Classification Supplement's
+  // own pages only, not the full parent) - Adobe combinepdf-sliced server-side.
+  componentTemplatePdf: (templateId, componentCode) =>
+    api.get(`/uscis-forms/${templateId}/component-pdf/${encodeURIComponent(componentCode)}`, { responseType: 'blob' }),
   caseForms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
   createCaseForm: (caseId, payload) => api.post(`/uscis-forms/case/${caseId}`, payload),
   // Registry-driven form visibility (Phase 1): the full applicable form set

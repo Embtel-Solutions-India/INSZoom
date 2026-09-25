@@ -115,6 +115,52 @@ function translateError(error) {
 // confidence when it can't determine a real document type — that pushes the
 // result into manual review (see confidenceBand in document-intelligence
 // schema) rather than silently mis-classifying.
+// Resolves a Document AI TextAnchor (a set of {startIndex, endIndex} offsets
+// into the document's own full text) back to the literal substring. Form
+// Parser's formFields carry their field name/value this way rather than as
+// resolved strings.
+function resolveTextAnchor(fullText, textAnchor) {
+  if (!textAnchor?.textSegments?.length) return "";
+  return textAnchor.textSegments
+    .map((segment) => fullText.slice(Number(segment.startIndex || 0), Number(segment.endIndex || 0)))
+    .join("");
+}
+
+// A "Form Parser" processor (FORM_PARSER_PROCESSOR type, configured by
+// pointing GOOGLE_DOCUMENT_AI_PROCESSOR_ID at one in Google Cloud Console -
+// no separate env var, no training required) returns page.formFields[] key-
+// value pairs instead of (or alongside) document-level entities. A generic
+// OCR processor's response simply has no formFields on any page, so this is
+// a no-op for that case rather than a second, competing extraction path.
+//
+// Field keys here are the document's OWN printed label, normalized (lower-
+// cased, whitespace collapsed to underscores) - Form Parser has no way to
+// know that a passport's printed "Given Names" means this app's canonical
+// "firstName", so mapping a specific document type's printed labels to
+// canonical field keys is left to that document type's own extractor
+// (see passport-extractor.service.js's MRZ path for the one canonical
+// mapping this codebase has actually verified end-to-end so far).
+function extractFormParserFields(document, rawText) {
+  const fields = {};
+  for (const page of document?.pages || []) {
+    for (const formField of page.formFields || []) {
+      const rawKey = resolveTextAnchor(rawText, formField.fieldName?.textAnchor).trim();
+      const rawValue = resolveTextAnchor(rawText, formField.fieldValue?.textAnchor).trim();
+      if (!rawKey) continue;
+      const normalizedKey = rawKey.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+      if (!normalizedKey) continue;
+      const confidence = Math.round((formField.fieldValue?.confidence || 0) * 100);
+      // Form Parser can emit the same printed label more than once on a
+      // multi-page document (e.g. a repeated header) - keep the
+      // highest-confidence occurrence rather than the last one seen.
+      if (!fields[normalizedKey] || confidence > fields[normalizedKey].confidence) {
+        fields[normalizedKey] = { value: rawValue, confidence, rawKey };
+      }
+    }
+  }
+  return fields;
+}
+
 function shapeResult(document) {
   const rawText = document?.text || "";
   const entities = (document?.entities || []).map((entity) => ({
@@ -123,7 +169,7 @@ function shapeResult(document) {
     confidence: Math.round((entity.confidence || 0) * 100),
   }));
 
-  const fields = {};
+  const fields = { ...extractFormParserFields(document, rawText) };
   entities.forEach((entity) => {
     if (!entity.type) return;
     fields[entity.type] = { value: entity.mentionText, confidence: entity.confidence };
@@ -183,4 +229,8 @@ async function generateStructuredJson({ buffer, mimeType }) {
 
 module.exports = {
   generateStructuredJson,
+  // Exported for unit testing only (see tests/google-document-ai.form-parser.test.js)
+  // - no network I/O, pure response-shaping, safe to call directly against a
+  // hand-built fake Document AI response.
+  shapeResult,
 };
