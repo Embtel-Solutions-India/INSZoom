@@ -136,7 +136,15 @@ async function request(path, options = {}, retry = true) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: "Request failed" }));
-    const error = new Error(err.message || "Request failed");
+    // express-validator's `validate` middleware (Backend/src/middleware/
+    // validate.js) always responds with the generic message "Validation
+    // failed" plus an `errors` array holding the actual field-level reason
+    // (e.g. "Password must contain a symbol") — reading only err.message
+    // meant a real, specific validation error (like a password not meeting
+    // the admin-configured complexity policy) always surfaced as an opaque
+    // "Validation failed" with no indication of what to fix.
+    const specificMessage = Array.isArray(err.errors) && err.errors.length ? err.errors.map((item) => item.msg).filter(Boolean).join(" ") : "";
+    const error = new Error(specificMessage || err.message || "Request failed");
     error.status = res.status;
     if (err.code) error.code = err.code;
     throw error;

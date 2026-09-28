@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { casesApi } from "../../services/api";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
-import CaseRoleChecklist, { CaseRoleChecklistView } from "./CaseRoleChecklist";
+import { CaseRoleChecklistView } from "./CaseRoleChecklist";
 import DataEntryModeModal from "./DataEntryModeModal";
-import InvitePanel from "./InvitePanel";
+import EmployeeDashboard from "./EmployeeDashboard";
+import EmployeePacketStepper from "./EmployeePacketStepper";
 
-// Top-level orchestrator for a caseRole=principal Case — the employer/
+// Top-level orchestrator for a caseRole=principal Case: the employer/
 // petitioner questionnaire (rendered through the SAME card-based
 // ChecklistItemRow UI + OCR autofill the original single-Case
-// employer_employee flow already used, via CaseRoleChecklist — see that
+// employer_employee flow already used, via CaseRoleChecklistView — see that
 // file's own comment for why per-Case targeting gives free per-employee data
-// isolation), the one-time fill-self-vs-invite choice, and (depending on
-// that choice) either the per-employee tabs or the invite panel. Rendered by
+// isolation), the one-time fill-self-vs-invite choice, and — regardless of
+// that choice — one shared Employee Dashboard (cards, not tabs) that opens
+// into a per-employee Documents → Information → Review packet. Rendered by
 // Documents.jsx only when activeCase.caseRole === 'principal' (a genuinely
 // new-architecture case with real child Cases).
 export default function PrincipalCaseWorkspace({ activeCase }) {
@@ -23,22 +25,28 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   const [dataEntryMode, setDataEntryMode] = useState(activeCase.dataEntryMode);
   const [children, setChildren] = useState([]);
   const [loadingChildren, setLoadingChildren] = useState(true);
+  // Unlike the old tab bar, nothing opens by default — the dashboard grid is
+  // the landing page every time, exactly like Documents.jsx's own landing
+  // page for a single-party case.
   const [activeChildId, setActiveChildId] = useState(null);
 
-  // Called here (not inside CaseRoleChecklist) so this component can also
+  // Called here (not inside CaseRoleChecklistView) so this component can also
   // read employerQa.answers to gate the data-entry-mode modal below, without
   // fetching the same case+role questionnaire twice.
   const employerQa = useQuestionnaireAnswers(principalId, employerTargetRole);
+  // Always called (hooks can't be conditional) — disabled until a card is
+  // actually opened, matching CaseRoleChecklist's own disabled-when-readOnly
+  // pattern for this same hook.
+  const employeeQa = useQuestionnaireAnswers(activeChildId, employeeTargetRole, { disabled: !activeChildId });
 
   const fetchChildren = async () => {
     setLoadingChildren(true);
     try {
       const relatedRes = await casesApi.getRelated(principalId);
       // Invariant 5: a removed child's data is preserved server-side, but it
-      // no longer shows as an active tab/invite slot here.
+      // no longer shows as an active card/invite slot here.
       const activeChildren = (relatedRes?.childCases || []).filter((c) => c.status !== "removed");
       setChildren(activeChildren);
-      setActiveChildId((current) => current || activeChildren[0]?._id || null);
     } catch (err) {
       console.error("Failed to load matter data:", err);
     } finally {
@@ -61,21 +69,18 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
 
   const handleModeSelected = (mode) => setDataEntryMode(mode);
 
-  const handleRemove = async (childId) => {
-    if (!window.confirm("Remove this employee from the case? Their information will be preserved, but they'll no longer appear here.")) return;
-    try {
-      await casesApi.removeEmployee(childId);
-      await fetchChildren();
-    } catch (err) {
-      alert(err.message || "Failed to remove employee");
-    }
-  };
-
   const activeChild = children.find((c) => c._id === activeChildId) || null;
 
   return (
     <div className="space-y-6">
-      <CaseRoleChecklistView qa={employerQa} caseId={principalId} />
+      {/* Bug fix (real-browser test): this used to render unconditionally,
+          which meant opening an employee's packet still showed the
+          employer's own full multi-section questionnaire above it — the
+          packet stepper existed but was buried at the bottom of an already
+          long page instead of being the focused, distraction-free view
+          §7A.4 calls for. Hidden while a packet is open; EmployeePacketStepper
+          has its own header (employee name + "All employees" back link). */}
+      {!activeChildId && <CaseRoleChecklistView qa={employerQa} caseId={principalId} />}
 
       {showModeModal && (
         <DataEntryModeModal principalCaseId={principalId} isFamily={isFamily} onModeSelected={handleModeSelected} />
@@ -83,56 +88,27 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
 
       {loadingChildren ? (
         <p className="text-sm text-slate-400">Loading…</p>
+      ) : activeChild ? (
+        <EmployeePacketStepper
+          qa={employeeQa}
+          caseId={activeChild._id}
+          employeeLabel={activeChild.clientName || activeChild.caseNumber}
+          onExit={() => setActiveChildId(null)}
+          onSubmitted={() => { setActiveChildId(null); fetchChildren(); }}
+        />
+      ) : (dataEntryMode === "invite" || dataEntryMode === "fill_self") ? (
+        <EmployeeDashboard
+          principalId={principalId}
+          children={children}
+          dataEntryMode={dataEntryMode}
+          targetRole={employeeTargetRole}
+          onOpen={setActiveChildId}
+          onChanged={fetchChildren}
+        />
       ) : (
-        <>
-          {dataEntryMode === "invite" && (
-            <InvitePanel principalCaseId={principalId} children={children} onChanged={fetchChildren} />
-          )}
-
-          {dataEntryMode === "fill_self" && (
-            <div className="space-y-4">
-              {children.length > 1 && (
-                <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
-                  {children.map((child) => (
-                    <button
-                      key={child._id}
-                      type="button"
-                      onClick={() => setActiveChildId(child._id)}
-                      className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition ${
-                        activeChildId === child._id
-                          ? "border-slate-900 text-slate-900"
-                          : "border-transparent text-slate-400 hover:text-slate-600"
-                      }`}
-                    >
-                      {child.clientName || child.caseNumber}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {activeChild && (
-                <div className="space-y-3">
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(activeChild._id)}
-                      className="text-xs font-semibold text-red-600 hover:text-red-700"
-                    >
-                      Remove this employee
-                    </button>
-                  </div>
-                  <CaseRoleChecklist key={activeChild._id} caseId={activeChild._id} targetRole={employeeTargetRole} />
-                </div>
-              )}
-              {!activeChild && <p className="text-sm text-slate-400">No employees on this case yet.</p>}
-            </div>
-          )}
-
-          {dataEntryMode === "not_set" && !employerHasAnyAnswer && (
-            <p className="text-sm text-slate-400">
-              Complete the {isFamily ? "petitioner" : "employer"} information above to continue.
-            </p>
-          )}
-        </>
+        <p className="text-sm text-slate-400">
+          Complete the {isFamily ? "petitioner" : "employer"} information above to continue.
+        </p>
       )}
     </div>
   );

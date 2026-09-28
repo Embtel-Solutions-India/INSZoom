@@ -117,6 +117,9 @@ router.get("/:id/assignment-history", authenticate, authorizeRoles(...staffRoles
 router.patch("/:principalId/data-entry-mode", authenticate, ctrl.setDataEntryMode);
 router.post("/:principalId/invite-employee", authenticate, ctrl.inviteEmployee);
 router.patch("/:caseId/remove-employee", authenticate, ctrl.removeEmployee);
+router.patch("/:caseId/restore-employee", authenticate, ctrl.restoreEmployee);
+router.post("/:principalId/resend-employee-invite", authenticate, ctrl.resendEmployeeInvite);
+router.post("/:principalId/add-employee-slot", authenticate, ctrl.addEmployeeSlot);
 router.put("/:id/assign-beneficiary", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("beneficiaryId").notEmpty(), validate, ctrl.assignBeneficiary);
 router.put("/:id/assign-company", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("companyId").notEmpty(), validate, ctrl.assignCompany);
 router.put("/:id/assign-client", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:assign"), body("clientId").notEmpty(), validate, ctrl.assignClient);

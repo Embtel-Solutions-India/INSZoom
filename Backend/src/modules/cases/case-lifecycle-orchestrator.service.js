@@ -331,6 +331,7 @@ class CaseLifecycleOrchestrator {
       }
     }
     await this.provisionRequiredForms(caseData, user, req);
+    await this.provisionPetitionDraft(caseData, user, req);
     const result = await this.recalculate(caseData._id, user, req, "case_initialized");
     await this.notifyCaseCreated(caseData, result, user, req);
     return { ...result, knowledgePlan: knowledge?.knowledgePlan || result.case?.knowledgePlan };
@@ -364,6 +365,24 @@ class CaseLifecycleOrchestrator {
       } catch (error) {
         logger.error("uscis_form_provisioning_failed", { caseId: String(target._id), error: error.message });
       }
+    }
+  }
+
+  // Starts the petition drafting immediately, with no readiness criteria —
+  // mirrors provisionRequiredForms' target-resolution (child cases are the
+  // real filing case(s) for an employer_employee/family structure, else
+  // caseData itself) and its never-throw contract: a visa type with no
+  // active PackageDefinition yet, or any other assembly failure, must never
+  // block case creation. PetitionAssemblyService.autoSync() already swallows
+  // its own errors; each subsequent document/form approval re-runs it to
+  // replace placeholder headings with the newly-approved content.
+  static async provisionPetitionDraft(caseData, user, req) {
+    const PetitionAssemblyService = require("../petition/services/PetitionAssemblyService");
+    const targets = caseData.childCases?.length
+      ? await Case.find({ _id: { $in: caseData.childCases } })
+      : [caseData];
+    for (const target of targets) {
+      await PetitionAssemblyService.autoSync(target._id, user, req);
     }
   }
 

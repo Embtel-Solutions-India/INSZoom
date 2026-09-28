@@ -1,0 +1,130 @@
+
+=== (core/full) | recipe=current | strategy=full ===
+pages: viewer=38 expected=38 OK | /Fields roots=1 | pdf-lib getFields()=942 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+         1 |    1 |            23 |                    1 |            22 |       22 |         true | PASS
+         2 |    2 |            24 |                    1 |            23 |       23 |         true | PASS
+         3 |    3 |            41 |                    1 |            40 |       40 |         true | PASS
+         4 |    4 |            40 |                    1 |            39 |       39 |         true | PASS
+         5 |    5 |            39 |                    1 |            38 |       38 |         true | PASS
+         6 |    6 |            13 |                    1 |            12 |       12 |         true | PASS
+         7 |    7 |            24 |                    1 |            23 |       23 |         true | PASS
+         8 |    8 |            14 |                    1 |            13 |       13 |         true | PASS
+         9 |    9 |            26 |                    1 |            25 |       25 |         true | PASS
+        10 |   10 |            53 |                    1 |            52 |       52 |         true | PASS
+        11 |   11 |            19 |                    1 |            18 |       18 |         true | PASS
+        12 |   12 |            20 |                    1 |            19 |       19 |         true | PASS
+        13 |   13 |            31 |                    1 |            30 |       30 |         true | PASS
+        14 |   14 |            16 |                    1 |            15 |       15 |         true | PASS
+        15 |   15 |            21 |                    1 |            20 |       20 |         true | PASS
+        16 |   16 |            24 |                    1 |            23 |       23 |         true | PASS
+        17 |   17 |            15 |                    1 |            14 |       14 |         true | PASS
+        18 |   18 |            17 |                    1 |            16 |       16 |         true | PASS
+        19 |   19 |            29 |                    1 |            28 |       28 |         true | PASS
+        20 |   20 |            14 |                    1 |            13 |       13 |         true | PASS
+        21 |   21 |            36 |                    1 |            35 |       35 |         true | PASS
+        22 |   22 |            27 |                    1 |            26 |       26 |         true | PASS
+        23 |   23 |            26 |                    1 |            25 |       25 |         true | PASS
+        24 |   24 |            44 |                    1 |            43 |       43 |         true | PASS
+        25 |   25 |            27 |                    1 |            26 |       26 |         true | PASS
+        26 |   26 |            19 |                    1 |            18 |       18 |         true | PASS
+        27 |   27 |            17 |                    1 |            16 |       16 |         true | PASS
+        28 |   28 |            19 |                    1 |            18 |       18 |         true | PASS
+        29 |   29 |            40 |                    1 |            39 |       39 |         true | PASS
+        30 |   30 |            19 |                    1 |            18 |       18 |         true | PASS
+        31 |   31 |            10 |                    1 |             9 |        9 |         true | PASS
+        32 |   32 |            30 |                    1 |            29 |       29 |         true | PASS
+        33 |   33 |            18 |                    1 |            17 |       17 |         true | PASS
+        34 |   34 |            14 |                    1 |            13 |       13 |         true | PASS
+        35 |   35 |            15 |                    1 |            14 |       14 |         true | PASS
+        36 |   36 |            30 |                    1 |            29 |       29 |         true | PASS
+        37 |   37 |            43 |                    1 |            42 |       42 |         true | PASS
+        38 |   38 |            43 |                    1 |            42 |       42 |         true | PASS
+OVERALL: PASS
+
+=== I129_E_1_E_2_CLASSIFICATION_S | recipe=current | strategy=adobe_combine ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=77 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+         9 |    1 |            26 |                    1 |            25 |       25 |         true | PASS
+        10 |    2 |            53 |                    1 |            52 |       52 |         true | PASS
+OVERALL: PASS
+
+=== I129_TRADE_AGREEMENT_SUPPLEME | recipe=current | strategy=adobe_combine ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=37 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        11 |    1 |            19 |                    1 |            18 |       18 |         true | PASS
+        12 |    2 |            20 |                    1 |            19 |       19 |         true | PASS
+OVERALL: PASS
+
+=== I129_H_CLASSIFICATION_SUPPLEM | recipe=current | strategy=adobe_combine ===
+pages: viewer=8 expected=8 OK | /Fields roots=1 | pdf-lib getFields()=159 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        13 |    1 |            31 |                    1 |            30 |       30 |         true | PASS
+        14 |    2 |            16 |                    1 |            15 |       15 |         true | PASS
+        15 |    3 |            21 |                    1 |            20 |       20 |         true | PASS
+        16 |    4 |            24 |                    1 |            23 |       23 |         true | PASS
+        17 |    5 |            15 |                    1 |            14 |       14 |         true | PASS
+        18 |    6 |            17 |                    1 |            16 |       16 |         true | PASS
+        19 |    7 |            29 |                    1 |            28 |       28 |         true | PASS
+        20 |    8 |            14 |                    1 |            13 |       13 |         true | PASS
+OVERALL: PASS
+
+=== I129_H_1B_DATA_COLLECTION_AND | recipe=current | strategy=adobe_combine ===
+pages: viewer=3 expected=3 OK | /Fields roots=1 | pdf-lib getFields()=86 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        21 |    1 |            36 |                    1 |            35 |       35 |         true | PASS
+        22 |    2 |            27 |                    1 |            26 |       26 |         true | PASS
+        23 |    3 |            26 |                    1 |            25 |       25 |         true | PASS
+OVERALL: PASS
+
+=== I129_L_CLASSIFICATION_SUPPLEM | recipe=current | strategy=adobe_combine ===
+pages: viewer=4 expected=4 OK | /Fields roots=1 | pdf-lib getFields()=103 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        24 |    1 |            44 |                    1 |            43 |       43 |         true | PASS
+        25 |    2 |            27 |                    1 |            26 |       26 |         true | PASS
+        26 |    3 |            19 |                    1 |            18 |       18 |         true | PASS
+        27 |    4 |            17 |                    1 |            16 |       16 |         true | PASS
+OVERALL: PASS
+
+=== I129_O_P_CLASSIFICATION_SUPPL | recipe=current | strategy=adobe_combine ===
+pages: viewer=3 expected=3 OK | /Fields roots=1 | pdf-lib getFields()=75 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        28 |    1 |            19 |                    1 |            18 |       18 |         true | PASS
+        29 |    2 |            40 |                    1 |            39 |       39 |         true | PASS
+        30 |    3 |            19 |                    1 |            18 |       18 |         true | PASS
+OVERALL: PASS
+
+=== I129_Q_CLASSIFICATION_SUPPLEM | recipe=current | strategy=adobe_combine ===
+pages: viewer=1 expected=1 OK | /Fields roots=1 | pdf-lib getFields()=9 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        31 |    1 |            10 |                    1 |             9 |        9 |         true | PASS
+OVERALL: PASS
+
+=== I129_R_CLASSIFICATION_SUPPLEM | recipe=current | strategy=adobe_combine ===
+pages: viewer=5 expected=5 OK | /Fields roots=1 | pdf-lib getFields()=102 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        32 |    1 |            30 |                    1 |            29 |       29 |         true | PASS
+        33 |    2 |            18 |                    1 |            17 |       17 |         true | PASS
+        34 |    3 |            14 |                    1 |            13 |       13 |         true | PASS
+        35 |    4 |            15 |                    1 |            14 |       14 |         true | PASS
+        36 |    5 |            30 |                    1 |            29 |       29 |         true | PASS
+OVERALL: PASS
+
+=== I129_ADDITIONAL_BENEFICIARY | recipe=current | strategy=adobe_combine ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=84 | flattenedBarcodeFields=38
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        37 |    1 |            43 |                    1 |            42 |       42 |         true | PASS
+        38 |    2 |            43 |                    1 |            42 |       42 |         true | PASS
+OVERALL: PASS
+
+=== SUMMARY ===
+(core/full)                        full                             PASS
+I129_E_1_E_2_CLASSIFICATION_S      adobe_combine                    PASS
+I129_TRADE_AGREEMENT_SUPPLEME      adobe_combine                    PASS
+I129_H_CLASSIFICATION_SUPPLEM      adobe_combine                    PASS
+I129_H_1B_DATA_COLLECTION_AND      adobe_combine                    PASS
+I129_L_CLASSIFICATION_SUPPLEM      adobe_combine                    PASS
+I129_O_P_CLASSIFICATION_SUPPL      adobe_combine                    PASS
+I129_Q_CLASSIFICATION_SUPPLEM      adobe_combine                    PASS
+I129_R_CLASSIFICATION_SUPPLEM      adobe_combine                    PASS
+I129_ADDITIONAL_BENEFICIARY        adobe_combine                    PASS

@@ -221,12 +221,16 @@ class PetitionAssemblyService {
     return CaseForm.find({ caseId, formCode: { $in: formCodes } }).populate("generatedPdfDocument");
   }
 
+  // Returns one entry per required certification regardless of whether it's
+  // been approved yet (`doc: null` when missing) — the petition's section
+  // list always shows every heading the definition calls for; only the
+  // ACTUAL merged PDF/Word content is limited to what's resolved (see
+  // assemble()'s renderableSections filter).
   static async resolveCertificationDocuments(caseId, definition) {
-    const resolved = await Promise.all((definition.requiredCertifications || []).map(async (cert) => {
+    return Promise.all((definition.requiredCertifications || []).map(async (cert) => {
       const doc = await Document.findOne({ caseId, documentType: cert.documentType, reviewStatus: "approved", deletedAt: { $exists: false } });
-      return doc ? { cert, doc } : null;
+      return { cert, doc };
     }));
-    return resolved.filter(Boolean);
   }
 
   // Every document already placed in a non-exhibit mailing section this run
@@ -235,8 +239,31 @@ class PetitionAssemblyService {
   static claimedDocumentIds(caseForms, certificationDocs) {
     return [
       ...caseForms.filter((form) => form.generatedPdfDocument).map((form) => form.generatedPdfDocument._id),
-      ...certificationDocs.map((entry) => entry.doc._id),
+      ...certificationDocs.filter((entry) => entry.doc).map((entry) => entry.doc._id),
     ];
+  }
+
+  // One placeholder-or-real entry per required form (unconditional +
+  // currently-active conditional forms), G-28 excluded (handled separately
+  // by the caller since it can come from an uploaded Document instead of a
+  // generated CaseForm). A form with no CaseForm yet, or one not yet PDF-
+  // generated, still gets its heading here — just with no documentId/
+  // storageKey — so the petition's structure is visible from day one and
+  // fills in as each form is generated.
+  static buildFormSections(definition, caseForms, conditionalRequiredForms) {
+    const formCodes = [...new Set([...(definition.requiredForms || []).map((entry) => entry.formCode), ...conditionalRequiredForms.map((entry) => entry.formCode)])];
+    return formCodes.filter((formCode) => formCode !== "G-28").map((formCode) => {
+      const form = caseForms.find((entry) => entry.formCode === formCode);
+      const ready = form?.generatedPdfDocument?.storageKey;
+      return {
+        type: "form",
+        key: formCode,
+        title: formCode,
+        documentId: ready ? form.generatedPdfDocument._id : undefined,
+        caseFormId: form?._id,
+        storageKey: ready ? form.generatedPdfDocument.storageKey : undefined,
+      };
+    });
   }
 
   static async supersedeCurrent(caseId, packageDefinitionKey, excludeId) {
@@ -244,6 +271,27 @@ class PetitionAssemblyService {
       { caseId, packageDefinitionKey, isCurrent: true, ...(excludeId ? { _id: { $ne: excludeId } } : {}) },
       { $set: { isCurrent: false, status: "superseded" } }
     );
+  }
+
+  // Non-blocking, non-user-initiated re-assembly — the event-driven hook
+  // called at case creation and after every document/form approval, so the
+  // petition draft always reflects the latest approved data without anyone
+  // clicking "Assemble". Never throws: a case whose visa type has no active
+  // PackageDefinition yet (or any other assembly failure) is silently
+  // skipped rather than surfaced as an error to the caller of the
+  // triggering action (case creation, document review, form approval).
+  static async autoSync(caseId, user, req) {
+    const logger = require("../../../utils/logger");
+    try {
+      const caseData = await Case.findById(caseId);
+      if (!caseData) return null;
+      const definition = await this.resolveDefinition({ caseData });
+      if (!definition) return null;
+      return await this.assemble(caseId, { definitionKey: definition.key }, user, req);
+    } catch (error) {
+      logger.error("petition_auto_sync_failed", { caseId: String(caseId), error: error.message });
+      return null;
+    }
   }
 
   static async assemble(caseId, { definitionKey, mode } = {}, user, req) {
@@ -280,16 +328,15 @@ class PetitionAssemblyService {
       const certificationDocs = await this.resolveCertificationDocuments(caseId, definition);
       const { exhibits, exhibitIndex } = await ExhibitService.build(caseId, definition, { excludeDocumentIds: this.claimedDocumentIds(caseForms, certificationDocs) });
 
+      // No-criteria drafting: validation still runs (it decides finalize
+      // eligibility and surfaces what's missing), but it no longer aborts
+      // assembly. A brand-new case with nothing approved yet still gets a
+      // full petition package — cover letter + every required heading,
+      // rendered as placeholders — and each subsequent document/form
+      // approval re-runs this same assemble() to swap placeholders for
+      // real content. Only finalize() (a separate, still-gated action)
+      // refuses to proceed while validation.status is "blocked".
       const validation = await PetitionValidationService.validate({ caseId, definition, caseForms, letters, exhibits, conditionalRequiredForms, requiredDocuments });
-
-      if (validation.status === "blocked") {
-        petitionPackage.status = "needs_revision";
-        petitionPackage.validation = { status: validation.status, issues: validation.issues, validatedAt: validation.validatedAt };
-        petitionPackage.history.push({ versionNumber: nextVersionNumber, status: "needs_revision", action: "ASSEMBLE_BLOCKED", actorId: userId(user), validationSnapshot: validation });
-        await petitionPackage.save();
-        await AuditLog.create({ userId: userId(user), userRole: user?.role, action: "PETITION_ASSEMBLE_BLOCKED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { caseId, issueCount: validation.issues.length }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
-        return petitionPackage;
-      }
 
       const { document: coverLetterDoc, html: coverLetterHtml, pdfBuffer: coverLetterPdfBuffer } = await CoverLetterService.renderCoverLetter({ caseId, definition, context, exhibitIndex, filingMethod: mode?.filingMethod || "usps" }, user);
       // Split the rendered cover letter into editable prose + the derived
@@ -312,22 +359,28 @@ class PetitionAssemblyService {
       const uploadedG28Document = context.attorney.present ? await Document.findOne({ caseId, documentType: "g28", reviewStatus: "approved", deletedAt: { $exists: false } }) : null;
       const generatedG28Form = !uploadedG28Document ? caseForms.find((form) => form.formCode === "G-28" && form.generatedPdfDocument?.storageKey) : null;
       const g28Document = uploadedG28Document || (generatedG28Form ? generatedG28Form.generatedPdfDocument : null);
+      // The full, heading-complete structure — every required form/
+      // certification appears even before it exists (documentId/storageKey
+      // left undefined), so petitionPackage.sections below always reflects
+      // the definition's structure. Only entries that actually have content
+      // (storageKey or buffer) are handed to the PDF assembler.
       const mailingSections = [
         { type: "cover_letter", key: "cover_letter", title: "Cover Letter", documentId: coverLetterDoc._id, buffer: coverLetterPdfBuffer, contentHtml: coverLetterBodyHtml },
         ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey }] : []),
-        // Every other generated form (I-129, and Phase H6's I-907/I-539/
+        // Every other required form (I-129, and Phase H6's I-907/I-539/
         // I-539A when their condition is active) - G-28 is excluded here
         // since it's already added above (either the uploaded document or
         // the generated CaseForm), never both.
-        ...caseForms.filter((form) => form.generatedPdfDocument?.storageKey && form.formCode !== "G-28").map((form) => ({ type: "form", key: form.formCode, title: `${form.formCode}`, documentId: form.generatedPdfDocument._id, caseFormId: form._id, storageKey: form.generatedPdfDocument.storageKey })),
-        ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc._id, storageKey: doc.storageKey })),
+        ...this.buildFormSections(definition, caseForms, conditionalRequiredForms),
+        ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc?._id, storageKey: doc?.storageKey })),
         ...Object.entries(letters).map(([slotKey, letter]) => ({ type: slotKey, key: slotKey, title: letter.title, documentId: letter.documentId, storageKey: letter.storageKey, buffer: letter.pdfBuffer, contentHtml: letter.html || "" })),
       ];
+      const renderableSections = mailingSections.filter((section) => section.storageKey || section.buffer);
 
       const { document: mailingPdfDocument, totalPages, pageMap } = await FilingPackageService.assembleOrdered({
         caseId,
         packageType: `petition_${definition.key}`,
-        sections: mailingSections,
+        sections: renderableSections,
         exhibits,
         watermark: mode?.finalize ? "" : "DRAFT",
         metadata: { title: `${definition.displayName} — ${caseData.caseNumber || caseData.caseId}` },
@@ -362,12 +415,16 @@ class PetitionAssemblyService {
         coverLetterDocumentId: coverLetterDoc._id,
       };
       petitionPackage.validation = { status: validation.status, issues: validation.issues, validatedAt: validation.validatedAt };
-      petitionPackage.status = "assembled";
+      // "blocked" no longer aborts assembly (see the no-criteria drafting
+      // note above) — it just means the draft is missing required pieces,
+      // reflected as needs_revision rather than assembled. finalize() is
+      // still the one place that refuses to proceed on a blocked status.
+      petitionPackage.status = validation.status === "blocked" ? "needs_revision" : "assembled";
       petitionPackage.assembledBy = userId(user);
-      petitionPackage.history.push({ versionNumber: nextVersionNumber, status: "assembled", action: "ASSEMBLE_COMPLETED", actorId: userId(user), changeSummary: `${totalPages} pages, ${exhibits.length} exhibits`, validationSnapshot: validation });
+      petitionPackage.history.push({ versionNumber: nextVersionNumber, status: petitionPackage.status, action: validation.status === "blocked" ? "ASSEMBLE_COMPLETED_WITH_ISSUES" : "ASSEMBLE_COMPLETED", actorId: userId(user), changeSummary: `${totalPages} pages, ${exhibits.length} exhibits`, validationSnapshot: validation });
       await petitionPackage.save();
 
-      await AuditLog.create({ userId: userId(user), userRole: user?.role, action: "PETITION_ASSEMBLED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { caseId, versionNumber: nextVersionNumber, totalPages, exhibitCount: exhibits.length }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
+      await AuditLog.create({ userId: userId(user), userRole: user?.role, action: validation.status === "blocked" ? "PETITION_ASSEMBLE_BLOCKED" : "PETITION_ASSEMBLED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { caseId, versionNumber: nextVersionNumber, totalPages, exhibitCount: exhibits.length, issueCount: validation.issues.length }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
       caseService.addTimelineEvent(caseData, "petition_assembled", "Petition Package Assembled", `${definition.displayName} petition assembled (v${nextVersionNumber}).`, user, { packageId: petitionPackage._id });
       await caseData.save();
 

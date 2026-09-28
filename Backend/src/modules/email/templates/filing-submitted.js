@@ -12,7 +12,7 @@ function bodyLines(data = {}) {
     </table>`,
     `USCIS will send a receipt notice (Form I-797) to your address of record. Processing times vary — your case manager will notify you as soon as any updates arrive.`,
     `You can track your case status at any time in the portal.`,
-    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Track My Case</a>`,
+    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Track My Case</a>`,
   ];
 }
 module.exports = { key: "filing-submitted", subject, bodyLines };

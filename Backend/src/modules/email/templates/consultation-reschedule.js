@@ -10,7 +10,7 @@ function bodyLines(data = {}) {
     `Your consultation with ${data.publicHostName || "our immigration team"} has been moved to ${data.startAt ? new Date(data.startAt).toLocaleString("en-US") : "a new time"}.`,
     data.locationType === "phone"
       ? "We'll call you at the phone number you provided."
-      : (data.meetingUrl ? `Join here: ${data.meetingUrl}` : "We'll send video call details separately."),
+      : "We'll send video call details separately closer to your appointment.",
     data.manageUrl ? `Need to make another change? <a href="${data.manageUrl}">Manage your booking</a>.` : "",
   ].filter(Boolean);
 }

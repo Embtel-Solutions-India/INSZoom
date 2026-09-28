@@ -2054,7 +2054,7 @@ exports.inviteEmployee = async (req, res, next) => {
 
     await caseService.writeAuditLog("invite_employee", childCase, req.user, { employeeEmail: normalizedEmail }, req);
 
-    await notificationService.createNotification({
+    const notification = await notificationService.createNotification({
       userId: employeeUser._id,
       type: "case_created",
       category: "case",
@@ -2074,12 +2074,21 @@ exports.inviteEmployee = async (req, res, next) => {
       },
     }, req.user, req).catch(() => null);
 
+    // N9: only report "sent" once the provider actually accepted the
+    // message (createNotification's own email delivery entry, set inside
+    // dispatchEmailChannel - see notification.service.js). The child case
+    // and employee account are already created and usable either way (a
+    // manual "copy link" fallback still works from the invite record), but
+    // the caller must be able to tell a real failure from a real success
+    // instead of always seeing the same optimistic message.
+    const emailDelivery = notification?.delivery?.find?.((entry) => entry.channel === "email");
+    const sent = emailDelivery?.status === "sent";
     return res.status(200).json({
       success: true,
-      message: `Invitation sent to ${normalizedEmail}`,
+      message: sent ? `Invitation sent to ${normalizedEmail}` : "Employee added, but the invitation email could not be confirmed as sent. You can resend it.",
       childCaseId: childCase._id,
       childCaseNumber: childCase.caseNumber,
-      inviteStatus: "pending",
+      inviteStatus: sent ? "sent" : (emailDelivery?.status === "failed" ? "failed" : "pending"),
     });
   } catch (err) {
     handleError(err, next);
@@ -2126,6 +2135,215 @@ exports.removeEmployee = async (req, res, next) => {
       message: "Employee removed. All data has been preserved.",
       caseId: childCase._id,
       status: "removed",
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * PATCH /api/cases/:caseId/restore-employee
+ * Undoes removeEmployee — restores childCase.status from previousStatus
+ * (recorded at removal time). Staff-only: a removed employee is a case
+ * manager decision to reverse, mirroring who is allowed to remove one being
+ * broader (employer or staff) while restoring is narrower (staff only) is
+ * NOT symmetric on purpose — an employer accidentally removing someone
+ * should not be able to silently un-remove without staff visibility.
+ */
+exports.restoreEmployee = async (req, res, next) => {
+  try {
+    const { caseId } = req.params;
+    const childCase = await Case.findById(caseId);
+    if (!childCase) return res.status(404).json({ success: false, message: "Case not found" });
+
+    if (!["employee", "beneficiary"].includes(childCase.caseRole)) {
+      return res.status(400).json({ success: false, code: "CANNOT_RESTORE_PRINCIPAL", message: "Only child cases (employee or beneficiary) can be restored" });
+    }
+    if (childCase.status !== "removed") {
+      return res.status(409).json({ success: false, code: "NOT_REMOVED", message: "This case has not been removed" });
+    }
+    if (!PHASE9_STAFF_ROLES.has(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Only staff can restore a removed employee" });
+    }
+
+    childCase.status = childCase.previousStatus || "active";
+    childCase.previousStatus = undefined;
+    await childCase.save();
+    await caseService.writeAuditLog("restore_employee", childCase, req.user, {}, req);
+
+    return res.status(200).json({
+      success: true,
+      message: "Employee restored.",
+      caseId: childCase._id,
+      status: childCase.status,
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * POST /api/cases/:principalId/resend-employee-invite
+ * Reissues a fresh invite token + re-sends the employee-case-invitation
+ * email for a child case that was already invited (childCase.user already
+ * transferred off the employer's account) but the employee hasn't accepted
+ * yet — e.g. the original email failed, landed in spam, or the link expired.
+ * Never valid before the first invite (use POST /invite-employee for that)
+ * and never valid once the employee has actually set a password (the point
+ * of a resend is recovering a stuck invite, not resetting an active account).
+ */
+exports.resendEmployeeInvite = async (req, res, next) => {
+  try {
+    const { principalId } = req.params;
+    const { childCaseId } = req.body || {};
+    if (!childCaseId) return res.status(400).json({ success: false, message: "childCaseId is required" });
+
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
+    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to resend invitations for this case" });
+    }
+
+    const childCase = await Case.findOne({ _id: childCaseId, parentCase: principal._id });
+    if (!childCase) return res.status(404).json({ success: false, message: "Child case not found or does not belong to this principal case" });
+    if (!childCase.user || String(childCase.user) === String(principal.user)) {
+      return res.status(409).json({ success: false, code: "NOT_YET_INVITED", message: "This employee has not been invited yet — use invite-employee first." });
+    }
+
+    const employeeUser = await User.findById(childCase.user).select("+password +inviteTokenHash");
+    if (!employeeUser) return res.status(404).json({ success: false, message: "Invited employee account not found" });
+    if (employeeUser.password) {
+      return res.status(409).json({ success: false, code: "ALREADY_ACCEPTED", message: "This employee has already accepted their invitation." });
+    }
+
+    const setupToken = generateOpaqueToken();
+    employeeUser.inviteTokenHash = hashToken(setupToken);
+    employeeUser.inviteTokenExpiresAt = new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS);
+    await employeeUser.save();
+
+    const emailResult = await emailService.sendTemplateEmail("employee-case-invitation", {
+      to: employeeUser.email,
+      data: {
+        employeeName: employeeUser.name || employeeUser.displayName,
+        employerName: principal.clientName,
+        caseNumber: childCase.caseNumber,
+        token: setupToken,
+      },
+      caseId: childCase._id,
+      userId: employeeUser._id,
+      triggeredBy: req.user._id,
+      source: "shared",
+    }).catch((error) => ({ sent: false, error }));
+
+    await caseService.writeAuditLog("resend_employee_invite", childCase, req.user, { sent: Boolean(emailResult.sent) }, req);
+
+    // N9: never claim "sent" unless the provider actually accepted the
+    // message — a skipped/failed send still leaves a fresh, usable token
+    // (so a manual "copy link" fallback works), but the caller must be told
+    // the truth so the UI can offer Retry instead of a false success state.
+    if (!emailResult.sent) {
+      return res.status(200).json({
+        success: true,
+        inviteStatus: emailResult.skipped ? "pending" : "failed",
+        message: emailResult.skipped ? "Invitation queued (email provider not configured)." : "Could not send the invitation email. You can try again.",
+        caseId: childCase._id,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      inviteStatus: "sent",
+      message: `Invitation re-sent to ${employeeUser.email}`,
+      caseId: childCase._id,
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * POST /api/cases/:principalId/add-employee-slot
+ * N3/N5: expands an employer_employee principal case by exactly one child
+ * slot beyond however many exist today, allocating the next never-reused
+ * suffix from principal.childCases.length (which only ever grows — a
+ * removed child case is never spliced out of it, so a withdrawn slot's
+ * letter can never be handed to a new one). Mirrors the child-case creation
+ * block in createCase exactly (same fields, same EmployeeProfile pairing),
+ * just for a single additional slot instead of the initial batch.
+ */
+exports.addEmployeeSlot = async (req, res, next) => {
+  try {
+    const { principalId } = req.params;
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+    if (principal.caseStructure !== "employer_employee" || principal.caseRole !== "principal") {
+      return res.status(400).json({ success: false, code: "NOT_EMPLOYER_MATTER", message: "This case is not an employer/employee matter" });
+    }
+
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
+    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to add an employee to this case" });
+    }
+
+    const nextIndex = Math.max(principal.childCaseCount || 0, (principal.childCases || []).length);
+    const childIndex = CaseNumberService.indexToSuffix(nextIndex);
+    const childCaseNumber = CaseNumberService.childCaseNumber(principal.caseNumber, nextIndex);
+    const checklist = await resolveDocumentRequirements(principal.visaType);
+    const childChecklist = filterChecklistForRole(checklist, "employee");
+
+    const [childCase] = await Case.create([{
+      isDemoData: false,
+      createdBy: req.user._id,
+      lastModifiedBy: req.user._id,
+      caseId: childCaseNumber,
+      caseNumber: childCaseNumber,
+      clientPortalId: childCaseNumber,
+      clientEmail: "",
+      clientName: "",
+      visaType: principal.visaType,
+      visaCategory: principal.visaCategory,
+      caseType: principal.caseType,
+      petitionType: principal.petitionType,
+      checklistItems: childChecklist,
+      documentChecklist: childChecklist,
+      status: "pending_assignment",
+      assignedTeamLead: principal.assignedTeamLead,
+      teamId: principal.teamId,
+      assignedCaseManager: principal.assignedCaseManager,
+      user: principal.user,
+      parentCase: principal._id,
+      caseStructure: "employer_employee",
+      caseRole: "employee",
+      childIndex,
+      childCaseCount: 0,
+      employerProfileId: principal.employerProfileId || null,
+      dataEntryMode: principal.dataEntryMode,
+      assignmentOverridden: false,
+      legacySource: "Admin",
+    }]);
+
+    const [personProfile] = await EmployeeProfile.create([{
+      caseId: childCase._id,
+      principalCaseId: principal._id,
+      profileType: "employee",
+      updatedAt: new Date(),
+      updatedBy: req.user._id,
+    }]);
+    childCase.personProfileId = personProfile._id;
+    await childCase.save();
+
+    principal.childCases = [...(principal.childCases || []), childCase._id];
+    principal.childCaseCount = Math.max(principal.childCaseCount || 0, nextIndex + 1);
+    await principal.save();
+    await caseService.writeAuditLog("add_employee_slot", principal, req.user, { childCaseId: childCase._id, childCaseNumber }, req);
+
+    return res.status(201).json({
+      success: true,
+      message: `Employee slot ${childCaseNumber} added.`,
+      childCaseId: childCase._id,
+      childCaseNumber,
     });
   } catch (err) {
     handleError(err, next);

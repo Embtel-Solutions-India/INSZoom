@@ -21,27 +21,7 @@ const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
 const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
 const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
-
-// Converts a flat, sorted, 1-based page list (ComponentPageResolver.
-// resolvePagesToKeep()'s return shape) into the contiguous {start, end}
-// ranges Adobe's combinepdf API requires.
-function toAdobeRanges(pages1Based) {
-  if (!pages1Based || !pages1Based.length) return null;
-  const sorted = [...pages1Based].sort((a, b) => a - b);
-  const ranges = [];
-  let start = sorted[0];
-  let end = sorted[0];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] === end + 1) {
-      end = sorted[i];
-    } else {
-      ranges.push({ start, end });
-      start = end = sorted[i];
-    }
-  }
-  ranges.push({ start, end });
-  return ranges;
-}
+const { toAdobeRanges } = require("./ViewerPdfPreparationService");
 
 function classifyField(field) {
   const ctor = field.constructor?.name || "";

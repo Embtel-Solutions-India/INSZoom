@@ -474,6 +474,9 @@ const CRMCaseDetail = () => {
   // parentCase/childCases already embedded on caseData via casesApi.get —
   // also carries assignedCaseManager and assignmentOverridden per child.
   const [childCases, setChildCases] = useState(null)
+  const [showRemovedEmployees, setShowRemovedEmployees] = useState(false)
+  const [employeeActionBusy, setEmployeeActionBusy] = useState('')
+  const [employeeActionMessage, setEmployeeActionMessage] = useState('')
 
   // Tab-specific data and loading states
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
@@ -638,6 +641,37 @@ const CRMCaseDetail = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const refetchChildCases = async () => {
+    try {
+      const relatedResponse = await casesApi.getRelated(id)
+      setChildCases(relatedResponse.data.childCases || [])
+    } catch (error) {
+      console.error('Error refetching child cases:', error)
+    }
+  }
+
+  const runEmployeeAction = async (actionKey, fn, successMessage) => {
+    setEmployeeActionBusy(actionKey)
+    setEmployeeActionMessage('')
+    try {
+      const response = await fn()
+      setEmployeeActionMessage(response?.data?.message || successMessage)
+      await refetchChildCases()
+    } catch (error) {
+      setEmployeeActionMessage(error.response?.data?.message || 'The action could not be completed')
+    } finally {
+      setEmployeeActionBusy('')
+    }
+  }
+
+  const handleAddEmployee = () => runEmployeeAction('add', () => casesApi.addEmployeeSlot(id), 'Employee slot added')
+  const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
+  const handleRestoreEmployee = (childCaseId) => runEmployeeAction(`restore:${childCaseId}`, () => casesApi.restoreEmployee(childCaseId), 'Employee restored')
+  const handleRemoveEmployee = (childCaseId) => {
+    if (!window.confirm('Remove this employee from the matter? Their data is kept and this can be undone.')) return
+    runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed')
   }
 
   const handleCreateInformationRequest = async () => {
@@ -1598,64 +1632,137 @@ const CRMCaseDetail = () => {
       {/* Phase 7 — a principal case shows its child cases and who's assigned
           to each; overridden children are skipped by any future cascade from
           this principal's own assignment. */}
-      {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (
-        <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-lg font-semibold text-foreground">Child Cases ({caseData.childCaseCount})</h3>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Assigning this matter's case manager applies to every child case below except those marked overridden.
-            </p>
-          </div>
-          {childCases === null ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
-          ) : childCases.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-border">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                    <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
-                    <th className="px-5 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {childCases.map((child) => (
-                    <tr key={child._id}>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">{child.clientName || 'TBD'}</td>
-                      <td className="px-5 py-3 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(child.status)}`}>
-                          {child.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">
-                        {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
-                        {child.assignmentOverridden && (
-                          <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
-                            Overridden
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 whitespace-nowrap text-right">
-                        <button
-                          onClick={() => navigate(`/crm-cases/${child._id}`)}
-                          className="text-sm font-semibold text-primary-600 hover:text-primary-700"
-                        >
-                          View →
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (() => {
+        const visibleChildCases = (childCases || []).filter((child) => showRemovedEmployees || child.status !== 'removed')
+        const removedCount = (childCases || []).filter((child) => child.status === 'removed').length
+        const isEmployerMatter = caseData.caseStructure === 'employer_employee'
+        // 'removed' is the pill emails/panels elsewhere call "withdrawn" —
+        // same status, this codebase's own established term (see
+        // case.constants.js's CASE_STATUSES comment on removeEmployee).
+        const childStatusPill = (child) => {
+          if (child.status === 'removed') return { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground line-through' }
+          if (!child.clientName && !child.clientEmail) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
+          if (child.user && String(child.user) !== String(caseData.user?._id || caseData.user)) {
+            return { label: 'Invited', className: 'bg-blue-100 text-blue-800' }
+          }
+          return { label: child.status, className: getStatusColor(child.status) }
+        }
+        return (
+          <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Employees ({caseData.childCaseCount})</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Assigning this matter's case manager applies to every child case below except those marked overridden.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {removedCount > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                    <input type="checkbox" checked={showRemovedEmployees} onChange={(e) => setShowRemovedEmployees(e.target.checked)} />
+                    Show withdrawn ({removedCount})
+                  </label>
+                )}
+                {isEmployerMatter && (
+                  <button
+                    type="button"
+                    onClick={handleAddEmployee}
+                    disabled={employeeActionBusy === 'add'}
+                    className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                  >
+                    {employeeActionBusy === 'add' ? 'Adding…' : '+ Add Employee'}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+            {employeeActionMessage && (
+              <div className="px-5 py-2 text-sm bg-secondary/50 text-foreground border-b border-border">{employeeActionMessage}</div>
+            )}
+            {childCases === null ? (
+              <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
+            ) : visibleChildCases.length === 0 ? (
+              <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
+                      <th className="px-5 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {visibleChildCases.map((child) => {
+                      const pill = childStatusPill(child)
+                      const isRemoved = child.status === 'removed'
+                      const isInvitedPending = pill.label === 'Invited'
+                      return (
+                        <tr key={child._id} className={isRemoved ? 'opacity-60' : ''}>
+                          <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
+                          <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">{child.clientName || 'Employee Slot'}</td>
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">
+                            {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
+                            {child.assignmentOverridden && (
+                              <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
+                                Overridden
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap text-right space-x-3">
+                            {isRemoved ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreEmployee(child._id)}
+                                disabled={employeeActionBusy === `restore:${child._id}`}
+                                className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                              >
+                                {employeeActionBusy === `restore:${child._id}` ? 'Restoring…' : 'Restore'}
+                              </button>
+                            ) : (
+                              <>
+                                {isEmployerMatter && isInvitedPending && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResendInvite(child._id)}
+                                    disabled={employeeActionBusy === `resend:${child._id}`}
+                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                                  >
+                                    {employeeActionBusy === `resend:${child._id}` ? 'Resending…' : 'Resend Invite'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => navigate(`/crm-cases/${child._id}`)}
+                                  className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+                                >
+                                  View →
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEmployee(child._id)}
+                                  disabled={employeeActionBusy === `remove:${child._id}`}
+                                  className="text-sm font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                                >
+                                  Withdraw
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border overflow-x-auto">

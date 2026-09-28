@@ -102,9 +102,21 @@ async function resolveApplicableMappings(caseData) {
     if (mapping.provisioningType === "AUTO_CREATE") {
       autoCreate.push({ mapping, templateStatus: await resolveTemplateStatus(mapping, caseData) });
     } else if (mapping.provisioningType === "CONDITIONAL") {
-      conditional.push({ mapping, decision: decisionFor(caseData, mapping._id) });
+      // templateStatus is also resolved here now (not just decision) - a
+      // CONDITIONAL form is auto-created the same as AUTO_CREATE once its
+      // template is available (see registryAutoCreateTemplates), so the
+      // caller needs the same readiness signal it already computes for
+      // AUTO_CREATE. `decision` is preserved purely so a case manager can
+      // still explicitly mark a mapping NOT_APPLICABLE to opt a specific
+      // case out of auto-creation - it is no longer what GATES creation.
+      conditional.push({ mapping, decision: decisionFor(caseData, mapping._id), templateStatus: await resolveTemplateStatus(mapping, caseData) });
     } else if (mapping.provisioningType === "LATER_STAGE") {
-      laterStage.push({ mapping });
+      // No-criteria provisioning: a LATER_STAGE form used to have no path
+      // onto the case at all until a bespoke UI action was built for its
+      // specific stage. It's now treated exactly like AUTO_CREATE/CONDITIONAL
+      // - created the moment its template is available, regardless of case
+      // stage - so templateStatus is resolved here too.
+      laterStage.push({ mapping, templateStatus: await resolveTemplateStatus(mapping, caseData) });
     } else if (mapping.provisioningType === "REFERENCE") {
       reference.push({ mapping });
     }
@@ -246,12 +258,66 @@ function independentFormsFrom(resolved) {
 // ensureAssignedForms' create loop below can give the resulting CaseForm
 // its own distinct formCode (the componentCode) instead of colliding with
 // the parent's, and set parentFormCode/componentCode/componentType.
-async function registryAutoCreateTemplates(caseData) {
-  const { autoCreate } = await resolveVisaFormMappings(caseData);
+// No-criteria provisioning: CONDITIONAL and LATER_STAGE mappings are now
+// auto-created the same as AUTO_CREATE, the instant their template is
+// TEMPLATE_AVAILABLE - no case-manager click, no case-stage gating. A
+// CONDITIONAL mapping the case manager has explicitly marked
+// NOT_APPLICABLE (recordConditionalDecision) is still respected and
+// skipped - that remains a real, deliberate opt-out, not a readiness gate.
+// Per-process, per-form-code cooldown for the self-heal acquisition kicked
+// off below - deliberately NOT the OnDemandFormAcquisitionService TTL
+// (that TTL only throttles the "existing template, check for a new
+// edition" path; a genuinely MISSING template has no TTL guard at all and
+// retries on every single call - see ensureCurrentUSCISFormInner). Without
+// this, every case-creation/assignment/generateForms call for a visa type
+// whose forms aren't seeded locally would re-attempt a live uscis.gov fetch
+// for every one of its missing form codes, unthrottled. One hour is
+// generous enough that a real acquisition failure (USCIS unreachable, a
+// non-standard form-page URL) doesn't turn into a hot-path network call on
+// every request, while still self-healing well within a normal workday.
+const ACQUISITION_COOLDOWN_MS = 60 * 60 * 1000;
+const lastAcquisitionAttempt = new Map();
+
+// Fire-and-forget: never awaited by the caller, never throws into it.
+// Deliberately calls ensureCurrentUSCISForm (fetch/activate only) rather
+// than acquireForCase (which also re-runs ensureAssignedForms) - the latter
+// would recurse back into this same resolution path, since
+// registryAutoCreateTemplates is itself called FROM ensureAssignedForms.
+function attemptSelfHealAcquisition(formCode, user, req) {
+  const now = Date.now();
+  const lastAttempt = lastAcquisitionAttempt.get(formCode) || 0;
+  if (now - lastAttempt < ACQUISITION_COOLDOWN_MS) return;
+  lastAcquisitionAttempt.set(formCode, now);
+  require("../uscis-form-import/services/OnDemandFormAcquisitionService")
+    .ensureCurrentUSCISForm(formCode, user, req)
+    .catch((error) => {
+      require("../../utils/logger").error("uscis_form_self_heal_acquisition_failed", { formCode, error: error.message });
+    });
+}
+
+async function registryAutoCreateTemplates(caseData, user, req) {
+  const { autoCreate, conditional, laterStage } = await resolveVisaFormMappings(caseData);
+  const eligible = [
+    ...autoCreate,
+    ...conditional.filter((entry) => entry.decision !== "NOT_APPLICABLE"),
+    ...laterStage,
+  ];
   const templates = [];
-  for (const entry of autoCreate) {
-    if (entry.templateStatus !== "TEMPLATE_AVAILABLE") continue;
-    const template = await buildTemplateForMapping(entry.mapping, caseData, "AUTO_CREATE");
+  for (const entry of eligible) {
+    if (entry.templateStatus !== "TEMPLATE_AVAILABLE") {
+      // Self-heal: a standalone USCIS form with no local template at all
+      // gets a throttled, non-blocking attempt to fetch it from uscis.gov,
+      // so it shows up (in whatever activation tier it qualifies for) the
+      // next time this case - or any case needing the same form - is
+      // touched, with no admin having to click "Acquire" first. Component/
+      // supplement mappings (share a parent's template) and non-USCIS
+      // agencies are never attempted - there's nothing to fetch.
+      if (entry.templateStatus === "TEMPLATE_MISSING" && isIndependentUSCISForm(entry.mapping) && entry.mapping.formTemplateFormCode) {
+        attemptSelfHealAcquisition(entry.mapping.formTemplateFormCode, user, req);
+      }
+      continue;
+    }
+    const template = await buildTemplateForMapping(entry.mapping, caseData, entry.mapping.provisioningType);
     if (!template) continue; // resolved TEMPLATE_AVAILABLE a moment ago; defensive re-check
     templates.push(template);
   }

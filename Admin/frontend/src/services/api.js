@@ -178,6 +178,13 @@ export const casesApi = {
   revokeAttorneyAccess: (id, attorneyId) =>
     api.patch(`/cases/${id}/attorney-access`, { attorneyId, action: 'revoke' }),
   getRelated: (id) => api.get(`/cases/${id}/related`),
+  // Employer/employee child-case slots (case.controller.js's Phase 9 +
+  // extensions) — staff can act on any child case; the employer client can
+  // act on their own principal's children (enforced server-side).
+  restoreEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/restore-employee`),
+  resendEmployeeInvite: (principalId, childCaseId) => api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }),
+  addEmployeeSlot: (principalId) => api.post(`/cases/${principalId}/add-employee-slot`),
+  removeEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/remove-employee`),
   getTeamLeadDashboard: (params = {}) => api.get('/cases/dashboard/team-lead', { params }),
   addDocumentReference: (id, documentId) =>
     api.post(`/cases/${id}/document-references`, { documentId }),
@@ -307,6 +314,11 @@ export const clientIntakeApi = {
 
 export const uscisFormsApi = {
   templatePdf: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { responseType: 'blob' }),
+  // Interactive-viewer copy of the full template: barcode fields baked into
+  // page content so pdf.js shows the real barcode image rather than an
+  // editable text box over it. templatePdf above stays the untouched
+  // official blank PDF.
+  templatePdfViewer: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { params: { purpose: 'viewer' }, responseType: 'blob' }),
   // Component-scoped blank PDF (e.g. the I-129 H Classification Supplement's
   // own pages only, not the full parent) - Adobe combinepdf-sliced server-side.
   componentTemplatePdf: (templateId, componentCode) =>

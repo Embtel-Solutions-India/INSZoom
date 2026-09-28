@@ -135,3 +135,133 @@ test("CaseForm supports the complete interactive review lifecycle", () => {
   assert.ok(CaseForm.schema.path("comments"));
   assert.ok(CaseForm.schema.path("reviewTasks"));
 });
+
+// --- P1 viewer rendering (RC1 backend): viewerPageConstraint.pageMap ---
+// The component viewer PDF is an Adobe-sliced copy renumbered 1..N, so the
+// frontend needs slot -> parentPage to never request a parent page number
+// from an N-page document.
+const I129_TEMPLATE = { _id: "tpl-1", formCode: "I-129", pdfMetadata: { pageCount: 38 } };
+
+test("P1: component constraint maps each slice slot to its parent page", async () => {
+  const constraint = await InteractiveFormReviewService.resolveViewerPageConstraint({
+    caseForm: { _id: "cf-1", componentCode: "I129_H_1B_DATA_COLLECTION_AND" },
+    template: I129_TEMPLATE,
+    findComponentDef: async () => ({ pageRanges: [{ startPage: 21, endPage: 23 }] }),
+  });
+  assert.equal(constraint.type, "component");
+  assert.equal(constraint.pdfSource, "component");
+  assert.deepEqual(constraint.pages, [21, 22, 23]);
+  assert.deepEqual(constraint.pageMap, [
+    { slot: 1, parentPage: 21 },
+    { slot: 2, parentPage: 22 },
+    { slot: 3, parentPage: 23 },
+  ]);
+  assert.equal(constraint.expectedPdfPageCount, 3);
+});
+
+test("P1: core constraint is an identity subset over the full parent PDF", async () => {
+  const constraint = await InteractiveFormReviewService.resolveViewerPageConstraint({
+    caseForm: { _id: "cf-core", componentCode: null },
+    template: I129_TEMPLATE,
+    resolveCorePages: async () => [1, 2, 3, 4, 5, 6, 7, 8],
+  });
+  assert.equal(constraint.type, "core");
+  assert.equal(constraint.pdfSource, "full");
+  assert.deepEqual(constraint.pageMap.map((entry) => entry.slot), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.ok(constraint.pageMap.every((entry) => entry.slot === entry.parentPage));
+  assert.equal(constraint.expectedPdfPageCount, 38);
+});
+
+test("P1: a form with no core subset gets a full identity map", async () => {
+  const constraint = await InteractiveFormReviewService.resolveViewerPageConstraint({
+    caseForm: { _id: "cf-i539", componentCode: null },
+    template: { _id: "tpl-539", formCode: "I-539", pdfMetadata: { pageCount: 3 } },
+    resolveCorePages: async () => null,
+  });
+  assert.equal(constraint.type, "full");
+  assert.deepEqual(constraint.pageMap, [
+    { slot: 1, parentPage: 1 },
+    { slot: 2, parentPage: 2 },
+    { slot: 3, parentPage: 3 },
+  ]);
+  assert.equal(constraint.expectedPdfPageCount, 3);
+});
+
+test("P1: missing pdfMetadata.pageCount falls back to formLayout/formFields page count", async () => {
+  assert.equal(InteractiveFormReviewService.resolveTemplatePageCount({ formLayout: { pages: new Array(38).fill({}) } }), 38);
+  assert.equal(InteractiveFormReviewService.resolveTemplatePageCount({ formStructure: { pages: [{}, {}] } }), 2);
+  assert.equal(InteractiveFormReviewService.resolveTemplatePageCount({ formFields: [{ pageNumber: 4 }, { pageNumber: 12 }] }), 12);
+
+  const constraint = await InteractiveFormReviewService.resolveViewerPageConstraint({
+    caseForm: { _id: "cf-2", componentCode: "I129_H_CLASSIFICATION_SUPPLEM" },
+    template: { _id: "tpl-1", formCode: "I-129", formLayout: { pages: new Array(38).fill({}) } },
+    findComponentDef: async () => ({ pageRanges: [{ startPage: 13, endPage: 20 }] }),
+  });
+  assert.equal(constraint.type, "component");
+  assert.equal(constraint.pages.length, 8);
+  assert.equal(constraint.pageMap[0].parentPage, 13);
+});
+
+test("P1: a component constraint failure never degrades to the full parent PDF", async () => {
+  const constraint = await InteractiveFormReviewService.resolveViewerPageConstraint({
+    caseForm: { _id: "cf-3", componentCode: "I129_H_CLASSIFICATION_SUPPLEM" },
+    template: I129_TEMPLATE,
+    findComponentDef: async () => null,
+  });
+  assert.equal(constraint.type, "component");
+  assert.equal(constraint.pdfSource, "component");
+  assert.equal(constraint.pages, null);
+  assert.equal(constraint.pageMap, null);
+  assert.equal(constraint.error.code, "COMPONENT_DEFINITION_NOT_FOUND");
+});
+
+// P2 RC7: updateProgress used to pass caseForm.fieldValues (keyed by the
+// normalized fieldId, e.g. "part1.line1Name0") straight into
+// calculateCompletion, which reads each field by its raw AcroForm
+// field.fieldName (e.g. "form1[0].#subform[0].Line1_Name[0]") - the two
+// namespaces never match, so every required field always counted as
+// missing. mergeFieldValues (the same translation renderCaseForm's viewer
+// already uses) must run first. These fixtures use a non-component
+// (componentCode: null) CaseForm so resolveComponentFieldIds short-circuits
+// without touching the DB - see its own null-return contract above.
+const RC7_TEMPLATE = {
+  formCode: "P2-RC7-TEST",
+  formFields: [
+    { fieldId: "part1.line1Name0", fieldName: "form1[0].#subform[0].Line1_Name[0]", required: true, sectionKey: "part1" },
+    { fieldId: "part1.line2Name0", fieldName: "form1[0].#subform[0].Line2_Name[0]", required: true, sectionKey: "part1" },
+  ],
+};
+
+test("P2 RC7: updateProgress resolves 100% completion when required fields are filled via fieldId-keyed fieldValues", async () => {
+  const caseForm = {
+    componentCode: null,
+    fieldValues: {
+      "part1.line1Name0": "Smith",
+      "part1.line2Name0": "John",
+    },
+    filledData: {},
+  };
+  const progress = await InteractiveFormReviewService.updateProgress(caseForm, RC7_TEMPLATE);
+  assert.equal(progress.completion.missingRequiredFields, 0, "both required fields have values under their fieldId keys and must count as filled");
+  assert.equal(progress.completion.percent, 100);
+  assert.equal(Object.keys(progress.validationErrors).length, 0, "no field should show a false 'Required' error");
+});
+
+test("P2 RC7: updateProgress reports every required field missing only when fieldValues is genuinely empty", async () => {
+  const caseForm = { componentCode: null, fieldValues: {}, filledData: {} };
+  const progress = await InteractiveFormReviewService.updateProgress(caseForm, RC7_TEMPLATE);
+  assert.equal(progress.completion.missingRequiredFields, 2);
+  assert.equal(progress.completion.percent, 0);
+});
+
+test("P2 RC7: updateProgress mutates caseForm.completion/sectionProgress/validationErrors in place", async () => {
+  const caseForm = { componentCode: null, fieldValues: { "part1.line1Name0": "Smith" }, filledData: {}, validationErrors: { populationWarnings: [] } };
+  await InteractiveFormReviewService.updateProgress(caseForm, RC7_TEMPLATE);
+  assert.equal(caseForm.completion.missingRequiredFields, 1);
+  assert.equal(caseForm.completion.completedFields, 1);
+  assert.ok(caseForm.sectionProgress.part1);
+  // Existing validationErrors keys (e.g. populationWarnings from autofill)
+  // must survive - updateProgress only ever adds/replaces the `fields` key.
+  assert.deepEqual(caseForm.validationErrors.populationWarnings, []);
+  assert.ok(caseForm.validationErrors.fields["form1[0].#subform[0].Line2_Name[0]"]);
+});

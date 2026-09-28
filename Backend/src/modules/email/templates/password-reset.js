@@ -20,7 +20,7 @@ function bodyLines(data = {}) {
   return [
     `Hi ${data.name || "there"},`,
     `We received a request to reset the password for your Immiglance Immigration Portal account.`,
-    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>`,
+    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>`,
     `Or copy this link into your browser: ${link}`,
     `This link expires in 1 hour.`,
     `If you didn't request this, you can safely ignore this email — your password will not be changed.`,

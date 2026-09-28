@@ -1,0 +1,86 @@
+
+=== I129_E_1_E_2_CLASSIFICATION_S | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=4 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+         9 |    1 |            26 |                    1 |             4 |       25 |        false | FAIL
+        10 |    2 |            53 |                    1 |             0 |       52 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_TRADE_AGREEMENT_SUPPLEME | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=4 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        11 |    1 |            19 |                    1 |             4 |       18 |        false | FAIL
+        12 |    2 |            20 |                    1 |             0 |       19 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_H_CLASSIFICATION_SUPPLEM | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=8 expected=8 OK | /Fields roots=1 | pdf-lib getFields()=4 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        13 |    1 |            31 |                    1 |             4 |       30 |        false | FAIL
+        14 |    2 |            16 |                    1 |             0 |       15 |        false | FAIL
+        15 |    3 |            21 |                    1 |             0 |       20 |        false | FAIL
+        16 |    4 |            24 |                    1 |             0 |       23 |        false | FAIL
+        17 |    5 |            15 |                    1 |             0 |       14 |        false | FAIL
+        18 |    6 |            17 |                    1 |             0 |       16 |        false | FAIL
+        19 |    7 |            29 |                    1 |             0 |       28 |        false | FAIL
+        20 |    8 |            14 |                    1 |             0 |       13 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_H_1B_DATA_COLLECTION_AND | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=3 expected=3 OK | /Fields roots=1 | pdf-lib getFields()=4 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        21 |    1 |            36 |                    1 |             3 |       35 |        false | FAIL
+        22 |    2 |            27 |                    1 |             1 |       26 |        false | FAIL
+        23 |    3 |            26 |                    1 |             0 |       25 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_L_CLASSIFICATION_SUPPLEM | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=4 expected=4 OK | /Fields roots=1 | pdf-lib getFields()=4 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        24 |    1 |            44 |                    1 |             4 |       43 |        false | FAIL
+        25 |    2 |            27 |                    1 |             0 |       26 |        false | FAIL
+        26 |    3 |            19 |                    1 |             0 |       18 |        false | FAIL
+        27 |    4 |            17 |                    1 |             0 |       16 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_O_P_CLASSIFICATION_SUPPL | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=3 expected=3 OK | /Fields roots=1 | pdf-lib getFields()=5 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        28 |    1 |            19 |                    1 |             5 |       18 |        false | FAIL
+        29 |    2 |            40 |                    1 |             0 |       39 |        false | FAIL
+        30 |    3 |            19 |                    1 |             0 |       18 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_Q_CLASSIFICATION_SUPPLEM | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=1 expected=1 OK | /Fields roots=1 | pdf-lib getFields()=3 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        31 |    1 |            10 |                    1 |             3 |        9 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_R_CLASSIFICATION_SUPPLEM | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=5 expected=5 OK | /Fields roots=1 | pdf-lib getFields()=3 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        32 |    1 |            30 |                    1 |             3 |       29 |        false | FAIL
+        33 |    2 |            18 |                    1 |             0 |       17 |        false | FAIL
+        34 |    3 |            14 |                    1 |             0 |       13 |        false | FAIL
+        35 |    4 |            15 |                    1 |             0 |       14 |        false | FAIL
+        36 |    5 |            30 |                    1 |             0 |       29 |        false | FAIL
+OVERALL: FAIL
+
+=== I129_ADDITIONAL_BENEFICIARY | recipe=legacy | strategy=legacy_adobe_combine_no_flatten ===
+pages: viewer=2 expected=2 OK | /Fields roots=1 | pdf-lib getFields()=5 | flattenedBarcodeFields=null
+parentPage | slot | parentWidgets | parentBarcodeWidgets | viewerWidgets | expected | barcodeBaked | result
+        37 |    1 |            43 |                    1 |             5 |       42 |        false | FAIL
+        38 |    2 |            43 |                    1 |             0 |       42 |        false | FAIL
+OVERALL: FAIL
+
+=== SUMMARY ===
+I129_E_1_E_2_CLASSIFICATION_S      legacy_adobe_combine_no_flatten  FAIL
+I129_TRADE_AGREEMENT_SUPPLEME      legacy_adobe_combine_no_flatten  FAIL
+I129_H_CLASSIFICATION_SUPPLEM      legacy_adobe_combine_no_flatten  FAIL
+I129_H_1B_DATA_COLLECTION_AND      legacy_adobe_combine_no_flatten  FAIL
+I129_L_CLASSIFICATION_SUPPLEM      legacy_adobe_combine_no_flatten  FAIL
+I129_O_P_CLASSIFICATION_SUPPL      legacy_adobe_combine_no_flatten  FAIL
+I129_Q_CLASSIFICATION_SUPPLEM      legacy_adobe_combine_no_flatten  FAIL
+I129_R_CLASSIFICATION_SUPPLEM      legacy_adobe_combine_no_flatten  FAIL
+I129_ADDITIONAL_BENEFICIARY        legacy_adobe_combine_no_flatten  FAIL

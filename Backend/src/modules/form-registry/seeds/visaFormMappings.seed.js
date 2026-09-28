@@ -92,6 +92,20 @@ function i129RSupplement(visaType, opts = {}) {
 function i129ESupplement(visaType, opts = {}) {
   return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
 }
+// E-3's real I-129 supplement is NOT the E-1/E-2 Classification Supplement
+// (I-129 pages 9-10) — the real printed heading on I-129 page 11-12 for E-3
+// is "Trade Agreement Supplement to Form I-129" (shared with TN/H-1B1),
+// confirmed live: USCISFormComponentDiscoveryService already discovered and
+// activated this exact component (I129_TRADE_AGREEMENT_SUPPLEME, pages
+// 11-12, 39 fields) against the real I-129 PDF — see
+// docs/USCIS_SUPPLEMENT_COMPONENT_ARCHITECTURE_REPORT.md §10.3. The
+// formName here must match that discovery's heading text exactly (discovery
+// connects a USCISFormComponentDefinition to a VisaFormMapping row by exact
+// formName match), which is why this is a distinct helper from
+// i129ESupplement above, not a shared one.
+function i129TradeAgreementSupplement(visaType, opts = {}) {
+  return m(visaType, "I-129 Trade Agreement Supplement", "Trade Agreement Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
+}
 function ds160(visaType, opts = {}) {
   return m(visaType, "DS-160", "Online Nonimmigrant Visa Application", "DOS", opts.provisioningType || COND, ONLINE, {
     processingPaths: opts.provisioningType === AUTO ? [] : ["CONSULAR"],
@@ -288,7 +302,7 @@ add(
   m("E-3", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("E-3", { provisioningType: AUTO, initialCaseCreation: true }),
   i129Petition("E-3", { provisioningType: COND, initialCaseCreation: false }),
-  i129ESupplement("E-3"),
+  i129TradeAgreementSupplement("E-3"),
   i907("E-3")
 );
 

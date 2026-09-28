@@ -59,6 +59,15 @@ const uscisFormComponentDefinitionSchema = new mongoose.Schema(
     slicedPdfChecksum: { type: String, default: null },
     slicedPdfCachedAt: { type: Date, default: null },
     parentTemplateChecksum: { type: String, default: null },
+    // ViewerPdfPreparationService.VIEWER_PDF_RECIPE_VERSION the cached slice
+    // was produced with. A slice from an older recipe (e.g. the pre-fix one
+    // that dropped ~97% of widgets) is never served, even if its parent
+    // checksum still matches - the recipe itself changed.
+    slicedPdfRecipeVersion: { type: Number, default: null },
+    // slot (1-based page in the sliced PDF) -> parentPage (official USCIS
+    // page number) for the cached slice, served to the viewer as
+    // X-Viewer-Page-Map.
+    slicedPdfPageMap: { type: [{ slot: Number, parentPage: Number, _id: false }], default: undefined },
   },
   { timestamps: true }
 );

@@ -236,7 +236,16 @@ class AutoFillService {
         }
       }
     }
-    const canonicalData = await CanonicalDataService.build(caseId, user, req);
+    // RC8: a selectedFieldIds call is always the sibling-fan-out from a
+    // single field's overrideFieldById save (repopulateFields below), never
+    // the workspace-open/Refresh/first-fill path - the canonical profile was
+    // already rebuilt by applyStaffEdit() earlier in that same request, so
+    // forcing CanonicalBuilderService's 8-query rebuild again here is pure
+    // added latency on a per-keystroke path. Read the cached profile instead.
+    const canonicalData = await CanonicalDataService.build(caseId, user, req, {
+      skipRebuild: Boolean(options.selectedFieldIds?.length),
+      reason: "form_mapping",
+    });
     const readiness = canonicalData.validation || {};
     const startedAt = new Date();
     await this.audit("AUTO_FILL_STARTED", existingCaseForm || { _id: caseId }, user, req, { formType, templateId: template._id, canonicalStatus: readiness.status });
@@ -437,6 +446,27 @@ class AutoFillService {
       error.status = 404;
       throw error;
     }
+    return this.overrideFieldById(caseForm, fieldId, value, user, req, reason);
+  }
+
+  // RC5 fix: overrideField's old body took (caseId, formType, ...) and
+  // re-fetched the CaseForm via findCaseForm(caseId, formType) even though
+  // saveField already has the exact, already-loaded document from load().
+  // For a component CaseForm (e.g. "I129_H_CLASSIFICATION_SUPPLEM"),
+  // formType === caseForm.formCode === the componentCode - but no
+  // USCISFormTemplate/mapping graph is ever keyed by a componentCode, only
+  // by the shared parent template's real formCode ("I-129", stored on
+  // caseForm.parentFormCode - see generate()'s comment on why formCode is
+  // deliberately NOT resynced to the parent's for a component CaseForm).
+  // resolveReverseSync/ReverseIndexService below use caseForm.parentFormCode
+  // when set, never caseForm.formCode - using formCode for a component
+  // CaseForm 404s inside FormMappingService.loadTemplate, surfaced to the
+  // client as a 500 on every supplement field save (confirmed via direct
+  // code read: loadTemplate's `$or: [{formCode}, {formNumber}]` query has no
+  // match for a componentCode).
+  static async overrideFieldById(caseForm, fieldId, value, user, req, reason) {
+    const caseId = caseForm.caseId;
+    const templateFormCode = caseForm.parentFormCode || caseForm.formCode;
     const previousValue = MappingResolver.resolvePath(caseForm.filledData || {}, fieldId);
 
     // Canonical write happens FIRST, before any CaseForm mutation below, so a
@@ -451,7 +481,7 @@ class AutoFillService {
     // this branch - guessing a reverse transform for those would silently
     // corrupt canonical data, so they fall through to the unchanged
     // CaseForm-only write below, exactly as before this phase.
-    const { canonicalSourcePath, reverseSyncEligible } = await this.resolveReverseSync(formType, fieldId);
+    const { canonicalSourcePath, reverseSyncEligible } = await this.resolveReverseSync(templateFormCode, fieldId);
     let canonicalVersionChanged = false;
     if (reverseSyncEligible) {
       const caseBeforeEdit = await Case.findById(caseId).select("canonicalProfile.version").lean();
@@ -539,7 +569,13 @@ class AutoFillService {
       ...this.requestMeta(req),
     });
     await caseForm.save();
-    await this.audit("FIELD_OVERRIDDEN", caseForm, user, req, { fieldId, previousValue, value, reason });
+    // RC6: the external AuditLog write measured ~300ms on its own (a
+    // separate round trip to the same DB) and has no bearing on the response
+    // this request needs to return - fire-and-forget, same as saveField's
+    // own audit/notification calls.
+    setImmediate(() => {
+      this.audit("FIELD_OVERRIDDEN", caseForm, user, req, { fieldId, previousValue, value, reason }).catch(() => null);
+    });
 
     // Fan out the new canonical value to this form's OTHER PDF fields sharing
     // the same source (e.g. person.lastName -> 3 I-129 fields) by reusing
@@ -557,10 +593,34 @@ class AutoFillService {
       // generate() ran (generate()'s own isReviewedOrManual check already
       // left an untouched sibling's stored value exactly as it was - this
       // only adds the sync-state marker on top, never overwrites a value).
-      const siblingEntries = (await ReverseIndexService.buildFormReverseIndex(formType)).get(canonicalSourcePath) || [];
+      const siblingEntries = (await ReverseIndexService.buildFormReverseIndex(templateFormCode)).get(canonicalSourcePath) || [];
       const priorManualOverrides = manualOverrides;
-      const regenerated = await this.generate(caseId, formType, user, req, { regenerate: true });
-      const finalForm = regenerated.caseForm;
+      // RC8: siblingFieldIds scopes the re-map to just the sibling fields
+      // instead of a full generate({regenerate:true}), which is what
+      // triggered CanonicalBuilderService's 8-query rebuild on every
+      // reverse-sync field save (skipRebuild inside generate() below only
+      // takes effect when selectedFieldIds is non-empty). For a component
+      // CaseForm, the reverse index can return sibling pdfFields that belong
+      // to a DIFFERENT component sharing the same parent template (they're
+      // all keyed off the same parentFormCode's mapping graph) - those live
+      // in a different CaseForm document entirely and must never be passed
+      // into THIS component's own repopulateFields call, so they're filtered
+      // out against this component's own fieldIds first.
+      let siblingFieldIds = siblingEntries.map(({ pdfField }) => pdfField).filter((id) => id !== fieldId);
+      if (caseForm.componentCode && siblingFieldIds.length) {
+        const componentDef = await USCISFormComponentDefinition.findOne({
+          parentTemplateId: caseForm.formTemplateId,
+          componentCode: caseForm.componentCode,
+          status: "ACTIVE",
+        }).select("fieldIds").lean();
+        const allowedFieldIds = new Set(componentDef?.fieldIds || []);
+        siblingFieldIds = siblingFieldIds.filter((id) => allowedFieldIds.has(id));
+      }
+      let finalForm = caseForm;
+      if (siblingFieldIds.length) {
+        const regenerated = await this.repopulateFields(caseId, caseForm.formCode, siblingFieldIds, user, req);
+        finalForm = regenerated.caseForm;
+      }
 
       let conflictDetected = false;
       siblingEntries.forEach(({ pdfField }) => {

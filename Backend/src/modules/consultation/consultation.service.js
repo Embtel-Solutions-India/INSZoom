@@ -120,8 +120,16 @@ async function getPublicSlots({ from, to } = {}) {
   return { slots, durationMinutes: config.durationMinutes, timezone: config.timezone };
 }
 
+// Consultation booking/management is a Landing responsibility (pre-auth —
+// the prospect has no account yet), never Client - this must always resolve
+// to the public marketing site (immiglance.com), not whichever origin
+// happens to be first in CLIENT_URLS. Previously read
+// process.env.CLIENT_URLS.split(",")[0], which only happened to land on the
+// right domain because of that list's current ordering - explicit and
+// order-independent now.
 function manageUrlFor(token) {
-  const base = (process.env.CLIENT_URLS || process.env.CLIENT_URL || "http://localhost:5173").split(",")[0].trim();
+  const fallback = process.env.NODE_ENV === "production" ? "https://immiglance.com" : "http://localhost:5173";
+  const base = (process.env.LANDING_URL || fallback).replace(/\/+$/, "");
   return `${base}/consultation/booking/${token}`;
 }
 
@@ -323,7 +331,6 @@ async function reschedule(token, newStartAt, req) {
     data: {
       fullName: updated.name,
       startAt: updated.startAt,
-      meetingUrl: config.locationType === "video" ? config.meetingLink : "",
       locationType: config.locationType,
       publicHostName: config.publicHostName,
       manageUrl: manageUrlFor(token),

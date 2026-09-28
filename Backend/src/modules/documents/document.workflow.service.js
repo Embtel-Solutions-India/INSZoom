@@ -81,6 +81,7 @@ async function documentReviewed(document, user) {
   await canonicalSyncService.syncFromDocument(document, user, null).catch(() => null);
   if (["approved", "accepted"].includes(document.reviewStatus)) {
     await workflowEngine.triggerWorkflow("document.approved", { caseId: document.caseId, entityId: document.caseId, documentId: document._id, documentType: document.documentType, allDocumentsApproved: false }, user).catch(() => {});
+    if (document.caseId) await require("../petition/services/PetitionAssemblyService").autoSync(document.caseId, user, null);
   }
   if (["rejected", "needs_revision"].includes(document.reviewStatus)) {
     await workflowEngine.triggerWorkflow("document.rejected", {

@@ -295,9 +295,38 @@ async function getTemplatePdf(req, res, next) {
       error.statusCode = 502;
       throw error;
     }
+
+    // Default (no ?purpose) bytes are deliberately untouched - the signed
+    // download URL serves exactly these to users as the official blank PDF.
+    // Only the interactive viewer opts into a prepared copy (barcode fields
+    // baked into page content so pdf.js renders the real barcode image
+    // instead of an editable text box over it), cached per template
+    // checksum + recipe version.
+    let viewerHeaders = null;
+    if (req.query.purpose === "viewer") {
+      const ViewerPdfPreparationService = require("../form-generation/services/ViewerPdfPreparationService");
+      const checksum = template.artifacts?.form?.checksum || "nochecksum";
+      const viewerKey = `uscis-forms/viewer-full/${template._id}/${checksum}-r${ViewerPdfPreparationService.VIEWER_PDF_RECIPE_VERSION}.pdf`;
+      let viewerBuffer = null;
+      try {
+        viewerBuffer = await storageService.readBuffer(viewerKey);
+        viewerHeaders = { strategy: "cached" };
+      } catch (readError) {
+        if (readError.code !== "ENOENT") throw readError;
+      }
+      if (!viewerBuffer) {
+        const prepared = await ViewerPdfPreparationService.prepareViewerPdf({ rawBuffer: buffer, template, pagesToKeep: null });
+        viewerBuffer = prepared.buffer;
+        viewerHeaders = { strategy: prepared.report.strategy };
+        await storageService.storeBuffer(viewerKey, viewerBuffer, "application/pdf");
+      }
+      buffer = viewerBuffer;
+    }
+
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${template.formCode}-${template.version}.pdf"`);
     res.setHeader("Cache-Control", "private, max-age=3600");
+    if (viewerHeaders) setViewerPdfHeaders(res, viewerHeaders);
     res.send(buffer);
   } catch (error) {
     next(error);
@@ -312,15 +341,24 @@ async function getTemplatePdf(req, res, next) {
 // the result. No automatic fallback to the full parent PDF on any failure -
 // per the task's own constraint, a slicing failure must throw, never
 // silently serve the wrong (unsliced) document.
+function setViewerPdfHeaders(res, { strategy, pageMap }) {
+  const { VIEWER_PDF_RECIPE_VERSION } = require("../form-generation/services/ViewerPdfPreparationService");
+  res.setHeader("X-Viewer-Recipe", String(VIEWER_PDF_RECIPE_VERSION));
+  if (strategy) res.setHeader("X-Viewer-Strategy", strategy);
+  if (pageMap) res.setHeader("X-Viewer-Page-Map", JSON.stringify(pageMap));
+  res.setHeader("Access-Control-Expose-Headers", "X-Viewer-Recipe, X-Viewer-Strategy, X-Viewer-Page-Map");
+}
+
 async function getComponentPdf(req, res, next) {
   try {
-    const template = await USCISFormTemplate.findById(req.params.id).select("formCode version artifacts pdfStorageKey").lean();
+    const template = await USCISFormTemplate.findById(req.params.id).select("formCode version artifacts pdfStorageKey pdfMetadata").lean();
     if (!template) {
       const error = new Error("USCIS form template not found");
       error.statusCode = 404;
       throw error;
     }
     const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+    const ViewerPdfPreparationService = require("../form-generation/services/ViewerPdfPreparationService");
     const componentDef = await USCISFormComponentDefinition.findOne({
       parentTemplateId: template._id,
       componentCode: req.params.componentCode,
@@ -332,16 +370,26 @@ async function getComponentPdf(req, res, next) {
       throw error;
     }
 
+    // Freshness now also requires the SAME viewer recipe version - the
+    // pre-fix recipe (no barcode flatten before slicing) produced slices
+    // with ~97% of widgets missing, and those were cached for 24h keyed only
+    // on the parent checksum, so a code fix alone would not have shown
+    // until every cached slice happened to expire.
     const parentChecksum = template.artifacts?.form?.checksum || null;
     const cacheFresh = componentDef.slicedPdfStorageKey
       && componentDef.parentTemplateChecksum === parentChecksum
+      && componentDef.slicedPdfRecipeVersion === ViewerPdfPreparationService.VIEWER_PDF_RECIPE_VERSION
       && componentDef.slicedPdfCachedAt
       && (Date.now() - new Date(componentDef.slicedPdfCachedAt).getTime()) < 24 * 60 * 60 * 1000;
 
     let buffer = null;
+    let strategy = null;
+    let pageMap = null;
     if (cacheFresh) {
       try {
         buffer = await storageService.readBuffer(componentDef.slicedPdfStorageKey);
+        strategy = "cached";
+        pageMap = componentDef.slicedPdfPageMap || null;
       } catch (readError) {
         if (readError.code !== "ENOENT") throw readError;
         buffer = null; // fall through to re-slice
@@ -356,36 +404,24 @@ async function getComponentPdf(req, res, next) {
         throw error;
       }
       const rawBuffer = await storageService.readBuffer(key);
-      // Root cause (confirmed empirically, see XfaPurgeGuard.js): a plain
-      // pdf-lib load+save only unlinks the AcroForm's /XFA dictionary key -
-      // it does not delete the orphaned XFA template package's own stream
-      // objects, which Adobe's combinepdf (and setformdata) still detect
-      // and reject as "Source PDF is a XFA Form and cannot be processed".
-      // Explicitly purging those objects (not just re-saving) is what
-      // actually makes the buffer acceptable to Adobe.
       const PDFRenderer = require("../form-generation/services/PDFRenderer");
-      const { purgeOrphanedXfaObjects } = require("../form-generation/services/XfaPurgeGuard");
-      const { rebuildAcroFormFieldsFromWidgets } = require("../form-generation/services/AcroFormRepairGuard");
+      const ComponentPageResolver = require("../form-generation/services/ComponentPageResolver");
       const { PDFDocument } = PDFRenderer.loadPdfLib();
-      const rawPdf = await PDFDocument.load(rawBuffer, { ignoreEncryption: true, updateMetadata: false });
-      purgeOrphanedXfaObjects(rawPdf);
-      const cleanedBuffer = Buffer.from(await rawPdf.save());
-      const AdobePdfService = require("../pdf-services/AdobePdfService");
-      const adobeRanges = componentDef.pageRanges.map((r) => ({ start: r.startPage, end: r.endPage }));
-      const slicedBuffer = await AdobePdfService.slicePdf(cleanedBuffer, adobeRanges);
-      // Root cause (confirmed empirically, see AcroFormRepairGuard.js):
-      // Adobe's combinepdf preserves every kept page's own Widget
-      // annotations, but drops the document-level AcroForm's /Fields index
-      // into them - repair it here too, on the blank viewer PDF, the same
-      // way as the filled-download path.
-      const slicedDoc = await PDFDocument.load(slicedBuffer, { ignoreEncryption: true, updateMetadata: false });
-      rebuildAcroFormFieldsFromWidgets(slicedDoc);
-      buffer = Buffer.from(await slicedDoc.save());
+      const totalPages = (await PDFDocument.load(rawBuffer, { ignoreEncryption: true, updateMetadata: false })).getPageCount();
+      const pagesToKeep = ComponentPageResolver.expandPageRanges(componentDef.pageRanges, totalPages, {
+        componentCode: componentDef.componentCode,
+        parentFormCode: template.formCode,
+      });
+
+      const prepared = await ViewerPdfPreparationService.prepareViewerPdf({ rawBuffer, template, pagesToKeep });
+      buffer = prepared.buffer;
+      strategy = prepared.report.strategy;
+      pageMap = prepared.report.pageMap;
 
       const crypto = require("crypto");
       const slicedPdfChecksum = crypto.createHash("sha256").update(buffer).digest("hex");
       const stored = await storageService.storeBuffer(
-        `uscis-forms/component-slices/${template._id}/${componentDef.componentCode}.pdf`,
+        `uscis-forms/component-slices/${template._id}/${componentDef.componentCode}-r${ViewerPdfPreparationService.VIEWER_PDF_RECIPE_VERSION}.pdf`,
         buffer,
         "application/pdf"
       );
@@ -393,12 +429,15 @@ async function getComponentPdf(req, res, next) {
       componentDef.slicedPdfChecksum = slicedPdfChecksum;
       componentDef.slicedPdfCachedAt = new Date();
       componentDef.parentTemplateChecksum = parentChecksum;
+      componentDef.slicedPdfRecipeVersion = ViewerPdfPreparationService.VIEWER_PDF_RECIPE_VERSION;
+      componentDef.slicedPdfPageMap = pageMap;
       await componentDef.save();
     }
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${template.formCode}-${componentDef.componentCode}.pdf"`);
     res.setHeader("Cache-Control", "private, max-age=3600");
+    setViewerPdfHeaders(res, { strategy, pageMap });
     res.send(buffer);
   } catch (error) {
     next(error);
