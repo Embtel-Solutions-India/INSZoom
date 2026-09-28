@@ -39,7 +39,8 @@ import {
   XCircle,
 } from 'lucide-react'
 import { formGenerationApi, uscisFormsApi } from '../../services/api'
-import { convert as convertPdfFieldChange, extractFieldName, prePopulateFields } from '../../utils/PDFFieldChangeAdapter'
+import { convert as convertPdfFieldChange, extractFieldName, buildWidgetIndex, prePopulateById } from '../../utils/PDFFieldChangeAdapter'
+import { buildPageSlots, pageMismatch } from './viewerPageSlots'
 
 // Must be set in the SAME module that renders <Document>/<Page> (react-pdf's
 // own README warning - module execution order can otherwise silently
@@ -406,7 +407,7 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
 // with every in-scope field's overlay positioned on top of it at its real
 // coordinates - this IS the "legit form" look Task 2 asks for, replacing
 // the flat per-field list this component used to render exclusively.
-function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, fieldsByName, values, validationErrors, canEdit, selectedFieldName, onSelectField, onNativeFieldInput, onNativeFieldCommit, registerPageRef, showBackground = true, sessionEditedFields, fieldSaveStatus }) {
+function PdfFormPage({ pdfPageNumber, displayPageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, fieldsByName, values, validationErrors, canEdit, selectedFieldName, onSelectField, onNativeFieldInput, onNativeFieldCommit, registerPageRef, showBackground = true, sessionEditedFields, fieldSaveStatus }) {
   const scale = pdfPageWidth ? renderWidth / pdfPageWidth : 1
   const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
   const pageRef = useRef(null)
@@ -449,10 +450,10 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fie
   }, [fieldsByName, onNativeFieldCommit, onNativeFieldInput, onSelectField, showBackground])
   return (
     <div
-      id={`uscis-page-${pageNumber}`}
+      id={`uscis-page-${displayPageNumber}`}
       ref={(node) => {
         pageRef.current = node
-        registerPageRef(pageNumber, node)
+        registerPageRef(displayPageNumber, node)
       }}
       className="pdf-native-page relative mx-auto mb-6 bg-card shadow-md"
       style={{ width: renderWidth, minHeight: renderHeight }}
@@ -475,14 +476,20 @@ function PdfFormPage({ pageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fie
       `}</style>
       {showBackground ? (
         <Page
-          pageNumber={pageNumber}
+          pageNumber={pdfPageNumber}
           width={renderWidth}
           renderAnnotationLayer
           renderForms
           renderTextLayer={false}
           onRenderSuccess={syncNativeFields}
-          loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {pageNumber}…</div>}
-          error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {pageNumber}.</div>}
+          // RC4: onRenderSuccess fires when the CANVAS finishes, not when the
+          // annotation-layer DOM (the actual <input>/<select> elements)
+          // exists yet - re-syncing here too is what makes an autofilled
+          // value (and its styling) reliably visible immediately, including
+          // after a zoom change re-renders just the annotation layer.
+          onRenderAnnotationLayerSuccess={syncNativeFields}
+          loading={<div className="flex h-[600px] items-center justify-center text-sm text-slate-400">Rendering page {displayPageNumber}…</div>}
+          error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to render page {displayPageNumber}.</div>}
         />
       ) : (
         <div style={{ width: renderWidth, height: renderHeight }} />
@@ -531,6 +538,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const [templatePdfUrl, setTemplatePdfUrl] = useState(null)
   const [templatePdfError, setTemplatePdfError] = useState('')
   const [pdfPageCount, setPdfPageCount] = useState(0)
+  const [headerPageMap, setHeaderPageMap] = useState(null)
+  const [annotationsReady, setAnnotationsReady] = useState(false)
+  const widgetIndexRef = useRef(null)
   const [leftPanelOpen, setLeftPanelOpen] = useState(false)
   const [zoomMode, setZoomMode] = useState('fit-width')
   const [zoomScale, setZoomScale] = useState(1)
@@ -658,24 +668,26 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   // still has real, editable AcroForm fields (manual_entry ones) a case
   // manager may need to see, so it still renders visually rather than
   // falling back to a flat list.
-  // Adobe-native form-slicing task: for a `component` CaseForm, the PDF
-  // loaded below is already the Adobe-sliced, component-only document (its
-  // own pdfPageCount is already correct - no extra filtering needed here).
-  // For a `core` CaseForm, the full parent PDF is still loaded (slicing it
-  // on every viewer open would mean an Adobe API call per open), so the
-  // page list is filtered client-side to viewerPageConstraint.pages instead.
+  //
+  // `pageSlots` (slot = position in the loaded PDF, parentPage = official
+  // USCIS page number) replaces the old single `pageNumbers` list, which
+  // conflated the two - for a component CaseForm the PDF loaded below is an
+  // Adobe-sliced, renumbered-1..N copy, so `pageNumber` alone could not
+  // correctly drive both "which slot to render" and "which parent page this
+  // is." See viewerPageSlots.js for the full mapping priority.
   const viewerPageConstraint = workspace?.viewerPageConstraint
-  const pageNumbers = useMemo(() => {
-    const fromDimensions = [...pageDimensionsByNumber.keys()]
-    const fromFields = [...fieldsByPage.keys()]
-    const fromPdf = pdfPageCount ? Array.from({ length: pdfPageCount }, (_, index) => index + 1) : []
-    const all = [...new Set([...fromDimensions, ...fromFields, ...fromPdf])].sort((a, b) => a - b)
-    if (viewerPageConstraint?.type === 'core' && viewerPageConstraint.pages) {
-      const allowed = new Set(viewerPageConstraint.pages)
-      return all.filter((page) => allowed.has(page))
-    }
-    return all
-  }, [pageDimensionsByNumber, fieldsByPage, pdfPageCount, viewerPageConstraint])
+  const pageSlots = useMemo(() => buildPageSlots({
+    viewerPageConstraint,
+    headerPageMap,
+    pdfPageCount,
+    fieldsByPage,
+    pageDimensionsByNumber,
+  }), [viewerPageConstraint, headerPageMap, pdfPageCount, fieldsByPage, pageDimensionsByNumber])
+  const pageNumbers = useMemo(() => pageSlots.map((entry) => entry.parentPage), [pageSlots])
+  const pageMismatchMessage = useMemo(
+    () => pageMismatch(pageSlots, pdfPageCount, viewerPageConstraint?.expectedPdfPageCount),
+    [pageSlots, pdfPageCount, viewerPageConstraint]
+  )
 
   const pageCompletion = useCallback((pageNumber) => {
     const fields = fieldsByPage.get(pageNumber) || []
@@ -686,8 +698,11 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const templateId = workspace?.template?._id
   // A `component` CaseForm (e.g. I-129's H Classification Supplement) loads
   // its own Adobe-sliced, component-only PDF instead of the full parent -
-  // see viewerPageConstraint above.
-  const componentCode = viewerPageConstraint?.type === 'component' ? workspace?.caseForm?.componentCode : null
+  // driven by pdfSource (not `type` alone), which is what the backend
+  // actually uses to decide which bytes it served (see
+  // resolveViewerPageConstraint) - `type` and `pdfSource` agree today, but
+  // pdfSource is the field callers should key on for which PDF to load.
+  const componentCode = viewerPageConstraint?.pdfSource === 'component' ? workspace?.caseForm?.componentCode : null
 
   useEffect(() => {
     if (!templateId) return undefined
@@ -695,12 +710,22 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     let objectUrl = null
     setTemplatePdfError('')
     setTemplatePdfUrl(null)
+    setHeaderPageMap(null)
     const request = componentCode
       ? uscisFormsApi.componentTemplatePdf(templateId, componentCode)
-      : uscisFormsApi.templatePdf(templateId)
+      : uscisFormsApi.templatePdfViewer(templateId)
     request
       .then((response) => {
         if (cancelled) return
+        const rawHeaderMap = response.headers?.['x-viewer-page-map']
+        if (rawHeaderMap) {
+          try {
+            const parsed = JSON.parse(rawHeaderMap)
+            if (Array.isArray(parsed) && parsed.length) setHeaderPageMap(parsed)
+          } catch {
+            // Malformed header - fall back to viewerPageConstraint.pageMap (buildPageSlots already does this).
+          }
+        }
         objectUrl = URL.createObjectURL(response.data)
         setTemplatePdfUrl(objectUrl)
       })
@@ -711,14 +736,29 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }, [templateId, componentCode])
 
-  const handlePdfLoadSuccess = useCallback((pdfDocument) => {
+  // First-paint values (RC4): pdf.js's annotation storage is keyed by
+  // per-widget ANNOTATION ID (e.g. "1234R"), not by field NAME, so a value
+  // must be resolved through getFieldObjects() before it can be written
+  // anywhere useful. Rendering the actual pages only once this has run (see
+  // annotationsReady below, and its reset on templatePdfUrl change) is what
+  // makes an autofilled value visible immediately instead of only after the
+  // user interacts with that field.
+  const handlePdfLoadSuccess = useCallback(async (pdfDocument) => {
     pdfDocumentRef.current = pdfDocument
     setPdfPageCount(pdfDocument.numPages || 0)
-    prePopulateFields(pdfDocument.annotationStorage, valuesRef.current)
+    const fieldObjects = await pdfDocument.getFieldObjects?.().catch(() => null)
+    widgetIndexRef.current = buildWidgetIndex(fieldObjects || {})
+    prePopulateById(pdfDocument.annotationStorage, widgetIndexRef.current, valuesRef.current)
+    setAnnotationsReady(true)
   }, [])
 
   useEffect(() => {
-    prePopulateFields(pdfDocumentRef.current?.annotationStorage, values)
+    setAnnotationsReady(false)
+  }, [templatePdfUrl])
+
+  useEffect(() => {
+    if (!widgetIndexRef.current) return
+    prePopulateById(pdfDocumentRef.current?.annotationStorage, widgetIndexRef.current, values)
   }, [values])
 
   const registerPageRef = useCallback((pageNumber, node) => {
@@ -926,6 +966,60 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }
 
+  // Phase 5 (P2): merges a partial caseForm patch into local state without a
+  // GET /workspace round trip - used only by statusAction below.
+  const mergeFormState = useCallback((patch) => {
+    setWorkspace((prev) => (prev ? { ...prev, caseForm: { ...prev.caseForm, ...patch } } : prev))
+  }, [])
+
+  // Approve / reject / request-changes / generate-PDF / lock / unlock only
+  // ever change a handful of caseForm status fields - never template fields,
+  // page layout, or field values - so a full loadWorkspace(true) reload
+  // (re-fetching and re-rendering the entire template + every field) after
+  // one of these is pure redundant work that also causes a visible reload
+  // flicker. The server's own response already carries the updated caseForm
+  // (decideInteractiveForm/lockInteractiveForm return `data` as the full
+  // CaseForm; the PDF generate endpoint returns `data.caseForm`) - merge that
+  // in directly. `statePatch` is applied first as a synchronous optimistic
+  // update so the UI reflects the action immediately, then overwritten by
+  // whatever the server actually returned once the request resolves. Any
+  // action that DOES change field values or template state (refresh, reset,
+  // rollback, resolve-conflict, section review) keeps using `action()` with
+  // its full reload, unchanged.
+  const statusAction = async (key, callback, successMessage, statePatch = {}) => {
+    setBusy(key)
+    setErrorMessage('')
+    mergeFormState(statePatch)
+    try {
+      const response = await callback()
+      const serverForm = response?.data?.data?.caseForm || response?.data?.data || response?.data?.form
+      if (serverForm) {
+        mergeFormState({
+          status: serverForm.status,
+          approvedBy: serverForm.approvedBy,
+          approvalDate: serverForm.approvalDate,
+          reviewState: serverForm.reviewState,
+          generatedPdfDocument: serverForm.generatedPdfDocument,
+          generatedPdfVersions: serverForm.generatedPdfVersions,
+          filledPdfPath: serverForm.filledPdfPath,
+          filledPdfUrl: serverForm.filledPdfUrl,
+          isLocked: serverForm.isLocked,
+          lockedAt: serverForm.lockedAt,
+          lockedBy: serverForm.lockedBy,
+        })
+      }
+      setNotice(successMessage)
+      onSaved?.()
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || error.message || 'The action could not be completed')
+      // The optimistic patch above may now be wrong (the action failed) -
+      // fall back to a real reload to recover the authoritative state.
+      await loadWorkspace(true)
+    } finally {
+      setBusy('')
+    }
+  }
+
   const updateField = (field, nextValue) => {
     const previousValue = getByPath(values, field.fieldName)
     if (!sameValue(previousValue, nextValue)) {
@@ -1036,11 +1130,17 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
 
   const decideForm = async (decision) => {
     if (!(await savePendingChanges('Auto-save before form decision'))) return
-    action(`decision:${decision}`, () => uscisFormsApi.decideWorkspaceForm(caseId, caseForm._id, {
+    const statePatch = {
+      approve: { status: 'ready_for_pdf' },
+      reject: { status: 'rejected' },
+      request_changes: { status: 'needs_revision' },
+      return_to_case_manager: { status: 'needs_revision' },
+    }[decision] || {}
+    statusAction(`decision:${decision}`, () => uscisFormsApi.decideWorkspaceForm(caseId, caseForm._id, {
       action: decision,
       reason: decisionReason || undefined,
       approvalStatement: decision === 'approve' ? 'I reviewed this form and approve it for official PDF generation.' : undefined,
-    }), decision === 'approve' ? 'Form approved and ready for PDF generation' : 'Review decision saved')
+    }), decision === 'approve' ? 'Form approved and ready for PDF generation' : 'Review decision saved', statePatch)
   }
 
   const addComment = async () => {
@@ -1107,7 +1207,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
 
   const generatePdf = async () => {
     if (!(await savePendingChanges('Auto-save before PDF generation'))) return
-    action('generate-pdf', () => formGenerationApi.generatePdf(caseForm._id, { watermark: 'FINAL', flatten: true }), 'Official USCIS PDF generated')
+    statusAction('generate-pdf', () => formGenerationApi.generatePdf(caseForm._id, { watermark: 'FINAL', flatten: true }), 'Official USCIS PDF generated', { status: 'generated' })
   }
 
   const openPdf = async () => {
@@ -1290,8 +1390,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             {['approved', 'ready_for_pdf', 'locked'].includes(workspace.caseForm.status) && <button type="button" onClick={generatePdf} disabled={busy === 'generate-pdf'} className="flex items-center gap-1 rounded-md bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"><FileCheck2 className="h-4 w-4" />{busy === 'generate-pdf' ? 'Generating…' : 'Generate PDF'}</button>}
             {workspace.caseForm.generatedPdfDocument && <button type="button" onClick={openPdf} disabled={busy === 'preview-pdf'} className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Preview PDF</button>}
             {workspace.caseForm.generatedPdfDocument && <button type="button" onClick={downloadPdf} disabled={busy === 'download-pdf'} className="flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50"><Download className="h-3.5 w-3.5" />{busy === 'download-pdf' ? 'Downloading…' : 'Download PDF'}</button>}
-            {permissions.canLock && !locked && ['approved', 'ready_for_pdf', 'generated'].includes(workspace.caseForm.status) && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before lock')) action('lock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: true }), 'Form locked') }} className="rounded-md border border-slate-800 px-3 py-2 text-xs font-semibold text-slate-800"><Lock className="inline h-3.5 w-3.5" /> Lock</button>}
-            {permissions.canUnlock && locked && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before unlock')) action('unlock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: false, reason: decisionReason }), 'Form unlocked') }} className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><Unlock className="inline h-3.5 w-3.5" /> Unlock</button>}
+            {permissions.canLock && !locked && ['approved', 'ready_for_pdf', 'generated'].includes(workspace.caseForm.status) && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before lock')) statusAction('lock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: true }), 'Form locked', { isLocked: true, status: 'locked' }) }} className="rounded-md border border-slate-800 px-3 py-2 text-xs font-semibold text-slate-800"><Lock className="inline h-3.5 w-3.5" /> Lock</button>}
+            {permissions.canUnlock && locked && <button type="button" onClick={async () => { if (await savePendingChanges('Auto-save before unlock')) statusAction('unlock', () => uscisFormsApi.lockWorkspaceForm(caseId, caseForm._id, { locked: false, reason: decisionReason }), 'Form unlocked', { isLocked: false }) }} className="rounded-md border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><Unlock className="inline h-3.5 w-3.5" /> Unlock</button>}
           </div>
         </div>
         <div className="mt-3 flex items-center gap-3">
@@ -1429,6 +1529,13 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               <button type="button" onClick={() => { setZoomMode('fit-width'); setZoomScale((current) => Math.min(2.5, Number((current + 0.1).toFixed(2)))) }} className="rounded p-1 text-slate-700 hover:bg-slate-100" aria-label="Zoom in"><Plus className="h-3.5 w-3.5" /></button>
             </div>
           </div>
+          {(viewerPageConstraint?.error || pageMismatchMessage) && (
+            <div className="mx-auto mb-3 max-w-[900px] rounded-md border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-900">
+              {viewerPageConstraint?.error
+                ? `This supplement's page layout could not be resolved: ${viewerPageConstraint.error.message}`
+                : `This form's page layout may be out of date: ${pageMismatchMessage}`}
+            </div>
+          )}
           {templatePdfUrl ? (
             <Document
               file={templatePdfUrl}
@@ -1436,22 +1543,26 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               error={<div className="flex h-[300px] items-center justify-center text-sm font-semibold text-red-600">Unable to load the official USCIS PDF - field data is still shown below once pages render.</div>}
               onLoadSuccess={handlePdfLoadSuccess}
             >
-              {pageNumbers.map((pageNumber) => {
-                const dims = pageDimensionsByNumber.get(pageNumber) || {}
-                const { total, filled } = pageCompletion(pageNumber)
+              {!annotationsReady && (
+                <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Preparing form fields…</div>
+              )}
+              {annotationsReady && pageSlots.map(({ slot, parentPage }) => {
+                const dims = pageDimensionsByNumber.get(parentPage) || {}
+                const { total, filled } = pageCompletion(parentPage)
                 const renderWidth = renderWidthForPage(dims)
                 return (
-                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: renderWidth }}>
+                  <div key={parentPage} className="mx-auto mb-2" style={{ width: renderWidth }}>
                     <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold text-slate-600">
-                      <span>Page {pageNumber}</span>
+                      <span>Page {parentPage}</span>
                       <span className={filled === total && total > 0 ? 'text-blue-700' : 'text-slate-500'}>{total ? `${filled} of ${total} fields filled` : 'No fillable fields on this page'}</span>
                     </div>
                     <PdfFormPage
-                      pageNumber={pageNumber}
+                      pdfPageNumber={slot}
+                      displayPageNumber={parentPage}
                       pdfPageWidth={dims.width || 612}
                       pdfPageHeight={dims.height || 792}
                       renderWidth={renderWidth}
-                      fields={fieldsByPage.get(pageNumber) || []}
+                      fields={fieldsByPage.get(parentPage) || []}
                       fieldsByName={fieldsByName}
                       values={values}
                       validationErrors={validationErrors}
@@ -1470,22 +1581,23 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             </Document>
           ) : templatePdfError ? (
             pageNumbers.length ? (
-              pageNumbers.map((pageNumber) => {
-                const dims = pageDimensionsByNumber.get(pageNumber) || {}
-                const { total, filled } = pageCompletion(pageNumber)
+              pageSlots.map(({ parentPage }) => {
+                const dims = pageDimensionsByNumber.get(parentPage) || {}
+                const { total, filled } = pageCompletion(parentPage)
                 const renderWidth = renderWidthForPage(dims)
                 return (
-                  <div key={pageNumber} className="mx-auto mb-2" style={{ width: renderWidth }}>
+                  <div key={parentPage} className="mx-auto mb-2" style={{ width: renderWidth }}>
                     <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold text-slate-600">
-                      <span>Page {pageNumber}</span>
+                      <span>Page {parentPage}</span>
                       <span className={filled === total && total > 0 ? 'text-blue-700' : 'text-slate-500'}>{total ? `${filled} of ${total} fields filled` : 'No fillable fields on this page'}</span>
                     </div>
                     <PdfFormPage
-                      pageNumber={pageNumber}
+                      pdfPageNumber={parentPage}
+                      displayPageNumber={parentPage}
                       pdfPageWidth={dims.width || 612}
                       pdfPageHeight={dims.height || 792}
                       renderWidth={renderWidth}
-                      fields={fieldsByPage.get(pageNumber) || []}
+                      fields={fieldsByPage.get(parentPage) || []}
                       fieldsByName={fieldsByName}
                       values={values}
                       validationErrors={validationErrors}

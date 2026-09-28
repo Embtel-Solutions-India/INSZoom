@@ -20,7 +20,7 @@ function bodyLines(data = {}) {
         <p style="margin:0;font-size:22px;font-weight:800;color:#065f46;letter-spacing:1px;">${data.caseNumber || ""}</p>
       </td></tr>
     </table>`,
-    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Create My Account</a>`,
+    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Create My Account</a>`,
     `Or copy this link into your browser: ${link}`,
     `<strong>This link expires in 7 days.</strong>`,
     `<em style="color:#9ca3af;font-size:13px;">If you did not expect this email, please contact ${data.petitionerName || "your petitioner"} or ignore it.</em>`,

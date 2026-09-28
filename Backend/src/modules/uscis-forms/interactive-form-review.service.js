@@ -14,6 +14,7 @@ const ReverseIndexService = require("../form-mapping/services/ReverseIndexServic
 const SyncStateService = require("../form-mapping/services/SyncStateService");
 const notificationService = require("../notifications/notification.service");
 const uscisFormService = require("./uscis-form.service");
+const logger = require("../../utils/logger");
 
 // Server-side execution budget for the primary-bound reads on this path.
 // IMPORTANT, measured not assumed: maxTimeMS caps how long the SERVER spends
@@ -236,8 +237,23 @@ class InteractiveFormReviewService {
     return uscisFormService.buildSections(template).find((section) => section.key === sectionKey || section.sectionId === sectionKey)?.fields?.map((field) => field.fieldName) || [];
   }
 
-  static updateProgress(caseForm, template) {
-    const progress = uscisFormService.calculateCompletion(template, caseForm.fieldValues || caseForm.filledData || {});
+  // RC7 fix: calculateCompletion reads each field by `values[field.fieldName]`
+  // - the raw AcroForm name (e.g. "form1[0].#subform[0].Line1_Name[0]"). But
+  // caseForm.fieldValues (and filledData) are keyed by the normalized
+  // fieldId (e.g. "part1.line1Name0") - see ISSUE-001 above. Passing
+  // fieldValues straight through, as this used to, means calculateCompletion
+  // reads undefined for literally every field: every required field counts
+  // as missing, approval always 422s, and every saved field shows a false
+  // "Required" validation error on the very next render. mergeFieldValues
+  // (the same translation renderCaseForm already uses for the viewer) builds
+  // the fieldName-keyed map calculateCompletion actually expects.
+  // componentFieldIds scopes completion to just a component CaseForm's own
+  // fields (resolveComponentFieldIds returns null for an ordinary CaseForm,
+  // which calculateCompletion/buildSections treat as "no filter").
+  static async updateProgress(caseForm, template) {
+    const componentFieldIds = await uscisFormService.resolveComponentFieldIds(caseForm);
+    const { values } = uscisFormService.mergeFieldValues(template, caseForm, {});
+    const progress = uscisFormService.calculateCompletion(template, values, componentFieldIds);
     caseForm.completion = progress.completion;
     caseForm.sectionProgress = progress.sectionProgress;
     caseForm.validationErrors = {
@@ -336,6 +352,107 @@ class InteractiveFormReviewService {
     };
   }
 
+  // Page count of the parent template, from whichever source actually
+  // carries it - pdfMetadata.pageCount is missing on some imported
+  // templates, and treating that as "0 pages" made every component's
+  // viewerPageConstraint.pages null.
+  static resolveTemplatePageCount(template) {
+    const fromMetadata = Number(template?.pdfMetadata?.pageCount) || 0;
+    if (fromMetadata) return fromMetadata;
+    const fromLayout = template?.formLayout?.pages?.length || 0;
+    if (fromLayout) return fromLayout;
+    const fromStructure = template?.formStructure?.pages?.length || 0;
+    if (fromStructure) return fromStructure;
+    return (template?.formFields || []).reduce((max, field) => Math.max(max, Number(field?.pageNumber) || 0), 0);
+  }
+
+  // Dependency-injectable (findComponentDef / resolveCorePages) so it can be
+  // unit tested without a database, the same way buildFieldView is.
+  static async resolveViewerPageConstraint({ caseForm, template, findComponentDef, resolveCorePages } = {}) {
+    const ComponentPageResolver = require("../form-generation/services/ComponentPageResolver");
+    const lookupComponentDef = findComponentDef || (async () => {
+      const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+      return USCISFormComponentDefinition.findOne({
+        parentTemplateId: template._id,
+        componentCode: caseForm.componentCode,
+        status: "ACTIVE",
+      }).select("pageRanges").lean();
+    });
+    const lookupCorePages = resolveCorePages || ((tpl, total) => ComponentPageResolver.resolveCorePages(tpl, total));
+    const totalPages = InteractiveFormReviewService.resolveTemplatePageCount(template);
+    const identityMap = (count) => Array.from({ length: count }, (_, index) => ({ slot: index + 1, parentPage: index + 1 }));
+    const fullConstraint = () => ({
+      type: "full",
+      pages: null,
+      pageRanges: null,
+      pageMap: identityMap(totalPages),
+      pdfSource: "full",
+      expectedPdfPageCount: totalPages,
+    });
+
+    try {
+      if (caseForm?.componentCode) {
+        const componentDef = await lookupComponentDef();
+        if (!componentDef) {
+          throw Object.assign(new Error(`No ACTIVE component definition for ${caseForm.componentCode}`), { code: "COMPONENT_DEFINITION_NOT_FOUND" });
+        }
+        if (!totalPages) {
+          throw Object.assign(new Error(`Could not determine the page count of parent template ${template?.formCode}`), { code: "TEMPLATE_PAGE_COUNT_UNKNOWN" });
+        }
+        const pages = ComponentPageResolver.expandPageRanges(componentDef.pageRanges, totalPages, {
+          componentCode: caseForm.componentCode,
+          parentFormCode: template.formCode,
+        });
+        return {
+          type: "component",
+          pages,
+          pageRanges: componentDef.pageRanges,
+          // The component viewer PDF is an Adobe-sliced copy renumbered
+          // 1..N; slot k in that PDF is the k-th kept parent page.
+          pageMap: pages.map((parentPage, index) => ({ slot: index + 1, parentPage })),
+          pdfSource: "component",
+          expectedPdfPageCount: pages.length,
+        };
+      }
+      const corePages = totalPages ? await lookupCorePages(template, totalPages) : null;
+      if (corePages) {
+        return {
+          type: "core",
+          pages: corePages,
+          pageRanges: null,
+          // The core viewer loads the FULL parent PDF and filters pages
+          // client-side, so each slot is the parent page itself.
+          pageMap: corePages.map((parentPage) => ({ slot: parentPage, parentPage })),
+          pdfSource: "full",
+          expectedPdfPageCount: totalPages,
+        };
+      }
+      return fullConstraint();
+    } catch (constraintError) {
+      if (caseForm?.componentCode) {
+        // A component must never silently degrade to the full parent PDF -
+        // that is exactly the "supplement shows all 38 pages" failure mode.
+        // Surface the error so the viewer can show it instead.
+        logger.error("viewer_page_constraint_failed", {
+          caseFormId: caseForm?._id,
+          componentCode: caseForm.componentCode,
+          code: constraintError.code,
+          message: constraintError.message,
+        });
+        return {
+          type: "component",
+          pages: null,
+          pageRanges: null,
+          pageMap: null,
+          pdfSource: "component",
+          expectedPdfPageCount: null,
+          error: { code: constraintError.code || "VIEWER_PAGE_CONSTRAINT_FAILED", message: constraintError.message },
+        };
+      }
+      return fullConstraint();
+    }
+  }
+
   static async open(caseId, caseFormId, user, req, options = {}) {
     // renderCaseForm already builds the canonical profile internally (via
     // buildBindingContext) to merge canonical values into the rendered form.
@@ -406,39 +523,13 @@ class InteractiveFormReviewService {
     const pageDimensions = (template.formLayout?.pages || template.formStructure?.pages || [])
       .map((page) => ({ pageNumber: page.pageNumber, width: page.width, height: page.height, rotation: page.rotation || 0 }));
 
-    // Adobe-native form-slicing task: tells the viewer which pages of the
-    // template PDF actually belong to this CaseForm, so a component
-    // CaseForm never shows the full 38-page parent and the core CaseForm
-    // never shows a sibling component's pages. Additive only - every other
-    // field on this response is unchanged.
-    const ComponentPageResolver = require("../form-generation/services/ComponentPageResolver");
-    const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
-    let viewerPageConstraint = { type: "full", pages: null, pageRanges: null };
-    try {
-      if (caseForm.componentCode) {
-        const componentDef = await USCISFormComponentDefinition.findOne({
-          parentTemplateId: template._id,
-          componentCode: caseForm.componentCode,
-          status: "ACTIVE",
-        }).select("pageRanges").lean();
-        if (componentDef) {
-          const totalPages = template.pdfMetadata?.pageCount || 0;
-          const pages = totalPages
-            ? ComponentPageResolver.expandPageRanges(componentDef.pageRanges, totalPages, { componentCode: caseForm.componentCode, parentFormCode: template.formCode })
-            : null;
-          viewerPageConstraint = { type: "component", pages, pageRanges: componentDef.pageRanges };
-        }
-      } else {
-        const totalPages = template.pdfMetadata?.pageCount || 0;
-        const corePages = totalPages ? await ComponentPageResolver.resolveCorePages(template, totalPages) : null;
-        if (corePages) viewerPageConstraint = { type: "core", pages: corePages, pageRanges: null };
-      }
-    } catch (constraintError) {
-      // Never let a page-constraint resolution failure break the workspace
-      // response - the viewer degrades to showing the full PDF (existing,
-      // pre-this-task behavior) rather than the request failing outright.
-      viewerPageConstraint = { type: "full", pages: null, pageRanges: null };
-    }
+    // Tells the viewer which pages of the template PDF belong to this
+    // CaseForm AND how each page of the PDF it actually loads maps back to
+    // the official USCIS page number (pageMap) - a component's viewer PDF is
+    // a slice renumbered 1..N, so without this the frontend was requesting
+    // parent page numbers (e.g. 21) from an N-page document. Additive only -
+    // every other field on this response is unchanged.
+    const viewerPageConstraint = await InteractiveFormReviewService.resolveViewerPageConstraint({ caseForm, template });
 
     return {
       ...rendered,
@@ -471,8 +562,31 @@ class InteractiveFormReviewService {
     const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
     const rawFieldName = payload.fieldName || payload.fieldId;
-    const fieldDef = this.fieldDefinition(template, rawFieldName);
-    if (!rawFieldName || !fieldDef) throw error("Unknown USCIS form field", 400);
+    if (!rawFieldName) throw error("Field name is required", 400);
+    let fieldDef = this.fieldDefinition(template, rawFieldName);
+    // RC9: a supplement CaseForm's template is the shared PARENT template
+    // (e.g. "I-129") - its own component fields are a subset of that
+    // template's formFields, discovered from the real PDF at scan time (see
+    // USCISFormComponentDefinition.fieldIds), so fieldDefinition() above
+    // should normally find them there too. When it doesn't (the frontend
+    // sent the raw AcroForm name and no template.formFields entry matches
+    // it exactly), fall back to accepting it directly as long as the
+    // component itself claims this exact field id - that claim, discovered
+    // from the real PDF, is authoritative and should not be second-guessed
+    // by a stricter template-lookup gate. Treated as a form-only field (no
+    // fieldDef -> canonicalFieldId's fallback returns rawFieldName unchanged).
+    if (!fieldDef && caseForm.componentCode) {
+      const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
+      const componentDef = await USCISFormComponentDefinition.findOne({
+        parentTemplateId: caseForm.formTemplateId?._id || caseForm.formTemplateId,
+        componentCode: caseForm.componentCode,
+        status: "ACTIVE",
+      }).select("fieldIds").lean();
+      const accepted = componentDef?.fieldIds?.includes(rawFieldName);
+      if (!accepted) throw error("Unknown USCIS form field", 400);
+    } else if (!fieldDef) {
+      throw error("Unknown USCIS form field", 400);
+    }
     // ISSUE-001: overrideField stores under WHATEVER key it's given, so this
     // must be the normalized fieldId - the same key AutoFillService's own
     // autofill writes use, PDFFieldMapper reads when filling the actual PDF,
@@ -486,16 +600,22 @@ class InteractiveFormReviewService {
     const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName)
       ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, rawFieldName);
     if (valuesEqual(previousValue, payload.value)) return caseForm;
-    // Perf fix: overrideField already fetches, mutates and saves this exact
-    // CaseForm (returning the live, already-saved document - `caseForm` for
-    // a plain override, or `finalForm` after a sibling-regen fan-out) - the
-    // second `CaseForm.findById(caseFormId).populate(...)` this used to do
-    // here was a byte-for-byte redundant full-document re-fetch. Reuse the
-    // returned document directly; only `formTemplateId` needs populating on
-    // it (findCaseForm/generate don't reliably leave it populated), and that
-    // populate call is far cheaper than re-fetching the whole CaseForm.
-    const updated = await AutoFillService.overrideField(caseId, caseForm.formCode, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
-    await updated.populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
+    // RC6 perf fix: overrideFieldById takes the already-loaded `caseForm`
+    // directly - no second findCaseForm lookup (the old overrideField did
+    // its own, plus this method used to do a THIRD full CaseForm re-fetch
+    // before this file's perf pass) - and saves it once inside itself,
+    // returning the live, already-persisted document with formTemplateId
+    // already populated (reused from load() above, never re-populated here).
+    // What follows (status/reviewState/history/progress) are all small,
+    // already-in-memory field assignments on that same document - Mongoose's
+    // save() only serializes paths still marked modified, and fieldValues/
+    // filledData/sourceAttribution/manualOverrides are no longer modified
+    // after overrideFieldById's own save() reset that tracking, so this
+    // second save() sends only the small bookkeeping fields below, never the
+    // Mixed maps a second time. The real elimination is the external
+    // AuditLog write and the cross-team notification, which used to block
+    // the response on every keystroke - both are now fire-and-forget.
+    const updated = await AutoFillService.overrideFieldById(caseForm, fieldName, payload.value, user, req, payload.reason || "Interactive form review");
     updated.status = "under_review";
     updated.lastModifiedBy = this.userId(user);
     updated.lastModifiedAt = new Date();
@@ -509,11 +629,20 @@ class InteractiveFormReviewService {
       reason: payload.reason,
       source: "ManualOverride",
     }, user);
-    this.updateProgress(updated, updated.formTemplateId);
+    // RC7: mergeFieldValues-translated completion, scoped to this
+    // CaseForm's own componentFieldIds when it's a supplement - see
+    // updateProgress's own comment for why the old direct fieldValues pass
+    // reported every required field as permanently missing.
+    await this.updateProgress(updated, updated.formTemplateId);
     this.addAudit(updated, "FIELD_EDITED", user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason });
     await updated.save();
-    await this.audit("FIELD_EDITED", updated, user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason });
-    await this.notifyCaseTeam(caseData, updated, user, req, "form.field_updated", "USCIS Form Field Updated", `${rawFieldName} was updated in ${updated.formCode}.`, { metadata: { fieldName } });
+    // Fire-and-forget: neither the external AuditLog write nor the team
+    // notification needs to block the response - both were previously
+    // awaited inline on every keystroke.
+    setImmediate(() => {
+      this.audit("FIELD_EDITED", updated, user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason }).catch(() => null);
+      this.notifyCaseTeam(caseData, updated, user, req, "form.field_updated", "USCIS Form Field Updated", `${rawFieldName} was updated in ${updated.formCode}.`, { metadata: { fieldName } }).catch(() => null);
+    });
     return updated;
   }
 
@@ -559,7 +688,7 @@ class InteractiveFormReviewService {
     caseForm.markModified("manualOverrides");
     caseForm.status = "under_review";
     this.touchReview(caseForm, user);
-    this.updateProgress(caseForm, template);
+    await this.updateProgress(caseForm, template);
     this.addAudit(caseForm, "SECTION_SAVED", user, req, { sectionKey: payload.sectionKey, fields: changed.map((item) => item.fieldName) });
     await caseForm.save();
     await this.audit("SECTION_SAVED", caseForm, user, req, { sectionKey: payload.sectionKey, fields: changed.map((item) => item.fieldName) });
@@ -624,7 +753,7 @@ class InteractiveFormReviewService {
     if (!permissions.canApprove) throw error("Attorney or administrator approval is required", 403);
     const action = payload.action;
     if (!["approve", "reject", "request_changes", "return_to_case_manager"].includes(action)) throw error("Invalid form review action", 400);
-    const progress = this.updateProgress(caseForm, template);
+    const progress = await this.updateProgress(caseForm, template);
     const canonicalValidation = action === "approve" ? await CanonicalProfileService.validate(caseId, user, req, { reason: "uscis_form_approval" }) : null;
     if (action === "approve" && Object.keys(progress.validationErrors).length) throw error("Resolve all blocking validation errors before approval", 422, progress.validationErrors);
     if (action === "approve" && progress.completion.missingRequiredFields > 0) throw error("Required USCIS fields are missing", 422, progress.completion);
@@ -662,6 +791,7 @@ class InteractiveFormReviewService {
     await this.audit(action === "approve" ? "FORM_APPROVED" : action === "reject" ? "FORM_REJECTED" : "FORM_CHANGES_REQUESTED", caseForm, user, req, payload);
     await this.notifyCaseTeam(caseData, caseForm, user, req, `form.${action}`, action === "approve" ? "USCIS Form Approved" : "USCIS Form Review Updated", `${caseForm.formCode} was ${action.replaceAll("_", " ")}.`, { priority: action === "approve" ? "medium" : "high" });
     await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseId, user, req, `uscis_form_${action}`).catch(() => null);
+    if (action === "approve") await require("../petition/services/PetitionAssemblyService").autoSync(caseId, user, req);
     return caseForm;
   }
 
@@ -681,6 +811,7 @@ class InteractiveFormReviewService {
     await caseForm.save();
     await this.audit(locked ? "FORM_LOCKED" : "FORM_UNLOCKED", caseForm, user, req, { reason: payload.reason });
     await this.notifyCaseTeam(caseData, caseForm, user, req, locked ? "form.locked" : "form.unlocked", locked ? "USCIS Form Locked" : "USCIS Form Unlocked", `${caseForm.formCode} was ${locked ? "locked" : "unlocked"}.`);
+    if (locked) await require("../petition/services/PetitionAssemblyService").autoSync(caseId, user, req);
     return caseForm;
   }
 

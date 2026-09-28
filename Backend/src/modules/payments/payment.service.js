@@ -1163,19 +1163,14 @@ async function notifyPayment(payment, actor, eventType, req) {
 
   // Email is client-facing only - staff recipients (assignedCaseManager/
   // assignedTeamLead, also in `recipients` above) get the in-app
-  // notification but never this email; only the actual payer does.
+  // notification but never this email; only the actual payer would. Payment
+  // emails to the client are disabled for now (explicit product decision -
+  // "payment emails should not be sent to the client now"). The in-app/
+  // socket notification below is unaffected; only this email attachment is
+  // gated off. Re-enable by restoring the block this replaced (see git
+  // history) once payment emails are ready to ship again.
   const clientUserId = payment.user ? String(payment.user) : null;
-  const wantsPaymentEmail = clientUserId && (eventType === "payment_created" || payment.paymentStatus === "failed");
-  let clientEmailFields = {};
-  if (wantsPaymentEmail) {
-    const clientUser = await User.findById(clientUserId).select("name displayName email").catch(() => null);
-    if (clientUser?.email) {
-      const amountLabel = typeof payment.totalAmount === "number" ? `$${payment.totalAmount.toFixed(2)}` : undefined;
-      clientEmailFields = payment.paymentStatus === "failed"
-        ? { emailTemplate: "payment-failed", emailTo: clientUser.email, emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: payment.invoiceNumber, amount: amountLabel } }
-        : { emailTemplate: "payment-required", emailTo: clientUser.email, emailData: { clientName: clientUser.name || clientUser.displayName, caseNumber: payment.invoiceNumber, amount: amountLabel, dueDate: payment.dueDate ? new Date(payment.dueDate).toLocaleDateString() : undefined } };
-    }
-  }
+  const clientEmailFields = {};
 
   await Promise.all(recipients.map((userId) => notificationService.createNotification({
     userId,

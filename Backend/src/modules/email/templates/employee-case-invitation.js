@@ -18,7 +18,7 @@ function bodyLines(data = {}) {
   return [
     `Hi ${data.employeeName || "there"},`,
     `${data.employerName || "Your employer"} has invited you to complete your portion of immigration case ${data.caseNumber || ""}.`,
-    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Create Your Account</a>`,
+    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Create Your Account</a>`,
     `Or copy this link into your browser: ${link}`,
     `This link expires in 7 days.`,
   ];

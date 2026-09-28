@@ -16,6 +16,7 @@ const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
 const e2 = require("../employment-workflow/questionnaires/e2");
+const e3 = require("../employment-workflow/questionnaires/e3");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -100,6 +101,7 @@ const YES_NO_FIELDS = new Set([
   "hasLoiMouContracts", "proofOfOwnershipAvailable",
   "heldPVisaLastSevenYears", "deniedPVisaLastSevenYears",
   "heldO1VisaLastSevenYears", "deniedO1VisaLastSevenYears",
+  "heldE3LastSevenYears", "deniedE3LastSevenYears",
   "isH1bDependentOrWillfulViolator", "isAcwiaFeeExempt",
   "employerIsPrivate", "priorImmigrantPetitionFiled",
 ]);
@@ -656,6 +658,96 @@ function buildE2SupportingDocumentsChecklist() {
   });
 }
 
+// E-3 Australian Specialty Occupation — genuine employer/employee two-party
+// split (h1b.js/l1a.js's architecture), unlike E-2's single consolidated
+// checklist. Verbatim intro paragraphs from the authoritative source.
+const E3_EMPLOYER_CHECKLIST_INTRO = "Please fill in the following information. If you have any questions, please feel free to contact us. Make sure to share the documents at one to initiate the process smoothly-";
+const E3_EMPLOYEE_CHECKLIST_INTRO = "Please complete the questionnaire with as much detail as possible to enable us to create an accurate petition";
+// Source's PART-1 note, verbatim — carried on the DOL-verification field
+// since it directly follows that question and gates the FEIN-proof document
+// below, same treatment as H1B_PART1_NOTE.
+const E3_PART1_NOTE = "If company verification with DOL has not been completed, the employer must complete the required DOL company verification before the LCA can be filed. Separate charges may apply according to the firm's workflow.";
+
+function buildE3EmployerChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(e3.employerDocuments, visibility, documentSectionOrder, counters);
+  // FEIN proof — reuses the exact same document type H-1B's own FEIN-proof
+  // question uses (same real-world evidence: IRS documentation noting
+  // assignment of FEIN), conditional on the same firstLcaFiling=yes +
+  // dolVerified=no pattern.
+  const feinProof = buildQuestion("irs_fein_assignment_letter", "Documentation from IRS noting assignment of FEIN", "file", "Business Documents", (counters.get("Business Documents") || 0) + 1, {
+    description: "FEIN proof document — required when the LCA has been filed for the first time and DOL verification has not yet been done.",
+    evidenceCategory: "business",
+    metadata: { documentType: "irs_fein_assignment_letter", category: "business" },
+    visibility,
+    conditionalLogic: {
+      mode: "all",
+      rules: [
+        { questionKey: "employer_lca_firstLcaFiling", operator: "equals", value: "yes" },
+        { questionKey: "employer_lca_dolVerified", operator: "equals", value: "no" },
+      ],
+      groups: [],
+    },
+  });
+  documentQuestionList.push(feinProof);
+  const fieldResult = fieldQuestionsFromCatalog(
+    e3.fieldCatalog().filter((entry) => entry.section === "employer"),
+    visibility,
+  );
+  const dolVerifiedQuestion = fieldResult.questions.find((question) => question.key === "employer_lca_dolVerified");
+  if (dolVerifiedQuestion) dolVerifiedQuestion.description = E3_PART1_NOTE;
+  return definitionFromParts({
+    key: "e3_employer_checklist",
+    title: "E-3 Employer Checklist",
+    visaType: "E3",
+    checklistRole: "employer",
+    description: E3_EMPLOYER_CHECKLIST_INTRO,
+    documentSectionOrder,
+    documentQuestionList,
+    fieldResult,
+  });
+}
+
+function buildE3EmployeeChecklist() {
+  const visibility = { roles: ["employee", ...STAFF_ROLES], portals: ["employee", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(e3.employeeDocuments, visibility, documentSectionOrder, counters);
+  // "I-20/F1 approval notices, if you were in the USA on Student visa" —
+  // same conditional-on-currentVisaStatus pattern as H-1B's own
+  // f1_opt_stem_documents (reuses the same "any" group workaround for
+  // Question.js's showIf operator enum, which has no "in"/"not_in").
+  documentQuestionList.push(
+    buildQuestion("f1_opt_stem_documents", "I-20/F1 Approval Notices", "file", "Immigration Documents", (counters.get("Immigration Documents") || 0) + 1, {
+      description: "I-20/F-1 approval notices, required if you were in the USA on a student visa (F-1/OPT/STEM OPT).",
+      evidenceCategory: "immigration",
+      metadata: { documentType: "f1_opt_stem_documents", category: "immigration" },
+      visibility,
+      conditionalLogic: {
+        mode: "any",
+        rules: ["F-1", "OPT", "STEM OPT"].map((value) => ({ questionKey: "employee_immigrationStatus_currentVisaStatus", operator: "equals", value })),
+        groups: [],
+      },
+    }),
+  );
+  const fieldResult = fieldQuestionsFromCatalog(
+    e3.fieldCatalog().filter((entry) => entry.section === "employee"),
+    visibility,
+  );
+  return definitionFromParts({
+    key: "e3_employee_checklist",
+    title: "E-3 Beneficiary Checklist",
+    visaType: "E3",
+    checklistRole: "employee",
+    description: E3_EMPLOYEE_CHECKLIST_INTRO,
+    documentSectionOrder,
+    documentQuestionList,
+    fieldResult,
+  });
+}
+
 // P Visa (P-1A Athlete / P-1B Entertainment Group / P-3 Culturally Unique
 // Program) — ONE shared employer + ONE shared employee template for all
 // three sub-types (visaType stays the single "P"), not three triplicated
@@ -1130,6 +1222,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildE2VisaChecklist(),
   buildE2BusinessPlanChecklist(),
   buildE2SupportingDocumentsChecklist(),
+  buildE3EmployerChecklist(),
+  buildE3EmployeeChecklist(),
   buildPEmployerChecklist(),
   buildPEmployeeChecklist(),
   buildO1EmployerChecklist(),

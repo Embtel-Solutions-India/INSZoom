@@ -483,7 +483,7 @@ async function reconcileConditionalForms(caseData, user, req, conditions) {
 // picks them up with no changes of its own; reconciliation (archiving a
 // form whose condition became false) happens separately in
 // ensureAssignedForms itself, not here, so this function stays a pure read.
-async function latestTemplatesByAssignmentRules(caseData) {
+async function latestTemplatesByAssignmentRules(caseData, user, req) {
   const timer = createPerfTimer("uscis_template_resolution_performance", { caseId: caseData?._id, visaType: caseData?.visaType });
   const templates = await activeTemplatesCached();
   timer.mark("active_template_lookup", { count: templates.length });
@@ -507,7 +507,7 @@ async function latestTemplatesByAssignmentRules(caseData) {
   // module top-level) to avoid a require cycle, since visaFormMapping
   // .service.js itself requires this file for findLatestActiveTemplate/
   // templateAppliesToCase/ensureAssignedForms.
-  const registryTemplates = await require("../form-registry/visaFormMapping.service").registryAutoCreateTemplates(caseData);
+  const registryTemplates = await require("../form-registry/visaFormMapping.service").registryAutoCreateTemplates(caseData, user, req);
   timer.mark("registry_template_resolution", { count: registryTemplates.length });
   registryTemplates.forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
@@ -531,7 +531,7 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
   // the correct fix is to not call either resolver at all here, not just to
   // make them faster.
   if (options.metadataOnly) return [];
-  const templates = options.templates || await latestTemplatesByAssignmentRules(caseData);
+  const templates = options.templates || await latestTemplatesByAssignmentRules(caseData, user, req);
   const { conditions } = await resolveConditionalTemplates(caseData);
   await reconcileConditionalForms(caseData, user, req, conditions);
   if (!templates.length) return [];
@@ -1422,6 +1422,8 @@ module.exports = {
   validateCaseForm,
   reviewCaseForm,
   templateAppliesToCase,
+  mergeFieldValues,
+  resolveComponentFieldIds,
   hasActivePremiumAddon,
   hasAttorneyOnRecord,
   resolveH1bDependents,

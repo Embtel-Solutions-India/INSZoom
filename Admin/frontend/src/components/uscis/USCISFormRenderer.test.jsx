@@ -10,11 +10,16 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 // render, so React doesn't warn about a cross-component setState-in-render.
 vi.mock('react-pdf', () => ({
   Document: ({ children, onLoadSuccess }) => {
-    useEffect(() => { onLoadSuccess?.({ numPages: 1, annotationStorage: { setValue: vi.fn() } }) }, [onLoadSuccess])
+    useEffect(() => {
+      onLoadSuccess?.({ numPages: 1, annotationStorage: { setValue: vi.fn() }, getFieldObjects: async () => ({}) })
+    }, [onLoadSuccess])
     return <div data-testid="pdf-document">{children}</div>
   },
-  Page: ({ pageNumber, onRenderSuccess }) => {
-    useEffect(() => { onRenderSuccess?.({ pageNumber }) }, [onRenderSuccess, pageNumber])
+  Page: ({ pageNumber, onRenderSuccess, onRenderAnnotationLayerSuccess }) => {
+    useEffect(() => {
+      onRenderSuccess?.({ pageNumber })
+      onRenderAnnotationLayerSuccess?.({ pageNumber })
+    }, [onRenderSuccess, onRenderAnnotationLayerSuccess, pageNumber])
     return (
       <div data-testid={`pdf-page-${pageNumber}`}>
         <div className="annotationLayer">
@@ -38,6 +43,7 @@ vi.mock('../../services/api', () => ({
   uscisFormsApi: {
     workspace: (...args) => workspaceApi(...args),
     templatePdf: (...args) => templatePdfApi(...args),
+    templatePdfViewer: (...args) => templatePdfApi(...args),
     saveWorkspaceField: (...args) => saveWorkspaceFieldApi(...args),
     saveWorkspaceSection: vi.fn().mockResolvedValue({}),
     resolveFieldConflict: (...args) => resolveFieldConflictApi(...args),

@@ -129,7 +129,11 @@ const CRMCases = () => {
 
   // Only the very first load blocks the table with a full loading state;
   // subsequent refetches (search, filters, pagination, socket-driven
-  // refreshes) update the rows in place instead of blanking the page.
+  // refreshes) update the rows in place instead of blanking the page —
+  // `refreshing` drives a small, non-blocking indicator for those instead,
+  // so switching pages doesn't look like nothing happened while the next
+  // page's rows are still in flight.
+  const [refreshing, setRefreshing] = useState(false)
   const hasLoadedOnce = useRef(false)
   const activeFetchRef = useRef({ seq: 0, controller: null })
 
@@ -144,6 +148,7 @@ const CRMCases = () => {
     activeFetchRef.current = { seq, controller }
     try {
       if (!hasLoadedOnce.current) setLoading(true)
+      else setRefreshing(true)
       setError('')
       const params = { page, limit, ...deepLinkFilters }
       if (stageFilter) params.stage = stageFilter
@@ -172,6 +177,7 @@ const CRMCases = () => {
       if (seq !== activeFetchRef.current.seq) return
       hasLoadedOnce.current = true
       setLoading(false)
+      setRefreshing(false)
     }
   }
 
@@ -404,7 +410,13 @@ const CRMCases = () => {
       </Card>
 
       {/* Cases Table */}
-      <div className="card !p-0 md:!p-5">
+      <div className="card !p-0 md:!p-5 relative">
+        {refreshing && !loading && (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 rounded-t-lg bg-card/90 py-1.5 text-xs font-medium text-muted-foreground shadow-sm md:rounded-t-xl">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground" />
+            Loading…
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-muted-foreground">Loading cases...</div>
@@ -487,7 +499,11 @@ const CRMCases = () => {
                 const caseManagerName = caseItem.assignedCaseManager?.name || caseItem.assignedCaseManager?.displayName
                 const creator = getCreator(caseItem)
                 return (
-                  <div key={caseItem._id} className={`p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
+                  <div
+                    key={caseItem._id}
+                    onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                    className={`cursor-pointer p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -524,7 +540,7 @@ const CRMCases = () => {
                       <div className="flex items-center gap-2 shrink-0">
                         {awaitingAssignment && (
                           <button
-                            onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
                             title="Assign case manager"
                             className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/40"
                           >
@@ -532,7 +548,7 @@ const CRMCases = () => {
                           </button>
                         )}
                         <button
-                          onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}`) }}
                           className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium dark:text-primary-400 dark:hover:text-primary-300"
                         >
                           View <ArrowRight className="w-3.5 h-3.5" />
@@ -582,7 +598,11 @@ const CRMCases = () => {
                     const awaitingAssignment = isAwaitingAssignment(caseItem)
                     const creator = getCreator(caseItem)
                     return (
-                    <tr key={caseItem._id} className={`border-b border-border hover:bg-muted ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}>
+                    <tr
+                      key={caseItem._id}
+                      onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                      className={`cursor-pointer border-b border-border hover:bg-muted ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
+                    >
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-medium truncate" title={caseItem.caseNumber}>{caseItem.caseNumber}</span>
@@ -627,7 +647,7 @@ const CRMCases = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           {awaitingAssignment && (
                             <button
-                              onClick={() => navigate(`/crm-cases/${caseItem._id}?assign=case_manager`)}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
                               title="Assign case manager"
                               className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 shrink-0 dark:text-amber-400 dark:hover:bg-amber-950/40"
                             >
@@ -635,7 +655,7 @@ const CRMCases = () => {
                             </button>
                           )}
                           <button
-                            onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}`) }}
                             className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-800 text-xs font-medium shrink-0 dark:text-primary-400 dark:hover:text-primary-300"
                           >
                             View <ArrowRight className="w-3.5 h-3.5" />
@@ -656,7 +676,7 @@ const CRMCases = () => {
         <div className="flex flex-wrap items-center justify-center gap-2">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={!pagination.hasPreviousPage}
+            disabled={!pagination.hasPreviousPage || refreshing}
             className="btn-secondary flex items-center gap-1 disabled:opacity-50"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -670,8 +690,9 @@ const CRMCases = () => {
                 key={item}
                 type="button"
                 onClick={() => setPage(item)}
+                disabled={refreshing}
                 aria-current={item === page ? 'page' : undefined}
-                className={`h-9 min-w-9 rounded-lg px-3 text-sm font-semibold ${
+                className={`h-9 min-w-9 rounded-lg px-3 text-sm font-semibold disabled:opacity-50 ${
                   item === page
                     ? 'bg-primary-600 text-white'
                     : 'border border-border bg-card text-muted-foreground hover:bg-muted'
@@ -683,7 +704,7 @@ const CRMCases = () => {
           ))}
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={!pagination.hasNextPage}
+            disabled={!pagination.hasNextPage || refreshing}
             className="btn-secondary flex items-center gap-1 disabled:opacity-50"
           >
             Next

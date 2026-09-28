@@ -300,5 +300,8 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     commitAll,
     handleAutofillResult,
     refetch,
+    responseId,
+    caseId,
+    questionnaireId: questionnaire?._id,
   };
 }

@@ -17,7 +17,7 @@ function bodyLines(data = {}) {
     `Hi ${data.clientName || "there"},`,
     `Your immigration case ${data.caseNumber || ""} has moved to a new stage: <strong>${data.stageName || data.stage || ""}</strong>`,
     STAGE_DESCRIPTIONS[data.stage] || `Please log in to the portal for more details.`,
-    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#0f766e;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">View My Case</a>`,
+    `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">View My Case</a>`,
   ].filter(Boolean);
 }
 module.exports = { key: "case-stage-changed", subject, bodyLines };

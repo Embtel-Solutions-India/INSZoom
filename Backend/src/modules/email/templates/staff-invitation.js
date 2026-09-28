@@ -22,7 +22,7 @@ function bodyLines(data = {}) {
   return [
     `Hi ${data.name || "there"},`,
     `${data.invitedByName || "Your firm"} has invited you to join the team as a ${(data.role || "").replace(/_/g, " ")}.`,
-    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#0f766e;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Set Up Your Account</a>`,
+    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Set Up Your Account</a>`,
     `Or copy this link into your browser: ${link}`,
     `This link expires in 7 days.`,
   ];
