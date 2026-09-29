@@ -102,36 +102,51 @@ function buildH4ExtensionQuestionnaire() {
 
   const infoSection = "Information about You";
   questions.push(
-    buildQuestion("client_familyName", "Family Name", "text", infoSection, 1, { required: true, canonicalPath: "applicant.lastName" }),
-    buildQuestion("client_givenName", "Given Name", "text", infoSection, 2, { required: true, canonicalPath: "applicant.firstName" }),
-    buildQuestion("client_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "applicant.middleName" }),
-    buildQuestion("client_aNumber", "A-Number", "text", infoSection, 4, { canonicalPath: "applicant.aNumber" }),
+    // Phase 2 fix: this file's own canonicalPath convention comment (top of
+    // file) assumed "applicant.*" would be translated the same way
+    // EmployeeProfile fields are via profileCanonicalMap.js's
+    // EMPLOYEE_PROFILE_TO_CANONICAL - but that map has no "applicant.*"
+    // entries at all, and CanonicalBuilderService.addQuestionnaireCandidates
+    // (the function that actually processes a saved Answer's
+    // question.mapping.canonicalPath) uses the path verbatim, with no
+    // translation layer. "applicant.*" was therefore never a real,
+    // consumed canonical namespace - corrected to the real one the PDF
+    // mapping graph and CanonicalFieldRegistryService.BASE_FIELDS actually
+    // use (person.*/contact.*/immigration.*), verified against I-539/
+    // I-539A's real mapping graph edges.
+    buildQuestion("client_familyName", "Family Name", "text", infoSection, 1, { required: true, canonicalPath: "person.lastName" }),
+    buildQuestion("client_givenName", "Given Name", "text", infoSection, 2, { required: true, canonicalPath: "person.firstName" }),
+    buildQuestion("client_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "person.middleName" }),
+    buildQuestion("client_aNumber", "A-Number", "text", infoSection, 4, { canonicalPath: "person.alienNumber" }),
     buildQuestion("client_uscisOnlineAccountNumber", "USCIS Online Account Number", "text", infoSection, 5),
-    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", infoSection, 6, { required: true, canonicalPath: "applicant.mailingAddress" }),
-    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", infoSection, 7, { canonicalPath: "applicant.physicalAddress" })
+    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", infoSection, 6, { required: true, canonicalPath: "contact.address.line1" }),
+    // No distinct "physical, if different from mailing" canonical field
+    // exists once mailingAddress already claims contact.address.line1 -
+    // left unmapped rather than conflating two different addresses.
+    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", infoSection, 7)
   );
 
   const otherInfoSection = "Other Information";
   questions.push(
-    buildQuestion("client_countryOfBirth", "Country of Birth", "text", otherInfoSection, 1, { required: true, canonicalPath: "applicant.countryOfBirth" }),
-    buildQuestion("client_countryOfCitizenship", "Country of Citizenship", "text", otherInfoSection, 2, { required: true, canonicalPath: "applicant.countryOfCitizenship" }),
-    buildQuestion("client_dateOfBirth", "Date of Birth", "date", otherInfoSection, 3, { required: true, canonicalPath: "applicant.dateOfBirth" }),
+    buildQuestion("client_countryOfBirth", "Country of Birth", "text", otherInfoSection, 1, { required: true, canonicalPath: "person.countryOfBirth" }),
+    buildQuestion("client_countryOfCitizenship", "Country of Citizenship", "text", otherInfoSection, 2, { required: true, canonicalPath: "person.citizenship" }),
+    buildQuestion("client_dateOfBirth", "Date of Birth", "date", otherInfoSection, 3, { required: true, canonicalPath: "person.dob" }),
     // SSN has no existing canonical path in this codebase — left unmapped
     // per the governing task spec (do not invent one).
     buildQuestion("client_ssn", "SSN, if any", "text", otherInfoSection, 4),
-    buildQuestion("client_daytimeTelephoneNumber", "Daytime Telephone Number", "text", otherInfoSection, 5, { required: true, canonicalPath: "applicant.phone" }),
-    buildQuestion("client_emailAddress", "Email Address", "text", otherInfoSection, 6, { required: true, canonicalPath: "applicant.email" })
+    buildQuestion("client_daytimeTelephoneNumber", "Daytime Telephone Number", "text", otherInfoSection, 5, { required: true, canonicalPath: "contact.phone" }),
+    buildQuestion("client_emailAddress", "Email Address", "text", otherInfoSection, 6, { required: true, canonicalPath: "contact.email" })
   );
 
   const lastEntrySection = "Most Recent Entry in USA";
   questions.push(
     buildQuestion("client_dateOfLastArrival", "Date of Last Arrival", "date", lastEntrySection, 1, { required: true }),
-    buildQuestion("client_i94Number", "I-94 Number", "text", lastEntrySection, 2, { required: true, canonicalPath: "applicant.i94Number" }),
-    buildQuestion("client_passportNumber", "Passport Number", "text", lastEntrySection, 3, { required: true, canonicalPath: "applicant.passportNumber" }),
-    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastEntrySection, 4, { required: true, canonicalPath: "applicant.passportCountry" }),
-    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastEntrySection, 5, { required: true, canonicalPath: "applicant.passportExpirationDate" }),
-    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastEntrySection, 6, { required: true, canonicalPath: "applicant.currentVisaStatus" }),
-    buildQuestion("client_expirationOfCurrentStatus", "Expiration Date of Current Status", "date", lastEntrySection, 7, { required: true, canonicalPath: "applicant.currentVisaExpiry" })
+    buildQuestion("client_i94Number", "I-94 Number", "text", lastEntrySection, 2, { required: true, canonicalPath: "immigration.i94.number" }),
+    buildQuestion("client_passportNumber", "Passport Number", "text", lastEntrySection, 3, { required: true, canonicalPath: "person.passport.number" }),
+    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastEntrySection, 4, { required: true, canonicalPath: "person.passport.country" }),
+    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastEntrySection, 5, { required: true, canonicalPath: "person.passport.expirationDate" }),
+    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastEntrySection, 6, { required: true, canonicalPath: "immigration.currentStatus" }),
+    buildQuestion("client_expirationOfCurrentStatus", "Expiration Date of Current Status", "date", lastEntrySection, 7, { required: true, canonicalPath: "immigration.currentStatusExpirationDate" })
   );
 
   // Physical Address Outside USA — component fields have no existing
@@ -292,30 +307,37 @@ function buildH4ExtensionEadQuestionnaire() {
 
   const personalSection = "Personal Information of the Applicant";
   questions.push(
-    buildQuestion("client_familyName", "Family Name", "text", personalSection, 1, { required: true, canonicalPath: "applicant.lastName" }),
-    buildQuestion("client_givenName", "Given Name", "text", personalSection, 2, { required: true, canonicalPath: "applicant.firstName" }),
-    buildQuestion("client_middleName", "Middle Name", "text", personalSection, 3, { canonicalPath: "applicant.middleName" }),
+    // Phase 2 fix: see buildH4ExtensionQuestionnaire's comment above -
+    // "applicant.*" was never a real, consumed canonical namespace.
+    // Corrected to person.*/contact.*/immigration.*, verified against
+    // I-539/I-539A's real mapping graph edges.
+    buildQuestion("client_familyName", "Family Name", "text", personalSection, 1, { required: true, canonicalPath: "person.lastName" }),
+    buildQuestion("client_givenName", "Given Name", "text", personalSection, 2, { required: true, canonicalPath: "person.firstName" }),
+    buildQuestion("client_middleName", "Middle Name", "text", personalSection, 3, { canonicalPath: "person.middleName" }),
     buildQuestion("client_otherNamesUsed", "Other Names Used", "text", personalSection, 4),
-    buildQuestion("client_gender", "Gender", "select", personalSection, 5, { options: ["Male", "Female"], canonicalPath: "applicant.gender" }),
-    buildQuestion("client_dateOfBirth", "Date of Birth", "date", personalSection, 6, { required: true, canonicalPath: "applicant.dateOfBirth" }),
+    buildQuestion("client_gender", "Gender", "select", personalSection, 5, { options: ["Male", "Female"], canonicalPath: "person.gender" }),
+    buildQuestion("client_dateOfBirth", "Date of Birth", "date", personalSection, 6, { required: true, canonicalPath: "person.dob" }),
     // Source lists both a combined free-text field AND a dedicated
     // "Country of Birth" field — kept as two separate questions to avoid
     // dropping either source item (see file banner: transcribe faithfully).
     buildQuestion("client_cityStateCountryOfBirth", "City/State/Country of Birth", "text", personalSection, 7, { required: true }),
-    buildQuestion("client_countryOfBirth", "Country of Birth", "text", personalSection, 8, { required: true, canonicalPath: "applicant.countryOfBirth" }),
-    buildQuestion("client_countryOfCitizenship", "Country of Citizenship", "text", personalSection, 9, { required: true, canonicalPath: "applicant.countryOfCitizenship" }),
-    buildQuestion("client_aNumber", "A-Number", "text", personalSection, 10, { canonicalPath: "applicant.aNumber" }),
+    buildQuestion("client_countryOfBirth", "Country of Birth", "text", personalSection, 8, { required: true, canonicalPath: "person.countryOfBirth" }),
+    buildQuestion("client_countryOfCitizenship", "Country of Citizenship", "text", personalSection, 9, { required: true, canonicalPath: "person.citizenship" }),
+    buildQuestion("client_aNumber", "A-Number", "text", personalSection, 10, { canonicalPath: "person.alienNumber" }),
     buildQuestion("client_uscisOnlineAccountNumber", "USCIS Online Account Number", "text", personalSection, 11),
     // SSN has no existing canonical path in this codebase — left unmapped.
     buildQuestion("client_ssn", "SSN, if any", "text", personalSection, 12),
-    buildQuestion("client_daytimeTelephoneNumber", "Daytime Telephone Number", "text", personalSection, 13, { required: true, canonicalPath: "applicant.phone" }),
-    buildQuestion("client_emailAddress", "Email Address", "text", personalSection, 14, { required: true, canonicalPath: "applicant.email" })
+    buildQuestion("client_daytimeTelephoneNumber", "Daytime Telephone Number", "text", personalSection, 13, { required: true, canonicalPath: "contact.phone" }),
+    buildQuestion("client_emailAddress", "Email Address", "text", personalSection, 14, { required: true, canonicalPath: "contact.email" })
   );
 
   const addressSection = "Address Information";
   questions.push(
-    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", addressSection, 1, { required: true, canonicalPath: "applicant.mailingAddress" }),
-    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", addressSection, 2, { canonicalPath: "applicant.physicalAddress" }),
+    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", addressSection, 1, { required: true, canonicalPath: "contact.address.line1" }),
+    // No distinct "physical, if different from mailing" canonical field
+    // exists once mailingAddress already claims contact.address.line1 -
+    // left unmapped rather than conflating two different addresses.
+    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", addressSection, 2),
     // Physical Address Outside US — component fields have no existing
     // canonical path (per the governing task spec), left unmapped.
     buildQuestion("client_outsideUsStreetNumberName", "Street Number and Name (Outside US)", "text", addressSection, 3),
@@ -330,12 +352,12 @@ function buildH4ExtensionEadQuestionnaire() {
   questions.push(
     buildQuestion("client_dateOfLastArrival", "Date of Last Arrival", "date", lastEntrySection, 1, { required: true }),
     buildQuestion("client_placeOfLastArrival", "Place of Last Arrival", "text", lastEntrySection, 2, { required: true }),
-    buildQuestion("client_i94Number", "I-94 Number", "text", lastEntrySection, 3, { required: true, canonicalPath: "applicant.i94Number" }),
-    buildQuestion("client_passportNumber", "Passport Number", "text", lastEntrySection, 4, { required: true, canonicalPath: "applicant.passportNumber" }),
-    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastEntrySection, 5, { required: true, canonicalPath: "applicant.passportCountry" }),
-    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastEntrySection, 6, { required: true, canonicalPath: "applicant.passportExpirationDate" }),
-    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastEntrySection, 7, { required: true, canonicalPath: "applicant.currentVisaStatus" }),
-    buildQuestion("client_expirationOfCurrentStatus", "Expiration Date of Current Status", "date", lastEntrySection, 8, { required: true, canonicalPath: "applicant.currentVisaExpiry" })
+    buildQuestion("client_i94Number", "I-94 Number", "text", lastEntrySection, 3, { required: true, canonicalPath: "immigration.i94.number" }),
+    buildQuestion("client_passportNumber", "Passport Number", "text", lastEntrySection, 4, { required: true, canonicalPath: "person.passport.number" }),
+    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastEntrySection, 5, { required: true, canonicalPath: "person.passport.country" }),
+    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastEntrySection, 6, { required: true, canonicalPath: "person.passport.expirationDate" }),
+    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastEntrySection, 7, { required: true, canonicalPath: "immigration.currentStatus" }),
+    buildQuestion("client_expirationOfCurrentStatus", "Expiration Date of Current Status", "date", lastEntrySection, 8, { required: true, canonicalPath: "immigration.currentStatusExpirationDate" })
   );
 
   const eadTypeSection = "EAD Application Type (I-765)";

@@ -2906,7 +2906,14 @@ const CRMCaseDetail = () => {
                           </td>
                           <td className="py-2 px-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              {item.officialPageUrl && (
+                              {/* Only shown when there's no in-app action yet (no CaseForm on
+                                  file) - once a CaseForm exists (BIOGRAPHIC_READY/AUTOFILLED/
+                                  PROVISIONED), "Open"/"Open (Biographic Autofill)" below is the
+                                  real, correct action. Confirmed this external link sitting next
+                                  to "Open (Biographic Autofill)" was what case managers were
+                                  clicking for newly-fetched forms, landing on the raw uscis.gov
+                                  page instead of the in-app viewer. */}
+                              {item.officialPageUrl && !item.caseForm && (
                                 <a href={item.officialPageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
                                   View on USCIS.gov
                                 </a>

@@ -2,6 +2,7 @@ import {
   Briefcase,
   CheckCircle,
   DollarSign,
+  FileCheck2,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -133,6 +134,7 @@ export const getSidebarMenuItems = (user) => {
     { path: '/eod-reports', icon: FileText, label: 'EOD Reports', roles: ADMIN_PORTAL_ROLES },
     { path: '/payments', icon: DollarSign, label: 'Payments', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/questionnaires', icon: FileText, label: 'Questionnaires', roles: ADMIN_PORTAL_ROLES },
+    { path: '/form-governance', icon: FileCheck2, label: 'Form Governance', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },
     { path: '/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin'] },
     { path: '/analytics', icon: Scale, label: 'Analytics', roles: ['super_admin', 'admin', 'team_lead'] },
   ]
