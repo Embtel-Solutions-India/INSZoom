@@ -32,8 +32,9 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
   const normalizedRole = String(user?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
   const canFinalize = ['super_admin', 'admin', 'team_lead'].includes(normalizedRole)
 
-  const { package: pkg, validation, loading, error, saveStates, conflict, dismissConflict, reload, saveLetter, reorderExhibits, refreshValidation, setPackage } = usePetitionPackage(packageId)
+  const { package: pkg, validation, loading, error, saveStates, conflict, dismissConflict, reload, saveLetter, reorderExhibits, insertPage, removePage, refreshValidation, setPackage } = usePetitionPackage(packageId)
   const [definition, setDefinition] = useState(null)
+  const [branding, setBranding] = useState(null)
   const [activeSectionKey, setActiveSectionKey] = useState('')
   const [pageInfo, setPageInfo] = useState({ page: 1, total: 1 })
   const [showFinalize, setShowFinalize] = useState(false)
@@ -47,6 +48,13 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
     if (!pkg?.packageDefinitionKey) return
     petitionApi.getDefinition(pkg.packageDefinitionKey).then((res) => setDefinition(res.data.data)).catch(() => setDefinition(null))
   }, [pkg?.packageDefinitionKey])
+
+  // Live letterhead preview data — same fields CoverLetterService renders
+  // onto the actual mailing PDF, so the canvas WYSIWYG-matches the output
+  // instead of showing a bare white page while the PDF has real branding.
+  useEffect(() => {
+    petitionApi.getBranding().then((res) => setBranding(res.data.data)).catch(() => setBranding(null))
+  }, [])
 
   const disabled = Boolean(pkg?.lock?.locked) || ['superseded', 'failed', 'assembling'].includes(pkg?.status)
 
@@ -97,6 +105,24 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
     const res = await petitionApi.recordFiling(packageId, payload)
     setPackage(res.data.data)
     onChanged?.()
+  }
+
+  const handleInsertPage = async (insertAfterKey, type, title) => {
+    setActionError('')
+    try {
+      await insertPage(insertAfterKey, type, title)
+    } catch {
+      setActionError('Could not insert the page — try again.')
+    }
+  }
+
+  const handleRemovePage = async (sectionKey) => {
+    setActionError('')
+    try {
+      await removePage(sectionKey)
+    } catch {
+      setActionError('Could not remove the page — try again.')
+    }
   }
 
   const handleRecordReceipt = async (payload) => {
@@ -174,6 +200,8 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
               activeSectionKey={activeSectionKey}
               onJump={handleJump}
               onReorderExhibits={reorderExhibits}
+              onInsertPage={handleInsertPage}
+              onRemovePage={handleRemovePage}
               disabled={disabled}
             />
             <div className="min-w-0 flex-1 overflow-y-auto">
@@ -185,6 +213,8 @@ export default function PetitionViewer({ caseId, packageId, onClose, onChanged }
                 presentationOrdering={definition?.ordering?.presentation}
                 disabled={disabled}
                 onEditLetter={saveLetter}
+                onRemovePage={handleRemovePage}
+                branding={branding}
                 saveStates={saveStates}
                 onScrollSpy={handleScrollSpy}
               />

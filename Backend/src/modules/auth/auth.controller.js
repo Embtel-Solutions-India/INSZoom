@@ -147,6 +147,20 @@ async function googleToken(req, res, next) {
 const GOOGLE_STATE_COOKIE = "google_oauth_state";
 const GOOGLE_STATE_COOKIE_PATH = "/api/auth/google";
 
+// Safe, non-sensitive diagnostics for the invalid_state investigation — the
+// state value itself isn't a secret (it's a one-time CSRF nonce, not a
+// credential), but per the governing instructions this only ever logs a
+// short, non-reversible fingerprint, never the raw value, and never any
+// cookie/token contents. Lets production logs answer, without shell/DB
+// access, exactly which step diverges: was the state cookie ever set, did
+// the browser send it back on the callback request, does the request's own
+// Host/Origin match what the cookie was scoped to, and do the two state
+// values actually differ (vs. the cookie being absent entirely).
+function stateFingerprint(value) {
+  if (!value) return null;
+  return crypto.createHash("sha256").update(String(value)).digest("hex").slice(0, 12);
+}
+
 function googleStateCookieOptions() {
   return {
     httpOnly: true,
@@ -205,6 +219,18 @@ function googleOAuthStart(req, res) {
     const state = crypto.randomBytes(24).toString("hex");
     res.cookie(GOOGLE_STATE_COOKIE, state, { ...googleStateCookieOptions(), maxAge: 5 * 60 * 1000 });
     const authUrl = googleOAuthService.buildAuthUrl(state);
+    logger.info("google_oauth_start_diagnostics", {
+      stateFingerprint: stateFingerprint(state),
+      requestHost: req.headers?.host || null,
+      requestOrigin: req.headers?.origin || null,
+      requestProtocol: req.protocol,
+      requestSecure: req.secure,
+      // Deliberately not named with "cookie" in the key — logger.js's
+      // SENSITIVE_KEY redaction matches on key name and would blank out
+      // this entire diagnostic value (booleans/strings, nothing secret) if
+      // it were.
+      stateTokenScope: { ...googleStateCookieOptions() },
+    });
     res.redirect(authUrl);
   } catch (error) {
     logger.error("google_oauth_start_failed", { error });
@@ -225,6 +251,29 @@ async function googleOAuthCallback(req, res) {
     }
     const { code, state } = req.query;
     if (!code || !state || !expectedState || state !== expectedState) {
+      // Field names deliberately avoid "cookie"/"session" — logger.js's
+      // SENSITIVE_KEY redaction matches on key name and would blank out
+      // these diagnostic values (booleans/short fingerprints, nothing
+      // secret) if they were named that way.
+      logger.warn("google_oauth_callback_invalid_state_diagnostics", {
+        hasCode: Boolean(code),
+        hasProvidedState: Boolean(state),
+        // "stateTokenReceived: false" means the browser never sent the
+        // state token back on this request at all — the strongest signal
+        // of a Host/Origin (token-scope) mismatch between the
+        // /api/auth/google request that set it and this callback request,
+        // as opposed to "stateTokenReceived: true" + mismatched
+        // fingerprints, which points at something else entirely (e.g. a
+        // stale/replayed callback, or two concurrent login attempts).
+        stateTokenReceived: Boolean(expectedState),
+        providedStateFingerprint: stateFingerprint(state),
+        expectedStateFingerprint: stateFingerprint(expectedState),
+        requestHost: req.headers?.host || null,
+        requestOrigin: req.headers?.origin || null,
+        requestReferer: req.headers?.referer || null,
+        requestProtocol: req.protocol,
+        requestSecure: req.secure,
+      });
       return res.redirect(googleCallbackRedirectUrl({ error: "invalid_state" }));
     }
     const identity = await googleOAuthService.exchangeCodeForIdentity(code);

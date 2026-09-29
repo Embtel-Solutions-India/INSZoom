@@ -4,8 +4,24 @@ import axios from 'axios'
 // token lives in memory only, the refresh token is an httpOnly cookie set by
 // the backend, and a 401 triggers exactly one silent refresh before giving
 // up and bouncing to /login.
+//
+// BUG (fixed): silently falling back to a dev-only localhost URL shipped to
+// production when a deployment's build environment never set VITE_API_URL —
+// confirmed live on the sibling Admin portal's production bundle, same
+// pattern. In dev, fall back to a relative /api (proxied by Vite — see
+// vite.config.js) rather than an absolute cross-port URL, which also made
+// the refresh_token cookie cross-site and thus dropped under SameSite=Lax.
+// In a PRODUCTION build with no VITE_API_URL, fail loudly instead of
+// silently pointing at localhost.
+function resolveBaseUrl() {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  if (import.meta.env.DEV) return '/api'
+  console.error('[FATAL CONFIG] VITE_API_URL is not set in this production build — every API call will fail. Set it in the build server\'s environment before deploying.')
+  return 'https://MISSING-VITE_API_URL.invalid/api'
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7000/api',
+  baseURL: resolveBaseUrl(),
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
   timeout: 120_000,

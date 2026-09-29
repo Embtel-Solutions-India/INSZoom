@@ -119,6 +119,78 @@ class AutoFillService {
     };
   }
 
+  // Mongoose's Map SchemaType stores each entry as a literal Mongo
+  // sub-document field name, which cannot contain "." (confirmed: casting
+  // throws "Mongoose maps do not support keys that contain '.'"). A real
+  // PDF fieldId is very often a raw AcroForm name containing literal dots
+  // (see overrideFieldById's own long-standing comment on this exact
+  // problem for its Mixed-typed sibling maps) - CaseForm.fieldValueProvenance
+  // is declared as a true Map (unlike fieldValues/sourceAttribution/
+  // manualOverrides, which are Mixed), so it hits this Mongoose limitation
+  // as soon as anything actually writes to it. Rather than restructure the
+  // existing Map schema (out of scope - additive only), dots are
+  // reversibly encoded/decoded only at this file's own read/write
+  // boundary; every other CaseForm field, and the schema itself, are
+  // unaffected.
+  static encodeProvenanceKey(fieldId) {
+    return String(fieldId).replace(/\./g, "․");
+  }
+
+  static decodeProvenanceKey(key) {
+    return String(key).replace(/․/g, ".");
+  }
+
+  static encodeProvenanceMap(map = {}) {
+    const encoded = {};
+    Object.entries(map).forEach(([fieldId, value]) => {
+      encoded[this.encodeProvenanceKey(fieldId)] = value;
+    });
+    return encoded;
+  }
+
+  // fieldValueProvenance is a Mongoose Map on the real CaseForm document,
+  // but mergeMappedFields is also called directly with a plain caseForm
+  // object in unit tests (see AutoFillService.test.js) - normalize both
+  // shapes to a plain object (keyed by the real, un-encoded fieldId) so the
+  // rest of this file only ever deals with one representation.
+  static cloneProvenance(map) {
+    if (!map) return {};
+    const isMapLike = typeof map.entries === "function" && typeof map.get === "function" && typeof map.set === "function" && !Array.isArray(map);
+    const plain = isMapLike ? Object.fromEntries(map.entries()) : this.clone(map, {});
+    const decoded = {};
+    Object.entries(plain).forEach(([key, value]) => {
+      decoded[this.decodeProvenanceKey(key)] = value;
+    });
+    return decoded;
+  }
+
+  // Maps CanonicalMergeService's own winner sourceType (already established
+  // by CanonicalBuilderService: "ocr"/"ocr_verified" for a document-
+  // extraction-derived candidate, "case_manager_verified" for an
+  // EmployerProfile/EmployeeProfile value carrying source "case_manager_edit"
+  // /"form_edit", "questionnaire" for a checklist answer) onto
+  // CaseForm.fieldValueProvenance's existing source enum
+  // ("canonical"/"case_manager_override"/"ocr"/"questionnaire"). Anything
+  // else (plain database/beneficiary/company candidates) keeps the schema's
+  // own "canonical" default - no new precedence rule, just a label.
+  static PROVENANCE_SOURCE_BY_CANONICAL_SOURCE_TYPE = {
+    ocr: "ocr",
+    ocr_verified: "ocr",
+    case_manager_verified: "case_manager_override",
+    questionnaire: "questionnaire",
+  };
+
+  static provenanceForField(attribution = {}, canonicalData = {}) {
+    const canonicalPath = attribution.sourceField;
+    const meta = canonicalPath ? canonicalData.fieldMetadata?.[canonicalPath] : null;
+    const source = (meta && this.PROVENANCE_SOURCE_BY_CANONICAL_SOURCE_TYPE[meta.sourceType]) || "canonical";
+    return {
+      source,
+      sourceId: meta?.sourceId ?? null,
+      sourceDocumentId: meta?.sourceDocumentId ?? null,
+    };
+  }
+
   static isReviewedOrManual(caseForm, fieldId) {
     const manualOverride = this.getMeta(caseForm.manualOverrides || {}, fieldId);
     if (manualOverride) return true;
@@ -134,6 +206,7 @@ class AutoFillService {
     const filledData = this.clone(caseForm.filledData, {});
     const fieldValues = this.clone(caseForm.fieldValues, {});
     const sourceAttribution = this.clone(caseForm.sourceAttribution, {});
+    const fieldValueProvenance = this.cloneProvenance(caseForm.fieldValueProvenance);
     const updatedFields = [];
     const skippedFields = [];
     const missingFields = [];
@@ -145,6 +218,11 @@ class AutoFillService {
         return;
       }
       if (!options.overwriteReviewed && this.isReviewedOrManual(caseForm, fieldId)) {
+        // A previously-set fieldValueProvenance entry for this fieldId
+        // (e.g. source: "case_manager_override") is left completely
+        // untouched here - it is simply never reassigned below, so a
+        // case-manager override survives an OCR/questionnaire rerun rather
+        // than being silently overwritten.
         skippedFields.push({ fieldId, reason: "manual_or_reviewed_field" });
         return;
       }
@@ -165,6 +243,20 @@ class AutoFillService {
         validationStatus: attribution.validationStatus || "not_validated",
         confidence: attribution.confidence ?? this.mappingUsed(field)?.confidence ?? 100,
       };
+      const provenance = this.provenanceForField(attribution, canonicalData);
+      const existingProvenance = fieldValueProvenance[fieldId] || {};
+      fieldValueProvenance[fieldId] = {
+        source: provenance.source,
+        mappingId: this.mappingUsed(field)?.mappingId || existingProvenance.mappingId || null,
+        occurrenceId: existingProvenance.occurrenceId || null,
+        allowsOccurrenceOverride: attribution.allowsOccurrenceOverride === true,
+        canonicalValue: value,
+        sourceId: provenance.sourceId,
+        sourceDocumentId: provenance.sourceDocumentId,
+        overriddenAt: existingProvenance.overriddenAt || null,
+        overriddenBy: existingProvenance.overriddenBy || null,
+        revision: (existingProvenance.revision || 0) + 1,
+      };
       updatedFields.push({ fieldId, previousValue, value, sourceField: attribution.sourceField, confidence: sourceAttribution[fieldId].confidence });
     });
 
@@ -173,6 +265,7 @@ class AutoFillService {
       filledData,
       fieldValues,
       sourceAttribution,
+      fieldValueProvenance,
       completion,
       updatedFields,
       skippedFields,
@@ -318,6 +411,7 @@ class AutoFillService {
     caseForm.set("filledData", merged.filledData);
     caseForm.set("fieldValues", merged.fieldValues);
     caseForm.set("sourceAttribution", merged.sourceAttribution);
+    caseForm.set("fieldValueProvenance", this.encodeProvenanceMap(merged.fieldValueProvenance));
     caseForm.set("validationErrors", { populationWarnings: mapped.validation?.warnings || [], populationErrors: mapped.validation?.errors || [], canonicalReadiness: readiness });
     caseForm.set("completion", merged.completion);
     caseForm.set("autoFillReport", populationReport);
@@ -546,6 +640,24 @@ class AutoFillService {
       validationStatus: "manual_override",
     };
     caseForm.set("sourceAttribution", sourceAttribution);
+    // Marks THIS fieldId's own provenance as a case-manager override so it
+    // is unambiguous in fieldValueProvenance (not just sourceAttribution)
+    // that a human, not a mapping/OCR/questionnaire candidate, produced the
+    // value - and so mergeMappedFields' isReviewedOrManual skip (which
+    // already keeps generate()/OCR reruns from rewriting this field, via
+    // manualOverrides above) also leaves the RIGHT provenance in place
+    // rather than a stale "canonical"/"ocr" label from before the override.
+    const fieldValueProvenance = this.cloneProvenance(caseForm.fieldValueProvenance);
+    const existingFieldProvenance = fieldValueProvenance[fieldId] || {};
+    fieldValueProvenance[fieldId] = {
+      ...existingFieldProvenance,
+      source: "case_manager_override",
+      canonicalValue: value,
+      overriddenAt: new Date(),
+      overriddenBy: this.getUserId(user),
+      revision: (existingFieldProvenance.revision || 0) + 1,
+    };
+    caseForm.set("fieldValueProvenance", this.encodeProvenanceMap(fieldValueProvenance));
     // §I.4: every override marks its own field MANUAL_OVERRIDE, regardless of
     // reverseSync eligibility - a case manager's explicit edit is a manual
     // override on this form whether or not it also happens to flow back to

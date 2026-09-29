@@ -79,6 +79,13 @@ const BASE_FIELDS = [
   { path: "immigration.currentStatus", aliases: ["current status", "immigration status"], type: "text" },
   { path: "immigration.currentStatusExpirationDate", aliases: ["current status expiration", "status expiration date", "date status expires"], type: "date" },
   { path: "immigration.i94.number", aliases: ["i-94", "i94 number", "arrival departure"], type: "text" },
+  // i94.expirationDate added for Phase 3B (I-539 audit) - mirrors the
+  // existing beneficiary.i94ExpirationDate precedent (same real-world
+  // concept, applicant-level instead of beneficiary-level); I-539's own
+  // mapping graph already had a correct, high-confidence edge to this path
+  // (Item 12: I-94 expiration date), it just wasn't yet a registered
+  // BASE_FIELDS entry.
+  { path: "immigration.i94.expirationDate", aliases: ["i-94 expiration", "i94 expiration date", "date i-94 expires"], type: "date" },
   { path: "immigration.sevisNumber", aliases: ["sevis", "sevis number"], type: "text" },
   { path: "immigration.receiptNumbers[]", aliases: ["receipt number", "uscis receipt"], type: "text", repeatable: "receiptNumbers" },
   { path: "travelHistory[].arrivalDate", aliases: ["arrival date", "entry date"], type: "date", repeatable: "travelHistory" },

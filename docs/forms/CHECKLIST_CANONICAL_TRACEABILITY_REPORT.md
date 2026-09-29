@@ -106,3 +106,100 @@ Re-verified via `git stash` isolation:
 - **I-907/I-539's own remaining untraced fields** (23 and 8 respectively): not individually audited field-by-field in this phase — the four questionnaires' fixes lifted them as a side effect, but a dedicated pass wasn't done.
 - **OCR/Document-Intelligence → canonical → CaseForm wiring** (governing spec Rules 6/7/9): `CaseForm.fieldValueProvenance`'s `source: "ocr"` enum slot exists in the schema but nothing writes to it yet; `DocumentExtraction` results reach canonical data only indirectly (via triggering a full profile rebuild, not by passing extracted field values through). Investigated but not implemented this round — a substantial, separate piece of work.
 - **Missing-data diagnostics UI** (spec Rule 16: distinguishing "no canonical value" vs "no checklist mapping" vs "OCR needs review" vs "wrong participant" etc. in the governance UI) — the underlying data now exists to build this (via `matchType`/`canonicalPathSource` on traceability results) but no UI was added for it.
+
+---
+
+## Phase 3 — Closing the Remaining Gaps, OCR/Canonical Autofill, Readiness & Governance
+
+**Goal:** close every Phase-2 deferral first, then build the OCR→canonical→CaseForm pipeline with provenance, a real readiness engine, missing-data diagnostics, admin governance extensions, and USCIS edition governance — all reusing Phase 1/2's architecture, never a parallel system.
+
+### 3A — Closing the four explicit Phase-2 gaps
+
+**1. I-134 checklist mapping.** Investigated I-134's actual use (Declaration of Financial Support, filed at the K-1/K-3 visa-interview stage, distinct from the later I-864 used after AOS marriage). Per explicit instruction: added `VisaFormMapping` rows for I-134 under **K-1** and **K-3** (`CONDITIONAL`, `STANDALONE`, `stage: "consular_interview"`), and assigned each the existing petitioner checklist already registered for that visa type (`k1_petitioner_checklist` / `k3_petitioner_checklist`, `CONDITIONAL`, `role: "petitioner"`) — no new checklist invented, since the petitioner checklist already collects the sponsor's identity/employment data I-134 needs. Coverage: 0/96 → 24/96 (the remaining 72 are genuinely income/household-size/asset fields no existing checklist collects — a real missing-data gap, not fabricated around).
+
+**2. `h4_ead_questionnaire`'s `applicant.*` namespace.** Fixed field-by-field, mirroring the Phase 2 fix already applied to its sibling H-4 questionnaires exactly: `applicant.lastName/firstName/middleName/gender/dateOfBirth/aNumber/mailingAddress/i94Number/passportNumber/passportCountry/passportExpirationDate/currentVisaStatus` → `person.lastName/firstName/middleName/gender/dob/alienNumber`, `contact.address.line1`, `immigration.i94.number`, `person.passport.number/country/expirationDate`, `immigration.currentStatus`. `usPhysicalAddress` left unmapped (same precedent: no distinct "physical, if different from mailing" canonical field). Verified every mapped path resolves to a real `CanonicalFieldRegistryService.BASE_FIELDS` entry.
+
+**3. I-539A's mapping graph.** Investigation found the reported `contact.address.line2` → "Business/Org Name" edge was one symptom of a much larger defect: **16 of 33 edges** in both persisted draft versions were wrong (e.g. Family/Given/Middle Name fields on page 1 and the page-2 repeat occurrence bound to `contact.address.line1`; Interpreter's/Preparer's Business-Org-Name/Given-Name/Family-Name/Email/Telephone fields all bound to the applicant's own `contact.*` — a different participant with no canonical namespace of its own; a Travel-Document-Number field and two Yes/No checkboxes also bound to address fields). Confirmed with the user before fixing the whole graph (scope was materially larger than "one edge"). Corrected via `MappingGraphService`'s real governance path (`loadCurrentGraph`/`validateGraph`/`persistVersion`/`audit` — never a raw DB write): 6 edges corrected to `person.lastName/firstName/middleName`, 16 invalid edges removed (left genuinely unmapped — Interpreter/Preparer have no canonical namespace, and never bypassing the "different participant" rule by reusing the applicant's own identity). This template was never activated (`status: needs_review` both before and after), so no live PDF generation was affected. Coverage: 17/17 traced (all mapped edges now resolve to real checklist questions), 33 → 17 total mapped fields (16 invalid ones removed rather than left wrong).
+
+**4. I-907/I-539 field-by-field audit** (see 3B below — folded in together since the same systemic bug was found in I-907).
+
+### 3B — Completing the I-907/I-539 audit
+
+Live coverage numbers had already improved since the Phase 2 report was written (I-907 31/54→ now measured 40/44 total mapped, I-539 36/44→32/33) — some other work between Phase 2 and Phase 3 evidently touched these forms. Re-ran `coverageSummary()` fresh rather than trusting the stale numbers, then audited every untraced edge individually:
+
+**I-907** (7 untraced, then a further 6 found by regression testing beyond the untraced set — the SAME systemic bug as I-539A):
+- `contact.address.country` → Mailing/Physical Address Country (×2): **correct**, just no checklist question sources it yet — classified "missing checklist → canonical mapping," left as-is.
+- `immigrationHistory.receiptNumbers` → Receipt Number of Related Petition: **correct** (a real, recognized `QuestionLibraryItem.canonicalPath`, a parallel-but-valid namespace to `CanonicalFieldRegistryService`'s `immigration.receiptNumbers[]` — investigated before assuming invalid), no checklist question sources it yet — same classification.
+- "Classification or Eligibility Requested" was bound to `contact.address.line2` — **invalid**; corrected to `case.visaType` (the real matching concept).
+- Representative's Name, and Interpreter's/Preparer's Business-Org-Name/Given-Name/Family-Name/Email fields, were all bound to the applicant's own `contact.*` — **invalid**, same bug class as I-539A; all removed (different participants, no canonical namespace).
+- Coverage: 44 → 40/44 mapped fields traced (4 corrected/removed edges' targets stay genuinely unmapped rather than fabricated).
+
+**I-539** (3 untraced): `immigration.i94.expirationDate` → I-94 expiration date field: **correct** concept, just not yet a registered `BASE_FIELDS` entry (added one, mirroring the existing `beneficiary.i94ExpirationDate` precedent) and no checklist sources it yet. **"Beneficiary or Applicant" First/Last Name fields were bound to `company.name`** (the employer/petitioner's name) — a **real, live production bug**: this template's mapping was `status: active` (mappingVersion 3), meaning any I-539 case's own name was being filled with the employer's company name on the actual generated PDF. Corrected to `person.firstName`/`person.lastName` via a new draft version (mappingVersion 4) — **left unactivated**, per the existing activation gate; a human must explicitly activate it in the mapping editor before the fix reaches live PDFs.
+
+Every remaining genuinely-unmapped field across both forms carries an explicit classification (missing-checklist-source, no-canonical-consumer, etc.) rather than being left ambiguous.
+
+### 3C/3D — OCR → Canonical → CaseForm, with provenance and precedence
+
+Reused the existing pipeline exactly — no parallel autofill system:
+- `CanonicalBuilderService.addOcrCandidates()` (already existed, previously ungated) now gates every OCR-extracted field through `isOcrFieldCanonicalEligible()`: a field reaches canonical data only if it's human-reviewed (`reviewedBy` set, or `reviewStatus` `approved`/`edited`), **or** it's `reviewStatus: "auto_accepted"` (≥95% confidence, this repo's own existing `confidenceBand()` convention) **with no unresolved `validationIssues`**. Anything lower-confidence or flagged stays parked in `DocumentExtraction`'s own needs-review state — never silently promoted onto a legal government form. `addDocumentExtractionCandidates()` added as a named alias for the same codepath (matching the spec's vocabulary, not a second implementation).
+- `AutoFillService.mergeMappedFields()`/`generate()` now write `CaseForm.fieldValueProvenance.source` accurately (`"ocr"` when the merge winner came from OCR, `"case_manager_override"` on a direct CM edit, etc.) instead of leaving that schema slot unused — additively extended with `sourceId`/`sourceDocumentId` so an OCR-derived field traces back to its extraction record.
+- Precedence (Case Manager override beats OCR reruns) was already implemented in `CanonicalMergeService`'s existing priority table (`case_manager_verified` 500 > `ocr_verified` 450 > `ocr` 350) and `mergeMappedFields`'s existing `isReviewedOrManual` skip — verified with a new regression test that an override survives an OCR rerun, rather than re-implementing precedence from scratch.
+- Genuine schema gap found and fixed additively: `fieldValueProvenance` is a real Mongoose `Map`, which rejects keys containing `.` — but real PDF AcroForm field IDs are routinely dotted. Reversibly encoded at this file's read/write boundary only (`.` ↔ `‥`), schema left untouched.
+- Tests: `CanonicalBuilderService.ocrGate.test.js` (5), `AutoFillService.ocrProvenance.test.js` (3) — covering high-confidence OCR reaching canonical+CaseForm with correct provenance, low-confidence/unreviewed OCR never auto-populating, and CM overrides surviving OCR reruns.
+
+### 3E/3F — Readiness engine and missing-data diagnostics
+
+New `FormReadinessService.js`, built entirely on existing services (`FormMappingService.loadMappingVersion`, `MappingGraphService`, `ChecklistFieldTraceabilityService`, `MappingResolver`, `visaFormMapping.service.resolveChecklistsForCase`) — no new mapping/traceability logic:
+- Per field: `mapped` (has a graph edge) is never conflated with `hasValue` (present in `filledData`). Status is `unmapped` / `missing_value` / `needs_review` / `filled`; a value with a low-confidence edge or unconfirmed OCR provenance is `needs_review`, never silently counted as filled.
+- Readiness status is rule-based, worst-first, never from a percentage: **BLOCKED** (a required field has no mapping edge at all) > **NOT_READY** (a required mapped field has no value) > **NEEDS_REVIEW** (a required field's value is unconfirmed/low-confidence) > **READY**.
+- `traceMissingField()` walks PDF field → canonical `sourcePath` → checklist question (scoped to checklists actually applicable to that case) → participant/role, exactly as the spec's I-129 `person.currentStatus` example describes. No matching question → `NO_MAPPED_COLLECTION_SOURCE` (never fabricated); a matching-but-unanswered question → `AWAITING_CHECKLIST_ANSWER`; an answered-but-never-reaching-the-field case → `ANSWERED_BUT_NOT_REACHING_FIELD` (flags a real autofill bug, the same class as the I-130 bug found in Phase 2).
+- Two new read-only, case-access-gated routes: `GET /form-mappings/case-forms/:caseFormId/readiness` and `.../fields/:targetFieldId/trace`.
+- Documented limitation: `fieldValueProvenance`'s real enum has no `"needs-review"` value, so the provenance breakdown reports the real enum (`canonical`/`case_manager_override`/`ocr`/`questionnaire`) plus a separate cross-cutting `needsReviewCount`, rather than inventing a schema value that doesn't exist.
+- Tests: `FormReadinessService.test.js`, 9/9 passing (READY, BLOCKED-outranks-NOT_READY, NOT_READY with correct trace, NEEDS_REVIEW for pending OCR, post-approval reclassification, UNMAPPED_PDF_FIELD trace).
+
+### 3G is deferred — see "Remaining genuine limitations" below.
+
+### 3H/3I — Admin governance UI and Checklist Health
+
+Extended, not replaced, the existing Form Governance UI:
+- `ChecklistFieldTraceabilityService.governanceDefects(templateId)` (per-form) and `checklistHealth()` (system-wide) — reusing `MappingGraphService.validateGraph()`'s existing defect codes verbatim (`INVALID_SOURCE`/`INVALID_TARGET`/`BROKEN_MAPPING`/`BROKEN_REPEATING_MAPPING`/`DUPLICATE_TARGET_MAPPING`/`MISSING_FIELD_MAPPING`/`MISSING_REQUIRED_MAPPING`) rather than inventing a second validation vocabulary, and cross-referencing `checklistMappings.seed.js`'s own documented "deliberate GAP" scope notes so an intentional gap is never flagged as a defect.
+- `FormGovernance.jsx` gained a "Checklist Health" panel (orphan/scaffold/not-live/invalid-canonical-path/no-consumer filters); `FormGovernanceDetail.jsx` gained a per-form defects summary and a "Defects" column on the field-mapping table. Read-only — no auto-fix action, matching the spec's explicit "never automatically modify records from the diagnostic UI" rule.
+- Not implemented: a distinct "invalid form reference" category (no real case of `VisaFormMapping.formTemplateFormCode` pointing at a nonexistent template was found — not fabricated as a check with nothing to detect).
+- Tests: `governanceDefectsAndChecklistHealth.test.js`, 6/6 passing; `Admin/frontend` build verified clean.
+
+### 3J — USCIS edition governance
+
+Found that field-level edition diffing and template comparison (`FieldDiffService`, `FormComparisonService`, wired into `FormVersionService.createTemplate`) **already existed** in `Backend/src/modules/uscis-lifecycle/` — confirmed live against real data (I-129 has an active 2026-02-27 edition and a `review`-status 2026-09-09 edition linked via `parentVersion`, with a real detected field rename between them). The actual gap was narrower than the spec implied: nothing cross-referenced a field diff against the **mapping graph's** edges/checklist traces, and there was no activation gate tied to it.
+- New `FormEditionComparisonService.compareEditions()` reuses `FieldDiffService.diff()` for the raw field diff, adds only the one genuine gap it doesn't cover (a required/optional flip), and cross-references both against the old template's live mapping graph and `ChecklistFieldTraceabilityService.traceAllFieldsForTemplate()` to produce `affectedMappingEdges` and `brokenChecklistTraces`.
+- `MappingGraphService.activate()` gained one additive block *after* its existing "every field mapped" gate: activating a new edition's mapping is blocked (`422`, `UNREVIEWED_EDITION_CHANGES`) until a human explicitly acknowledges the edition's breaking changes via a new `acknowledge()` step — the pre-existing gate and `validateGraph()` are untouched.
+- New read-only preview route (`GET .../edition-diff`) and acknowledgement route (`POST .../edition-diff/acknowledge`).
+- Tests: `FormEditionComparisonService.test.js`, 6/6 passing (genuine removal blocks activation until acknowledged; a non-breaking edition is unaffected; the pre-existing unmapped-required-field gate still works unchanged) — verified against both disposable fixtures and the real I-129 edition pair, read-only.
+
+### Final coverage, before (Phase 2) → after (Phase 3)
+
+| Form | Phase 2 | Phase 3 | Note |
+|---|---|---|---|
+| I-129 | 94/101 | 96/101 | Unaffected by this phase's edits; number drifted slightly from unrelated concurrent work |
+| I-907 | 31/54 | 40/44 | Field-by-field audit; 4 invalid edges corrected/removed, total mapped-field count also dropped from removing genuinely-wrong edges |
+| I-539 | 36/44 | 32/33 | **Live production bug fixed** (company.name → person name); registry BASE_FIELDS gap closed |
+| I-539A | 29/32 | 17/17 | Whole mapping graph corrected; 16 invalid edges removed rather than left wrong |
+| I-129F | 34/34 | 34/34 | Unchanged |
+| I-130 | 32/33 | 32/33 | Unchanged (untouched this phase) |
+| I-134 | 0/96 | 24/96 | Checklist assigned (K-1/K-3, reusing existing petitioner checklists) |
+
+### Tests and regression
+
+- New test files this phase: `checklistMappings.test.js` (+1 K-1/K-3/I-134 test), `h4EadQuestionnaire.canonicalPaths.test.js` (3), `i539a-mapping-graph.test.js` (3), `i907-mapping-graph.test.js` (2), `i539-beneficiary-name-mapping.test.js` (1), `CanonicalBuilderService.ocrGate.test.js` (5), `AutoFillService.ocrProvenance.test.js` (3), `FormReadinessService.test.js` (9), `governanceDefectsAndChecklistHealth.test.js` (6), `FormEditionComparisonService.test.js` (6) — all passing.
+- Combined regression sweep across `form-mapping/`, `form-registry/`, `questionnaires/`, `canonical/`, `uscis-lifecycle/`, `uscis-form-import/` tests: 478/487 passing. All 9 failures confirmed pre-existing and unrelated to this phase's changes, via `git stash` isolation (reproduced identically with this phase's files stashed out):
+  - `visaFormMapping.test.js` — H-1B/L-1A/SB-1 registry-applicability assertions (3) — confirmed failing identically with every Phase 3 file stashed.
+  - I-130/K-3 fan-out and reverse-sync assertions (5, across `AutoFillService.overrideField.k1k3-fanout.test.js`, `phase3.fanout-invariant.test.js`, `i130-k3-golden-case.test.js`) — the same pre-existing I-130 checklist-key-mismatch class of issue this document already tracks; one of the 5 failed on a leftover test-fixture duplicate-key collision from repeated local runs, not a real regression.
+  - `h1-i129-mapping.test.js` AC1 — one of the three failures this document has tracked since Phase 2, unchanged.
+- One operational incident during this phase: running four workstreams concurrently in the same working tree caused a `git stash` collision between agents, which transiently wiped the K-1/K-3 I-134 registry rows from the shared database (the source seed files were never affected, only the already-seeded DB documents). Caught during the 3K coverage re-run (I-134 unexpectedly back at 0 checklist keys), root-caused, and fixed by re-running the idempotent seed loaders (`loadVisaFormMappings.js`, `checklistMappings.seed.js`) — verified restored and re-tested clean.
+
+### Remaining genuine limitations
+
+- **3G (Case Manager readiness UI)** was not built this phase — the backend (`FormReadinessService` + routes) is real and tested, but no frontend surface consumes it yet.
+- **I-907's `Classification or Eligibility Requested` fix and I-539's `person.firstName`/`lastName` fix** are both live in the database's mapping graphs; I-539's specific fix sits in an **unactivated draft version** (mappingVersion 4) — someone must explicitly activate it for the live-bug fix to reach generated PDFs.
+- I-134's remaining 72/96 unmapped fields (income, household size, assets) are a genuine missing-checklist-source gap, not fabricated around — Affidavit-of-Support financial data collection doesn't exist yet in any checklist.
+- I-130 remains untouched this phase; its Phase 2-documented checklist-key-mismatch-adjacent test failures persist exactly as before.
+- Coverage percentages throughout this document (66/394, 256/394, etc.) only ever covered 7 of the ~71 form rows in the full registry — system-wide 100% traceability was never in scope, by design (per the spec's own "do not pursue 100% coverage artificially" rule).

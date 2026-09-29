@@ -21,10 +21,14 @@ router.get("/packages/:id/preview", authorizePermissions("forms:read"), controll
 router.get("/packages/:id/download", authorizePermissions("forms:read"), controller.download);
 router.patch("/packages/:id/letters/:sectionKey", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.saveLetter);
 router.patch("/packages/:id/exhibits/order", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.reorderExhibits);
+router.post("/packages/:id/pages", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.insertPage);
+router.delete("/packages/:id/pages/:sectionKey", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.removePage);
 router.post("/packages/:id/finalize", authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("forms:approve"), controller.finalize);
 router.post("/packages/:id/unlock", authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("forms:approve"), controller.unlock);
 router.post("/packages/:id/filing", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.recordFiling);
 router.post("/packages/:id/receipt", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.recordReceipt);
+
+router.get("/branding", authorizePermissions("forms:read"), controller.getBranding);
 
 router.get("/definitions", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:read"), controller.listDefinitions);
 router.get("/definitions/:key", authorizeRoles("super_admin", "admin"), authorizePermissions("forms:read"), controller.getDefinition);

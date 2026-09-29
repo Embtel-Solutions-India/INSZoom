@@ -243,6 +243,15 @@ const caseFormSchema = new mongoose.Schema(
           overriddenAt: { type: Date, default: null },
           overriddenBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
           revision: { type: Number, default: 0 },
+          // ── Phase 3C/3D ADDITION (additive only, no restructuring) ───────
+          // Lets an "ocr"-sourced field point back at the exact
+          // DocumentExtraction (sourceId) and Document (sourceDocumentId)
+          // it came from, mirroring CanonicalBuilderService.addOcrCandidates'
+          // own sourceId/sourceDocumentId candidate metadata - so a reviewer
+          // can trace a CaseForm value all the way back to the document that
+          // produced it. Also used for a "questionnaire" source's Answer id.
+          sourceId: { type: mongoose.Schema.Types.Mixed, default: null },
+          sourceDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document", default: null },
         },
         { _id: false }
       ),

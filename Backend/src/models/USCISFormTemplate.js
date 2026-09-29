@@ -107,6 +107,21 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       impactAnalysis: mongoose.Schema.Types.Mixed,
       scanHistory: [mongoose.Schema.Types.Mixed],
       changeEvents: [mongoose.Schema.Types.Mixed],
+      // PHASE 3J — edition-change governance (additive, non-destructive:
+      // existing docs unaffected, no migration needed). Set only by
+      // FormEditionComparisonService.acknowledge() once a human reviewer has
+      // looked at this edition's fieldDiff/affectedMappingEdges/
+      // brokenChecklistTraces (FormEditionComparisonService.compareEditions,
+      // keyed off this same document's parentVersion) and confirmed it's
+      // safe to proceed. MappingGraphService.activate()'s existing "every
+      // field has an approved mapping" gate is untouched; this is read back
+      // there ONLY to add a further block when a breaking edition change
+      // hasn't been acknowledged for the specific previous edition
+      // (editionReviewOldTemplateId) that produced it - acknowledging one
+      // edition's changes never silently carries over to a different one.
+      editionReviewAcknowledgedAt: Date,
+      editionReviewAcknowledgedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      editionReviewOldTemplateId: { type: mongoose.Schema.Types.ObjectId, ref: "USCISFormTemplate" },
     },
     formFields: [
       {

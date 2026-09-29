@@ -19,10 +19,11 @@ function BLANK(hint) {
 }
 
 const H1B_COVER_LETTER = `<div>
-  <p>{{filing.addressHtml}}</p>
+  <p><strong>{{filing.today}}</strong></p>
+  <p><strong>{{filing.addressHtml}}</strong></p>
   <p><strong>Re: Petition for a Nonimmigrant Worker (Form I-129) — {{beneficiary.fullName}}, H-1B Specialty Occupation Worker</strong><br/>
-  Petitioner: {{petitioner.legalName}}<br/>
-  Beneficiary: {{beneficiary.fullName}}</p>
+  <strong>Petitioner:</strong> {{petitioner.legalName}}<br/>
+  <strong>Beneficiary:</strong> {{beneficiary.fullName}}</p>
   <p>Dear USCIS Officer,</p>
   <p>Enclosed please find the following documents in connection with the above case:</p>
   <ul>
@@ -31,45 +32,46 @@ const H1B_COVER_LETTER = `<div>
     <li>Form I-129, Petition for a Nonimmigrant Worker, with H Classification Supplement and H-1B and H-1B1 Data Collection and Filing Fee Exemption Supplement</li>
     <li>Certified Labor Condition Application (ETA-9035) and prevailing wage documentation</li>
   </ul>
-  <p><strong>Index of Exhibits</strong></p>
+  <h3>Index of Exhibits</h3>
   {{exhibitIndexHtml}}
   ${BLANK("Optional: add a custom note for this filing here")}
   <p>Respectfully submitted,</p>
-  <p>{{petitioner.signatoryName}}<br/>{{petitioner.signatoryTitle}}<br/>{{petitioner.legalName}}</p>
+  <p><strong>{{petitioner.signatoryName}}<br/>{{petitioner.signatoryTitle}}<br/>{{petitioner.legalName}}</strong></p>
 </div>`;
 
 const H1B_SUPPORT_LETTER = `<div>
-  <p>{{filing.addressHtml}}</p>
+  <p><strong>{{filing.today}}</strong></p>
+  <p><strong>{{filing.addressHtml}}</strong></p>
   <p><strong>Re: {{beneficiary.fullName}} — H-1B Specialty Occupation Support Letter</strong><br/>
-  Petitioner: {{petitioner.legalName}}<br/>
-  Beneficiary: {{beneficiary.fullName}}</p>
+  <strong>Petitioner:</strong> {{petitioner.legalName}}<br/>
+  <strong>Beneficiary:</strong> {{beneficiary.fullName}}</p>
   <p>Dear USCIS Officer,</p>
   ${BLANK("Opening paragraph")}
-  <h3>Petitioner Information</h3>
+  <h3>A. Petitioner Information</h3>
   ${BLANK("Describe the petitioning organization")}
   <h4>Offerings</h4>
   ${BLANK("Optional: describe products/services offered")}
-  <h3>Beneficiary Information</h3>
+  <h3>B. Beneficiary Information</h3>
   ${BLANK("Describe the beneficiary")}
-  <h3>Educational Qualifications</h3>
+  <h3>C. Educational Qualifications</h3>
   ${BLANK("Describe the beneficiary's educational qualifications")}
-  <h3>Technical Skills</h3>
+  <h3>D. Technical Skills</h3>
   ${BLANK("Describe the beneficiary's technical skills")}
-  <h3>Summary of Beneficiary's Experience</h3>
+  <h3>E. Summary of Beneficiary's Experience</h3>
   ${BLANK("Summarize the beneficiary's relevant experience")}
-  <h3>Itinerary</h3>
+  <h3>F. Itinerary</h3>
   <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;width:100%;">
     <thead><tr><th>Employer</th><th>Worksite / Project</th><th>Start</th><th>End</th></tr></thead>
     <tbody><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></tbody>
   </table>
-  <h3>Employer-Employee Relationship</h3>
+  <h3>G. Employer-Employee Relationship</h3>
   ${BLANK("Describe the right to control the beneficiary's work")}
-  <h3>Specialty Occupation</h3>
+  <h3>H. Specialty Occupation</h3>
   ${BLANK("Describe why the position is a specialty occupation")}
-  <h3>Employer Certifications</h3>
+  <h3>I. Employer Certifications</h3>
   ${BLANK("Employer certification statements")}
   <p>Sincerely,</p>
-  <p>{{petitioner.signatoryName}}<br/>{{petitioner.signatoryTitle}}</p>
+  <p><strong>{{petitioner.signatoryName}}<br/>{{petitioner.signatoryTitle}}</strong></p>
 </div>`;
 
 const H1B_POSITION_DESCRIPTION = `<div>
@@ -98,14 +100,17 @@ const H1B_ITINERARY = `<div>
 </div>`;
 
 const GENERIC_COVER_LETTER = `<div>
-  <p>{{filing.addressHtml}}</p>
-  <p>Re: {{case.visaType}} Petition — {{beneficiary.fullName}}</p>
+  <p><strong>{{filing.today}}</strong></p>
+  <p><strong>{{filing.addressHtml}}</strong></p>
+  <p><strong>Re: {{case.visaType}} Petition — {{beneficiary.fullName}}</strong><br/>
+  <strong>Petitioner:</strong> {{petitioner.legalName}}<br/>
+  <strong>Beneficiary:</strong> {{beneficiary.fullName}}</p>
   <p>Dear Officer:</p>
   <p>{{petitioner.legalName}} respectfully submits this petition on behalf of {{beneficiary.fullName}}.</p>
   <h3>Index of Exhibits</h3>
   {{exhibitIndexHtml}}
   <p>Respectfully submitted,</p>
-  <p>{{petitioner.signatoryName}}</p>
+  <p><strong>{{petitioner.signatoryName}}</strong></p>
 </div>`;
 
 const DEFINITIONS = [

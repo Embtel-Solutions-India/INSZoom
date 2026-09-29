@@ -13,7 +13,11 @@ const sectionSchema = new mongoose.Schema(
     // position_description_letter/itinerary added for the H-1B petition's
     // drafted-skeleton letters (Phase H5's petition-structure spec) - the
     // same front_matter treatment as support_letter/personal_statement.
-    type: { type: String, enum: ["cover_letter", "g28", "form", "certification", "support_letter", "position_description_letter", "itinerary", "personal_statement", "exhibit"], required: true },
+    // blank_page/separator_page: user-inserted pages (see manualInsertions
+    // below and PetitionAssemblyService.applyManualInsertions) - not part of
+    // the package definition's own structure, so they carry no
+    // documentId/caseFormId, just a generated buffer at assemble time.
+    type: { type: String, enum: ["cover_letter", "g28", "form", "certification", "support_letter", "position_description_letter", "itinerary", "personal_statement", "exhibit", "blank_page", "separator_page"], required: true },
     key: { type: String, required: true },
     title: { type: String, required: true },
     exhibitLabel: String,
@@ -30,6 +34,28 @@ const sectionSchema = new mongoose.Schema(
     // form/certification/exhibit sections — those are read-only, rendered
     // straight from documentId's PDF.
     contentHtml: String,
+  },
+  { _id: false }
+);
+
+// User-inserted blank/separator pages, anchored to an existing section/
+// exhibit key so a case manager can place one at a specific point in the
+// binder (e.g. right before Exhibit C) rather than only at a fixed spot.
+// Carried forward across re-assembly (unlike exhibitOrder, which
+// deliberately resets on a fresh assemble() — see its own comment) since a
+// manual page insertion is a deliberate structural addition to this case's
+// binder, not a transient current-draft-only tweak.
+const manualInsertionSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true },
+    type: { type: String, enum: ["blank_page", "separator_page"], required: true },
+    title: { type: String, default: "" },
+    // The section/exhibit key this page is inserted immediately after, in
+    // the FINAL (already type-ordered) mailing section list - null/unmatched
+    // means "insert at the end", never an error (see applyManualInsertions).
+    insertAfterKey: { type: String, default: null },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -102,6 +128,7 @@ const petitionPackageSchema = new mongoose.Schema(
     // A fresh assemble() intentionally does not carry this over from a
     // prior version; each new assembled version starts at default order.
     exhibitOrder: [String],
+    manualInsertions: [manualInsertionSchema],
     outputs: {
       presentationWordDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" },
       mailingPdfDocumentId: { type: mongoose.Schema.Types.ObjectId, ref: "Document" },

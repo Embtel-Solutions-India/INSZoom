@@ -10,6 +10,8 @@ const settingsSchema = new mongoose.Schema(
     // unaffected until an admin fills them in.
     firmAddress: { type: String, default: "" },
     firmPhone: { type: String, default: "" },
+    firmEmail: { type: String, default: "" },
+    firmWebsite: { type: String, default: "" },
     timezone: { type: String, default: "America/New_York" },
     dateFormat: { type: String, default: "MM/DD/YYYY" },
     defaultLanguage: { type: String, default: "en" },

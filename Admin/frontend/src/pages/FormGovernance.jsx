@@ -75,6 +75,10 @@ const FormGovernance = () => {
   const [coverage, setCoverage] = useState(null)
   const [coverageLoading, setCoverageLoading] = useState(false)
   const [showCoverage, setShowCoverage] = useState(false)
+  const [health, setHealth] = useState(null)
+  const [healthLoading, setHealthLoading] = useState(false)
+  const [showHealth, setShowHealth] = useState(false)
+  const [healthFilter, setHealthFilter] = useState('all')
 
   const loadCoverage = async () => {
     setShowCoverage(true)
@@ -89,6 +93,44 @@ const FormGovernance = () => {
       setCoverageLoading(false)
     }
   }
+
+  // Phase 3I "Checklist Health" - one row per production checklist/
+  // questionnaire, read-only, reusing ChecklistFieldTraceabilityService.
+  // checklistHealth() (never a parallel diagnostics system).
+  const loadHealth = async () => {
+    setShowHealth(true)
+    if (health) return
+    setHealthLoading(true)
+    try {
+      const response = await formGovernanceApi.checklistHealth()
+      setHealth(response.data.rows || [])
+    } catch (err) {
+      setHealth([])
+    } finally {
+      setHealthLoading(false)
+    }
+  }
+
+  const HEALTH_FILTERS = [
+    { key: 'all', label: 'All' },
+    { key: 'orphan', label: 'Orphans' },
+    { key: 'scaffold', label: 'Scaffold-only' },
+    { key: 'notLive', label: 'Not on a live workflow' },
+    { key: 'invalidPaths', label: 'Invalid canonical paths' },
+    { key: 'noConsumer', label: 'No form consumer' },
+  ]
+
+  const filteredHealth = useMemo(() => {
+    if (!health) return []
+    switch (healthFilter) {
+      case 'orphan': return health.filter((r) => r.orphan)
+      case 'scaffold': return health.filter((r) => r.scaffold)
+      case 'notLive': return health.filter((r) => r.notAssignedToLiveWorkflow)
+      case 'invalidPaths': return health.filter((r) => r.invalidCanonicalPaths?.length)
+      case 'noConsumer': return health.filter((r) => r.canonicalFieldsNoConsumer?.length)
+      default: return health
+    }
+  }, [health, healthFilter])
 
   const load = async () => {
     try {
@@ -166,6 +208,12 @@ const FormGovernance = () => {
           >
             <FileCheck2 className="w-4 h-4" /> {showCoverage ? 'Hide' : 'Show'} Checklist Coverage
           </button>
+          <button
+            onClick={() => (showHealth ? setShowHealth(false) : loadHealth())}
+            className="btn-secondary text-sm flex items-center gap-1 shrink-0"
+          >
+            <FileCheck2 className="w-4 h-4" /> {showHealth ? 'Hide' : 'Show'} Checklist Health
+          </button>
           {isAdmin && (
             <button onClick={() => setShowUpload(true)} className="btn-primary text-sm flex items-center gap-1 shrink-0">
               <Upload className="w-4 h-4" /> Upload Form
@@ -226,6 +274,97 @@ const FormGovernance = () => {
                           </td>
                         </>
                       )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showHealth && (
+        <div className="card">
+          <h2 className="text-lg font-semibold text-foreground mb-1">Checklist Health — Every Production Checklist</h2>
+          <p className="text-sm text-muted-foreground mb-3">
+            One row per questionnaire (latest version): which visa(s)/form(s) it applies to, how much of it is
+            canonically mapped, and whether it's an orphan, scaffold-only, or otherwise not wired into a live
+            case-creation path. Read-only — nothing here can be fixed from this page.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {HEALTH_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setHealthFilter(f.key)}
+                className={`px-3 py-1.5 text-sm rounded-lg border ${healthFilter === f.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-muted-foreground border-gray-200 hover:bg-muted'}`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {healthLoading ? (
+            <p className="text-sm text-muted-foreground">Loading checklist health…</p>
+          ) : !filteredHealth.length ? (
+            <p className="text-sm text-muted-foreground">No checklists match this filter.</p>
+          ) : (
+            <div className="overflow-x-auto max-h-[36rem] overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="text-left text-muted-foreground border-b">
+                    <th className="py-2 pr-4">Checklist</th>
+                    <th className="py-2 pr-4">Participant</th>
+                    <th className="py-2 pr-4">Applies to</th>
+                    <th className="py-2 pr-4">Questions</th>
+                    <th className="py-2 pr-4">Canonical / Unmapped</th>
+                    <th className="py-2 pr-4">Conditional sections</th>
+                    <th className="py-2 pr-4">Documents</th>
+                    <th className="py-2 pr-4">Flags</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredHealth.map((row) => (
+                    <tr key={row.key} className="border-b last:border-0 align-top">
+                      <td className="py-2 pr-4">
+                        <div className="font-medium">{row.key}</div>
+                        <div className="text-xs text-muted-foreground max-w-xs truncate">{row.title}</div>
+                        <Badge tone={row.active ? 'green' : 'gray'}>{row.active ? 'Active' : 'Inactive'}</Badge>
+                      </td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{row.checklistRole || '—'}</td>
+                      <td className="py-2 pr-4">
+                        {row.applicable.length ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {row.applicable.slice(0, 3).map((a, i) => (
+                              <span key={i} className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700 whitespace-nowrap">{a.visaType} · {a.formNumber}</span>
+                            ))}
+                            {row.applicable.length > 3 && <span className="text-xs text-muted-foreground">+{row.applicable.length - 3} more</span>}
+                          </div>
+                        ) : <span className="text-muted-foreground">None</span>}
+                      </td>
+                      <td className="py-2 pr-4">{row.questionCount}</td>
+                      <td className="py-2 pr-4">
+                        <Badge tone={row.canonicalMappingCount > 0 ? 'green' : 'gray'}>{row.canonicalMappingCount}</Badge>
+                        {' / '}
+                        <Badge tone={row.unmappedQuestionCount > 0 ? 'amber' : 'gray'}>{row.unmappedQuestionCount}</Badge>
+                      </td>
+                      <td className="py-2 pr-4">{row.conditionalSectionCount}</td>
+                      <td className="py-2 pr-4">{row.documentRequirementCount}</td>
+                      <td className="py-2 pr-4">
+                        <div className="flex flex-wrap gap-1 max-w-[16rem]">
+                          {row.orphan && <Badge tone="red">Orphan</Badge>}
+                          {row.scaffold && <Badge tone="amber">Scaffold</Badge>}
+                          {row.notAssignedToLiveWorkflow && <Badge tone="amber">Not live</Badge>}
+                          {row.directLegacyBinding && <Badge tone="blue">Direct binding</Badge>}
+                          {row.invalidCanonicalPaths?.length > 0 && (
+                            <Badge tone="red">{row.invalidCanonicalPaths.length} invalid path{row.invalidCanonicalPaths.length > 1 ? 's' : ''}</Badge>
+                          )}
+                          {row.canonicalFieldsNoConsumer?.length > 0 && (
+                            <Badge tone="amber">{row.canonicalFieldsNoConsumer.length} no consumer</Badge>
+                          )}
+                          {!row.orphan && !row.scaffold && !row.notAssignedToLiveWorkflow && !row.invalidCanonicalPaths?.length && !row.canonicalFieldsNoConsumer?.length && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

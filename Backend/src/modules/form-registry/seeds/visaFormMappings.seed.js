@@ -324,6 +324,7 @@ add(
 add(
   m("K-1", "I-129F", "Petition for Alien Fiancé(e)", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-129f", initialCaseCreation: true, verificationSource: "uscis.gov/i-129f", verificationDate: new Date(), sourceVerified: true }),
   ds160("K-1", { provisioningType: AUTO, initialCaseCreation: true }),
+  m("K-1", "I-134", "Declaration of Financial Support", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-134", stage: "consular_interview", notes: "Sponsor's affidavit of financial support, required for the K-1 visa interview stage (distinct from the later I-864 used after AOS)." }),
   m("K-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos", notes: "After marriage/AOS, not at initial case creation." }),
   i765("K-1", { provisioningType: COND }),
   i131("K-1", { provisioningType: COND })
@@ -333,6 +334,7 @@ add(
   m("K-3", "I-130A", "Supplemental Information for Spouse Beneficiary", "USCIS", COND, SUPPLEMENT, { parentForm: "I-130", notes: "Spouse beneficiary only." }),
   m("K-3", "I-129F", "Petition for Alien Fiancé(e)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129f", notes: "K-3 pathway specific." }),
   ds160("K-3", { provisioningType: AUTO, initialCaseCreation: true }),
+  m("K-3", "I-134", "Declaration of Financial Support", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-134", stage: "consular_interview", notes: "Sponsor's affidavit of financial support, required for the K-3 visa interview stage (distinct from the later I-864 used after AOS)." }),
   m("K-3", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos" }),
   i765("K-3", { provisioningType: COND }),
   i131("K-3", { provisioningType: COND })

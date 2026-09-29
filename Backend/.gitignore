@@ -14,6 +14,7 @@ node_modules/
 serviceAccountKey.json
 firebase-service-account*.json
 google-service-account*.json
+petitions/
 
 # Logs
 logs/

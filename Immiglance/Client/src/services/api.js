@@ -1,4 +1,18 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:7000/api";
+// BUG (fixed): silently falling back to a dev-only localhost URL shipped to
+// production when a deployment's build environment never set VITE_API_URL
+// (confirmed live: https://client.immiglance.com was calling
+// http://localhost:7000/api/auth/register, which no real user's browser can
+// ever reach). A dev fallback still makes sense locally (relative /api,
+// proxied by Vite — see vite.config.js — also fixes a separate bug where an
+// absolute cross-port URL made the refresh_token cookie cross-site and thus
+// dropped under SameSite=Lax). In a PRODUCTION build with no VITE_API_URL,
+// fail loudly and obviously instead: an unmistakable, clearly-broken host
+// name is far faster to diagnose from a network tab or error monitoring
+// than a silent, confusing CORS failure days after deploy.
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "/api" : (() => {
+  console.error("[FATAL CONFIG] VITE_API_URL is not set in this production build — every API call will fail. Set it in the build server's environment before deploying.")
+  return "https://MISSING-VITE_API_URL.invalid/api"
+})())
 export const API_BASE_URL = BASE_URL;
 
 // Non-sensitive marker only ("do we have a session to try refreshing?") — the
