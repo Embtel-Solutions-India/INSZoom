@@ -332,6 +332,7 @@ class CaseLifecycleOrchestrator {
     }
     await this.provisionRequiredForms(caseData, user, req);
     await this.provisionPetitionDraft(caseData, user, req);
+    await this.provisionChecklistAssignments(caseData, user, req);
     const result = await this.recalculate(caseData._id, user, req, "case_initialized");
     await this.notifyCaseCreated(caseData, result, user, req);
     return { ...result, knowledgePlan: knowledge?.knowledgePlan || result.case?.knowledgePlan };
@@ -383,6 +384,49 @@ class CaseLifecycleOrchestrator {
       : [caseData];
     for (const target of targets) {
       await PetitionAssemblyService.autoSync(target._id, user, req);
+    }
+  }
+
+  // Assigns every AUTO checklist/questionnaire the VisaFormMapping registry
+  // says belongs to this case's visa type (visaFormMapping.service.js's
+  // resolveChecklistsForCase - see checklistMappings.seed.js for the data),
+  // to the correct participant, at the moment the correct visa/form
+  // workflow is known - same target-resolution (child cases for an
+  // employer_employee/family structure) and never-throw contract as
+  // provisionRequiredForms/provisionPetitionDraft above. Deliberately
+  // reuses assignQuestionnaireIfNotActive - already idempotent by
+  // questionnaireId - as a pure ADDITIVE safety net: for a checklist this
+  // case's visa/form combination already gets via the older generic
+  // isDefault-visaType-match path (orchestrateOne's assignQuestionnaires,
+  // called above), this is a guaranteed no-op, never a duplicate
+  // questionnaireReferences entry. targetRole is deliberately omitted -
+  // assignQuestionnaire already resolves it from the questionnaire's own
+  // checklistRole, which is the tested, authoritative source for who this
+  // checklist belongs to, not the registry's own (looser, descriptive-only)
+  // role string.
+  static async provisionChecklistAssignments(caseData, user, req) {
+    const Questionnaire = require("../../models/Questionnaire");
+    const visaFormMappingService = require("../form-registry/visaFormMapping.service");
+    const questionnaireService = require("../questionnaires/questionnaire.service");
+    const logger = require("../../utils/logger");
+    const targets = caseData.childCases?.length
+      ? await Case.find({ _id: { $in: caseData.childCases } })
+      : [caseData];
+    for (const target of targets) {
+      try {
+        const resolved = await visaFormMappingService.resolveChecklistsForCase(target);
+        for (const entry of resolved.auto) {
+          try {
+            const questionnaire = await Questionnaire.findOne({ key: entry.checklistKey, latestVersion: true });
+            if (!questionnaire) continue;
+            await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData: target }, user, req);
+          } catch (error) {
+            logger.error("checklist_assignment_failed", { caseId: String(target._id), checklistKey: entry.checklistKey, error: error.message });
+          }
+        }
+      } catch (error) {
+        logger.error("checklist_resolution_failed", { caseId: String(target._id), error: error.message });
+      }
     }
   }
 

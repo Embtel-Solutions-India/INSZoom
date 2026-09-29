@@ -1,6 +1,8 @@
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
 const VisaFormMapping = require("../../models/VisaFormMapping");
+const USCISFormTemplate = require("../../models/USCISFormTemplate");
+const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
 const visaFormMappingService = require("./visaFormMapping.service");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
@@ -98,6 +100,253 @@ exports.getMappingsForVisa = async (req, res, next) => {
   try {
     const mappings = await VisaFormMapping.find({ visaType: req.params.visaType, active: true }).sort({ displayOrder: 1, formNumber: 1 }).lean();
     res.json({ success: true, data: mappings });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// GET /api/form-registry/catalog - the Form Governance page's single data
+// source: every real (formTemplateFormCode-bearing) VisaFormMapping row,
+// grouped by form code, joined against its USCISFormTemplate (if any). Not
+// case-scoped - this is "which forms exist in this system at all and what
+// state are they in", not "what does this one case need". A form with no
+// formTemplateFormCode (a SUPPLEMENT/FORM_COMPONENT/ONLINE_APPLICATION/
+// GOVERNMENT_DOCUMENT/REFERENCE_DOCUMENT row - DS-160, ETA-9035, I-20, or a
+// component sharing its parent's PDF) is excluded - there is nothing of its
+// own to fetch, review, or map.
+exports.getFormCatalog = async (req, res, next) => {
+  try {
+    const mappings = await VisaFormMapping.find({ active: true, formTemplateFormCode: { $ne: null } })
+      .select("visaType formNumber formTemplateFormCode provisioningType processingPaths agency checklistMappings")
+      .lean();
+    const grouped = new Map();
+    for (const mapping of mappings) {
+      const formCode = String(mapping.formTemplateFormCode).toUpperCase();
+      if (!grouped.has(formCode)) {
+        grouped.set(formCode, { formCode, formNumber: mapping.formNumber, agency: mapping.agency, associations: [] });
+      }
+      grouped.get(formCode).associations.push({
+        visaType: mapping.visaType,
+        provisioningType: mapping.provisioningType,
+        // Surfaced as the "automatic/conditional" label the operator asked
+        // for - LATER_STAGE/REFERENCE are provisioning-registry concepts
+        // too niche for this page, folded into "conditional" for display
+        // (both mean "not auto-created on its own" from an operator's
+        // point of view; PetitionAssemblyService/ensureAssignedForms still
+        // treat all three on their own merits under the hood).
+        automatic: mapping.provisioningType === "AUTO_CREATE",
+        processingPaths: mapping.processingPaths || [],
+        // Which client checklist(s) this specific visa/form combination
+        // carries (VisaFormMapping.checklistMappings) - the same data
+        // checklistMappings.seed.js populates and
+        // resolveChecklistsForCase resolves at case creation; surfaced
+        // here read-only so an operator can see the full visa->form->
+        // checklist chain in one place, per the Form Governance spec.
+        checklistMappings: (mapping.checklistMappings || []).map((entry) => ({
+          checklistKey: entry.checklistKey,
+          assignmentType: entry.assignmentType,
+          role: entry.role || "",
+        })),
+      });
+    }
+
+    // Every USCISFormTemplate, not just ones a VisaFormMapping already
+    // references - a form uploaded via "Upload Form" has no case-type
+    // association yet (that's a separate, later step, via "Add case
+    // type"), but it must still show up here with full mapping/approve/
+    // activate access, exactly like any other form; it would otherwise be
+    // invisible until someone maps it to a visa type first.
+    const templates = await USCISFormTemplate.find({})
+      .select("formCode title formName status mappingStatus officialStatus editionDate approvedAt activatedAt artifacts.form.status version updatedAt createdAt")
+      .lean();
+    // More than one USCISFormTemplate can share a formCode (e.g. right after
+    // "Replace Form" publishes a new draft edition alongside the still-active
+    // prior one) - deterministically prefer the live, in-service ("active")
+    // template over any draft/review edition for this catalog view, never an
+    // arbitrary find()-order pick (that exact ambiguity previously caused a
+    // bulk mapping-regeneration script to silently corrupt a production
+    // template's field mappings by picking the wrong document). Among
+    // several non-active editions (e.g. two drafts), fall back to the same
+    // recency convention findLatestActiveTemplate's sort already uses.
+    const templateByCode = new Map();
+    // The runner-up non-active candidate for a formCode that DOES have an
+    // active template - i.e. a newer draft/review edition sitting behind
+    // the one currently in service (exactly what "Replace Form" produces).
+    // Surfaced separately so it's never silently invisible on the catalog.
+    const pendingByCode = new Map();
+    for (const template of templates) {
+      const code = String(template.formCode).toUpperCase();
+      const existing = templateByCode.get(code);
+      if (!existing) { templateByCode.set(code, template); continue; }
+      const existingActive = existing.status === "active";
+      const candidateActive = template.status === "active";
+      if (candidateActive && !existingActive) {
+        pendingByCode.set(code, existing);
+        templateByCode.set(code, template);
+        continue;
+      }
+      if (existingActive && !candidateActive) {
+        const prevPending = pendingByCode.get(code);
+        if (!prevPending || new Date(template.editionDate || template.updatedAt || 0) > new Date(prevPending.editionDate || prevPending.updatedAt || 0)) {
+          pendingByCode.set(code, template);
+        }
+        continue;
+      }
+      const existingDate = existing.editionDate || existing.updatedAt || existing.createdAt || 0;
+      const candidateDate = template.editionDate || template.updatedAt || template.createdAt || 0;
+      if (new Date(candidateDate).getTime() > new Date(existingDate).getTime()) templateByCode.set(code, template);
+    }
+
+    // A template with no VisaFormMapping row at all yet - freshly uploaded
+    // via "Upload Form"/"Replace Form" and not yet assigned to any case
+    // type. Still gets a full catalog entry (fetched, mappable, approvable,
+    // activatable) - "Add case type" is what's still pending, not the
+    // form's existence in this list.
+    for (const code of templateByCode.keys()) {
+      if (grouped.has(code)) continue;
+      grouped.set(code, { formCode: code, formNumber: code, agency: "USCIS", associations: [] });
+    }
+
+    const standaloneCatalog = [...grouped.values()].map((entry) => {
+      const template = templateByCode.get(entry.formCode);
+      const pending = pendingByCode.get(entry.formCode);
+      const artifactStatus = template?.artifacts?.form?.status;
+      let fetchStatus;
+      if (!template) fetchStatus = entry.agency === "USCIS" ? "not_fetched" : "not_fetchable";
+      else if (["failed", "corrupted", "missing"].includes(artifactStatus)) fetchStatus = "fetch_failed";
+      else fetchStatus = "fetched";
+      return {
+        formCode: entry.formCode,
+        formNumber: entry.formNumber,
+        agency: entry.agency,
+        title: template?.title || template?.formName || entry.formNumber,
+        templateId: template?._id || null,
+        templateVersion: template?.version || null,
+        fetchStatus,
+        templateStatus: template?.status || null,
+        mappingStatus: template?.mappingStatus || "unmapped",
+        officialStatus: template?.officialStatus || null,
+        editionDate: template?.editionDate || null,
+        approvedAt: template?.approvedAt || null,
+        activatedAt: template?.activatedAt || null,
+        // A newer draft/review edition uploaded via "Replace Form" (or an
+        // on-demand edition-change scan) that hasn't been approved/activated
+        // yet - the currently-active template above stays in service until
+        // this one is explicitly promoted.
+        pendingTemplateId: pending?._id || null,
+        pendingTemplateStatus: pending?.status || null,
+        pendingEditionDate: pending?.editionDate || null,
+        pendingApprovedAt: pending?.approvedAt || null,
+        associations: entry.associations,
+        isSupplement: false,
+        parentFormCode: null,
+        componentCode: null,
+      };
+    });
+
+    // Supplement/component forms (e.g. I-129's H Classification Supplement) -
+    // a VisaFormMapping row with componentCode set instead of
+    // formTemplateFormCode, by design (see the model's own field comment):
+    // it shares its parent's real USCISFormTemplate/PDF, sliced into its own
+    // pages by USCISFormComponentDiscoveryService. "Fetched" here means the
+    // parent's PDF has been fetched AND the discovery service has found and
+    // sliced this exact supplement out of the parent's CURRENT active
+    // edition - a definition discovered against a since-superseded edition
+    // doesn't count (mirrors visaFormMapping.service.js's own
+    // resolveActiveComponent semantics, re-derived here rather than reused
+    // since that helper isn't exported and this is a read-only projection).
+    const componentMappings = await VisaFormMapping.find({ active: true, componentCode: { $ne: null } })
+      .select("visaType formNumber componentCode parentForm provisioningType processingPaths agency")
+      .lean();
+    const componentGroups = new Map();
+    for (const mapping of componentMappings) {
+      if (!componentGroups.has(mapping.componentCode)) {
+        componentGroups.set(mapping.componentCode, { componentCode: mapping.componentCode, parentForm: mapping.parentForm, formNumber: mapping.formNumber, agency: mapping.agency, associations: [] });
+      }
+      componentGroups.get(mapping.componentCode).associations.push({
+        visaType: mapping.visaType,
+        provisioningType: mapping.provisioningType,
+        automatic: mapping.provisioningType === "AUTO_CREATE",
+        processingPaths: mapping.processingPaths || [],
+      });
+    }
+    const componentDefs = componentGroups.size
+      ? await USCISFormComponentDefinition.find({ componentCode: { $in: [...componentGroups.keys()] }, status: "ACTIVE" }).select("componentCode name parentTemplateId").sort({ discoveredAt: -1 }).lean()
+      : [];
+    const componentDefByCode = new Map();
+    for (const def of componentDefs) if (!componentDefByCode.has(def.componentCode)) componentDefByCode.set(def.componentCode, def);
+
+    const supplementCatalog = [...componentGroups.values()].map((entry) => {
+      const parentCode = String(entry.parentForm || "").toUpperCase();
+      const parentTemplate = templateByCode.get(parentCode);
+      const componentDef = componentDefByCode.get(entry.componentCode);
+      const isLive = Boolean(componentDef && parentTemplate && String(componentDef.parentTemplateId) === String(parentTemplate._id));
+      let fetchStatus;
+      if (!parentTemplate) fetchStatus = entry.agency === "USCIS" ? "not_fetched" : "not_fetchable";
+      else if (!isLive) fetchStatus = "not_fetched";
+      else fetchStatus = "fetched";
+      return {
+        formCode: entry.componentCode,
+        formNumber: entry.formNumber,
+        agency: entry.agency,
+        title: componentDef ? `${componentDef.name} (supplement of ${parentCode})` : `${entry.formNumber} (supplement of ${parentCode})`,
+        templateId: parentTemplate?._id || null,
+        templateVersion: parentTemplate?.version || null,
+        fetchStatus,
+        templateStatus: parentTemplate?.status || null,
+        mappingStatus: parentTemplate?.mappingStatus || "unmapped",
+        officialStatus: parentTemplate?.officialStatus || null,
+        editionDate: parentTemplate?.editionDate || null,
+        approvedAt: parentTemplate?.approvedAt || null,
+        activatedAt: parentTemplate?.activatedAt || null,
+        associations: entry.associations,
+        isSupplement: true,
+        parentFormCode: parentCode,
+        componentCode: entry.componentCode,
+      };
+    });
+
+    const catalog = [...standaloneCatalog, ...supplementCatalog].sort((left, right) => left.formCode.localeCompare(right.formCode));
+
+    res.json({ success: true, data: catalog });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// POST /api/form-registry/catalog/:formCode/fetch - admin-triggered, real-
+// time (not the throttled background self-heal in visaFormMapping.service's
+// registryAutoCreateTemplates) uscis.gov fetch for one form code, so an
+// operator gets an immediate, visible result (success, or a real error)
+// instead of waiting on the hourly-cooldown background attempt. Mirrors
+// OnDemandFormAcquisitionService.acquireForCase's own agency gate, since
+// acquireAndActivate itself (used here, deliberately NOT acquireForCase -
+// that one also re-runs ensureAssignedForms against a specific case, which
+// has no meaning outside a case context) never checks agency itself.
+exports.fetchFormFromUSCIS = async (req, res, next) => {
+  try {
+    const formCode = String(req.params.formCode || "").trim();
+    const mapping = await VisaFormMapping.findOne({ formTemplateFormCode: formCode.toLowerCase(), active: true }).select("agency").lean();
+    if (!mapping) throw Object.assign(new Error(`No active registry mapping references form code "${formCode}"`), { status: 404 });
+    if (mapping.agency !== "USCIS") {
+      throw Object.assign(new Error(`${formCode.toUpperCase()} is a ${mapping.agency} form, not a downloadable USCIS PDF - it can't be fetched from uscis.gov.`), { status: 422, code: "USCIS_FORM_WRONG_AGENCY" });
+    }
+    const result = await OnDemandFormAcquisitionService.acquireAndActivate(formCode, req.user, req);
+    res.json({
+      success: true,
+      data: {
+        alreadyActive: result.alreadyActive,
+        requiresActivation: result.requiresActivation,
+        activationBlockedReason: result.activationBlockedReason,
+        biographicReady: result.biographicReady,
+        template: result.template && {
+          id: result.template._id,
+          formCode: result.template.formCode,
+          status: result.template.status,
+          mappingStatus: result.template.mappingStatus,
+        },
+      },
+    });
   } catch (error) {
     handleError(error, next);
   }

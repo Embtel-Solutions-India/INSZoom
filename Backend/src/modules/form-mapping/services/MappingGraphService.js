@@ -277,7 +277,20 @@ class MappingGraphService {
         mappings,
       };
     });
-    template.mappingGraph = graph;
+    // Deliberately NOT persisted onto the template document (no
+    // `template.mappingGraph = graph` here) - confirmed live that a large
+    // form's USCISFormTemplate document (I-129: 980 formFields, ~15.85MB
+    // on its own) plus this graph (nodes.form duplicates every formFields
+    // entry, nodes.canonical duplicates the whole canonical registry,
+    // edges duplicates formFields[].mappings yet again) blows past
+    // MongoDB's 16MB document limit on save - "Resulting document after
+    // update is larger than 16777216". USCISMappingVersion (a separate,
+    // per-version document) is the durable copy of this graph; every
+    // reader that used to fall back to template.mappingGraph now loads it
+    // from there instead (see loadCurrentGraph below). formFields[].mappings
+    // (set above) stays - FormMappingService/ValidationService/PDFFieldMapper
+    // read that small per-field array directly for real autofill/validation,
+    // unrelated to this bloat.
     template.mappingStatus = graph.validation?.readyForActivation ? "draft" : "needs_review";
     template.mappingVersion = Number(template.mappingVersion || 0) + 1;
     graph.mappingVersion = template.mappingVersion;
@@ -291,6 +304,22 @@ class MappingGraphService {
       },
     ];
     return template;
+  }
+
+  // The one place that resolves "the currently-saved mapping graph for this
+  // template" - reads USCISMappingVersion (via latestMappingVersionId, with
+  // a by-template fallback for a legacy template missing that pointer),
+  // never template.mappingGraph (see applyGraphToTemplate's comment on why
+  // that field is intentionally never written). Falls back to a freshly
+  // generated graph only when no version has ever been persisted.
+  static async loadCurrentGraph(template) {
+    if (template.latestMappingVersionId) {
+      const version = await USCISMappingVersion.findById(template.latestMappingVersionId).select("graph").lean();
+      if (version?.graph) return version.graph;
+    }
+    const latest = await USCISMappingVersion.findOne({ template: template._id }).sort({ mappingVersion: -1 }).select("graph").lean();
+    if (latest?.graph) return latest.graph;
+    return this.generateGraph(template);
   }
 
   static graphChecksum(graph) {
@@ -319,21 +348,43 @@ class MappingGraphService {
   static async persistVersion(template, graph, user) {
     this.applyGraphToTemplate(template, graph);
     const status = graph.validation?.readyForActivation ? "draft" : "needs_review";
-    const version = await USCISMappingVersion.create({
-      template: template._id,
-      formCode: template.formCode || template.formNumber,
-      formVersion: template.version,
-      editionDate: template.editionDate,
-      mappingVersion: template.mappingVersion,
-      checksum: this.graphChecksum(graph),
-      graph,
-      status,
-      validation: graph.validation,
-      createdBy: this.userId(user),
-    });
-    template.latestMappingVersionId = version._id;
-    await template.save();
-    return version;
+    // template.mappingVersion (just bumped above) can drift from what's
+    // actually persisted in USCISMappingVersion - confirmed live: a
+    // template found at mappingVersion:0 with an existing mappingVersion:1
+    // USCISMappingVersion document already on file (from an earlier
+    // generate({persist:true}) whose template.save() never landed, or a
+    // template re-import that reset the counter without touching mapping
+    // history). Every upsertMapping call since then hit the unique
+    // {template, mappingVersion} index and 500'd instead of ever creating
+    // version 2. Reconcile against the real max on file before inserting,
+    // and retry a couple more times on an actual duplicate-key race (two
+    // concurrent saves computing the same next number).
+    const latest = await USCISMappingVersion.findOne({ template: template._id }).sort({ mappingVersion: -1 }).select("mappingVersion").lean();
+    let nextVersion = Math.max(Number(template.mappingVersion || 0), Number(latest?.mappingVersion || 0) + 1);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      template.mappingVersion = nextVersion;
+      graph.mappingVersion = nextVersion;
+      try {
+        const version = await USCISMappingVersion.create({
+          template: template._id,
+          formCode: template.formCode || template.formNumber,
+          formVersion: template.version,
+          editionDate: template.editionDate,
+          mappingVersion: nextVersion,
+          checksum: this.graphChecksum(graph),
+          graph,
+          status,
+          validation: graph.validation,
+          createdBy: this.userId(user),
+        });
+        template.latestMappingVersionId = version._id;
+        await template.save();
+        return version;
+      } catch (error) {
+        if (error?.code === 11000 && attempt < 2) { nextVersion += 1; continue; }
+        throw error;
+      }
+    }
   }
 
   static async audit(action, template, user, req, changes = {}) {
@@ -381,7 +432,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const graph = payload.graph || template.mappingGraph || this.generateGraph(template, payload.canonicalProfile || {}, payload.options || {});
+    const graph = payload.graph || await this.loadCurrentGraph(template);
     return { templateId, validation: this.validateGraph(graph, template), graphSummary: graph.summary };
   }
 
@@ -392,7 +443,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const graph = template.mappingGraph?.edges ? template.mappingGraph : this.generateGraph(template);
+    const graph = await this.loadCurrentGraph(template);
     return {
       template: {
         id: template._id,
@@ -447,8 +498,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const leftGraph = left.mappingGraph?.edges ? left.mappingGraph : this.generateGraph(left);
-    const rightGraph = right.mappingGraph?.edges ? right.mappingGraph : this.generateGraph(right);
+    const [leftGraph, rightGraph] = await Promise.all([this.loadCurrentGraph(left), this.loadCurrentGraph(right)]);
     return {
       left: { templateId: left._id, formCode: left.formCode, version: left.version, editionDate: left.editionDate },
       right: { templateId: right._id, formCode: right.formCode, version: right.version, editionDate: right.editionDate },
@@ -463,7 +513,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const graph = template.mappingGraph || { edges: [] };
+    const graph = await this.loadCurrentGraph(template);
     const previousCount = graph.edges?.length || 0;
     graph.edges = (graph.edges || []).filter((edge) => edge.mappingId !== mappingId);
     graph.summary = { ...(graph.summary || {}), mappedFields: graph.edges.length };
@@ -486,9 +536,7 @@ class MappingGraphService {
     const registrySource = CanonicalFieldRegistryService.list().find((field) => field.path === sourcePath);
     if (!librarySource && !registrySource) throw Object.assign(new Error("Unknown Master Case Data sourcePath"), { status: 422 });
 
-    const graph = template.mappingGraph?.nodes
-      ? JSON.parse(JSON.stringify(template.mappingGraph))
-      : this.generateGraph(template);
+    const graph = JSON.parse(JSON.stringify(await this.loadCurrentGraph(template)));
     graph.nodes = graph.nodes || { canonical: [], form: [] };
     if (!graph.nodes.canonical.some((node) => node.path === sourcePath)) {
       graph.nodes.canonical.push({ id: `canonical:${sourcePath}`, path: sourcePath, type: payload.sourceType || "text" });
@@ -548,7 +596,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const validation = this.validateGraph(template.mappingGraph || {}, template);
+    const validation = this.validateGraph(await this.loadCurrentGraph(template), template);
     if (!validation.readyForActivation) {
       const error = new Error("Cannot activate mapping until every USCIS field has an approved Master Case Data mapping");
       error.status = 422;

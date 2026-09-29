@@ -31,6 +31,15 @@ function readWhitelistedField(caseData, field) {
       return Boolean(caseData.plan?.premiumProcessing || caseData.premiumProcessing);
     case "attorneyOnRecord":
       return Boolean(caseData.assignedAttorney || caseData.attorney);
+    // Same resolution immigration-knowledge-engine.service.js's own
+    // requiresNewOfficePetition gate already uses (line ~135) - reused,
+    // not re-derived, so this and the L-1A business-plan-checklist
+    // questionnaire-assignment gate can never disagree about whether a
+    // case is a New Office petition.
+    case "newOfficePetition":
+      return String(caseData.assessmentAnswers?.newOfficePetition || caseData.questionnaireData?.masterData?.newOfficePetition || "").trim().toLowerCase() === "yes";
+    case "hasJointSponsor":
+      return Boolean(caseData.jointSponsorUser);
     case "visaType":
     case "visaCategory":
     case "caseType":
@@ -513,6 +522,55 @@ async function provisionAvailableMapping(caseData, mappingId, user, req) {
   return { mapping, templateStatus, created };
 }
 
+// Answers "now that these USCIS forms are applicable to this case, which
+// checklist(s) are associated with each one, and under what assignment
+// condition" (§21 of the checklist-mapping plan) - a read-only projection
+// over each applicable mapping's own checklistMappings, consuming
+// resolveVisaFormMappings' applicability decision rather than re-deriving
+// it (never a second "is this form applicable" check). Buckets by
+// assignmentType, since that's what a caller (UI, tests, a future
+// assignment call-site) needs to act differently on:
+//   auto        - assign immediately, no human/condition gate
+//   conditional - assign only because `condition` evaluated true right now
+//   explicitCm  - never auto-assigned; a case manager must add it
+// A form whose own provisioningType bucket is autoCreate/conditional/
+// laterStage/reference doesn't matter here - checklistMappings are
+// evaluated for every registry-applicable row regardless of which of
+// those four buckets it's in (e.g. I-539 is CONDITIONAL for H-1B as a
+// FORM, but its checklistMappings entry is still evaluated the same way).
+function resolveChecklistMappingEntry(entry, mapping, caseData) {
+  const base = { checklistKey: entry.checklistKey, role: entry.role || "", formNumber: mapping.formNumber, visaType: mapping.visaType, notes: entry.notes || "" };
+  if (entry.assignmentType === "CONDITIONAL") {
+    return { ...base, satisfied: evaluateTrigger(entry.condition, caseData) };
+  }
+  return { ...base, satisfied: true };
+}
+
+async function resolveChecklistsForCase(caseData) {
+  const resolved = await resolveVisaFormMappings(caseData);
+  const allEntries = [...resolved.autoCreate, ...resolved.conditional, ...resolved.laterStage, ...resolved.reference];
+  const auto = [];
+  const conditional = [];
+  const explicitCm = [];
+  for (const entry of allEntries) {
+    for (const checklistMapping of entry.mapping.checklistMappings || []) {
+      if (checklistMapping.assignmentType === "AUTO") {
+        auto.push(resolveChecklistMappingEntry(checklistMapping, entry.mapping, caseData));
+      } else if (checklistMapping.assignmentType === "CONDITIONAL") {
+        const resolvedEntry = resolveChecklistMappingEntry(checklistMapping, entry.mapping, caseData);
+        (resolvedEntry.satisfied ? auto : conditional).push(resolvedEntry);
+      } else if (checklistMapping.assignmentType === "EXPLICIT_CM") {
+        explicitCm.push(resolveChecklistMappingEntry(checklistMapping, entry.mapping, caseData));
+      }
+    }
+  }
+  // Dedupe by checklistKey - the same checklist can legitimately be listed
+  // against more than one form (e.g. h1b_employer_checklist against both
+  // I-129 and I-907), and a case manager only needs to see it once.
+  const dedupe = (list) => [...new Map(list.map((item) => [item.checklistKey, item])).values()];
+  return { auto: dedupe(auto), conditional: dedupe(conditional), explicitCm: dedupe(explicitCm) };
+}
+
 module.exports = {
   evaluateTrigger,
   isRegistryApplicable,
@@ -527,4 +585,5 @@ module.exports = {
   provisionAvailableMapping,
   assertNoClientProvidedForms,
   readWhitelistedField,
+  resolveChecklistsForCase,
 };

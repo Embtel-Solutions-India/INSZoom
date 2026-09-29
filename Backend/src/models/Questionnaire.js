@@ -286,3 +286,4 @@ questionnaireSchema.index({ status: 1, isActive: 1, latestVersion: 1, isDefault:
 questionnaireSchema.index({ status: 1, isActive: 1, latestVersion: 1, isDefault: 1, visaTypes: 1, version: -1 });
 
 module.exports = mongoose.model("Questionnaire", questionnaireSchema);
+module.exports.CHECKLIST_ROLES = CHECKLIST_ROLES;

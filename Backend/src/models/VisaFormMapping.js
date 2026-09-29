@@ -46,7 +46,69 @@ const TRIGGER_FIELD_WHITELIST = [
   // hasAttorneyOnRecord() already checks (caseData.assignedAttorney ||
   // caseData.attorney) - not a new/invented field.
   "attorneyOnRecord",
+  // Checklist-mapping conditions (below) reuse this same whitelist/
+  // evaluator - both resolved in visaFormMapping.service.js's
+  // readWhitelistedField from the EXACT existing sources already used
+  // elsewhere, never re-derived: "newOfficePetition" mirrors
+  // immigration-knowledge-engine.service.js's own
+  // caseData.assessmentAnswers?.newOfficePetition /
+  // questionnaireData.masterData.newOfficePetition resolution (the L-1A
+  // business-plan-checklist gate); "hasJointSponsor" mirrors
+  // Boolean(caseData.jointSponsorUser).
+  "newOfficePetition",
+  "hasJointSponsor",
 ];
+
+const CHECKLIST_ASSIGNMENT_TYPES = ["AUTO", "CONDITIONAL", "EXPLICIT_CM"];
+
+const checklistMappingSchema = new mongoose.Schema(
+  {
+    // A Questionnaire.key from the existing checklist/questionnaire system
+    // (employmentChecklists.js, familyChecklists.js, the standalone
+    // *Checklist.js files, ...) - this never defines or duplicates a
+    // checklist, it only references one that already exists there.
+    checklistKey: { type: String, required: true, trim: true },
+    assignmentType: { type: String, enum: CHECKLIST_ASSIGNMENT_TYPES, required: true },
+    // Which side of a two-party filing this checklist is for (e.g.
+    // "employer"/"employee", "petitioner"/"beneficiary") - purely
+    // descriptive/UI, never used to decide applicability.
+    // Descriptive only (never used to decide applicability - see the
+    // comment above), but validated against the SAME CHECKLIST_ROLES
+    // vocabulary Questionnaire.checklistRole is schema-enforced against
+    // (lazy require - avoids a model-to-model top-level require cycle),
+    // so this field can't silently drift into a different vocabulary
+    // (e.g. "company" here vs "employer" on the real Questionnaire) even
+    // though nothing here cross-references a specific Questionnaire
+    // document. A resolver that needs the AUTHORITATIVE role should still
+    // read it off the real Questionnaire.checklistRole, not this copy.
+    role: {
+      type: String,
+      trim: true,
+      default: "",
+      validate: {
+        validator: (value) => !value || require("./Questionnaire").CHECKLIST_ROLES.includes(value),
+        message: (props) => `role "${props.value}" is not in Questionnaire.CHECKLIST_ROLES`,
+      },
+    },
+    // Only meaningful when assignmentType is CONDITIONAL - the EXACT same
+    // trigger DSL triggerCondition already uses ({field, operator, value} |
+    // {all:[...]} | {any:[...]}, validated the same way, against the SAME
+    // TRIGGER_FIELD_WHITELIST above) - reused wholesale, never a second
+    // condition language. "Was a joint sponsor actually added" is expressed
+    // as {field:"hasJointSponsor", operator:"equals", value:true} - no
+    // special-cased condition shape needed for it.
+    condition: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+      validate: {
+        validator: (value) => validateTriggerNode(value) === null,
+        message: (props) => validateTriggerNode(props.value) || "checklistMappings.condition is invalid",
+      },
+    },
+    notes: { type: String, trim: true, default: "" },
+  },
+  { _id: false }
+);
 
 function validateTriggerNode(node, path = "triggerCondition") {
   if (node === null || node === undefined) return null;
@@ -142,6 +204,16 @@ const visaFormMappingSchema = new mongoose.Schema(
     verificationSource: { type: String, trim: true, default: "" },
     verificationDate: { type: Date, default: null },
     notes: { type: String, default: "" },
+
+    // Which client checklist(s)/questionnaire(s) go with THIS form, for
+    // THIS visa type - extends this existing registry rather than a
+    // second, parallel checklist-mapping system (see
+    // checklistMappings.seed.js for the actual data and
+    // resolveChecklistsForCase for how it's consumed). Empty array is a
+    // valid, deliberate state (GAP - this form/visa combination has no
+    // authored checklist yet) - never silently defaulted to another
+    // visa's checklist.
+    checklistMappings: { type: [checklistMappingSchema], default: [] },
   },
   { timestamps: true }
 );
@@ -155,5 +227,6 @@ visaFormMappingSchema.statics.COMPONENT_TYPES = COMPONENT_TYPES;
 visaFormMappingSchema.statics.PROCESSING_PATHS = PROCESSING_PATHS;
 visaFormMappingSchema.statics.TRIGGER_FIELD_WHITELIST = TRIGGER_FIELD_WHITELIST;
 visaFormMappingSchema.statics.validateTriggerNode = validateTriggerNode;
+visaFormMappingSchema.statics.CHECKLIST_ASSIGNMENT_TYPES = CHECKLIST_ASSIGNMENT_TYPES;
 
 module.exports = mongoose.models.VisaFormMapping || mongoose.model("VisaFormMapping", visaFormMappingSchema);

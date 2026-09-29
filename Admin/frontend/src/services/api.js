@@ -381,6 +381,48 @@ export const uscisFormsApi = {
   searchWorkspaceFields: (caseId, formId, q) => api.get(`/uscis-forms/case/${caseId}/${formId}/workspace/search`, { params: { q } }),
 }
 
+// Form Governance page: which USCIS forms exist in this system, whether
+// they've been fetched from uscis.gov, their field-mapping/autofill review
+// state, and which visa types/case types reference them (from the
+// VisaFormMapping registry). Global/not case-scoped - distinct from
+// uscisFormsApi above, which is case- or template-detail-scoped.
+export const formGovernanceApi = {
+  catalog: () => api.get('/form-registry/catalog'),
+  fetchFromUSCIS: (formCode) => api.post(`/form-registry/catalog/${encodeURIComponent(formCode)}/fetch`),
+  templateUrl: (templateId) => api.get(`/uscis-forms/${templateId}/url`),
+  approveTemplate: (templateId) => api.put(`/uscis-forms/${templateId}/approve`),
+  activateTemplate: (templateId) => api.put(`/uscis-forms/${templateId}/activate`),
+  mappingPreview: (templateId) => api.get(`/form-mappings/templates/${templateId}/preview`),
+  generateMapping: (templateId, persist = true) => api.post(`/form-mappings/templates/${templateId}/generate`, { persist }),
+  upsertMapping: (templateId, targetFieldId, payload) => api.put(`/form-mappings/templates/${templateId}/mappings/${encodeURIComponent(targetFieldId)}`, payload),
+  activateMapping: (templateId) => api.post(`/form-mappings/templates/${templateId}/activate`),
+  autofillPreview: (templateId, caseId) => api.get(`/form-mappings/templates/${templateId}/autofill-preview`, { params: { caseId } }),
+  // Checklist <-> field traceability (Visa-Form-Checklist intelligence
+  // layer) - which checklist question(s) feed each mapped PDF field, and
+  // the system-wide coverage view across every active form.
+  checklistTraceFields: (templateId) => api.get(`/form-mappings/templates/${templateId}/checklist-trace/fields`),
+  checklistTraceCoverageAll: () => api.get('/form-mappings/checklist-trace/coverage'),
+  // "Add case type" - maps this template's form to another visa type, with
+  // an assignment type (Automatic = AUTO_CREATE, Conditional = CONDITIONAL).
+  // Reuses the existing per-template VisaFormMapping CRUD (also used by the
+  // legacy USCISForms.jsx "Visa mappings" panel) rather than a new endpoint.
+  visaRegistry: () => api.get('/uscis-forms/registry/visa-registry'),
+  addCaseType: (templateId, payload) => api.post(`/uscis-forms/${templateId}/mappings`, payload),
+  componentPdf: (templateId, componentCode) => api.get(`/uscis-forms/${templateId}/component-pdf/${encodeURIComponent(componentCode)}`, { responseType: 'blob' }),
+  // Upload/Replace Form - reuses the existing manual-import pipeline
+  // (qpdf normalization, PDF validation, AcroForm field scan, storage
+  // upload, USCISFormTemplate creation - all already automatic and
+  // identical for a new form code or a same-form-code replacement).
+  // analyze writes nothing; upload/publish is the confirming step
+  // (expectedSha256 in formData guarantees "publish exactly what was
+  // reviewed"). Replacing an existing form is the same call with the same
+  // formType as the form being replaced - VisaFormMapping associations key
+  // off the formCode string and re-resolve automatically once the new
+  // edition activates, so nothing else needs to change.
+  analyzeFormPdf: (formData) => api.post('/uscis/forms/analyze', formData),
+  uploadFormPdf: (formData) => api.post('/uscis/forms/upload', formData),
+}
+
 export const formGenerationApi = {
   generatePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/generate`, payload),
   regeneratePdf: (caseFormId, payload = {}) => api.post(`/forms/${caseFormId}/regenerate`, payload),

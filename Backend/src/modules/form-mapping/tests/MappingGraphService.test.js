@@ -31,7 +31,12 @@ test("MappingGraphService generates canonical-to-form relationships without valu
   assert.equal(graph.formCode, "I-129");
   assert.equal(graph.summary.formFields, 5);
   assert.ok(graph.edges.find((edge) => edge.sourcePath === "company.name" && edge.targetFieldId === "part1.petitionerName"));
-  assert.ok(graph.edges.find((edge) => edge.sourcePath === "person.lastName" && edge.targetFieldId === "part2.familyName"));
+  // "Beneficiary Family Name" now correctly resolves to the distinct
+  // beneficiary.* canonical namespace (added so petitioner-vs-beneficiary
+  // fields on the same form can be told apart) rather than the generic
+  // person.lastName this field used to fall back to before that namespace
+  // existed - a more accurate match, not a regression.
+  assert.ok(graph.edges.find((edge) => edge.sourcePath === "beneficiary.lastName" && edge.targetFieldId === "part2.familyName"));
   assert.ok(graph.edges.find((edge) => edge.sourcePath === "person.dob" && edge.mappingType === "date"));
   assert.equal(Object.prototype.hasOwnProperty.call(graph.edges[0], "value"), false);
 });

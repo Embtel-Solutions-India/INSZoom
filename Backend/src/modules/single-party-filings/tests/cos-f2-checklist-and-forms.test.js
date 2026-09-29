@@ -130,11 +130,19 @@ test("conditional 'if any' documents (I-797 notices, EAD, SSN, driver's license)
 });
 
 // ── Canonical/no-duplication rules (task §25) ──────────────────────────────
+// Phase 2 fix: this used to assert the "applicant.*" convention
+// h4Checklist.js originally used - but that namespace was never actually
+// consumed by CanonicalBuilderService.addQuestionnaireCandidates (no
+// translation layer exists for it; see h4Checklist.js's Phase 2 fix
+// comment), so a checklist answer against it could never reach canonical
+// data or a mapped PDF field. Both files were corrected together to the
+// real, consumed namespace (person.*/immigration.*) - this test now
+// asserts that shared, corrected convention instead of the original bug.
 test("F-2 applicant identity fields reuse the same canonicalPath convention as h4Checklist.js (no duplicate canonical namespace invented)", () => {
-  assert.equal(byKey.get("client_familyName").mapping.canonicalPath, "applicant.lastName");
-  assert.equal(byKey.get("client_givenName").mapping.canonicalPath, "applicant.firstName");
-  assert.equal(byKey.get("client_dateOfBirth").mapping.canonicalPath, "applicant.dateOfBirth");
-  assert.equal(byKey.get("client_passportNumber").mapping.canonicalPath, "applicant.passportNumber");
+  assert.equal(byKey.get("client_familyName").mapping.canonicalPath, "person.lastName");
+  assert.equal(byKey.get("client_givenName").mapping.canonicalPath, "person.firstName");
+  assert.equal(byKey.get("client_dateOfBirth").mapping.canonicalPath, "person.dob");
+  assert.equal(byKey.get("client_passportNumber").mapping.canonicalPath, "person.passport.number");
 });
 
 test("sponsor and F-1 principal fields are NOT mapped onto the F-2 applicant's own canonical namespace (distinct person's data)", () => {

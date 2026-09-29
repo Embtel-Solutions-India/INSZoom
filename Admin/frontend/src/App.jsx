@@ -23,6 +23,8 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const USCISForms = lazy(() => import('./pages/USCISForms'))
+const FormGovernance = lazy(() => import('./pages/FormGovernance'))
+const FormGovernanceDetail = lazy(() => import('./pages/FormGovernanceDetail'))
 const CaseManagers = lazy(() => import('./pages/CaseManagers'))
 const CaseManagerDetails = lazy(() => import('./pages/CaseManagerDetails'))
 const TaskDashboard = lazy(() => import('./pages/TaskDashboard'))
@@ -151,6 +153,22 @@ function App() {
                 element={
                   <ProtectedRoute module="cases">
                     <USCISForms />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="form-governance"
+                element={
+                  <ProtectedRoute module="cases">
+                    <FormGovernance />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="form-governance/:formCode"
+                element={
+                  <ProtectedRoute module="cases">
+                    <FormGovernanceDetail />
                   </ProtectedRoute>
                 }
               />

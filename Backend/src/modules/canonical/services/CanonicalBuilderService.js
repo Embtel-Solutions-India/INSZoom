@@ -541,7 +541,18 @@ class CanonicalBuilderService {
     }
     const rawCollections = this.buildRawCollections(sources);
     this.addRepeatableCollections(merged.profile, rawCollections);
-    merged.profile.beneficiary = rawCollections.beneficiary;
+    // Phase 2 fix: same overwrite bug already fixed for company.* (below) -
+    // unconditionally replacing merged.profile.beneficiary with the raw
+    // (often empty, cross-case) Beneficiary model document discarded
+    // whatever addQuestionnaireCandidates had already merged into
+    // beneficiary.* from this case's own checklist answers (e.g. I-130's
+    // beneficiary_lastName/beneficiary_firstName/etc., wired in Phase 2) -
+    // beneficiary.* could never resolve from a real checklist answer for
+    // ANY case, regardless of any question-mapping fix. Spreading instead
+    // of replacing keeps the merged questionnaire-derived fields, while a
+    // real Beneficiary document still takes precedence for whichever
+    // fields IT defines.
+    merged.profile.beneficiary = { ...(merged.profile.beneficiary || {}), ...rawCollections.beneficiary };
     // Same overwrite bug as company.* (below), plus PetitionerValidator
     // (CanonicalSectionValidators.js) requires petitioner.name for every
     // non-family visa unconditionally - for a company-sponsored petition
