@@ -29,12 +29,15 @@
 // task spec. A case of visaType H4EXTENSIONEAD is assigned this ONE
 // checklist only, never two.
 //
-// canonicalPath convention: reuses sb1Checklist.js's/n400Checklist.js's
-// existing "applicant.*" canonicalPath convention for concepts already
-// covered by profileCanonicalMap.js's EMPLOYEE_PROFILE_TO_CANONICAL (name,
-// DOB, gender, country of birth/citizenship, address, passport fields,
-// i94Number, alienRegistrationNumber, email, phone, currentVisaStatus/
-// currentVisaExpiry) rather than inventing a new canonical namespace. SSN,
+// canonicalPath convention: all three questionnaires below use the real
+// person.*/contact.*/immigration.* taxonomy (CanonicalFieldRegistryService.
+// BASE_FIELDS) — the file originally used an invented "applicant.*"
+// namespace that CanonicalBuilderService.addQuestionnaireCandidates never
+// actually translates (question.mapping.canonicalPath is consumed
+// verbatim), so it silently mapped nothing. buildH4ExtensionQuestionnaire
+// and buildH4ExtensionEadQuestionnaire were corrected first (Phase 2);
+// buildH4EadQuestionnaire was fixed the same way in Phase 3 (it was missed
+// in Phase 2 because it wasn't one of I-539A's registered checklists). SSN,
 // USCIS Online Account Number, parents' names, and the physical-address-
 // outside-US fields have no existing canonical path in this codebase, so
 // those are left unmapped rather than inventing one (per the governing task
@@ -220,22 +223,37 @@ function buildH4EadQuestionnaire() {
 
   const infoSection = "Information about You";
   questions.push(
-    buildQuestion("client_familyName", "Family Name", "text", infoSection, 1, { required: true, canonicalPath: "applicant.lastName" }),
-    buildQuestion("client_givenName", "Given Name", "text", infoSection, 2, { required: true, canonicalPath: "applicant.firstName" }),
-    buildQuestion("client_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "applicant.middleName" }),
+    // Phase 3 fix: this questionnaire was missed by the Phase 2 "applicant.*"
+    // cleanup (see buildH4ExtensionQuestionnaire's/buildH4ExtensionEadQuestionnaire's
+    // comments above) because it wasn't one of I-539A's registered
+    // checklists at the time — "applicant.*" was never a real, consumed
+    // canonical namespace (CanonicalBuilderService.addQuestionnaireCandidates
+    // uses question.mapping.canonicalPath verbatim, with no translation
+    // layer, and profileCanonicalMap.js's EMPLOYEE_PROFILE_TO_CANONICAL has
+    // no "applicant.*" entries). Corrected to the real person.*/contact.*/
+    // immigration.* taxonomy, verified against CanonicalFieldRegistryService.
+    // BASE_FIELDS, field-by-field, the same way the other H-4 questionnaires
+    // were fixed.
+    buildQuestion("client_familyName", "Family Name", "text", infoSection, 1, { required: true, canonicalPath: "person.lastName" }),
+    buildQuestion("client_givenName", "Given Name", "text", infoSection, 2, { required: true, canonicalPath: "person.firstName" }),
+    buildQuestion("client_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "person.middleName" }),
     buildQuestion("client_otherNamesUsed", "Other Names Used", "text", infoSection, 4),
-    buildQuestion("client_gender", "Gender", "select", infoSection, 5, { options: ["Male", "Female"], canonicalPath: "applicant.gender" }),
-    buildQuestion("client_dateOfBirth", "Date of Birth", "date", infoSection, 6, { required: true, canonicalPath: "applicant.dateOfBirth" }),
+    buildQuestion("client_gender", "Gender", "select", infoSection, 5, { options: ["Male", "Female"], canonicalPath: "person.gender" }),
+    buildQuestion("client_dateOfBirth", "Date of Birth", "date", infoSection, 6, { required: true, canonicalPath: "person.dob" }),
     // Source presents this as one combined field, distinct from the
     // dedicated "Country of Birth" field the combined H4_EXTENSION_EAD
     // checklist has — kept as a single free-text field rather than
     // splitting it (not itself named in the source as three fields), and
     // left without a canonicalPath since it mixes city/state with country.
     buildQuestion("client_cityStateCountryOfBirth", "City/State/Country of Birth", "text", infoSection, 7, { required: true }),
-    buildQuestion("client_aNumber", "A-Number", "text", infoSection, 8, { canonicalPath: "applicant.aNumber" }),
+    buildQuestion("client_aNumber", "A-Number", "text", infoSection, 8, { canonicalPath: "person.alienNumber" }),
     buildQuestion("client_uscisOnlineAccountNumber", "USCIS Online Account Number", "text", infoSection, 9),
-    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", infoSection, 10, { required: true, canonicalPath: "applicant.mailingAddress" }),
-    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", infoSection, 11, { canonicalPath: "applicant.physicalAddress" }),
+    buildQuestion("client_usMailingAddress", "US Mailing Address", "text", infoSection, 10, { required: true, canonicalPath: "contact.address.line1" }),
+    // No distinct "physical, if different from mailing" canonical field
+    // exists once mailingAddress already claims contact.address.line1 -
+    // left unmapped rather than conflating two different addresses (same
+    // precedent as the other two H-4 questionnaires above).
+    buildQuestion("client_usPhysicalAddress", "US Physical Address, if different", "text", infoSection, 11),
     // SSN has no existing canonical path in this codebase — left unmapped.
     buildQuestion("client_ssn", "SSN, if any", "text", infoSection, 12)
   );
@@ -255,12 +273,12 @@ function buildH4EadQuestionnaire() {
 
   const lastArrivalSection = "Last Arrival in USA";
   questions.push(
-    buildQuestion("client_i94Number", "I-94 Number", "text", lastArrivalSection, 1, { required: true, canonicalPath: "applicant.i94Number" }),
-    buildQuestion("client_passportNumber", "Passport Number", "text", lastArrivalSection, 2, { required: true, canonicalPath: "applicant.passportNumber" }),
-    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastArrivalSection, 3, { required: true, canonicalPath: "applicant.passportCountry" }),
-    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastArrivalSection, 4, { required: true, canonicalPath: "applicant.passportExpirationDate" }),
+    buildQuestion("client_i94Number", "I-94 Number", "text", lastArrivalSection, 1, { required: true, canonicalPath: "immigration.i94.number" }),
+    buildQuestion("client_passportNumber", "Passport Number", "text", lastArrivalSection, 2, { required: true, canonicalPath: "person.passport.number" }),
+    buildQuestion("client_countryOfPassportIssuance", "Country of Passport Issuance", "text", lastArrivalSection, 3, { required: true, canonicalPath: "person.passport.country" }),
+    buildQuestion("client_passportExpirationDate", "Passport Expiration Date", "date", lastArrivalSection, 4, { required: true, canonicalPath: "person.passport.expirationDate" }),
     buildQuestion("client_dateOfLastArrival", "Date of Last Arrival", "date", lastArrivalSection, 5, { required: true }),
-    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastArrivalSection, 6, { required: true, canonicalPath: "applicant.currentVisaStatus" }),
+    buildQuestion("client_currentNonimmigrantStatus", "Current Nonimmigrant Status", "text", lastArrivalSection, 6, { required: true, canonicalPath: "immigration.currentStatus" }),
     buildQuestion("client_placeOfLastArrival", "Place of Last Arrival", "text", lastArrivalSection, 7, { required: true })
   );
 

@@ -383,10 +383,41 @@ class CanonicalBuilderService {
     });
   }
 
+  // See addOcrCandidates' own inline comment for the exact rule and why
+  // these particular thresholds/fields were reused rather than invented.
+  static isOcrFieldCanonicalEligible(field = {}) {
+    const humanReviewed = Boolean(field.reviewedBy) || ["approved", "edited"].includes(field.reviewStatus);
+    if (humanReviewed) return true;
+    const hasUnresolvedIssues = Array.isArray(field.validationIssues) && field.validationIssues.length > 0;
+    if (hasUnresolvedIssues) return false;
+    return field.reviewStatus === "auto_accepted";
+  }
+
   static addOcrCandidates(candidates, extractions = []) {
     extractions.forEach((extraction) => {
       const documentType = extraction.documentType || extraction.classification?.documentType || "other";
       (extraction.extractedData || []).forEach((field) => {
+        // Phase 3C/3D gate: an OCR-extracted field must not reach the
+        // canonical profile automatically unless it is either already
+        // high-confidence (never touched by a human) or has actually been
+        // human-reviewed - per the spec's "OCR -> Needs Review -> Human
+        // confirmation -> Canonical -> CaseForm" pipeline. Reuses this
+        // repo's OWN existing OCR review convention verbatim (no new
+        // scoring/threshold invented):
+        // extraction.validator.js's toFieldExtractions already sets
+        // field.reviewStatus via document-intelligence.schema.js's
+        // confidenceBand() ("auto_accepted" >=95, "needs_review" >=80,
+        // "manual_review" <80) and field.validationStatus/"validationIssues"
+        // ("review_required" whenever validationIssues is non-empty). A
+        // human-confirmed field (document-intelligence.service.js's
+        // correctField/approve/reject actions set field.reviewedBy and
+        // field.reviewStatus to "approved"/"edited") always qualifies,
+        // regardless of confidence or flags, since a person has already
+        // looked at it. Everything else that is flagged or below the
+        // auto_accepted band stays exactly where it already lives - in
+        // DocumentExtraction.extractedData's own "needs review" state -
+        // never silently promoted into canonical data.
+        if (!this.isOcrFieldCanonicalEligible(field)) return;
         const fieldKey = field.key || field.path;
         const scopedPath = DOC_TYPE_OVERRIDES[documentType]?.[fieldKey];
         const targetPath = scopedPath || OCR_FIELD_MAP[field.path] || OCR_FIELD_MAP[field.key] || field.canonicalPath;
@@ -407,6 +438,16 @@ class CanonicalBuilderService {
         });
       });
     });
+  }
+
+  // Named alias matching the addQuestionnaireCandidates() precedent the
+  // governing spec asked for - same method, same candidates array, same
+  // CanonicalMergeService precedence mechanics. Not a second/parallel
+  // merge codepath: build() below calls addOcrCandidates directly (the
+  // pre-existing call site), this alias exists only so callers reading the
+  // spec's own vocabulary can find it under either name.
+  static addDocumentExtractionCandidates(candidates, extractions = []) {
+    return this.addOcrCandidates(candidates, extractions);
   }
 
   static addProfileCandidates(candidates, profile, pathMap, profileOwner, caseScope = {}) {

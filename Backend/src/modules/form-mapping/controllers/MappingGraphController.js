@@ -1,6 +1,7 @@
 const MappingGraphService = require("../services/MappingGraphService");
 const AutoFillService = require("../services/AutoFillService");
 const ChecklistFieldTraceabilityService = require("../services/ChecklistFieldTraceabilityService");
+const FormEditionComparisonService = require("../services/FormEditionComparisonService");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const Case = require("../../../models/Case");
 const caseService = require("../../cases/case.service");
@@ -171,6 +172,71 @@ exports.checklistTraceCoverageAll = async (req, res, next) => {
   try {
     const results = await ChecklistFieldTraceabilityService.coverageSummaryForAllForms();
     send(res, { results });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Phase 3H/3I governance additions - read-only diagnostics only, alongside
+// the checklist-trace endpoints above. No mutation route is added: this UI
+// never auto-fixes anything.
+
+// GET /form-mappings/templates/:templateId/checklist-trace/defects - every
+// governance defect category for ONE form's real registry rows/mapping
+// graph, with intentional/documented gaps reported separately from actual
+// defects.
+exports.governanceDefects = async (req, res, next) => {
+  try {
+    const result = await ChecklistFieldTraceabilityService.governanceDefects(req.params.templateId);
+    if (!result) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
+    send(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /form-mappings/checklist-health - system-wide, one row per production
+// checklist/questionnaire (Phase 3I "Checklist Health").
+exports.checklistHealth = async (req, res, next) => {
+  try {
+    const rows = await ChecklistFieldTraceabilityService.checklistHealth();
+    send(res, { rows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// USCIS form edition-change governance (Phase 3J) - read-only diff preview
+// plus the human-acknowledgement step. Never activates anything; that
+// remains exclusively MappingGraphService.activate()'s job.
+
+// GET /form-mappings/templates/:templateId/edition-diff?previousTemplateId=...
+// Defaults to this template's own parentVersion (set at import time by
+// FormVersionService.createTemplate); previousTemplateId lets a reviewer
+// diff against a different prior document when parentVersion wasn't
+// recorded (older, pre-lifecycle-field templates).
+exports.editionDiff = async (req, res, next) => {
+  try {
+    const comparison = await FormEditionComparisonService.compareToParent(req.params.templateId, {
+      previousTemplateId: req.query.previousTemplateId,
+    });
+    send(res, {
+      templateId: req.params.templateId,
+      hasParentEdition: Boolean(comparison),
+      comparison,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /form-mappings/templates/:templateId/edition-diff/acknowledge - the
+// explicit human-review step that lifts MappingGraphService.activate()'s
+// additive edition-change gate for this template's specific parentVersion.
+exports.acknowledgeEditionDiff = async (req, res, next) => {
+  try {
+    const result = await FormEditionComparisonService.acknowledge(req.params.templateId, req.user, req);
+    send(res, result);
   } catch (error) {
     next(error);
   }

@@ -5,6 +5,7 @@ const Case = require("../../models/Case");
 const storageService = require("../uploads/storage.service");
 const caseService = require("../cases/case.service");
 const PetitionAssemblyService = require("./services/PetitionAssemblyService");
+const CoverLetterService = require("../form-generation/services/CoverLetterService");
 
 function handle(res, error) {
   return res.status(error.status || 500).json({ success: false, message: error.message, code: error.code });
@@ -129,6 +130,24 @@ exports.reorderExhibits = async (req, res) => {
   }
 };
 
+exports.insertPage = async (req, res) => {
+  try {
+    const data = await PetitionAssemblyService.insertPage(req.params.id, req.body || {}, req.user, req);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
+exports.removePage = async (req, res) => {
+  try {
+    const data = await PetitionAssemblyService.removePage(req.params.id, req.params.sectionKey, req.user, req);
+    res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
 exports.finalize = async (req, res) => {
   try {
     const data = await PetitionAssemblyService.finalize(req.params.id, req.user, req, req.body || {});
@@ -160,6 +179,19 @@ exports.recordReceipt = async (req, res) => {
   try {
     const data = await PetitionAssemblyService.recordReceipt(req.params.id, req.body || {}, req.user, req);
     res.json({ success: true, data });
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
+// Non-sensitive letterhead fields only (name/address/phone/email/logo) —
+// the full Settings document (SMTP credentials, API keys, etc.) stays
+// admin-only; every role that can already read a petition (forms:read)
+// needs this to render a live letterhead preview matching the PDF output.
+exports.getBranding = async (req, res) => {
+  try {
+    const branding = await CoverLetterService.getBranding();
+    res.json({ success: true, data: branding });
   } catch (error) {
     handle(res, error);
   }

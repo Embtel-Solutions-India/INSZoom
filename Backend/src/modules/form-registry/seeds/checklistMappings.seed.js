@@ -185,6 +185,14 @@ for (const visaType of FAMILY_VISA_TYPES) {
 
 // ---- K-1 (spec §7) -------------------------------------------------------
 set("K-1", "I-129F", [cm("k1_petitioner_checklist", AUTO, { role: "petitioner" }), cm("k1_beneficiary_checklist", AUTO, { role: "beneficiary" })]);
+// I-134 (Declaration of Financial Support) has no dedicated K-1 checklist -
+// its sponsor identity/employment fields are already collected by
+// k1_petitioner_checklist (see familyChecklists.js/family-workflow/
+// questionnaires/k1.js), so it is reused here rather than inventing a new
+// checklist (Phase 3A decision). Any I-134 fields that checklist does not
+// cover (e.g. income/household size figures) are a legitimate missing-data
+// gap, not a mis-mapping - never fabricated just to raise coverage.
+set("K-1", "I-134", [cm("k1_petitioner_checklist", COND, { role: "petitioner" })]);
 set("K-1", "I-485", [cm("k1_beneficiary_checklist", COND, { role: "beneficiary" })]);
 set("K-1", "I-765", [cm("k1_beneficiary_checklist", COND, { role: "beneficiary" })]);
 set("K-1", "I-131", [cm("k1_beneficiary_checklist", COND, { role: "beneficiary" })]);
@@ -193,6 +201,10 @@ set("K-1", "I-131", [cm("k1_beneficiary_checklist", COND, { role: "beneficiary" 
 // ---- K-3 (spec §8) -------------------------------------------------------
 set("K-3", "I-130", [cm("k3_petitioner_checklist", AUTO, { role: "petitioner" }), cm("k3_beneficiary_checklist", AUTO, { role: "beneficiary" })]);
 set("K-3", "I-129F", [cm("k3_petitioner_checklist", COND, { role: "petitioner" }), cm("k3_beneficiary_checklist", COND, { role: "beneficiary" })]);
+// I-134 reuses k3_petitioner_checklist for the same reason as K-1 above -
+// no dedicated affidavit-of-support checklist exists for K-3, and the
+// petitioner checklist already covers sponsor identity/employment.
+set("K-3", "I-134", [cm("k3_petitioner_checklist", COND, { role: "petitioner" })]);
 set("K-3", "I-485", [cm("k3_beneficiary_checklist", COND, { role: "beneficiary" })]);
 set("K-3", "I-765", [cm("k3_beneficiary_checklist", COND, { role: "beneficiary" })]);
 set("K-3", "I-131", [cm("k3_beneficiary_checklist", COND, { role: "beneficiary" })]);

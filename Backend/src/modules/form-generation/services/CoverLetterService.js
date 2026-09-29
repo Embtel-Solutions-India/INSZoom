@@ -61,92 +61,123 @@ class CoverLetterService {
     };
   }
 
-  // The mailing PDF needs the cover letter / front-matter letters as real
-  // PDF pages, not HTML — pdf-lib can't render HTML, and this codebase has
-  // no HTML-to-PDF dependency (no puppeteer/wkhtmltopdf/etc). Rather than add
-  // one for a single feature, this strips tags to plain text (preserving
-  // paragraph/list breaks) and lays it out with pdf-lib's own text/wrapping
-  // primitives — real, working pages, just without HTML's rich formatting.
-  // The presentation Word draft keeps the full HTML (tables, styling) for
-  // whoever edits it; the mailing PDF only needs it to be a legible page.
-  static htmlToPlainText(html) {
-    return String(html || "")
-      .replace(/<style[\s\S]*?<\/style>/gi, "")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(p|div|h[1-6]|tr)>/gi, "\n\n")
-      .replace(/<li[^>]*>/gi, "• ")
-      .replace(/<\/li>/gi, "\n")
-      .replace(/<td[^>]*>/gi, "  ")
-      .replace(/<[^>]+>/g, "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .split("\n")
-      .map((line) => line.replace(/[ \t]+/g, " ").trim())
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+  // Firm letterhead identity for letter PDFs — read live from Settings on
+  // every render (not cached) so an admin's letterhead edit takes effect on
+  // the very next assemble, with no stale-cache invalidation to manage.
+  static async getBranding() {
+    const Settings = require("../../../models/Settings");
+    const settings = await Settings.findOne({ key: "global" }).lean();
+    return {
+      name: settings?.companyName || settings?.msoEntityName || "",
+      address: settings?.firmAddress || "",
+      phone: settings?.firmPhone || "",
+      email: settings?.firmEmail || "",
+      website: settings?.firmWebsite || "",
+      logoUrl: settings?.companyLogo || settings?.brandTokens?.logoUrl || "",
+    };
   }
 
+  // Puppeteer's page.pdf() header/footer templates only accept inline
+  // content (no external network fetches reliably resolve in that isolated
+  // context), so the logo has to be embedded as a data URI up front. Handles
+  // the three shapes companyLogo/brandTokens.logoUrl can already hold in
+  // this codebase: an http(s) URL, an already-encoded data URI, or a
+  // storage-service key (same path client document previews already use).
+  // Never throws — a broken/unreachable logo degrades to "no logo" rather
+  // than failing the whole render.
+  static async resolveLogoDataUri(logoUrl) {
+    if (!logoUrl) return "";
+    try {
+      if (/^data:/i.test(logoUrl)) return logoUrl;
+      if (/^https?:\/\//i.test(logoUrl)) {
+        const response = await fetch(logoUrl);
+        if (!response.ok) return "";
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const contentType = response.headers.get("content-type") || "image/png";
+        return `data:${contentType};base64,${buffer.toString("base64")}`;
+      }
+      const buffer = await storageService.readBuffer(logoUrl);
+      const ext = (logoUrl.split(".").pop() || "png").toLowerCase();
+      return `data:image/${ext === "svg" ? "svg+xml" : ext};base64,${buffer.toString("base64")}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  // Mirrors the letterhead convention observed across real filed petitions
+  // (logo + firm name/address, thin rule, repeated on every page) — see
+  // dev-assets/petitions analysis: logo/name/address block above a thin
+  // divider rule, and a thin-rule footer with contact info, on every page of
+  // every firm-authored document. Rendered via Puppeteer's header/footer
+  // template slots (see HtmlPdfRenderer) so it repeats correctly across a
+  // multi-page letter — plain CSS has no equivalent for print pagination.
+  static buildHeaderFooterTemplates(branding, logoDataUri) {
+    const logoImg = logoDataUri ? `<img src="${logoDataUri}" style="height:32px;width:auto;margin-right:10px;" />` : "";
+    const contactLine = [branding.website, branding.email, branding.phone].filter(Boolean).join("  ·  ");
+    const headerTemplate = branding.name
+      ? `<div style="width:100%;font-family:Helvetica,Arial,sans-serif;padding:0 60px;box-sizing:border-box;">
+          <div style="display:flex;align-items:center;border-bottom:1px solid #999;padding-bottom:8px;">
+            ${logoImg}
+            <div>
+              <div style="font-size:12px;font-weight:bold;color:#111;">${escapeHtml(branding.name)}</div>
+              ${branding.address ? `<div style="font-size:8px;color:#555;">${escapeHtml(branding.address)}</div>` : ""}
+            </div>
+          </div>
+        </div>`
+      : "<span></span>";
+    const footerTemplate = contactLine
+      ? `<div style="width:100%;font-family:Helvetica,Arial,sans-serif;font-size:8px;color:#555;text-align:center;padding:6px 60px 0;box-sizing:border-box;border-top:1px solid #999;">${escapeHtml(contactLine)}</div>`
+      : "<span></span>";
+    return { headerTemplate, footerTemplate };
+  }
+
+  // Real CSS-driven HTML->PDF rendering (via Puppeteer, see HtmlPdfRenderer)
+  // — replaces a prior plain-text/pdf-lib fallback that stripped all
+  // formatting (bold, color, tables, letterhead) before it ever reached the
+  // mailing PDF. The presentation Word draft (PetitionWordPackageService)
+  // already preserved full HTML; this brings the filing-ready mailing PDF
+  // up to the same fidelity.
   static async htmlToPdfBuffer(html, { title } = {}) {
-    const { PDFDocument, StandardFonts, rgb } = (() => {
-      try {
-        return require("pdf-lib");
-      } catch (error) {
-        const missing = new Error("pdf-lib dependency is required to render letters into the mailing PDF");
-        missing.status = 501;
-        throw missing;
-      }
-    })();
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const fontSize = 11;
-    const lineHeight = 16;
-    const margin = 60;
-    let page = pdf.addPage();
-    let { width, height } = page.getSize();
-    let y = height - margin;
-    const maxWidth = width - margin * 2;
-
-    if (title) {
-      page.drawText(title, { x: margin, y, size: 16, font: boldFont, color: rgb(0, 0, 0) });
-      y -= lineHeight * 2;
-    }
-
-    const wrapLine = (line) => {
-      if (!line) return [""];
-      const words = line.split(" ");
-      const wrapped = [];
-      let current = "";
-      words.forEach((word) => {
-        const candidate = current ? `${current} ${word}` : word;
-        if (font.widthOfTextAtSize(candidate, fontSize) > maxWidth && current) {
-          wrapped.push(current);
-          current = word;
-        } else {
-          current = candidate;
-        }
-      });
-      wrapped.push(current);
-      return wrapped;
-    };
-
-    const text = this.htmlToPlainText(html);
-    for (const rawLine of text.split("\n")) {
-      for (const line of wrapLine(rawLine)) {
-        if (y < margin) {
-          page = pdf.addPage();
-          ({ width, height } = page.getSize());
-          y = height - margin;
-        }
-        if (line) page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0.1, 0.1, 0.1) });
-        y -= lineHeight;
-      }
-    }
-    return Buffer.from(await pdf.save());
+    const HtmlPdfRenderer = require("./HtmlPdfRenderer");
+    const branding = await this.getBranding();
+    const logoDataUri = await this.resolveLogoDataUri(branding.logoUrl);
+    const { headerTemplate, footerTemplate } = this.buildHeaderFooterTemplates(branding, logoDataUri);
+    const documentHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: "Times New Roman", Times, serif; font-size: 12px; line-height: 1.5; color: #111; margin: 0; }
+      h1, h2 { font-family: "Times New Roman", Times, serif; }
+      h3, h4 { font-family: "Times New Roman", Times, serif; font-weight: bold; text-decoration: underline; margin: 20px 0 10px; }
+      table { border-collapse: collapse; width: 100%; }
+      td, th { border: 1px solid #333; padding: 6px; font-size: 11px; text-align: left; }
+      ul, ol { margin: 0 0 12px 0; padding-left: 22px; }
+      p { margin: 0 0 12px 0; }
+      img { max-width: 100%; }
+    </style>
+  </head>
+  <body>
+    ${title ? `<h2 style="margin-bottom:16px;">${escapeHtml(title)}</h2>` : ""}
+    ${html}
+  </body>
+</html>`;
+    // Only reserve header/footer margin space when there's real branding to
+    // show in it — an unconfigured firm identity (fresh install, no logo/
+    // address/contact info set yet) renders a plain full-margin letter
+    // instead of a letter with blank space reserved for nothing.
+    const hasHeader = Boolean(branding.name);
+    const hasFooter = Boolean(branding.website || branding.email || branding.phone);
+    return HtmlPdfRenderer.render(documentHtml, {
+      headerTemplate: hasHeader ? headerTemplate : "",
+      footerTemplate: hasFooter ? footerTemplate : "",
+      margin: {
+        top: hasHeader ? "110px" : "60px",
+        bottom: hasFooter ? "70px" : "60px",
+        left: "60px",
+        right: "60px",
+      },
+    });
   }
 
   static findTemplate(definition, { key, kind }) {

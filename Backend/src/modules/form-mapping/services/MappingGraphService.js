@@ -603,6 +603,35 @@ class MappingGraphService {
       error.details = validation;
       throw error;
     }
+
+    // PHASE 3J — edition-change governance gate. Additive only: the gate
+    // above (every field has an approved mapping) still runs first and is
+    // completely unchanged; this is a SEPARATE, further block that only
+    // applies when this template is itself a new edition of a form that had
+    // a prior one (template.parentVersion, set by FormVersionService.
+    // createTemplate at import time) whose mapping graph had live edges
+    // this edition's own field changes broke (removed/renamed/retyped
+    // fields, or a required/optional flip) - see
+    // FormEditionComparisonService.compareEditions. Never auto-clears
+    // itself: it only lifts once a human explicitly acknowledges THIS
+    // template's specific parentVersion via
+    // FormEditionComparisonService.acknowledge().
+    if (template.parentVersion) {
+      const FormEditionComparisonService = require("./FormEditionComparisonService");
+      const { blocked, comparison } = await FormEditionComparisonService.hasUnreviewedEditionChanges(template);
+      if (blocked) {
+        const error = new Error(
+          "Cannot activate mapping: this edition changed fields that have existing mapping edges " +
+          "(removed/renamed fields, an incompatible type change, or a required/optional flip) - " +
+          "a human reviewer must acknowledge the edition diff (POST .../edition-diff/acknowledge) before activation"
+        );
+        error.status = 422;
+        error.code = "UNREVIEWED_EDITION_CHANGES";
+        error.details = comparison;
+        throw error;
+      }
+    }
+
     const mappingVersion = await USCISMappingVersion.findOne({
       template: template._id,
       mappingVersion: template.mappingVersion,

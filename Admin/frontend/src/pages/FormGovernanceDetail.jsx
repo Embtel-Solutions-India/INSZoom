@@ -41,6 +41,8 @@ const FormGovernanceDetail = () => {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState(null)
 
+  const [defects, setDefects] = useState(null)
+
   const [visaOptions, setVisaOptions] = useState([])
   const [showAddCaseType, setShowAddCaseType] = useState(false)
   const [newVisaType, setNewVisaType] = useState('')
@@ -73,6 +75,12 @@ const FormGovernanceDetail = () => {
         setChecklistTrace(byTarget)
       } catch (err) {
         setChecklistTrace(new Map())
+      }
+      try {
+        const defectsResponse = await formGovernanceApi.governanceDefects(targetTemplateId)
+        setDefects(defectsResponse.data)
+      } catch (err) {
+        setDefects(null)
       }
     } catch (err) {
       setError(readErrorMessage(err, 'Unable to load this form.'))
@@ -123,6 +131,27 @@ const FormGovernanceDetail = () => {
   }, [graph])
 
   const canonicalOptions = graph?.nodes?.canonical || []
+
+  // Phase 3H per-field defect flags - reuses governanceDefects(templateId)'s
+  // read-only result, resolving each defect's mappingId (when it has one,
+  // not a targetFieldId directly) to a field via the graph's own edges, so
+  // the same defect data both this per-field column and the summary panel
+  // below use is never re-derived twice.
+  const defectsByField = useMemo(() => {
+    const map = new Map()
+    if (!defects || !graph) return map
+    const targetByMappingId = new Map((graph.edges || []).map((edge) => [edge.mappingId, edge.targetFieldId]))
+    const add = (targetFieldId, defect) => {
+      if (!targetFieldId) return
+      if (!map.has(targetFieldId)) map.set(targetFieldId, [])
+      map.get(targetFieldId).push(defect)
+    }
+    defects.defects.forEach((defect) => {
+      const targetFieldId = defect.targetFieldId || defect.detail?.targetFieldId || (defect.detail?.mappingId ? targetByMappingId.get(defect.detail.mappingId) : null)
+      add(targetFieldId, defect)
+    })
+    return map
+  }, [defects, graph])
 
   const runAutoSuggest = async () => {
     if (!viewedTemplateId) return
@@ -405,6 +434,40 @@ const FormGovernanceDetail = () => {
             {addCaseTypeError && <p className="text-red-700 text-sm mt-2">{addCaseTypeError}</p>}
           </div>
 
+          {defects && (defects.defects.length > 0 || defects.intentionalGaps.length > 0) && (
+            <div className="card">
+              <h2 className="font-semibold text-foreground mb-1">Governance defects</h2>
+              <p className="text-sm text-muted-foreground mb-3">
+                Read-only diagnostics for this form's real registry rows and mapping graph — nothing here can be
+                auto-fixed from this page. Intentional, documented gaps (checklistMappings.seed.js's own scope
+                notes) are shown separately from genuine defects.
+              </p>
+              {defects.defects.length > 0 && (
+                <div className="mb-3">
+                  <div className="flex flex-wrap gap-2">
+                    {defects.defects.map((d, i) => (
+                      <span key={i} className="px-2 py-1 text-xs rounded bg-red-100 text-red-800" title={JSON.stringify(d.detail || d)}>
+                        {d.category}{d.visaType ? ` · ${d.visaType}` : ''}{d.checklistKey ? ` · ${d.checklistKey}` : ''}{d.questionKey ? ` · ${d.questionKey}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {defects.intentionalGaps.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground uppercase mb-1">Intentional gaps (not defects)</div>
+                  <div className="flex flex-wrap gap-2">
+                    {defects.intentionalGaps.map((g, i) => (
+                      <span key={i} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
+                        {g.category}{g.visaType ? ` · ${g.visaType}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="card overflow-hidden">
             <div className="px-2 pb-3">
               <h2 className="font-semibold text-foreground">Field mapping</h2>
@@ -419,6 +482,7 @@ const FormGovernanceDetail = () => {
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Mapped to</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Checklist source</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Defects</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -463,6 +527,19 @@ const FormGovernanceDetail = () => {
                               {matches.length > 3 && (
                                 <span className="text-xs text-muted-foreground">+{matches.length - 3} more</span>
                               )}
+                            </div>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-4 py-2">
+                        {(() => {
+                          const fieldDefects = defectsByField.get(field.fieldId) || []
+                          if (!fieldDefects.length) return <span className="text-xs text-muted-foreground">—</span>
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              {fieldDefects.map((d, i) => (
+                                <span key={i} className="text-xs text-red-700" title={d.category}>{d.code || d.category}</span>
+                              ))}
                             </div>
                           )
                         })()}

@@ -111,6 +111,22 @@ test("H-4: Extension / EAD / Extension+EAD each map to the correct forms and que
   assert.deepEqual(keys(extEadI765.checklistMappings), ["h4_extension_ead_questionnaire"]);
 });
 
+test("K-1/K-3: I-134 reuses the existing petitioner checklist, CONDITIONAL, never invents a new checklist", async (t) => {
+  t.after(disconnectTestDB);
+  await connectTestDB();
+  const k1 = await VisaFormMapping.findOne({ visaType: "K-1", formNumber: "I-134" });
+  assert.ok(k1, "K-1/I-134 registry row must exist");
+  assert.deepEqual(keys(k1.checklistMappings), ["k1_petitioner_checklist"]);
+  assert.equal(k1.checklistMappings[0].assignmentType, "CONDITIONAL");
+  assert.equal(k1.checklistMappings[0].role, "petitioner");
+
+  const k3 = await VisaFormMapping.findOne({ visaType: "K-3", formNumber: "I-134" });
+  assert.ok(k3, "K-3/I-134 registry row must exist");
+  assert.deepEqual(keys(k3.checklistMappings), ["k3_petitioner_checklist"]);
+  assert.equal(k3.checklistMappings[0].assignmentType, "CONDITIONAL");
+  assert.equal(k3.checklistMappings[0].role, "petitioner");
+});
+
 test("Family: Petition Only assigns I-130 petitioner+beneficiary; AOS additionally resolves green-card/I-864 checklists", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();

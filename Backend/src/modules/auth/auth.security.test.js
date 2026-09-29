@@ -1,4 +1,5 @@
 const test = require("node:test");
+const { mock } = require("node:test");
 const assert = require("node:assert/strict");
 const { authPayload } = require("./auth.service");
 
@@ -183,4 +184,117 @@ test("googleOAuthStart still redirects normally when both flags are safe (regres
     env.clientUrlSafe = originalClientUrlSafe;
     env.google.oauthRedirectUriSafe = originalOauthSafe;
   }
+});
+
+// ── auth.controller.js: googleOAuthCallback state validation (invalid_state investigation) ──
+// This is the exact check that produces error=invalid_state in production.
+// These tests prove the fix is a correctness fix (recognizing a mismatch
+// state where it's currently not a real mismatch) and NOT a weakening of
+// the validation itself - every rejection path here must keep rejecting.
+function fakeCallbackRes() {
+  const res = { cookiesCleared: [], locals: {} };
+  res.cookie = () => res;
+  res.clearCookie = (name) => { res.cookiesCleared.push(name); return res; };
+  res.redirect = (url) => { res.redirectedTo = url; };
+  return res;
+}
+
+function withSafeProdFlags(fn) {
+  const env = require("../../config/env");
+  const originalNodeEnv = env.nodeEnv;
+  const originalClientUrlSafe = env.clientUrlSafe;
+  const originalOauthSafe = env.google.oauthRedirectUriSafe;
+  env.nodeEnv = "production";
+  env.clientUrlSafe = true;
+  env.google.oauthRedirectUriSafe = true;
+  try {
+    return fn(env);
+  } finally {
+    env.nodeEnv = originalNodeEnv;
+    env.clientUrlSafe = originalClientUrlSafe;
+    env.google.oauthRedirectUriSafe = originalOauthSafe;
+  }
+}
+
+test("googleOAuthCallback rejects with invalid_state when no state cookie was ever sent back (cross-origin/token-scope loss), never establishes a session", async () => {
+  await withSafeProdFlags(async () => {
+    const ctrl = require("./auth.controller");
+    const res = fakeCallbackRes();
+    const req = { query: { code: "auth-code", state: "attacker-or-google-supplied-state" }, cookies: {}, headers: {} };
+    await ctrl.googleOAuthCallback(req, res);
+    assert.ok(res.redirectedTo, "expected a redirect");
+    const url = new URL(res.redirectedTo);
+    assert.equal(url.searchParams.get("error"), "invalid_state");
+    assert.equal(url.searchParams.has("accessToken"), false, "must never issue a session token on a state mismatch");
+  });
+});
+
+test("googleOAuthCallback rejects with invalid_state when the provided state does not match the cookie state, never establishes a session", async () => {
+  await withSafeProdFlags(async () => {
+    const ctrl = require("./auth.controller");
+    const res = fakeCallbackRes();
+    const req = { query: { code: "auth-code", state: "wrong-state" }, cookies: { google_oauth_state: "correct-state" }, headers: {} };
+    await ctrl.googleOAuthCallback(req, res);
+    const url = new URL(res.redirectedTo);
+    assert.equal(url.searchParams.get("error"), "invalid_state");
+    assert.equal(url.searchParams.has("accessToken"), false);
+  });
+});
+
+test("googleOAuthCallback rejects with invalid_state when code or state is missing entirely", async () => {
+  await withSafeProdFlags(async () => {
+    const ctrl = require("./auth.controller");
+    const res1 = fakeCallbackRes();
+    await ctrl.googleOAuthCallback({ query: { state: "s" }, cookies: { google_oauth_state: "s" }, headers: {} }, res1);
+    assert.equal(new URL(res1.redirectedTo).searchParams.get("error"), "invalid_state");
+
+    const res2 = fakeCallbackRes();
+    await ctrl.googleOAuthCallback({ query: { code: "c" }, cookies: { google_oauth_state: "s" }, headers: {} }, res2);
+    assert.equal(new URL(res2.redirectedTo).searchParams.get("error"), "invalid_state");
+  });
+});
+
+test("googleOAuthCallback establishes a session when the provided state matches the cookie state exactly (regression control — proves the check isn't just always failing)", async () => {
+  await withSafeProdFlags(async () => {
+    const ctrl = require("./auth.controller");
+    const googleOAuthService = require("./google-oauth.service");
+    const authService = require("./auth.service");
+    const exchangeMock = mock.method(googleOAuthService, "exchangeCodeForIdentity", async () => ({ email: "user@example.com", displayName: "Test User" }));
+    const loginMock = mock.method(authService, "loginWithVerifiedIdentity", async () => ({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      user: { _id: "u1", email: "user@example.com", role: "client" },
+    }));
+    try {
+      const res = fakeCallbackRes();
+      const req = { query: { code: "auth-code", state: "matching-state" }, cookies: { google_oauth_state: "matching-state" }, headers: {} };
+      await ctrl.googleOAuthCallback(req, res);
+      const url = new URL(res.redirectedTo);
+      assert.equal(url.searchParams.has("error"), false, "must not error when state genuinely matches");
+      assert.equal(url.searchParams.get("accessToken"), "access-token");
+      assert.equal(url.searchParams.get("role"), "client");
+    } finally {
+      exchangeMock.mock.restore();
+      loginMock.mock.restore();
+    }
+  });
+});
+
+test("googleOAuthCallback's invalid_state diagnostics log never includes the raw state or cookie value, only booleans/fingerprints", async () => {
+  await withSafeProdFlags(async () => {
+    const ctrl = require("./auth.controller");
+    const logger = require("../../utils/logger");
+    const warnMock = mock.method(logger, "warn", () => {});
+    try {
+      const res = fakeCallbackRes();
+      const req = { query: { code: "auth-code", state: "wrong-state-xyz" }, cookies: { google_oauth_state: "correct-state-abc" }, headers: {} };
+      await ctrl.googleOAuthCallback(req, res);
+      assert.equal(warnMock.mock.calls.length, 1);
+      const loggedPayload = JSON.stringify(warnMock.mock.calls[0].arguments[1]);
+      assert.equal(loggedPayload.includes("wrong-state-xyz"), false, "must never log the raw provided state value");
+      assert.equal(loggedPayload.includes("correct-state-abc"), false, "must never log the raw cookie state value");
+    } finally {
+      warnMock.mock.restore();
+    }
+  });
 });

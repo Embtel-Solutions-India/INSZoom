@@ -175,7 +175,7 @@ class PetitionAssemblyService {
       forms: [],
       certifications: [],
       exhibits: [],
-      filing: { uscisAddress: "", method: "usps" },
+      filing: { uscisAddress: "", method: "usps", today: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) },
       firm: { letterhead: settings?.companyName || "", name: settings?.companyName || "", address: settings?.firmAddress || "", phone: settings?.firmPhone || "" },
     };
   }
@@ -266,6 +266,43 @@ class PetitionAssemblyService {
     });
   }
 
+  // Sorts an already-built mailingSections pool by each section's `type`
+  // rank in definition.ordering.mailing (the same field
+  // PetitionWordPackageService already honors for the presentation copy —
+  // see its buildPresentationHtml). Stable sort: sections sharing a type
+  // keep their original relative order. A type absent from ordering.mailing
+  // sorts after everything listed, rather than being dropped, so an
+  // incomplete/legacy definition never silently loses content. A definition
+  // with no ordering.mailing at all (empty array) is a no-op, preserving
+  // whatever order the caller built — no regression for definitions that
+  // predate this field.
+  static orderMailingSections(sections, definition) {
+    const orderList = definition?.ordering?.mailing || [];
+    if (!orderList.length) return sections;
+    const rank = new Map(orderList.map((type, index) => [type, index]));
+    return [...sections].sort((a, b) => (rank.has(a.type) ? rank.get(a.type) : orderList.length) - (rank.has(b.type) ? rank.get(b.type) : orderList.length));
+  }
+
+  // Splices user-inserted blank/separator pages (see insertPage/removePage)
+  // into the FINAL, already type-ordered mailing section list, anchored
+  // after a specific section's key — must run AFTER orderMailingSections,
+  // never before: these page types aren't in any definition's
+  // ordering.mailing list, so an earlier pass would sort them all to the
+  // end and lose the requested position. An insertAfterKey that no longer
+  // matches anything (the anchor section was removed) degrades to
+  // "append at the end" rather than dropping the page or throwing.
+  static async applyManualInsertions(sections, manualInsertions = []) {
+    if (!manualInsertions.length) return sections;
+    let result = [...sections];
+    for (const insertion of manualInsertions) {
+      const buffer = await ExhibitService.buildStandalonePage({ type: insertion.type, title: insertion.title });
+      const section = { type: insertion.type, key: insertion.key, title: insertion.title || (insertion.type === "blank_page" ? "Blank Page" : "Separator"), buffer };
+      const anchorIndex = insertion.insertAfterKey ? result.findIndex((entry) => entry.key === insertion.insertAfterKey) : -1;
+      result = anchorIndex === -1 ? [...result, section] : [...result.slice(0, anchorIndex + 1), section, ...result.slice(anchorIndex + 1)];
+    }
+    return result;
+  }
+
   static async supersedeCurrent(caseId, packageDefinitionKey, excludeId) {
     await PetitionPackage.updateMany(
       { caseId, packageDefinitionKey, isCurrent: true, ...(excludeId ? { _id: { $ne: excludeId } } : {}) },
@@ -316,6 +353,10 @@ class PetitionAssemblyService {
       versionNumber: nextVersionNumber,
       isCurrent: true,
       createdBy: userId(user),
+      // Manual page insertions are deliberate structural additions to this
+      // case's binder (unlike exhibitOrder, a draft-only tweak) — carried
+      // forward to every new version rather than reset.
+      manualInsertions: existingCurrent?.manualInsertions || [],
       history: [{ versionNumber: nextVersionNumber, status: "assembling", action: "ASSEMBLE_STARTED", actorId: userId(user) }],
     });
     await this.supersedeCurrent(caseId, definition.key, petitionPackage._id);
@@ -364,7 +405,7 @@ class PetitionAssemblyService {
       // left undefined), so petitionPackage.sections below always reflects
       // the definition's structure. Only entries that actually have content
       // (storageKey or buffer) are handed to the PDF assembler.
-      const mailingSections = [
+      const mailingSections = await this.applyManualInsertions(this.orderMailingSections([
         { type: "cover_letter", key: "cover_letter", title: "Cover Letter", documentId: coverLetterDoc._id, buffer: coverLetterPdfBuffer, contentHtml: coverLetterBodyHtml },
         ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey }] : []),
         // Every other required form (I-129, and Phase H6's I-907/I-539/
@@ -374,7 +415,7 @@ class PetitionAssemblyService {
         ...this.buildFormSections(definition, caseForms, conditionalRequiredForms),
         ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc?._id, storageKey: doc?.storageKey })),
         ...Object.entries(letters).map(([slotKey, letter]) => ({ type: slotKey, key: slotKey, title: letter.title, documentId: letter.documentId, storageKey: letter.storageKey, buffer: letter.pdfBuffer, contentHtml: letter.html || "" })),
-      ];
+      ], definition), petitionPackage.manualInsertions);
       const renderableSections = mailingSections.filter((section) => section.storageKey || section.buffer);
 
       const { document: mailingPdfDocument, totalPages, pageMap } = await FilingPackageService.assembleOrdered({
@@ -503,13 +544,13 @@ class PetitionAssemblyService {
     const uploadedG28Document = context.attorney.present ? await Document.findOne({ caseId: petitionPackage.caseId, documentType: "g28", reviewStatus: "approved", deletedAt: { $exists: false } }) : null;
     const generatedG28Form = !uploadedG28Document ? caseForms.find((form) => form.formCode === "G-28" && form.generatedPdfDocument?.storageKey) : null;
     const g28Document = uploadedG28Document || (generatedG28Form ? generatedG28Form.generatedPdfDocument : null);
-    const mailingSections = [
+    const mailingSections = await this.applyManualInsertions(this.orderMailingSections([
       { type: "cover_letter", key: "cover_letter", title: "Cover Letter", documentId: coverLetterDoc._id, buffer: coverLetterPdfBuffer },
       ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey }] : []),
       ...caseForms.filter((form) => form.generatedPdfDocument?.storageKey && form.formCode !== "G-28").map((form) => ({ type: "form", key: form.formCode, title: form.formCode, documentId: form.generatedPdfDocument._id, caseFormId: form._id, storageKey: form.generatedPdfDocument.storageKey })),
       ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc._id, storageKey: doc.storageKey })),
       ...otherLettersForMailing,
-    ];
+    ], definition), petitionPackage.manualInsertions);
     petitionPackage.outputs.coverLetterDocumentId = coverLetterDoc._id;
     const { document: mailingPdfDocument, totalPages, pageMap } = await FilingPackageService.assembleOrdered({
       caseId: petitionPackage.caseId,
@@ -619,6 +660,43 @@ class PetitionAssemblyService {
 
     await AuditLog.create({ userId: userId(user), userRole: user?.role, action: "PETITION_EXHIBITS_REORDERED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { order }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
     return petitionPackage;
+  }
+
+  // Inserts a blank or titled separator page anchored after an existing
+  // section/exhibit key (see applyManualInsertions). Structural, unlike
+  // saveLetterEdit/reorderExhibits (which mutate the current draft in
+  // place) — a page insertion changes the mailing PDF's actual content, so
+  // it's persisted onto the current package AND immediately re-assembled
+  // (new version), the same "structural change → re-run assemble()"
+  // pattern autoSync already uses for document/form approvals.
+  static async insertPage(packageId, { type, title, insertAfterKey } = {}, user, req) {
+    if (!["blank_page", "separator_page"].includes(type)) {
+      throw Object.assign(new Error('type must be "blank_page" or "separator_page"'), { status: 422 });
+    }
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
+    if (petitionPackage.lock?.locked) throw Object.assign(new Error("This petition package is finalized and locked — unlock it before inserting a page"), { status: 409, code: "PACKAGE_LOCKED" });
+
+    const key = `manual_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    petitionPackage.manualInsertions.push({ key, type, title: title || "", insertAfterKey: insertAfterKey || null, createdBy: userId(user) });
+    await petitionPackage.save();
+
+    await AuditLog.create({ userId: userId(user), userRole: user?.role, action: "PETITION_PAGE_INSERTED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { type, insertAfterKey }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
+    return this.assemble(petitionPackage.caseId, { definitionKey: petitionPackage.packageDefinitionKey }, user, req);
+  }
+
+  static async removePage(packageId, sectionKey, user, req) {
+    const { petitionPackage } = await this.loadAuthorizedPackage(packageId, user);
+    if (petitionPackage.lock?.locked) throw Object.assign(new Error("This petition package is finalized and locked — unlock it before removing a page"), { status: 409, code: "PACKAGE_LOCKED" });
+
+    const before = petitionPackage.manualInsertions.length;
+    petitionPackage.manualInsertions = petitionPackage.manualInsertions.filter((entry) => entry.key !== sectionKey);
+    if (petitionPackage.manualInsertions.length === before) {
+      throw Object.assign(new Error(`No inserted page found with key "${sectionKey}"`), { status: 404 });
+    }
+    await petitionPackage.save();
+
+    await AuditLog.create({ userId: userId(user), userRole: user?.role, action: "PETITION_PAGE_REMOVED", entityType: "PetitionPackage", entityId: String(petitionPackage._id), changes: { sectionKey }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] }).catch(() => null);
+    return this.assemble(petitionPackage.caseId, { definitionKey: petitionPackage.packageDefinitionKey }, user, req);
   }
 
   static async unlock(packageId, { reason }, user, req) {

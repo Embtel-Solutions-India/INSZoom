@@ -1,4 +1,14 @@
 const Document = require("../../../models/Document");
+const HtmlPdfRenderer = require("../../form-generation/services/HtmlPdfRenderer");
+const CoverLetterService = require("../../form-generation/services/CoverLetterService");
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 // The engine's own generated outputs (cover letter, mailing PDF, presentation
 // draft) are persisted as approved Documents on the same case — without this
@@ -11,34 +21,60 @@ const Document = require("../../../models/Document");
 // Evidence".
 const ENGINE_GENERATED_DOCUMENT_TYPES = ["petition_filing_pdf", "petition_word_package", "petition_presentation_package", "cover_letter"];
 
-function loadPdfLib() {
-  try {
-    return require("pdf-lib");
-  } catch (error) {
-    const missing = new Error("pdf-lib dependency is required to build exhibit dividers");
-    missing.status = 501;
-    throw missing;
-  }
+// Resolves the firm's letterhead once per build() call (not once per
+// divider) — same branding CoverLetterService already renders onto letter
+// pages, so a divider looks like it belongs to the same assembled packet.
+// Real filed petitions we reverse-engineered (see dev-assets/petitions)
+// either had no dividers at all or a bare flat-color divider with no
+// branding; this exceeds both by carrying the firm's own header/footer.
+async function resolveDividerBranding() {
+  const branding = await CoverLetterService.getBranding();
+  const logoDataUri = await CoverLetterService.resolveLogoDataUri(branding.logoUrl);
+  const { headerTemplate, footerTemplate } = CoverLetterService.buildHeaderFooterTemplates(branding, logoDataUri);
+  return {
+    headerTemplate: branding.name ? headerTemplate : "",
+    footerTemplate: branding.website || branding.email || branding.phone ? footerTemplate : "",
+  };
 }
 
-// One-page "Exhibit A — Title" divider, built fresh per exhibit so it can be
-// merged into the mailing PDF exactly like any other source PDF.
-async function buildDividerBuffer(label, title) {
-  const { PDFDocument, StandardFonts, rgb } = loadPdfLib();
-  const pdf = await PDFDocument.create();
-  const page = pdf.addPage();
-  const { width, height } = page.getSize();
-  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
-  const headline = `Exhibit ${label}`;
-  const headlineSize = 28;
-  const headlineWidth = boldFont.widthOfTextAtSize(headline, headlineSize);
-  page.drawText(headline, { x: (width - headlineWidth) / 2, y: height / 2 + 20, size: headlineSize, font: boldFont, color: rgb(0.05, 0.05, 0.05) });
-  const titleSize = 14;
-  const titleText = String(title || "");
-  const titleWidth = font.widthOfTextAtSize(titleText, titleSize);
-  page.drawText(titleText, { x: Math.max(40, (width - titleWidth) / 2), y: height / 2 - 20, size: titleSize, font, color: rgb(0.2, 0.2, 0.2) });
-  return Buffer.from(await pdf.save());
+// One-page "EXHIBIT A — Title" divider, built fresh per exhibit so it can be
+// merged into the mailing PDF exactly like any other source PDF. Centered
+// large exhibit label + a rule + the exhibit title, matching the two-tier
+// centered-title convention observed in real filed petitions' exhibit
+// dividers, rendered via the same HTML/Puppeteer pipeline as letters (see
+// HtmlPdfRenderer) so fonts/branding stay consistent across the whole packet.
+async function buildDividerBuffer(label, title, { headerTemplate = "", footerTemplate = "" } = {}) {
+  const documentHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { font-family: "Times New Roman", Times, serif; display: flex; align-items: center; justify-content: center; }
+      .divider { text-align: center; padding: 0 60px; }
+      .divider .label { font-size: 56px; font-weight: bold; letter-spacing: 3px; color: #111; }
+      .divider .rule { width: 140px; height: 3px; background: #111; margin: 28px auto; }
+      .divider .title { font-size: 20px; color: #333; }
+    </style>
+  </head>
+  <body>
+    <div class="divider">
+      <div class="label">EXHIBIT ${escapeHtml(label)}</div>
+      <div class="rule"></div>
+      <div class="title">${escapeHtml(title)}</div>
+    </div>
+  </body>
+</html>`;
+  return HtmlPdfRenderer.render(documentHtml, {
+    headerTemplate,
+    footerTemplate,
+    margin: {
+      top: headerTemplate ? "110px" : "40px",
+      bottom: footerTemplate ? "70px" : "40px",
+      left: "40px",
+      right: "40px",
+    },
+  });
 }
 
 function exhibitLabelFor(index) {
@@ -109,6 +145,7 @@ class ExhibitService {
       orderedBuckets = [...listed, ...unlisted];
     }
 
+    const dividerBranding = orderedBuckets.some((bucket) => bucket.documents.length) ? await resolveDividerBranding() : null;
     const exhibits = [];
     for (let index = 0; index < orderedBuckets.length; index += 1) {
       const bucket = orderedBuckets[index];
@@ -116,7 +153,7 @@ class ExhibitService {
       const description = bucket.documents.length
         ? `${bucket.title} (${bucket.documents.length} document${bucket.documents.length === 1 ? "" : "s"})`
         : `${bucket.title} — no approved documents on file`;
-      const dividerBuffer = bucket.documents.length ? await buildDividerBuffer(label, bucket.title) : null;
+      const dividerBuffer = bucket.documents.length ? await buildDividerBuffer(label, bucket.title, dividerBranding) : null;
       exhibits.push({
         key: bucket.key,
         label,
@@ -132,6 +169,45 @@ class ExhibitService {
 
     const exhibitIndex = exhibits.map((exhibit) => ({ key: exhibit.key, label: exhibit.label, title: exhibit.title, description: exhibit.description, documentIds: exhibit.documentIds }));
     return { exhibits, exhibitIndex };
+  }
+
+  // A user-inserted blank or titled separator page (see
+  // PetitionAssemblyService.insertPage/applyManualInsertions) - a blank page
+  // is a truly empty page (pdf-lib, no HTML needed); a separator page reuses
+  // the same branded letterhead/footer as exhibit dividers, just without the
+  // "EXHIBIT X" label, since it isn't anchored to an exhibit bucket.
+  static async buildStandalonePage({ type, title }) {
+    if (type === "blank_page") {
+      const { PDFDocument } = require("pdf-lib");
+      const pdf = await PDFDocument.create();
+      pdf.addPage();
+      return Buffer.from(await pdf.save());
+    }
+    const branding = await resolveDividerBranding();
+    const documentHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { font-family: "Times New Roman", Times, serif; display: flex; align-items: center; justify-content: center; }
+      .title { font-size: 32px; font-weight: bold; text-align: center; padding: 0 60px; color: #111; }
+    </style>
+  </head>
+  <body>
+    <div class="title">${escapeHtml(title || "")}</div>
+  </body>
+</html>`;
+    return HtmlPdfRenderer.render(documentHtml, {
+      headerTemplate: branding.headerTemplate,
+      footerTemplate: branding.footerTemplate,
+      margin: {
+        top: branding.headerTemplate ? "110px" : "40px",
+        bottom: branding.footerTemplate ? "70px" : "40px",
+        left: "40px",
+        right: "40px",
+      },
+    });
   }
 }
 

@@ -1,7 +1,24 @@
 import axios from 'axios'
 
+// BUG (fixed): silently falling back to a dev-only localhost URL shipped to
+// production when a deployment's build environment never set VITE_API_URL —
+// confirmed live: the deployed admin.immiglance.com bundle was calling
+// http://localhost:7000, meaning it worked (misleadingly) only for whoever
+// happened to have a local backend running on that port, and would fail to
+// even log in for every real user. In dev, fall back to a relative /api
+// (proxied by Vite — see scripts/vite-options.mjs) rather than an absolute
+// cross-port URL, which also made the refresh_token cookie cross-site and
+// thus dropped under SameSite=Lax. In a PRODUCTION build with no
+// VITE_API_URL, fail loudly instead of silently pointing at localhost.
+function resolveBaseUrl() {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  if (import.meta.env.DEV) return '/api'
+  console.error('[FATAL CONFIG] VITE_API_URL is not set in this production build — every API call will fail. Set it in the build server\'s environment before deploying.')
+  return 'https://MISSING-VITE_API_URL.invalid/api'
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:7000/api',
+  baseURL: resolveBaseUrl(),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
@@ -402,6 +419,10 @@ export const formGovernanceApi = {
   // the system-wide coverage view across every active form.
   checklistTraceFields: (templateId) => api.get(`/form-mappings/templates/${templateId}/checklist-trace/fields`),
   checklistTraceCoverageAll: () => api.get('/form-mappings/checklist-trace/coverage'),
+  // Phase 3H/3I governance additions - read-only defect/health diagnostics,
+  // same endpoints family as the checklist-trace calls above.
+  governanceDefects: (templateId) => api.get(`/form-mappings/templates/${templateId}/checklist-trace/defects`),
+  checklistHealth: () => api.get('/form-mappings/checklist-health'),
   // "Add case type" - maps this template's form to another visa type, with
   // an assignment type (Automatic = AUTO_CREATE, Conditional = CONDITIONAL).
   // Reuses the existing per-template VisaFormMapping CRUD (also used by the
@@ -443,10 +464,13 @@ export const petitionApi = {
   download: (packageId, format = 'pdf') => api.get(`/petition/packages/${packageId}/download`, { params: { format }, responseType: 'blob' }),
   saveLetter: (packageId, sectionKey, html) => api.patch(`/petition/packages/${packageId}/letters/${sectionKey}`, { html }),
   reorderExhibits: (packageId, order) => api.patch(`/petition/packages/${packageId}/exhibits/order`, { order }),
+  insertPage: (packageId, payload) => api.post(`/petition/packages/${packageId}/pages`, payload),
+  removePage: (packageId, sectionKey) => api.delete(`/petition/packages/${packageId}/pages/${sectionKey}`),
   finalize: (packageId, payload = {}) => api.post(`/petition/packages/${packageId}/finalize`, payload),
   unlock: (packageId, reason) => api.post(`/petition/packages/${packageId}/unlock`, { reason }),
   recordFiling: (packageId, payload) => api.post(`/petition/packages/${packageId}/filing`, payload),
   recordReceipt: (packageId, payload) => api.post(`/petition/packages/${packageId}/receipt`, payload),
+  getBranding: () => api.get('/petition/branding'),
   listDefinitions: () => api.get('/petition/definitions'),
   getDefinition: (key) => api.get(`/petition/definitions/${key}`),
   upsertDefinition: (key, payload) => api.put(`/petition/definitions/${key}`, payload),
