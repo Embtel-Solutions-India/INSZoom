@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider } from './auth/AuthContext'
+import { Loader2 } from 'lucide-react'
+import { AuthProvider, useAuth } from './auth/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import { ThemeProvider } from './context/ThemeContext'
 import RequireAttorney from './auth/RequireAttorney'
@@ -24,6 +25,27 @@ import usePushNotifications from './hooks/usePushNotifications'
 function PushRegistrar() {
   usePushNotifications()
   return null
+}
+
+// BUG (fixed): "/" and the "*" catch-all used to unconditionally
+// <Navigate to="/dashboard" replace /> before AuthContext's own silent-
+// refresh check (authApi.me(), which resolves the 7-day refresh cookie)
+// had finished - so opening the app unauthenticated visibly hit
+// "/dashboard" first, then got bounced to "/login" by RequireAttorney a
+// moment later. This is the actual decision point: wait for the same
+// `loading` flag RequireAttorney already gates on, then go straight to the
+// right place once - authenticated -> /dashboard, not authenticated ->
+// /login. No intermediate hop through /dashboard ever happens now.
+function EntryRedirect() {
+  const { user, loading } = useAuth()
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+  return <Navigate to={user?.role === 'attorney' ? '/dashboard' : '/login'} replace />
 }
 
 export default function App() {
@@ -59,8 +81,8 @@ export default function App() {
               </Route>
             </Route>
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<EntryRedirect />} />
+            <Route path="*" element={<EntryRedirect />} />
           </Routes>
         </SocketProvider>
         </AuthProvider>

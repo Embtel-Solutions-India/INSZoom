@@ -575,29 +575,58 @@ const CRMCaseDetail = () => {
   // fields listCaseForms' .select() projection actually returns - it omits
   // parentCaseFormId) and indents/labels it, purely a display grouping; the
   // underlying data and download/autofill actions per row are unchanged.
-  const sortedCaseForms = useMemo(() => {
-    const byParentCode = new Map()
-    const standalone = []
+  // BUG (fixed): grouped parent/component nesting purely by formCode string
+  // match (form.parentFormCode === some standalone form's own formCode),
+  // with no caseId awareness at all. For an ordinary single case that's
+  // fine (one CaseForm per formCode). But listCaseForms (uscis-form.service.js)
+  // deliberately aggregates every CHILD case's own CaseForms into this same
+  // flat array for a caseRole=principal case (each employee gets their own
+  // full I-129/I-907/I-539/supplement set, all sharing the same formCodes) -
+  // so this grouping silently nested Employee A's H-1B supplement under
+  // Employee B's I-129 row whenever iteration order put them together,
+  // and the flat list as a whole just looked like the same forms
+  // duplicated over and over with no indication of whose they were.
+  // Grouping first by caseId (falling back to the form's own caseId when
+  // there's no case-owner map, i.e. every non-principal case) fixes the
+  // display; see the USCISFormRenderer caseId fix below for the matching
+  // "Open Form" 404 this same aggregation caused.
+  const caseFormGroups = useMemo(() => {
+    const byOwner = new Map()
     caseForms.forEach((form) => {
-      if (form.parentFormCode) {
-        if (!byParentCode.has(form.parentFormCode)) byParentCode.set(form.parentFormCode, [])
-        byParentCode.get(form.parentFormCode).push(form)
-      } else {
-        standalone.push(form)
-      }
+      const ownerId = String(form.caseId?._id || form.caseId || id)
+      if (!byOwner.has(ownerId)) byOwner.set(ownerId, [])
+      byOwner.get(ownerId).push(form)
     })
-    const ordered = []
-    standalone.forEach((form) => {
-      ordered.push({ form, isComponent: false })
-      const children = byParentCode.get(form.formCode)
-      if (children) children.forEach((child) => ordered.push({ form: child, isComponent: true }))
-      byParentCode.delete(form.formCode)
+    const ownerLabel = (ownerId) => {
+      if (ownerId === String(id)) return childCases?.length ? 'Petitioner / Company' : null
+      const child = (childCases || []).find((c) => String(c._id) === ownerId)
+      return child ? (child.clientName || child.caseNumber || 'Employee') : null
+    }
+    return [...byOwner.entries()].map(([ownerId, forms]) => {
+      const byParentCode = new Map()
+      const standalone = []
+      forms.forEach((form) => {
+        if (form.parentFormCode) {
+          if (!byParentCode.has(form.parentFormCode)) byParentCode.set(form.parentFormCode, [])
+          byParentCode.get(form.parentFormCode).push(form)
+        } else {
+          standalone.push(form)
+        }
+      })
+      const ordered = []
+      standalone.forEach((form) => {
+        ordered.push({ form, isComponent: false })
+        const children = byParentCode.get(form.formCode)
+        if (children) children.forEach((child) => ordered.push({ form: child, isComponent: true }))
+        byParentCode.delete(form.formCode)
+      })
+      byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
+      return { ownerId, label: ownerLabel(ownerId), rows: ordered }
     })
-    // Any component whose parent CaseForm isn't in this list (not yet
-    // generated, or filtered out) still needs to render somewhere.
-    byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
-    return ordered
-  }, [caseForms])
+  }, [caseForms, childCases, id])
+  // Unchanged shape for every caller that doesn't need owner grouping
+  // (an ordinary single case only ever has one group anyway).
+  const sortedCaseForms = useMemo(() => caseFormGroups.flatMap((group) => group.rows), [caseFormGroups])
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
@@ -1035,7 +1064,15 @@ const CRMCaseDetail = () => {
     try {
       setRowActionPending(item.mappingId)
       setFormActionMessage('')
-      await uscisFormsApi.autofill(id, item.caseForm.id)
+      // BUG (fixed): same class of issue as USCISFormRenderer's caseId prop
+      // below - hardcoded to this page's own URL id, which only matches
+      // when the form actually belongs to THIS case. For a
+      // caseRole=principal case, listCaseForms aggregates every child
+      // (employee) case's own CaseForms into one list, so Autofill on an
+      // employee-owned form 404'd against AutoFillService's own
+      // caseId-scoped CaseForm lookup. item.caseId (now passed from the
+      // row's own form.caseId) is the fix.
+      await uscisFormsApi.autofill(item.caseId || id, item.caseForm.id)
       setFormActionMessage(`${item.formNumber} was re-autofilled from the canonical profile.`)
       setFetched(prev => ({ ...prev, forms: false }))
       await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
@@ -2120,6 +2157,48 @@ const CRMCaseDetail = () => {
                 </div>
               </div>
 
+              {/* Petitioner / Beneficiary — family-workflow (I-130/Green Card)
+                  cases only. BUG (fixed): Case.clientName/clientEmail are set
+                  to the BENEFICIARY (createFamilyCase), and the Case
+                  Information card above only ever reads those two generic
+                  fields - so a case manager looking at a family case's
+                  Overview tab previously saw only the beneficiary's contact
+                  info, with no way to even find the petitioner's from this
+                  page. petitionerUser/beneficiaryUser are now populated by
+                  populateCaseQuery (case.service.js) specifically so this
+                  card has real name/email/phone to show, not bare ObjectIds. */}
+              {(caseData.petitionerUser || caseData.beneficiaryUser) && (
+                <div className="card">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Petitioner &amp; Beneficiary</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">Petitioner</p>
+                      <p className="font-medium break-words">{caseData.petitionerUser?.name || caseData.petitionerUser?.displayName || '—'}</p>
+                      <p className="text-sm text-muted-foreground break-words">{caseData.petitionerUser?.email || '—'}</p>
+                      {caseData.petitionerUser?.phone && <p className="text-sm text-muted-foreground">{caseData.petitionerUser.phone}</p>}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">Beneficiary</p>
+                      <p className="font-medium break-words">{caseData.beneficiaryUser?.name || caseData.beneficiaryUser?.displayName || caseData.clientName || '—'}</p>
+                      <p className="text-sm text-muted-foreground break-words">{caseData.beneficiaryUser?.email || caseData.clientEmail || '—'}</p>
+                      {caseData.beneficiaryInvite?.phone && <p className="text-sm text-muted-foreground">{caseData.beneficiaryInvite.phone}</p>}
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Who's completing the beneficiary section</p>
+                      <p className="font-medium">
+                        {caseData.familyCompletionMode === 'petitioner_completes' ? 'Petitioner (filling it themselves)' : 'Beneficiary (invited to fill their own)'}
+                      </p>
+                    </div>
+                    {caseData.beneficiaryInvite?.status && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Beneficiary invite status</p>
+                        <p className="font-medium capitalize">{caseData.beneficiaryInvite.status}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Filing Readiness Score */}
               <div className="card">
                 <h3 className="text-lg font-semibold text-foreground mb-4">Filing Readiness Score</h3>
@@ -2828,7 +2907,19 @@ const CRMCaseDetail = () => {
           <FormRendererErrorBoundary resetKey={selectedCaseForm._id} onBack={() => setSelectedCaseForm(null)}>
             <Suspense fallback={renderSkeleton()}>
               <USCISFormRenderer
-                caseId={id}
+                // BUG (fixed): hardcoded to this page's own URL id, which is
+                // only correct for a form that actually belongs to THIS case.
+                // For a caseRole=principal case, listCaseForms
+                // (uscis-form.service.js) deliberately aggregates every
+                // child (employee) case's own CaseForms into this same
+                // list - opening one of those always 404'd ("Case form not
+                // found"), because every workspace call this component
+                // makes (openInteractiveForm -> renderCaseForm) looks the
+                // form up via CaseForm.findOne({ _id: caseFormId, caseId }),
+                // requiring an exact match on the caseId actually passed
+                // in. form.caseId (already present on every row from that
+                // same aggregated list) is the one real fix.
+                caseId={selectedCaseForm.caseId?._id || selectedCaseForm.caseId || id}
                 caseForm={selectedCaseForm}
                 onClose={() => setSelectedCaseForm(null)}
                 onSaved={() => fetchCaseForms(true)}
@@ -2901,8 +2992,16 @@ const CRMCaseDetail = () => {
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {sortedCaseForms.map(({ form, isComponent }) => (
+                  {caseFormGroups.map((group) => (
+                  <tbody key={group.ownerId}>
+                    {group.label && (
+                      <tr className="bg-muted/40">
+                        <td colSpan={6} className="py-2 px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          {group.label}
+                        </td>
+                      </tr>
+                    )}
+                    {group.rows.map(({ form, isComponent }) => (
                       <tr key={form._id} className="border-b border-border">
                         <td className="py-3 px-4">
                           <p className={`font-medium text-foreground ${isComponent ? 'pl-4' : ''}`}>
@@ -2937,7 +3036,7 @@ const CRMCaseDetail = () => {
                               Open Form
                             </button>
                             <button
-                              onClick={() => handleAutofillForm({ mappingId: `caseform-${form._id}`, formNumber: form.formCode, caseForm: { id: form._id } })}
+                              onClick={() => handleAutofillForm({ mappingId: `caseform-${form._id}`, formNumber: form.formCode, caseForm: { id: form._id }, caseId: form.caseId?._id || form.caseId })}
                               disabled={rowActionPending === `caseform-${form._id}`}
                               className="btn-secondary text-sm"
                               title="Re-run curated + biographic-fallback autofill for this form"
@@ -2972,6 +3071,7 @@ const CRMCaseDetail = () => {
                       </tr>
                     ))}
                   </tbody>
+                  ))}
                 </table>
               </div>
             ) : (

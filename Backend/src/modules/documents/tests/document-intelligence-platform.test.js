@@ -104,7 +104,7 @@ test("document intelligence providers are replaceable through the registry", asy
   assert.equal(result.__provider, "test-provider");
 });
 
-test("internal case uploads are limited to assigned case managers and team leads", () => {
+test("internal case uploads are limited to assigned case managers/team leads, plus admin/super_admin as full-access staff", () => {
   const caseData = {
     user: "client-1",
     assignedCaseManager: "manager-1",
@@ -116,7 +116,14 @@ test("internal case uploads are limited to assigned case managers and team leads
   assert.equal(documentService.canUploadForCase({ _id: "lead-1", role: "team_lead" }, caseData), true);
   assert.equal(documentService.canUploadForCase({ _id: "client-1", role: "client" }, caseData), true);
   assert.equal(documentService.canUploadForCase({ _id: "attorney-1", role: "attorney" }, caseData), false);
-  assert.equal(documentService.canUploadForCase({ _id: "admin-1", role: "admin" }, caseData), false);
+  // admin/super_admin are full-access staff on any case, same as
+  // canAccessDocument just above this function and every authorizeRoles
+  // gate elsewhere (case.routes.js, petition.routes.js, documents.routes.js) -
+  // previously false here, the one inconsistent gate (confirmed live: a
+  // 403 on the Admin frontend's own "Upload Petition" button, which
+  // PetitionTab.jsx's canAssemble already renders/enables for this role).
+  assert.equal(documentService.canUploadForCase({ _id: "admin-1", role: "admin" }, caseData), true);
+  assert.equal(documentService.canUploadForCase({ _id: "superadmin-1", role: "super_admin" }, caseData), true);
   assert.equal(documentService.canUploadForCase({ _id: "manager-2", role: "case_manager" }, caseData), false);
 });
 

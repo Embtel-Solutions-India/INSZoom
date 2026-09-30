@@ -53,7 +53,16 @@ function canUploadForCase(user, caseData) {
     return caseService.canAccessRestrictedChildCase(user, caseData, role);
   }
   if (["client", "user"].includes(role)) return sameId(caseData.user, user._id);
-  return ["case_manager", "team_lead"].includes(role);
+  // BUG (fixed): admin/super_admin were deliberately excluded here, but
+  // every other staff-facing surface (canAccessDocument just below,
+  // authorizeRoles gates throughout case.routes.js/petition.routes.js/
+  // documents.routes.js, the Admin frontend's own canAssemble in
+  // PetitionTab.jsx) treats them as full-access staff on any case - this
+  // was the one inconsistent gate. Confirmed live: an admin clicking
+  // "Upload Petition" (a real, rendered, enabled button per that same
+  // canAssemble) got a 403 from this exact check with no visible failure
+  // mode beyond a small inline error message next to the button.
+  return ["case_manager", "team_lead", "admin", "super_admin"].includes(role);
 }
 
 async function canAccessDocument(user, document) {
