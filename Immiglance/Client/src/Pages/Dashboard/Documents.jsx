@@ -391,9 +391,32 @@ export default function Documents() {
   // request each. Both "Save progress" and "Submit case" call this and only
   // this for persistence — Submit's only extra step is the actual
   // submit-endpoint call + role-aware navigation below.
+  //
+  // BUG (fixed): Promise.all rejects the instant the FIRST qa.commitAll()
+  // throws, without waiting for the others — but it doesn't cancel them,
+  // they keep running to completion in the background regardless. That
+  // meant handleSaveProgress could already be showing "Save failed" (the
+  // page-level saveProgressState) before a DIFFERENT role's qa (e.g.
+  // bizPlanQA's "LCA FILING") finished saving successfully a moment later
+  // and updated its own, separately-tracked lastSavedAt/saveState —
+  // producing exactly the reported symptom: one card showing "Request
+  // failed" right next to a stale-looking "Saved at ..." from a role that
+  // actually succeeded, with no indication they're two different sections.
+  // Promise.allSettled waits for every role's save to actually finish
+  // (success or failure) before commitAll decides anything, so by the time
+  // an error is reported every card's own status has already settled — no
+  // more racing between the page-level and per-card status.
   const commitAll = async () => {
     await awaitReusableUploads();
-    await Promise.all(activeQAs.map((qa) => qa.commitAll()));
+    const results = await Promise.allSettled(activeQAs.map((qa) => qa.commitAll()));
+    const failureCount = results.filter((result) => result.status === "rejected").length;
+    if (failureCount) {
+      throw new Error(
+        failureCount === activeQAs.length
+          ? "Unable to save your progress. Please try again."
+          : `${failureCount} of ${activeQAs.length} section${activeQAs.length === 1 ? "" : "s"} failed to save — please try again.`
+      );
+    }
   };
 
   const itemStatus = (item) => {

@@ -113,6 +113,20 @@ exports.getCaseQuestionnaire = async (req, res, next) => {
     const result = await questionnaireService.getQuestionnaireForCase(req.params.caseId, req.user, req.query.targetRole, { participantId: req.query.participantId, referenceId: req.query.referenceId });
     res.json({ success: true, data: result });
   } catch (error) {
+    // A role-scoped probe (targetRole given) asking "does this case have a
+    // questionnaire for this role" is an expected, legitimate "no" for most
+    // role/visa combinations (e.g. Admin's Business Plan/E-2 Supporting
+    // Documents panels querying every case regardless of visa type to see if
+    // they apply) — not a real error. Answering it with a 404 makes the
+    // browser itself log a scary "GET ... 404 (Not Found)" to the console on
+    // every single case that simply doesn't use that role, even though the
+    // UI already handles a null questionnaire perfectly (the panel just
+    // doesn't render). A caller with no targetRole is asking "what IS the
+    // questionnaire for this case" — there a missing template is still a
+    // real 404.
+    if (req.query.targetRole && error.status === 404) {
+      return res.json({ success: true, data: { questionnaire: null, questions: [], documentQuestions: [], fieldQuestions: [], answers: [] } });
+    }
     next(error);
   }
 };

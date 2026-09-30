@@ -1,9 +1,9 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useRef, Component } from 'react'
+import { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef, Component } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
@@ -344,17 +344,38 @@ const CRMCaseDetail = () => {
   const [caseData, setCaseData] = useState(null)
   // Same SSOT questionnaire resolution the client portal uses (server-side
   // visa-type matching — no H-1B/L-1A detection lives on this frontend).
-  const overviewActive = activeTab === 'overview'
-  const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer', { enabled: overviewActive })
-  const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: overviewActive })
-  const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: overviewActive })
+  // Overview vs. Documents restructuring: everything that requires reading
+  // questionnaire answers or document types (all QuestionnaireAnswersPanel
+  // variants, the Phase 2 Intake Review doc/section grid, the Document
+  // Checklist grid) now lives on the Documents tab, not Overview — Overview
+  // is summary-only (case type, filing/petition type, employee count,
+  // status/stage, assigned staff, key dates). documentsActive gates every
+  // hook that feeds those blocks (previously gated on the Overview tab).
+  const documentsActive = activeTab === 'documents'
+  // BUG (fixed): a principal case (the employer-side container in an
+  // employer_employee matter) has no employee Answers of its own — those
+  // live on each CHILD case (caseRole: 'employee'), keyed by the CHILD's own
+  // caseId/responseId. Querying targetRole="employee" against the
+  // PRINCIPAL's own caseId can never find them, so this panel always
+  // rendered empty ("Needed" on every field) on the principal's own
+  // Overview — not lost data, just the wrong case being asked. The
+  // principal's Overview already has a dedicated "Employees (N)" section
+  // (below) linking to each child's own page, where this same hook/panel
+  // correctly shows THAT employee's real data (caseData._id there IS the
+  // child's id). A non-principal case (a plain single-entity case, or a
+  // child case itself) still queries normally — this only skips the
+  // redundant, structurally-always-empty query on the container case.
+  const isPrincipalContainer = caseData?.caseRole === 'principal'
+  const employerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employer', { enabled: documentsActive })
+  const employeeQuestionnaire = useCaseQuestionnaire(caseData?._id, 'employee', { enabled: documentsActive && !isPrincipalContainer })
+  const businessPlanQuestionnaire = useCaseQuestionnaire(caseData?._id, 'business_plan', { enabled: documentsActive })
   // E-2 Treaty Investor's third checklist (Backend
   // src/modules/employment-workflow/questionnaires/e2.js /
   // src/modules/questionnaires/employmentChecklists.js — checklistRole
   // "supporting_documents"). The E-2 Visa checklist itself reuses the
   // existing "employer" role/hook above; only this document-only checklist
   // needed its own role.
-  const supportingDocumentsQuestionnaire = useCaseQuestionnaire(caseData?._id, 'supporting_documents', { enabled: overviewActive })
+  const supportingDocumentsQuestionnaire = useCaseQuestionnaire(caseData?._id, 'supporting_documents', { enabled: documentsActive })
   // Family/sponsor (K-1/K-3) cases carry the petitioner/beneficiary pair of
   // checklists instead of employer/employee (see Backend
   // src/modules/questionnaires/familyChecklists.js — checklistRole "petitioner"
@@ -372,15 +393,15 @@ const CRMCaseDetail = () => {
   // beneficiary split - checklistRole "client", same single-party
   // mechanism as EB-1A/EB-2 NIW/etc.).
   const isGreenCardRenewalCase = caseData?.visaType === 'Green Card Renewal'
-  const greenCardRenewalQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', { enabled: overviewActive && isGreenCardRenewalCase })
-  const petitionerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'petitioner', { enabled: overviewActive && isFamilyCase })
-  const beneficiaryQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', { enabled: overviewActive && isFamilyCase })
+  const greenCardRenewalQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', { enabled: documentsActive && isGreenCardRenewalCase })
+  const petitionerQuestionnaire = useCaseQuestionnaire(caseData?._id, 'petitioner', { enabled: documentsActive && isFamilyCase })
+  const beneficiaryQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', { enabled: documentsActive && isFamilyCase })
   // I-864 joint sponsor - a third party distinct from the petitioner, only
   // ever present once one is actually added to the case (Case.jointSponsorUser).
   // Same pattern as the two panels above, gated additionally on that field
   // so a case with no joint sponsor never pays for the extra request.
   const showJointSponsorPanel = isFamilyCase && Boolean(caseData?.jointSponsorUser)
-  const jointSponsorQuestionnaire = useCaseQuestionnaire(caseData?._id, 'joint_sponsor', { enabled: overviewActive && showJointSponsorPanel })
+  const jointSponsorQuestionnaire = useCaseQuestionnaire(caseData?._id, 'joint_sponsor', { enabled: documentsActive && showJointSponsorPanel })
   // Filing Path (Case.processingPath) - which of the I-130/Green-Card/I-864
   // checklists apply (see family-workflow.controller.js's
   // ensureFamilyChecklistReferences, re-run server-side when this changes).
@@ -402,14 +423,25 @@ const CRMCaseDetail = () => {
   // listCaseChecklists) — the same numbers Immiglance's client portal shows, matched
   // by responseId to the questionnaires resolved above.
   const [checklistsProgress, setChecklistsProgress] = useState([])
+  // Pulled out of the effect below so the client-submitted socket handler
+  // (further down this file) can force the same refresh on demand, bypassing
+  // questionnairesApi.listCaseChecklists' own 5s cachedGet TTL via
+  // invalidateCachedGet - otherwise a case manager already viewing this case
+  // could keep seeing pre-submission checklist progress for up to 5s (or
+  // until they navigate away and back) after the client submits.
+  const fetchChecklistsProgress = useCallback(async (caseId) => {
+    if (!caseId) { setChecklistsProgress([]); return }
+    try {
+      const response = await questionnairesApi.listCaseChecklists(caseId)
+      setChecklistsProgress(response.data?.data?.checklists || [])
+    } catch {
+      setChecklistsProgress([])
+    }
+  }, [])
   useEffect(() => {
-    if (!overviewActive || !caseData?._id) { setChecklistsProgress([]); return }
-    let mounted = true
-    questionnairesApi.listCaseChecklists(caseData._id).then((response) => {
-      if (mounted) setChecklistsProgress(response.data?.data?.checklists || [])
-    }).catch(() => { if (mounted) setChecklistsProgress([]) })
-    return () => { mounted = false }
-  }, [caseData?._id, overviewActive])
+    if (!documentsActive || !caseData?._id) { setChecklistsProgress([]); return }
+    fetchChecklistsProgress(caseData._id)
+  }, [caseData?._id, documentsActive, fetchChecklistsProgress])
   // Optional "Green Card – National Visa Center (NVC) / Consular Processing
   // Checklist" (gc_nvc_<slug>_checklist) - exists as a template for every
   // CONSULAR-eligible family case, but is only ASSIGNED (and therefore only
@@ -422,7 +454,7 @@ const CRMCaseDetail = () => {
   const gcNvcChecklistEntry = checklistsProgress.find((item) => item.key?.startsWith('gc_nvc_'))
   const gcNvcApproved = Boolean(caseData?.gcNvcChecklist?.approved)
   const gcNvcQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', {
-    enabled: overviewActive && gcNvcApproved && Boolean(gcNvcChecklistEntry),
+    enabled: documentsActive && gcNvcApproved && Boolean(gcNvcChecklistEntry),
     referenceId: gcNvcChecklistEntry?.referenceId,
   })
   const [approvingGcNvc, setApprovingGcNvc] = useState(false)
@@ -474,6 +506,13 @@ const CRMCaseDetail = () => {
   // parentCase/childCases already embedded on caseData via casesApi.get —
   // also carries assignedCaseManager and assignmentOverridden per child.
   const [childCases, setChildCases] = useState(null)
+  // Employer data is shared with every child case (see Backend's
+  // sharedCaseRoles.js) — a child's own checklistItems only ever holds its
+  // OWN (employee-side) required documents (filterChecklistForRole at
+  // addEmployeeSlot). Fetched once per case so the Documents tab can show
+  // the principal's required items alongside this employee's own, tagged
+  // "Employer • Shared" instead of only ever showing half the picture.
+  const [parentChecklistItems, setParentChecklistItems] = useState([])
   const [showRemovedEmployees, setShowRemovedEmployees] = useState(false)
   const [employeeActionBusy, setEmployeeActionBusy] = useState('')
   const [employeeActionMessage, setEmployeeActionMessage] = useState('')
@@ -483,9 +522,82 @@ const CRMCaseDetail = () => {
   const [tabLoading, setTabLoading] = useState({ documents: false, forms: false, strategy: false, payments: false, letters: false, notes: false, tracking: false })
   const [documents, setDocuments] = useState([])
   const [viewingDocument, setViewingDocument] = useState(null)
+  // In-place text editing (client-uploaded .txt/.csv/.md files) - case
+  // manager view/edit/save, versioned exactly like any other document
+  // replace (documentsApi.saveContent -> addDocumentVersion under the hood).
+  const [editingDocument, setEditingDocument] = useState(null)
+  const [editingContent, setEditingContent] = useState('')
+  const [editingLoading, setEditingLoading] = useState(false)
+  const [editingSaving, setEditingSaving] = useState(false)
+  const [editingError, setEditingError] = useState('')
+  const isTextEditableDocument = (doc) => (
+    ['text/plain', 'text/csv', 'text/markdown'].includes(doc?.mimeType) ||
+    /\.(txt|csv|md)$/i.test(doc?.originalName || doc?.fileName || '')
+  )
+  const openDocumentEditor = async (doc) => {
+    setEditingDocument(doc)
+    setEditingError('')
+    setEditingContent('')
+    setEditingLoading(true)
+    try {
+      const response = await documentsApi.getContent(doc._id)
+      setEditingContent(response.data.content || '')
+    } catch (error) {
+      setEditingError(error.response?.data?.message || 'Unable to load document content')
+    } finally {
+      setEditingLoading(false)
+    }
+  }
+  const saveDocumentEditor = async () => {
+    setEditingSaving(true)
+    setEditingError('')
+    try {
+      await documentsApi.saveContent(editingDocument._id, editingContent)
+      setEditingDocument(null)
+      await fetchDocuments(true)
+    } catch (error) {
+      setEditingError(error.response?.data?.message || 'Unable to save document content')
+    } finally {
+      setEditingSaving(false)
+    }
+  }
   const [showCaseDocumentUpload, setShowCaseDocumentUpload] = useState(false)
   const [intakeBundle, setIntakeBundle] = useState(null)
   const [caseForms, setCaseForms] = useState([])
+  // uscis-form.service.js's listCaseForms returns every CaseForm (parent AND
+  // supplement/component, e.g. I-129's H Classification Supplement) as one
+  // flat array with no ordering guarantee - the Forms table below used to
+  // render them in whatever order the DB returned, so a component form
+  // (componentCode set, parentFormCode pointing back at "I-129") could show
+  // up several rows away from its parent with nothing distinguishing it from
+  // an unrelated standalone form. Groups each component row directly under
+  // its parent (matched by formCode <-> parentFormCode, the only linking
+  // fields listCaseForms' .select() projection actually returns - it omits
+  // parentCaseFormId) and indents/labels it, purely a display grouping; the
+  // underlying data and download/autofill actions per row are unchanged.
+  const sortedCaseForms = useMemo(() => {
+    const byParentCode = new Map()
+    const standalone = []
+    caseForms.forEach((form) => {
+      if (form.parentFormCode) {
+        if (!byParentCode.has(form.parentFormCode)) byParentCode.set(form.parentFormCode, [])
+        byParentCode.get(form.parentFormCode).push(form)
+      } else {
+        standalone.push(form)
+      }
+    })
+    const ordered = []
+    standalone.forEach((form) => {
+      ordered.push({ form, isComponent: false })
+      const children = byParentCode.get(form.formCode)
+      if (children) children.forEach((child) => ordered.push({ form: child, isComponent: true }))
+      byParentCode.delete(form.formCode)
+    })
+    // Any component whose parent CaseForm isn't in this list (not yet
+    // generated, or filtered out) still needs to render somewhere.
+    byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
+    return ordered
+  }, [caseForms])
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
@@ -585,23 +697,6 @@ const CRMCaseDetail = () => {
       ensureAttorneys()
     }
   }, [showAssignModal, ensureUsers, ensureAttorneys])
-
-  // As soon as the client submits (or updates) their profile information
-  // against this case, refresh the client info section immediately so the
-  // Case Manager sees it without a manual page refresh.
-  useEffect(() => {
-    if (!connected) return
-    return subscribe('case:client_submitted', (payload) => {
-      if (String(payload?._id) !== String(id)) return
-      setLiveUpdateBanner(
-        payload.isFirstSubmission
-          ? 'The client just submitted their profile information.'
-          : 'The client just updated their profile information.'
-      )
-      fetchCaseDetail()
-      setTimeout(() => setLiveUpdateBanner(''), 8000)
-    })
-  }, [connected, id])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -711,6 +806,24 @@ const CRMCaseDetail = () => {
       setTabLoading(prev => ({ ...prev, documents: false }))
     }
   }, [id, fetched.documents])
+
+  const parentCaseId = caseData?.parentCase?._id || caseData?.parentCase
+  useEffect(() => {
+    if (!documentsActive || !parentCaseId) { setParentChecklistItems([]); return }
+    let cancelled = false
+    casesApi.get(parentCaseId).then((response) => {
+      if (cancelled) return
+      const parentCase = response.data?.case || response.data
+      const items = Array.isArray(parentCase?.checklistItems) ? parentCase.checklistItems
+        : Array.isArray(parentCase?.documentChecklist) ? parentCase.documentChecklist
+        : []
+      setParentChecklistItems(items.map((item) => ({ ...item, sharedFromEmployer: true })))
+    }).catch((error) => {
+      console.error('Error fetching shared employer checklist:', error)
+      if (!cancelled) setParentChecklistItems([])
+    })
+    return () => { cancelled = true }
+  }, [documentsActive, parentCaseId])
 
   const fetchPayments = useCallback(async (force = false) => {
     if (fetched.payments && !force) return
@@ -844,6 +957,43 @@ const CRMCaseDetail = () => {
       setFormsOverviewError(data.message || error.message || 'Unable to load the full USCIS forms overview.')
     }
   }, [id])
+
+  // As soon as the client submits (or updates) their profile information
+  // against this case, refresh the client info section immediately so the
+  // Case Manager sees it without a manual page refresh.
+  //
+  // This is also the one moment (today) a questionnaire/checklist answer
+  // save actually happens against this case - see questionnaire.service.js's
+  // saveAnswers, which is what writes masterData, flips
+  // questionnaireReferences status, and calls markCaseFormsStale/
+  // canonicalSyncService.syncCase. None of that pushes its own socket event,
+  // so without forcing a refetch here a Case Manager already sitting on this
+  // page would keep seeing pre-submission Documents/Forms/checklist-progress
+  // data - the Documents tab wouldn't show newly-uploaded file-type answers,
+  // and the Forms tab wouldn't reflect the new syncState.stale/completion
+  // numbers - until they left the tab and came back (which re-fetches from
+  // scratch) or clicked the tab's own manual Refresh button. Also
+  // invalidates questionnairesApi.getForCase/listCaseChecklists' 5s
+  // cachedGet TTL so the re-fetch below can't itself serve back the same
+  // stale response.
+  useEffect(() => {
+    if (!connected) return
+    return subscribe('case:client_submitted', (payload) => {
+      if (String(payload?._id) !== String(id)) return
+      setLiveUpdateBanner(
+        payload.isFirstSubmission
+          ? 'The client just submitted their profile information.'
+          : 'The client just updated their profile information.'
+      )
+      invalidateCachedGet(`/questionnaires/case/${id}`)
+      fetchCaseDetail()
+      fetchChecklistsProgress(id)
+      fetchDocuments(true)
+      fetchCaseForms(true)
+      fetchFormsOverview(true)
+      setTimeout(() => setLiveUpdateBanner(''), 8000)
+    })
+  }, [connected, id, fetchChecklistsProgress, fetchDocuments, fetchCaseForms, fetchFormsOverview])
 
   // Phase 2: on-demand live fetch from uscis.gov for a mapped form whose
   // template doesn't exist yet.
@@ -1313,15 +1463,32 @@ const CRMCaseDetail = () => {
     caseData?.status === 'pending_assignment' || !caseData?.assignedCaseManager
   )
 
-  const getChecklistItems = () => (
-    Array.isArray(caseData?.checklistItems) ? caseData.checklistItems :
-    Array.isArray(caseData?.documentChecklist) ? caseData.documentChecklist :
-    []
-  )
+  const getChecklistItems = () => {
+    const ownItems = Array.isArray(caseData?.checklistItems) ? caseData.checklistItems :
+      Array.isArray(caseData?.documentChecklist) ? caseData.documentChecklist :
+      []
+    // The employer's own required items are shared with every employee/
+    // child case (see Backend's sharedCaseRoles.js) — merge them in here so
+    // this employee's Documents tab shows the whole picture, not just their
+    // own half of it. Never applies the other direction: the principal case
+    // never shows any one employee's own items.
+    return parentChecklistItems.length ? [...ownItems, ...parentChecklistItems] : ownItems
+  }
 
-  const getChecklistStatus = (item) => (
-    item?.status || item?.uploadStatus || (item?.uploadedFiles?.length || item?.files?.length ? 'uploaded' : 'pending')
-  )
+  // BUG (fixed): this only ever read item.status/item.uploadedFiles directly
+  // off the Case.checklistItems subdocument — a field nothing updates when a
+  // real Document actually gets uploaded (confirmed live: a case with 4 real,
+  // uploaded documents whose documentType exactly matched 4 required items
+  // still showed all of them "Pending", because checklistItems[].status was
+  // never synced). Rather than add yet another place that has to remember to
+  // write that field, check the ACTUAL documents array (already fetched for
+  // the "Uploaded Documents" table below) live, by documentType — this can
+  // never go stale since it's the same real data the Documents table itself
+  // shows, for any case, automatically.
+  const getChecklistStatus = (item) => {
+    if (item?.documentType && documents.some((doc) => doc.documentType === item.documentType && !doc.deletedAt)) return 'uploaded'
+    return item?.status || item?.uploadStatus || (item?.uploadedFiles?.length || item?.files?.length ? 'uploaded' : 'pending')
+  }
 
   // Server-computed completeness (calculateDetailedProgress) is authoritative
   // when this case's visa type has a canonical DB questionnaire (H-1B/L-1A
@@ -1515,6 +1682,43 @@ const CRMCaseDetail = () => {
     <div className="space-y-6">
       {viewingDocument && (
         <CaseDocumentViewer document={viewingDocument} onClose={() => setViewingDocument(null)} />
+      )}
+      {editingDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h3 className="text-lg font-semibold text-foreground truncate">
+                Edit — {getDocumentName(editingDocument)}
+              </h3>
+              <button type="button" onClick={() => setEditingDocument(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {editingError && (
+                <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{editingError}</div>
+              )}
+              {editingLoading ? (
+                renderSkeleton()
+              ) : (
+                <textarea
+                  value={editingContent}
+                  onChange={(event) => setEditingContent(event.target.value)}
+                  className="input-field h-96 w-full font-mono text-sm"
+                  spellCheck={false}
+                />
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+              <button type="button" onClick={() => setEditingDocument(null)} className="btn-secondary text-sm" disabled={editingSaving}>
+                Cancel
+              </button>
+              <button type="button" onClick={saveDocumentEditor} className="btn-primary text-sm disabled:opacity-50" disabled={editingSaving || editingLoading}>
+                {editingSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {liveUpdateBanner && (
         <div className="flex items-center gap-2 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm font-medium text-blue-800">
@@ -1903,13 +2107,19 @@ const CRMCaseDetail = () => {
                     <p className="text-xs text-muted-foreground">{formatCurrency(caseData.plan?.amount || caseData.packageAmount)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Documents Sent</p>
-                    <p className="font-medium">{getBundleDocuments().length || getUploadedChecklistCount()}</p>
+                    <p className="text-sm text-muted-foreground">Case Type</p>
+                    <p className="font-medium">{caseData.caseType || '—'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Documents Pending</p>
-                    <p className="font-medium">{getPendingChecklistItems().length}</p>
+                    <p className="text-sm text-muted-foreground">Filing / Petition Type</p>
+                    <p className="font-medium">{caseData.petitionType || '—'}</p>
                   </div>
+                  {caseData.caseStructure === 'employer_employee' && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">Employees</p>
+                      <p className="font-medium">{caseData.childCaseCount || (caseData.childCases || []).length || 0}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-muted-foreground">Stage</p>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseData.stage)}`}>
@@ -1933,260 +2143,6 @@ const CRMCaseDetail = () => {
                     <p className="font-medium">{new Date(caseData.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
-              </div>
-
-              {renderInformationRequestsPanel()}
-              <QuestionnaireAnswersPanel
-                title="Employer Questionnaire"
-                questionnaire={employerQuestionnaire.questionnaire}
-                fieldQuestions={employerQuestionnaire.fieldQuestions}
-                answerMap={employerQuestionnaire.answerMap}
-                loading={employerQuestionnaire.loading}
-              />
-              <QuestionnaireAnswersPanel
-                title="Employee Questionnaire"
-                questionnaire={employeeQuestionnaire.questionnaire}
-                fieldQuestions={employeeQuestionnaire.fieldQuestions}
-                answerMap={employeeQuestionnaire.answerMap}
-                loading={employeeQuestionnaire.loading}
-              />
-              <QuestionnaireAnswersPanel
-                title="Business Plan Checklist"
-                questionnaire={businessPlanQuestionnaire.questionnaire}
-                fieldQuestions={businessPlanQuestionnaire.fieldQuestions}
-                answerMap={businessPlanQuestionnaire.answerMap}
-                loading={businessPlanQuestionnaire.loading}
-              />
-              <QuestionnaireAnswersPanel
-                title="E-2 Supporting Documents"
-                questionnaire={supportingDocumentsQuestionnaire.questionnaire}
-                fieldQuestions={supportingDocumentsQuestionnaire.fieldQuestions}
-                answerMap={supportingDocumentsQuestionnaire.answerMap}
-                loading={supportingDocumentsQuestionnaire.loading}
-              />
-              <QuestionnaireAnswersPanel
-                title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
-                questionnaire={petitionerQuestionnaire.questionnaire}
-                fieldQuestions={petitionerQuestionnaire.fieldQuestions}
-                answerMap={petitionerQuestionnaire.answerMap}
-                loading={petitionerQuestionnaire.loading}
-              />
-              <QuestionnaireAnswersPanel
-                title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
-                questionnaire={beneficiaryQuestionnaire.questionnaire}
-                fieldQuestions={beneficiaryQuestionnaire.fieldQuestions}
-                answerMap={beneficiaryQuestionnaire.answerMap}
-                loading={beneficiaryQuestionnaire.loading}
-              />
-              {showJointSponsorPanel && (
-                <QuestionnaireAnswersPanel
-                  title={`${caseData.visaType || 'Family'} Visa — Joint Sponsor (I-864) Checklist`}
-                  questionnaire={jointSponsorQuestionnaire.questionnaire}
-                  fieldQuestions={jointSponsorQuestionnaire.fieldQuestions}
-                  answerMap={jointSponsorQuestionnaire.answerMap}
-                  loading={jointSponsorQuestionnaire.loading}
-                />
-              )}
-
-              {isGreenCardRenewalCase && (
-                <QuestionnaireAnswersPanel
-                  title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
-                  questionnaire={greenCardRenewalQuestionnaire.questionnaire}
-                  fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
-                  answerMap={greenCardRenewalQuestionnaire.answerMap}
-                  loading={greenCardRenewalQuestionnaire.loading}
-                />
-              )}
-
-              {gcNvcEligible && !gcNvcApproved && (
-                <div className="card">
-                  <h3 className="text-lg font-semibold text-foreground">Green Card – National Visa Center (NVC) / Consular Processing Checklist</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Optional beneficiary checklist for the DS-260 / NVC process. It is not visible to the client
-                    until you approve it here — approving assigns it to the beneficiary and does not affect the
-                    Green Card checklist already assigned.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleApproveGcNvcChecklist}
-                    disabled={approvingGcNvc}
-                    className="btn-primary text-sm mt-3 disabled:opacity-50"
-                  >
-                    {approvingGcNvc ? 'Approving…' : 'Approve / Enable GC-NVC Checklist'}
-                  </button>
-                </div>
-              )}
-              {gcNvcApproved && (
-                <QuestionnaireAnswersPanel
-                  title="Green Card – National Visa Center (NVC) / Consular Processing Checklist"
-                  questionnaire={gcNvcQuestionnaire.questionnaire}
-                  fieldQuestions={gcNvcQuestionnaire.fieldQuestions}
-                  answerMap={gcNvcQuestionnaire.answerMap}
-                  loading={gcNvcQuestionnaire.loading}
-                />
-              )}
-
-              {isFamilyCase && (
-                <div className="card">
-                  <h3 className="text-lg font-semibold text-foreground">Filing Path</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Which of the I-130/Green-Card/I-864 checklists apply. Changing this assigns any newly-applicable
-                    checklist(s) - it never removes or duplicates one already assigned.
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-end gap-3">
-                    <select
-                      value={filingPath}
-                      onChange={(event) => setFilingPath(event.target.value)}
-                      className="input-field text-sm"
-                    >
-                      <option value="">Not selected</option>
-                      <option value="PETITION_ONLY">Petition Only (I-130)</option>
-                      <option value="ADJUSTMENT_OF_STATUS">Adjustment of Status / Green Card (I-485)</option>
-                      <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleSaveFilingPath}
-                      disabled={savingFilingPath || filingPath === (caseData.processingPath || '')}
-                      className="btn-primary text-sm disabled:opacity-50"
-                    >
-                      {savingFilingPath ? 'Saving…' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="card">
-                <h3 className="text-lg font-semibold text-foreground mb-4">Client Intake Summary</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {getClientProfileEntries().map(([label, value]) => (
-                    <div key={label} className="rounded-lg bg-muted p-3">
-                      <p className="text-sm text-muted-foreground">{label}</p>
-                      <p className="font-medium text-foreground">
-                        {label === 'Date of Birth' && value ? new Date(value).toLocaleDateString() : value}
-                      </p>
-                    </div>
-                  ))}
-                  <div className="rounded-lg bg-blue-50 p-3">
-                    <p className="text-sm text-blue-700">Selected Visa</p>
-                    <p className="font-medium text-blue-950">{resolveDisplayVisa(caseData) || caseData.visaCategory || 'Not selected'}</p>
-                  </div>
-                  <div className="rounded-lg bg-blue-50 p-3">
-                    <p className="text-sm text-blue-700">Selected Package</p>
-                    <p className="font-medium text-blue-950 capitalize">{getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-semibold text-foreground">Phase 2 Intake Review</h3>
-                    <p className="text-sm text-muted-foreground">Client profile, questionnaire, documents, submission status, and completion signals.</p>
-                  </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-                    getSubmissionStatus() === 'submitted' || getSubmissionStatus() === 'locked'
-                      ? 'bg-blue-100 text-blue-800'
-                      : getSubmissionStatus() === 'draft'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-slate-100 text-slate-700'
-                  }`}>
-                    {getSubmissionStatus().replace('_', ' ')}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profile Completion</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{getIntakeProgress().overall || caseData.clientProfile?.profileCompletion || 0}%</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Documents Uploaded</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{getBundleDocuments().length}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Missing Documents</p>
-                    <p className="mt-1 text-2xl font-bold text-slate-900">{hasServerDocumentsProgress ? getPendingChecklistItems().length : (intakeBundle?.missingDocuments?.length ?? getPendingChecklistItems().length)}</p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Questionnaire</p>
-                    <p className="mt-1 text-lg font-bold capitalize text-slate-900">{getQuestionnaireSummary().status}</p>
-                    <p className="text-xs text-slate-500">{getQuestionnaireSummary().answers} answer records</p>
-                  </div>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {progressSections().map(section => (
-                    <div key={section.key} className="rounded-lg border border-slate-200 p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-sm font-semibold text-slate-800">{section.label}</p>
-                        <span className="text-xs font-bold text-slate-600">{section.value}%</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div className={`h-full rounded-full ${section.value === 100 ? 'bg-blue-500' : section.value > 0 ? 'bg-amber-500' : 'bg-slate-300'}`} style={{ width: `${section.value}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <div>
-                    <h4 className="mb-3 text-sm font-bold text-slate-900">Missing Documents</h4>
-                    <div className="space-y-2">
-                      {(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).slice(0, 8).map((item, index) => (
-                        <div key={`${item.documentType || item.name || index}`} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                          <span className="font-semibold">{item.name || item.documentType || item.title}</span>
-                          <span className="ml-2 text-xs uppercase tracking-wide text-amber-700">{item.required === false ? 'Optional' : 'Required'}</span>
-                        </div>
-                      ))}
-                      {!(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).length && (
-                        <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">No missing required documents.</p>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 className="mb-3 text-sm font-bold text-slate-900">Recent Activity</h4>
-                    <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
-                      {(intakeBundle?.recentActivity || caseData.timeline || []).slice(0, 8).map((item, index) => (
-                        <div key={item._id || `${item.title}-${index}`} className="border-l-2 border-blue-200 pl-3">
-                          <p className="text-sm font-semibold text-slate-900">{item.title || item.action || item.type}</p>
-                          <p className="text-xs text-slate-500">{item.description}</p>
-                          <p className="mt-1 text-[11px] text-slate-400">{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleString() : ''}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-foreground">Document Checklist</h3>
-                  <span className="text-sm text-muted-foreground">
-                    {getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending
-                  </span>
-                </div>
-                {getChecklistItems().length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {getChecklistItems().slice(0, 8).map((item, index) => {
-                      const status = getChecklistStatus(item)
-                      const completed = ['uploaded', 'submitted', 'approved', 'received', 'complete', 'completed'].includes(status)
-                      return (
-                        <div key={`${item.name || item.title || index}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
-                            <p className="text-xs text-muted-foreground">{item.required === false ? 'Optional' : 'Required'}</p>
-                          </div>
-                          <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${completed ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
-                            {completed ? 'Sent' : 'Pending'}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No checklist has been generated for this case yet.</p>
-                )}
               </div>
 
               {/* Filing Readiness Score */}
@@ -2558,6 +2514,230 @@ const CRMCaseDetail = () => {
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
+        {renderInformationRequestsPanel()}
+        <QuestionnaireAnswersPanel
+          title="Employer Questionnaire"
+          questionnaire={employerQuestionnaire.questionnaire}
+          fieldQuestions={employerQuestionnaire.fieldQuestions}
+          answerMap={employerQuestionnaire.answerMap}
+          loading={employerQuestionnaire.loading}
+        />
+        <QuestionnaireAnswersPanel
+          title="Employee Questionnaire"
+          questionnaire={employeeQuestionnaire.questionnaire}
+          fieldQuestions={employeeQuestionnaire.fieldQuestions}
+          answerMap={employeeQuestionnaire.answerMap}
+          loading={employeeQuestionnaire.loading}
+        />
+        <QuestionnaireAnswersPanel
+          title="Business Plan Checklist"
+          questionnaire={businessPlanQuestionnaire.questionnaire}
+          fieldQuestions={businessPlanQuestionnaire.fieldQuestions}
+          answerMap={businessPlanQuestionnaire.answerMap}
+          loading={businessPlanQuestionnaire.loading}
+        />
+        <QuestionnaireAnswersPanel
+          title="E-2 Supporting Documents"
+          questionnaire={supportingDocumentsQuestionnaire.questionnaire}
+          fieldQuestions={supportingDocumentsQuestionnaire.fieldQuestions}
+          answerMap={supportingDocumentsQuestionnaire.answerMap}
+          loading={supportingDocumentsQuestionnaire.loading}
+        />
+        <QuestionnaireAnswersPanel
+          title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
+          questionnaire={petitionerQuestionnaire.questionnaire}
+          fieldQuestions={petitionerQuestionnaire.fieldQuestions}
+          answerMap={petitionerQuestionnaire.answerMap}
+          loading={petitionerQuestionnaire.loading}
+        />
+        <QuestionnaireAnswersPanel
+          title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
+          questionnaire={beneficiaryQuestionnaire.questionnaire}
+          fieldQuestions={beneficiaryQuestionnaire.fieldQuestions}
+          answerMap={beneficiaryQuestionnaire.answerMap}
+          loading={beneficiaryQuestionnaire.loading}
+        />
+        {showJointSponsorPanel && (
+          <QuestionnaireAnswersPanel
+            title={`${caseData.visaType || 'Family'} Visa — Joint Sponsor (I-864) Checklist`}
+            questionnaire={jointSponsorQuestionnaire.questionnaire}
+            fieldQuestions={jointSponsorQuestionnaire.fieldQuestions}
+            answerMap={jointSponsorQuestionnaire.answerMap}
+            loading={jointSponsorQuestionnaire.loading}
+          />
+        )}
+
+        {isGreenCardRenewalCase && (
+          <QuestionnaireAnswersPanel
+            title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
+            questionnaire={greenCardRenewalQuestionnaire.questionnaire}
+            fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
+            answerMap={greenCardRenewalQuestionnaire.answerMap}
+            loading={greenCardRenewalQuestionnaire.loading}
+          />
+        )}
+
+        {gcNvcEligible && !gcNvcApproved && (
+          <div className="card">
+            <h3 className="text-lg font-semibold text-foreground">Green Card – National Visa Center (NVC) / Consular Processing Checklist</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Optional beneficiary checklist for the DS-260 / NVC process. It is not visible to the client
+              until you approve it here — approving assigns it to the beneficiary and does not affect the
+              Green Card checklist already assigned.
+            </p>
+            <button
+              type="button"
+              onClick={handleApproveGcNvcChecklist}
+              disabled={approvingGcNvc}
+              className="btn-primary text-sm mt-3 disabled:opacity-50"
+            >
+              {approvingGcNvc ? 'Approving…' : 'Approve / Enable GC-NVC Checklist'}
+            </button>
+          </div>
+        )}
+        {gcNvcApproved && (
+          <QuestionnaireAnswersPanel
+            title="Green Card – National Visa Center (NVC) / Consular Processing Checklist"
+            questionnaire={gcNvcQuestionnaire.questionnaire}
+            fieldQuestions={gcNvcQuestionnaire.fieldQuestions}
+            answerMap={gcNvcQuestionnaire.answerMap}
+            loading={gcNvcQuestionnaire.loading}
+          />
+        )}
+
+        {isFamilyCase && (
+          <div className="card">
+            <h3 className="text-lg font-semibold text-foreground">Filing Path</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Which of the I-130/Green-Card/I-864 checklists apply. Changing this assigns any newly-applicable
+              checklist(s) - it never removes or duplicates one already assigned.
+            </p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <select
+                value={filingPath}
+                onChange={(event) => setFilingPath(event.target.value)}
+                className="input-field text-sm"
+              >
+                <option value="">Not selected</option>
+                <option value="PETITION_ONLY">Petition Only (I-130)</option>
+                <option value="ADJUSTMENT_OF_STATUS">Adjustment of Status / Green Card (I-485)</option>
+                <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleSaveFilingPath}
+                disabled={savingFilingPath || filingPath === (caseData.processingPath || '')}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                {savingFilingPath ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="card">
+          <h3 className="text-lg font-semibold text-foreground mb-4">Client Intake Summary</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {getClientProfileEntries().map(([label, value]) => (
+              <div key={label} className="rounded-lg bg-muted p-3">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="font-medium text-foreground">
+                  {label === 'Date of Birth' && value ? new Date(value).toLocaleDateString() : value}
+                </p>
+              </div>
+            ))}
+            <div className="rounded-lg bg-blue-50 p-3">
+              <p className="text-sm text-blue-700">Selected Visa</p>
+              <p className="font-medium text-blue-950">{resolveDisplayVisa(caseData) || caseData.visaCategory || 'Not selected'}</p>
+            </div>
+            <div className="rounded-lg bg-blue-50 p-3">
+              <p className="text-sm text-blue-700">Selected Package</p>
+              <p className="font-medium text-blue-950 capitalize">{getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Phase 2 Intake Review</h3>
+              <p className="text-sm text-muted-foreground">Client profile, questionnaire, documents, submission status, and completion signals.</p>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
+              getSubmissionStatus() === 'submitted' || getSubmissionStatus() === 'locked'
+                ? 'bg-blue-100 text-blue-800'
+                : getSubmissionStatus() === 'draft'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-slate-100 text-slate-700'
+            }`}>
+              {getSubmissionStatus().replace('_', ' ')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profile Completion</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{getIntakeProgress().overall || caseData.clientProfile?.profileCompletion || 0}%</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Documents Uploaded</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{getBundleDocuments().length}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Missing Documents</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{hasServerDocumentsProgress ? getPendingChecklistItems().length : (intakeBundle?.missingDocuments?.length ?? getPendingChecklistItems().length)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Questionnaire</p>
+              <p className="mt-1 text-lg font-bold capitalize text-slate-900">{getQuestionnaireSummary().status}</p>
+              <p className="text-xs text-slate-500">{getQuestionnaireSummary().answers} answer records</p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {progressSections().map(section => (
+              <div key={section.key} className="rounded-lg border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-800">{section.label}</p>
+                  <span className="text-xs font-bold text-slate-600">{section.value}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div className={`h-full rounded-full ${section.value === 100 ? 'bg-blue-500' : section.value > 0 ? 'bg-amber-500' : 'bg-slate-300'}`} style={{ width: `${section.value}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+              <h4 className="mb-3 text-sm font-bold text-slate-900">Missing Documents</h4>
+              <div className="space-y-2">
+                {(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).slice(0, 8).map((item, index) => (
+                  <div key={`${item.documentType || item.name || index}`} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <span className="font-semibold">{item.name || item.documentType || item.title}</span>
+                    <span className="ml-2 text-xs uppercase tracking-wide text-amber-700">{item.required === false ? 'Optional' : 'Required'}</span>
+                  </div>
+                ))}
+                {!(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).length && (
+                  <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">No missing required documents.</p>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4 className="mb-3 text-sm font-bold text-slate-900">Recent Activity</h4>
+              <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+                {(intakeBundle?.recentActivity || caseData.timeline || []).slice(0, 8).map((item, index) => (
+                  <div key={item._id || `${item.title}-${index}`} className="border-l-2 border-blue-200 pl-3">
+                    <p className="text-sm font-semibold text-slate-900">{item.title || item.action || item.type}</p>
+                    <p className="text-xs text-slate-500">{item.description}</p>
+                    <p className="mt-1 text-[11px] text-slate-400">{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleString() : ''}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* EB-1A is a "satisfy at least 3 of 10 criteria" classification,
             not a flat document list — Case Managers review/mark criteria
             here instead of the generic flat "Required Documents" card. See
@@ -2584,10 +2764,19 @@ const CRMCaseDetail = () => {
                   // "Copy of I-94 (Arrival-Departure record)" requests) -
                   // that's a real, valid case (a document requested for more
                   // than one participant/role), not a data bug to work around.
-                  <div key={item._id || `${item.documentType || item.name || "item"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                  // Merged list (this case's own items + parentChecklistItems)
+                  // - the same static per-visa document-requirements template
+                  // seeds both a principal's and its children's checklistItems
+                  // independently, so identical items on each side can carry
+                  // the SAME literal _id. Scope-prefixing the key keeps every
+                  // row unique even when both lists render together.
+                  <div key={`${item.sharedFromEmployer ? 'employer' : 'own'}-${item._id || item.documentType || item.name || "item"}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
                     <div className="min-w-0">
                       <p className="font-medium text-foreground truncate">{item.name || item.title || item.documentType || `Document ${index + 1}`}</p>
-                      <p className="text-xs text-muted-foreground">{item.required === false ? 'Optional' : 'Required'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.required === false ? 'Optional' : 'Required'}
+                        {item.sharedFromEmployer && <span className="ml-2 font-semibold text-blue-600">Employer • Shared</span>}
+                      </p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${completed ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                       {completed ? 'Sent' : 'Pending'}
@@ -2645,7 +2834,12 @@ const CRMCaseDetail = () => {
                           {getDocumentName(doc)}
                         </button>
                       </td>
-                      <td className="py-3 px-4">{doc.documentType}</td>
+                      <td className="py-3 px-4">
+                        {doc.documentType}
+                        {String(doc.caseId?._id || doc.caseId) !== String(id) && (
+                          <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Employer • Shared</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>
                       <td className="py-3 px-4">
                         <span className={`badge ${doc.aiExtractionStatus === 'completed' ? 'badge-success' : doc.aiExtractionStatus === 'failed' ? 'badge-danger' : 'badge-info'}`}>
@@ -2666,6 +2860,15 @@ const CRMCaseDetail = () => {
                           >
                             <Eye className="h-3.5 w-3.5" /> View
                           </button>
+                          {isTextEditableDocument(doc) && (
+                            <button
+                              type="button"
+                              onClick={() => openDocumentEditor(doc)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            >
+                              <Save className="h-3.5 w-3.5" /> Edit
+                            </button>
+                          )}
                           <select
                             className="input-field min-w-32 text-sm py-1"
                             defaultValue=""
@@ -2769,11 +2972,18 @@ const CRMCaseDetail = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {caseForms.map((form) => (
+                    {sortedCaseForms.map(({ form, isComponent }) => (
                       <tr key={form._id} className="border-b border-border">
                         <td className="py-3 px-4">
-                          <p className="font-medium text-foreground">{form.formCode}</p>
-                          <p className="text-xs text-muted-foreground">{form.formTemplateId?.title}</p>
+                          <p className={`font-medium text-foreground ${isComponent ? 'pl-4' : ''}`}>
+                            {isComponent && <span className="text-muted-foreground mr-1">&#8627;</span>}
+                            {form.formCode}
+                          </p>
+                          <p className={`text-xs text-muted-foreground ${isComponent ? 'pl-4' : ''}`}>
+                            {isComponent
+                              ? `Supplement of ${form.parentFormCode}${form.formTemplateId?.title ? ` — ${form.formTemplateId.title}` : ''}`
+                              : form.formTemplateId?.title}
+                          </p>
                         </td>
                         <td className="py-3 px-4">{form.formVersion}</td>
                         <td className="py-3 px-4 min-w-[180px]">

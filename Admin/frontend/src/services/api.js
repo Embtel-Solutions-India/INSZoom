@@ -74,6 +74,18 @@ const cachedGet = (url, config = {}, ttlMs = 5000) => {
   return promise
 }
 
+// Drops any cachedGet entry whose URL starts with `urlPrefix` so the next
+// read is forced back to the server instead of serving up to `ttlMs` (5s) of
+// stale data. Needed because cachedGet has no write-side invalidation of its
+// own - callers that know a relevant write just happened (e.g. a case's
+// questionnaire/checklist data changing via a socket push) call this before
+// re-fetching, instead of waiting out the TTL.
+export const invalidateCachedGet = (urlPrefix) => {
+  for (const key of shortGetCache.keys()) {
+    if (key.startsWith(urlPrefix)) shortGetCache.delete(key)
+  }
+}
+
 // Add token to requests
 api.interceptors.request.use(
   (config) => {
@@ -323,6 +335,10 @@ export const documentsApi = {
   preview: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),
   review: (documentId, payload) => api.put(`/documents/${documentId}/review`, payload),
   versions: (documentId) => api.get(`/documents/${documentId}/versions`),
+  // In-place editing (plain-text documents only) - case manager view/edit/save,
+  // reusing the document's existing version history under the hood.
+  getContent: (documentId) => api.get(`/documents/${documentId}/content`),
+  saveContent: (documentId, content, changeReason) => api.put(`/documents/${documentId}/content`, { content, changeReason }),
 }
 
 export const clientIntakeApi = {

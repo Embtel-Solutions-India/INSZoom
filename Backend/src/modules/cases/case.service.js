@@ -351,6 +351,40 @@ function addActivity(caseData, action, description, user) {
   capArrayWithArchive(caseData, "activityLog");
 }
 
+// BUG (fixed): a raw Mongoose VersionError from a Case.save() conflict was
+// reaching the browser as a scary, unhandled error banner (e.g. "No matching
+// document found for id ... version 52 modifiedPaths ..."). Confirmed live:
+// making PetitionAssemblyService/canonicalSyncService's background sync
+// fire-and-forget (instead of blocking every questionnaire save for 10+
+// seconds) means it can now still be writing to a Case — e.g. rebuilding
+// employerCompanyProfile — at the exact moment a foreground action like
+// submitResponse's own load-modify-save on that SAME case document tries to
+// save, and Mongoose's optimistic concurrency (the __v version key) rejects
+// whichever one saves second. This isn't a new category of bug (any two
+// concurrent writers on a versioned document could always collide), but the
+// background sync widens the window it's likely to happen in.
+// saveCaseWithVersionRetry reloads the document fresh and re-applies the
+// SAME mutation on each retry, so a transient version conflict resolves
+// itself silently instead of failing the user-facing action outright.
+async function saveCaseWithVersionRetry(caseData, mutate, { maxAttempts = 3 } = {}) {
+  const Case = require("../../models/Case");
+  let current = caseData;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (attempt > 0) {
+      current = await Case.findById(current._id);
+      if (!current) return null;
+    }
+    await mutate(current);
+    try {
+      await current.save();
+      return current;
+    } catch (error) {
+      if (error.name !== "VersionError" || attempt === maxAttempts - 1) throw error;
+    }
+  }
+  return current;
+}
+
 function addTimelineEvent(caseData, type, title, description, user, metadata = {}) {
   if (!Array.isArray(caseData.timeline)) caseData.timeline = [];
   caseData.timeline.push({ type, title, description, metadata, createdBy: user?._id, createdAt: new Date() });
@@ -831,6 +865,7 @@ module.exports = {
   populateCaseQueryForClient,
   reopenCase,
   resolveTeamLeadForCase,
+  saveCaseWithVersionRetry,
   serializeCaseForUser,
   setStage,
   summarizeCase,

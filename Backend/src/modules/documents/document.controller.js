@@ -390,6 +390,33 @@ exports.previewDocument = async (req, res, next) => {
   }
 };
 
+exports.getDocumentContent = async (req, res, next) => {
+  try {
+    const document = await findAccessibleDocument(req.params.id, req.user);
+    const content = await documentService.readDocumentTextContent(document);
+    res.json({ success: true, content, mimeType: document.mimeType, editable: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.saveDocumentContent = async (req, res, next) => {
+  try {
+    const document = await findAccessibleDocument(req.params.id, req.user);
+    // Same permission bar as replacing a file outright (addVersion) - editing
+    // a client's document in place is a case-manager+ action, never a client
+    // or attorney one.
+    if (!documentService.canModifyDocument(req.user)) {
+      return res.status(403).json({ success: false, message: "You do not have permission to edit this document" });
+    }
+    const updated = await documentService.saveDocumentTextContent(document, req.body.content, req.user, req, req.body.changeReason);
+    await documentService.writeAuditLog("edit_content", updated, req.user, { version: updated.currentVersion }, req);
+    res.json({ success: true, message: "Document content saved", document: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.bulkDownload = async (req, res, next) => {
   try {
     const ids = req.body.documentIds || req.body.ids || [];

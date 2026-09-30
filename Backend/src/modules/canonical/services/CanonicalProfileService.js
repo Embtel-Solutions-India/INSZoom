@@ -133,7 +133,49 @@ class CanonicalProfileService {
     const validation = await CanonicalValidationService.validate(built);
     const version = (caseRecord.canonicalProfile?.version || 0) + 1;
     const changes = CanonicalComparisonService.compare(previous, built.profile);
-    caseRecord.canonicalProfile = {
+    const lastBuiltAt = new Date();
+    // BUG (fixed): a plain caseRecord.save() here could lose a race against
+    // another concurrent writer on this same case (e.g. a questionnaire
+    // submit/approve saving at the same moment) and throw a VersionError,
+    // silently dropping this rebuild's result (this call is itself invoked
+    // fire-and-forget from saveAnswers, so nothing downstream would even see
+    // the failure). The expensive part above (CanonicalBuilderService.build,
+    // ~8s) doesn't depend on which case-document instance gets saved, so a
+    // retry only needs to re-apply the already-computed profile/history to a
+    // freshly-reloaded document, not redo the rebuild itself.
+    await caseService.saveCaseWithVersionRetry(caseRecord, (doc) => {
+      doc.canonicalProfile = {
+        profile: built.profile,
+        fieldMetadata: built.fieldMetadata,
+        sources: built.sources,
+        conflicts: built.conflicts,
+        validation,
+        missingFields: validation.missingFields,
+        version,
+        status: validation.status,
+        lastBuiltAt,
+        lastBuiltBy: this.userId(user),
+        sourceFingerprint: built.sourceFingerprint,
+      };
+      CanonicalHistoryService.push(doc, CanonicalHistoryService.entry({
+        version,
+        action: options.reason === "sync" ? "sync_completed" : "profile_rebuilt",
+        changes,
+        conflicts: built.conflicts,
+        validation,
+        user,
+        source: options.source || "canonical_builder",
+        reason: options.reason,
+        snapshot: built.profile,
+      }));
+    });
+    await this.audit(version === 1 ? "CANONICAL_PROFILE_CREATED" : "CANONICAL_PROFILE_UPDATED", caseId, user, req, { version, changes, validationStatus: validation.status });
+    if (built.conflicts.length) await this.audit("CANONICAL_CONFLICT_DETECTED", caseId, user, req, { conflicts: built.conflicts });
+    if (!validation.valid) await this.audit("CANONICAL_VALIDATION_FAILED", caseId, user, req, validation);
+    // Built from the already-computed local values, not caseRecord.canonicalProfile
+    // directly — a retry above may have saved onto a different, freshly-reloaded
+    // document instance than caseRecord, which would otherwise return stale data.
+    return {
       profile: built.profile,
       fieldMetadata: built.fieldMetadata,
       sources: built.sources,
@@ -142,26 +184,10 @@ class CanonicalProfileService {
       missingFields: validation.missingFields,
       version,
       status: validation.status,
-      lastBuiltAt: new Date(),
+      lastBuiltAt,
       lastBuiltBy: this.userId(user),
       sourceFingerprint: built.sourceFingerprint,
     };
-    CanonicalHistoryService.push(caseRecord, CanonicalHistoryService.entry({
-      version,
-      action: options.reason === "sync" ? "sync_completed" : "profile_rebuilt",
-      changes,
-      conflicts: built.conflicts,
-      validation,
-      user,
-      source: options.source || "canonical_builder",
-      reason: options.reason,
-      snapshot: built.profile,
-    }));
-    await caseRecord.save();
-    await this.audit(version === 1 ? "CANONICAL_PROFILE_CREATED" : "CANONICAL_PROFILE_UPDATED", caseId, user, req, { version, changes, validationStatus: validation.status });
-    if (built.conflicts.length) await this.audit("CANONICAL_CONFLICT_DETECTED", caseId, user, req, { conflicts: built.conflicts });
-    if (!validation.valid) await this.audit("CANONICAL_VALIDATION_FAILED", caseId, user, req, validation);
-    return caseRecord.canonicalProfile;
   }
 
   static async resolveConflict(caseId, payload, user, req) {
@@ -173,29 +199,35 @@ class CanonicalProfileService {
     const validation = await CanonicalValidationService.validate(nextState);
     const version = (caseRecord.canonicalProfile?.version || 0) + 1;
     const changes = CanonicalComparisonService.compare(previous, nextState.profile || {});
-    caseRecord.canonicalProfile = {
+    const lastBuiltAt = caseRecord.canonicalProfile?.lastBuiltAt || new Date();
+    const lastBuiltBy = caseRecord.canonicalProfile?.lastBuiltBy;
+    const canonicalProfile = {
       ...nextState,
       validation,
       missingFields: validation.missingFields,
       version,
       status: validation.status,
-      lastBuiltAt: caseRecord.canonicalProfile?.lastBuiltAt || new Date(),
-      lastBuiltBy: caseRecord.canonicalProfile?.lastBuiltBy,
+      lastBuiltAt,
+      lastBuiltBy,
     };
-    CanonicalHistoryService.push(caseRecord, CanonicalHistoryService.entry({
-      version,
-      action: "conflict_resolved",
-      changes,
-      conflicts: nextState.conflicts,
-      validation,
-      user,
-      source: "manual_resolution",
-      reason: payload.reason,
-      snapshot: nextState.profile,
-    }));
-    await caseRecord.save();
+    // See rebuild()'s identical fix above — same collision risk against a
+    // concurrent background sync on this same case.
+    await caseService.saveCaseWithVersionRetry(caseRecord, (doc) => {
+      doc.canonicalProfile = canonicalProfile;
+      CanonicalHistoryService.push(doc, CanonicalHistoryService.entry({
+        version,
+        action: "conflict_resolved",
+        changes,
+        conflicts: nextState.conflicts,
+        validation,
+        user,
+        source: "manual_resolution",
+        reason: payload.reason,
+        snapshot: nextState.profile,
+      }));
+    });
     await this.audit("CANONICAL_CONFLICT_RESOLVED", caseId, user, req, { conflictId: payload.conflictId, path: payload.path, value: payload.value, reason: payload.reason });
-    return caseRecord.canonicalProfile;
+    return canonicalProfile;
   }
 
   // edits: [{path, value, reason, sourceFormId?}]. Field-level, highest-

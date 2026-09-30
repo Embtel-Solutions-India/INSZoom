@@ -74,7 +74,20 @@ async function canAccessDocument(user, document) {
 
 async function buildDocumentFilter(query, user) {
   const filter = { deletedAt: { $exists: false } };
-  if (query.caseId) filter.caseId = query.caseId;
+  if (query.caseId) {
+    // A child case in a principal/child family (any employer_employee or
+    // family case, any visa type — not one specific case) never holds the
+    // principal's own documents under its own caseId; the principal's side
+    // (e.g. the employer's business license/LCA) is genuinely shared with
+    // every child, exactly like the questionnaire data it's paired with (see
+    // sharedCaseRoles.js / getQuestionnaireForCase). Viewing a child's
+    // Documents page must show both its own uploads and the principal's,
+    // merged; viewing the principal itself stays scoped to its own caseId
+    // only (a principal never inherits any one child's documents).
+    const viewedCase = await Case.findById(query.caseId).select("parentCase").lean();
+    const caseIds = viewedCase?.parentCase ? [query.caseId, String(viewedCase.parentCase)] : [query.caseId];
+    filter.caseId = caseIds.length > 1 ? { $in: caseIds } : query.caseId;
+  }
   if (query.clientId || query.client) filter.client = query.clientId || query.client;
   if (query.beneficiaryId || query.beneficiary) filter.beneficiary = query.beneficiaryId || query.beneficiary;
   if (query.userId) filter.user = query.userId;
@@ -757,6 +770,55 @@ async function addDocumentVersion(document, file, user, req, changeReason) {
   return document;
 }
 
+// Editable in place: plain text only. Anything else (PDF/DOCX/images) needs a
+// real format-specific editor, not a raw buffer decode — deliberately out of
+// scope here (see docs/CLIENT_ADMIN_WORKFLOW_SESSION_REPORT.md §9.3).
+const TEXT_EDITABLE_MIME_TYPES = new Set(["text/plain", "text/csv", "text/markdown"]);
+
+function isTextEditable(document) {
+  return TEXT_EDITABLE_MIME_TYPES.has(document.mimeType) || /\.(txt|csv|md)$/i.test(document.originalName || document.fileName || "");
+}
+
+async function readDocumentTextContent(document) {
+  if (!isTextEditable(document)) {
+    const error = new Error("Only plain-text documents can be edited in place");
+    error.statusCode = 400;
+    throw error;
+  }
+  const buffer = await readDocumentBuffer(document);
+  return buffer.toString("utf8");
+}
+
+// Case managers editing a client-uploaded text file and saving it back -
+// reuses the SAME versioning path every other document-replace flow already
+// goes through (addDocumentVersion), rather than inventing a second, parallel
+// "edited content" storage mechanism. The edit becomes a new version with its
+// own audit trail, exactly like uploading a replacement file would.
+async function saveDocumentTextContent(document, content, user, req, changeReason) {
+  if (!isTextEditable(document)) {
+    const error = new Error("Only plain-text documents can be edited in place");
+    error.statusCode = 400;
+    throw error;
+  }
+  const buffer = Buffer.from(String(content ?? ""), "utf8");
+  const file = {
+    buffer,
+    originalname: document.originalName || document.fileName || "document.txt",
+    mimetype: document.mimeType && TEXT_EDITABLE_MIME_TYPES.has(document.mimeType) ? document.mimeType : "text/plain",
+    size: buffer.length,
+  };
+  try {
+    return await addDocumentVersion(document, file, user, req, changeReason || "Edited in place via Admin");
+  } catch (error) {
+    // Saving with no actual change (identical content) is a normal no-op
+    // here, not an error — addDocumentVersion's dedup guard exists to stop a
+    // real re-upload of the same file, which doesn't apply to "clicked Save
+    // without editing anything."
+    if (error.code === "DUPLICATE_DOCUMENT_VERSION") return document;
+    throw error;
+  }
+}
+
 async function restoreDocumentVersion(document, versionNumber, user, req, reason) {
   const source = document.versions.find((version) => version.version === Number(versionNumber));
   if (!source) {
@@ -1012,6 +1074,9 @@ module.exports = {
   listDocuments,
   populateDocumentQuery,
   readDocumentBuffer,
+  isTextEditable,
+  readDocumentTextContent,
+  saveDocumentTextContent,
   requestDocument,
   restoreDocumentVersion,
   shareDocument,
