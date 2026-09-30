@@ -244,12 +244,16 @@ export const employmentWorkflowApi = {
   submit: (caseId, target) => api.post(`/employment-workflow/${caseId}/submit`, { target }),
 };
 
-// Family/sponsor visa (K-1/K-3) two-party path — mirrors
-// employmentWorkflowApi's shape under separate field names. Only `submit`
-// is needed by the client portal today (case creation/invite happen via
-// direct backend calls only — no self-serve UI exists for this yet).
+// Family/sponsor visa (I-130/Green Card, K-1/K-3) two-party path — mirrors
+// employmentWorkflowApi's shape under separate field names.
 export const familyWorkflowApi = {
   submit: (caseId, target) => api.post(`/family-workflow/${caseId}/submit`, { target }),
+  // The petitioner's own "invite my beneficiary" / "I'll fill it myself"
+  // choice, made from their own dashboard (Backend's
+  // family-workflow.controller.js's setFamilyCompletionMode - same
+  // canAccessFamilyCase gate as the case-creation flow, no staff action
+  // needed for either branch).
+  setCompletionMode: (caseId, payload) => api.post(`/family-workflow/${caseId}/completion-mode`, payload),
 };
 
 // ── Profile ─────────────────────────────────────────

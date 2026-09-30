@@ -8,17 +8,25 @@ import { useSocket } from '../../../context/SocketContext'
 // Case-related tabs only — no Payments (no billing access, see
 // permissions.registry.js's attorney grant), no Expert Letters (a stub
 // upstream — fetchLetters() there never actually loads any data), no
-// Strategy (a deliberate product decision, not an access gap), no
-// Questionnaire (not something an attorney needs — a client-intake
-// artifact, not case-review material) and no Notes (redundant with
-// Feedback). "Messages" is deliberately NOT a tab here — it lives only in
-// the top-level nav (see pages/Messages/) since it's cross-case, not
-// case-scoped. Feedback IS case-scoped (attorney <-> case manager review
-// dialogue on this one case specifically), so it stays a tab.
+// Strategy (a deliberate product decision, not an access gap), and no Notes
+// (redundant with Feedback). "Messages" is deliberately NOT a tab here — it
+// lives only in the top-level nav (see pages/Messages/) since it's
+// cross-case, not case-scoped. Feedback IS case-scoped (attorney <-> case
+// manager review dialogue on this one case specifically), so it stays a
+// tab. Checklists (questionnaire answers) WAS excluded for the same
+// "client-intake, not case-review material" reason as Strategy — reversed
+// by explicit product decision so an attorney sees the same
+// employer/employee, petitioner/beneficiary, and single-client checklist
+// data the case manager does (questionnaires:read re-added to the attorney
+// role's permission grant + questionnaire.routes.js's caseReaderRoles).
+// USCIS Forms was tried and then explicitly reversed back out by product
+// decision - an attorney should not see the forms tab at all, not even
+// read-only (see FormsTab.jsx's removal + services/api.js's
+// previewForm/downloadForm removal in the same change).
 const TABS = [
   { to: 'overview', label: 'Overview' },
   { to: 'documents', label: 'Documents' },
-  { to: 'forms', label: 'USCIS Forms' },
+  { to: 'checklists', label: 'Checklists' },
   { to: 'petition', label: 'Petition' },
   { to: 'tracking', label: 'USCIS Tracking' },
   { to: 'feedback', label: 'Feedback' },

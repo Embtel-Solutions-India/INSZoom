@@ -98,9 +98,7 @@ const ROLE_PERMISSIONS = {
   // client. "feedback:*" is the attorney's actual communication channel
   // (staff-only by construction — see models/Feedback.js), surfaced in the
   // portal both as the top-level "Messages" hub and a case-scoped
-  // "Feedback" tab — same backend, two entry points. No "questionnaires:*"
-  // — a client-intake artifact, not case-review material; not a page this
-  // role needs.
+  // "Feedback" tab — same backend, two entry points.
   // questionnaires:read — deliberately re-added (was previously removed per
   // ATTORNEY_PORTAL.md as "client-intake data, not case-review material").
   // Reversed at explicit product request: an assigned attorney reviewing a
@@ -108,7 +106,13 @@ const ROLE_PERMISSIONS = {
   // and single-client checklist answers the case manager sees. Still
   // case-scoped only — canAccessCase's attorney branch (case.service.js)
   // is the actual per-case gate, same as every other attorney:* grant here.
-  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "forms:read", "questionnaires:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
+  // No "forms:read" — USCIS Forms was tried and explicitly reversed back
+  // out by product decision; an attorney must not see this page at all.
+  // Every grant here is read-only by construction: nothing in this array is
+  // a create/update/delete permission against case data itself (documents:
+  // create/feedback:create/tasks:create/update are the attorney's own
+  // notes/messages/tasks, never an edit to the client's case record).
+  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "questionnaires:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
 };
 
 function expandPermission(resource, action) {

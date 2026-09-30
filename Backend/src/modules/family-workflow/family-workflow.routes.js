@@ -32,6 +32,15 @@ router.post(
 );
 router.post("/:id/submit", authenticate, authorizeRoles("client", "beneficiary"), ctrl.submitParticipantInfo);
 router.post(
+  "/:id/completion-mode",
+  authenticate,
+  authorizeRoles("client", "admin", "super_admin", "team_lead", "case_manager"),
+  body("familyCompletionMode").isIn(["petitioner_completes", "invite_beneficiary"]),
+  body("email").optional().isEmail().normalizeEmail(),
+  validate,
+  ctrl.setFamilyCompletionMode
+);
+router.post(
   "/:id/gc-nvc-checklist/approve",
   authenticate,
   authorizeRoles("super_admin", "admin", "team_lead", "case_manager"),

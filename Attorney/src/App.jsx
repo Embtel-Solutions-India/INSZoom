@@ -11,7 +11,7 @@ import CaseListPage from './pages/Cases/CaseListPage'
 import CaseDetailLayout from './pages/Cases/CaseDetail/CaseDetailLayout'
 import OverviewTab from './pages/Cases/CaseDetail/OverviewTab'
 import DocumentsTab from './pages/Cases/CaseDetail/DocumentsTab'
-import FormsTab from './pages/Cases/CaseDetail/FormsTab'
+import ChecklistsTab from './pages/Cases/CaseDetail/ChecklistsTab'
 import PetitionTab from './pages/Cases/CaseDetail/PetitionTab'
 import TrackingTab from './pages/Cases/CaseDetail/TrackingTab'
 import FeedbackTab from './pages/Cases/CaseDetail/FeedbackTab'
@@ -50,7 +50,7 @@ export default function App() {
                   <Route index element={<Navigate to="overview" replace />} />
                   <Route path="overview" element={<OverviewTab />} />
                   <Route path="documents" element={<DocumentsTab />} />
-                  <Route path="forms" element={<FormsTab />} />
+                  <Route path="checklists" element={<ChecklistsTab />} />
                   <Route path="petition" element={<PetitionTab />} />
                   <Route path="tracking" element={<TrackingTab />} />
                   <Route path="feedback" element={<FeedbackTab />} />
