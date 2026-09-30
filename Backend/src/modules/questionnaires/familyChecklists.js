@@ -219,12 +219,19 @@ function resolveFamilyChecklistKeys(visaType, processingPath) {
   const greenCardBeneficiary = `green_card_${slug}_beneficiary_checklist`;
   const i864Sponsor = `i864_${slug}_petitioner_checklist`;
   if (processingPath === "ADJUSTMENT_OF_STATUS" || processingPath === "CONSULAR") {
-    // Deliberately the SAME automatic baseline for both paths - the
-    // separate, optional "Green Card – National Visa Center (NVC) /
-    // Consular Processing Checklist" (gc_nvc_<slug>_checklist, see
-    // resolveGcNvcChecklistKey below) is NEVER included here. It must not
-    // become client-visible merely because processingPath === CONSULAR -
-    // it is only ever assigned via family-workflow.controller.js's
+    // Deliberately no separate i130Beneficiary here for a Green Card case -
+    // greenCardBeneficiary already collects the same beneficiary
+    // information (plus the AOS-specific questions on top), so asking for
+    // it twice under two different checklists would just duplicate data
+    // entry for the same person. i130Beneficiary is only ever assigned on
+    // its own for the PETITION_ONLY path below, where there is no Green
+    // Card checklist to carry that data instead.
+    //
+    // Also deliberately excludes the separate, optional "Green Card –
+    // National Visa Center (NVC) / Consular Processing Checklist"
+    // (gc_nvc_<slug>_checklist, see resolveGcNvcChecklistKey below) - it
+    // must not become client-visible merely because processingPath ===
+    // CONSULAR; it is only ever assigned via family-workflow.controller.js's
     // approveGcNvcChecklist, on explicit Case Manager approval.
     return [i130Petitioner, greenCardBeneficiary, i864Sponsor];
   }

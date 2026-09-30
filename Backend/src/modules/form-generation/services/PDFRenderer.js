@@ -6,6 +6,7 @@ const { isProtectedField } = require("./ProtectedFieldPolicy");
 const { flattenBarcodeAppearances } = require("./BarcodeAppearanceGuard");
 const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
+const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 
 class PDFRenderer {
   static loadPdfLib() {
@@ -192,9 +193,27 @@ class PDFRenderer {
     let componentPageCount = null;
     const totalPages = pdf.getPageCount();
     const pagesToKeep = await ComponentPageResolver.resolvePagesToKeep(caseForm, template, totalPages);
+    let acroFormRepair = null;
     if (pagesToKeep) {
       ComponentPageResolver.keepOnlyPages(pdf, pagesToKeep);
       componentPageCount = pagesToKeep.length;
+      // BUG (fixed): pdf-lib's own removePage() (used by keepOnlyPages above)
+      // only removes the page node - it never touches the document-level
+      // AcroForm's /Fields array, so every field whose only widget lived on
+      // a now-removed page stays listed as an orphaned entry. Confirmed live
+      // against this exact component (I-129 H Classification Supplement):
+      // an 8-page slice that should expose ~167 fields still reported 942 -
+      // essentially the whole 34-page I-129's original field count - which
+      // then failed PDFFidelityService's field-count check and made every
+      // specific field lookup on the reloaded/re-saved buffer resolve to the
+      // wrong (stale/duplicate) node, reading back empty. AdobeFormRenderer.js
+      // already had to solve the identical problem for Adobe's own combinepdf
+      // slicing (see AcroFormRepairGuard.js's full root-cause writeup) - this
+      // reuses that same, already-proven repair rather than a second
+      // implementation, since the underlying defect (stale /Fields array
+      // after page removal) is the same regardless of which tool removed the
+      // pages.
+      acroFormRepair = rebuildAcroFormFieldsFromWidgets(pdf);
     }
 
     let output = Buffer.from(await pdf.save());
@@ -213,6 +232,7 @@ class PDFRenderer {
         watermark: WatermarkService.normalize(watermark),
         componentCode: caseForm.componentCode || null,
         componentPageCount,
+        acroFormRepair,
       },
     };
   }

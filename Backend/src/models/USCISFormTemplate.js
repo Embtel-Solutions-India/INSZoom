@@ -226,6 +226,11 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       premiumProcessing: Boolean,
       applicantTypes: [String],
       organizationRules: mongoose.Schema.Types.Mixed,
+      // Empty/unset = applies to any processingPath (wildcard, matches every
+      // other assignmentRules list above). Only family/Green Card templates
+      // that are specific to one filing path (I-485/I-693/I-765/I-131 -
+      // Adjustment of Status only; DS-260 - Consular only) set this.
+      processingPaths: [String],
       required: { type: Boolean, default: true },
     },
     documentRequirements: [mongoose.Schema.Types.Mixed],

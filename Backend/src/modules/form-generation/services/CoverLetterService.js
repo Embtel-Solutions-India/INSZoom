@@ -218,7 +218,15 @@ class CoverLetterService {
     return { document, html, pdfBuffer };
   }
 
-  static async persistLetter({ caseId, html, documentType, title, tag }, user) {
+  static async persistLetter({ caseId: rawCaseId, html, documentType, title, tag }, user) {
+    // A caller can hand this a populated Case sub-document instead of a
+    // plain id (confirmed live: document.workflow.service.js's
+    // documentReviewed() used to pass a populated document.caseId straight
+    // through autoSync() -> assemble() -> here) — normalize defensively so a
+    // future caller with the same mistake produces a correct filename
+    // instead of Node's object-inspect dump of the whole case getting baked
+    // into it ("Cover-Letter--_id-new-ObjectId-...-caseNumber-B155-...").
+    const caseId = rawCaseId?._id || rawCaseId;
     const originalName = `${title}-${caseId}.html`.replace(/[^\w.-]+/g, "-");
     const buffer = Buffer.from(html, "utf8");
     const key = storageService.generateDocumentKey({ caseId, userId: this.userId(user), originalName });
@@ -268,7 +276,10 @@ class CoverLetterService {
     });
   }
 
-  static async createDraft({ caseId, template, data, title, petitionType }, user) {
+  static async createDraft({ caseId: rawCaseId, template, data, title, petitionType }, user) {
+    // See persistLetter's matching comment - defends against a caller
+    // passing a populated Case sub-document instead of a plain id.
+    const caseId = rawCaseId?._id || rawCaseId;
     const body = this.renderTemplate(template, data);
     const originalName = `${title || petitionType || "cover-letter"}-${caseId}.txt`.replace(/[^\w.-]+/g, "-");
     const buffer = Buffer.from(body, "utf8");

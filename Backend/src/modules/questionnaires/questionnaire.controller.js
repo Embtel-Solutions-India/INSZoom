@@ -3,6 +3,7 @@ const Question = require("../../models/Question");
 const Questionnaire = require("../../models/Questionnaire");
 const questionLibraryService = require("./question-library.service");
 const questionnaireService = require("./questionnaire.service");
+const caseService = require("../cases/case.service");
 
 function listFilter(query) {
   const filter = {};
@@ -383,9 +384,23 @@ exports.autoSaveAnswers = async (req, res, next) => {
   }
 };
 
+// A multipart (file-answer) request always arrives with string form fields
+// (multer never coerces types), while a plain JSON POST body is parsed to a
+// real boolean by express.json() - accept either so both callers work.
+function isPreserveStatusRequested(body) {
+  return body?.preserveStatus === true || body?.preserveStatus === "true";
+}
+
 exports.saveAnswer = async (req, res, next) => {
   try {
-    const result = await questionnaireService.saveAnswers({ ...req.body, questionnaireId: req.params.id }, req.user, req, "auto_saved");
+    // Case managers/admins correcting a client's already-submitted or
+    // already-approved answer must never silently reset it to "auto_saved" —
+    // only a staff caller explicitly requesting it (preserveStatus) gets the
+    // status-preserving path; the client's own save/autosave calls (no such
+    // flag) are entirely unaffected.
+    const staffPreserve = caseService.isStaff(req.user) && isPreserveStatusRequested(req.body);
+    const status = staffPreserve ? questionnaireService.PRESERVE_ANSWER_STATUS : "auto_saved";
+    const result = await questionnaireService.saveAnswers({ ...req.body, questionnaireId: req.params.id }, req.user, req, status);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -394,7 +409,8 @@ exports.saveAnswer = async (req, res, next) => {
 
 exports.saveFileAnswer = async (req, res, next) => {
   try {
-    const result = await questionnaireService.saveFileAnswer({ ...req.body, questionnaireId: req.params.id }, req.files || [], req.user, req);
+    const staffPreserve = caseService.isStaff(req.user) && isPreserveStatusRequested(req.body);
+    const result = await questionnaireService.saveFileAnswer({ ...req.body, questionnaireId: req.params.id }, req.files || [], req.user, req, { preserveStatus: staffPreserve });
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

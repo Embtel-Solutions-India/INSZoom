@@ -1,19 +1,27 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
 import { Download, Loader2 } from 'lucide-react'
 import { caseDataApi } from '../../../services/api'
 
 export default function DocumentsTab() {
   const { caseId } = useParams()
+  const { refreshToken } = useOutletContext()
   const [documents, setDocuments] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     caseDataApi
       .documents(caseId)
-      .then(({ data }) => setDocuments(data.documents || data.data || []))
+      .then(({ data }) => {
+        // Mirrors CRMCaseDetail.jsx's own Documents tab exactly: system-
+        // generated artifacts (petition cover letters, exhibits, etc.)
+        // belong on the Petition tab, not here - Admin filters them out of
+        // its Documents list for the same reason.
+        const docs = (data.documents || data.data || []).filter((doc) => doc.uploadedBy !== 'system')
+        setDocuments(docs)
+      })
       .catch((err) => setError(err.response?.data?.message || 'Could not load documents.'))
-  }, [caseId])
+  }, [caseId, refreshToken])
 
   const download = async (doc) => {
     try {

@@ -1172,6 +1172,16 @@ async function applyQuestionnaireCaseSyncAtomic({ caseId, questionnaire, respons
   );
 }
 
+// Sentinel passed as the `status` argument by a staff-edit call (Admin
+// correcting a client's already-submitted/approved answer): a case manager
+// fixing a value must never silently downgrade that answer's own status back
+// to "auto_saved" (which would undo a client submission or an approval),
+// unlike the client's own save flows, which always know exactly which status
+// they mean (auto_saved/submitted). Resolved per-item below to whatever that
+// specific answer's status already was, since a batch can legitimately mix
+// already-submitted and already-approved answers.
+const PRESERVE_ANSWER_STATUS = "__preserve_existing_status__";
+
 async function saveAnswers(payload, user, req, status = "auto_saved") {
   const operationId = operationIdFor(req, payload, status);
   const questionnaire = await Questionnaire.findById(payload.questionnaireId);
@@ -1237,7 +1247,10 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     const question = questionByKey[item.questionKey];
     if (!question) continue;
     const visible = isQuestionVisible(question, { ...answerMap, [item.questionKey]: { value: item.value } }, user);
-    if (status === "submitted") {
+    const effectiveStatus = status === PRESERVE_ANSWER_STATUS
+      ? (answerMap[item.questionKey]?.status || "auto_saved")
+      : status;
+    if (effectiveStatus === "submitted" || effectiveStatus === "approved") {
       const validation = validateQuestionValue(question, item.value);
       if (visible && validation.errors.length) {
         const error = new Error(validation.errors.join("; "));
@@ -1285,21 +1298,21 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
           currentSectionKey: item.sectionKey || payload.currentSectionKey,
           branchPath: payload.branchPath || [],
           visible,
-          status,
+          status: effectiveStatus,
           masterDataPath: inferMasterDataPath(question),
           validation: {
             ...validateQuestionValue(question, item.value),
             validatedAt: new Date(),
           },
           startedAt: previous.length ? undefined : new Date(),
-          lastAutoSavedAt: status === "auto_saved" ? new Date() : undefined,
+          lastAutoSavedAt: effectiveStatus === "auto_saved" ? new Date() : undefined,
         },
         // Folded into the same write as the $set above (was a separate
         // addAnswerAudit() + answer.save() round-trip) — same audit entry,
         // one write instead of two per answer.
         $push: {
           auditHistory: {
-            action: status,
+            action: status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status,
             changes: { value: item.value },
             performedBy: user?._id,
             performedAt: new Date(),
@@ -1329,7 +1342,7 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   }
   questionnaire.analytics.averageCompletionPercent = Math.round(((questionnaire.analytics.averageCompletionPercent || 0) + completion.percent) / 2);
   await questionnaire.save();
-  await writeAuditLog(status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
+  await writeAuditLog(status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
   if (caseData) {
     // Merge onto the prior masterData rather than replacing it outright —
     // masterData also carries extension keys this rebuild doesn't know about
@@ -1515,7 +1528,7 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
   return synced;
 }
 
-async function saveFileAnswer(payload, files, user, req) {
+async function saveFileAnswer(payload, files, user, req, { preserveStatus = false } = {}) {
   const storedFiles = await storeAnswerFiles(files, { caseId: payload.caseId, userId: user?._id });
   return saveAnswers({
     ...payload,
@@ -1524,7 +1537,7 @@ async function saveFileAnswer(payload, files, user, req) {
       value: storedFiles.map((file) => file.originalName),
       files: storedFiles,
     }],
-  }, user, req, "auto_saved");
+  }, user, req, preserveStatus ? PRESERVE_ANSWER_STATUS : "auto_saved");
 }
 
 // Symmetric counterpart to syncFileAnswerFromDocument, called when a Document
@@ -2903,6 +2916,7 @@ module.exports = {
   responseIdFor,
   saveAnswers,
   saveFileAnswer,
+  PRESERVE_ANSWER_STATUS,
   submitResponse,
   unlockQuestionnaire,
   updateQuestion,

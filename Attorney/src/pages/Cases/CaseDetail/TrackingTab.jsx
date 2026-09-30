@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { caseDataApi } from '../../../services/api'
 
@@ -20,6 +20,7 @@ function dateOf(value) {
 // editable there) — same lifecycleApi.tracking() data, no save action.
 export default function TrackingTab() {
   const { caseId } = useParams()
+  const { refreshToken } = useOutletContext()
   const [tracking, setTracking] = useState(null)
   const [error, setError] = useState('')
 
@@ -28,7 +29,7 @@ export default function TrackingTab() {
       .tracking(caseId)
       .then(({ data }) => setTracking(data.tracking || {}))
       .catch((err) => setError(err.response?.data?.message || 'Could not load USCIS tracking.'))
-  }, [caseId])
+  }, [caseId, refreshToken])
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!tracking) return <Loader2 className="w-6 h-6 animate-spin text-primary" />

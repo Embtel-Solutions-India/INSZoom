@@ -129,7 +129,20 @@ export const attorneyApi = {
 export const caseDataApi = {
   documents: (caseId) => api.get('/documents', { params: { caseId } }),
   downloadDocument: (documentId) => api.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
+  previewDocument: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),
+  // The manually-uploaded petition PDF(s) from Admin's Petition tab
+  // ("Upload Petition" button, PetitionUploadPanel.jsx) - same Document
+  // model/documentType tag, so this stays consistent with what Admin shows.
+  petitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
   forms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
+  // Same PDF preview/download endpoints CRMCaseDetail's USCISFormRenderer
+  // uses - requireCaseFormAccess (formGenerationRoutes.js) is already
+  // attorney-aware via canAccessCase, so no backend change was needed to
+  // let an attorney see the real, currently-autofilled PDF for a form on a
+  // case they're granted. Blob-fetched for the same Bearer-token reason as
+  // downloadDocument/downloadPetitionPackage above.
+  previewForm: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
+  downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
   timeline: (caseId) => api.get(`/cases/${caseId}/timeline`),
   // Read-only endpoints reused from CRMCaseDetail.jsx's own tab set
   // (Petition/USCIS Tracking) — same backend routes the case manager page
@@ -141,6 +154,16 @@ export const caseDataApi = {
   previewPetitionPackage: (packageId) => api.get(`/petition/packages/${packageId}/preview`, { responseType: 'blob' }),
   downloadPetitionPackage: (packageId, format) => api.get(`/petition/packages/${packageId}/download`, { params: { format }, responseType: 'blob' }),
   tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
+}
+
+// Read-only checklist/questionnaire access - deliberately re-granted to the
+// attorney role (permissions.registry.js + questionnaire.routes.js's
+// caseReaderRoles) after ATTORNEY_PORTAL.md originally excluded it. Same two
+// endpoints CRMCaseDetail.jsx's useCaseQuestionnaire hook and "checklists
+// progress" panel use, both already canAccessCase-gated for attorney.
+export const questionnairesApi = {
+  listChecklists: (caseId) => api.get(`/questionnaires/case/${caseId}/checklists`),
+  getForCase: (caseId, params = {}) => api.get(`/questionnaires/case/${caseId}`, { params }),
 }
 
 export const notificationsApi = {

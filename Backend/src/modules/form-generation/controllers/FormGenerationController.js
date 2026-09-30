@@ -83,7 +83,18 @@ exports.downloadForm = async (req, res) => {
 
     let caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: false });
     const isHistorical = caseForm.isLocked || ["locked", "filed"].includes(caseForm.status);
-    const wasStale = Boolean(caseForm.syncState?.stale);
+    // BUG (fixed): syncState.stale means "was filled once, then canonical
+    // data changed since" - a CaseForm that has NEVER been through
+    // AutoFillService even once (freshly provisioned, syncState.lastSyncedAt
+    // unset) reports stale:false, the same as one that's genuinely current -
+    // there's nothing to compare staleness against yet. That let this
+    // official-download path skip the initial autofill entirely and render
+    // straight from an empty filledData/fieldValues, confirmed live: a
+    // never-synced H-1B supplement CaseForm downloaded with every field
+    // blank despite its questionnaire answers already existing. "Never
+    // synced" must trigger the same refresh "stale" does.
+    const neverSynced = !caseForm.syncState?.lastSyncedAt;
+    const wasStale = Boolean(caseForm.syncState?.stale) || neverSynced;
 
     if (!isHistorical && wasStale) {
       await AutoFillService.generate(caseForm.caseId, caseForm.formCode, req.user, req, { regenerate: true });

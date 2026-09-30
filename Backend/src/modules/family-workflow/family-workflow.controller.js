@@ -329,6 +329,22 @@ exports.createFamilyCase = async (req, res, next) => {
       await caseData.save();
     }
     await ensureFamilyChecklistReferences(caseData, req.user, req);
+    // BUG (fixed): this only ever assigned checklists (above) - it never
+    // provisioned the actual USCIS forms (CaseForm records for I-130/I-485/
+    // I-864/I-693/etc.), unlike case.controller.js's own createCase, which
+    // calls CaseLifecycleOrchestrator.initializeCase (provisionRequiredForms
+    // included) for every other case type. Confirmed live: a family case
+    // created through this endpoint had zero CaseForm records - the exact
+    // "no form mapping" symptom for Green Card/I-130 cases. Only the two
+    // form-provisioning steps are called here, deliberately NOT
+    // provisionChecklistAssignments/orchestrateOne's generic questionnaire
+    // assignment - ensureFamilyChecklistReferences above is the family-
+    // specific, role-split (Petitioner/Beneficiary/Green Card/I-864
+    // Sponsor) checklist source of truth and must stay the only thing that
+    // ever assigns a checklist to this case type.
+    const orchestrator = require("../cases/case-lifecycle-orchestrator.service");
+    await orchestrator.provisionRequiredForms(caseData, req.user, req);
+    await orchestrator.provisionPetitionDraft(caseData, req.user, req);
     // A newly created petitioner (petitionerSetupToken set) needs the same
     // "set up your account" email case.controller.js's createCase sends its
     // own new clientUser - fire-and-forget, mirrors that call site exactly

@@ -415,6 +415,25 @@ function addAuditEntry(caseData, action, description, user, changes = {}, req) {
       performedAt,
     });
   });
+  // Every case mutation (document upload, form generation, status change,
+  // checklist assignment, etc.) already lands here, so this is the one
+  // choke point that gives the Attorney portal the same "live like the case
+  // manager" sync Admin gets from case:client_submitted - without a
+  // per-controller-action emit at every call site. Only active (never
+  // revoked) grants, and only if the mutation itself wasn't performed by
+  // that same attorney (an attorney reading the reply to their own PATCH/
+  // POST doesn't need a push telling them what they just did).
+  (caseData.attorneyAccess || [])
+    .filter((grant) => grant.status === "active" && String(grant.attorneyId) !== String(user?._id))
+    .forEach((grant) => {
+      realtimeGateway.emitToUser(grant.attorneyId, "case:updated", {
+        caseId: caseData._id,
+        caseNumber: caseData.caseNumber,
+        action,
+        description,
+        performedAt,
+      });
+    });
   // Every case mutation goes through here — bump the shared dashboard cache
   // generation so stale aggregates never outlive a real change (fire-and-
   // forget, same as the realtime emits above; a no-op without Redis).
@@ -528,6 +547,28 @@ function serializeCaseForUser(caseData, user) {
       "taskReferences",
       "teamId",
       "workflowReferences",
+      // BUG (fixed): canonicalProfile is a legitimate BACKEND merge of both
+      // sides of an employer_employee/family case (needed server-side to
+      // autofill a form like I-129, which has both petitioner/employer and
+      // beneficiary/employee sections on one PDF) - confirmed live it
+      // includes canonicalProfile.profile.company and .petitioner, i.e. the
+      // employer's own FEIN/company data, directly readable in the JSON this
+      // endpoint sends to an invited EMPLOYEE's own browser. The Client
+      // portal frontend never reads this field at all (confirmed - zero
+      // references in Immiglance/Client/src), so it's redacted here rather
+      // than filtered field-by-field. employerProfileId/personProfileId and
+      // the remaining fields below are the same "never used by this
+      // frontend, no reason to ship it" case, kept out defensively.
+      "canonicalProfile",
+      "employerProfileId",
+      "personProfileId",
+      "googleDrive",
+      "excelWorkbook",
+      "attachmentReferences",
+      "notificationReferences",
+      "uscisFormReferences",
+      "externalNotes",
+      "canonicalHistory",
     ].forEach((field) => delete data[field]);
     if (Array.isArray(data.timeline)) {
       data.timeline = data.timeline

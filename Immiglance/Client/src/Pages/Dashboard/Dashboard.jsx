@@ -466,9 +466,16 @@ function AttorneyReviewCard({ review }) {
   );
 }
 
-/* ── My Tasks (invited-employee view) — open information requests from the case manager/employer ── */
-function MyTasksCard({ caseData }) {
-  const openTasks = (caseData?.informationRequests || []).filter((item) => item.target === "employee" && item.status === "open");
+// BUG (fixed): this only ever filtered target === "employee" and was only
+// ever rendered for isEmployee — a case manager's "Request Missing
+// Information" panel (Admin/frontend/src/pages/CRMCaseDetail.jsx) lets a
+// request be targeted at "employer" too, but nothing on the client side
+// read/rendered those: an employer-targeted request sat open forever with
+// no client-facing surface at all. Generalized to take the requesting
+// role, and rendered for both isEmployee and the employer account below.
+/* ── My Tasks — open information requests from the case manager ── */
+function MyTasksCard({ caseData, role }) {
+  const openTasks = (caseData?.informationRequests || []).filter((item) => item.target === role && item.status === "open");
   return (
     <div className="bg-card rounded-lg border border-card-border overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
@@ -726,7 +733,14 @@ export default function Dashboard() {
         {/* ── Quick Actions ── */}
         <QuickActions profileComplete={profileComplete} />
 
-        {isEmployee && <MyTasksCard caseData={caseData} />}
+        {isEmployee && <MyTasksCard caseData={caseData} role="employee" />}
+        {/* Real employer_employee cases (verified against production data)
+            never set user.role/applicantType to "employer" - every principal
+            account is role:"client", applicantType:"individual". The
+            authoritative signal for "this is the employer/principal side"
+            is the CASE's own caseRole (Documents.jsx's PrincipalCaseWorkspace
+            branch uses the same field), not anything on the user record. */}
+        {caseData?.caseRole === "principal" && <MyTasksCard caseData={caseData} role="employer" />}
 
         {/* ── Expert Letters + Attorney Review ── */}
         {(activeCaseData.expertLetters?.length > 0 || activeCaseData.attorneyReview?.required) && (
