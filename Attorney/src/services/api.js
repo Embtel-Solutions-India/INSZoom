@@ -126,33 +126,27 @@ export const attorneyApi = {
 // backend authorizes them through canAccessCase, which is attorney-aware
 // (see Backend/src/modules/cases/case.service.js). No attorney-specific
 // duplicates of these handlers exist, by design.
+// No "download" helpers here on purpose — every document/petition surface
+// in this portal is preview-in-app only (product decision: an attorney
+// should never be pushed toward downloading a copy by default). Every
+// fetcher below is blob-fetched only because Bearer-token auth (not a
+// cookie) can't ride a plain <a href>/<iframe src> to these routes directly.
 export const caseDataApi = {
   documents: (caseId) => api.get('/documents', { params: { caseId } }),
-  downloadDocument: (documentId) => api.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
   previewDocument: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),
   // The manually-uploaded petition PDF(s) from Admin's Petition tab
   // ("Upload Petition" button, PetitionUploadPanel.jsx) - same Document
   // model/documentType tag, so this stays consistent with what Admin shows.
   petitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
-  forms: (caseId) => api.get(`/uscis-forms/case/${caseId}`),
-  // Same PDF preview/download endpoints CRMCaseDetail's USCISFormRenderer
-  // uses - requireCaseFormAccess (formGenerationRoutes.js) is already
-  // attorney-aware via canAccessCase, so no backend change was needed to
-  // let an attorney see the real, currently-autofilled PDF for a form on a
-  // case they're granted. Blob-fetched for the same Bearer-token reason as
-  // downloadDocument/downloadPetitionPackage above.
-  previewForm: (caseFormId) => api.get(`/forms/${caseFormId}/preview`, { responseType: 'blob' }),
-  downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
+  // No forms() helper here on purpose — USCIS Forms is explicitly not
+  // attorney-visible (product decision; tried and reversed back out in the
+  // same change, see CaseDetailLayout.jsx's TABS comment).
   timeline: (caseId) => api.get(`/cases/${caseId}/timeline`),
   // Read-only endpoints reused from CRMCaseDetail.jsx's own tab set
   // (Petition/USCIS Tracking) — same backend routes the case manager page
   // calls, each already scoped through canAccessCase.
   petitionPackages: (caseId) => api.get(`/petition/cases/${caseId}/packages`),
-  // Bearer-token auth (not a cookie) means a plain <a href> to these can't
-  // carry the Authorization header — fetched as blobs instead, same as
-  // downloadDocument above.
   previewPetitionPackage: (packageId) => api.get(`/petition/packages/${packageId}/preview`, { responseType: 'blob' }),
-  downloadPetitionPackage: (packageId, format) => api.get(`/petition/packages/${packageId}/download`, { params: { format }, responseType: 'blob' }),
   tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
 }
 

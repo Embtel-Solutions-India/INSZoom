@@ -108,6 +108,20 @@ async function sendBeneficiaryInvite(caseData, { email, name, phone }, actorUser
     { user: beneficiaryUser._id, email, fullName: beneficiaryUser.name || beneficiaryUser.displayName || name, source: "shared", visaType: caseData.visaType, type: "family" },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
+  // BUG (fixed): neither branch above ever put this case onto the
+  // beneficiary USER's own caseIds/primaryCaseId (only the Beneficiary
+  // PROFILE record's caseIds was ever set, further below via
+  // beneficiary.caseIds in createFamilyCase - a completely different
+  // document). AuthGate.jsx's post-login routing gate
+  // (GET /auth/session-context) computes hasCase strictly from
+  // user.caseIds.length, with no knowledge of Case.beneficiaryUser/
+  // beneficiaryInvite at all - so an invited beneficiary who logged in
+  // always had hasCase:false and fell through to the intake-questionnaire
+  // redirect, confirmed live, regardless of familyCompletionMode or
+  // whether their account was new or pre-existing.
+  beneficiaryUser.primaryCaseId = beneficiaryUser.primaryCaseId || caseData._id;
+  beneficiaryUser.caseIds = [...new Set([...(beneficiaryUser.caseIds || []), caseData._id].map(String))];
+  await beneficiaryUser.save();
   caseData.beneficiaryInvite = { ...(caseData.beneficiaryInvite || {}), email, name, phone, status: "sent", invitedAt: new Date(), invitedBy: actorUser._id };
   caseData.beneficiaryUser = beneficiaryUser._id;
   caseData.familyCompletionMode = "invite_beneficiary";
@@ -366,6 +380,33 @@ exports.createFamilyCase = async (req, res, next) => {
           emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, token: petitionerSetupToken },
         }, req.user, req).catch(() => null);
       });
+    } else {
+      // BUG (fixed): when petitionerEmail matched an EXISTING User (the
+      // `if (petitionerUser)` branch above), this whole notification block
+      // was skipped entirely - an existing petitioner got caseIds/
+      // primaryCaseId silently wired onto a brand-new case with no email,
+      // no in-app notification, nothing telling them it exists. They could
+      // technically already log in (AuthGate now routes them to /dashboard
+      // via the caseIds set above), but had no way to know to. No invite
+      // token needed here (they already have a working account/password) -
+      // straight to their dashboard, not /accept-invite.
+      setImmediate(async () => {
+        await notificationService.createNotification({
+          userId: petitionerUser._id,
+          type: "case_created",
+          category: "case",
+          title: "A New Immigration Case Was Created For You",
+          message: `${caseData.caseNumber} - ${caseData.visaType}`,
+          caseId: caseData._id,
+          link: "/dashboard",
+          priority: "medium",
+          source: "shared",
+          channels: ["in_app", "socket", "push", "email"],
+          emailTemplate: "case-created-client",
+          emailTo: petitionerEmail,
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber },
+        }, req.user, req).catch(() => null);
+      });
     }
     // assignQuestionnaire (inside ensureFamilyChecklistReferences) re-fetches
     // and saves its OWN copy of this Case document, bumping __v underneath
@@ -390,6 +431,49 @@ exports.inviteBeneficiary = async (req, res, next) => {
     if (!email) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
     const { beneficiaryUser, createdAccount } = await sendBeneficiaryInvite(caseData, { email, name, phone }, req.user, req);
     res.json({ success: true, case: caseData, beneficiaryUser: beneficiaryUser.toAuthJSON ? beneficiaryUser.toAuthJSON() : beneficiaryUser, createdAccount });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Lets the petitioner (client role, same canAccessFamilyCase gate as
+// inviteBeneficiary) flip to "I'll fill the beneficiary's section myself"
+// on their own, from their own dashboard - the backend-side half of the
+// "invite or fill it yourself" choice, which previously only existed as a
+// one-time pick the CASE MANAGER made at creation (familyCompletionMode in
+// createFamilyCase's payload). resolveApplicableChecklistRoles
+// (Immiglance/Client/src/utils/questionnaireEngine.js) already grants the
+// petitioner BOTH "petitioner" and "beneficiary" checklist roles the
+// instant familyCompletionMode reads "petitioner_completes" - this is just
+// the missing way to SET that flag outside of case creation. No new
+// checklist assignment needed here for the same reason: the beneficiary
+// checklist reference was already created at case-creation time
+// (ensureFamilyChecklistReferences assigns it regardless of
+// familyCompletionMode - only WHO is allowed to answer it changes).
+exports.setFamilyCompletionMode = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.id);
+    if (!caseData || !canAccessFamilyCase(req.user, caseData)) return res.status(404).json({ success: false, message: "Case not found" });
+    const mode = req.body.familyCompletionMode;
+    if (!["petitioner_completes", "invite_beneficiary"].includes(mode)) {
+      return res.status(400).json({ success: false, message: "familyCompletionMode must be 'petitioner_completes' or 'invite_beneficiary'" });
+    }
+    if (mode === "invite_beneficiary") {
+      // Re-route through the one real invite path rather than duplicating
+      // its account-creation/email/caseIds logic here - requires an email,
+      // same as inviteBeneficiary itself.
+      const email = clean(req.body.email || caseData.beneficiaryInvite?.email || caseData.clientEmail).toLowerCase();
+      const name = req.body.name || caseData.beneficiaryInvite?.name || caseData.clientName;
+      const phone = clean(req.body.phone);
+      if (!email) return res.status(400).json({ success: false, message: "Beneficiary email is required to invite them" });
+      await sendBeneficiaryInvite(caseData, { email, name, phone }, req.user, req);
+      return res.json({ success: true, case: caseData });
+    }
+    caseData.familyCompletionMode = "petitioner_completes";
+    caseData.familyWorkflow.beneficiaryStatus = "not_invited";
+    caseService.addTimelineEvent(caseData, "case", "Petitioner Chose To Complete Beneficiary Section", `${req.user.name || req.user.displayName || "The petitioner"} chose to fill in the beneficiary's information themselves instead of inviting them.`, req.user, {});
+    await caseData.save();
+    res.json({ success: true, case: caseData });
   } catch (error) {
     next(error);
   }

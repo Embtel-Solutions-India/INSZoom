@@ -2,13 +2,35 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
 import { notificationsApi } from '../services/api'
-import { onForegroundMessage } from '../services/notificationService'
+import { onForegroundMessage, requestPermissionAndGetToken } from '../services/notificationService'
+import { useSocket } from '../context/SocketContext'
 
 export default function NotificationBell() {
   const [items, setItems] = useState([])
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const containerRef = useRef(null)
+  const { subscribe, connected } = useSocket()
+  // Mirrors Admin's Layout.jsx exactly: the browser permission prompt has
+  // never had anywhere to fire from in this portal at all (confirmed - no
+  // component called requestPermissionAndGetToken), so an attorney could
+  // never actually receive a background push regardless of how correctly
+  // the backend/service-worker/FCM plumbing was wired. This banner is that
+  // missing entry point.
+  const [pushPermission, setPushPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
+  )
+  const [enablingPush, setEnablingPush] = useState(false)
+
+  const enablePush = async () => {
+    setEnablingPush(true)
+    try {
+      await requestPermissionAndGetToken()
+    } finally {
+      setPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+      setEnablingPush(false)
+    }
+  }
 
   const load = useCallback(() => {
     notificationsApi
@@ -20,12 +42,30 @@ export default function NotificationBell() {
   useEffect(() => {
     load()
     const detach = onForegroundMessage(() => load())
+    // 60s polling stays as a fallback (same as Admin's NotificationContext) -
+    // the socket subscription below is what makes the bell instant in the
+    // common case instead of waiting on the next tick.
     const interval = setInterval(load, 60_000)
     return () => {
       detach()
       clearInterval(interval)
     }
   }, [load])
+
+  // SocketContext already joins a `notifications:join` room on connect
+  // (see its own comment) but nothing was listening for what lands there -
+  // this is the fix: instant bell refresh on any new notification or
+  // feedback message, the same way Admin's NotificationContext subscribes
+  // to 'notification:new'/'message:new'.
+  useEffect(() => {
+    if (!connected) return
+    const unsubNotification = subscribe('notification:new', () => load())
+    const unsubFeedback = subscribe('feedback:new', () => load())
+    return () => {
+      unsubNotification()
+      unsubFeedback()
+    }
+  }, [connected, subscribe, load])
 
   useEffect(() => {
     const onClickOutside = (event) => {
@@ -62,6 +102,18 @@ export default function NotificationBell() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="font-semibold text-popover-foreground">Notifications</h3>
           </div>
+          {pushPermission === 'default' && (
+            <div className="px-4 py-2.5 border-b border-border bg-accent flex items-center justify-between gap-3">
+              <p className="text-xs text-accent-foreground leading-snug">Get notified instantly, even when this tab isn&apos;t open.</p>
+              <button
+                onClick={enablePush}
+                disabled={enablingPush}
+                className="shrink-0 text-xs font-semibold text-primary-foreground bg-primary px-2.5 py-1 rounded-md disabled:opacity-60"
+              >
+                {enablingPush ? 'Enabling…' : 'Enable'}
+              </button>
+            </div>
+          )}
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8">
               <Bell className="w-8 h-8 text-muted-foreground/50" />

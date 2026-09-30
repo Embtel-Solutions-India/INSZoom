@@ -64,10 +64,10 @@ Case Manager's own case page uses (not a duplicate set of endpoints):
 
 | Tab | Shows |
 |---|---|
-| Overview | Case number, client, visa type/category, stage, status, priority, receipt number, dates |
-| Documents | Every document on the case, with download |
-| USCIS Forms | Generated forms and their status |
-| Petition | Petition package versions (view/download, no assemble/finalize) |
+| Overview | Same case data the case manager's CRMCaseDetail overview shows (filing readiness score, plan/package, case type, assigned case manager, attorney grants, etc.), live-updating via socket.io |
+| Documents | Every real (non-system-generated) document on the case, split into Sent (uploaded) vs Pending (still-required checklist documents) — preview-in-app only, mirrors CRMCaseDetail's own Documents tab filtering |
+| Checklists | Read-only questionnaire/checklist answers — employer/employee, petitioner/beneficiary, single-client, however many are assigned on the case (see below) |
+| Petition | Petition package versions (preview-in-app, no assemble/finalize) plus any petition document the case manager manually uploaded |
 | USCIS Tracking | Filing/receipt/biometrics/interview timeline fields (read-only) |
 | Feedback | The case-scoped review dialogue with the case manager — see "Messages" below; this tab is one of its two entry points |
 | Timeline | The case's audit/event history |
@@ -76,9 +76,33 @@ Case Manager's own case page uses (not a duplicate set of endpoints):
 (a stub upstream that never loads real data anywhere), Strategy (an
 eligibility-scoring view — removed as a deliberate product decision), Notes
 (the general internal staff notes log — removed as redundant with
-Feedback), and Questionnaire (a client-intake artifact, not case-review
-material this role needs — `questionnaires:read` was removed from the
-attorney's permission grant entirely, not just hidden in the UI).
+Feedback), and USCIS Forms (tried, then explicitly reversed back out by
+product decision — an attorney must not see this tab at all, not even
+read-only; `forms:read` removed from the attorney's permission grant).
+
+**Reversed:** Questionnaire/Checklists was originally excluded here
+("a client-intake artifact, not case-review material this role needs" —
+`questionnaires:read` removed from the attorney's permission grant
+entirely, not just hidden in the UI). This was later reversed by explicit
+product decision: an attorney reviewing a case needs the same checklist
+answers the case manager sees. `questionnaires:read` is back on the
+attorney role's permission grant (`permissions.registry.js`), scoped to
+just the two case-read routes (`questionnaire.routes.js`'s
+`caseReaderRoles`, not the full `readerRoles` template-library surface),
+and the tab is named "Checklists" rather than "Questionnaire" to match how
+case managers refer to it.
+
+**Live sync:** every tab above refreshes automatically when the case
+manager changes something, the same way CRMCaseDetail already does for
+`case:client_submitted` — `case.service.js`'s `addAuditEntry` (the one
+choke point nearly every case mutation already goes through: document
+upload, form generation, status change, checklist assignment, petition
+upload, etc.) now also emits `case:updated` to every actively-granted
+attorney via `realtimeGateway.emitToUser`, since every socket already joins
+its own userId room regardless of role. `CaseDetailLayout.jsx` subscribes
+to both `case:updated` and `case:client_submitted` and bumps a
+`refreshToken` passed through outlet context; every tab's fetch effect
+depends on it.
 
 ### Messages / Feedback — the portal's real communication surface
 

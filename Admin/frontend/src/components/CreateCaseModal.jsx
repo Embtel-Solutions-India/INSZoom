@@ -32,18 +32,18 @@ const VISA_TYPE_OPTIONS = [
   // checklist+form logic (then the Filing Path selector below decides
   // Petition Only vs the fuller Green Card package). Listed inline with
   // every other visa type, same as before - no separate section/optgroup.
-  { value: 'ir1', label: 'IR-1 (I-130 / Green Card)' },
-  { value: 'cr1', label: 'CR-1 (I-130 / Green Card)' },
-  { value: 'ir2', label: 'IR-2 (I-130 / Green Card)' },
-  { value: 'cr2', label: 'CR-2 (I-130 / Green Card)' },
-  { value: 'ir3', label: 'IR-3 (I-130 / Green Card)' },
-  { value: 'ir4', label: 'IR-4 (I-130 / Green Card)' },
-  { value: 'ir5', label: 'IR-5 (I-130 / Green Card)' },
-  { value: 'f1family', label: 'F1 (I-130 / Green Card)' },
-  { value: 'f2a', label: 'F2A (I-130 / Green Card)' },
-  { value: 'f2b', label: 'F2B (I-130 / Green Card)' },
-  { value: 'f3', label: 'F3 (I-130 / Green Card)' },
-  { value: 'f4', label: 'F4 (I-130 / Green Card)' },
+  { value: 'ir1', label: 'IR-1 (I-130 / Green Card)', canonicalLabel: 'IR-1' },
+  { value: 'cr1', label: 'CR-1 (I-130 / Green Card)', canonicalLabel: 'CR-1' },
+  { value: 'ir2', label: 'IR-2 (I-130 / Green Card)', canonicalLabel: 'IR-2' },
+  { value: 'cr2', label: 'CR-2 (I-130 / Green Card)', canonicalLabel: 'CR-2' },
+  { value: 'ir3', label: 'IR-3 (I-130 / Green Card)', canonicalLabel: 'IR-3' },
+  { value: 'ir4', label: 'IR-4 (I-130 / Green Card)', canonicalLabel: 'IR-4' },
+  { value: 'ir5', label: 'IR-5 (I-130 / Green Card)', canonicalLabel: 'IR-5' },
+  { value: 'f1family', label: 'F1 (I-130 / Green Card)', canonicalLabel: 'F1' },
+  { value: 'f2a', label: 'F2A (I-130 / Green Card)', canonicalLabel: 'F2A' },
+  { value: 'f2b', label: 'F2B (I-130 / Green Card)', canonicalLabel: 'F2B' },
+  { value: 'f3', label: 'F3 (I-130 / Green Card)', canonicalLabel: 'F3' },
+  { value: 'f4', label: 'F4 (I-130 / Green Card)', canonicalLabel: 'F4' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },
@@ -180,7 +180,22 @@ const CreateCaseModal = ({
       // Send the display label ("H-1B"), not the raw code ("h1b") — matches
       // the visaType format Immiglance's self-registration intake sends, so both
       // paths render identically in the cases table and downstream forms.
-      const visaTypeLabel = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)?.label || form.visaType
+      // BUG (fixed): for the 12 family package types this used to be the
+      // same `.label` shown in the dropdown - since that label now reads
+      // "IR-1 (I-130 / Green Card)" (added so case managers aren't confused
+      // about which entries carry the I-130/Green-Card logic), that whole
+      // string was being sent as Case.visaType. Every downstream lookup
+      // (familyChecklists.js's resolveFamilyChecklistKeys, the
+      // VisaFormMapping registry, the legacy templateAppliesToCase path)
+      // matches on the exact literal "IR-1"/"CR-1"/etc., so a case created
+      // through this dropdown got zero checklists, zero forms, and zero
+      // documents - confirmed live (an IR-1 case showed nothing on
+      // Documents/Forms). `canonicalLabel` is the plain form these lookups
+      // actually need; `visaTypeLabel` (the bracketed display label) is
+      // fine as-is for the other, non-family visa types below, which never
+      // had this suffix.
+      const selectedVisaOption = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)
+      const visaTypeLabel = selectedVisaOption?.canonicalLabel || selectedVisaOption?.label || form.visaType
 
       const filingTypeKey = SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType]
       if (filingTypeKey) {

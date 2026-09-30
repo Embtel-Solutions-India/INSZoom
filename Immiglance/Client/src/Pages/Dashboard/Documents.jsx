@@ -21,6 +21,7 @@ import QuestionInput from "../../components/questionnaire/QuestionInput";
 import PrefillBadge from "../../components/PrefillBadge";
 import PrincipalCaseWorkspace from "../../components/questionnaire/PrincipalCaseWorkspace";
 import EmployeeSelfServiceView from "../../components/questionnaire/EmployeeSelfServiceView";
+import FamilyCompletionModeBanner from "../../components/checklist/FamilyCompletionModeBanner";
 import {
   resolveApplicableChecklistRoles,
   EMPLOYER_SHAPE_ROLES,
@@ -849,6 +850,12 @@ export default function Documents() {
       <a href="#checklist-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow">
         Skip to checklist
       </a>
+
+      {isFamilyShapeCase && allowedRoles?.includes("petitioner") && (
+        <div className="mx-auto max-w-4xl px-4 pt-4 sm:px-6">
+          <FamilyCompletionModeBanner activeCase={activeCase} onChanged={refetchActiveCase} />
+        </div>
+      )}
 
       {/* ── Sticky case header ── */}
       <header className="sticky top-0 z-30 border-b border-border bg-card">

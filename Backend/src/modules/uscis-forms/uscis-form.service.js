@@ -496,7 +496,27 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
   const templates = await activeTemplatesCached();
   timer.mark("active_template_lookup", { count: templates.length });
   const grouped = new Map();
-  templates.filter((template) => templateAppliesToCase(template, caseData)).forEach((template) => {
+  // BUG (fixed): a family-workflow case (createFamilyCase always sets
+  // visaCategory "Family") is provisioned entirely through the
+  // VisaFormMapping registry (registryAutoCreateTemplates, merged in
+  // below) - this top-level legacy scan is never its source of truth.
+  // Leaving it active anyway let a token collision silently attach the
+  // wrong form: the "F1" family-preference classification (Unmarried Son/
+  // Daughter of a U.S. Citizen) and the "F-1" nonimmigrant student visa
+  // both normalize to "F1" via normalizeToken's hyphen-stripping, so an F1
+  // family Green Card case matched I-539 (Change/Extension of Nonimmigrant
+  // Status - never relevant to an immigrant family petition) purely
+  // because I-539's legacy template.visaTypes list includes "F-1" for
+  // genuine nonimmigrant cases. Confirmed live. Skipping this scan entirely
+  // for Family cases (rather than patching templateAppliesToCase itself)
+  // keeps resolveTemplateStatus's own reuse of templateAppliesToCase
+  // untouched - it still needs I-130/I-485/etc.'s legacy visaTypes fallback
+  // to correctly report TEMPLATE_AVAILABLE for the registry's own
+  // resolution, which this same collision-fix broke when tried inside
+  // templateAppliesToCase directly (every family form's registry status
+  // came back TEMPLATE_RULE_CONFLICT instead).
+  const skipLegacyScan = caseData.visaCategory === "Family";
+  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData))).forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     const existing = grouped.get(code);
     if (!existing || latestTemplateSort(template, existing) < 0) grouped.set(code, template);
