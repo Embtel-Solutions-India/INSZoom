@@ -144,15 +144,37 @@ async function resolvePagesToKeep(caseForm, template, totalPages) {
 // Applies resolved 1-based page numbers to a live pdf-lib PDFDocument,
 // removing every page not in the set (in descending index order, so
 // removal never shifts not-yet-processed indices). Field values must
-// already be written into the document before this runs - removing a page
-// only drops that page's own content/widgets, never the AcroForm field
-// definitions for fields that remain on kept pages.
+// already be written into the document before this runs.
+//
+// BUG (fixed): this is the actual reason a correctly-sliced 3-page
+// component (e.g. the I-129 H-1B Data Collection Supplement, pages 21-23,
+// 89 real widgets) still reported ~980 AcroForm fields after
+// AcroFormRepairGuard.rebuildAcroFormFieldsFromWidgets supposedly repaired
+// it - confirmed by direct reproduction against the real template PDF.
+// pdf-lib's own PDFDocument.getPages() is backed by a lazily-populated
+// Cache (`this.pageCache`, see node_modules/pdf-lib/cjs/api/PDFDocument.js)
+// that PDFDocument.insertPage() correctly invalidates but
+// PDFDocument.removePage() does NOT. getPageCount() itself calls
+// getPages() internally the first time it runs (to compute the count),
+// which means the mere act of reading totalPages below - BEFORE any
+// removePage() call - already populates that cache with the full,
+// pre-removal page list. Every later getPages() call in this same
+// PDFDocument instance (rebuildAcroFormFieldsFromWidgets iterating pages
+// to find surviving widgets, pdf.getForm().getFields() in
+// PDFFidelityService, pdf.save()) then silently returns that same stale,
+// un-invalidated array - so the "repair" walked all 980 original widgets
+// across all 38 original pages, not just the 89 on the 3 pages that
+// actually remain. Calling the same pageCache.invalidate() insertPage
+// already uses, right after the removal loop, is the fix: every
+// subsequent getPages() call recomputes fresh from the real, now-reduced
+// page tree.
 function keepOnlyPages(pdfDocument, pages1Based) {
   const totalPages = pdfDocument.getPageCount();
   const keep = new Set(pages1Based.map((p) => p - 1)); // the one 1-based -> 0-based boundary
   for (let i = totalPages - 1; i >= 0; i -= 1) {
     if (!keep.has(i)) pdfDocument.removePage(i);
   }
+  pdfDocument.pageCache.invalidate();
 }
 
 module.exports = { resolveComponentPages, resolveCorePages, resolvePagesToKeep, expandPageRanges, keepOnlyPages, componentPageError, findActiveComponentDefinition };

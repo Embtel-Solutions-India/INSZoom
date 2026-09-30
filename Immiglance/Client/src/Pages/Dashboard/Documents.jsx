@@ -21,7 +21,7 @@ import QuestionInput from "../../components/questionnaire/QuestionInput";
 import PrefillBadge from "../../components/PrefillBadge";
 import PrincipalCaseWorkspace from "../../components/questionnaire/PrincipalCaseWorkspace";
 import EmployeeSelfServiceView from "../../components/questionnaire/EmployeeSelfServiceView";
-import FamilyCompletionModeBanner from "../../components/checklist/FamilyCompletionModeBanner";
+import FamilyWorkflowCaseView from "../../components/questionnaire/FamilyWorkflowCaseView";
 import {
   resolveApplicableChecklistRoles,
   EMPLOYER_SHAPE_ROLES,
@@ -788,6 +788,33 @@ export default function Documents() {
     );
   }
 
+  // Family-workflow (I-130/Green Card) case: createFamilyCase's ONE shared
+  // Case with a petitionerUser/beneficiaryUser, never a child Case per
+  // participant - explicitly NOT the caseRole=principal/child-Case
+  // architecture below (product direction: "no child cases like the
+  // employer or employee... write petitioner info and beneficiary info in
+  // the same case"). Checked first since isFamilyShapeCase and
+  // caseRole==="principal" are mutually exclusive shapes anyway, but this
+  // keeps the family branch self-contained and never falls through to the
+  // legacy shared-hook rendering path further below, which is what caused
+  // petitioner/beneficiary checklist state to bleed into each other
+  // (confirmed live: a file-answer save on one checklist 500'd against the
+  // wrong questionnaire) and left both checklists stacked on one page with
+  // no clear separation.
+  if (isFamilyShapeCase) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Case checklist</p>
+          <h1 className="text-lg font-semibold text-foreground mb-6">
+            {visaType ? `${visaType} intake` : "Your case checklist"}
+          </h1>
+          <FamilyWorkflowCaseView activeCase={activeCase} allowedRoles={allowedRoles} onCaseChanged={refetchActiveCase} />
+        </div>
+      </div>
+    );
+  }
+
   // Phase 9 — the caseRole=principal/employee/beneficiary child-Case
   // architecture. Additive: only engages for a genuinely new-architecture
   // case (caseRole is only ever set by Phase 5's createCase), so every case
@@ -850,12 +877,6 @@ export default function Documents() {
       <a href="#checklist-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow">
         Skip to checklist
       </a>
-
-      {isFamilyShapeCase && allowedRoles?.includes("petitioner") && (
-        <div className="mx-auto max-w-4xl px-4 pt-4 sm:px-6">
-          <FamilyCompletionModeBanner activeCase={activeCase} onChanged={refetchActiveCase} />
-        </div>
-      )}
 
       {/* ── Sticky case header ── */}
       <header className="sticky top-0 z-30 border-b border-border bg-card">

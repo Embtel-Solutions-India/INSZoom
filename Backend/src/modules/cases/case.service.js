@@ -653,6 +653,16 @@ function populateCaseQuery(query) {
     { path: "clientProfile" },
     { path: "beneficiary", select: "fullName email visaType status companyId user passportNumber visaExpirationDate passportExpirationDate" },
     { path: "petitioner", select: "name displayName fullName email legalName role" },
+    // Distinct from the two above: the family-workflow's two real User
+    // accounts (createFamilyCase) - BUG (fixed): neither was ever
+    // populated, so Admin's Overview tab had literally nothing to read
+    // (caseData.petitionerUser/beneficiaryUser were bare ObjectIds) and
+    // fell back to showing only the generic clientEmail/clientName fields,
+    // which createFamilyCase sets to the BENEFICIARY - confirmed live, an
+    // Admin looking at a family case's Overview tab saw only the
+    // beneficiary's email, nothing about the petitioner at all.
+    { path: "petitionerUser", select: "name displayName email phone role" },
+    { path: "beneficiaryUser", select: "name displayName email phone role" },
     { path: "employer", select: "name legalName status" },
     { path: "organization", select: "name legalName status" },
     { path: "companyId", select: "name legalName status" },
