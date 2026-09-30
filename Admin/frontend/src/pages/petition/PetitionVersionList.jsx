@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FileStack, Sparkles, Loader2, AlertCircle } from 'lucide-react'
 import { petitionApi } from '../../services/api'
+import PetitionUploadPanel from './PetitionUploadPanel'
 
 const STATUS_BADGE = {
   draft: 'badge-info',
@@ -63,6 +64,8 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
 
   return (
     <div className="space-y-4">
+      <PetitionUploadPanel caseId={caseId} canUpload={canAssemble} />
+
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-bold text-foreground">Petition</h3>

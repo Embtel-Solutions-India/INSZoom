@@ -101,7 +101,14 @@ const ROLE_PERMISSIONS = {
   // "Feedback" tab — same backend, two entry points. No "questionnaires:*"
   // — a client-intake artifact, not case-review material; not a page this
   // role needs.
-  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "forms:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
+  // questionnaires:read — deliberately re-added (was previously removed per
+  // ATTORNEY_PORTAL.md as "client-intake data, not case-review material").
+  // Reversed at explicit product request: an assigned attorney reviewing a
+  // case needs to see the same employer/employee, petitioner/beneficiary,
+  // and single-client checklist answers the case manager sees. Still
+  // case-scoped only — canAccessCase's attorney branch (case.service.js)
+  // is the actual per-case gate, same as every other attorney:* grant here.
+  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "forms:read", "questionnaires:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
 };
 
 function expandPermission(resource, action) {

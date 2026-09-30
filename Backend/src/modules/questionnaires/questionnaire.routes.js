@@ -8,6 +8,13 @@ const ctrl = require("./questionnaire.controller");
 const designerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const reviewerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const readerRoles = [...reviewerRoles, "client", "employer", "employee", "beneficiary"];
+// Scoped separately from readerRoles (never added there) - an attorney only
+// ever needs the two case-scoped read routes below (answers for a case
+// they're granted on), never the template library/designer surface the rest
+// of readerRoles covers. Case-level scoping itself is enforced inside
+// questionnaire.controller.js/questionnaire.service.js via
+// caseService.canAccessCase, same as every other attorney-visible route.
+const caseReaderRoles = [...readerRoles, "attorney"];
 
 router.get("/", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionnaires);
 router.post("/", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createQuestionnaire);
@@ -18,8 +25,8 @@ router.post("/question-library/custom", authenticate, authorizeRoles(...designer
 router.post("/question-library/synchronize", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("questionnaires:create"), ctrl.synchronizeQuestionLibrary);
 router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.ensureDefaultTemplates);
 router.post("/defaults/seed", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.ensureDefaultTemplates);
-router.get("/case/:caseId", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
-router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);
+router.get("/case/:caseId", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
+router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);
 router.post("/import", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.importQuestionnaire);
 router.post("/ai-generate", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.generateQuestionnaire);
 

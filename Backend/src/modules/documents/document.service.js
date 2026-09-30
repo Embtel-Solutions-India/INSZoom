@@ -449,6 +449,17 @@ async function createDocumentFromFile({ file, body, user, req }) {
   addAuditEntry(document, "upload", user, { storageKey: stored.key }, req);
   await document.save();
   await linkDocumentToCaseRequests(context.caseData, document, user, req);
+  // Narrowly scoped to the one documentType the Petition tab's manual
+  // "Upload Petition" button (Admin) sends - a routine checklist/evidence
+  // upload doesn't otherwise touch caseService.addAuditEntry at all here
+  // (nothing regresses for every other upload path). This is what makes the
+  // Attorney Portal's Petition tab pick the new document up live via the
+  // same case:updated push case.service.js's addAuditEntry already fans out
+  // to every actively-granted attorney, instead of only on next reload.
+  if (context.caseData && body.documentType === "petition_manual_upload") {
+    caseService.addAuditEntry(context.caseData, "petition_manual_upload", `A petition document was uploaded by ${user.name || user.displayName || "staff"}.`, user, { documentId: document._id }, req);
+    await context.caseData.save();
+  }
   return document;
 }
 

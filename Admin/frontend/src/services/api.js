@@ -318,6 +318,16 @@ export const questionnairesApi = {
   deleteQuestion: (id, questionId) => api.delete(`/questionnaires/${id}/questions/${questionId}`),
   assign: (id, payload) => api.post(`/questionnaires/${id}/assign`, payload),
   answers: (id, params = {}) => api.get(`/questionnaires/${id}/answers`, { params }),
+  // Case-manager correction of a client's already-submitted answer -
+  // preserveStatus:true tells the backend to keep that answer's existing
+  // status (submitted/approved) instead of resetting it to auto_saved (see
+  // questionnaire.service.js's PRESERVE_ANSWER_STATUS). Client-side save
+  // calls in Immiglance never set this flag.
+  saveAnswer: (id, payload) => api.post(`/questionnaires/${id}/answers`, { ...payload, preserveStatus: true }),
+  saveFileAnswer: (id, formData) => {
+    formData.append('preserveStatus', 'true')
+    return api.post(`/questionnaires/${id}/answers/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   progress: (id, params = {}) => api.get(`/questionnaires/${id}/progress`, { params }),
   mappings: (id) => api.get(`/questionnaires/${id}/uscis-mappings`),
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
@@ -335,6 +345,24 @@ export const documentsApi = {
   preview: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),
   review: (documentId, payload) => api.put(`/documents/${documentId}/review`, payload),
   versions: (documentId) => api.get(`/documents/${documentId}/versions`),
+  // Petition tab's manual "Upload Petition" - a real Document (uploadedBy
+  // the case manager, never 'system'), tagged documentType
+  // "petition_manual_upload" so both this tab and the Attorney Portal's
+  // Petition tab can query for exactly these without pulling in every other
+  // case document. Separate from the auto-assembled PetitionPackage
+  // pipeline (petitionApi below) entirely - see document.service.js's
+  // createDocumentFromFile for the matching caseService.addAuditEntry hook
+  // that makes this show up live on the Attorney side.
+  listPetitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
+  uploadPetition: (caseId, file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('caseId', caseId)
+    formData.append('documentType', 'petition_manual_upload')
+    formData.append('category', 'legal')
+    return api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  download: (documentId) => api.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
   // In-place editing (plain-text documents only) - case manager view/edit/save,
   // reusing the document's existing version history under the hood.
   getContent: (documentId) => api.get(`/documents/${documentId}/content`),

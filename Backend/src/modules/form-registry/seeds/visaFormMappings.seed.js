@@ -22,8 +22,22 @@ const STANDALONE = "STANDALONE_FORM";
 // (e.g. I-129's H/O-P/L/Q/R/E Classification Supplements and the H-1B Data
 // Collection Supplement - confirmed via docs/forms/H0_I-129_template_seed_prompt.md
 // that these are pages inside the one I-129 USCISFormTemplate, never their
-// own PDF/template). Never independently provisionable - see NOT_APPLICABLE
-// below.
+// own PDF/template).
+//
+// BUG (fixed): every one of these rows was seeded with provisioningType
+// NOT_APPLICABLE, on the theory that "embedded page, not a standalone
+// form" meant "never its own CaseForm." That's wrong relative to what this
+// codebase actually builds: registryAutoCreateTemplates/buildTemplateForMapping
+// already have a full, working mechanism for a component to become its OWN
+// CaseForm that points at the shared parent template (formCode overridden
+// to the component's stable identity, parentFormCode/componentCode set,
+// USCISFormComponentDefinition resolving the exact page range/fields) -
+// confirmed live in a real CaseForm (I129_H_CLASSIFICATION_SUPPLEM etc.).
+// NOT_APPLICABLE just meant these 23 rows, across every classification
+// (H/H-1B1/L/O/P/Q/R/E/TN), never reached that mechanism for a single real
+// case - the exact "no supplement forms showing in the admin panel" bug.
+// Now AUTO_CREATE by default, same as any other required component of an
+// applicable classification.
 const FORM_COMPONENT = "FORM_COMPONENT";
 // SUPPLEMENT: a genuinely separate USCIS form/PDF (its own USCISFormTemplate)
 // that is nonetheless legally dependent on a parent form and can never be
@@ -69,28 +83,28 @@ function AUTO_CREATE_ALIAS(t) { return t === AUTO ? AUTO : "__never__"; }
 function i129Petition(visaType, opts = {}) {
   return m(visaType, "I-129", "Petition for a Nonimmigrant Worker", "USCIS", opts.provisioningType || AUTO, STANDALONE, { formTemplateFormCode: "i-129", initialCaseCreation: true, ...opts });
 }
-// componentType FORM_COMPONENT + provisioningType NOT_APPLICABLE: these are
-// pages inside the one I-129 PDF (never their own CaseForm/template), so
-// they must never be independently resolvable/provisionable/visible - see
-// FORM_COMPONENT's definition above. initialCaseCreation left false (they
-// were never real CaseForm-creation triggers to begin with).
+// componentType FORM_COMPONENT, provisioningType AUTO_CREATE: a required
+// component of I-129 whenever this classification's I-129 CORE applies -
+// becomes its own CaseForm sharing I-129's template (see FORM_COMPONENT's
+// definition above for why this is safe/correct), always alongside the
+// base I-129, never in place of it.
 function i129HSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
+  return m(visaType, "I-129 H Classification Supplement", "H Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template.", ...opts });
 }
 function i129OPSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
+  return m(visaType, "I-129 O/P Classification Supplement", "O/P Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template.", ...opts });
 }
 function i129LSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
+  return m(visaType, "I-129 L Classification Supplement", "L Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template.", ...opts });
 }
 function i129QSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
+  return m(visaType, "I-129 Q Classification Supplement", "Q Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template.", ...opts });
 }
 function i129RSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm.", ...opts });
+  return m(visaType, "I-129 R Classification Supplement", "R Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template.", ...opts });
 }
 function i129ESupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
+  return m(visaType, "I-129 E Classification Supplement", "E Classification Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
 }
 // E-3's real I-129 supplement is NOT the E-1/E-2 Classification Supplement
 // (I-129 pages 9-10) — the real printed heading on I-129 page 11-12 for E-3
@@ -104,7 +118,7 @@ function i129ESupplement(visaType, opts = {}) {
 // formName match), which is why this is a distinct helper from
 // i129ESupplement above, not a shared one.
 function i129TradeAgreementSupplement(visaType, opts = {}) {
-  return m(visaType, "I-129 Trade Agreement Supplement", "Trade Agreement Supplement to Form I-129", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
+  return m(visaType, "I-129 Trade Agreement Supplement", "Trade Agreement Supplement to Form I-129", "USCIS", opts.provisioningType || AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template. Only relevant when the USCIS COS/extension route (I-129) is used, not for consular E processing (DS-160/DS-156E).", ...opts });
 }
 function ds160(visaType, opts = {}) {
   return m(visaType, "DS-160", "Online Nonimmigrant Visa Application", "DOS", opts.provisioningType || COND, ONLINE, {
@@ -146,6 +160,22 @@ function i131(visaType, opts = {}) {
 function i485(visaType, opts = {}) {
   return m(visaType, "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS"], formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, notes: "Never auto-created merely for an immigrant case - gated on processingPath=ADJUSTMENT_OF_STATUS.", ...opts });
 }
+// I-485 Supplement A: a genuinely separate SUPPLEMENT (its own USCISFormTemplate,
+// componentType SUPPLEMENT - not a FORM_COMPONENT page-range), conditional on
+// 245(i) eligibility. Global across every I-485 category (family or
+// employment-based alike) - never visa-specific, unlike Supplement J below.
+function i485SupplementA(visaType, opts = {}) {
+  return m(visaType, "I-485 Supplement A", "Supplement A to Form I-485", "USCIS", COND, SUPPLEMENT, { parentForm: "I-485", formTemplateFormCode: "i-485a", processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "Section 245(i) eligibility only - never universal to every I-485.", ...opts });
+}
+// I-485 Supplement J: conditional ONLY for an employment-based I-485 whose
+// underlying I-140 classification is tied to a specific job offer (EB-1B,
+// EB-1C, EB-2 PERM, EB-3). Deliberately NEVER added for EB-1A (extraordinary
+// ability - no job offer), EB-2 NIW (job-offer requirement waived), or EB-5
+// (investor, not an employment classification at all) - USCIS's own I-485
+// instructions draw this exact line (see master mapping spec §14/§27).
+function i485SupplementJ(visaType, opts = {}) {
+  return m(visaType, "I-485 Supplement J", "Supplement J to Form I-485", "USCIS", COND, SUPPLEMENT, { parentForm: "I-485", formTemplateFormCode: "i-485j", processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "Job-offer-based EB classification confirming/portability only - never EB-1A, EB-2 NIW, or EB-5.", ...opts });
+}
 function ds260(visaType, opts = {}) {
   return m(visaType, "DS-260", "Immigrant Visa Electronic Application", "DOS", opts.provisioningType || COND, ONLINE, { processingPaths: opts.provisioningType === AUTO ? [] : ["CONSULAR", "NVC"], immigrationNature: IMMIGRANT, notes: "Never created for an AOS-only case - the immigrant visa application, gated on consular/NVC processing.", ...opts });
 }
@@ -160,7 +190,7 @@ const add = (...items) => mappings.push(...items);
 add(
   i129Petition("H-1B", { verificationSource: "uscis.gov/i-129", verificationDate: new Date(), sourceVerified: true }),
   i129HSupplement("H-1B"),
-  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF for H-1B/H-1B1, not a standalone form or separate CaseForm." }),
+  m("H-1B", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF for H-1B/H-1B1; provisioned as its own CaseForm sharing that template." }),
   m("H-1B", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true, notes: "LCA - includes the ETA-9035E electronic filing variant of the same DOL application." }),
   ds160("H-1B"),
   i539("H-1B"),
@@ -170,14 +200,14 @@ add(
 
 add(
   i129Petition("H-1B1 Chile", { provisioningType: COND, initialCaseCreation: false, notes: "Only where the USCIS COS/extension route applies; H-1B1 is more commonly filed via consular DS-160, not I-129." }),
-  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF, not a standalone form or separate CaseForm. Only relevant when I-129 is actually used for this H-1B1 case." }),
+  m("H-1B1 Chile", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", AUTO, FORM_COMPONENT, { parentForm: "I-129", notes: "Page(s) inside the same I-129 PDF; provisioned as its own CaseForm sharing that template. Only relevant when I-129 is actually used for this H-1B1 case." }),
   m("H-1B1 Chile", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Chile", { provisioningType: AUTO, initialCaseCreation: true, notes: "Consular visa route is the typical H-1B1 path." }),
   i907("H-1B1 Chile")
 );
 add(
   i129Petition("H-1B1 Singapore", { provisioningType: COND, initialCaseCreation: false }),
-  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", NA, FORM_COMPONENT, { parentForm: "I-129" }),
+  m("H-1B1 Singapore", "H-1B Data Collection and Filing Fee Exemption Supplement", "H-1B Data Collection and Filing Fee Exemption Supplement", "USCIS", AUTO, FORM_COMPONENT, { parentForm: "I-129" }),
   m("H-1B1 Singapore", "ETA-9035", "Labor Condition Application for Nonimmigrant Workers", "DOL", AUTO, ONLINE, { initialCaseCreation: true }),
   ds160("H-1B1 Singapore", { provisioningType: AUTO, initialCaseCreation: true }),
   i907("H-1B1 Singapore")
@@ -326,6 +356,7 @@ add(
   ds160("K-1", { provisioningType: AUTO, initialCaseCreation: true }),
   m("K-1", "I-134", "Declaration of Financial Support", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-134", stage: "consular_interview", notes: "Sponsor's affidavit of financial support, required for the K-1 visa interview stage (distinct from the later I-864 used after AOS)." }),
   m("K-1", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos", notes: "After marriage/AOS, not at initial case creation." }),
+  i485SupplementA("K-1", { provisioningType: LATER, stage: "post_marriage_aos" }),
   i765("K-1", { provisioningType: COND }),
   i131("K-1", { provisioningType: COND })
 );
@@ -336,6 +367,7 @@ add(
   ds160("K-3", { provisioningType: AUTO, initialCaseCreation: true }),
   m("K-3", "I-134", "Declaration of Financial Support", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-134", stage: "consular_interview", notes: "Sponsor's affidavit of financial support, required for the K-3 visa interview stage (distinct from the later I-864 used after AOS)." }),
   m("K-3", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "post_marriage_aos" }),
+  i485SupplementA("K-3", { provisioningType: LATER, stage: "post_marriage_aos" }),
   i765("K-3", { provisioningType: COND }),
   i131("K-3", { provisioningType: COND })
 );
@@ -476,18 +508,22 @@ add(
 );
 
 // ===================== EB-1 =====================
-function eb1(visaType) {
+function eb1(visaType, opts = {}) {
   add(
     m(visaType, "I-140", "Immigrant Petition for Alien Worker", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-140", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
     i485(visaType),
+    i485SupplementA(visaType),
     ds260(visaType),
     i765(visaType, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"], notes: "AOS EAD." }),
     i131(visaType, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"], notes: "AOS travel document." }),
     i693(visaType),
-    i907(visaType, { immigrationNature: IMMIGRANT })
+    i907(visaType, { immigrationNature: IMMIGRANT }),
+    // EB-1A (extraordinary ability, no job offer) never gets Supplement J -
+    // see i485SupplementJ's own comment. EB-1B/EB-1C are job-offer-based.
+    ...(opts.supplementJ ? [i485SupplementJ(visaType)] : [])
   );
 }
-eb1("EB-1A"); eb1("EB-1B"); eb1("EB-1C");
+eb1("EB-1A"); eb1("EB-1B", { supplementJ: true }); eb1("EB-1C", { supplementJ: true });
 
 // ===================== EB-2 =====================
 add(
@@ -499,16 +535,23 @@ add(
   m("EB-2 PERM", "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
   m("EB-2 PERM", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
   m("EB-2 PERM", "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-  i907("EB-2 PERM", { immigrationNature: IMMIGRANT })
+  i907("EB-2 PERM", { immigrationNature: IMMIGRANT }),
+  i485SupplementA("EB-2 PERM", { provisioningType: LATER, stage: "adjustment_of_status" }),
+  // Job-offer/labor-certification-based - unlike EB-2 NIW below.
+  i485SupplementJ("EB-2 PERM", { provisioningType: LATER, stage: "adjustment_of_status" })
 );
 add(
   m("EB-2 NIW", "I-140", "Immigrant Petition for Alien Worker", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-140", initialCaseCreation: true, immigrationNature: IMMIGRANT, notes: "No PERM labor certification required for NIW." }),
   i485("EB-2 NIW"),
+  i485SupplementA("EB-2 NIW"),
   ds260("EB-2 NIW"),
   i765("EB-2 NIW", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   i131("EB-2 NIW", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   i693("EB-2 NIW"),
   i907("EB-2 NIW", { immigrationNature: IMMIGRANT })
+  // Deliberately NO i485SupplementJ("EB-2 NIW") - see i485SupplementJ's own
+  // comment: NIW waives the job-offer requirement, so Supplement J never
+  // applies here.
 );
 
 // ===================== EB-3 =====================
@@ -522,7 +565,12 @@ function eb3Perm(visaType) {
     m(visaType, "I-765", "Application for Employment Authorization", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
     m(visaType, "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
     m(visaType, "I-693", "Report of Immigration Medical Examination and Vaccination Record", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-693", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
-    i907(visaType, { immigrationNature: IMMIGRANT })
+    i907(visaType, { immigrationNature: IMMIGRANT }),
+    i485SupplementA(visaType, { provisioningType: LATER, stage: "adjustment_of_status" }),
+    // Every PERM/job-offer-based EB-3 subtype (and bare EB-2/EB-3, PERM-based
+    // by default per the comment below) needs Supplement J - unlike EB-1A/
+    // EB-2 NIW/EB-5.
+    i485SupplementJ(visaType, { provisioningType: LATER, stage: "adjustment_of_status" })
   );
 }
 eb3Perm("EB-3 Skilled Worker"); eb3Perm("EB-3 Professional"); eb3Perm("EB-3 Other Worker");
@@ -539,10 +587,12 @@ eb3Perm("EB-2"); eb3Perm("EB-3");
 // ===================== EB-4 =====================
 add(
   m("EB-4", "I-360", "Petition for Amerasian, Widow(er), or Special Immigrant", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-360", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
-  i485("EB-4"), ds260("EB-4"),
+  i485("EB-4"), i485SupplementA("EB-4"), ds260("EB-4"),
   i765("EB-4", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   i131("EB-4", { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
   i693("EB-4")
+  // No i485SupplementJ - EB-4 (special immigrant/religious worker/SIJ/etc.)
+  // is never a PERM/job-offer-confirmation category.
 );
 
 // ===================== EB-5 =====================
@@ -550,6 +600,8 @@ add(
   m("EB-5 Regional Center", "I-526E", "Immigrant Petition by Regional Center Investor", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-526e", initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526e", verificationDate: new Date(), sourceVerified: true, notes: "Regional Center path - never substitute I-526 (Standalone) for this." }),
   m("EB-5 Regional Center", "I-956F", "Application for Approval of an Investment in a Commercial Enterprise", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-956f", immigrationNature: IMMIGRANT, stage: "project_level_filing", notes: "Project-level filing, only when applicable." }),
   m("EB-5 Regional Center", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  // No Supplement J - EB-5 is an investor classification, never job-offer-based.
+  i485SupplementA("EB-5 Regional Center", { provisioningType: LATER, stage: "adjustment_of_status" }),
   m("EB-5 Regional Center", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa" }),
   m("EB-5 Regional Center", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT }),
   m("EB-5 Regional Center", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT }),
@@ -559,6 +611,7 @@ add(
 add(
   m("EB-5 Standalone", "I-526", "Immigrant Petition by Standalone Investor", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-526", initialCaseCreation: true, immigrationNature: IMMIGRANT, verificationSource: "uscis.gov/i-526", verificationDate: new Date(), sourceVerified: true, notes: "Standalone path - never substitute I-526E (Regional Center) for this." }),
   m("EB-5 Standalone", "I-485", "Application to Register Permanent Residence or Adjust Status", "USCIS", LATER, STANDALONE, { formTemplateFormCode: "i-485", immigrationNature: IMMIGRANT, stage: "adjustment_of_status" }),
+  i485SupplementA("EB-5 Standalone", { provisioningType: LATER, stage: "adjustment_of_status" }),
   m("EB-5 Standalone", "DS-260", "Immigrant Visa Electronic Application", "DOS", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "immigrant_visa" }),
   m("EB-5 Standalone", "I-765", "Application for Employment Authorization", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-765", immigrationNature: IMMIGRANT }),
   m("EB-5 Standalone", "I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-131", immigrationNature: IMMIGRANT }),
@@ -571,10 +624,15 @@ function familyBased(visaType, opts = {}) {
   add(
     m(visaType, "I-130", "Petition for Alien Relative", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-130", initialCaseCreation: true, immigrationNature: IMMIGRANT }),
     m(visaType, "I-130A", "Supplemental Information for Spouse Beneficiary", "USCIS", COND, SUPPLEMENT, { parentForm: "I-130", immigrationNature: IMMIGRANT, notes: "Spouse-beneficiary trigger.", triggerCondition: opts.spouseTrigger || null }),
-    m(visaType, "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT, notes: "Immigrant case requires Affidavit of Support." }),
-    m(visaType, "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { parentForm: "I-864", immigrationNature: IMMIGRANT, notes: "Qualifying household member contributes income." }),
-    m(visaType, "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT, notes: "Sponsor meets I-864EZ criteria." }),
+    // BUG (fixed): no processingPaths restriction meant I-864/I-864A/I-864EZ
+    // auto-created for a PETITION_ONLY (bare I-130) case too - the Affidavit
+    // of Support is only ever filed alongside the Green Card package
+    // (I-485 adjustment or DS-260 consular), never with a standalone I-130.
+    m(visaType, "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS", "CONSULAR"], formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT, notes: "Immigrant case requires Affidavit of Support - only once the Green Card package (AOS or consular) is underway." }),
+    m(visaType, "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { processingPaths: ["ADJUSTMENT_OF_STATUS", "CONSULAR"], parentForm: "I-864", immigrationNature: IMMIGRANT, notes: "Qualifying household member contributes income." }),
+    m(visaType, "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { processingPaths: ["ADJUSTMENT_OF_STATUS", "CONSULAR"], formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT, notes: "Sponsor meets I-864EZ criteria." }),
     i485(visaType),
+    i485SupplementA(visaType),
     ds260(visaType),
     i765(visaType, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),
     i131(visaType, { immigrationNature: IMMIGRANT, processingPaths: ["ADJUSTMENT_OF_STATUS"] }),

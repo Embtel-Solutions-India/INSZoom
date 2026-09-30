@@ -24,21 +24,26 @@ const VISA_TYPE_OPTIONS = [
   // I-130/Green-Card/I-864 family-based classifications - previously
   // absent from this dropdown entirely, so staff had no way to create
   // these cases through the CRM at all (POST /family-workflow/cases had no
-  // frontend caller anywhere in the app until this change). Labels match
-  // visaCategories.js's own spelling exactly, since that's the real-world
-  // format Case.visaType/VisaFormMapping already key on.
-  { value: 'ir1', label: 'IR-1' },
-  { value: 'cr1', label: 'CR-1' },
-  { value: 'ir2', label: 'IR-2' },
-  { value: 'cr2', label: 'CR-2' },
-  { value: 'ir3', label: 'IR-3' },
-  { value: 'ir4', label: 'IR-4' },
-  { value: 'ir5', label: 'IR-5' },
-  { value: 'f1family', label: 'F1' },
-  { value: 'f2a', label: 'F2A' },
-  { value: 'f2b', label: 'F2B' },
-  { value: 'f3', label: 'F3' },
-  { value: 'f4', label: 'F4' },
+  // frontend caller anywhere in the app until this change). Underlying
+  // `value` matches visaCategories.js's own spelling exactly, since that's
+  // the real-world format Case.visaType/VisaFormMapping already key on -
+  // only the LABEL adds "(I-130 / Green Card)" so a case manager sees at a
+  // glance that picking any of these leads into the I-130/Green-Card
+  // checklist+form logic (then the Filing Path selector below decides
+  // Petition Only vs the fuller Green Card package). Listed inline with
+  // every other visa type, same as before - no separate section/optgroup.
+  { value: 'ir1', label: 'IR-1 (I-130 / Green Card)' },
+  { value: 'cr1', label: 'CR-1 (I-130 / Green Card)' },
+  { value: 'ir2', label: 'IR-2 (I-130 / Green Card)' },
+  { value: 'cr2', label: 'CR-2 (I-130 / Green Card)' },
+  { value: 'ir3', label: 'IR-3 (I-130 / Green Card)' },
+  { value: 'ir4', label: 'IR-4 (I-130 / Green Card)' },
+  { value: 'ir5', label: 'IR-5 (I-130 / Green Card)' },
+  { value: 'f1family', label: 'F1 (I-130 / Green Card)' },
+  { value: 'f2a', label: 'F2A (I-130 / Green Card)' },
+  { value: 'f2b', label: 'F2B (I-130 / Green Card)' },
+  { value: 'f3', label: 'F3 (I-130 / Green Card)' },
+  { value: 'f4', label: 'F4 (I-130 / Green Card)' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },

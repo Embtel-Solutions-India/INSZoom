@@ -18,7 +18,10 @@ function bodyLines(data = {}) {
   return [
     `Hi ${data.employeeName || "there"},`,
     `${data.employerName || "Your employer"} has invited you to complete your portion of immigration case ${data.caseNumber || ""}.`,
-    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Create Your Account</a>`,
+    `<strong>Your Case ID:</strong> ${data.caseNumber || ""}`,
+    `<strong>Portal:</strong> ${FRONTEND_URL}`,
+    `Click below to set your own password and access your dedicated case portal — you'll only see your own information, never anyone else's:`,
+    `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Set Your Password &amp; Access Your Case</a>`,
     `Or copy this link into your browser: ${link}`,
     `This link expires in 7 days.`,
   ];

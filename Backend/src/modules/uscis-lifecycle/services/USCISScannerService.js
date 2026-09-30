@@ -22,7 +22,18 @@ class USCISScannerService {
   static normalizeFormCode(value = "") {
     const normalized = String(value).trim().toUpperCase();
     const supplement = normalized.match(/^([A-Z]{1,3}-\d{2,4}[A-Z]?)[\s_-]+SUPPLEMENT[\s_-]+([A-Z])$/);
-    return supplement ? `${supplement[1]} Supplement ${supplement[2]}` : normalized.replace(/\s+/g, "");
+    // BUG (fixed): this returned mixed-case "Supplement" (lowercase "upplement")
+    // even though `normalized` itself, and every caller comparing this
+    // return value, is uppercase throughout. Every caller that then does
+    // `.replace(/[^A-Z0-9]/g, "")` for a case-sensitive comparison (e.g.
+    // extractFormPageMetadata's own anchor-text match) silently drops those
+    // lowercase letters - "I-918 Supplement A" collapsed to just "I918SA",
+    // never matching the real anchor text's "I918SUPPLEMENTA...". Confirmed
+    // live: this is exactly why I-918/I-485's Supplement A/B/J lookups kept
+    // falling through to an unrelated "first PDF on the page" result no
+    // matter what the caller passed in. All-uppercase here matches every
+    // other branch of this same function.
+    return supplement ? `${supplement[1]} SUPPLEMENT ${supplement[2]}` : normalized.replace(/\s+/g, "");
   }
 
   static assertOfficialUscisUrl(url) {

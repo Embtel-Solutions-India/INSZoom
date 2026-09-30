@@ -2339,6 +2339,24 @@ exports.addEmployeeSlot = async (req, res, next) => {
     await principal.save();
     await caseService.writeAuditLog("add_employee_slot", principal, req.user, { childCaseId: childCase._id, childCaseNumber }, req);
 
+    // BUG (fixed): this endpoint only ever created the Case + EmployeeProfile
+    // documents — it never assigned any questionnaire/checklist to the new
+    // child, unlike a child case created during initial case setup (see
+    // CaseLifecycleOrchestratorService.initializeCase's own child-case loop,
+    // which calls exactly these same three steps). Confirmed live: two
+    // employee slots added via this endpoint had zero questionnaireReferences
+    // at all — the invited employee would see a blank checklist with nothing
+    // to fill out. provisionRequiredForms/provisionChecklistAssignments are
+    // already written to target every id in principal.childCases (just
+    // updated above) when called on the principal, and assignQuestionnaires
+    // (inside orchestrateOne) is already idempotent — so this is safe to run
+    // even though it also re-touches the already-provisioned earlier
+    // children, not just the new one.
+    const orchestrator = require("./case-lifecycle-orchestrator.service");
+    await orchestrator.orchestrateOne(childCase._id, req.user, req);
+    await orchestrator.provisionRequiredForms(principal, req.user, req);
+    await orchestrator.provisionChecklistAssignments(principal, req.user, req);
+
     return res.status(201).json({
       success: true,
       message: `Employee slot ${childCaseNumber} added.`,

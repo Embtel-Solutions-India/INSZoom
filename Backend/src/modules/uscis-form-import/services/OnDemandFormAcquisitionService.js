@@ -38,6 +38,23 @@ function normalizeFormCode(value = "") {
   return String(value).trim().toUpperCase();
 }
 
+// BUG (fixed): a VisaFormMapping.formNumber for a genuinely-separate
+// SUPPLEMENT (componentType SUPPLEMENT, its own USCISFormTemplate — never a
+// FORM_COMPONENT page-range) is stored spelled out, e.g. "I-918 Supplement
+// B", "I-485 Supplement A/J" (see visaFormMappings.seed.js). normalizeFormCode
+// alone left the space and the word "SUPPLEMENT" in place, which failed
+// STANDALONE_FORM_CODE_PATTERN outright and threw USCIS_FORM_NOT_STANDALONE
+// before ever reaching the parent-page fallback below — even though that
+// fallback exists SPECIFICALLY for this class of form (its own comment
+// already names I-918 Supplement A/B) and already works correctly for the
+// compact form of the same idea (confirmed live: "I-130A" resolves fine).
+// Collapsing "<parent> Supplement <letter>" to "<parent><letter>" here
+// (I-918 Supplement B -> I918B) is enough to let that same, already-correct
+// fallback do its job — no other logic in this file changes.
+function compactSupplementCode(formCode) {
+  return formCode.replace(/^([A-Z]{1,3}-\d{2,4})\s+SUPPLEMENT\s+([A-Z0-9]{1,2})$/, "$1$2");
+}
+
 function enterpriseError(message, statusCode, code) {
   return Object.assign(new Error(message), { statusCode, status: statusCode, code });
 }
@@ -64,7 +81,7 @@ const STANDALONE_FORM_CODE_PATTERN = /^[A-Z]{1,3}-\d{2,4}[A-Z]{0,2}$/;
 // (component/supplement) formNumber, which has no such page - callers must
 // check for null rather than fetching a guaranteed-broken/misleading URL.
 function guessedFormPageUrl(formNumber) {
-  const formCode = normalizeFormCode(formNumber);
+  const formCode = compactSupplementCode(normalizeFormCode(formNumber));
   if (!STANDALONE_FORM_CODE_PATTERN.test(formCode)) return null;
   return `https://www.uscis.gov/${formCode.toLowerCase()}`;
 }
@@ -79,7 +96,7 @@ function guessedFormPageUrl(formNumber) {
 // scraper — and USCISScannerService.fetchPage itself enforces the *.uscis.gov
 // host guard (Constraint #5), so this cannot be pointed at an arbitrary URL.
 async function resolveOfficialPdf(formNumber) {
-  const formCode = normalizeFormCode(formNumber);
+  const formCode = compactSupplementCode(normalizeFormCode(formNumber));
   const pageUrl = guessedFormPageUrl(formCode);
   if (!pageUrl) {
     throw enterpriseError(
@@ -99,11 +116,35 @@ async function resolveOfficialPdf(formNumber) {
   try {
     const directoryHtml = await USCISScannerService.fetchPage(USCISScannerService.OFFICIAL_SOURCES?.formsDirectoryUrl || "https://www.uscis.gov/forms/all-forms");
     const directoryForms = USCISScannerService.extractDirectoryForms(directoryHtml);
-    const match = directoryForms.find((item) => normalizeFormCode(item.formCode) === formCode);
+    // BUG (fixed): the directory lists a genuinely-separate SUPPLEMENT
+    // spelled out exactly like its VisaFormMapping.formNumber ("I-485
+    // Supplement A"/"I-485 Supplement J"), never in the compact form used
+    // above for the parent-suffix fallback ("I-485A") - comparing against
+    // the compact `formCode` here never matched, so this tier silently
+    // found nothing for either and both requests fell through to the SAME
+    // last-resort "first PDF on the page" fallback deeper in this file,
+    // resolving both to the base I-485 PDF (confirmed live: byte-identical
+    // downloads for "Supplement A" and "Supplement J"). Checking the
+    // original, un-compacted formNumber too is what actually matches the
+    // directory's own listing.
+    const originalCode = normalizeFormCode(formNumber);
+    const codeMatches = directoryForms.filter((item) => {
+      const itemCode = normalizeFormCode(item.formCode);
+      return itemCode === formCode || itemCode === originalCode;
+    });
+    // The directory lists several rows per form code (the real form-detail
+    // page, a "File Online" link to my.uscis.gov, a generic "Form Details"
+    // stub) - .find()'s natural array order isn't guaranteed to put the real
+    // page first (confirmed live: "File Online" preceded the actual
+    // "Supplement A to Form I-485..." row for this exact form), so prefer
+    // whichever match has a real, descriptive formName over those two
+    // generic placeholders, falling back to the first match if that's all
+    // there is.
+    const match = codeMatches.find((item) => !["File Online", "Form Details"].includes(item.formName)) || codeMatches[0];
     if (match?.pdfUrl) return { pdfUrl: match.pdfUrl, editionDate: match.editionDate, officialPageUrl: match.pageUrl || pageUrl, formName: match.formName };
     if (match?.pageUrl) {
       const html = await USCISScannerService.fetchPage(match.pageUrl);
-      const meta = USCISScannerService.extractFormPageMetadata(html, match.pageUrl, formCode);
+      const meta = USCISScannerService.extractFormPageMetadata(html, match.pageUrl, formNumber);
       if (meta.pdfUrl) return { pdfUrl: meta.pdfUrl, editionDate: meta.editionDate, officialPageUrl: match.pageUrl, formName: meta.formName };
     }
   } catch (error) {
@@ -123,7 +164,21 @@ async function resolveOfficialPdf(formNumber) {
     if (parentPageUrl) {
       try {
         const html = await USCISScannerService.fetchPage(parentPageUrl);
-        const meta = USCISScannerService.extractFormPageMetadata(html, parentPageUrl, formCode);
+        // BUG (fixed): extractFormPageMetadata's own anchor match strips to
+        // alphanumeric-only and compares as a plain substring - the compact
+        // formCode here ("I-485A" -> "I485A") is NEVER a substring of the
+        // real anchor text USCIS actually uses ("I-485 Supplement A" ->
+        // "I485SUPPLEMENTA"), so it always missed and silently fell through
+        // to that function's OWN last-resort "first non-instructions PDF on
+        // the page" fallback - returning the SAME link (confirmed live:
+        // "Supplement A" and "Supplement J" both resolved to byte-identical
+        // downloads) no matter which supplement letter was actually
+        // requested. The un-compacted original formNumber ("I-485 Supplement
+        // A") strips to the exact same "I485SUPPLEMENTA" the real anchor
+        // text does, so passing that instead - only for this match, the URL
+        // guess above still needs the compact parent code - lets the
+        // existing match logic actually find the right link.
+        const meta = USCISScannerService.extractFormPageMetadata(html, parentPageUrl, formNumber);
         if (meta.pdfUrl) return { pdfUrl: meta.pdfUrl, editionDate: meta.editionDate, officialPageUrl: parentPageUrl, formName: meta.formName };
       } catch (error) {
         // Parent page fetch/parse failed too - fall through to the typed error.

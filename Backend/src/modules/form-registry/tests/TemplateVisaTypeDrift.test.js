@@ -38,6 +38,7 @@ function buildSatisfyingCase(template, visaType) {
   if (rules.petitionTypes?.length) caseData.petitionType = rules.petitionTypes[0];
   if (rules.applicantTypes?.length) caseData.applicantType = rules.applicantTypes[0];
   if (rules.premiumProcessing !== undefined) caseData.premiumProcessing = rules.premiumProcessing;
+  if (rules.processingPaths?.length) caseData.processingPath = rules.processingPaths[0];
   return caseData;
 }
 

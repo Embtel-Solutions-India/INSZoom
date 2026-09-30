@@ -547,6 +547,20 @@ function resolveChecklistMappingEntry(entry, mapping, caseData) {
 }
 
 async function resolveChecklistsForCase(caseData) {
+  // BUG (fixed): this never checked a checklistMapping's own `role`
+  // (employer/employee/petitioner/beneficiary) against which role THIS
+  // specific case actually is — every mapping matching the visa/form was
+  // returned regardless. Confirmed live: an employer_employee child
+  // (employee-role) case had h1b_employer_checklist auto-assigned onto its
+  // own questionnaireReferences via this path, alongside its real
+  // h1b_employee_checklist — a duplicate, permanently-empty reference,
+  // since the real employer data only ever gets filled in on the principal.
+  // ImmigrationKnowledgeEngineService.expectedChecklistRoleForCase already
+  // has this exact, correct case-structure -> role mapping (reused here,
+  // not re-derived, so the two resolution paths this codebase has for
+  // "which checklists apply to this case" — this one and orchestrate()'s
+  // own applicableQuestionnaires() — can never disagree about it).
+  const expectedRole = require("../cases/immigration-knowledge-engine.service").expectedChecklistRoleForCase(caseData);
   const resolved = await resolveVisaFormMappings(caseData);
   const allEntries = [...resolved.autoCreate, ...resolved.conditional, ...resolved.laterStage, ...resolved.reference];
   const auto = [];
@@ -554,6 +568,7 @@ async function resolveChecklistsForCase(caseData) {
   const explicitCm = [];
   for (const entry of allEntries) {
     for (const checklistMapping of entry.mapping.checklistMappings || []) {
+      if (expectedRole && checklistMapping.role && checklistMapping.role !== expectedRole) continue;
       if (checklistMapping.assignmentType === "AUTO") {
         auto.push(resolveChecklistMappingEntry(checklistMapping, entry.mapping, caseData));
       } else if (checklistMapping.assignmentType === "CONDITIONAL") {

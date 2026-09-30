@@ -8,6 +8,22 @@ function normalizeRequirement(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
 
+// A `document` handed to these workflow hooks may have gone through
+// findAccessibleDocument()'s populateDocumentQuery() (document.controller.js),
+// which replaces document.caseId with a populated Case sub-document (a
+// narrow field projection: caseNumber/caseId/clientName/.../clientPortalId,
+// not the plain ObjectId). Every use below needs the plain id — passing the
+// populated object straight into Case.findById/PetitionAssemblyService.autoSync
+// happened to still resolve the right case (Mongoose's ObjectId cast unwraps
+// an object's own `_id`), but any place that stringifies the "id" instead
+// (e.g. persistLetter's `${caseId}` in a generated filename) got Node's
+// object-inspect dump of the whole populated sub-document baked into real
+// document names ("Cover-Letter--_id-new-ObjectId-...-caseNumber-B155-...").
+// Confirmed live against real Document records created this way.
+function caseIdOf(document) {
+  return document.caseId?._id || document.caseId;
+}
+
 function matchingChecklistItems(caseData, document) {
   const documentKeys = new Set([
     document.documentType,
@@ -48,7 +64,7 @@ function syncChecklist(caseData, document, status) {
 
 async function addCaseDocumentTimeline(document, user, title, description, metadata = {}) {
   if (!document.caseId) return;
-  const caseData = await Case.findById(document.caseId);
+  const caseData = await Case.findById(caseIdOf(document));
   if (!caseData) return;
   caseService.addTimelineEvent(caseData, "document", title, description, user, {
     documentId: document._id,
@@ -60,19 +76,21 @@ async function addCaseDocumentTimeline(document, user, title, description, metad
 }
 
 async function documentUploaded(document, user) {
-  if (document.caseId) {
-    const caseData = await Case.findById(document.caseId);
+  const caseId = caseIdOf(document);
+  if (caseId) {
+    const caseData = await Case.findById(caseId);
     if (caseData && syncChecklist(caseData, document, "uploaded").length) await caseData.save();
   }
   await addCaseDocumentTimeline(document, user, "Document Uploaded", `Document "${document.originalName || document.documentType}" uploaded`);
   await canonicalSyncService.syncFromDocument(document, user, null).catch(() => null);
-  await workflowEngine.triggerWorkflow("document.uploaded", { caseId: document.caseId, entityId: document.caseId, documentId: document._id, documentType: document.documentType }, user).catch(() => {});
-  if (document.caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(document.caseId, user, null, "document_uploaded").catch(() => null);
+  await workflowEngine.triggerWorkflow("document.uploaded", { caseId, entityId: caseId, documentId: document._id, documentType: document.documentType }, user).catch(() => {});
+  if (caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseId, user, null, "document_uploaded").catch(() => null);
 }
 
 async function documentReviewed(document, user) {
-  if (document.caseId) {
-    const caseData = await Case.findById(document.caseId);
+  const caseId = caseIdOf(document);
+  if (caseId) {
+    const caseData = await Case.findById(caseId);
     if (caseData && syncChecklist(caseData, document, document.reviewStatus === "needs_revision" ? "rejected" : document.reviewStatus).length) await caseData.save();
   }
   await addCaseDocumentTimeline(document, user, "Document Reviewed", `Document "${document.originalName || document.documentType}" marked ${document.reviewStatus}`, {
@@ -80,20 +98,20 @@ async function documentReviewed(document, user) {
   });
   await canonicalSyncService.syncFromDocument(document, user, null).catch(() => null);
   if (["approved", "accepted"].includes(document.reviewStatus)) {
-    await workflowEngine.triggerWorkflow("document.approved", { caseId: document.caseId, entityId: document.caseId, documentId: document._id, documentType: document.documentType, allDocumentsApproved: false }, user).catch(() => {});
-    if (document.caseId) await require("../petition/services/PetitionAssemblyService").autoSync(document.caseId, user, null);
+    await workflowEngine.triggerWorkflow("document.approved", { caseId, entityId: caseId, documentId: document._id, documentType: document.documentType, allDocumentsApproved: false }, user).catch(() => {});
+    if (caseId) await require("../petition/services/PetitionAssemblyService").autoSync(caseId, user, null);
   }
   if (["rejected", "needs_revision"].includes(document.reviewStatus)) {
     await workflowEngine.triggerWorkflow("document.rejected", {
-      caseId: document.caseId,
-      entityId: document.caseId,
+      caseId,
+      entityId: caseId,
       documentId: document._id,
       documentType: document.documentType,
       reason: document.reviewNotes,
     }, user).catch(() => {});
     await notificationService.createFromEvent("document.rejected", {
       userId: document.user,
-      caseId: document.caseId,
+      caseId,
       documentId: document._id,
       title: "Document Re-upload Required",
       message: document.reviewNotes || `Please upload a replacement for ${document.originalName || document.documentType}.`,
@@ -101,17 +119,19 @@ async function documentReviewed(document, user) {
       dedupeKey: `document-reupload:${document._id}:${document.currentVersion}`,
     }, user, null).catch(() => []);
   }
-  if (document.caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(document.caseId, user, null, "document_reviewed").catch(() => null);
+  if (caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseId, user, null, "document_reviewed").catch(() => null);
 }
 
 async function documentRestored(document, user) {
+  const caseId = caseIdOf(document);
   await addCaseDocumentTimeline(document, user, "Document Restored", `Document "${document.originalName || document.documentType}" restored`);
-  await workflowEngine.triggerWorkflow("document.restored", { caseId: document.caseId, entityId: document.caseId, documentId: document._id }, user).catch(() => {});
+  await workflowEngine.triggerWorkflow("document.restored", { caseId, entityId: caseId, documentId: document._id }, user).catch(() => {});
 }
 
 async function documentDeleted(document, user) {
+  const caseId = caseIdOf(document);
   await addCaseDocumentTimeline(document, user, "Document Deleted", `Document "${document.originalName || document.documentType}" deleted`);
-  await workflowEngine.triggerWorkflow("document.deleted", { caseId: document.caseId, entityId: document.caseId, documentId: document._id }, user).catch(() => {});
+  await workflowEngine.triggerWorkflow("document.deleted", { caseId, entityId: caseId, documentId: document._id }, user).catch(() => {});
 }
 
 module.exports = {

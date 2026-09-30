@@ -343,6 +343,14 @@ function templateAppliesToCase(template = {}, caseData = {}) {
     if (!matchesOrganization) return false;
   }
   if (rules.premiumProcessing !== undefined && Boolean(rules.premiumProcessing) !== Boolean(caseData.plan?.premiumProcessing || caseData.premiumProcessing)) return false;
+  // BUG (fixed): this legacy visaType-matching path ran independently of
+  // (and unioned with, in latestTemplatesByAssignmentRules) the newer
+  // VisaFormMapping registry, which DOES gate I-485/I-693/I-765/I-131 to
+  // ADJUSTMENT_OF_STATUS via processingPaths - but templateAppliesToCase had
+  // no such concept, so a PETITION_ONLY (I-130-only) CR-1 case still matched
+  // these templates' visaTypes list and got them provisioned anyway.
+  // Confirmed live: registry correctly excluded them, yet they were created.
+  if (rules.processingPaths?.length && !rules.processingPaths.includes(caseData.processingPath)) return false;
   return true;
 }
 
@@ -1168,6 +1176,17 @@ async function listCaseForms(caseId, user, req) {
   const tAssign = Date.now();
   await ensureAssignedForms(caseData, user, req, { metadataOnly: true });
   logger.info("uscis_forms_list_ensureAssignedForms_ok", { requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tAssign });
+  // BUG (fixed): for an employer_employee/family case structure, the
+  // principal is a container record - every real CaseForm is provisioned
+  // against each CHILD case's own _id (provisionRequiredForms/
+  // ensureAssignedForms already resolve targets this same way - see
+  // case-lifecycle-orchestrator.service.js). This endpoint used to query
+  // CaseForm.find({caseId}) with ONLY the id in the URL, so opening a
+  // principal case's own Forms tab always returned zero forms/supplements
+  // even though its child had them - confirmed live against real cases
+  // (B001-B008, B029, B075, B076, ...), not a fixture-only issue. Mirror the
+  // same childCases-or-self resolution here for the read path.
+  const caseIds = caseData.childCases?.length ? caseData.childCases : [caseData._id];
   // Same secondaryPreferred rationale as activeTemplatesCached() above - this
   // is the exact query confirmed (via mongodb_query_performance /
   // mongodb_connection_closed logging) to be the one stalling on the
@@ -1187,7 +1206,7 @@ async function listCaseForms(caseId, user, req) {
   const tCaseForms = Date.now();
   let forms;
   try {
-    forms = await CaseForm.find({ caseId })
+    forms = await CaseForm.find({ caseId: { $in: caseIds } })
       .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument componentCode parentFormCode")
       // populate() queries formTemplateId (uscisformtemplates) as a genuinely
       // separate operation - it does not inherit the outer query's read()

@@ -346,8 +346,8 @@ const CRMCaseDetail = () => {
   // visa-type matching — no H-1B/L-1A detection lives on this frontend).
   // Overview vs. Documents restructuring: everything that requires reading
   // questionnaire answers or document types (all QuestionnaireAnswersPanel
-  // variants, the Phase 2 Intake Review doc/section grid, the Document
-  // Checklist grid) now lives on the Documents tab, not Overview — Overview
+  // variants, the Document Checklist grid) now lives on the Documents tab,
+  // not Overview — Overview
   // is summary-only (case type, filing/petition type, employee count,
   // status/stage, assigned staff, key dates). documentsActive gates every
   // hook that feeds those blocks (previously gated on the Overview tab).
@@ -798,7 +798,15 @@ const CRMCaseDetail = () => {
     try {
       setTabLoading(prev => ({ ...prev, documents: true }))
       const response = await api.get('/documents', { params: { caseId: id } })
-      setDocuments(response.data.documents || [])
+      // This table is for what a client uploaded or a case manager manually
+      // added — not petition-generated artifacts (cover letters, itineraries,
+      // position-description letters, PetitionWordPackageService exports).
+      // Those are auto-created system-side (Document.uploadedBy: "system" -
+      // the schema's own marker; every real upload, including a case
+      // manager's own manual add via CaseDocumentUploadPanel, is labeled
+      // with the actual uploader's role instead) and belong on the Petition
+      // tab, not here.
+      setDocuments((response.data.documents || []).filter((doc) => doc.uploadedBy !== 'system'))
       setFetched(prev => ({ ...prev, documents: true }))
     } catch (error) {
       console.error('Error fetching documents:', error)
@@ -1612,39 +1620,6 @@ const CRMCaseDetail = () => {
       ['Current Visa Status', profile.currentVisaStatus],
       ['Emergency Contact', profile.emergencyName && `${profile.emergencyName} (${profile.emergencyPhone || 'no phone'})`],
     ].filter(([, value]) => value)
-  }
-
-  const getIntakeProgress = () => intakeBundle?.progress || intakeBundle?.client?.intakeProgress || {}
-  const getSubmissionStatus = () => intakeBundle?.submission?.status || intakeBundle?.client?.intakeSubmission?.status || 'not_started'
-  const getBundleDocuments = () => intakeBundle?.documents || documents || []
-  const getQuestionnaireSummary = () => {
-    const questionnaire = intakeBundle?.questionnaire || {}
-    const references = questionnaire.references || caseData?.questionnaireReferences || []
-    const submitted = references.some(item => ['submitted', 'approved'].includes(item.status)) || Boolean(questionnaire.data?.lastSubmittedAt)
-    return {
-      assigned: references.length,
-      answers: questionnaire.answers?.length || 0,
-      status: submitted ? 'submitted' : references.length ? 'sent' : 'not assigned'
-    }
-  }
-
-  const progressSections = () => {
-    const sections = getIntakeProgress().sections || {}
-    return Object.entries({
-      personalInformation: 'Personal Information',
-      contactInformation: 'Contact Information',
-      passport: 'Passport',
-      addresses: 'Address History',
-      employment: 'Employment',
-      education: 'Education',
-      immigration: 'Immigration',
-      travel: 'Travel',
-      family: 'Family',
-      emergencyContact: 'Emergency Contact',
-      additionalInformation: 'Additional',
-      documents: 'Documents',
-      questionnaire: 'Questionnaire'
-    }).map(([key, label]) => ({ key, label, value: Math.max(0, Math.min(100, Number(sections[key] || 0))) }))
   }
 
   const renderSkeleton = () => (
@@ -2519,51 +2494,79 @@ const CRMCaseDetail = () => {
           title="Employer Questionnaire"
           questionnaire={employerQuestionnaire.questionnaire}
           fieldQuestions={employerQuestionnaire.fieldQuestions}
+          documentQuestions={employerQuestionnaire.documentQuestions}
           answerMap={employerQuestionnaire.answerMap}
+          filesByKey={employerQuestionnaire.filesByKey}
           loading={employerQuestionnaire.loading}
+          onSaveAnswer={employerQuestionnaire.saveAnswer}
+          onSaveFile={employerQuestionnaire.saveFileAnswer}
         />
         <QuestionnaireAnswersPanel
           title="Employee Questionnaire"
           questionnaire={employeeQuestionnaire.questionnaire}
           fieldQuestions={employeeQuestionnaire.fieldQuestions}
+          documentQuestions={employeeQuestionnaire.documentQuestions}
           answerMap={employeeQuestionnaire.answerMap}
+          filesByKey={employeeQuestionnaire.filesByKey}
           loading={employeeQuestionnaire.loading}
+          onSaveAnswer={employeeQuestionnaire.saveAnswer}
+          onSaveFile={employeeQuestionnaire.saveFileAnswer}
         />
         <QuestionnaireAnswersPanel
           title="Business Plan Checklist"
           questionnaire={businessPlanQuestionnaire.questionnaire}
           fieldQuestions={businessPlanQuestionnaire.fieldQuestions}
+          documentQuestions={businessPlanQuestionnaire.documentQuestions}
           answerMap={businessPlanQuestionnaire.answerMap}
+          filesByKey={businessPlanQuestionnaire.filesByKey}
           loading={businessPlanQuestionnaire.loading}
+          onSaveAnswer={businessPlanQuestionnaire.saveAnswer}
+          onSaveFile={businessPlanQuestionnaire.saveFileAnswer}
         />
         <QuestionnaireAnswersPanel
           title="E-2 Supporting Documents"
           questionnaire={supportingDocumentsQuestionnaire.questionnaire}
           fieldQuestions={supportingDocumentsQuestionnaire.fieldQuestions}
+          documentQuestions={supportingDocumentsQuestionnaire.documentQuestions}
           answerMap={supportingDocumentsQuestionnaire.answerMap}
+          filesByKey={supportingDocumentsQuestionnaire.filesByKey}
           loading={supportingDocumentsQuestionnaire.loading}
+          onSaveAnswer={supportingDocumentsQuestionnaire.saveAnswer}
+          onSaveFile={supportingDocumentsQuestionnaire.saveFileAnswer}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
           questionnaire={petitionerQuestionnaire.questionnaire}
           fieldQuestions={petitionerQuestionnaire.fieldQuestions}
+          documentQuestions={petitionerQuestionnaire.documentQuestions}
           answerMap={petitionerQuestionnaire.answerMap}
+          filesByKey={petitionerQuestionnaire.filesByKey}
           loading={petitionerQuestionnaire.loading}
+          onSaveAnswer={petitionerQuestionnaire.saveAnswer}
+          onSaveFile={petitionerQuestionnaire.saveFileAnswer}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
           questionnaire={beneficiaryQuestionnaire.questionnaire}
           fieldQuestions={beneficiaryQuestionnaire.fieldQuestions}
+          documentQuestions={beneficiaryQuestionnaire.documentQuestions}
           answerMap={beneficiaryQuestionnaire.answerMap}
+          filesByKey={beneficiaryQuestionnaire.filesByKey}
           loading={beneficiaryQuestionnaire.loading}
+          onSaveAnswer={beneficiaryQuestionnaire.saveAnswer}
+          onSaveFile={beneficiaryQuestionnaire.saveFileAnswer}
         />
         {showJointSponsorPanel && (
           <QuestionnaireAnswersPanel
             title={`${caseData.visaType || 'Family'} Visa — Joint Sponsor (I-864) Checklist`}
             questionnaire={jointSponsorQuestionnaire.questionnaire}
             fieldQuestions={jointSponsorQuestionnaire.fieldQuestions}
+            documentQuestions={jointSponsorQuestionnaire.documentQuestions}
             answerMap={jointSponsorQuestionnaire.answerMap}
+            filesByKey={jointSponsorQuestionnaire.filesByKey}
             loading={jointSponsorQuestionnaire.loading}
+            onSaveAnswer={jointSponsorQuestionnaire.saveAnswer}
+            onSaveFile={jointSponsorQuestionnaire.saveFileAnswer}
           />
         )}
 
@@ -2572,8 +2575,12 @@ const CRMCaseDetail = () => {
             title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
             questionnaire={greenCardRenewalQuestionnaire.questionnaire}
             fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
+            documentQuestions={greenCardRenewalQuestionnaire.documentQuestions}
             answerMap={greenCardRenewalQuestionnaire.answerMap}
+            filesByKey={greenCardRenewalQuestionnaire.filesByKey}
             loading={greenCardRenewalQuestionnaire.loading}
+            onSaveAnswer={greenCardRenewalQuestionnaire.saveAnswer}
+            onSaveFile={greenCardRenewalQuestionnaire.saveFileAnswer}
           />
         )}
 
@@ -2600,8 +2607,12 @@ const CRMCaseDetail = () => {
             title="Green Card – National Visa Center (NVC) / Consular Processing Checklist"
             questionnaire={gcNvcQuestionnaire.questionnaire}
             fieldQuestions={gcNvcQuestionnaire.fieldQuestions}
+            documentQuestions={gcNvcQuestionnaire.documentQuestions}
             answerMap={gcNvcQuestionnaire.answerMap}
+            filesByKey={gcNvcQuestionnaire.filesByKey}
             loading={gcNvcQuestionnaire.loading}
+            onSaveAnswer={gcNvcQuestionnaire.saveAnswer}
+            onSaveFile={gcNvcQuestionnaire.saveFileAnswer}
           />
         )}
 
@@ -2653,87 +2664,6 @@ const CRMCaseDetail = () => {
             <div className="rounded-lg bg-blue-50 p-3">
               <p className="text-sm text-blue-700">Selected Package</p>
               <p className="font-medium text-blue-950 capitalize">{getPackageLabel()?.replace?.('_', ' ') || getPackageLabel()}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Phase 2 Intake Review</h3>
-              <p className="text-sm text-muted-foreground">Client profile, questionnaire, documents, submission status, and completion signals.</p>
-            </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-              getSubmissionStatus() === 'submitted' || getSubmissionStatus() === 'locked'
-                ? 'bg-blue-100 text-blue-800'
-                : getSubmissionStatus() === 'draft'
-                  ? 'bg-amber-100 text-amber-800'
-                  : 'bg-slate-100 text-slate-700'
-            }`}>
-              {getSubmissionStatus().replace('_', ' ')}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Profile Completion</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{getIntakeProgress().overall || caseData.clientProfile?.profileCompletion || 0}%</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Documents Uploaded</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{getBundleDocuments().length}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Missing Documents</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{hasServerDocumentsProgress ? getPendingChecklistItems().length : (intakeBundle?.missingDocuments?.length ?? getPendingChecklistItems().length)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Questionnaire</p>
-              <p className="mt-1 text-lg font-bold capitalize text-slate-900">{getQuestionnaireSummary().status}</p>
-              <p className="text-xs text-slate-500">{getQuestionnaireSummary().answers} answer records</p>
-            </div>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-            {progressSections().map(section => (
-              <div key={section.key} className="rounded-lg border border-slate-200 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-800">{section.label}</p>
-                  <span className="text-xs font-bold text-slate-600">{section.value}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className={`h-full rounded-full ${section.value === 100 ? 'bg-blue-500' : section.value > 0 ? 'bg-amber-500' : 'bg-slate-300'}`} style={{ width: `${section.value}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div>
-              <h4 className="mb-3 text-sm font-bold text-slate-900">Missing Documents</h4>
-              <div className="space-y-2">
-                {(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).slice(0, 8).map((item, index) => (
-                  <div key={`${item.documentType || item.name || index}`} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    <span className="font-semibold">{item.name || item.documentType || item.title}</span>
-                    <span className="ml-2 text-xs uppercase tracking-wide text-amber-700">{item.required === false ? 'Optional' : 'Required'}</span>
-                  </div>
-                ))}
-                {!(hasServerDocumentsProgress ? getPendingChecklistItems() : (intakeBundle?.missingDocuments || getPendingChecklistItems())).length && (
-                  <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-800">No missing required documents.</p>
-                )}
-              </div>
-            </div>
-            <div>
-              <h4 className="mb-3 text-sm font-bold text-slate-900">Recent Activity</h4>
-              <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
-                {(intakeBundle?.recentActivity || caseData.timeline || []).slice(0, 8).map((item, index) => (
-                  <div key={item._id || `${item.title}-${index}`} className="border-l-2 border-blue-200 pl-3">
-                    <p className="text-sm font-semibold text-slate-900">{item.title || item.action || item.type}</p>
-                    <p className="text-xs text-slate-500">{item.description}</p>
-                    <p className="mt-1 text-[11px] text-slate-400">{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleString() : ''}</p>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>

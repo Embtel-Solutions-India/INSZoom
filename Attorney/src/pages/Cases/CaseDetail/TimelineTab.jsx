@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useOutletContext, useParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { caseDataApi } from '../../../services/api'
 
 export default function TimelineTab() {
   const { caseId } = useParams()
+  const { refreshToken } = useOutletContext()
   const [events, setEvents] = useState(null)
   const [error, setError] = useState('')
 
@@ -13,7 +14,7 @@ export default function TimelineTab() {
       .timeline(caseId)
       .then(({ data }) => setEvents(data.timeline || data.events || data.data || []))
       .catch((err) => setError(err.response?.data?.message || 'Could not load the timeline.'))
-  }, [caseId])
+  }, [caseId, refreshToken])
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!events) return <Loader2 className="w-6 h-6 animate-spin text-primary" />

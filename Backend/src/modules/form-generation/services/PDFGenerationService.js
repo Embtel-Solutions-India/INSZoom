@@ -217,12 +217,32 @@ class PDFGenerationService {
         filledData: caseForm.filledData,
       };
     }
-    const rendered = await PDFRenderer.render({
-      caseForm,
-      template,
-      watermark: options.watermark || (caseForm.status === "locked" || caseForm.status === "ready_for_pdf" ? "FINAL" : "ATTORNEY REVIEW"),
-      flatten: options.flatten === true,
-    });
+    // A low-level pdf-lib failure (a malformed/encrypted source PDF, an
+    // AcroForm structure it can't parse, etc.) used to propagate as a bare,
+    // unhandled exception straight to the global error handler - with no
+    // .status set, that became a raw 500 whose exact library message (the
+    // "Acrobat failed to save..."-style errors the user hit) leaked to the
+    // client whenever EXPOSE_INTERNAL_ERRORS was on. Every genuine render
+    // failure is a template/environment problem the case manager can't fix
+    // by retrying, so it's caught here and turned into the same clear,
+    // actionable error shape every other failure path in this function
+    // already uses - the real exception is still logged server-side.
+    let rendered;
+    try {
+      rendered = await PDFRenderer.render({
+        caseForm,
+        template,
+        watermark: options.watermark || (caseForm.status === "locked" || caseForm.status === "ready_for_pdf" ? "FINAL" : "ATTORNEY REVIEW"),
+        flatten: options.flatten === true,
+      });
+    } catch (renderError) {
+      logger.error("uscis_pdf_render_failed", { caseFormId: String(caseForm._id), formCode: caseForm.formCode, error: renderError.message, stack: renderError.stack });
+      const error = new Error("This form could not be generated as a PDF right now. Our team has been notified — please try again shortly or contact support if this continues.");
+      error.status = 500;
+      error.statusCode = 500;
+      error.code = "PDF_RENDER_FAILED";
+      throw error;
+    }
     // A field whose value can't be applied (unknown checkbox on-state, a
     // dropdown option not in the field's own option list, a malformed date,
     // or a mapped PDF field name that isn't on this particular template) is a

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { attorneyApi } from '../../../services/api'
 import CaseStatusBadge from '../../../components/CaseStatusBadge'
+import { useSocket } from '../../../context/SocketContext'
 
 // Case-related tabs only — no Payments (no billing access, see
 // permissions.registry.js's attorney grant), no Expert Letters (a stub
@@ -28,11 +29,16 @@ export default function CaseDetailLayout() {
   const { caseId } = useParams()
   const [caseData, setCaseData] = useState(null)
   const [error, setError] = useState('')
+  // Bumped on every live case:updated/case:client_submitted push for this
+  // case - every tab's own data-fetching useEffect depends on it (via
+  // outlet context, same shape as `caseData`) so a case manager's edit
+  // shows up here the same way it already does in Admin, instead of only
+  // on next manual reload.
+  const [refreshToken, setRefreshToken] = useState(0)
+  const { subscribe, connected } = useSocket()
 
-  useEffect(() => {
-    setCaseData(null)
-    setError('')
-    attorneyApi
+  const fetchCase = useCallback(() => {
+    return attorneyApi
       .case(caseId)
       .then(({ data }) => setCaseData(data.case))
       .catch((err) => {
@@ -43,6 +49,30 @@ export default function CaseDetailLayout() {
         )
       })
   }, [caseId])
+
+  useEffect(() => {
+    setCaseData(null)
+    setError('')
+    fetchCase()
+  }, [caseId, fetchCase])
+
+  useEffect(() => {
+    if (!connected) return
+    const unsubUpdated = subscribe('case:updated', (payload) => {
+      if (String(payload?.caseId) !== String(caseId)) return
+      fetchCase()
+      setRefreshToken((t) => t + 1)
+    })
+    const unsubSubmitted = subscribe('case:client_submitted', (payload) => {
+      if (String(payload?._id) !== String(caseId)) return
+      fetchCase()
+      setRefreshToken((t) => t + 1)
+    })
+    return () => {
+      unsubUpdated()
+      unsubSubmitted()
+    }
+  }, [connected, subscribe, caseId, fetchCase])
 
   if (error) {
     return (
@@ -89,7 +119,7 @@ export default function CaseDetailLayout() {
         ))}
       </nav>
 
-      <Outlet context={{ caseData }} />
+      <Outlet context={{ caseData, refreshToken }} />
     </div>
   )
 }
