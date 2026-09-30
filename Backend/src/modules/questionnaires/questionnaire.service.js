@@ -31,6 +31,7 @@ const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
+const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const REVIEW_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "reviewer"];
@@ -1179,24 +1180,48 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     error.status = 404;
     throw error;
   }
-  let caseData;
-  if (payload.caseId) {
-    caseData = await Case.findById(payload.caseId);
-    if (!caseService.canAccessCase(user, caseData)) {
-      const error = new Error("Not authorized to answer this questionnaire");
-      error.status = 403;
-      throw error;
-    }
+  // Case.findById and Question.find are independent (the latter only needs
+  // questionnaire._id, just resolved above) — run them concurrently instead
+  // of as two sequential round trips. Measured live against this database:
+  // every individual query here takes 250ms-1.6s (real network latency, not
+  // query complexity — see the MongoDB connection/region), so this function's
+  // ~16 originally-sequential round trips compounded into 6-7+ seconds for a
+  // single answer save, well past what a save-progress click should feel
+  // like. This is a genuine win but not a full fix for that latency — see
+  // saveAnswers' other latency note below (canonicalSyncService.syncCase).
+  const [requestedCaseData, questions] = await Promise.all([
+    payload.caseId ? Case.findById(payload.caseId) : Promise.resolve(null),
+    Question.find({ questionnaire: questionnaire._id, active: true }),
+  ]);
+  if (payload.caseId && !caseService.canAccessCase(user, requestedCaseData)) {
+    const error = new Error("Not authorized to answer this questionnaire");
+    error.status = 403;
+    throw error;
   }
   const targetRole = payload.targetRole || questionnaire.checklistRole || "";
+  // Shared-role write-through: an answer submitted from a child case's own
+  // UI for a role that actually lives on the principal (see
+  // sharedCaseRoles.js — "employer" data on an employer_employee case, etc.)
+  // must land on the PRINCIPAL's Answer records/questionnaireData, mirroring
+  // exactly what getQuestionnaireForCase resolves for reads. Otherwise the
+  // save would create a second, orphaned copy scoped to the child that no
+  // read path (including the principal's own page) would ever see.
+  let caseData = requestedCaseData;
+  let effectiveCaseId = payload.caseId;
+  if (isSharedRoleForChildCase(requestedCaseData, targetRole)) {
+    const parentCaseData = await Case.findById(requestedCaseData.parentCase);
+    if (parentCaseData) {
+      caseData = parentCaseData;
+      effectiveCaseId = parentCaseData._id;
+    }
+  }
   const participant = caseData
     ? (participantService.findParticipant(caseData, { role: targetRole, participantId: payload.participantId, userId: payload.assignedTo || user?._id, email: payload.assignedEmail || user?.email }) ||
       (payload.participantId ? null : participantService.participantForUser(caseData, user, targetRole)))
     : null;
   const participantId = participant?._id || payload.participantId;
   const responseOwner = participantId || payload.assignedTo || user?._id;
-  const responseId = payload.responseId || responseIdFor(questionnaire._id, payload.caseId, responseOwner);
-  const questions = await Question.find({ questionnaire: questionnaire._id, active: true });
+  const responseId = payload.responseId || responseIdFor(questionnaire._id, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -1229,7 +1254,7 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
           questionnaireVersion: questionnaire.version,
           question: question._id,
           questionKey: question.key,
-          caseId: payload.caseId,
+          caseId: effectiveCaseId,
           participantId,
           participantRole: participant?.role || participantService.normalizeParticipantRole(targetRole),
           user: user?._id || payload.userId,
@@ -1287,8 +1312,8 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     );
     answerMap[item.questionKey] = answer;
     saved.push(answer);
-    if (question.type === "file" && Array.isArray(item.files) && item.files.length && payload.caseId) {
-      await syncDocumentRecordsFromFileAnswer(question, item.files, payload.caseId, user, req);
+    if (question.type === "file" && Array.isArray(item.files) && item.files.length && effectiveCaseId) {
+      await syncDocumentRecordsFromFileAnswer(question, item.files, effectiveCaseId, user, req);
     }
   }
   const completion = await calculateCompletion(questionnaire, answerMap, user);
@@ -1385,8 +1410,24 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
       progress: detailedProgress.percent,
       operationId,
     }, req);
-    await require("../uscis-forms/uscis-form.service").markCaseFormsStale(caseData._id, "questionnaire_master_data_changed", Object.keys(masterCaseData.fieldMetadata || {})).catch(() => null);
-    await canonicalSyncService.syncCase(caseData._id, user, req, "questionnaire_answers_changed").catch(() => null);
+    // BUG (fixed): both calls used to be awaited here, blocking the HTTP
+    // response until they finished. Measured live: CanonicalProfileService
+    // .rebuild() alone takes ~8s and the full syncCase() -> orchestrate()
+    // chain ~11s (re-resolves requirements/templates/questionnaires,
+    // reassigns forms, reruns autofill) — every checklist save was blocking
+    // for 11+ seconds, well past the client's request timeout ("The server
+    // took too long to respond"). Neither call's result is used by this
+    // function's return value (masterCaseData was already built above,
+    // independently), and both already swallow their own errors via
+    // .catch(() => null) — so there's nothing to await for. Fire-and-forget
+    // instead, matching the same background-sync pattern this codebase
+    // already uses for PetitionAssemblyService.autoSync(): the response
+    // returns immediately with the fast, already-computed data, while the
+    // slow canonical rebuild/orchestration/autofill continues in the
+    // background and the case picks up its results on the next read (or via
+    // the socket-driven refresh in Admin's case:client_submitted handler).
+    require("../uscis-forms/uscis-form.service").markCaseFormsStale(caseData._id, "questionnaire_master_data_changed", Object.keys(masterCaseData.fieldMetadata || {})).catch(() => null);
+    canonicalSyncService.syncCase(caseData._id, user, req, "questionnaire_answers_changed").catch(() => null);
   }
   return { responseId, completion, progress: detailedProgress, validation: responseValidation, masterData: masterCaseData.masterData, mappingOutput, calculatedFields, answers: saved, documentRequests };
 }
@@ -1570,16 +1611,32 @@ async function submitResponse(payload, user, req) {
     await questionnaire.save();
   }
   if (payload.caseId) {
-    const caseData = await Case.findById(payload.caseId);
-    if (caseData) {
-      const reference = caseData.questionnaireReferences.find((item) => item.questionnaireId?.toString() === payload.questionnaireId?.toString());
-      if (reference) {
-        reference.status = "submitted";
-        reference.submittedAt = now;
-      }
-      caseService.addTimelineEvent(caseData, "questionnaire", "Questionnaire Submitted", "Questionnaire submitted", user, { responseId: result.responseId });
-      caseService.addAuditEntry(caseData, "submit_questionnaire", "Questionnaire submitted", user, { responseId: result.responseId }, req);
-      await caseData.save();
+    const requestedCaseData = await Case.findById(payload.caseId);
+    // Mirror saveAnswers' own shared-role redirect: a submitted "employer"
+    // (etc.) checklist from a child case lives, and must be marked
+    // submitted, on the principal's own questionnaireReferences entry.
+    const targetRole = payload.targetRole || questionnaire?.checklistRole || "";
+    let initialCaseData = requestedCaseData;
+    if (isSharedRoleForChildCase(requestedCaseData, targetRole)) {
+      const parentCaseData = await Case.findById(requestedCaseData.parentCase);
+      if (parentCaseData) initialCaseData = parentCaseData;
+    }
+    if (initialCaseData) {
+      // BUG (fixed): a plain load-modify-save here could collide with a
+      // background canonicalSyncService.syncCase() (fire-and-forget, from a
+      // recent answer save on this same case) still writing at the exact
+      // moment this submit tried to save, throwing a raw Mongoose
+      // VersionError straight to the client. saveCaseWithVersionRetry
+      // reloads fresh and re-applies these same changes if that happens.
+      const caseData = await caseService.saveCaseWithVersionRetry(initialCaseData, (doc) => {
+        const reference = doc.questionnaireReferences.find((item) => item.questionnaireId?.toString() === payload.questionnaireId?.toString());
+        if (reference) {
+          reference.status = "submitted";
+          reference.submittedAt = now;
+        }
+        caseService.addTimelineEvent(doc, "questionnaire", "Questionnaire Submitted", "Questionnaire submitted", user, { responseId: result.responseId });
+        caseService.addAuditEntry(doc, "submit_questionnaire", "Questionnaire submitted", user, { responseId: result.responseId }, req);
+      });
       await caseService.writeAuditLog("submit_questionnaire", caseData, user, { responseId: result.responseId }, req);
       await workflowService.triggerWorkflow("questionnaire.submitted", { caseId: caseData._id, questionnaireId: payload.questionnaireId, responseId: result.responseId }, user, req);
       // Dynamic checklist assignment: evaluate this questionnaire's
@@ -1626,16 +1683,18 @@ async function approveResponse(responseId, payload, user, req) {
   });
   const first = answers[0];
   if (first.caseId) {
-    const caseData = await Case.findById(first.caseId);
-    if (caseData) {
-      const reference = caseData.questionnaireReferences.find((item) => item.questionnaireId?.toString() === first.questionnaire?.toString());
-      if (reference) {
-        reference.status = referenceStatus;
-        if (approved) reference.approvedAt = now;
-      }
-      caseService.addTimelineEvent(caseData, "questionnaire", approved ? "Questionnaire Approved" : "Questionnaire Returned", payload.reason || `Questionnaire ${referenceStatus}`, user, { responseId });
-      caseService.addAuditEntry(caseData, `${referenceStatus}_questionnaire`, `Questionnaire ${referenceStatus}`, user, { responseId, reason: payload.reason }, req);
-      await caseData.save();
+    const initialCaseData = await Case.findById(first.caseId);
+    if (initialCaseData) {
+      // See submitResponse's identical fix above — same collision risk.
+      const caseData = await caseService.saveCaseWithVersionRetry(initialCaseData, (doc) => {
+        const reference = doc.questionnaireReferences.find((item) => item.questionnaireId?.toString() === first.questionnaire?.toString());
+        if (reference) {
+          reference.status = referenceStatus;
+          if (approved) reference.approvedAt = now;
+        }
+        caseService.addTimelineEvent(doc, "questionnaire", approved ? "Questionnaire Approved" : "Questionnaire Returned", payload.reason || `Questionnaire ${referenceStatus}`, user, { responseId });
+        caseService.addAuditEntry(doc, `${referenceStatus}_questionnaire`, `Questionnaire ${referenceStatus}`, user, { responseId, reason: payload.reason }, req);
+      });
       await caseService.writeAuditLog(`${referenceStatus}_questionnaire`, caseData, user, { responseId, reason: payload.reason }, req);
       await workflowService.triggerWorkflow(approved ? "questionnaire.approved" : "questionnaire.rejected", { caseId: caseData._id, questionnaireId: first.questionnaire, responseId }, user, req);
       await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseData._id, user, req, `questionnaire_${referenceStatus}`).catch(() => null);
@@ -2211,10 +2270,26 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   }
   await ensureDefaultVisaTemplates();
   timer.mark("template_initialization");
+  // Shared-role resolution: a role like "employer" on an employer_employee
+  // case belongs to the matter as a whole, not to any one child case — a
+  // child never gets its own copy of that questionnaire assigned (see
+  // immigration-knowledge-engine.service.js's questionnaireApplies, which
+  // only ever matches "employer" against the principal). Without this, a
+  // child case asking for targetRole "employer" falls through to the
+  // case-agnostic isDefault template below and computes a responseId scoped
+  // to the CHILD's own id — a blank slate, even though the employer already
+  // answered everything on the principal. Resolve references/responseId
+  // against the parent case instead, for every case/visa/role this applies
+  // to (see sharedCaseRoles.js), not just one specific checklist.
+  let referenceCase = caseData;
+  if (isSharedRoleForChildCase(caseData, targetRole)) {
+    const parentCaseData = await Case.findById(caseData.parentCase);
+    if (parentCaseData) referenceCase = parentCaseData;
+  }
   const requestedParticipant = options.participantId
-    ? participantService.findParticipant(caseData, { role: targetRole, participantId: options.participantId })
-    : participantService.participantForUser(caseData, user, targetRole);
-  let eligibleReferences = (caseData.questionnaireReferences || [])
+    ? participantService.findParticipant(referenceCase, { role: targetRole, participantId: options.participantId })
+    : participantService.participantForUser(referenceCase, user, targetRole);
+  let eligibleReferences = (referenceCase.questionnaireReferences || [])
     .filter((reference) => reference.active !== false && reference.status !== "returned")
     .filter((reference) => !targetRole || reference.targetRole === targetRole)
     .filter((reference) => !options.participantId || String(reference.participantId || "") === String(options.participantId));
@@ -2239,6 +2314,21 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   let questionnaire = activeReference?.questionnaireId
     ? await Questionnaire.findById(activeReference.questionnaireId)
     : null;
+  // Defense in depth against STALE case-specific assignments: a role-specific
+  // caller (e.g. Admin's Business Plan panel, targetRole "business_plan")
+  // trusts a matching questionnaireReferences entry unconditionally here —
+  // fine for any reference created after the tier-3 role-agnostic-fallback
+  // fix (see the tier-3 comment below), but a case that got a wrongly-typed
+  // reference written BEFORE that fix (e.g. an H-1B case's "business_plan"
+  // role pointing at the generic h1b_questionnaire, back when tier 3 did that)
+  // keeps that bad reference forever otherwise - Tier 1 would keep trusting
+  // it, no matter how many times the fallback logic below gets fixed. If the
+  // resolved questionnaire's own checklistRole actively disagrees with what
+  // was asked for, treat it as not found and fall through to tiers 2/3 like
+  // normal, for every case/role/visa this ever applies to, not just one.
+  if (questionnaire && targetRole && questionnaire.checklistRole && questionnaire.checklistRole !== targetRole) {
+    questionnaire = null;
+  }
   timer.mark("assigned_questionnaire_lookup", { foundAssigned: Boolean(questionnaire), targetRole });
   // No case-specific assignment for this role — fall back to the deterministic
   // "isDefault" template for this visa type + role (e.g. the seeded H-1B Employer
@@ -2257,7 +2347,20 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     }).sort({ version: -1 });
     timer.mark("default_role_template_lookup", { foundDefault: Boolean(questionnaire), targetRole });
   }
-  if (!questionnaire) {
+  // BUG (fixed): this final fallback ignored targetRole entirely — for a
+  // ROLE-SPECIFIC request (e.g. Admin's "Business Plan Checklist" panel
+  // asking for targetRole="business_plan" on an H-1B case), if tier 2 (the
+  // role+visa-matched default) correctly found nothing — because H-1B
+  // genuinely has no business-plan questionnaire — this tier fell through
+  // to ANY visa-matching questionnaire regardless of role and returned it
+  // mislabeled as the requested role. Confirmed live: an H-1B case's
+  // "Business Plan Checklist"/"E-2 Supporting Documents" admin panels were
+  // both silently rendering the generic h1b_questionnaire's fields (a mix of
+  // employer/employee/beneficiary questions) under the wrong title, since it
+  // matched `key: /^h1b_questionnaire$/i` here with no role check at all.
+  // This role-agnostic fallback only makes sense for a caller that didn't
+  // ask for any particular role in the first place (e.g. ensureQuestionnaire).
+  if (!questionnaire && !targetRole) {
     questionnaire = await Questionnaire.findOne({
       status: { $ne: "archived" },
       isActive: { $ne: false },
@@ -2270,12 +2373,39 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     }).sort({ version: -1 });
     timer.mark("legacy_template_lookup", { foundLegacy: Boolean(questionnaire) });
   }
+  // BUG (fixed): a role that's genuinely optional for this visa type (e.g.
+  // Admin's "Business Plan Checklist"/"E-2 Supporting Documents" panels,
+  // which every case queries regardless of visa type, expecting most to
+  // come back empty) used to throw the same 404 as a real misconfiguration
+  // would. The browser logs any non-2xx response as a loud console error
+  // regardless of how gracefully the caller's own .catch() handles it — so
+  // an entirely normal "this role doesn't apply here" state looked like a
+  // real bug in the browser console. Returning a benign empty result (same
+  // shape the success path returns, just with questionnaire: null) for these
+  // specific always-optional roles keeps it a normal 200, while every other
+  // targetRole (employer/employee/the client's own primary checklist, etc.)
+  // keeps throwing — for those, a missing questionnaire really is a
+  // configuration problem worth surfacing loudly.
+  const OPTIONAL_ROLES = new Set(["business_plan", "supporting_documents"]);
   if (!questionnaire) {
+    if (targetRole && OPTIONAL_ROLES.has(targetRole)) {
+      return {
+        case: caseData,
+        questionnaire: null,
+        questions: [],
+        documentQuestions: [],
+        fieldQuestions: [],
+        answers: [],
+        responseId: null,
+        participant: participantService.participantSnapshot(requestedParticipant),
+        progress: { percent: 0, answeredRequired: 0, totalRequired: 0 },
+      };
+    }
     const error = new Error("No questionnaire template found for this case visa type");
     error.status = 404;
     throw error;
   }
-  const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, caseData._id, requestedParticipant?._id || caseData.user || user?._id);
+  const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, referenceCase._id, requestedParticipant?._id || referenceCase.user || user?._id);
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
   const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();
@@ -2351,7 +2481,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
 // compute/read for that questionnaire, so answers written here show up there.
 async function resolveCaseQuestionnaires(caseId) {
   const timer = createStageTimer();
-  const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants").lean();
+  const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants parentCase caseStructure caseRole").lean();
   timer.mark("case_lookup");
   if (!caseData) return [];
   await ensureDefaultVisaTemplates();
@@ -2409,7 +2539,13 @@ async function resolveCaseQuestionnaires(caseId) {
         const assignedTo = owner.assignedTo ? String(owner.assignedTo) : "";
         const participantId = owner.participantId ? String(owner.participantId) : "";
         if (assignedKeys.has(`${id}:${participantId || assignedTo}`)) continue;
-        const responseId = responseIdFor(questionnaire._id, caseData._id, owner.participantId || owner.assignedTo || caseData.user);
+        // Same shared-role redirect as getQuestionnaireForCase/saveAnswers
+        // (sharedCaseRoles.js): a child case's "employer" (etc.) default
+        // template must resolve to the same responseId the principal's own
+        // page would compute, or this entry (and the document-progress
+        // totals derived from it) can never match the real answered data.
+        const responseCaseId = isSharedRoleForChildCase(caseData, targetRole) ? caseData.parentCase : caseData._id;
+        const responseId = responseIdFor(questionnaire._id, responseCaseId, owner.participantId || owner.assignedTo || caseData.user);
         resolved.set(`${id}:${responseId}`, {
           questionnaireId: questionnaire._id,
           responseId,

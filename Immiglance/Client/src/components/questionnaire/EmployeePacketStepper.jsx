@@ -215,7 +215,13 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{infoSections[activeInfoSection].title}</h2>
                   <span className="text-xs text-slate-400">
-                    {saveState === "saving" ? "Saving…" : dirty ? "Unsaved changes" : lastSavedAt ? `Saved at ${lastSavedAt}` : ""}
+                    {/* BUG (fixed): this ternary never checked saveState === "error"
+                        at all, unlike the equivalent status line in the sibling
+                        CaseRoleChecklist.jsx — a failed save with no other unsaved
+                        edits fell straight through to the stale lastSavedAt branch,
+                        silently showing an old "Saved at ..." time as if the most
+                        recent save had succeeded. */}
+                    {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : dirty ? "Unsaved changes" : lastSavedAt ? `Saved at ${lastSavedAt}` : ""}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

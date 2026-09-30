@@ -89,7 +89,23 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
       return merged;
     });
     setPrefillMeta(prefillMetaFromAnswers(rawAnswers));
-    setLocalProgress(hookProgress);
+    // BUG (fixed): this refetch can race a just-completed, already-correct
+    // save (commitAll sets localProgress straight from the save response,
+    // then calls refetch() to pick up other server-side fields) — if the
+    // refetch's read hits the database before that write is fully visible
+    // there (real risk on this app's high-latency remote connection) or
+    // otherwise returns an older snapshot, it would regress a genuine "63%"
+    // straight back down to "0%" for a moment, exactly like the dirtyKeys
+    // comment above already protects `answers` against. Apply the same
+    // "never let a refetch move progress backwards" guard here: only accept
+    // hookProgress if it's not a new questionnaire and isn't reporting FEWER
+    // answered-required questions than what's already showing.
+    setLocalProgress((current) => {
+      if (isNewQuestionnaire || !current) return hookProgress;
+      const currentAnswered = current.answeredRequired ?? -1;
+      const incomingAnswered = hookProgress?.answeredRequired ?? -1;
+      return incomingAnswered >= currentAnswered ? hookProgress : current;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionnaire?._id, rawAnswers]);
 

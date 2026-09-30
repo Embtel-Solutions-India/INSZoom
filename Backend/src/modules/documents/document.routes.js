@@ -75,6 +75,8 @@ router.post("/:id/evidence/classify", authenticate, authorizeRoles(...reviewRole
 router.post("/:id/comments", authenticate, authorizeRoles(...reviewRoles), authorizePermissions("documents:review"), ctrl.addReviewComment);
 router.get("/:id/download", authenticate, authorizePermissions("documents:read"), ctrl.downloadDocument);
 router.get("/:id/preview", authenticate, authorizePermissions("documents:read"), ctrl.previewDocument);
+router.get("/:id/content", authenticate, authorizePermissions("documents:read"), ctrl.getDocumentContent);
+router.put("/:id/content", authenticate, authorizeRoles(...staffRoles), authorizePermissions("documents:update"), ctrl.saveDocumentContent);
 router.post("/:id/share", authenticate, authorizeRoles(...staffRoles), authorizePermissions("documents:update"), ctrl.shareDocument);
 router.put("/:id/signature", authenticate, authorizeRoles(...staffRoles), authorizePermissions("documents:update"), ctrl.updateSignature);
 router.get("/:id", authenticate, authorizeRoles(...allDocumentRoles), authorizePermissions("documents:read"), ctrl.getDocument);
