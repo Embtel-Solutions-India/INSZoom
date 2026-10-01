@@ -731,7 +731,9 @@ async function applyQuestionnairePrefill(extraction, caseId, user, req, options 
   // itself, only used in-memory for this matching pass.
   const derivedFields = ["resume", "cv"].includes(documentType)
     ? extractionMappingService.deriveEducationScalarFields(fields)
-    : [];
+    : documentType === "passport"
+      ? extractionMappingService.derivePassportScalarFields(fields)
+      : [];
   const allFields = derivedFields.length ? [...fields, ...derivedFields] : fields;
 
   let matches = [];

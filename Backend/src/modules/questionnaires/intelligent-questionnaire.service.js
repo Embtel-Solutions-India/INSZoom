@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { isPassportInformation } = require("./passportInformation");
 const AuditLog = require("../../models/AuditLog");
 const Question = require("../../models/Question");
 const Questionnaire = require("../../models/Questionnaire");
@@ -240,7 +241,7 @@ class IntelligentQuestionnaireService {
         .filter(Boolean),
       repeatable: item.repeatable,
       repeatableConfig: item.repeatableConfig,
-      required: item.requirement === "required",
+      required: item.requirement === "required" || isPassportInformation({ key: questionKey(item), label: item.label }),
       mapping: {
         masterDataPath: item.canonicalPath,
         canonicalPath: item.canonicalPath,

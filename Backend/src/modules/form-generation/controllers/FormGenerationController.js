@@ -77,66 +77,14 @@ exports.regenerate = async (req, res) => {
 // out, and the case record should keep it.
 exports.downloadForm = async (req, res) => {
   try {
-    const AutoFillService = require("../../form-mapping/services/AutoFillService");
-    const PDFRenderer = require("../services/PDFRenderer");
-    const env = require("../../../config/env");
+    const { prepareOfficialDownload } = require("../services/OfficialFormDownloadService");
+    const { buffer, caseForm, mode, warnings, bookkeeping } = await prepareOfficialDownload({ caseFormId: req.params.caseFormId, user: req.user, req, deferBookkeeping: true });
 
-    let caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: false });
-    const isHistorical = caseForm.isLocked || ["locked", "filed"].includes(caseForm.status);
-    // BUG (fixed): syncState.stale means "was filled once, then canonical
-    // data changed since" - a CaseForm that has NEVER been through
-    // AutoFillService even once (freshly provisioned, syncState.lastSyncedAt
-    // unset) reports stale:false, the same as one that's genuinely current -
-    // there's nothing to compare staleness against yet. That let this
-    // official-download path skip the initial autofill entirely and render
-    // straight from an empty filledData/fieldValues, confirmed live: a
-    // never-synced H-1B supplement CaseForm downloaded with every field
-    // blank despite its questionnaire answers already existing. "Never
-    // synced" must trigger the same refresh "stale" does.
-    const neverSynced = !caseForm.syncState?.lastSyncedAt;
-    const wasStale = Boolean(caseForm.syncState?.stale) || neverSynced;
-
-    if (!isHistorical && wasStale) {
-      await AutoFillService.generate(caseForm.caseId, caseForm.formCode, req.user, req, { regenerate: true });
-      caseForm = await PDFGenerationService.loadCaseForm(req.params.caseFormId, { readOnly: true });
-    }
-
-    // Adobe PDF Services is the default engine for this, the single official
-    // download path (opt-out only, never an automatic silent fallback to
-    // pdf-lib on an Adobe failure - that failure surfaces through the same
-    // catch below as any other rendering error). PDFRenderer.js itself is
-    // unmodified; AdobeFormRenderer mirrors its renderFiling() contract
-    // exactly and reuses the same PDFFieldMapper/PDFFidelityService calls.
-    const engine = env.adobe.fillEnabled ? "adobe" : "pdf-lib";
-    const renderer = env.adobe.fillEnabled ? require("../services/AdobeFormRenderer") : PDFRenderer;
-
-    const { buffer, renderReport, fidelityReport } = await renderer.renderFiling({
-      caseForm,
-      template: caseForm.formTemplateId.toObject(),
-    });
-
-    const document = await PDFGenerationService.createGeneratedDocument(caseForm, buffer, req.user, { valid: true }, renderReport, null);
-    await PDFGenerationService.audit("PDF_OFFICIAL_DOWNLOADED", caseForm, req.user, req, {
-      documentId: document._id,
-      fidelityReport,
-      staleRefreshed: !isHistorical && wasStale,
-      status: caseForm.status,
-      engine,
-      adjustedFieldWrites: renderReport?.adjustedFieldWrites || [],
-      blankedFieldWrites: renderReport?.failedFieldWrites || [],
-    });
-
-    // Fields whose value could not be written as-is (longer than the PDF
-    // field allows): the download still succeeds, but the user is told which
-    // ones to double-check instead of silently getting a blank/changed field.
-    const warnings = [
-      ...(renderReport?.failedFieldWrites || []).map((item) => `${item.pdfField.split(".").pop().replace(/\[\d+\]$/, "")}: ${item.message}`),
-      ...(renderReport?.adjustedFieldWrites || []).map((item) => `${item.pdfField.split(".").pop().replace(/\[\d+\]$/, "")}: ${item.reason}`),
-    ];
-    if (warnings.length) {
-      res.setHeader("X-Form-Warnings", encodeURIComponent(JSON.stringify(warnings.slice(0, 20))));
-      res.setHeader("Access-Control-Expose-Headers", "X-Form-Warnings, Content-Disposition");
-    }
+    // Anything that was adjusted, left blank or degraded is reported to the
+    // user (the Admin UI shows it after the file downloads).
+    res.setHeader("X-Form-Render-Mode", mode);
+    if (warnings.length) res.setHeader("X-Form-Warnings", encodeURIComponent(JSON.stringify(warnings.slice(0, 20))));
+    res.setHeader("Access-Control-Expose-Headers", "X-Form-Warnings, X-Form-Render-Mode, Content-Disposition");
 
     const date = new Date().toISOString().slice(0, 10);
     const filename = `${caseForm.formCode || "uscis-form"}_${String(caseForm.caseId)}_${date}.pdf`;
@@ -144,6 +92,8 @@ exports.downloadForm = async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", buffer.length);
     res.send(buffer);
+    // Saving the copy and the audit entry happen after the file is on its way.
+    if (bookkeeping) bookkeeping().catch(() => {});
   } catch (error) {
     handle(res, error);
   }

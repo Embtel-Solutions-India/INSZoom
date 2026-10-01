@@ -358,7 +358,7 @@ const CRMCases = () => {
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700 shrink-0"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
-                  Assign Case Manager
+                  Assign Staff
                 </button>
               </div>
             ))}

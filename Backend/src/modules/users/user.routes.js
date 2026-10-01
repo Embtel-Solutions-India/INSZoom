@@ -47,7 +47,8 @@ router.post(
   authorizeRoles(...adminRoles),
   authorizePermissions("settings:manage_users"),
   body("email").isEmail().normalizeEmail().withMessage("Valid email required"),
-  body("role").isIn(["admin", "team_lead", "case_manager"]).withMessage("role must be admin, team_lead, or case_manager"),
+  body("role").isIn(["super_admin", "admin", "team_lead", "case_manager", "attorney"]).withMessage("role must be super_admin, admin, team_lead, case_manager, or attorney"),
+  body("password").optional({ checkFalsy: true }).isLength({ min: 8 }).withMessage("Password must be at least 8 characters"),
   validate,
   ctrl.inviteFirmMember
 );

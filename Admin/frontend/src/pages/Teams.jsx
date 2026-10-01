@@ -7,13 +7,14 @@ import api from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 
 // ─── constants ────────────────────────────────────────────────────────────────
-const ROLE_ORDER = { super_admin: 0, admin: 1, team_lead: 2, case_manager: 3 }
-const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Admin', team_lead: 'Team Lead', case_manager: 'Case Manager' }
+const ROLE_ORDER = { super_admin: 0, admin: 1, team_lead: 2, case_manager: 3, attorney: 4 }
+const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Admin', team_lead: 'Team Lead', case_manager: 'Case Manager', attorney: 'Attorney' }
 const ROLE_BADGE = {
   super_admin: 'bg-purple-100 text-purple-700',
   admin: 'bg-blue-100 text-blue-700',
   team_lead: 'bg-amber-100 text-amber-700',
   case_manager: 'bg-green-100 text-green-700',
+  attorney: 'bg-rose-100 text-rose-700',
 }
 
 // Roles an actor may CREATE (and, on edit, actually reassign someone TO).
@@ -21,8 +22,7 @@ const ROLE_BADGE = {
 // ASSIGNABLE_ROLES exactly - team_lead is never allowed to change a role via
 // edit, so it's excluded here even though it can create case_managers.
 function creatableRoles(actorRole) {
-  if (actorRole === 'super_admin') return ['super_admin', 'admin', 'team_lead', 'case_manager']
-  if (actorRole === 'admin') return ['admin', 'team_lead', 'case_manager']
+  if (actorRole === 'super_admin' || actorRole === 'admin') return ['super_admin', 'admin', 'team_lead', 'case_manager', 'attorney']
   return ['case_manager']
 }
 
@@ -44,6 +44,7 @@ function canRemoveOrDeactivate(actor, target) {
   if (targetRole === 'super_admin') return false
   if (targetRole === 'admin') return actorRole === 'super_admin'
   if (targetRole === 'team_lead') return ['super_admin', 'admin', 'team_lead'].includes(actorRole)
+  if (targetRole === 'attorney') return ['super_admin', 'admin'].includes(actorRole)
   if (targetRole === 'case_manager') {
     if (['super_admin', 'admin'].includes(actorRole)) return true
     if (actorRole === 'team_lead') {
@@ -261,7 +262,7 @@ export default function Teams() {
     setSubmitting(true)
     try {
       await api.delete(`/team-members/${deleteTarget._id}`)
-      setDeleteTarget(null); fetchMembers(); flash('Member deactivated.')
+      setDeleteTarget(null); fetchMembers(); flash('Member deleted permanently.')
     } catch (e) { flash(e.response?.data?.message || 'Failed.', 'error') }
     finally { setSubmitting(false) }
   }
@@ -322,6 +323,7 @@ export default function Teams() {
           <option value="admin">Admin</option>
           <option value="team_lead">Team Lead</option>
           <option value="case_manager">Case Manager</option>
+          <option value="attorney">Attorney</option>
         </select>
       </div>
 
@@ -380,7 +382,7 @@ export default function Teams() {
                           </button>
                         )}
                         {showDelete && (
-                          <button onClick={() => setDeleteTarget(m)} title="Remove"
+                          <button onClick={() => setDeleteTarget(m)} title="Delete permanently"
                             className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -436,7 +438,7 @@ export default function Teams() {
                               </button>
                             )}
                             {showDelete && (
-                              <button onClick={() => setDeleteTarget(m)} title="Deactivate"
+                              <button onClick={() => setDeleteTarget(m)} title="Delete permanently"
                                 className="p-1.5 rounded text-muted-foreground hover:text-red-600 hover:bg-red-50 transition">
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -530,10 +532,13 @@ export default function Teams() {
 
       {/* ── Delete Confirm ── */}
       {deleteTarget && (
-        <Modal title="Deactivate Member" onClose={() => setDeleteTarget(null)}>
+        <Modal title="Delete Member" onClose={() => setDeleteTarget(null)}>
+          <p className="text-sm text-foreground mb-2">
+            Permanently delete <strong>{deleteTarget.name || deleteTarget.displayName}</strong> ({deleteTarget.email})?
+          </p>
           <p className="text-sm text-muted-foreground mb-6">
-            Deactivate <strong className="text-foreground">{deleteTarget.name || deleteTarget.displayName}</strong>?
-            They will lose access immediately. You can reactivate them later.
+            This removes the account and cannot be undone. If you only want to stop them signing in for now, use the
+            activate/deactivate toggle instead. A member who is still assigned to cases cannot be deleted until those cases are reassigned.
           </p>
           <div className="flex gap-3">
             <button onClick={() => setDeleteTarget(null)} disabled={submitting}
@@ -541,7 +546,7 @@ export default function Teams() {
             <button onClick={handleDelete} disabled={submitting}
               className="flex-1 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition flex items-center justify-center gap-2">
               {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {submitting ? 'Deactivating…' : 'Deactivate'}
+              {submitting ? 'Deleting…' : 'Delete permanently'}
             </button>
           </div>
         </Modal>

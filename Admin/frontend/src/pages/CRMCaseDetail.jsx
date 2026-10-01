@@ -730,7 +730,7 @@ const CRMCaseDetail = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const requestedTab = params.get('tab')
-    if (['overview', 'documents', 'forms', 'petition', 'tracking', 'strategy', 'payments', 'letters', 'feedback'].includes(requestedTab)) {
+    if (['overview', 'documents', 'forms', 'petition', 'tracking', 'feedback'].includes(requestedTab)) {
       setActiveTab(requestedTab)
     }
     if (!assignmentPrompted && params.get('assign')) {
@@ -1259,8 +1259,6 @@ const CRMCaseDetail = () => {
     if (!id) return
     if (activeTab === 'documents' && !fetched.documents) fetchDocuments()
     if (activeTab === 'forms' && !fetched.forms) { fetchCaseForms(); fetchFormsOverview() }
-    if (activeTab === 'strategy' && !fetched.strategy) fetchEligibility()
-    if (activeTab === 'letters' && !fetched.letters) fetchLetters()
     if (activeTab === 'tracking' && !fetched.tracking) { fetchTracking(); ensureUsers() }
   }, [activeTab, id, fetched.documents, fetched.forms, fetched.strategy, fetched.letters, fetched.tracking, fetchDocuments, fetchCaseForms, fetchFormsOverview, fetchEligibility, fetchLetters, fetchTracking, ensureUsers])
 
@@ -1796,31 +1794,28 @@ const CRMCaseDetail = () => {
       </div>
 
       {isAwaitingAssignment() && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-full bg-amber-100 p-2 text-amber-700">
-                <Bell className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-amber-950">New case awaiting case manager assignment</h2>
-                <p className="mt-1 text-sm text-amber-800">
-                  Review the client intake, package selection, and document checklist before assigning ownership.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                setAssignType('case_manager')
-                setAssignError('')
-                setShowAssignModal(true)
-              }}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 font-semibold text-white hover:bg-amber-700"
-            >
-              <UserPlus className="h-4 w-4" />
-              Assign Case Manager
-            </button>
+        <div
+          role="status"
+          className="flex flex-col gap-2 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Bell className="h-4 w-4 shrink-0 text-amber-600" />
+            <p className="min-w-0 text-sm text-amber-950">
+              <span className="font-semibold">Awaiting staff assignment</span>
+              <span className="hidden text-amber-800 md:inline"> &middot; Review the intake, package and document checklist, then assign an owner.</span>
+            </p>
           </div>
+          <button
+            onClick={() => {
+              setAssignType('case_manager')
+              setAssignError('')
+              setShowAssignModal(true)
+            }}
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Assign Staff
+          </button>
         </div>
       )}
 
@@ -2036,39 +2031,6 @@ const CRMCaseDetail = () => {
         >
           <Clock className="w-4 h-4 inline mr-2" />
           USCIS Tracking
-        </button>
-        <button
-          onClick={() => handleTabChange('strategy')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'strategy'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4 inline mr-2" />
-          Strategy
-        </button>
-        <button
-          onClick={() => handleTabChange('payments')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'payments'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <DollarSign className="w-4 h-4 inline mr-2" />
-          Payments
-        </button>
-        <button
-          onClick={() => handleTabChange('letters')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'letters'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <PenTool className="w-4 h-4 inline mr-2" />
-          Expert Letters
         </button>
         <button
           onClick={() => handleTabChange('feedback')}
@@ -2318,74 +2280,6 @@ const CRMCaseDetail = () => {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'strategy' && (
-        <div className="space-y-6">
-          <div className="card">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-              <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-foreground">Eligibility & Strategy Assistant</h3>
-                <p className="text-sm text-muted-foreground">Advisory analysis only. Internal review is required before relying on any pathway recommendation.</p>
-              </div>
-              <button onClick={handleEvaluateEligibility} className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0" disabled={tabLoading.strategy}>
-                <TrendingUp className="w-4 h-4" />
-                {eligibility ? 'Recalculate' : 'Evaluate'}
-              </button>
-            </div>
-            {tabLoading.strategy ? (
-              renderSkeleton()
-            ) : !eligibility ? (
-              <div className="bg-amber-50 text-amber-800 rounded-xl p-4">
-                No eligibility evaluation has been generated yet. Run Evaluate to analyze beneficiary, questionnaire, OCR, case, and company data.
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="bg-blue-50 text-blue-800 rounded-xl p-4 text-sm">{eligibility.disclaimer}</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {(eligibility.recommendations || []).slice(0, 3).map((item) => (
-                    <div key={item.category} className="border border-border rounded-xl p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-foreground">{item.rank}. {item.category}</h4>
-                        <span className="text-2xl font-bold text-blue-600">{item.eligibilityScore}%</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{item.label}</p>
-                      <p className="text-xs text-muted-foreground mt-2">Confidence: {item.confidence}% · Readiness: {item.caseReadiness}%</p>
-                      <div className="mt-3 text-xs text-muted-foreground space-y-1">
-                        {(item.why || []).slice(0, 3).map((reason) => <div key={reason}>✓ {reason}</div>)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="border border-border rounded-xl p-4">
-                    <h4 className="font-semibold text-foreground mb-3">Missing Evidence</h4>
-                    {(eligibility.recommendations?.[0]?.missingEvidence || []).length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No critical gaps detected for the top advisory pathway.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {eligibility.recommendations[0].missingEvidence.slice(0, 8).map((gap) => (
-                          <div key={gap.evidenceKey} className="flex items-center justify-between text-sm">
-                            <span>{gap.evidenceKey.replace(/_/g, ' ')}</span>
-                            <span className={`badge ${gap.priority === 'critical' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>{gap.priority}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="border border-border rounded-xl p-4">
-                    <h4 className="font-semibold text-foreground mb-3">Questionnaire Follow-Ups</h4>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      {((eligibility.results || [])[0]?.gaps?.recommendedQuestions || []).slice(0, 6).map((question) => (
-                        <div key={question}>• {question}</div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -3243,161 +3137,6 @@ const CRMCaseDetail = () => {
         <Suspense fallback={renderSkeleton()}>
           <PetitionTab caseId={id} />
         </Suspense>
-      )}
-
-      {activeTab === 'payments' && (
-        <div className="space-y-6">
-          {tabLoading.payments ? (
-            renderSkeleton()
-          ) : payments.length > 0 ? (
-            payments.map((payment) => (
-              <div key={payment._id} className="card">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                  <h3 className="text-lg font-semibold text-foreground break-words">{payment.invoiceNumber}</h3>
-                  {canRecordPayment && Number(payment.remainingAmount || 0) > 0 && (
-                    <button
-                      onClick={() => {
-                        setSelectedPaymentId(payment._id)
-                        setManualPaymentRequestId(`manual_${crypto.randomUUID()}`)
-                        setPaymentError('')
-                        setShowRecordPaymentModal(true)
-                      }}
-                      className="btn-primary text-sm flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      Record Payment
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Package</p>
-                    <p className="font-medium capitalize">{payment.package?.replace('_', ' ')}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Fee</p>
-                    <p className="font-medium">{formatPaymentAmount(payment.totalAmount || payment.totalFee, payment.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Paid Amount</p>
-                    <p className="font-medium">{formatPaymentAmount(payment.amountPaid || payment.paidAmount, payment.currency)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Remaining</p>
-                    <p className="font-medium">{formatPaymentAmount(payment.remainingAmount, payment.currency)}</p>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <span className={`badge ${payment.paymentStatus === 'paid' ? 'badge-success' : payment.paymentStatus === 'partially_paid' ? 'badge-warning' : 'badge-danger'}`}>
-                    {payment.paymentStatus?.replace('_', ' ')}
-                  </span>
-                </div>
-
-                {/* Payment History */}
-                <div className="mb-4">
-                  <h4 className="font-medium text-foreground mb-2">Payment History</h4>
-                  {payment.paymentHistory?.length > 0 ? (
-                    <div className="space-y-2">
-                      {payment.paymentHistory.map((history, index) => (
-                        <div key={index} className="p-2 bg-muted rounded text-sm">
-                          <div className="flex justify-between">
-                            <span>${history.amount?.toLocaleString()}</span>
-                            <span>{formatOptionalDate(history.paymentDate, payment.paymentDate, payment.updatedAt)}</span>
-                          </div>
-                          <p className="text-muted-foreground">{history.paymentMethod} • {history.transactionId}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No payment history</p>
-                  )}
-                </div>
-
-                {/* Payment Schedule */}
-                <div>
-                  <h4 className="font-medium text-foreground mb-2">Payment Schedule</h4>
-                  {payment.paymentSchedule?.length > 0 ? (
-                    <div className="space-y-2">
-                      {payment.paymentSchedule.map((schedule, index) => (
-                        <div key={index} className="p-2 bg-muted rounded text-sm">
-                          <div className="flex justify-between">
-                            <span>Installment {schedule.installment}</span>
-                            <span className={`badge ${schedule.status === 'paid' ? 'badge-success' : schedule.status === 'overdue' ? 'badge-danger' : 'badge-info'}`}>
-                              {schedule.status}
-                            </span>
-                          </div>
-                          <div className="flex justify-between mt-1">
-                            <span>${schedule.amount?.toLocaleString()}</span>
-                            <span>{formatOptionalDate(schedule.dueDate)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No payment schedule</p>
-                  )}
-                </div>
-              </div>
-            ))
-          ) : (
-            renderEmptyState('No payment records')
-          )}
-        </div>
-      )}
-
-      {activeTab === 'letters' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-foreground">Expert Letters ({letters.length})</h3>
-            {(user.role === 'super_admin' || user.role === 'admin') && (
-              <button
-                onClick={() => setShowCreateLetterModal(true)}
-                className="btn-primary flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Create Letter
-              </button>
-            )}
-          </div>
-          {tabLoading.letters ? (
-            renderSkeleton()
-          ) : letters.length > 0 ? (
-            letters.map((letter) => (
-              <div key={letter._id} className="card">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h4 className="font-medium text-foreground">{letter.letterType?.replace('_', ' ')}</h4>
-                    <p className="text-sm text-muted-foreground">Reviewer: {letter.reviewerId?.name || 'N/A'}</p>
-                    <p className="text-sm text-muted-foreground">Deadline: {letter.deadline ? new Date(letter.deadline).toLocaleDateString() : 'N/A'}</p>
-                  </div>
-                  <span className={`badge ${getLetterStatusColor(letter.status)}`}>
-                    {letter.status.replace('_', ' ')}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${letter.status === 'assigned' ? 'bg-muted' : 'bg-blue-500'}`} />
-                    <span>Assigned</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${['draft_generated', 'review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-muted'}`} />
-                    <span>Draft Generated</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${['review_pending', 'revision_needed', 'signed', 'rejected'].includes(letter.status) ? 'bg-blue-500' : 'bg-muted'}`} />
-                    <span>Reviewer Review</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <div className={`w-3 h-3 rounded-full ${letter.status === 'signed' ? 'bg-blue-500' : 'bg-muted'}`} />
-                    <span>Signed</span>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            renderEmptyState('No expert letters')
-          )}
-        </div>
       )}
 
       {activeTab === 'feedback' && (

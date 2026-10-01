@@ -2,13 +2,25 @@ import { useEffect, useState, useCallback } from 'react'
 import { UserPlus } from 'lucide-react'
 import api from '../../services/api'
 
-const INVITE_ROLES = ['admin', 'team_lead', 'case_manager']
+const INVITE_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager', 'attorney']
+const EMPTY_MEMBER = { name: '', email: '', role: 'case_manager', password: '' }
+
+// 12 chars, mixed case + digits + a symbol, no look-alike characters.
+function generatePassword() {
+  const sets = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnopqrstuvwxyz', '23456789', '!@#$%&*?']
+  const rand = (n) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n }
+  const pick = (chars) => chars[rand(chars.length)]
+  const all = sets.join('')
+  const chars = [...sets.map(pick), ...Array.from({ length: 8 }, () => pick(all))]
+  for (let i = chars.length - 1; i > 0; i--) { const j = rand(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]] }
+  return chars.join('')
+}
 
 export default function FirmMembersPanel() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showInvite, setShowInvite] = useState(false)
-  const [invite, setInvite] = useState({ name: '', email: '', role: 'case_manager' })
+  const [invite, setInvite] = useState(EMPTY_MEMBER)
   const [inviting, setInviting] = useState(false)
   const [message, setMessage] = useState(null)
 
@@ -30,12 +42,12 @@ export default function FirmMembersPanel() {
     setMessage(null)
     try {
       await api.post('/users/invite', invite)
-      setMessage({ type: 'success', text: `Invitation sent to ${invite.email}.` })
-      setInvite({ name: '', email: '', role: 'case_manager' })
+      setMessage({ type: 'success', text: `Account created. Portal link, login email and password were emailed to ${invite.email}.` })
+      setInvite(EMPTY_MEMBER)
       setShowInvite(false)
       load()
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to send invitation.' })
+      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to add the member.' })
     } finally {
       setInviting(false)
     }
@@ -51,7 +63,7 @@ export default function FirmMembersPanel() {
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-md font-semibold text-foreground">Firm Members</h3>
         <button onClick={() => setShowInvite((v) => !v)} className="btn-primary flex items-center gap-2 text-sm">
-          <UserPlus className="w-4 h-4" /> Invite Firm Member
+          <UserPlus className="w-4 h-4" /> Add Firm Member
         </button>
       </div>
 
@@ -63,16 +75,23 @@ export default function FirmMembersPanel() {
 
       {showInvite && (
         <form onSubmit={handleInvite} className="mb-4 rounded-lg border border-border p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input required placeholder="Full name" value={invite.name} onChange={(e) => setInvite({ ...invite, name: e.target.value })} className="input-field" />
             <input required type="email" placeholder="Email" value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} className="input-field" />
             <select value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })} className="input-field">
               {INVITE_ROLES.map((r) => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
             </select>
+            <div className="flex gap-2">
+              <input required minLength={8} placeholder="Password (min 8)" value={invite.password} onChange={(e) => setInvite({ ...invite, password: e.target.value })} className="input-field font-mono" />
+              <button type="button" onClick={() => setInvite({ ...invite, password: generatePassword() })} className="rounded-lg border border-border px-3 text-xs whitespace-nowrap">Generate</button>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            {invite.role === 'attorney' ? 'They will be emailed the Attorney Portal link' : 'They will be emailed the Admin Portal link'}, their login email and this password.
+          </p>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowInvite(false)} className="rounded-lg border border-border px-4 py-2 text-sm">Cancel</button>
-            <button type="submit" disabled={inviting} className="btn-primary text-sm">{inviting ? 'Sending…' : 'Send Invitation'}</button>
+            <button type="submit" disabled={inviting} className="btn-primary text-sm">{inviting ? 'Creating…' : 'Create & Email Login'}</button>
           </div>
         </form>
       )}

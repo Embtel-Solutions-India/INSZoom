@@ -40,9 +40,16 @@ const FIELD_MAPPINGS = {
       questionnaire: ["employee_personal_passportExpirationDate", "passportExpirationDate", "passport.expiryDate", "passport.expirationDate"],
       case: "documentChecklist.passport.expiryDate",
     },
+    // placeOfBirth itself is not mapped to a question: it is split by
+    // derivePassportScalarFields into countryOfBirth + placeOfBirthState.
     placeOfBirth: {
       beneficiary: "placeOfBirth",
+    },
+    placeOfBirthState: {
       questionnaire: ["employee_personal_provinceStateOfBirth"],
+    },
+    countryOfBirth: {
+      questionnaire: ["employee_personal_countryOfBirth"],
     },
     issuingCountry: {
       beneficiary: "passportCountry",

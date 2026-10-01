@@ -91,6 +91,9 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
               {section.autofillSources.map((documentType) => (
                 <AutofillButton key={documentType} documentType={documentType} caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
               ))}
+              {section.autofillSources.includes("passport") && (
+                <span className="self-center text-xs text-slate-500">Optional - scan your passport to fill in your name, date of birth, nationality and passport details. You can review and edit everything before saving.</span>
+              )}
             </div>
           )}
 

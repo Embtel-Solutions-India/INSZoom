@@ -146,7 +146,7 @@ class PDFFidelityService {
     // field allows) are not a rendering defect, and fields it normalized
     // (phone/ZIP) are compared against the value it actually wrote. Both are
     // already itemized in renderReport, so the form stays downloadable.
-    const skipped = new Set((renderReport?.failedFieldWrites || []).map((item) => item.pdfField));
+    const skipped = new Set([...(renderReport?.failedFieldWrites || []), ...(renderReport?.skippedFields || [])].map((item) => item.pdfField));
     const written = new Map((renderReport?.adjustedFieldWrites || []).map((item) => [item.pdfField, item.to]));
     const sampledFields = this.sampleFieldNames(caseForm, template, 20, skipped)
       .map((item) => (written.has(item.fieldName) ? { ...item, expected: written.get(item.fieldName) } : item));
