@@ -12,6 +12,7 @@ const h1b = require("../employment-workflow/questionnaires/h1b");
 const l1a = require("../employment-workflow/questionnaires/l1a");
 const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
+const o2 = require("../employment-workflow/questionnaires/o2");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
@@ -357,12 +358,13 @@ function documentQuestions(documents, visibility, sectionOrder, counters) {
   });
 }
 
-function definitionFromParts({ key, title, visaType, checklistRole, description, documentSectionOrder, documentQuestionList, fieldResult, assignmentRules }) {
+function definitionFromParts({ key, title, visaType, visaTypes, checklistRole, description, documentSectionOrder, documentQuestionList, fieldResult, assignmentRules }) {
   const sections = [...documentSectionOrder, ...fieldResult.sectionOrder];
   return {
     key,
     title,
     visaType,
+    ...(visaTypes ? { visaTypes } : {}),
     checklistRole,
     ...(assignmentRules ? { assignmentRules } : {}),
     isDefault: true,
@@ -548,6 +550,7 @@ function buildL1aEmployerChecklist() {
     key: "l1a_employer_checklist",
     title: "L-1A Employer Checklist",
     visaType: "L1A",
+    visaTypes: L1A_VISA_TYPES,
     checklistRole: "employer",
     description: "Petitioner (U.S. and foreign company) document checklist and company/position information for an L-1A petition.",
     documentSectionOrder,
@@ -569,6 +572,7 @@ function buildL1aEmployeeChecklist() {
     key: "l1a_employee_checklist",
     title: "L-1A Employee Checklist",
     visaType: "L1A",
+    visaTypes: L1A_VISA_TYPES,
     checklistRole: "employee",
     description: "Beneficiary document checklist and personal/immigration information for an L-1A petition.",
     documentSectionOrder,
@@ -587,6 +591,7 @@ function buildL1aBusinessPlanChecklist() {
     key: "l1a_business_plan_checklist",
     title: "L-1A Business Plan Checklist",
     visaType: "L1A",
+    visaTypes: L1A_VISA_TYPES,
     checklistRole: "business_plan",
     description: l1a.BUSINESS_PLAN_INTRO,
     documentSectionOrder: [],
@@ -944,6 +949,10 @@ function o1CriteriaQuestions(criteria, variantLabel, variantValue, groupIntro, v
 // P (see P_VISA_TYPES above). Both hyphenated and hyphen-stripped forms are
 // listed since those functions strip hyphens/spaces from the case's
 // visaType before matching against this array.
+// L-1B gets its own copy of every L-1A checklist (same questions/documents).
+const L1A_VISA_TYPES = ["L1A", "L-1A"];
+const L1B_VISA_TYPES = ["L1B", "L-1B"];
+
 const O1_VISA_TYPES = [
   "O1",
   ...o1.O_CLASSIFICATIONS,
@@ -1002,6 +1011,57 @@ function buildO1EmployeeChecklist() {
     description: "",
     sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
     questions: [...fieldResult.questions, ...documentQuestionList, ...o1aCriteriaQuestions, ...o1bCriteriaQuestions],
+  };
+}
+
+// O-2 (support personnel for an O-1 alien) — its own employer/employee
+// checklists (not O-1's): same field paths, but a 3-document employer list and
+// no O-1A/O-1B criteria groups. Delivered to the client automatically when an
+// O-2 case is created (isDefault + visaTypes scope, like every other
+// employer/employee checklist).
+const O2_VISA_TYPES = ["O2", "O-2"];
+
+function buildO2EmployerChecklist() {
+  const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(o2.employerDocuments, visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    o2.fieldCatalog().filter((entry) => entry.section === "employer"),
+    visibility,
+  );
+  return {
+    key: "o2_employer_checklist",
+    title: "Employer Checklist for O-2",
+    visaType: "O2",
+    visaTypes: O2_VISA_TYPES,
+    checklistRole: "employer",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
+  };
+}
+
+function buildO2EmployeeChecklist() {
+  const visibility = { roles: ["employee", ...STAFF_ROLES], portals: ["employee", "admin"] };
+  const documentSectionOrder = [];
+  const counters = new Map();
+  const documentQuestionList = documentQuestions(o2.employeeDocuments, visibility, documentSectionOrder, counters);
+  const fieldResult = fieldQuestionsFromCatalog(
+    o2.fieldCatalog().filter((entry) => entry.section === "employee"),
+    visibility,
+  );
+  return {
+    key: "o2_employee_checklist",
+    title: "Employee Checklist for O-2",
+    visaType: "O2",
+    visaTypes: O2_VISA_TYPES,
+    checklistRole: "employee",
+    isDefault: true,
+    description: "",
+    sections: [...fieldResult.sectionOrder, ...documentSectionOrder],
+    questions: [...fieldResult.questions, ...documentQuestionList],
   };
 }
 
@@ -1213,12 +1273,26 @@ function buildTnEmployeeChecklist() {
   };
 }
 
+// L-1B uses the identical L-1A questionnaire content under its own keys/visa.
+function l1bCopyOf(definition) {
+  const relabel = (text) => (typeof text === "string" ? text.replace(/L-1A/g, "L-1B") : text);
+  return {
+    ...definition,
+    key: definition.key.replace(/^l1a_/, "l1b_"),
+    title: relabel(definition.title),
+    description: relabel(definition.description),
+    visaType: "L1B",
+    visaTypes: L1B_VISA_TYPES,
+  };
+}
+
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
   buildH1bEmployeeChecklist(),
   buildL1aEmployerChecklist(),
   buildL1aEmployeeChecklist(),
   buildL1aBusinessPlanChecklist(),
+  ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1bCopyOf),
   buildE2VisaChecklist(),
   buildE2BusinessPlanChecklist(),
   buildE2SupportingDocumentsChecklist(),
@@ -1228,6 +1302,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildPEmployeeChecklist(),
   buildO1EmployerChecklist(),
   buildO1EmployeeChecklist(),
+  buildO2EmployerChecklist(),
+  buildO2EmployeeChecklist(),
   buildEb1bEmployerChecklist(),
   buildEb1bEmployeeChecklist(),
   buildI140EmployerChecklist(),

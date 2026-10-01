@@ -118,6 +118,12 @@ const questionnaireSchema = new mongoose.Schema(
     // every visa" (see ImmigrationKnowledgeEngineService.questionnaireApplies).
     appliesToAllVisas: { type: Boolean, default: false },
     visaTypes: [{ type: String, index: true }],
+    // Visas an admin mapped to this checklist from the Questionnaire page
+    // ("Add visa"). Kept separate from the code-defined visaTypes so the
+    // default-template reconciler (ensureDefaultVisaTemplates), which resets
+    // visaTypes to the definition's own list, can re-add these instead of
+    // silently wiping the admin's mapping. Always a subset of visaTypes.
+    adminVisaTypes: [{ type: String }],
     caseTypes: [{ type: String, index: true }],
     tags: [{ type: String, index: true }],
     isTemplate: { type: Boolean, default: false, index: true },

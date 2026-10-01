@@ -68,6 +68,7 @@ export const AUTOFILL_SOURCES = {
     "employee_personal_passportNumber", "employee_personal_passportIssueDate", "employee_personal_passportExpirationDate",
     "employee_personal_dateOfBirth", "employee_personal_gender",
     "employee_personal_countryOfCitizenship", "employee_personal_countryOfBirth",
+    "employee_personal_provinceStateOfBirth", "employee_personal_passportCountryOfIssuance",
   ],
   employee_i94_copy: [
     "employee_immigrationStatus_i94Number", "employee_immigrationStatus_dateOfLastArrival",

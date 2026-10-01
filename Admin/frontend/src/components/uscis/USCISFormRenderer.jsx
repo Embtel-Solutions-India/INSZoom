@@ -38,7 +38,7 @@ import {
   UserCheck,
   XCircle,
 } from 'lucide-react'
-import { formGenerationApi, uscisFormsApi } from '../../services/api'
+import { formGenerationApi, uscisFormsApi, readFormWarnings } from '../../services/api'
 import { convert as convertPdfFieldChange, extractFieldName, buildWidgetIndex, prePopulateById } from '../../utils/PDFFieldChangeAdapter'
 import { buildPageSlots, pageMismatch } from './viewerPageSlots'
 
@@ -1269,6 +1269,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       link.click()
       link.remove()
       setTimeout(() => URL.revokeObjectURL(url), 60000)
+      const formWarnings = readFormWarnings(response)
+      if (formWarnings.length) setErrorMessage(`Downloaded. Please review these fields on the PDF: ${formWarnings.join('; ')}`)
     } catch (error) {
       setErrorMessage(error.response?.data?.message || 'Unable to download the official form. Please try again.')
     } finally {

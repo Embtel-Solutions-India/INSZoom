@@ -535,7 +535,7 @@ async function sendMessage({ conversation, body, files, user, req }) {
     clientPortalId: conversation.clientPortalId,
     receiverId: body.receiverId || conversation.receiverId,
     senderId: user._id,
-    sender: ["case_manager", "client", "finance", "employer", "employee"].includes(roleOf(user)) ? roleOf(user) : "system",
+    sender: ["case_manager", "client", "finance", "employer", "employee", "beneficiary"].includes(roleOf(user)) ? roleOf(user) : "system",
     senderRole: roleOf(user),
     senderName: userDisplayName(user),
     senderEmail: user.email,

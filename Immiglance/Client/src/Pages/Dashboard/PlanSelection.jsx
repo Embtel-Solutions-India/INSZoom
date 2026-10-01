@@ -58,7 +58,7 @@ export default function PlanSelection() {
         setSignCaseId(myCase._id);
         setStep("sign");
       } else {
-        navigate("/dashboard/payments");
+        navigate("/dashboard");
       }
     } catch (error) {
       console.error(error);
@@ -73,7 +73,7 @@ export default function PlanSelection() {
     setSignError("");
     try {
       await casesApi.signDeclaration(signCaseId, { signedName: signedName.trim() });
-      navigate("/dashboard/payments");
+      navigate("/dashboard");
     } catch (error) {
       setSignError(error.message || "Unable to save your signature. Please try again.");
       setSigning(false);

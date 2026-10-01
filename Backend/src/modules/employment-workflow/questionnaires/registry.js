@@ -2,11 +2,12 @@ const h1b = require("./h1b");
 const l1a = require("./l1a");
 const p = require("./p");
 const o1 = require("./o1");
+const o2 = require("./o2");
 const eb1b = require("./eb1b");
 
 // One entry per employer-sponsored visa type. Add a new file + require it here
 // to support another visa type without touching the controller.
-const DEFINITIONS = [h1b, l1a, p, o1, eb1b];
+const DEFINITIONS = [h1b, l1a, p, o1, o2, eb1b];
 
 function getDefinition(visaType) {
   return DEFINITIONS.find((definition) => definition.matches(visaType)) || null;

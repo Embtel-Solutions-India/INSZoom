@@ -18,7 +18,7 @@ function resolveCaseConversationRouting(caseData = {}, currentUser = {}) {
   const participantUserIds = (caseData.participants || [])
     .filter((participant) => participant.status !== "deleted" && participant.status !== "replaced")
     .map((participant) => participant.userId);
-  const caseParticipantIds = [clientId, caseData.employerUser, caseData.employeeUser, ...participantUserIds];
+  const caseParticipantIds = [clientId, caseData.employerUser, caseData.employeeUser, caseData.beneficiaryUser, ...participantUserIds];
   const desiredParticipantIds = [...caseParticipantIds, caseData.assignedCaseManager || caseData.primaryOwner, caseData.assignedTeamLead]
     .map(idOf)
     .filter(Boolean);

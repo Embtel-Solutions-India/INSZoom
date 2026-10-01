@@ -21,6 +21,7 @@ const { disableEmptyRichTextFields } = require("./RichTextFieldGuard");
 const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
 const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
+const { fitTextValue } = require("./FieldValueFitter");
 const { toAdobeRanges } = require("./ViewerPdfPreparationService");
 
 function classifyField(field) {
@@ -84,6 +85,7 @@ class AdobeFormRenderer {
     const includedFields = [];
     const unmappedPdfFields = [];
     const failedFieldWrites = [];
+    const adjustedFieldWrites = [];
 
     Object.values(mappedFields).forEach((mapped) => {
       const field = fieldByName.get(mapped.pdfField);
@@ -93,7 +95,16 @@ class AdobeFormRenderer {
       }
       const kind = classifyField(field);
       if (kind === "text") {
-        setNested(jsonFormFieldsData, mapped.pdfField, String(mapped.value));
+        // Same maxLength handling as PDFRenderer.setFormField (shared fitter):
+        // an over-long value is normalized (phone/ZIP) or left blank and
+        // reported, never sent as-is for Adobe to reject or truncate.
+        const fit = fitTextValue({ pdfField: mapped.pdfField, value: mapped.value, maxLength: field.getMaxLength?.() });
+        if (fit.status === "dropped") {
+          failedFieldWrites.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, message: fit.reason });
+          return;
+        }
+        if (fit.status === "adjusted") adjustedFieldWrites.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, from: String(mapped.value), to: fit.value, reason: fit.reason });
+        setNested(jsonFormFieldsData, mapped.pdfField, fit.value);
         includedFields.push(mapped.pdfField);
         return;
       }
@@ -211,7 +222,7 @@ class AdobeFormRenderer {
     }
 
     const PDFFidelityService = require("./PDFFidelityService");
-    const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template);
+    const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template, { failedFieldWrites, adjustedFieldWrites });
     if (!fidelityResult.valid) {
       const error = new Error(`PDF fidelity check failed: ${fidelityResult.errors.join("; ")}`);
       error.status = 422;
@@ -228,6 +239,7 @@ class AdobeFormRenderer {
         missingMappings,
         unmappedPdfFields,
         failedFieldWrites,
+        adjustedFieldWrites,
         skippedFields,
         flattenedBarcodeFields,
         disabledRichTextFields,

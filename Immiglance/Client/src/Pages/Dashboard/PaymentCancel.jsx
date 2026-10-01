@@ -11,10 +11,10 @@ export default function PaymentCancel() {
           You cancelled this payment. You can try again anytime.
         </p>
         <Link
-          to="/dashboard/payments"
+          to="/dashboard"
           className="inline-block mt-6 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold"
         >
-          Try Again
+          Back to Dashboard
         </Link>
       </div>
     </div>

@@ -1,4 +1,5 @@
 const storageService = require("../../uploads/storage.service");
+const { fitTextValue } = require("./FieldValueFitter");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
@@ -115,7 +116,16 @@ class PDFRenderer {
         field.select(Array.isArray(value) ? value.map(String) : [String(value)]);
         return true;
       }
-      field.setText(String(value));
+      // A value longer than the field's maxLength makes pdf-lib throw and the
+      // field stay blank - fit it deterministically (phone/ZIP) or leave it
+      // blank and report it, instead of failing the whole download later.
+      const fit = fitTextValue({ pdfField: mappedField.pdfField, value, maxLength: field.getMaxLength?.() });
+      if (fit.status === "dropped") {
+        mappedField.renderError = fit.reason;
+        return false;
+      }
+      if (fit.status === "adjusted") mappedField.adjustment = { from: String(value), to: fit.value, reason: fit.reason };
+      field.setText(fit.value);
       return true;
     } catch (error) {
       mappedField.renderError = error.message;
@@ -148,9 +158,12 @@ class PDFRenderer {
     const { mappedFields, missingMappings, protectedFields } = PDFFieldMapper.mapFields(caseForm, template);
     const unmappedPdfFields = [];
     const failedFieldWrites = [];
+    const adjustedFieldWrites = [];
 
     Object.values(mappedFields).forEach((mappedField) => {
-      if (!this.setFormField(form, mappedField, template.formCode)) {
+      if (this.setFormField(form, mappedField, template.formCode)) {
+        if (mappedField.adjustment) adjustedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, ...mappedField.adjustment });
+      } else {
         unmappedPdfFields.push(mappedField.pdfField);
         if (mappedField.renderError) failedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, message: mappedField.renderError });
       }
@@ -225,6 +238,7 @@ class PDFRenderer {
         missingMappings,
         unmappedPdfFields,
         failedFieldWrites,
+        adjustedFieldWrites,
         protectedFields,
         flattenedBarcodeFields,
         disabledRichTextFields,
@@ -248,7 +262,7 @@ class PDFRenderer {
   static async renderFiling({ caseForm, template }) {
     const rendered = await this.render({ caseForm, template, watermark: null, flatten: false });
     const PDFFidelityService = require("./PDFFidelityService");
-    const fidelityResult = await PDFFidelityService.verify(rendered.buffer, caseForm, template);
+    const fidelityResult = await PDFFidelityService.verify(rendered.buffer, caseForm, template, rendered.renderReport);
     if (!fidelityResult.valid) {
       const error = new Error(`PDF fidelity check failed: ${fidelityResult.errors.join("; ")}`);
       error.status = 422;

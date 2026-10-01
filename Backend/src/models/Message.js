@@ -63,7 +63,7 @@ const messageSchema = new mongoose.Schema(
     clientPortalId: { type: String, index: true },
     receiverId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    sender: { type: String, enum: ["client", "employer", "employee", "case_manager", "team_lead", "admin", "super_admin", "finance", "system"], default: "system" },
+    sender: { type: String, enum: ["client", "employer", "employee", "beneficiary", "case_manager", "team_lead", "admin", "super_admin", "finance", "system"], default: "system" },
     senderRole: { type: String },
     senderName: String,
     senderEmail: String,

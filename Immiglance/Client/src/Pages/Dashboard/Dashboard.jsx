@@ -166,12 +166,6 @@ function PaymentSummaryCard({ plan }) {
             </span>
           </div>
 
-          <Link
-            to="/dashboard/payments"
-            className="block text-center mt-4 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-sm py-2.5 no-underline hover:bg-primary/15 transition"
-          >
-            View Payment Details
-          </Link>
         </div>
       </div>
     );

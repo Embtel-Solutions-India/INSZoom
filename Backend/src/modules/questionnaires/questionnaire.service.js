@@ -2137,9 +2137,16 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
         questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
         changed = true;
       }
-      const definitionVisaTypes = definition.visaTypes || [definition.visaType];
+      // Code-defined visas plus any an admin mapped from the UI (adminVisaTypes).
+      const definitionVisaTypes = [...new Set([...(definition.visaTypes || [definition.visaType]), ...(questionnaire.adminVisaTypes || [])])];
       if (JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
         questionnaire.visaTypes = definitionVisaTypes;
+        changed = true;
+      }
+      // A seeded checklist must always be listed on the Questionnaire page.
+      // (Left alone if an admin deliberately archived it.)
+      if (!questionnaire.isTemplate && questionnaire.status !== "archived") {
+        questionnaire.isTemplate = true;
         changed = true;
       }
       const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);
@@ -2705,6 +2712,108 @@ async function getAnswers(payload, user) {
   return { responseId, answers, progress };
 }
 
+// ── Checklist ↔ visa mapping ("USCIS Mapping" section of the Questionnaire page)
+// Every consumer that decides which checklists a new case gets (the knowledge
+// engine's questionnaireApplies, getQuestionnaireForCase, resolveCaseQuestionnaires,
+// the document-requirement resolver) reads Questionnaire.visaTypes — so mapping
+// a checklist to another visa is a visaTypes edit, and a case of that visa then
+// gets this checklist alongside the ones it already got. Visa codes are stored
+// in the same dashless-uppercase form the case-side lookups normalize to
+// (H-1B -> H1B). This is metadata, not content, so it is allowed on a
+// published (otherwise immutable) checklist.
+function normalizeVisaCode(value) {
+  return String(value || "").trim().replace(/[^a-z0-9]+/gi, "").toUpperCase();
+}
+
+function describeVisaMappings(questionnaire) {
+  const admin = new Set((questionnaire.adminVisaTypes || []).map(normalizeVisaCode));
+  const visaTypes = [...new Set([...(questionnaire.visaTypes || []), questionnaire.visaType].filter(Boolean))];
+  return visaTypes.map((visaType) => ({ visaType, removable: admin.has(normalizeVisaCode(visaType)) }));
+}
+
+async function listVisaMappings(questionnaireId) {
+  const questionnaire = await Questionnaire.findById(questionnaireId).lean();
+  if (!questionnaire) {
+    const error = new Error("Questionnaire not found");
+    error.status = 404;
+    throw error;
+  }
+  return describeVisaMappings(questionnaire);
+}
+
+async function addVisaMapping(questionnaireId, visaType, user, req) {
+  assertCanDesign(user, "map checklists to visas");
+  const code = normalizeVisaCode(visaType);
+  if (!code) {
+    const error = new Error("visaType is required");
+    error.status = 400;
+    throw error;
+  }
+  const questionnaire = await Questionnaire.findById(questionnaireId);
+  if (!questionnaire) {
+    const error = new Error("Questionnaire not found");
+    error.status = 404;
+    throw error;
+  }
+  const already = (questionnaire.visaTypes || []).some((existing) => normalizeVisaCode(existing) === code);
+  if (already) return describeVisaMappings(questionnaire);
+  questionnaire.visaTypes = [...(questionnaire.visaTypes || []), code];
+  questionnaire.adminVisaTypes = [...(questionnaire.adminVisaTypes || []), code];
+  // resolveVisaTypes() prefers assignmentRules.visaTypes when it is set, so it
+  // must stay in step or the new visa would be ignored.
+  if (questionnaire.assignmentRules?.visaTypes?.length) {
+    questionnaire.assignmentRules.visaTypes = [...questionnaire.assignmentRules.visaTypes, code];
+  }
+  questionnaire.updatedBy = user?._id;
+  addQuestionnaireAudit(questionnaire, "add_visa_mapping", user, { visaType: code }, req);
+  await questionnaire.save();
+  await writeAuditLog("add_visa_mapping", "questionnaire", questionnaire, user, { visaType: code }, req);
+  return describeVisaMappings(questionnaire);
+}
+
+async function removeVisaMapping(questionnaireId, visaType, user, req) {
+  assertCanDesign(user, "map checklists to visas");
+  const code = normalizeVisaCode(visaType);
+  const questionnaire = await Questionnaire.findById(questionnaireId);
+  if (!questionnaire) {
+    const error = new Error("Questionnaire not found");
+    error.status = 404;
+    throw error;
+  }
+  if (!(questionnaire.adminVisaTypes || []).some((existing) => normalizeVisaCode(existing) === code)) {
+    const error = new Error("Only visas added from this page can be removed; built-in mappings are fixed.");
+    error.status = 409;
+    throw error;
+  }
+  const keep = (value) => normalizeVisaCode(value) !== code;
+  questionnaire.visaTypes = (questionnaire.visaTypes || []).filter(keep);
+  questionnaire.adminVisaTypes = (questionnaire.adminVisaTypes || []).filter(keep);
+  if (questionnaire.assignmentRules?.visaTypes?.length) {
+    questionnaire.assignmentRules.visaTypes = questionnaire.assignmentRules.visaTypes.filter(keep);
+  }
+  questionnaire.updatedBy = user?._id;
+  addQuestionnaireAudit(questionnaire, "remove_visa_mapping", user, { visaType: code }, req);
+  await questionnaire.save();
+  await writeAuditLog("remove_visa_mapping", "questionnaire", questionnaire, user, { visaType: code }, req);
+  return describeVisaMappings(questionnaire);
+}
+
+// Visas an admin can pick from: every visa the system already knows about
+// (case-creation catalogue, filing types, and every checklist's own scope).
+function listVisaOptions() {
+  const { VISA_CATEGORIES } = require("../../config/visaCategories");
+  const { FILING_TYPES } = require("../../config/filingTypes");
+  const options = new Map();
+  const add = (code, label) => {
+    const normalized = normalizeVisaCode(code);
+    if (normalized && !options.has(normalized)) options.set(normalized, label || String(code));
+  };
+  Object.entries(VISA_CATEGORIES).forEach(([key, value]) => add(key, value.label ? `${key} — ${value.label}` : key));
+  Object.values(FILING_TYPES).forEach((value) => add(value.visaType, value.label ? `${value.visaType} — ${value.label}` : value.visaType));
+  VISA_TEMPLATE_DEFINITIONS.forEach((definition) => (definition.visaTypes || [definition.visaType]).forEach((code) => add(code, code)));
+  return [...options.entries()].map(([visaType, label]) => ({ visaType, label })).sort((a, b) => a.visaType.localeCompare(b.visaType));
+}
+
 async function getUscisMappings(questionnaireId) {
   const questionnaire = await Questionnaire.findById(questionnaireId);
   if (!questionnaire) {
@@ -2891,6 +3000,11 @@ module.exports = {
   createQuestion,
   createQuestionnaire,
   ensureDefaultVisaTemplates,
+  VISA_TEMPLATE_DEFINITIONS,
+  listVisaMappings,
+  addVisaMapping,
+  removeVisaMapping,
+  listVisaOptions,
   exportQuestionnaire,
   generateDocumentRequests,
   generateDocumentRequestsForResponse,

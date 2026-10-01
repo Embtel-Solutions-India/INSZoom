@@ -154,6 +154,9 @@ export default function QuestionnaireTemplates() {
   const [progressCaseId, setProgressCaseId] = useState('')
   const [progress, setProgress] = useState(null)
   const [mappings, setMappings] = useState([])
+  const [visaMappings, setVisaMappings] = useState([])
+  const [visaOptions, setVisaOptions] = useState([])
+  const [visaToAdd, setVisaToAdd] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -180,9 +183,22 @@ export default function QuestionnaireTemplates() {
   ), [templateForm.sections])
 
   const visaCategoryByKey = useMemo(() => {
+    // Keyed by the dashless-uppercase form ("L-1A" -> "L1A"), because a
+    // checklist's visaType is stored that way ("L1A", "O1") and never matched
+    // the pathway's own dashed key — which filed L-1/O-1 under "Other".
+    const norm = (value) => String(value || '').replace(/[^a-z0-9]+/gi, '').toUpperCase()
     const map = {}
-    visaPathways.forEach((visa) => { map[visa.key] = visa.category })
-    return map
+    visaPathways.forEach((visa) => { map[norm(visa.key)] = visa.category })
+    // A bare family code ("O1") takes the category of its first sub-type ("O1A").
+    return new Proxy(map, {
+      get: (target, key) => {
+        if (typeof key !== 'string') return target[key]
+        const code = norm(key)
+        if (target[code]) return target[code]
+        const sub = Object.keys(target).find((k) => k.startsWith(code))
+        return sub ? target[sub] : undefined
+      },
+    })
   }, [visaPathways])
 
   const visasByCategory = useMemo(() => {
@@ -202,7 +218,7 @@ export default function QuestionnaireTemplates() {
     const filtered = templates.filter((t) => (
       !query ||
       (t.title || '').toLowerCase().includes(query) ||
-      (t.visaType || t.visaTypes?.[0] || '').toLowerCase().includes(query)
+      [t.visaType, ...(t.visaTypes || [])].filter(Boolean).some((v) => v.toLowerCase().replace(/[^a-z0-9]+/g, '').includes(query.replace(/[^a-z0-9]+/g, '')))
     ))
     const groups = {}
     filtered.forEach((t) => {
@@ -219,7 +235,9 @@ export default function QuestionnaireTemplates() {
     setLoading(true)
     try {
       await questionnairesApi.defaults()
-      const response = await questionnairesApi.list({ isTemplate: true, limit: 100 })
+      // latestVersion + the API's max page size: every checklist (one row per
+      // checklist, not per historical version) must fit on the page.
+      const response = await questionnairesApi.list({ isTemplate: true, latestVersion: true, limit: 200 })
       const rows = response.data.data || []
       setTemplates(rows)
       if (!selectedId && rows[0]?._id) setSelectedId(rows[0]._id)
@@ -248,14 +266,17 @@ export default function QuestionnaireTemplates() {
 
   const loadSelected = async (id) => {
     if (!id) return
-    const [templateResponse, mappingsResponse] = await Promise.all([
+    const [templateResponse, mappingsResponse, visaMappingsResponse] = await Promise.all([
       questionnairesApi.get(id),
       questionnairesApi.mappings(id),
+      questionnairesApi.visaMappings(id),
     ])
     const data = templateResponse.data.data
     setSelected(data)
     setQuestions(data.questions || [])
     setMappings(mappingsResponse.data.data || [])
+    setVisaMappings(visaMappingsResponse.data.data || [])
+    setVisaToAdd('')
     setTemplateForm({
       ...emptyTemplate,
       ...data.questionnaire,
@@ -268,10 +289,46 @@ export default function QuestionnaireTemplates() {
     setEditingCardId('')
   }
 
+  const loadVisaOptions = async () => {
+    try {
+      const response = await questionnairesApi.visaOptions()
+      setVisaOptions(response.data.data || [])
+    } catch (error) {
+      console.error('Error loading visa options', error)
+    }
+  }
+
+  // Mapping a visa is metadata, so it works on published (locked) checklists too.
+  const addVisaMapping = async () => {
+    if (!selectedTemplate?._id || !visaToAdd) return
+    try {
+      const response = await questionnairesApi.addVisaMapping(selectedTemplate._id, visaToAdd)
+      setVisaMappings(response.data.data || [])
+      setVisaToAdd('')
+      setMessage(`Mapped to ${visaToAdd}. New ${visaToAdd} cases will include this checklist along with the existing ones.`)
+      await loadTemplates()
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Could not add visa')
+    }
+  }
+
+  const removeVisaMapping = async (visaType) => {
+    if (!selectedTemplate?._id) return
+    if (!window.confirm(`Stop mapping this checklist to ${visaType}? Existing cases keep it; new ${visaType} cases will not get it.`)) return
+    try {
+      const response = await questionnairesApi.removeVisaMapping(selectedTemplate._id, visaType)
+      setVisaMappings(response.data.data || [])
+      await loadTemplates()
+    } catch (error) {
+      setMessage(error.response?.data?.message || 'Could not remove visa')
+    }
+  }
+
   useEffect(() => {
     loadTemplates()
     loadCases()
     loadVisaPathways()
+    loadVisaOptions()
   }, [])
 
   useEffect(() => {
@@ -624,7 +681,7 @@ export default function QuestionnaireTemplates() {
                     <span className="text-[10px] bg-secondary text-muted-foreground rounded-full px-1.5 py-0.5 shrink-0">v{template.version}</span>
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-xs text-muted-foreground">{template.visaType || template.visaTypes?.[0]}</span>
+                    <span className="text-xs text-muted-foreground truncate" title={(template.visaTypes || []).join(', ')}>{template.visaType || template.visaTypes?.[0]}</span>
                     {template.checklistRole && (
                       <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5">
                         {TARGET_ROLE_LABELS[template.checklistRole] || template.checklistRole}
@@ -722,6 +779,36 @@ export default function QuestionnaireTemplates() {
                     Published checklists are locked. Click "Edit" to open a new draft version — existing cases keep the version they already have.
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* USCIS mapping: which visas this checklist is assigned to */}
+            <div className="card">
+              <h3 className="font-semibold text-foreground">USCIS Mapping</h3>
+              <p className="text-xs text-muted-foreground mt-1 mb-3">
+                Cases created for any of these visas receive this checklist, alongside the checklists they already get.
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {visaMappings.map((mapping) => (
+                  <span key={mapping.visaType} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1 font-medium">
+                    {mapping.visaType}
+                    {mapping.removable && (
+                      <button onClick={() => removeVisaMapping(mapping.visaType)} title={`Remove ${mapping.visaType}`} className="hover:text-red-600">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+                {visaMappings.length === 0 && <span className="text-xs text-muted-foreground">Not mapped to any visa yet.</span>}
+              </div>
+              <div className="flex items-center gap-2 mt-3 max-w-md">
+                <select className="input-field text-sm" value={visaToAdd} onChange={(e) => setVisaToAdd(e.target.value)}>
+                  <option value="">Add visa…</option>
+                  {visaOptions
+                    .filter((option) => !visaMappings.some((mapping) => mapping.visaType.replace(/[^a-z0-9]+/gi, '').toUpperCase() === option.visaType))
+                    .map((option) => <option key={option.visaType} value={option.visaType}>{option.label}</option>)}
+                </select>
+                <button onClick={addVisaMapping} disabled={!visaToAdd} className="btn-primary shrink-0 text-sm disabled:opacity-50">Add visa</button>
               </div>
             </div>
 
