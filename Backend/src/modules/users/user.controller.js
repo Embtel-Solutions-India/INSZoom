@@ -121,8 +121,8 @@ async function updateUser(req, res, next) {
 
 async function deleteUser(req, res, next) {
   try {
-    await userService.deactivateUser(req.params.id, req.user, req);
-    res.json({ success: true, message: "User deactivated successfully" });
+    await userService.deleteUserPermanently(req.params.id, req.user, req);
+    res.json({ success: true, message: "User deleted successfully" });
   } catch (error) {
     next(error);
   }
@@ -141,7 +141,7 @@ async function updateStatus(req, res, next) {
 async function inviteFirmMember(req, res, next) {
   try {
     const { inviteFirmMember: invite } = require("../auth/staffInvite.service");
-    const user = await invite({ name: req.body.name, email: req.body.email, role: req.body.role }, req.user);
+    const user = await invite({ name: req.body.name, email: req.body.email, role: req.body.role, password: req.body.password }, req.user);
     res.status(201).json({ success: true, user: { _id: user._id, email: user.email, name: user.name, role: user.role } });
   } catch (error) {
     next(error);

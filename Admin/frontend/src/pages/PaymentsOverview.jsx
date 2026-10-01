@@ -420,10 +420,10 @@ const PaymentsOverview = () => {
                 {selectedCase?._id && (
                   <button
                     type="button"
-                    onClick={() => navigate(`/crm-cases/${selectedCase._id}?tab=payments`)}
+                    onClick={() => navigate(`/crm-cases/${selectedCase._id}`)}
                     className="btn-primary inline-flex items-center gap-2"
                   >
-                    <ExternalLink className="h-4 w-4" /> Open Case Payments
+                    <ExternalLink className="h-4 w-4" /> Open Case
                   </button>
                 )}
               </div>

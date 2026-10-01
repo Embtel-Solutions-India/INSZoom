@@ -176,13 +176,15 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
             <p className="text-sm font-bold text-slate-900">Documents we need</p>
-            <p className="text-xs text-slate-500 mt-1">We'll scan these to fill in information automatically, so there's less to type.</p>
           </div>
           {!readOnly && documentAutofillSources.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {documentAutofillSources.map((documentType) => (
                 <AutofillButton key={documentType} documentType={documentType} caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
               ))}
+              {documentAutofillSources.includes("passport") && (
+                <span className="self-center text-xs text-slate-500">Optional - scan your passport to fill in your name, date of birth, nationality and passport details. You can review and edit everything on the next steps.</span>
+              )}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

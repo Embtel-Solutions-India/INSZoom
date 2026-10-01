@@ -191,4 +191,52 @@ function deriveEducationScalarFields(fields = []) {
   return derived;
 }
 
-module.exports = { notifyUsers, applyExtractionMappings, deriveEducationScalarFields, EDUCATION_LEVEL_RANK };
+// A passport prints one "place of birth" string ("MUMBAI, MAHARASHTRA" or
+// "TORONTO, CANADA") and no separate country of birth. Split it into the two
+// checklist fields: country of birth - ONLY when the last part is a
+// recognised country name (never guessed: "MAHARASHTRA" is a state) - and
+// province/state of birth (everything before the country, or the whole
+// string when no country is recognised).
+const COUNTRY_ALIASES = {
+  USA: "United States", "U.S.A.": "United States", "U.S.": "United States", US: "United States",
+  "UNITED STATES OF AMERICA": "United States", UK: "United Kingdom", "U.K.": "United Kingdom",
+  UAE: "United Arab Emirates", "SOUTH KOREA": "South Korea", "REPUBLIC OF KOREA": "South Korea",
+};
+let countryNames = null;
+function knownCountryNames() {
+  if (countryNames) return countryNames;
+  countryNames = new Map();
+  try {
+    const display = new Intl.DisplayNames(["en"], { type: "region" });
+    for (let a = 65; a <= 90; a++) {
+      for (let b = 65; b <= 90; b++) {
+        const code = String.fromCharCode(a, b);
+        const name = display.of(code);
+        if (name && name !== code) countryNames.set(name.toUpperCase(), name);
+      }
+    }
+  } catch (error) {
+    // Intl region names unavailable: only the aliases below will match.
+  }
+  return countryNames;
+}
+
+function derivePassportScalarFields(fields = []) {
+  const place = (fields || []).find((field) => field.key === "placeOfBirth");
+  const raw = typeof place?.value === "string" ? place.value.trim() : "";
+  if (!raw) return [];
+  const confidence = Math.max(0, Math.min(100, Number(place.confidence) || 0));
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  const last = (parts[parts.length - 1] || "").toUpperCase();
+  const country = COUNTRY_ALIASES[last] || knownCountryNames().get(last) || null;
+  const derived = [];
+  if (country && parts.length > 1) {
+    derived.push({ key: "countryOfBirth", value: country, confidence });
+    derived.push({ key: "placeOfBirthState", value: parts.slice(0, -1).join(", "), confidence });
+  } else {
+    derived.push({ key: "placeOfBirthState", value: raw, confidence });
+  }
+  return derived;
+}
+
+module.exports = { notifyUsers, applyExtractionMappings, deriveEducationScalarFields, derivePassportScalarFields, EDUCATION_LEVEL_RANK };

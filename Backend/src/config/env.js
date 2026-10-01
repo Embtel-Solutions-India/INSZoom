@@ -98,12 +98,13 @@ const env = {
   // attorneys are real people with real inboxes, and every case/task/
   // notification created while testing this app was otherwise emailing them
   // for real. Client-facing emails still send normally — only team-member
-  // and attorney recipients are suppressed. Defaults to suppressing (opt
-  // OUT via EMAIL_SUPPRESS_STAFF_AND_ATTORNEY=false once ready to go live);
+  // and attorney recipients are suppressed. Off by default - team-member and
+  // attorney emails go to the real recipients. Set
+  // EMAIL_SUPPRESS_STAFF_AND_ATTORNEY=true to hold them back again;
   // does not touch which templates exist or which code paths call them —
   // see email.service.js's sendTemplateEmail(), which is the one place this
   // is enforced.
-  emailSuppressStaffAndAttorney: process.env.EMAIL_SUPPRESS_STAFF_AND_ATTORNEY !== "false",
+  emailSuppressStaffAndAttorney: process.env.EMAIL_SUPPRESS_STAFF_AND_ATTORNEY === "true",
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/immigration_crm",
   clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",
@@ -194,10 +195,13 @@ const env = {
     clientId: process.env.ADOBE_PDF_SERVICES_CLIENT_ID || "",
     clientSecret: process.env.ADOBE_PDF_SERVICES_CLIENT_SECRET || "",
     baseUrl: process.env.ADOBE_PDF_SERVICES_BASE_URL || "https://pdf-services-ue1.adobe.io",
-    // Default ON - the official download pipeline uses Adobe unless an
-    // operator explicitly opts out. Never an automatic silent fallback to
-    // pdf-lib on failure; this is only a manual, explicit kill-switch.
-    fillEnabled: process.env.ADOBE_PDF_FILL_ENABLED !== "false",
+    // Default OFF - the official download uses the built-in pdf-lib engine,
+    // which takes ~5-15s per form. The Adobe engine measured 20-55s per form
+    // (and times out on large/sliced forms), so it is opt-in: set
+    // ADOBE_PDF_FILL_ENABLED=true to try it first. Even then a download
+    // never fails because of it - see OfficialFormDownloadService.js, which
+    // falls back to pdf-lib after ADOBE_DOWNLOAD_TIMEOUT_MS.
+    fillEnabled: process.env.ADOBE_PDF_FILL_ENABLED === "true",
   },
 };
 

@@ -1,7 +1,10 @@
 const User = require("../../models/User");
 const { invalidateUserCache } = require("../../config/redis");
 
-const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+const { deleteUserPermanently } = require("../users/userDeletion.service");
+const { sendStaffCredentialsEmail } = require("../auth/staffInvite.service");
+
+const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "attorney"];
 
 // Roles each actor role may CREATE, and may reassign an existing user TO.
 // This governs role CHANGES specifically - a much bigger action than a
@@ -11,8 +14,8 @@ const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 // endpoint; it's listed here only so the CREATE flow can default new hires
 // to case_manager.
 const ASSIGNABLE_ROLES = {
-  super_admin: ["super_admin", "admin", "team_lead", "case_manager"],
-  admin: ["admin", "team_lead", "case_manager"],
+  super_admin: ["super_admin", "admin", "team_lead", "case_manager", "attorney"],
+  admin: ["super_admin", "admin", "team_lead", "case_manager", "attorney"],
   team_lead: ["case_manager"],
 };
 
@@ -55,6 +58,7 @@ function canRemoveOrDeactivate(actorUser, targetUser) {
   if (targetRole === "super_admin") return false;
   if (targetRole === "admin") return actorRole === "super_admin";
   if (targetRole === "team_lead") return ["super_admin", "admin", "team_lead"].includes(actorRole);
+  if (targetRole === "attorney") return ["super_admin", "admin"].includes(actorRole);
   if (targetRole === "case_manager") {
     if (["super_admin", "admin"].includes(actorRole)) return true;
     if (actorRole === "team_lead") {
@@ -104,6 +108,8 @@ exports.create = async (req, res, next) => {
       isDemoData: false,
     });
     await doc.save();
+    // Portal link for their role + login email + the password just set.
+    await sendStaffCredentialsEmail({ user: doc, password, invitedBy: req.user });
     const safe = await User.findById(doc._id);
     res.status(201).json({ success: true, user: safe });
   } catch (e) { next(e); }
@@ -146,7 +152,9 @@ exports.update = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
-// DELETE /api/team-members/:id  (soft deactivate — never hard delete)
+// DELETE /api/team-members/:id  (permanent delete - the account is removed)
+// Deactivating is the separate isActive toggle on PATCH; this never just
+// deactivates. Same permission rule as the toggle (canRemoveOrDeactivate).
 exports.remove = async (req, res, next) => {
   try {
     if (req.params.id === req.user._id.toString())
@@ -157,11 +165,7 @@ exports.remove = async (req, res, next) => {
     if (!canRemoveOrDeactivate(req.user, target))
       return res.status(403).json({ success: false, message: `Your role cannot delete a ${target.role} account.` });
 
-    target.isActive = false;
-    target.deactivatedAt = new Date();
-    target.deactivatedBy = req.user._id;
-    await target.save();
-    await invalidateUserCache(target._id).catch(() => {});
-    res.json({ success: true, message: "User deactivated." });
+    await deleteUserPermanently(target);
+    res.json({ success: true, message: "User deleted." });
   } catch (e) { next(e); }
 };

@@ -94,6 +94,14 @@ class AdobeFormRenderer {
         return;
       }
       const kind = classifyField(field);
+      // Adobe's setformdata rejects the WHOLE job ("<field> is read only,
+      // cannot be set" - seen on I-539's mirrored Family Name copy) if any
+      // value targets a read-only field. Such fields are calculated/echo
+      // copies of a writable master field, so skipping them loses nothing.
+      if (field.isReadOnly?.()) {
+        skippedFields.push({ pdfField: mapped.pdfField, caseField: mapped.caseField, type: kind, reason: "read-only field (calculated copy of another field) - not sent to Adobe" });
+        return;
+      }
       if (kind === "text") {
         // Same maxLength handling as PDFRenderer.setFormField (shared fitter):
         // an over-long value is normalized (phone/ZIP) or left blank and
@@ -222,7 +230,7 @@ class AdobeFormRenderer {
     }
 
     const PDFFidelityService = require("./PDFFidelityService");
-    const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template, { failedFieldWrites, adjustedFieldWrites });
+    const fidelityResult = await PDFFidelityService.verify(buffer, caseForm, template, { failedFieldWrites, adjustedFieldWrites, skippedFields });
     if (!fidelityResult.valid) {
       const error = new Error(`PDF fidelity check failed: ${fidelityResult.errors.join("; ")}`);
       error.status = 422;

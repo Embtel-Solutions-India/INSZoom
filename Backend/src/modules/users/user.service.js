@@ -207,6 +207,12 @@ async function createUser(payload, currentUser, req) {
   }
   const user = await User.create(userPayload);
   await writeAuditLog("create", user, currentUser, userPayload, req);
+  // An admin-created internal team member / attorney is told how to sign in:
+  // portal link for their role + login email + the password just set.
+  const staffInvite = require("../auth/staffInvite.service");
+  if (userPayload.password && staffInvite.isInternalRole(user.role)) {
+    await staffInvite.sendStaffCredentialsEmail({ user, password: userPayload.password, invitedBy: currentUser });
+  }
   return User.findById(user._id).select(USER_SELECT);
 }
 
@@ -251,6 +257,29 @@ async function deactivateUser(id, currentUser, req) {
   return user;
 }
 
+// Permanent delete (DELETE /users/:id). Deactivation stays a separate action
+// (PUT /users/:id/status, deactivateUser above).
+async function deleteUserPermanently(id, currentUser, req) {
+  const targetUser = await User.findById(id);
+  if (!targetUser) {
+    const error = new Error("User not found");
+    error.status = 404;
+    throw error;
+  }
+  if (String(targetUser._id) === String(currentUser._id)) {
+    const error = new Error("You cannot delete your own account");
+    error.status = 403;
+    throw error;
+  }
+  if (!canModifyUser(currentUser, targetUser)) {
+    const error = new Error("You do not have permission to delete this user");
+    error.status = 403;
+    throw error;
+  }
+  await require("./userDeletion.service").deleteUserPermanently(targetUser);
+  await writeAuditLog("delete", targetUser, currentUser, { email: targetUser.email, role: targetUser.role }, req);
+}
+
 async function getDashboard(currentUser) {
   const role = normalizeRole(currentUser.role);
   const filter = {};
@@ -287,6 +316,7 @@ async function getUserPerformance(id, currentUser) {
 
 module.exports = {
   USER_SELECT,
+  deleteUserPermanently,
   canViewUser,
   createUser,
   deactivateUser,

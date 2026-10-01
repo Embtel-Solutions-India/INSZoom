@@ -26,6 +26,7 @@ const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
 const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
 const { CHANGE_OF_ADDRESS_DEFINITIONS } = require("./changeOfAddressChecklist");
 const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
+const { isPassportInformation } = require("./passportInformation");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
@@ -1989,6 +1990,20 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...COS_B1_B2_CHECKLIST_DEFINITIONS,
 ];
 
+// Applied here, once, for every built-in definition so no individual
+// checklist file can quietly define optional passport information (rule and
+// scope: passportInformation.js).
+function enforceRequiredPassportInformation(definitions) {
+  for (const definition of definitions) {
+    for (const question of definition.questions || []) {
+      if (isPassportInformation(question)) question.required = true;
+    }
+  }
+  return definitions;
+}
+
+enforceRequiredPassportInformation(VISA_TEMPLATE_DEFINITIONS);
+
 function slugSection(title) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }
@@ -3001,6 +3016,7 @@ module.exports = {
   createQuestionnaire,
   ensureDefaultVisaTemplates,
   VISA_TEMPLATE_DEFINITIONS,
+  isPassportInformation,
   listVisaMappings,
   addVisaMapping,
   removeVisaMapping,
