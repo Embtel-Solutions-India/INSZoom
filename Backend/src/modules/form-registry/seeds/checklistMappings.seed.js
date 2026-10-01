@@ -60,9 +60,12 @@ set("L-1A", "I-907", [cm("l1a_employer_checklist", COND, { role: "employer" }), 
   existing.checklistMappings.push(cm("l1a_business_plan_checklist", COND, { role: "employer", condition: NEW_OFFICE_CONDITION, notes: "New Office petition only - never every L-1A case" }));
 }
 
-// L-1B (spec §3 L-1B): GAP - no dedicated L-1B checklist exists yet.
-// Deliberately NOT reusing l1a_employer_checklist/l1a_employee_checklist.
-// No entries added for L-1B.
+// L-1B: its own copy of every L-1A checklist (l1b_*), mapped to the same
+// forms as L-1A (I-129 + business plan on New Office, I-129S, I-539, I-907).
+set("L-1B", "I-129", [cm("l1b_employer_checklist", AUTO, { role: "employer" }), cm("l1b_employee_checklist", AUTO, { role: "employee" }), cm("l1b_business_plan_checklist", COND, { role: "employer", condition: NEW_OFFICE_CONDITION, notes: "New Office petition only" })]);
+set("L-1B", "I-129S", [cm("l1b_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1b_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
+set("L-1B", "I-539", [cm("l1b_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
+set("L-1B", "I-907", [cm("l1b_employer_checklist", COND, { role: "employer" }), cm("l1b_employee_checklist", COND, { role: "employee" })]);
 
 // ---- E-2 (spec §3 E-2) -------------------------------------------------
 set("E-2", "I-129", [cm("e2_visa_checklist", COND, { notes: "USCIS COS/extension route" })]);
@@ -88,7 +91,12 @@ for (const visaType of ["O-1A", "O-1B"]) {
   set(visaType, "I-539", [cm("o1_employee_checklist", COND, { role: "employee" })]);
   set(visaType, "I-907", [cm("o1_employer_checklist", COND, { role: "employer" }), cm("o1_employee_checklist", COND, { role: "employee" })]);
 }
-// O-2 (spec §3 O-2): GAP - no dedicated O-2 checklist. Not reusing O-1's.
+// O-2 (support staff for an O-1 alien): filed on the same I-129 O/P
+// supplement with the same employer/employee structure, so it shares the O-1
+// O-2 checklists (o2_*): its own employer/employee content, see o2.js.
+set("O-2", "I-129", [cm("o2_employer_checklist", AUTO, { role: "employer" }), cm("o2_employee_checklist", AUTO, { role: "employee" })]);
+set("O-2", "I-539", [cm("o2_employee_checklist", COND, { role: "employee" })]);
+set("O-2", "I-907", [cm("o2_employer_checklist", COND, { role: "employer" }), cm("o2_employee_checklist", COND, { role: "employee" })]);
 
 // ---- EB-1A (spec §3 EB-1A, uses eb1a_questionnaire) --------------------
 set("EB-1A", "I-140", [cm("eb1a_questionnaire", AUTO)]);

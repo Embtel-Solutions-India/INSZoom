@@ -40,6 +40,14 @@ const FIELD_MAPPINGS = {
       questionnaire: ["employee_personal_passportExpirationDate", "passportExpirationDate", "passport.expiryDate", "passport.expirationDate"],
       case: "documentChecklist.passport.expiryDate",
     },
+    placeOfBirth: {
+      beneficiary: "placeOfBirth",
+      questionnaire: ["employee_personal_provinceStateOfBirth"],
+    },
+    issuingCountry: {
+      beneficiary: "passportCountry",
+      questionnaire: ["employee_personal_passportCountryOfIssuance"],
+    },
     expirationDate: {
       beneficiary: "passportExpirationDate",
       questionnaire: ["employee_personal_passportExpirationDate", "passportExpirationDate", "passport.expiryDate", "passport.expirationDate"],

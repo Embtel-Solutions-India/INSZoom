@@ -23,6 +23,7 @@ router.get("/question-library", authenticate, authorizeRoles(...reviewerRoles), 
 router.get("/question-library/:itemId", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getQuestionLibraryItem);
 router.post("/question-library/custom", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createCustomLibraryQuestion);
 router.post("/question-library/synchronize", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("questionnaires:create"), ctrl.synchronizeQuestionLibrary);
+router.get("/visa-options", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getVisaOptions);
 router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.ensureDefaultTemplates);
 router.post("/defaults/seed", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.ensureDefaultTemplates);
 router.get("/case/:caseId", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
@@ -51,6 +52,9 @@ router.get("/:id/validation", authenticate, authorizeRoles(...readerRoles), auth
 router.post("/:id/validate", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.validateAnswers);
 router.post("/:id/document-requests", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.generateDocumentRequests);
 router.get("/:id/uscis-mappings", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getUscisMappings);
+router.get("/:id/visa-mappings", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getVisaMappings);
+router.post("/:id/visa-mappings", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.addVisaMapping);
+router.delete("/:id/visa-mappings/:visaType", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.removeVisaMapping);
 router.post("/:id/assign", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:assign"), ctrl.assignQuestionnaire);
 router.post("/:id/questions", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.createQuestion);
 router.post("/:id/questions/bulk", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.bulkCreateQuestions);

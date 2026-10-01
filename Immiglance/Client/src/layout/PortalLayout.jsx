@@ -13,9 +13,6 @@ const NAV_ITEMS = [
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Messages",   to: "/dashboard/messages",  icon: MessagesIcon },
-  { label: "Billing",    to: "/dashboard/payments",  icon: BillingIcon },
-  { label: "QuickBooks", to: "/dashboard/quickbooks", icon: QuickBooksIcon },
-  { label: "FedEx",      to: "/dashboard/fedex",     icon: FedExIcon },
 ];
 
 export default function PortalLayout() {
@@ -35,7 +32,7 @@ export default function PortalLayout() {
   const isEmployee = isEmployeeAccount(user);
 
   const visibleNavItems = isEmployee
-    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile"].includes(item.label))
+    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages"].includes(item.label))
     : NAV_ITEMS;
 
   const handleLogout = async () => {
@@ -148,13 +145,4 @@ function DocumentsIcon(props) {
 }
 function MessagesIcon(props) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>;
-}
-function BillingIcon(props) {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></svg>;
-}
-function QuickBooksIcon(props) {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><circle cx="12" cy="12" r="9" /><path d="M9 12a3 3 0 106 0 3 3 0 00-6 0zM12 3v3M12 18v3" /></svg>;
-}
-function FedExIcon(props) {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10" /></svg>;
 }

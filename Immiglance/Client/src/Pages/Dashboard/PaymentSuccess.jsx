@@ -102,10 +102,10 @@ export default function PaymentSuccess() {
         </h1>
         <p className="text-muted-foreground mt-2">{message}</p>
         <Link
-          to="/dashboard/payments?refresh=1"
+          to="/dashboard"
           className="inline-block mt-6 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold"
         >
-          View Updated Payments
+          Back to Dashboard
         </Link>
       </div>
     </div>

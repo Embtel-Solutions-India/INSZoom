@@ -27,7 +27,6 @@ const Dashboard = lazy(() => import("./Pages/Dashboard/Dashboard"));
 const Tasks = lazy(() => import("./Pages/Dashboard/Tasks"));
 const Profile = lazy(() => import("./Pages/Dashboard/Profile"));
 const Documents = lazy(() => import("./Pages/Dashboard/Documents"));
-const Payments = lazy(() => import("./Pages/Dashboard/Payments"));
 const DocumentReview = lazy(() => import("./Pages/Dashboard/DocumentReview"));
 const Intake = lazy(() => import("./Pages/Dashboard/Intake"));
 const BookConsultation = lazy(() => import("./Pages/Dashboard/BookConsultation"));
@@ -35,8 +34,6 @@ const WaitingForApproval = lazy(() => import("./Pages/Dashboard/WaitingForApprov
 const FilingTypeSelection = lazy(() => import("./Pages/Dashboard/FilingTypeSelection"));
 const PlanSelection = lazy(() => import("./Pages/Dashboard/PlanSelection"));
 const Messages = lazy(() => import("./Pages/Dashboard/Messages"));
-const QuickBooks = lazy(() => import("./Pages/Dashboard/QuickBooks"));
-const FedEx = lazy(() => import("./Pages/Dashboard/FedEx"));
 const PaymentSuccess = lazy(() => import("./Pages/Dashboard/PaymentSuccess"));
 const PaymentCancel = lazy(() => import("./Pages/Dashboard/PaymentCancel"));
 
@@ -83,11 +80,8 @@ export default function App() {
             <Route path="/dashboard/messages"  element={<Messages />} />
             <Route path="/dashboard/plan"      element={<PlanSelection />} />
             <Route path="/dashboard/filing-type" element={<FilingTypeSelection />} />
-            <Route path="/dashboard/payments" element={<Payments />} />
             <Route path="/dashboard/payments/success" element={<PaymentSuccess />} />
             <Route path="/dashboard/payments/cancel" element={<PaymentCancel />} />
-            <Route path="/dashboard/quickbooks" element={<QuickBooks />} />
-            <Route path="/dashboard/fedex" element={<FedEx />} />
 
             <Route path="/dashboard/documents" element={<Documents />} />
             {/* Optional caseId — lets an employer account open one specific

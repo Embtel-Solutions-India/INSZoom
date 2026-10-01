@@ -174,6 +174,17 @@ api.interceptors.response.use(
 )
 export default api
 
+// OCR/Document-AI autofill: scans one uploaded document (e.g. a passport) and
+// writes the extracted values into the case's checklist answers server-side.
+export const documentIntelligenceApi = {
+  autofillFromDocument: (caseId, documentType, file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('documentType', documentType)
+    return api.post(`/document-intelligence/case/${caseId}/autofill`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+}
+
 export const casesApi = {
   dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
   list: (params = {}) => api.get('/cases', { params }),
@@ -330,6 +341,10 @@ export const questionnairesApi = {
   },
   progress: (id, params = {}) => api.get(`/questionnaires/${id}/progress`, { params }),
   mappings: (id) => api.get(`/questionnaires/${id}/uscis-mappings`),
+  visaOptions: () => api.get('/questionnaires/visa-options'),
+  visaMappings: (id) => api.get(`/questionnaires/${id}/visa-mappings`),
+  addVisaMapping: (id, visaType) => api.post(`/questionnaires/${id}/visa-mappings`, { visaType }),
+  removeVisaMapping: (id, visaType) => api.delete(`/questionnaires/${id}/visa-mappings/${encodeURIComponent(visaType)}`),
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
 }
 
@@ -486,6 +501,17 @@ export const formGovernanceApi = {
   // edition activates, so nothing else needs to change.
   analyzeFormPdf: (formData) => api.post('/uscis/forms/analyze', formData),
   uploadFormPdf: (formData) => api.post('/uscis/forms/upload', formData),
+}
+
+// Fields the backend could not write exactly as stored (value longer than the
+// PDF field allows) come back in the X-Form-Warnings response header.
+export const readFormWarnings = (response) => {
+  try {
+    const raw = response?.headers?.['x-form-warnings']
+    return raw ? JSON.parse(decodeURIComponent(raw)) : []
+  } catch {
+    return []
+  }
 }
 
 export const formGenerationApi = {

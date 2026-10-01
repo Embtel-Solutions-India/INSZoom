@@ -14,7 +14,7 @@
 // structured sub-form, not a generic one, and isn't part of this pass.
 
 import { useState } from 'react'
-import { Pencil, X, Loader2, Paperclip } from 'lucide-react'
+import { Pencil, X, Loader2, Paperclip, ScanLine } from 'lucide-react'
 
 const EDITABLE_SCALAR_TYPES = new Set([
   'text', 'textarea', 'number', 'currency', 'percent', 'date', 'datetime',
@@ -127,7 +127,9 @@ function EditableAnswerInput({ question, value, onChange }) {
   return <input type="text" className={inputClass} value={value || ''} onChange={(event) => onChange(event.target.value)} />
 }
 
-function RepeatingGroupRows({ question, rows }) {
+function RepeatingGroupRows({ question, rows: rawRows }) {
+  // An answer can arrive as a single object, a string or null, not only an array.
+  const rows = Array.isArray(rawRows) ? rawRows : (rawRows && typeof rawRows === 'object' ? [rawRows] : [])
   const fields = question.metadata?.repeatableFields || []
   return (
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -191,7 +193,42 @@ function FileAnswerRow({ question, files, onReplace }) {
   )
 }
 
-export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile }) {
+// Scans a passport image/PDF with OCR/Document AI; the backend fills the
+// section's passport + personal-detail answers (name, DOB, nationality,
+// passport number/dates, ...), which the parent then reloads.
+function PassportScanButton({ onAutofill }) {
+  const [scanning, setScanning] = useState(false)
+  const [message, setMessage] = useState('')
+  const handleFile = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    setScanning(true)
+    setMessage('')
+    try {
+      await onAutofill('passport', file)
+      setMessage('Filled from passport')
+    } catch (err) {
+      setMessage(err.response?.data?.message || err.message || 'Could not read the passport')
+    } finally {
+      setScanning(false)
+    }
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <label className={`inline-flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 ${scanning ? 'pointer-events-none opacity-60' : ''}`}>
+        {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScanLine className="h-3.5 w-3.5" />}
+        {scanning ? 'Reading passport…' : 'Scan passport'}
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={handleFile} />
+      </label>
+      {message && <span className="text-xs text-muted-foreground">{message}</span>}
+    </span>
+  )
+}
+
+const PASSPORT_FIELD_KEY = /_passportNumber$/
+
+export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile, onAutofill }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({})
   const [saving, setSaving] = useState(false)
@@ -288,7 +325,10 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
           const plainQuestions = questions.filter((q) => q.type !== 'repeating_group' && q.type !== 'file' && q.type !== 'file-multiple')
           return (
             <div key={sectionKey}>
-              <p className="mb-2 text-sm font-semibold text-foreground">{sectionTitleFor(questionnaire, sectionKey)}</p>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">{sectionTitleFor(questionnaire, sectionKey)}</p>
+                {typeof onAutofill === 'function' && plainQuestions.some((q) => PASSPORT_FIELD_KEY.test(q.key)) && <PassportScanButton onAutofill={onAutofill} />}
+              </div>
               {plainQuestions.length > 0 && (
                 <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
                   {plainQuestions.map((question) => (

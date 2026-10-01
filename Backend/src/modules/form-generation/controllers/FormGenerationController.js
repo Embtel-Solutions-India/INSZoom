@@ -122,7 +122,21 @@ exports.downloadForm = async (req, res) => {
       staleRefreshed: !isHistorical && wasStale,
       status: caseForm.status,
       engine,
+      adjustedFieldWrites: renderReport?.adjustedFieldWrites || [],
+      blankedFieldWrites: renderReport?.failedFieldWrites || [],
     });
+
+    // Fields whose value could not be written as-is (longer than the PDF
+    // field allows): the download still succeeds, but the user is told which
+    // ones to double-check instead of silently getting a blank/changed field.
+    const warnings = [
+      ...(renderReport?.failedFieldWrites || []).map((item) => `${item.pdfField.split(".").pop().replace(/\[\d+\]$/, "")}: ${item.message}`),
+      ...(renderReport?.adjustedFieldWrites || []).map((item) => `${item.pdfField.split(".").pop().replace(/\[\d+\]$/, "")}: ${item.reason}`),
+    ];
+    if (warnings.length) {
+      res.setHeader("X-Form-Warnings", encodeURIComponent(JSON.stringify(warnings.slice(0, 20))));
+      res.setHeader("Access-Control-Expose-Headers", "X-Form-Warnings, Content-Disposition");
+    }
 
     const date = new Date().toISOString().slice(0, 10);
     const filename = `${caseForm.formCode || "uscis-form"}_${String(caseForm.caseId)}_${date}.pdf`;

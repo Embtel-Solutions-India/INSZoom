@@ -30,7 +30,7 @@ import { tokenStore } from "../services/api";
 import { STAFF_ROLES, redirectToOwnPortal } from "../utils/portalRedirect";
 
 const CLIENT_PORTAL_ROLES = ["client", "user", "employer", "employee", "beneficiary"];
-const RESTRICTED_PORTAL_PATHS = ["/dashboard", "/dashboard/documents", "/dashboard/profile"];
+const RESTRICTED_PORTAL_PATHS = ["/dashboard", "/dashboard/documents", "/dashboard/profile", "/dashboard/messages"];
 
 function isAllowedRestrictedPortalPath(pathname) {
   return RESTRICTED_PORTAL_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));

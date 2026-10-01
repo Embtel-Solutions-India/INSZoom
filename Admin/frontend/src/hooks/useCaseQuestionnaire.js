@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { questionnairesApi, invalidateCachedGet } from '../services/api'
+import { questionnairesApi, documentIntelligenceApi, invalidateCachedGet } from '../services/api'
 
 // Resolves the assigned-or-default Questionnaire template for a case + role
 // (targetRole="employer"|"employee"|"business_plan") — the same SSOT endpoint
@@ -101,5 +101,14 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     await load()
   }, [state.questionnaire, responseId, caseId, targetRole, referenceId, load])
 
-  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer }
+  // Scans a document (passport, I-94, ...) with OCR/Document AI; the backend
+  // writes the extracted values into this case's answers, then we reload.
+  const autofillFromDocument = useCallback(async (documentType, file) => {
+    const response = await documentIntelligenceApi.autofillFromDocument(caseId, documentType, file)
+    invalidateCachedGet(`/questionnaires/case/${caseId}`)
+    await load()
+    return response.data
+  }, [caseId, load])
+
+  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer, autofillFromDocument }
 }

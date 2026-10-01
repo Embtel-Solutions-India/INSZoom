@@ -19,13 +19,14 @@ class PDFFidelityService {
   // fieldName"), NOT by the PDF's own field NAME - the two happen to be equal for most fields but
   // are not guaranteed to be, so this reads through template.formFields (which carries both) rather
   // than assuming caseForm.fieldValues' own keys are ready-to-use pdfField names.
-  static sampleFieldNames(caseForm, template, limit = 20) {
+  static sampleFieldNames(caseForm, template, limit = 20, skipFieldNames = new Set()) {
     const fieldValues = caseForm.fieldValues?.toObject?.() || caseForm.fieldValues || {};
     const sampled = [];
     for (const field of template.formFields || []) {
       if (sampled.length >= limit) break;
       if (field.semanticType === "signature") continue;
       if (field.pdfFieldType !== "text") continue;
+      if (skipFieldNames.has(field.fieldName)) continue;
       const fieldId = field.fieldId || field.fieldName;
       const rawValue = fieldValues[fieldId];
       if (rawValue === undefined || rawValue === null || rawValue === "") continue;
@@ -43,7 +44,7 @@ class PDFFidelityService {
    * @param {object} template - The USCISFormTemplate (with formFields, pdfMetadata)
    * @returns {Promise<{ valid: boolean, errors: string[], warnings: string[], report: object }>}
    */
-  static async verify(buffer, caseForm, template) {
+  static async verify(buffer, caseForm, template, renderReport = null) {
     const errors = [];
     const warnings = [];
 
@@ -141,7 +142,14 @@ class PDFFidelityService {
       }
     }
 
-    const sampledFields = this.sampleFieldNames(caseForm, template);
+    // Fields the renderer deliberately left blank (value longer than the PDF
+    // field allows) are not a rendering defect, and fields it normalized
+    // (phone/ZIP) are compared against the value it actually wrote. Both are
+    // already itemized in renderReport, so the form stays downloadable.
+    const skipped = new Set((renderReport?.failedFieldWrites || []).map((item) => item.pdfField));
+    const written = new Map((renderReport?.adjustedFieldWrites || []).map((item) => [item.pdfField, item.to]));
+    const sampledFields = this.sampleFieldNames(caseForm, template, 20, skipped)
+      .map((item) => (written.has(item.fieldName) ? { ...item, expected: written.get(item.fieldName) } : item));
     let matchedFields = 0;
     const mismatchedFields = [];
     for (const { fieldName, expected } of sampledFields) {

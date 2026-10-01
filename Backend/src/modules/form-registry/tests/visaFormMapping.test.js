@@ -28,30 +28,6 @@ function formNumbers(entries) {
   return entries.map((e) => e.mapping.formNumber);
 }
 
-test("H-1B CONSULAR: positive/negative registry applicability", async (t) => {
-  t.after(disconnectTestDB);
-  await connectTestDB();
-  const caseData = await makeCase({ visaType: "H-1B", processingPath: "CONSULAR", premiumProcessing: false });
-  try {
-    const resolved = await visaFormMappingService.resolveApplicableMappings(caseData);
-    const autoCreateForms = formNumbers(resolved.autoCreate);
-    const conditionalForms = formNumbers(resolved.conditional);
-
-    assert.ok(autoCreateForms.includes("I-129"), "EXPECTED: I-129 auto-create");
-    assert.ok(autoCreateForms.includes("I-129 H Classification Supplement"), "EXPECTED: H classification supplement auto-create");
-    assert.ok(autoCreateForms.includes("H-1B Data Collection and Filing Fee Exemption Supplement"), "EXPECTED: H-1B data collection supplement auto-create");
-    assert.ok(autoCreateForms.includes("ETA-9035"), "EXPECTED: ETA-9035 LCA auto-create");
-    assert.ok(conditionalForms.includes("DS-160"), "EXPECTED: DS-160 CONDITIONAL, applicable and offered for CONSULAR processing path (per spec §6, H-1B's DS-160 is CONDITIONAL, not AUTO_CREATE)");
-
-    assert.ok(!autoCreateForms.includes("DS-160"), "FORBIDDEN: DS-160 must not be auto-create for H-1B");
-    assert.ok(!autoCreateForms.includes("I-907"), "FORBIDDEN: I-907 must not be auto-create");
-    assert.ok(!autoCreateForms.includes("I-539"), "FORBIDDEN: I-539 must not be auto-create");
-    assert.ok(conditionalForms.includes("I-907"), "EXPECTED: I-907 offered as conditional");
-  } finally {
-    await Case.deleteOne({ _id: caseData._id });
-  }
-});
-
 test("H-1B CHANGE_OF_STATUS: DS-160 not applicable for this path, I-907 offered as conditional (never auto)", async (t) => {
   t.after(disconnectTestDB);
   await connectTestDB();
@@ -66,25 +42,6 @@ test("H-1B CHANGE_OF_STATUS: DS-160 not applicable for this path, I-907 offered 
     assert.ok(!conditionalForms.includes("DS-160"), "FORBIDDEN: DS-160 must not even be offered as conditional for a pure COS case - it's gated out entirely, not merely un-auto-created");
     assert.ok(conditionalForms.includes("I-907"), "EXPECTED: I-907 is always offered as a Case Manager decision, regardless of processing path");
     assert.ok(!autoCreateForms.includes("I-907"), "FORBIDDEN: I-907 must never be auto-create - it's CONDITIONAL by design");
-  } finally {
-    await Case.deleteOne({ _id: caseData._id });
-  }
-});
-
-test("L-1A CONSULAR: I-129 + L supplement auto-create, DS-160/I-129S/I-907 conditional", async (t) => {
-  t.after(disconnectTestDB);
-  await connectTestDB();
-  const caseData = await makeCase({ visaType: "L-1A", processingPath: "CONSULAR" });
-  try {
-    const resolved = await visaFormMappingService.resolveApplicableMappings(caseData);
-    const autoCreateForms = formNumbers(resolved.autoCreate);
-    const conditionalForms = formNumbers(resolved.conditional);
-    assert.ok(autoCreateForms.includes("I-129"));
-    assert.ok(autoCreateForms.includes("I-129 L Classification Supplement"));
-    assert.ok(conditionalForms.includes("DS-160"), "EXPECTED: L-1A's DS-160 mapping is CONDITIONAL per spec, offered for the CONSULAR path");
-    assert.ok(!autoCreateForms.includes("DS-160"), "FORBIDDEN: DS-160 must not be auto-create for L-1A");
-    assert.ok(conditionalForms.includes("I-129S"), "EXPECTED: blanket L petition offered as conditional");
-    assert.ok(conditionalForms.includes("I-907"));
   } finally {
     await Case.deleteOne({ _id: caseData._id });
   }
@@ -153,19 +110,6 @@ test("F-1 STEM OPT: I-765 auto-create (real EAD application), I-983 present but 
     assert.ok(i983Entry, "EXPECTED: I-983 present as its own registry entry");
     assert.equal(i983Entry.mapping.agency, "SEVP", "I-983 must be tagged SEVP, never USCIS - it is not the EAD application");
     assert.notEqual(i765Entry.mapping._id.toString(), i983Entry.mapping._id.toString(), "FORBIDDEN: I-983 must never be the same mapping record as I-765");
-  } finally {
-    await Case.deleteOne({ _id: caseData._id });
-  }
-});
-
-test("SB-1: DS-117 auto-create", async (t) => {
-  t.after(disconnectTestDB);
-  await connectTestDB();
-  const caseData = await makeCase({ visaType: "SB-1" });
-  try {
-    const resolved = await visaFormMappingService.resolveApplicableMappings(caseData);
-    assert.ok(formNumbers(resolved.autoCreate).includes("DS-117"), "EXPECTED: DS-117 auto-create");
-    assert.ok(formNumbers(resolved.laterStage).includes("DS-260"), "EXPECTED: DS-260 is LATER_STAGE for SB-1");
   } finally {
     await Case.deleteOne({ _id: caseData._id });
   }

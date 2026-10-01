@@ -14,6 +14,10 @@ function listFilter(query) {
   if (query.visaType) filter.visaTypes = query.visaType;
   if (query.type) filter.type = query.type;
   if (query.isTemplate !== undefined) filter.isTemplate = query.isTemplate === "true";
+  // Without this the list returns every historical version of every
+  // checklist, which (sorted by key, capped by `limit`) pushed later
+  // checklists off the end of the Questionnaire page.
+  if (query.latestVersion !== undefined) filter.latestVersion = query.latestVersion === "true";
   if (query.search) {
     filter.$or = [
       { title: new RegExp(query.search, "i") },
@@ -457,6 +461,38 @@ exports.getUscisMappings = async (req, res, next) => {
   try {
     const mappings = await questionnaireService.getUscisMappings(req.params.id);
     res.json({ success: true, count: mappings.length, data: mappings });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getVisaOptions = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: questionnaireService.listVisaOptions() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getVisaMappings = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await questionnaireService.listVisaMappings(req.params.id) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.addVisaMapping = async (req, res, next) => {
+  try {
+    res.status(201).json({ success: true, data: await questionnaireService.addVisaMapping(req.params.id, req.body?.visaType, req.user, req) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.removeVisaMapping = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await questionnaireService.removeVisaMapping(req.params.id, req.params.visaType, req.user, req) });
   } catch (error) {
     next(error);
   }

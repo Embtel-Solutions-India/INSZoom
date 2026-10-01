@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
@@ -2579,6 +2579,7 @@ const CRMCaseDetail = () => {
           loading={employerQuestionnaire.loading}
           onSaveAnswer={employerQuestionnaire.saveAnswer}
           onSaveFile={employerQuestionnaire.saveFileAnswer}
+          onAutofill={employerQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
           title="Employee Questionnaire"
@@ -2590,6 +2591,7 @@ const CRMCaseDetail = () => {
           loading={employeeQuestionnaire.loading}
           onSaveAnswer={employeeQuestionnaire.saveAnswer}
           onSaveFile={employeeQuestionnaire.saveFileAnswer}
+          onAutofill={employeeQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
           title="Business Plan Checklist"
@@ -2601,6 +2603,7 @@ const CRMCaseDetail = () => {
           loading={businessPlanQuestionnaire.loading}
           onSaveAnswer={businessPlanQuestionnaire.saveAnswer}
           onSaveFile={businessPlanQuestionnaire.saveFileAnswer}
+          onAutofill={businessPlanQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
           title="E-2 Supporting Documents"
@@ -2612,6 +2615,7 @@ const CRMCaseDetail = () => {
           loading={supportingDocumentsQuestionnaire.loading}
           onSaveAnswer={supportingDocumentsQuestionnaire.saveAnswer}
           onSaveFile={supportingDocumentsQuestionnaire.saveFileAnswer}
+          onAutofill={supportingDocumentsQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
@@ -2623,6 +2627,7 @@ const CRMCaseDetail = () => {
           loading={petitionerQuestionnaire.loading}
           onSaveAnswer={petitionerQuestionnaire.saveAnswer}
           onSaveFile={petitionerQuestionnaire.saveFileAnswer}
+          onAutofill={petitionerQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
@@ -2634,6 +2639,7 @@ const CRMCaseDetail = () => {
           loading={beneficiaryQuestionnaire.loading}
           onSaveAnswer={beneficiaryQuestionnaire.saveAnswer}
           onSaveFile={beneficiaryQuestionnaire.saveFileAnswer}
+          onAutofill={beneficiaryQuestionnaire.autofillFromDocument}
         />
         {showJointSponsorPanel && (
           <QuestionnaireAnswersPanel
@@ -2646,6 +2652,7 @@ const CRMCaseDetail = () => {
             loading={jointSponsorQuestionnaire.loading}
             onSaveAnswer={jointSponsorQuestionnaire.saveAnswer}
             onSaveFile={jointSponsorQuestionnaire.saveFileAnswer}
+            onAutofill={jointSponsorQuestionnaire.autofillFromDocument}
           />
         )}
 
@@ -2660,6 +2667,7 @@ const CRMCaseDetail = () => {
             loading={greenCardRenewalQuestionnaire.loading}
             onSaveAnswer={greenCardRenewalQuestionnaire.saveAnswer}
             onSaveFile={greenCardRenewalQuestionnaire.saveFileAnswer}
+            onAutofill={greenCardRenewalQuestionnaire.autofillFromDocument}
           />
         )}
 
@@ -2692,6 +2700,7 @@ const CRMCaseDetail = () => {
             loading={gcNvcQuestionnaire.loading}
             onSaveAnswer={gcNvcQuestionnaire.saveAnswer}
             onSaveFile={gcNvcQuestionnaire.saveFileAnswer}
+            onAutofill={gcNvcQuestionnaire.autofillFromDocument}
           />
         )}
 
@@ -3057,6 +3066,8 @@ const CRMCaseDetail = () => {
                                   link.click()
                                   document.body.removeChild(link)
                                   URL.revokeObjectURL(url)
+                                  const formWarnings = readFormWarnings(response)
+                                  if (formWarnings.length) setFormActionMessage(`Downloaded. Please review these fields on the PDF: ${formWarnings.join('; ')}`)
                                 } catch (error) {
                                   setFormActionMessage(error.response?.data?.message || 'Unable to download this form.')
                                 }
