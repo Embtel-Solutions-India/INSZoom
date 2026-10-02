@@ -32,4 +32,38 @@ function fitTextValue({ pdfField, value, maxLength }) {
   return { value: "", status: "dropped", reason: `value is ${text.length} characters but the PDF field allows ${maxLength}; left blank` };
 }
 
-module.exports = { fitTextValue };
+// ---- dropdown / radio / option-list fields --------------------------------
+// pdf-lib's select() throws "Attempted to set invalid field value" unless the
+// value is EXACTLY one of the field's options. Real case data is looser: an
+// empty answer arrives as "" or [""], codes lose their label ("F1" for the
+// option " F1 - STUDENT - ACADEMIC"), and casing/spacing differ. This maps
+// the answer onto the field's real option when that is unambiguous, treats an
+// empty answer as "nothing selected" (not an error), and otherwise reports the
+// value as not available instead of guessing.
+const normalizeChoice = (text) => String(text ?? "").replace(/[^a-z0-9]+/gi, "").toLowerCase();
+const optionCode = (option) => String(option ?? "").split(" - ")[0];
+
+function fitChoiceValue({ value, options = [] }) {
+  const wanted = (Array.isArray(value) ? value : [value])
+    .map((item) => (item === null || item === undefined ? "" : String(item)))
+    .filter((item) => item.trim() !== "");
+  if (!wanted.length) return { status: "empty", values: [] };
+
+  const values = [];
+  for (const raw of wanted) {
+    const target = normalizeChoice(raw);
+    const match =
+      options.find((option) => option === raw) ||
+      options.find((option) => String(option).trim() === raw.trim()) ||
+      options.find((option) => normalizeChoice(option) === target) ||
+      options.find((option) => normalizeChoice(optionCode(option)) === target);
+    if (!match) {
+      return { status: "dropped", values: [], reason: `"${raw}" is not one of the choices on this form; left unselected` };
+    }
+    values.push(match);
+  }
+  const changed = values.some((match, index) => match !== wanted[index]);
+  return { status: changed ? "adjusted" : "unchanged", values, reason: changed ? `matched to the form's choice "${String(values[0]).trim()}"` : undefined };
+}
+
+module.exports = { fitTextValue, fitChoiceValue };

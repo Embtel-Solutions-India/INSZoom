@@ -39,3 +39,25 @@ test("fidelity sampling skips deliberately-blank fields", () => {
   const sampled = PDFFidelityService.sampleFieldNames(caseForm, template, 20, new Set([email]));
   assert.deepEqual(sampled.map((item) => item.fieldName), ["other"]);
 });
+
+const { fitChoiceValue } = require("../services/FieldValueFitter");
+
+test("an empty answer on a dropdown is 'nothing selected', never an error", () => {
+  for (const value of ["", [""], null, undefined, [], "   "]) {
+    assert.equal(fitChoiceValue({ value, options: [" ", " F1 - STUDENT - ACADEMIC"] }).status, "empty");
+  }
+});
+
+test("a dropdown answer is matched to the form's real choice (code, case, spacing)", () => {
+  const options = [" ", " F1 - STUDENT - ACADEMIC", " H1B - SPECIALTY OCCUPATION", " O2 - O-1 SUPPORT"];
+  assert.deepEqual(fitChoiceValue({ value: "F1", options }).values, [" F1 - STUDENT - ACADEMIC"]);
+  assert.deepEqual(fitChoiceValue({ value: "f-1", options }).values, [" F1 - STUDENT - ACADEMIC"]);
+  assert.deepEqual(fitChoiceValue({ value: "O-2", options }).values, [" O2 - O-1 SUPPORT"]);
+  assert.equal(fitChoiceValue({ value: " H1B - SPECIALTY OCCUPATION", options }).status, "unchanged");
+});
+
+test("an answer that matches no choice is reported, not guessed", () => {
+  const result = fitChoiceValue({ value: "Z9", options: [" F1 - STUDENT"] });
+  assert.equal(result.status, "dropped");
+  assert.match(result.reason, /"Z9" is not one of the choices/);
+});

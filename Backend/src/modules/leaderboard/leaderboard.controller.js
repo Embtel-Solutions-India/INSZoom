@@ -1,41 +1,25 @@
-const StaffPerformance = require("../../models/StaffPerformance");
-const User = require("../../models/User");
-const Case = require("../../models/Case");
-const Task = require("../../models/Task");
+const leaderboardService = require("./leaderboard.service");
 
-async function calculate(req, res, next) {
+// GET /api/leaderboard?board=case_managers|team_leads|attorneys|clients&period=today|this_week|this_month|all_time
+// Always computed live. (`role=case_manager|team_lead|attorney` is still
+// accepted for older callers.)
+const LEGACY_ROLE_TO_BOARD = { case_manager: "case_managers", team_lead: "team_leads", attorney: "attorneys", client: "clients" };
+
+async function list(req, res, next) {
   try {
-    const period = req.body.period || req.query.period || "this_month";
-    const periodStart = new Date();
-    periodStart.setDate(period === "today" ? periodStart.getDate() : period === "this_week" ? periodStart.getDate() - 7 : periodStart.getDate() - 30);
-    const periodEnd = new Date();
-    const staff = await User.find({ role: { $in: ["case_manager", "team_lead"] }, isActive: true }).lean();
-    const rows = await Promise.all(staff.map(async (user) => {
-      const [activeCases, closedCases, tasksCompleted] = await Promise.all([
-        Case.countDocuments({ $or: [{ assignedCaseManager: user._id }, { assignedTeamLead: user._id }], status: { $nin: ["closed", "completed", "archived"] } }),
-        Case.countDocuments({ $or: [{ assignedCaseManager: user._id }, { assignedTeamLead: user._id }], status: { $in: ["closed", "completed", "approved"] }, updatedAt: { $gte: periodStart, $lte: periodEnd } }),
-        Task.countDocuments({ assignedTo: user._id, status: "completed", updatedAt: { $gte: periodStart, $lte: periodEnd } }),
-      ]);
-      const score = closedCases * 10 + tasksCompleted * 3 + activeCases;
-      return StaffPerformance.findOneAndUpdate(
-        { staff: user._id, period, periodStart },
-        { staff: user._id, role: user.role === "team_lead" ? "team_lead" : "case_manager", period, periodStart, periodEnd, activeCases, closedCases, metrics: { tasksCompleted }, score },
-        { new: true, upsert: true, runValidators: true }
-      );
-    }));
-    res.json({ success: true, data: rows, leaderboard: rows });
+    const board = req.query.board || LEGACY_ROLE_TO_BOARD[req.query.role] || "case_managers";
+    const result = await leaderboardService.getLeaderboard({ board, period: req.query.period || "this_month" });
+    res.json({ success: true, ...result, data: result.rows, leaderboard: result.rows });
   } catch (error) {
     next(error);
   }
 }
 
-async function list(req, res, next) {
-  try {
-    const rows = await StaffPerformance.find(req.query.period ? { period: req.query.period } : {}).populate("staff", "name displayName email role").sort({ score: -1 }).limit(50).lean();
-    res.json({ success: true, data: rows, leaderboard: rows });
-  } catch (error) {
-    next(error);
-  }
+// Kept for the old "Calculate Performance" button: there is nothing to
+// calculate any more (boards are live), so it simply returns the live board.
+async function calculate(req, res, next) {
+  req.query = { ...req.query, period: req.body?.period || req.query.period, board: req.body?.board || req.query.board };
+  return list(req, res, next);
 }
 
 module.exports = { calculate, list };

@@ -208,6 +208,14 @@ connectDB()
       scheduleInitialRun(runUscisSeeds, Number(process.env.USCIS_TEMPLATE_SEED_INITIAL_DELAY_MS || 5 * 1000));
     }
     const server = http.createServer(app);
+    // Node closes an idle keep-alive connection after 5s by default, but a
+    // reverse proxy (nginx/ALB/Cloudflare) keeps its side open for ~60s. When the
+    // proxy then reuses a connection Node has just closed it answers 502 Bad
+    // Gateway - sporadically, on any request (downloads, socket.io polling,
+    // token refresh). Keeping Node's timeout longer than the proxy's removes that
+    // race. headersTimeout must exceed keepAliveTimeout.
+    server.keepAliveTimeout = Number(process.env.KEEP_ALIVE_TIMEOUT_MS || 65000);
+    server.headersTimeout = Number(process.env.HEADERS_TIMEOUT_MS || 66000);
     realtimeGateway.init(server, { origins: env.clientOrigins });
     const workflowMaintenance = startWorkflowMaintenance();
     const notificationMaintenance = startNotificationMaintenance();

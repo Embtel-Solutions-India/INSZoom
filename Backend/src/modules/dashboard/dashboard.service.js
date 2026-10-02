@@ -327,7 +327,7 @@ async function roleDashboard(user, query = {}) {
   const analytics = await buildAnalytics(query, user);
   const executive = ["super_admin", "admin"].includes(role) ? await executiveMetrics(query) : null;
   const teamPerformance = ["super_admin", "admin", "team_lead"].includes(role)
-    ? await StaffPerformance.find({ period: query.period || "this_month" }).populate("staff", "name displayName email role").sort({ score: -1 }).limit(10).lean()
+    ? await require("../leaderboard/leaderboard.service").topCaseManagersForDashboard(query.period || "this_month", 10)
     : [];
   const assignedCaseFilter = scopedCaseFilter(user);
   const recentMessages = await Conversation.find(role === "client" ? { "participants.user": user._id } : {}).sort({ lastMessageAt: -1 }).limit(5).lean();
