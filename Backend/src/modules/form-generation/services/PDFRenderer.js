@@ -1,5 +1,5 @@
 const storageService = require("../../uploads/storage.service");
-const { fitTextValue } = require("./FieldValueFitter");
+const { fitTextValue, fitChoiceValue } = require("./FieldValueFitter");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
@@ -104,16 +104,19 @@ class PDFRenderer {
         value ? field.check() : field.uncheck();
         return true;
       }
-      if (constructorName.includes("RadioGroup")) {
-        field.select(String(value));
-        return true;
-      }
-      if (constructorName.includes("Dropdown")) {
-        field.select(String(value));
-        return true;
-      }
-      if (constructorName.includes("OptionList")) {
-        field.select(Array.isArray(value) ? value.map(String) : [String(value)]);
+      if (constructorName.includes("RadioGroup") || constructorName.includes("Dropdown") || constructorName.includes("OptionList")) {
+        const choice = fitChoiceValue({ value, options: field.getOptions?.() || [] });
+        // An empty answer just means "nothing selected" - not an error.
+        if (choice.status === "empty") return true;
+        if (choice.status === "dropped") {
+          mappedField.renderError = choice.reason;
+          return false;
+        }
+        if (choice.status === "adjusted") {
+          mappedField.adjustment = { from: String(Array.isArray(value) ? value[0] : value), to: choice.values.join(", "), reason: choice.reason };
+        }
+        if (constructorName.includes("OptionList")) field.select(choice.values);
+        else field.select(choice.values[0]);
         return true;
       }
       // A value longer than the field's maxLength makes pdf-lib throw and the

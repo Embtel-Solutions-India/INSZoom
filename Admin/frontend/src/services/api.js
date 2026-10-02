@@ -145,6 +145,27 @@ api.interceptors.response.use(
     }
     await rehydrateBlobErrorBody(error)
     const originalRequest = error.config
+
+    // A 502/503/504 (or a dropped connection, which the browser reports as a
+    // CORS/network error because the proxy's error page carries no CORS
+    // headers) is a momentary gateway blip, not a real answer. Read-only (GET)
+    // requests are safe to repeat, so retry them a couple of times with a short
+    // pause before surfacing an error. Writes are never retried, and neither is
+    // a request that timed out after its full wait.
+    const gatewayBlip = !error.response
+      ? error.code === 'ERR_NETWORK'
+      : [502, 503, 504].includes(error.response.status)
+    if (
+      originalRequest &&
+      String(originalRequest.method || '').toLowerCase() === 'get' &&
+      gatewayBlip &&
+      error.code !== 'ECONNABORTED' &&
+      (originalRequest._gatewayRetries || 0) < 2
+    ) {
+      originalRequest._gatewayRetries = (originalRequest._gatewayRetries || 0) + 1
+      await new Promise((resolve) => setTimeout(resolve, 1500 * originalRequest._gatewayRetries))
+      return api(originalRequest)
+    }
     if (originalRequest?._skipAuthRedirect) {
       return Promise.reject(error)
     }

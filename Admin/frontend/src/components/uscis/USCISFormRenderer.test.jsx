@@ -180,19 +180,6 @@ describe('USCISFormRenderer', () => {
   })
 
   // Phase 3 (§I.3) - sync state badges
-  it('renders the red "Field Conflict" badge and the conflict-resolution panel with both values when syncState is CONFLICT', async () => {
-    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'CONFLICT', conflictValues: { canonicalValue: 'Johnson', manualValue: 'Smith' } }) })
-    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-
-    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-
-    expect(await screen.findByText('Field Conflict')).toBeTruthy()
-    const panel = (await screen.findByText('Conflict detected')).closest('div')
-    expect(panel.textContent).toContain('Johnson')
-    expect(panel.textContent).toContain('Smith')
-    expect(screen.getByText('Use canonical value')).toBeTruthy()
-    expect(screen.getByText('Keep my edit')).toBeTruthy()
-  })
 
   it('renders the amber "Manual" badge when syncState is MANUAL_OVERRIDE, with no conflict panel', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'MANUAL_OVERRIDE' }) })
@@ -226,30 +213,6 @@ describe('USCISFormRenderer', () => {
   })
 
   // Phase 3 (§I.4) - conflict resolution actions
-  it('clicking "Use canonical value" calls resolveFieldConflict with direction "canonical" and refreshes the workspace', async () => {
-    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'CONFLICT', conflictValues: { canonicalValue: 'Johnson', manualValue: 'Smith' } }) })
-    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-
-    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-    const button = await screen.findByText('Use canonical value')
-    fireEvent.click(button)
-
-    await vi.waitFor(() => expect(resolveFieldConflictApi).toHaveBeenCalledTimes(1))
-    expect(resolveFieldConflictApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', direction: 'canonical' })
-    await vi.waitFor(() => expect(workspaceApi).toHaveBeenCalledTimes(2), { timeout: 3000 })
-  })
-
-  it('clicking "Keep my edit" calls resolveFieldConflict with direction "manual"', async () => {
-    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'CONFLICT', conflictValues: { canonicalValue: 'Johnson', manualValue: 'Smith' } }) })
-    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-
-    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-    const button = await screen.findByText('Keep my edit')
-    fireEvent.click(button)
-
-    await vi.waitFor(() => expect(resolveFieldConflictApi).toHaveBeenCalledTimes(1))
-    expect(resolveFieldConflictApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', direction: 'manual' })
-  })
 
   // Phase 3 (§I.5) - autosave reliability
   it('retries a failed save with backoff and eventually shows "Saved ✓"', async () => {

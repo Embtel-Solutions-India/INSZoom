@@ -53,7 +53,18 @@ export const SocketProvider = ({ children }) => {
     socket.on('disconnect', () => setConnected(false))
     socket.on('connect_error', () => setConnected(false))
 
+    // A page holding an open WebSocket cannot enter the browser's back/forward
+    // cache; the browser logs "WebSocket ... failed: Page entered Back-Forward
+    // Cache" and drops it anyway. Close the socket as the page is hidden for
+    // the cache, and reconnect when it is restored.
+    const handlePageHide = () => socket.disconnect()
+    const handlePageShow = (event) => { if (event.persisted) socket.connect() }
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('pageshow', handlePageShow)
+
     return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('pageshow', handlePageShow)
       socket.disconnect()
       socketRef.current = null
     }
