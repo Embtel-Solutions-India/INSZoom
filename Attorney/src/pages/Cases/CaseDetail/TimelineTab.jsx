@@ -25,7 +25,7 @@ export default function TimelineTab() {
   return (
     <ol className="card !p-0 divide-y divide-border">
       {events.map((event, index) => (
-        <li key={event._id || index} className="px-5 py-3">
+        <li key={event._id || index} className="px-4 sm:px-5 py-3">
           <p className="text-sm font-semibold text-foreground">{event.title || event.event || event.type}</p>
           <p className="text-xs text-muted-foreground">
             {event.description || event.message || ''}

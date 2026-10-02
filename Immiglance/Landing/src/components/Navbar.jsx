@@ -64,7 +64,7 @@ export default function Navbar() {
         {/* ── Logo ── */}
         <Link to="/" className="flex items-center gap-2 shrink-0 group no-underline min-w-0">
           <BrandMark size="w-8 h-8" />
-          <span className="text-lg font-sans font-extrabold tracking-tight text-foreground">Immiglance</span>
+          <span className="text-base sm:text-lg font-sans font-extrabold tracking-tight text-foreground">Immiglance</span>
         </Link>
 
         {/* ── Always the same: Client Login + Start Free Evaluation + theme
@@ -82,17 +82,18 @@ export default function Navbar() {
           </a>
           <Link
             to="/eligibility?src=Navbar"
-            className="text-sm font-bold px-4 py-2 rounded-lg
+            className="text-xs sm:text-sm font-bold px-3 sm:px-4 py-2 rounded-lg whitespace-nowrap
               bg-primary text-primary-foreground shadow-sm hover:opacity-90
               transition-all no-underline active:scale-95"
           >
-            Start Free Evaluation
+            <span className="sm:hidden">Free Evaluation</span>
+            <span className="hidden sm:inline">Start Free Evaluation</span>
           </Link>
 
           {/* Mobile hamburger */}
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg
+            className="lg:hidden flex items-center justify-center w-10 h-10 sm:w-9 sm:h-9 rounded-lg
               border border-border text-muted-foreground hover:bg-secondary transition"
             aria-label="Toggle menu"
           >

@@ -87,9 +87,9 @@ const Settings = () => {
   }
 
   return (
-    <div className="flex gap-8">
+    <div className="flex flex-col md:flex-row gap-4 md:gap-8">
       {/* Left rail */}
-      <nav className="w-60 shrink-0 space-y-1">
+      <nav className="w-full md:w-60 md:shrink-0 space-y-1">
         <div className="mb-4">
           <h1 className="text-xl font-bold text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Configure the firm's system</p>

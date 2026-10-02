@@ -106,7 +106,7 @@ function AttachmentChip({ feedbackId, attachment, loadBlob }) {
         <button
           type="button"
           onClick={() => (url ? setLightboxOpen(true) : ensureLoaded())}
-          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition"
+          className="block w-36 h-28 sm:w-40 sm:h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition"
         >
           {status === 'ready' ? (
             <img src={url} alt={attachment.originalName} className="w-full h-full object-cover" />
@@ -117,7 +117,7 @@ function AttachmentChip({ feedbackId, attachment, loadBlob }) {
           )}
         </button>
         {lightboxOpen && (
-          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6" onClick={() => setLightboxOpen(false)}>
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-6" onClick={() => setLightboxOpen(false)}>
             <img src={url} alt={attachment.originalName} className="max-w-full max-h-full rounded-lg shadow-2xl" onClick={(e) => e.stopPropagation()} />
             <div className="absolute top-5 right-5 flex items-center gap-4">
               <button type="button" onClick={download} title="Download" className="text-white/80 hover:text-white">
@@ -160,18 +160,18 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
   return (
     <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'} group`}>
       {parent && (
-        <div className={`mb-1 px-1 max-w-[78%] ${outgoing ? 'text-right' : ''}`}>
+        <div className={`mb-1 px-1 max-w-[88%] sm:max-w-[78%] ${outgoing ? 'text-right' : ''}`}>
           <p className="text-[11px] text-muted-foreground flex items-center gap-1 justify-end">
             <CornerDownRight className="w-3 h-3 shrink-0" />
             <span className="truncate">Replying to {authorName(parent)}: {parent.message ? parent.message.slice(0, 60) : 'an attachment'}</span>
           </p>
         </div>
       )}
-      <div className={`flex items-end gap-2 max-w-[78%] ${outgoing ? 'flex-row-reverse' : ''}`}>
+      <div className={`flex items-end gap-2 max-w-[88%] sm:max-w-[78%] ${outgoing ? 'flex-row-reverse' : ''}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 shadow-sm ${avatarClasses}`} title={authorName(item)}>
           {getInitials(authorName(item))}
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5 min-w-0">
           {!outgoing && (
             <p className="text-[11px] font-semibold text-muted-foreground px-1">
               {authorName(item)}{authorRoleLabel(item) ? ` · ${authorRoleLabel(item)}` : ''}
@@ -195,7 +195,7 @@ function Bubble({ item, selfId, loadBlob, onReply, onRetry }) {
           <div className={`flex items-center gap-2 px-1 ${outgoing ? 'justify-end' : ''}`}>
             <span className="text-[11px] text-muted-foreground">{formatTime(item.createdAt)}</span>
             {!isPending && !isFailed && (
-              <button type="button" onClick={() => onReply(item)} className="text-[11px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity hover:underline">
+              <button type="button" onClick={() => onReply(item)} className="text-[11px] font-semibold text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:underline">
                 Reply
               </button>
             )}
@@ -357,7 +357,7 @@ export default function MessageThread({ caseId }) {
             <p className="text-sm font-semibold text-primary bg-card px-4 py-2 rounded-lg shadow">Drop files to attach</p>
           </div>
         )}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
           {items === null ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -406,7 +406,7 @@ export default function MessageThread({ caseId }) {
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {files.map((file, index) => (
-              <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1.5 text-xs bg-secondary border border-border rounded-lg px-2.5 py-1.5">
+              <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1.5 text-xs bg-secondary border border-border rounded-lg px-2.5 py-1.5 max-w-full break-all">
                 <FileText className="w-3.5 h-3.5 text-muted-foreground" />
                 {file.name}
                 <button type="button" onClick={() => removeFile(index)} aria-label={`Remove ${file.name}`}>
@@ -430,12 +430,12 @@ export default function MessageThread({ caseId }) {
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={onFileInputChange} />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground py-2"
           >
             <Paperclip className="w-4 h-4" /> Attach
           </button>

@@ -35,7 +35,7 @@ export default function MessageThreadPage() {
       ) : (
         <>
           <div>
-            <h1 className="text-xl font-bold text-foreground font-serif">{caseData.caseNumber || caseData.caseId}</h1>
+            <h1 className="text-xl font-bold text-foreground font-serif break-words">{caseData.caseNumber || caseData.caseId}</h1>
             <p className="text-sm text-muted-foreground">{caseData.clientName} · {caseData.visaType}</p>
           </div>
           <MessageThread caseId={caseId} />

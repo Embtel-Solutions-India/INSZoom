@@ -423,3 +423,43 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
 test("employer/employee templates are unaffected in count (15 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2)", () => {
   assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 15);
 });
+
+// ── Single-shared-case guardrail: K-1/K-3 (and every other family-structured
+// visa type) must never produce a principal + lettered child case. The generic
+// POST /cases path used to do exactly that (childCaseCount forced to 1 for
+// caseStructure "family"); it now refuses and points to /family-workflow/cases. ──
+test("single-case: generic createCase refuses family visa types instead of creating a child case", async () => {
+  const caseCtrl = require("../../cases/case.controller");
+  for (const visaType of ["K-1", "K-3", "IR-1", "CR-1", "F2A"]) {
+    const res = fakeRes();
+    await caseCtrl.createCase(
+      { user: { _id: "admin1", role: "admin" }, body: { clientName: "Pat", clientEmail: "pat@example.com", visaType } },
+      res,
+      (err) => { throw err; }
+    );
+    assert.equal(res.statusCode, 400, `${visaType} must be rejected by the generic create path`);
+    assert.equal(res.body.code, "FAMILY_CASE_REQUIRES_FAMILY_WORKFLOW");
+  }
+});
+
+test("single-case: createFamilyCase builds one Case (no parentCase/childCases/lettered number) with both roles", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "../family-workflow.controller.js"), "utf8");
+  const createBlock = src.slice(src.indexOf("exports.createFamilyCase"), src.indexOf("exports.inviteBeneficiary"));
+  assert.equal((createBlock.match(/Case\.create\(/g) || []).length, 1, "exactly one Case.create call");
+  assert.ok(!/parentCase|childCases|childCaseNumber|indexToSuffix/.test(createBlock));
+  assert.ok(/petitionerUser:\s*petitionerUser\._id/.test(createBlock));
+  assert.ok(/beneficiaryUser:/.test(createBlock));
+  assert.ok(createBlock.includes("ensureFamilyChecklistReferences(caseData"));
+  assert.match(createBlock, /generateCaseNumber\(\)/);
+});
+
+test("single-case: Admin CreateCaseModal routes K-1/K-3 through the family workflow, never casesApi.create", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const file = path.join(__dirname, "../../../../../Admin/frontend/src/components/CreateCaseModal.jsx");
+  const src = fs.readFileSync(file, "utf8");
+  assert.match(src, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3'\]\)/);
+  assert.ok(src.indexOf("if (showFamilyFields)") < src.indexOf("casesApi.create(payload)"));
+});

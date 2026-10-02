@@ -141,6 +141,13 @@ class ChecklistFieldTraceabilityService {
   static matchedSourcePath(question, edgesByPath) {
     if (question.canonicalPath && edgesByPath.has(question.canonicalPath)) return question.canonicalPath;
     if (question.directBindingPath && edgesByPath.has(question.directBindingPath)) return question.directBindingPath;
+    // A repeating-group question (residence/employment history, children, prior spouses) is bound
+    // per row cell: raw.questionnaireAnswers.<key>.value.<row>.<column>. Recognise the question by
+    // its first such cell.
+    if (question.directBindingPath) {
+      const rowPrefix = `${question.directBindingPath}.`;
+      for (const path of edgesByPath.keys()) if (path.startsWith(rowPrefix)) return path;
+    }
     return null;
   }
 

@@ -46,8 +46,8 @@ export default function FilingForm({ pkg, onCancel, onRecordFiling, onRecordRece
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
         <h3 className="text-xl font-bold text-foreground mb-4">{alreadyFiled ? 'Filing Details' : 'Record Filing'}</h3>
 
         {!alreadyFiled ? (

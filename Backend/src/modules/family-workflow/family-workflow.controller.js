@@ -10,6 +10,7 @@
 const Beneficiary = require("../../models/Beneficiary");
 const Case = require("../../models/Case");
 const User = require("../../models/User");
+const Lead = require("../../models/Lead");
 const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
@@ -304,7 +305,15 @@ exports.createFamilyCase = async (req, res, next) => {
     if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
       return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
     }
+    // Lead conversion (Admin Leads -> Create Case). Previously only the
+    // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
+    // converted through the family path never got marked converted.
+    const sourceLead = req.body.leadId ? await Lead.findById(req.body.leadId) : null;
+    if (sourceLead?.convertedCaseId) {
+      return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
+    }
     let caseData = await Case.create({
+      ...(sourceLead ? { creationSource: "lead_conversion", leadId: sourceLead._id } : {}),
       caseNumber,
       caseId: caseNumber,
       visaType,
@@ -330,6 +339,11 @@ exports.createFamilyCase = async (req, res, next) => {
     });
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
     await beneficiary.save();
+    if (sourceLead) {
+      sourceLead.status = "converted";
+      sourceLead.convertedCaseId = caseData._id;
+      await sourceLead.save();
+    }
     petitionerUser.primaryCaseId = petitionerUser.primaryCaseId || caseData._id;
     petitionerUser.caseIds = [...new Set([...(petitionerUser.caseIds || []), caseData._id].map(String))];
     await petitionerUser.save();
@@ -485,6 +499,22 @@ exports.submitParticipantInfo = async (req, res, next) => {
     if (!caseData || !canAccessFamilyCase(req.user, caseData)) return res.status(404).json({ success: false, message: "Case not found" });
     const role = normalizeRole(req.user.role) === "beneficiary" || req.body.target === "beneficiary" ? "beneficiary" : "petitioner";
     const now = new Date();
+    // Submit is only accepted once EVERY checklist assigned to this role has all
+    // its required fields/documents filled (Save progress stays a free draft).
+    const { checklists } = await questionnaireService.listCaseChecklists(caseData._id, req.user);
+    const incomplete = checklists
+      .filter((c) => c.targetRole === role)
+      .filter((c) => (c.progress?.answeredRequired || 0) < (c.progress?.totalRequired || 0));
+    if (incomplete.length) {
+      const remaining = incomplete.reduce((sum, c) => sum + (c.progress.totalRequired - c.progress.answeredRequired), 0);
+      return res.status(400).json({
+        success: false,
+        code: "REQUIRED_FIELDS_INCOMPLETE",
+        message: `${remaining} required item${remaining === 1 ? "" : "s"} still need to be filled in before you can submit (${incomplete.map((c) => c.title).join(", ")}).`,
+      });
+    }
+    // Re-submitting after an edit is allowed - the checklist is never locked.
+    const alreadySubmitted = (role === "petitioner" ? caseData.familyWorkflow.petitionerStatus : caseData.familyWorkflow.beneficiaryStatus) === "submitted";
     if (role === "petitioner") {
       caseData.familyWorkflow.petitionerStatus = "submitted";
       caseData.familyWorkflow.petitionerSubmittedAt = now;
@@ -494,9 +524,9 @@ exports.submitParticipantInfo = async (req, res, next) => {
     }
     caseData.familyWorkflow.caseManagerStatus = nextFamilyWorkflowStatus(caseData);
     if (caseData.familyWorkflow.caseManagerStatus === "ready_for_review") caseData.familyWorkflow.readyForReviewAt = now;
-    caseService.addTimelineEvent(caseData, role, `${role === "petitioner" ? "Petitioner" : "Beneficiary"} Information Submitted`, `${role} submitted their portion of the family case.`, req.user);
+    caseService.addTimelineEvent(caseData, role, `${role === "petitioner" ? "Petitioner" : "Beneficiary"} Information ${alreadySubmitted ? "Updated" : "Submitted"}`, `${role} ${alreadySubmitted ? "updated" : "submitted"} their portion of the family case.`, req.user);
     await caseData.save();
-    if (caseData.assignedCaseManager) await notifyUser(caseData.assignedCaseManager, { title: "Family Case Information Submitted", message: `${role} submitted information for ${caseData.caseNumber}.`, link: `/crm-cases/${caseData._id}`, caseId: caseData._id }, req.user, req);
+    if (caseData.assignedCaseManager) await notifyUser(caseData.assignedCaseManager, { title: `Family Case Information ${alreadySubmitted ? "Updated" : "Submitted"}`, message: `${role} ${alreadySubmitted ? "updated" : "submitted"} information for ${caseData.caseNumber}.`, link: `/crm-cases/${caseData._id}`, caseId: caseData._id }, req.user, req);
     res.json({ success: true, case: caseData });
   } catch (error) {
     next(error);

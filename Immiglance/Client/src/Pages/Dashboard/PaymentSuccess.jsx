@@ -89,7 +89,7 @@ export default function PaymentSuccess() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
-      <div className={`bg-card rounded-2xl border p-8 text-center shadow-sm max-w-md ${
+      <div className={`bg-card rounded-2xl border p-6 sm:p-8 text-center shadow-sm max-w-md ${
         isSuccess ? "border-primary/30" : "border-accent-foreground/30"
       }`}>
         <div className={`mx-auto mb-4 h-14 w-14 rounded-full flex items-center justify-center text-2xl ${

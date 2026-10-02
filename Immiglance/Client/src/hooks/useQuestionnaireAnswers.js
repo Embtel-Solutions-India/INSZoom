@@ -256,6 +256,25 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     }
   }, [caseId, disabled, questionnaire, responseId, refetch]);
 
+  // Removes one entry from a file question's answer (server soft-deletes the
+  // matching Documents record too), then refetches so the row re-renders.
+  const removeFile = useCallback(async (question, file) => {
+    if (!questionnaire?._id || !caseId || disabled || !file) return;
+    const key = questionKey(question);
+    setSavingKey(key);
+    try {
+      await questionnairesApi.removeAnswerFile(questionnaire._id, {
+        caseId, responseId, questionKey: key, storageKey: file.storageKey, documentId: file.documentId,
+      });
+      await refetch();
+    } catch (removeError) {
+      setStatusMessage(removeError.message || "Unable to remove this entry.");
+      throw removeError;
+    } finally {
+      setSavingKey("");
+    }
+  }, [caseId, disabled, questionnaire, responseId, refetch]);
+
   // Shared batched-persistence path for both "Save progress" and "Submit
   // case" (AC-S3: identical payload either way — Submit only differs by the
   // extra submit-endpoint call + navigation, both handled by the caller
@@ -313,6 +332,7 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     uploadsInFlight,
     saveAnswer,
     saveFiles,
+    removeFile,
     commitAll,
     handleAutofillResult,
     refetch,

@@ -421,6 +421,28 @@ exports.saveFileAnswer = async (req, res, next) => {
   }
 };
 
+exports.downloadAnswerFile = async (req, res, next) => {
+  try {
+    const file = await questionnaireService.readAnswerFile({ ...req.query }, req.user);
+    const safeName = String(file.name).replace(/[\r\n"]/g, "_");
+    res.setHeader("Content-Type", file.mimeType);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Disposition", `${req.query.inline === "true" ? "inline" : "attachment"}; filename="${safeName}"`);
+    res.send(file.buffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.removeAnswerFile = async (req, res, next) => {
+  try {
+    const result = await questionnaireService.removeAnswerFile({ ...(req.body || {}), ...req.query, questionnaireId: req.params.id }, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getAnswers = async (req, res, next) => {
   try {
     const result = await questionnaireService.getAnswers({ ...req.query, questionnaireId: req.params.id }, req.user);

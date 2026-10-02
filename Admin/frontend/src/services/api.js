@@ -356,6 +356,9 @@ export const questionnairesApi = {
   // questionnaire.service.js's PRESERVE_ANSWER_STATUS). Client-side save
   // calls in Immiglance never set this flag.
   saveAnswer: (id, payload) => api.post(`/questionnaires/${id}/answers`, { ...payload, preserveStatus: true }),
+  // One entry of a multi-entry file answer: stream it (auth header) for view/download, or remove it.
+  downloadAnswerFile: (id, params) => api.get(`/questionnaires/${id}/answers/files/download`, { params, responseType: 'blob' }),
+  removeAnswerFile: (id, data) => api.delete(`/questionnaires/${id}/answers/files`, { data }),
   saveFileAnswer: (id, formData) => {
     formData.append('preserveStatus', 'true')
     return api.post(`/questionnaires/${id}/answers/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })

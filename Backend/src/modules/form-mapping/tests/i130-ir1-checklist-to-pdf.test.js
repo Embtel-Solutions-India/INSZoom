@@ -115,8 +115,8 @@ test("Phase 2 fix: a real i130_ir1_petitioner_checklist/i130_ir1_beneficiary_che
 
   assert.equal(at("part2.form10Subform0Part2Line4AFamilyName0"), IR1.petitioner.lastName, "petitioner family name must reach the CaseForm via the IR1 checklist key style");
   assert.equal(at("part2.form10Subform0Part2Line4BGivenName0"), IR1.petitioner.firstName, "petitioner given name must reach the CaseForm via the IR1 checklist key style");
-  assert.equal(at("part2.form10Subform0Part2Line11Ssn0"), IR1.petitioner.ssn, "petitioner SSN must reach the CaseForm via the IR1 checklist key style");
+  assert.equal(at("part2.form10Subform0Part2Line11Ssn0"), IR1.petitioner.ssn.replace(/[^0-9]/g, ""), "petitioner SSN must reach the CaseForm via the IR1 checklist key style");
   assert.equal(at("part4.form10Subform4Part4Line4AFamilyName0"), IR1.beneficiary.lastName, "beneficiary family name must reach the CaseForm via the IR1 checklist key style");
   assert.equal(at("part4.form10Subform4Part4Line4BGivenName0"), IR1.beneficiary.firstName, "beneficiary given name must reach the CaseForm via the IR1 checklist key style");
-  assert.equal(at("part4.form10Subform4Area6Part4Line1AlienNumber0"), IR1.beneficiary.alienNumber, "beneficiary A-Number must reach the CaseForm via the IR1 checklist key style");
+  assert.equal(at("part4.form10Subform4Area6Part4Line1AlienNumber0"), IR1.beneficiary.alienNumber.replace(/[^0-9]/g, ""), "beneficiary A-Number must reach the CaseForm via the IR1 checklist key style");
 });

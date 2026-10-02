@@ -2,6 +2,8 @@ const { execFile } = require("child_process");
 const path = require("path");
 const { promisify } = require("util");
 
+const { isBlockedFileName } = require("./upload-limits");
+
 const execFileAsync = promisify(execFile);
 
 const MIME_BY_EXTENSION = {
@@ -16,7 +18,24 @@ const MIME_BY_EXTENSION = {
   ".tiff": ["image/tiff"],
   ".txt": ["text/plain"],
   ".zip": ["application/zip", "application/x-zip-compressed"],
+  ".heic": ["image/heic", "image/heif"],
+  ".heif": ["image/heif", "image/heic"],
+  ".webp": ["image/webp"],
+  ".gif": ["image/gif"],
+  ".bmp": ["image/bmp"],
+  ".rtf": ["text/rtf", "application/rtf", "text/plain"],
+  ".xls": ["application/vnd.ms-excel", "application/x-cfb"],
+  ".xlsx": ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/zip"],
+  ".ppt": ["application/vnd.ms-powerpoint", "application/x-cfb"],
+  ".pptx": ["application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/zip"],
 };
+
+// Content types that mean "executable" no matter what the file is named.
+const EXECUTABLE_MIMES = new Set([
+  "application/x-msdownload", "application/x-msdos-program", "application/x-dosexec",
+  "application/x-executable", "application/x-elf", "application/x-mach-binary",
+  "application/x-sh", "application/java-archive", "application/x-apple-diskimage",
+]);
 
 const EICAR_SIGNATURE = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
 
@@ -35,15 +54,35 @@ async function detectMime(buffer) {
 async function validateFile(file) {
   if (!file?.buffer?.length) throw securityError("Uploaded file is empty", 400, "EMPTY_FILE");
   const extension = path.extname(file.originalname || "").toLowerCase();
+  // Any file type is accepted except executables/scripts: blocked by
+  // extension here and, below, by sniffed content for every extension.
+  if (isBlockedFileName(file.originalname)) {
+    throw securityError("Executable and script files cannot be uploaded", 415, "BLOCKED_FILE_TYPE");
+  }
   const allowedMimes = MIME_BY_EXTENSION[extension];
-  if (!allowedMimes) throw securityError("Unsupported file extension", 415, "UNSUPPORTED_FILE_TYPE");
 
   const detected = await detectMime(file.buffer);
+  if (detected && EXECUTABLE_MIMES.has(detected.mime)) {
+    throw securityError("Executable files cannot be uploaded", 415, "BLOCKED_FILE_TYPE");
+  }
+  if (!allowedMimes) {
+    // Unlisted extension (e.g. .odt, .mov, no extension): accepted; content
+    // was already screened for executables above.
+    const suppliedMime = String(file.mimetype || "").toLowerCase();
+    return {
+      extension,
+      detectedMime: detected?.mime || suppliedMime || "application/octet-stream",
+      detectedExtension: detected?.ext || extension.slice(1),
+    };
+  }
   const suppliedMime = String(file.mimetype || "").toLowerCase();
   if (detected && !allowedMimes.includes(detected.mime)) {
     throw securityError("File content does not match its extension", 415, "FILE_TYPE_MISMATCH");
   }
-  if (!detected && !allowedMimes.includes(suppliedMime)) {
+  // Browsers often report "" / octet-stream for HEIC, text and Office files;
+  // only an explicit, conflicting MIME on undetectable content is rejected.
+  const genericMime = !suppliedMime || suppliedMime === "application/octet-stream";
+  if (!detected && !genericMime && !allowedMimes.includes(suppliedMime)) {
     throw securityError("Unable to verify uploaded file type", 415, "UNVERIFIED_FILE_TYPE");
   }
   return {

@@ -140,8 +140,17 @@ class CaseLifecycleOrchestrator {
       : documents.length > 0;
     const reviewedDocuments = documents.filter((document) => ["approved", "accepted"].includes(document.reviewStatus));
     const reviewedDocumentTypes = new Set(reviewedDocuments.map((document) => normalizeDocumentKey(document.documentType)).filter(Boolean));
+    // A checklist row can hold several entries (up to 10 files): the row counts
+    // as reviewed once at least one entry is approved AND no entry on it is
+    // still awaiting a decision (a rejected extra entry does not block it).
+    const undecidedDocumentTypes = new Set(documents
+      .filter((document) => !["approved", "accepted", "rejected"].includes(document.reviewStatus))
+      .map((document) => normalizeDocumentKey(document.documentType)).filter(Boolean));
     const documentsReviewed = documentsComplete && (requiredItems.length
-      ? requiredItems.every((item) => reviewedDocumentTypes.has(normalizeDocumentKey(item.documentType || item.name)))
+      ? requiredItems.every((item) => {
+        const itemKey = normalizeDocumentKey(item.documentType || item.name);
+        return reviewedDocumentTypes.has(itemKey) && !undecidedDocumentTypes.has(itemKey);
+      })
       : reviewedDocuments.length === documents.length);
     const canonicalValidation = caseData.canonicalProfile?.validation || {};
     const canonicalReady = Number(caseData.canonicalProfile?.version || 0) > 0

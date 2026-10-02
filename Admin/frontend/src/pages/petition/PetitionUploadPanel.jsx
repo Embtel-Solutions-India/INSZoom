@@ -49,7 +49,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
 
   return (
     <div className="card space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-bold text-foreground">Uploaded Petition</h3>
           <p className="text-xs text-muted-foreground">A petition document you attach directly (separate from an assembled version above).</p>

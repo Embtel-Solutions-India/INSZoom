@@ -16,6 +16,7 @@
 const k1 = require("../family-workflow/questionnaires/k1");
 const k3 = require("../family-workflow/questionnaires/k3");
 const familyBasedImmigrantPetition = require("../family-workflow/questionnaires/familyBasedImmigrantPetition");
+const { canonicalMapFor } = require("./familyCanonicalPaths");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -33,6 +34,10 @@ function buildQuestion(key, label, type, sectionTitle, order, extras = {}) {
     order,
     required: Boolean(extras.required),
     description: extras.description,
+    // Only when the checklist declares one (see familyCanonicalPaths.js): the key
+    // must be absent otherwise, since ensureDefaultVisaTemplates only reconciles
+    // fields a definition actually carries.
+    ...(extras.canonicalPath ? { mapping: { canonicalPath: extras.canonicalPath } } : {}),
     options: (extras.options || []).map((value) => (typeof value === "object" ? value : { label: value, value })),
     evidenceCategory: extras.evidenceCategory,
     metadata: extras.metadata || {},
@@ -84,7 +89,7 @@ function conditionalLogicFromEntry(entry) {
 // (min:0, max unset, allowClientAdd:true) — an unset `max` reads as `0` on
 // the frontend's `Number(...)` cast, which its own `if (maxRows && ...)`
 // guard treats as "no cap", so every repeating group here is add-as-many.
-function fieldQuestionsFromCatalog(catalogEntries, party, visibility, repeatableFieldsMap) {
+function fieldQuestionsFromCatalog(catalogEntries, party, visibility, repeatableFieldsMap, canonicalMap = {}) {
   const sectionOrder = [];
   const counters = new Map();
   const questions = catalogEntries.filter((entry) => entry.section === party).map((entry) => {
@@ -93,7 +98,9 @@ function fieldQuestionsFromCatalog(catalogEntries, party, visibility, repeatable
     const nextOrder = (counters.get(title) || 0) + 1;
     counters.set(title, nextOrder);
     const type = entry.repeatable ? "repeating_group" : (entry.type || "text");
-    return buildQuestion(entry.path.replace(/\./g, "_"), entry.label, type, title, nextOrder, {
+    const questionKey = entry.path.replace(/\./g, "_");
+    return buildQuestion(questionKey, entry.label, type, title, nextOrder, {
+      canonicalPath: canonicalMap[questionKey],
       required: Boolean(entry.required),
       options: entry.options || (type === "radio" ? ["Yes", "No"] : []),
       metadata: entry.repeatable
@@ -122,7 +129,7 @@ function familyDocumentQuestions(documents, sectionTitle, visibility) {
 
 function buildFamilyPetitionerChecklist(definition, visaTypeKey, title, docSectionTitle) {
   const visibility = { roles: ["petitioner", ...STAFF_ROLES], portals: ["client", "admin"] };
-  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "petitioner", visibility, definition.REPEATABLE_FIELDS);
+  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "petitioner", visibility, definition.REPEATABLE_FIELDS, canonicalMapFor(definition.key, "petitioner"));
   const docs = familyDocumentQuestions(definition.petitionerDocuments, docSectionTitle, visibility);
   return {
     key: `${definition.key}_petitioner_checklist`,
@@ -138,7 +145,7 @@ function buildFamilyPetitionerChecklist(definition, visaTypeKey, title, docSecti
 
 function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSectionTitle, options = {}) {
   const visibility = { roles: ["beneficiary", ...STAFF_ROLES], portals: ["client", "admin"] };
-  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "beneficiary", visibility, definition.REPEATABLE_FIELDS);
+  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "beneficiary", visibility, definition.REPEATABLE_FIELDS, canonicalMapFor(definition.key, "beneficiary"));
   const docs = familyDocumentQuestions(definition.beneficiaryDocuments, docSectionTitle, visibility);
   return {
     key: `${definition.key}_beneficiary_checklist`,

@@ -381,3 +381,22 @@ hand (a service worker in `/public` never sees Vite's env pipeline).
 - Case creation, user/team management, billing, and settings access:
   never in scope for this role, by design.
 - Attorney-to-attorney messaging: not built (no product ask for it).
+
+---
+
+## 9. Multi-entry checklist document rows
+
+Every checklist document row (questionnaire file questions and legacy
+document-baseline rows) can hold up to 10 files (50 MB each); the client adds
+them with "Add entry". The attorney portal shows every entry:
+
+- **Checklists tab**: each entry is labelled `<row label> 1`, `<row label> 2`, ...
+  with an in-app **Preview** (streamed with the auth header from
+  `GET /questionnaires/:id/answers/files/download`, scoped to granted cases).
+  Still preview-only - no Download button, same policy as the Documents tab.
+- **Documents tab**: each entry is its own Documents record; entries of the same
+  `documentType` are tagged `Entry n of m`.
+- **Review semantics**: approve/reject stays per Documents record (per file) and
+  the checklist answer keeps its single row-level status. The case lifecycle
+  `documentsReviewed` gate treats a row as reviewed only when at least one entry
+  is approved and no entry on that row is still undecided.

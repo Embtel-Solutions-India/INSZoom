@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
-import { Loader2, Paperclip } from 'lucide-react'
+import { Loader2, Paperclip, X } from 'lucide-react'
 import { questionnairesApi } from '../../../services/api'
 
 // Read-only port of Admin's QuestionnaireAnswersPanel.jsx formatting logic
@@ -26,7 +26,42 @@ function sectionTitleFor(questionnaire, sectionKey) {
     || sectionKey
 }
 
+// Same preview-only policy as DocumentsTab: no Download button is surfaced.
+function AnswerFilePreview({ file, questionnaireId, onClose }) {
+  const [url, setUrl] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let objectUrl
+    questionnairesApi
+      .previewAnswerFile(questionnaireId, { responseId: file.responseId, questionKey: file.questionKey, storageKey: file.storageKey })
+      .then(({ data }) => {
+        objectUrl = URL.createObjectURL(data)
+        setUrl(objectUrl)
+      })
+      .catch(() => setError('Could not load this file.'))
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [file.responseId, file.questionKey, file.storageKey, questionnaireId])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" onClick={onClose}>
+      <div className="bg-card w-full max-w-4xl h-[90vh] rounded-lg shadow-xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <p className="text-sm font-semibold text-foreground truncate">{file.label || file.originalName}</p>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="flex-1 bg-muted/30">
+          {error && <p className="text-sm text-destructive p-4">{error}</p>}
+          {!error && !url && <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>}
+          {url && <iframe title="file-preview" src={url} className="w-full h-full border-0" />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ChecklistPanel({ summary, caseId }) {
+  const [previewFile, setPreviewFile] = useState(null)
   const [detail, setDetail] = useState(null)
   const [error, setError] = useState('')
 
@@ -57,7 +92,7 @@ function ChecklistPanel({ summary, caseId }) {
   const filesByKey = {}
   answers.forEach((answer) => {
     answerMap[answer.questionKey] = answer.value ?? answer.normalizedValue
-    if (answer.files?.length) filesByKey[answer.questionKey] = answer.files
+    if (answer.files?.length) filesByKey[answer.questionKey] = answer.files.map((file) => ({ ...file, responseId: answer.responseId, questionKey: answer.questionKey }))
   })
 
   const allQuestions = [...fieldQuestions, ...documentQuestions]
@@ -87,7 +122,7 @@ function ChecklistPanel({ summary, caseId }) {
               {plainQuestions.length > 0 && (
                 <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-sm md:grid-cols-2">
                   {plainQuestions.map((question) => (
-                    <p key={question.key}>
+                    <p key={question.key} className="break-words">
                       <span className="text-muted-foreground">{question.label}:</span>{' '}
                       <span className="font-semibold text-foreground">{formatAnswerValue(question, answerMap[question.key]) ?? 'Needed'}</span>
                     </p>
@@ -114,13 +149,15 @@ function ChecklistPanel({ summary, caseId }) {
               })}
               {fileQuestions.map((question) => (
                 <div key={question.key} className="mt-2 rounded-lg border border-border bg-muted p-3 text-sm">
-                  <p className="font-semibold text-foreground mb-1">{question.label}</p>
+                  <p className="font-semibold text-foreground mb-1">{question.label}{filesByKey[question.key]?.length > 1 ? ` (${filesByKey[question.key].length})` : ''}</p>
                   {filesByKey[question.key]?.length ? (
                     <ul className="space-y-1">
                       {filesByKey[question.key].map((file, index) => (
-                        <li key={file.storageKey || index} className="flex items-center gap-1 text-muted-foreground">
+                        <li key={file.storageKey || index} className="flex flex-wrap items-center gap-x-2 text-muted-foreground">
                           <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                          {file.url ? <a href={file.url} target="_blank" rel="noreferrer" className="hover:underline">{file.originalName}</a> : <span>{file.originalName}</span>}
+                          <span className="font-medium text-foreground">{question.label} {index + 1}</span>
+                          <span className="min-w-0 break-all text-xs">{file.originalName}</span>
+                          <button type="button" onClick={() => setPreviewFile({ ...file, label: `${question.label} ${index + 1}` })} className="ml-auto text-xs font-semibold text-primary hover:underline">Preview</button>
                         </li>
                       ))}
                     </ul>
@@ -133,6 +170,7 @@ function ChecklistPanel({ summary, caseId }) {
           )
         })}
       </div>
+      {previewFile && <AnswerFilePreview file={previewFile} questionnaireId={questionnaire._id} onClose={() => setPreviewFile(null)} />}
     </div>
   )
 }

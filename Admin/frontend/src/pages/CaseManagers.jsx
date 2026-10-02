@@ -137,10 +137,10 @@ const CaseManagers = () => {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="p-2 sm:p-4 lg:p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-1/4"></div>
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             {[1, 2, 3, 4, 5].map(i => (
               <div key={i} className="h-32 bg-muted rounded"></div>
             ))}
@@ -152,7 +152,7 @@ const CaseManagers = () => {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-2 sm:p-4 lg:p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
@@ -400,7 +400,7 @@ const CaseManagers = () => {
                 </p>
               </div>
               <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
+                <nav className="relative z-0 inline-flex flex-wrap rounded-md shadow-sm -space-x-px">
                   <button
                     onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                     disabled={currentPage === 1}

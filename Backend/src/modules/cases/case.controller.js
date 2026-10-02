@@ -916,6 +916,19 @@ exports.createCase = async (req, res, next) => {
       });
     }
 
+    // Family visas (K-1/K-3 and the I-130/Green-Card types) are ONE shared
+    // Case holding both the petitioner and beneficiary checklists/forms,
+    // created only by POST /family-workflow/cases (createFamilyCase). This
+    // generic path used to spawn a principal + lettered "-A" beneficiary
+    // child case for them - refuse rather than ever create that shape again.
+    if (caseStructure === "family") {
+      return res.status(400).json({
+        success: false,
+        code: "FAMILY_CASE_REQUIRES_FAMILY_WORKFLOW",
+        message: `${trimmedVisaType} cases are a single shared petitioner/beneficiary case - create them via POST /family-workflow/cases`,
+      });
+    }
+
     const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
     const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
     const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;

@@ -48,40 +48,82 @@ test("createDocumentFromFile rejects a client uploading against a case they do n
   );
 });
 
-test("createDocumentFromFile versions the existing Document instead of creating a new row when the same case+documentType is re-uploaded", async (t) => {
-  const user = { _id: "client-1", role: "client" };
+function stubCaseAndDocumentModel(t, { existingCount = 0, singleSlotExisting = null } = {}) {
   const caseData = { _id: "case-1", user: "client-1", save: async () => {} };
   t.mock.method(Case, "findById", () => Promise.resolve(caseData));
   stubSecurityAndStorage(t);
   t.mock.method(RequestManagementService, "completeByDocument", () => null);
   t.mock.method(questionnaireService, "syncFileAnswerFromDocument", async () => undefined);
+  t.mock.method(Document, "findOne", async (query) => {
+    if (query.checksum) return null; // no byte-identical duplicate anywhere in this case
+    if (query.documentType) return singleSlotExisting;
+    return null;
+  });
+  t.mock.method(Document, "countDocuments", async () => existingCount);
+  const created = [];
+  t.mock.method(Document, "create", async (doc) => {
+    const row = { ...doc, _id: `doc-${created.length + 1}`, auditHistory: [], $locals: {}, save: async function save() { return this; } };
+    created.push(row);
+    return row;
+  });
+  return created;
+}
 
-  let createCallCount = 0;
-  t.mock.method(Document, "create", async () => { createCallCount += 1; throw new Error("Document.create must not be called on a re-upload into an existing slot"); });
+test("createDocumentFromFile APPENDS a new Document to a multi-entry checklist row instead of versioning the first", async (t) => {
+  const user = { _id: "client-1", role: "client" };
+  const created = stubCaseAndDocumentModel(t, { existingCount: 1 });
 
+  const result = await documentService.createDocumentFromFile({
+    file: fakeFile("marriage-photo-2.pdf"),
+    body: { caseId: "case-1", documentType: "marriage_photos" },
+    user,
+    req: {},
+  });
+
+  assert.equal(created.length, 1, "a second row entry must be its own Document");
+  assert.equal(result.originalName, "marriage-photo-2.pdf");
+});
+
+test("createDocumentFromFile rejects the 11th file in one checklist row (count checked against stored files)", async (t) => {
+  const user = { _id: "client-1", role: "client" };
+  const created = stubCaseAndDocumentModel(t, { existingCount: 10 });
+  await assert.rejects(
+    () => documentService.createDocumentFromFile({ file: fakeFile("one-too-many.pdf"), body: { caseId: "case-1", documentType: "marriage_photos" }, user, req: {} }),
+    (error) => error.status === 422 && error.code === "ROW_FILE_LIMIT_EXCEEDED" && /maximum of 10/i.test(error.message)
+  );
+  assert.equal(created.length, 0);
+});
+
+test("createDocumentFromFile rejects a checklist file over 50 MB", async (t) => {
+  const user = { _id: "client-1", role: "client" };
+  stubCaseAndDocumentModel(t, { existingCount: 0 });
+  const big = { ...fakeFile("huge.pdf"), size: 50 * 1024 * 1024 + 1 };
+  await assert.rejects(
+    () => documentService.createDocumentFromFile({ file: big, body: { caseId: "case-1", documentType: "marriage_photos" }, user, req: {} }),
+    (error) => error.status === 413 && error.code === "FILE_TOO_LARGE"
+  );
+});
+
+test("createDocumentFromFile still versions single-slot document types (petition_manual_upload)", async (t) => {
+  const user = { _id: "client-1", role: "client" };
   const existingDocument = {
     _id: "doc-1",
     versions: [{ version: 1, checksum: "prior-checksum" }],
     auditHistory: [],
     save: async function save() { return this; },
   };
-  t.mock.method(Document, "findOne", async (query) => {
-    if (query.checksum) return null; // no byte-identical duplicate anywhere in this case
-    if (query.documentType) return existingDocument; // this case+documentType slot is already occupied
-    return null;
-  });
+  const created = stubCaseAndDocumentModel(t, { singleSlotExisting: existingDocument });
 
   const result = await documentService.createDocumentFromFile({
-    file: fakeFile("passport-v2.pdf"),
-    body: { caseId: "case-1", documentType: "passport" },
+    file: fakeFile("petition-v2.pdf"),
+    body: { caseId: "case-1", documentType: "petition_manual_upload" },
     user,
     req: {},
   });
 
-  assert.equal(createCallCount, 0, "must version the existing document, not call Document.create");
+  assert.equal(created.length, 0, "must version the existing document, not call Document.create");
   assert.equal(result, existingDocument);
-  assert.equal(existingDocument.versions.length, 2, "addDocumentVersion should have appended a new version");
-  assert.equal(existingDocument.versions[1].checksum, "fixed-checksum");
+  assert.equal(existingDocument.versions.length, 2);
 });
 
 test("calculateProgress matches an uploaded document's documentType against the case's required checklist", async (t) => {

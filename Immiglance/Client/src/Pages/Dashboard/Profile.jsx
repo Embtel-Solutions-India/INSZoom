@@ -239,7 +239,7 @@ export default function Profile() {
         <div className="bg-card rounded-lg border border-card-border p-6 space-y-4">
           <h2 className="font-serif text-lg font-bold text-foreground mb-1">Personal Information</h2>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="First name">
               <input id="profile-firstName" name="firstName" className={inputClass} value={data.firstName} onChange={(e) => update("firstName", e.target.value)} />
             </Field>
@@ -274,7 +274,7 @@ export default function Profile() {
             </div>
           </Field>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Visa category">
               <select id="profile-visaCategory" name="visaCategory" className={inputClass} value={data.visaCategory} onChange={(e) => update("visaCategory", e.target.value)}>
                 <option value="">Select</option>

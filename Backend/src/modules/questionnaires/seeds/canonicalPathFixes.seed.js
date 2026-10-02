@@ -37,87 +37,18 @@ const Question = require("../../../models/Question");
 
 // --- Fix 1: I-130 petitioner/beneficiary checklists ---
 
-// K3-style key -> canonical path. Used by k3_petitioner_checklist /
-// k3_beneficiary_checklist only (I-129F's k1_petitioner_checklist /
-// k1_beneficiary_checklist are a SEPARATE, byte-identical-looking but
-// distinct questionnaire and are deliberately left untouched - I-129F's
-// mapping already works via raw.questionnaireAnswers.* and must not be
-// touched just to raise a traceability percentage).
-const K3_PETITIONER_MAP = {
-  petitioner_info_lastName: "person.lastName",
-  petitioner_info_firstName: "person.firstName",
-  petitioner_info_middleName: "person.middleName",
-  petitioner_info_dateOfBirth: "person.dob",
-  petitioner_info_gender: "person.gender",
-  petitioner_info_maritalStatus: "person.maritalStatus",
-  petitioner_info_ssn: "person.ssn",
-  petitioner_info_aNumber: "person.alienNumber",
-  petitioner_info_cityTownOfBirth: "person.cityTownOfBirth",
-  petitioner_info_countryOfBirth: "person.countryOfBirth",
-  petitioner_info_countryOfCitizenship: "person.citizenship",
-  petitioner_info_uscisOnlineAccountNumber: "person.uscisOnlineAccountNumber",
-  petitioner_citizenship_certificateNumber: "person.certificateNumber",
-  petitioner_citizenship_certificateDateOfIssuance: "person.certificateDateOfIssuance",
-  petitioner_citizenship_certificatePlaceOfIssuance: "person.certificatePlaceOfIssuance",
-  petitioner_info_fullPhysicalAddress: "contact.address.line1",
-  // fullMailingAddress intentionally left unmapped - see file header.
-};
-
-const K3_BENEFICIARY_MAP = {
-  beneficiary_info_lastName: "beneficiary.lastName",
-  beneficiary_info_firstName: "beneficiary.firstName",
-  beneficiary_info_middleName: "beneficiary.middleName",
-  beneficiary_info_dateOfBirth: "beneficiary.dateOfBirth",
-  beneficiary_info_gender: "beneficiary.gender",
-  beneficiary_info_maritalStatus: "beneficiary.maritalStatus",
-  beneficiary_info_aNumber: "beneficiary.alienRegistrationNumber",
-  beneficiary_info_cityTownOfBirth: "beneficiary.cityTownOfBirth",
-  beneficiary_info_countryOfBirth: "beneficiary.countryOfBirth",
-  beneficiary_info_countryOfCitizenship: "beneficiary.countryOfCitizenship",
-  beneficiary_info_fullPhysicalAddress: "beneficiary.address",
-  // beneficiary_info_ssn intentionally left unmapped - no full-SSN
-  // canonical field exists (policy: never fill a PDF SSN field from a
-  // masked/partial value, and this is a full 9-digit field).
-  // fullMailingAddress intentionally left unmapped - see file header.
-};
-
-// IR/CR/F-style key (identical question-key set across all 12 i130_<code>_
-// petitioner/beneficiary_checklist questionnaires) -> canonical path.
-const IR_PETITIONER_MAP = {
-  petitioner_lastName: "person.lastName",
-  petitioner_firstName: "person.firstName",
-  petitioner_middleName: "person.middleName",
-  petitioner_dateOfBirth: "person.dob",
-  petitioner_gender: "person.gender",
-  petitioner_maritalStatus: "person.maritalStatus",
-  petitioner_ssn: "person.ssn",
-  petitioner_alienNumber: "person.alienNumber",
-  petitioner_naturalizationCertificateNumber: "person.certificateNumber",
-  petitioner_physicalAddress: "contact.address.line1",
-  // cityCountryOfBirth/naturalizationDateAndPlace intentionally left
-  // unmapped - each combines two distinct concepts (city+country,
-  // date+place) into one free-text answer that cannot be split into the
-  // separate canonical fields the PDF actually needs without guessing.
-  // mailingAddress intentionally left unmapped - see file header.
-};
-
-const IR_BENEFICIARY_MAP = {
-  beneficiary_lastName: "beneficiary.lastName",
-  beneficiary_firstName: "beneficiary.firstName",
-  beneficiary_middleName: "beneficiary.middleName",
-  beneficiary_dateOfBirth: "beneficiary.dateOfBirth",
-  beneficiary_maritalStatus: "beneficiary.maritalStatus",
-  beneficiary_alienNumber: "beneficiary.alienRegistrationNumber",
-  beneficiary_physicalAddress: "beneficiary.address",
-  beneficiary_arrivalStatus: "beneficiary.currentVisaStatus",
-  beneficiary_i94Number: "beneficiary.i94Number",
-  beneficiary_statusExpiresOn: "beneficiary.i94ExpirationDate",
-  // cityStateCountryOfBirth/ssn/currentEmployer*/usAddress/foreignAddress/
-  // lastSharedAddress/underImmigrationProceedings/priorSpouses/
-  // familyMembers/adjustmentOffice* intentionally left unmapped - either
-  // combine multiple concepts into one free-text answer, have no
-  // canonical equivalent yet, or (SSN) are excluded by policy.
-};
+// The key -> canonical-path maps (K3_*, IR_*) now live in
+// ../familyCanonicalPaths.js - the single source familyChecklists.js ALSO
+// stamps onto the question definitions themselves, so this one-off DB patch is
+// no longer the only thing that gives these questions their canonicalPath
+// (a re-seeded/new questionnaire version carries them natively). The names
+// below are kept for scripts/fix-i130-mapping-graph.js and existing callers.
+const {
+  K_PETITIONER_MAP: K3_PETITIONER_MAP,
+  K_BENEFICIARY_MAP: K3_BENEFICIARY_MAP,
+  IR_PETITIONER_MAP,
+  IR_BENEFICIARY_MAP,
+} = require("../familyCanonicalPaths");
 
 const IR_VISA_CODES = ["ir1", "ir2", "ir3", "ir4", "ir5", "cr1", "cr2", "f1", "f2a", "f2b", "f3", "f4"];
 

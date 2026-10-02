@@ -13,6 +13,7 @@ const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const User = require("../../../models/User");
 const MappingGraphService = require("../services/MappingGraphService");
+const { mappingTypeFor } = require("../config/family-crosswalk-helpers");
 const { classifyField, MAPPED_EDGES, FORM_CODE, VERSION } = require("../config/i130-k3-crosswalk");
 
 async function resolveSystemActor() {
@@ -69,11 +70,13 @@ function buildCrosswalkGraph(template) {
       targetType: targetField.type,
       section: targetField.section,
       pageNumber: targetField.pageNumber,
-      mappingType: edge.transform?.type === "date" ? "date" : edge.condition ? "checkbox" : "direct",
+      mappingType: mappingTypeFor(edge),
       confidence: 100,
       status: "active",
       transform: edge.transform || { type: "direct" },
       condition: edge.condition,
+      // Canonical path read only when sourcePath resolves to nothing (see the crosswalk header).
+      fallback: edge.fallback,
       note: edge.note,
       profileOwner: classifyProfileOwner(edge.source),
       allowsOccurrenceOverride: ALLOWS_OCCURRENCE_OVERRIDE,

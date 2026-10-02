@@ -99,7 +99,7 @@ export default function FirmMembersPanel() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-left text-muted-foreground border-b border-border">
               <th className="py-2">Name</th><th>Email</th><th>Role</th><th>Status</th><th></th>
@@ -124,7 +124,7 @@ export default function FirmMembersPanel() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   )

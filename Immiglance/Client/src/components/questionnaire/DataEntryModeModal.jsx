@@ -31,7 +31,7 @@ export default function DataEntryModeModal({ principalCaseId, isFamily, onModeSe
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl p-7">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-xl p-5 sm:p-7">
         <h2 className="text-lg font-bold text-slate-900 mb-2">
           How would you like to provide {participantLabel} information?
         </h2>

@@ -85,10 +85,13 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
 // familyWorkflowApi.createCase (POST /family-workflow/cases) rather than
 // the generic casesApi.create, since that's the only path that actually
 // assigns the I-130/Green-Card/I-864 checklists (see
-// family-workflow.controller.js's ensureFamilyChecklistReferences). K-1/K-3
-// are also family-structured but keep using casesApi.create - their
-// petitioner/beneficiary checklist has no filing-path variation.
+// family-workflow.controller.js's ensureFamilyChecklistReferences).
 const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
+// K-1/K-3 are ONE shared petitioner+beneficiary case too - they must go
+// through familyWorkflowApi.createCase as well (never casesApi.create, which
+// used to spawn a principal + lettered beneficiary child case). They have no
+// filing-path/relationship choice, so they skip those two fields.
+const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3'])
 
 // Client-facing surfaces must never say "I-130"/"processingPath" - staff
 // already work with form numbers everywhere else in the CRM, so technical
@@ -161,6 +164,8 @@ const CreateCaseModal = ({
   const [error, setError] = useState('')
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType)
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
+  const showFilingPathFields = showFamilyPackageFields
+  const showFamilyFields = showFamilyPackageFields || FAMILY_SINGLE_CASE_VISA_TYPES.has(form.visaType)
 
   useEffect(() => {
     usersApi.caseManagers()
@@ -216,7 +221,7 @@ const CreateCaseModal = ({
         return
       }
 
-      if (showFamilyPackageFields) {
+      if (showFamilyFields) {
         // I-130/Green-Card/I-864 family package - a materially different
         // backend path (POST /family-workflow/cases, not the generic
         // POST /cases) since that's the only one that assigns the right
@@ -227,11 +232,11 @@ const CreateCaseModal = ({
         // client User, never the staff member submitting this form.
         const payload = {
           visaType: visaTypeLabel,
+          ...(leadId ? { leadId } : {}),
           petitionerName: form.clientName.trim(),
           petitionerEmail: form.clientEmail.trim(),
           petitionerPhone: form.clientPhone.trim(),
-          relationship: form.relationship,
-          processingPath: form.filingPath,
+          ...(showFilingPathFields ? { relationship: form.relationship, processingPath: form.filingPath } : {}),
           beneficiaryName: form.beneficiaryName.trim(),
           beneficiaryEmail: form.beneficiaryEmail.trim(),
           beneficiaryPhone: form.beneficiaryPhone.trim(),
@@ -277,7 +282,7 @@ const CreateCaseModal = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+      <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-foreground">New Case</h3>
           <button
@@ -298,7 +303,7 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyPackageFields ? 'Petitioner Name *' : 'Client Name *'}
+              {showFamilyFields ? 'Petitioner Name *' : 'Client Name *'}
             </label>
             <input
               type="text"
@@ -312,7 +317,7 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyPackageFields ? 'Petitioner Email *' : 'Client Email *'}
+              {showFamilyFields ? 'Petitioner Email *' : 'Client Email *'}
             </label>
             <input
               type="email"
@@ -326,7 +331,7 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyPackageFields ? 'Petitioner Phone' : 'Client Phone'}
+              {showFamilyFields ? 'Petitioner Phone' : 'Client Phone'}
             </label>
             <input
               type="tel"
@@ -352,8 +357,9 @@ const CreateCaseModal = ({
             </select>
           </div>
 
-          {showFamilyPackageFields && (
+          {showFamilyFields && (
             <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
+              {showFilingPathFields && (<>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Petitioner is filing for their *</label>
                 <select
@@ -383,6 +389,7 @@ const CreateCaseModal = ({
                   ))}
                 </select>
               </div>
+              </>)}
 
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Name *</label>
@@ -421,7 +428,7 @@ const CreateCaseModal = ({
             </div>
           )}
 
-          {!showFamilyPackageFields && (
+          {!showFamilyFields && (
           <>
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">Package</label>

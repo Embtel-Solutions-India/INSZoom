@@ -305,7 +305,7 @@ function CategoryCard({ cat, files, extractions, onUpload, onRemove }) {
 
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className={`px-6 py-4 border-b border-border flex items-center gap-4`}>
+      <div className={`px-4 sm:px-6 py-4 border-b border-border flex items-center gap-4`}>
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${cat.color.bg} ${cat.color.text} ${cat.color.border}`}>
           <cat.icon />
         </div>

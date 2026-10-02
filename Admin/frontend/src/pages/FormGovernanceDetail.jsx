@@ -411,7 +411,7 @@ const FormGovernanceDetail = () => {
               <div className="mt-4 pt-4 border-t flex flex-wrap items-end gap-3">
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Case type / visa</label>
-                  <select value={newVisaType} onChange={(e) => setNewVisaType(e.target.value)} className="border rounded px-3 py-2 text-sm w-56">
+                  <select value={newVisaType} onChange={(e) => setNewVisaType(e.target.value)} className="border rounded px-3 py-2 text-sm w-56 max-w-full">
                     <option value="">Select a visa type...</option>
                     {visaOptions.map((option) => (
                       <option key={option.value} value={option.value}>{option.label}</option>
@@ -420,7 +420,7 @@ const FormGovernanceDetail = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-muted-foreground mb-1">Assignment</label>
-                  <select value={newAssignmentType} onChange={(e) => setNewAssignmentType(e.target.value)} className="border rounded px-3 py-2 text-sm w-48">
+                  <select value={newAssignmentType} onChange={(e) => setNewAssignmentType(e.target.value)} className="border rounded px-3 py-2 text-sm w-48 max-w-full">
                     <option value="AUTO_CREATE">Automatic — created on the case immediately</option>
                     <option value="CONDITIONAL">Conditional — created only when it applies</option>
                   </select>
@@ -560,7 +560,7 @@ const FormGovernanceDetail = () => {
                 placeholder="Case ID"
                 value={previewCaseId}
                 onChange={(e) => setPreviewCaseId(e.target.value)}
-                className="border rounded px-3 py-2 text-sm w-72"
+                className="border rounded px-3 py-2 text-sm w-72 max-w-full"
               />
               <button onClick={runAutofillPreview} disabled={previewLoading || !previewCaseId.trim()} className="btn-secondary text-sm flex items-center gap-1 disabled:opacity-50">
                 <PlayCircle className="w-4 h-4" /> Preview

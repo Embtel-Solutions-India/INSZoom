@@ -23,21 +23,21 @@ export default function CaseListPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold text-foreground font-serif">My Cases</h1>
 
-      <div className="card !p-0 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="card !p-0 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-secondary text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
-              <th className="text-left font-semibold px-5 py-3">Case</th>
-              <th className="text-left font-semibold px-5 py-3">Client</th>
-              <th className="text-left font-semibold px-5 py-3">Visa</th>
-              <th className="text-left font-semibold px-5 py-3">Status</th>
-              <th className="text-left font-semibold px-5 py-3">Assigned</th>
-              <th className="text-left font-semibold px-5 py-3">Messages</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Case</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Client</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Visa</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Status</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Assigned</th>
+              <th className="text-left font-semibold px-3 py-3 sm:px-5">Messages</th>
             </tr>
           </thead>
           <tbody>
             {cases.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No cases have been assigned to you yet.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-10 sm:px-5 text-center text-muted-foreground">No cases have been assigned to you yet.</td></tr>
             )}
             {cases.map((item) => (
               <tr
@@ -45,7 +45,7 @@ export default function CaseListPage() {
                 onClick={() => navigate(`/cases/${item._id}/overview`)}
                 className="border-t border-border hover:bg-secondary transition-colors cursor-pointer"
               >
-                <td className="px-5 py-3">
+                <td className="px-3 py-3 sm:px-5">
                   <Link
                     to={`/cases/${item._id}/overview`}
                     onClick={(event) => event.stopPropagation()}
@@ -54,13 +54,13 @@ export default function CaseListPage() {
                     {item.caseNumber || item.caseId}
                   </Link>
                 </td>
-                <td className="px-5 py-3 text-foreground">{item.clientName}</td>
-                <td className="px-5 py-3 text-foreground">{item.visaType}</td>
-                <td className="px-5 py-3"><CaseStatusBadge status={item.status} /></td>
-                <td className="px-5 py-3 text-muted-foreground">
+                <td className="px-3 py-3 sm:px-5 text-foreground">{item.clientName}</td>
+                <td className="px-3 py-3 sm:px-5 text-foreground">{item.visaType}</td>
+                <td className="px-3 py-3 sm:px-5"><CaseStatusBadge status={item.status} /></td>
+                <td className="px-3 py-3 sm:px-5 text-muted-foreground">
                   {item.assignedAt ? new Date(item.assignedAt).toLocaleDateString() : '—'}
                 </td>
-                <td className="px-5 py-3">
+                <td className="px-3 py-3 sm:px-5">
                   {item.unreadFeedback > 0
                     ? <span className="rounded-full bg-destructive text-destructive-foreground text-xs font-bold px-2 py-0.5">{item.unreadFeedback}</span>
                     : <span className="text-muted-foreground/50">—</span>}

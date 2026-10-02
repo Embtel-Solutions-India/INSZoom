@@ -374,7 +374,7 @@ const Analytics = () => {
           <h3 className="text-lg font-semibold text-foreground mb-4">Case Manager Workload</h3>
           {caseManagerWorkload.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
@@ -403,7 +403,7 @@ const Analytics = () => {
           <h3 className="text-lg font-semibold text-foreground mb-4">Processing Time by Visa Type</h3>
           {processingTimeData.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Visa Type</th>
@@ -456,7 +456,7 @@ const Analytics = () => {
           <h3 className="text-lg font-semibold text-foreground mb-4">RFE Trends</h3>
           {rfeTrendsData.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Visa Type</th>
@@ -567,7 +567,7 @@ const Analytics = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b border-border">
+      <div className="flex gap-4 border-b border-border overflow-x-auto whitespace-nowrap [&>button]:shrink-0">
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${

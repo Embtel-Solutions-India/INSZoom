@@ -158,7 +158,7 @@ const TaskCalendar = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -244,7 +244,7 @@ const TaskCalendar = () => {
         </div>
 
         {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-2">
+        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0"><div className="grid grid-cols-7 gap-2 min-w-[560px]">
           {/* Day Headers */}
           {days.map(day => (
             <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
@@ -313,7 +313,7 @@ const TaskCalendar = () => {
               </div>
             )
           })}
-        </div>
+        </div></div>
       </div>
 
       {/* Selected Date Tasks */}

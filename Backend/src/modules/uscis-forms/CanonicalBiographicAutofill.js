@@ -25,6 +25,8 @@
 // reaches "ai_filled" (never "approved"/"locked"/"filed") — the human/
 // attorney confirmation gate (Constraint #3) is never bypassed.
 const CaseForm = require("../../models/CaseForm");
+const Case = require("../../models/Case");
+const { isFamilyPartiesCase, subjectPartyForForm, projectFamilyProfile } = require("../canonical/config/familyPartyPaths");
 const AutoFillService = require("../form-mapping/services/AutoFillService");
 const MappingResolver = require("../form-mapping/services/MappingResolver");
 
@@ -116,6 +118,17 @@ async function fillMissingBiographicFields(caseFormId, canonicalProfile) {
     throw error;
   }
 
+  // A two-party family case (K-1/K-3/I-130 categories) holds the petitioner AND the
+  // beneficiary in one canonical profile, where person.*/contact.* is the
+  // PETITIONER. A form about the beneficiary (I-485, I-765, I-131, I-693, ...) must
+  // read the beneficiary, never the petitioner - so read a person-shaped
+  // projection of the party this form is ABOUT (a field that party has no value
+  // for stays blank rather than borrowing the other party's).
+  const caseRecord = await Case.findById(caseForm.caseId).select("petitionerUser caseStructure").lean();
+  const subjectProfile = isFamilyPartiesCase(caseRecord || {})
+    ? projectFamilyProfile(canonicalProfile, subjectPartyForForm(caseForm.formCode))
+    : canonicalProfile;
+
   const filledByCrosswalk = [];
   const filledByHeuristic = [];
   const leftBlank = [];
@@ -137,7 +150,7 @@ async function fillMissingBiographicFields(caseFormId, canonicalProfile) {
 
     const label = field.label || field.fieldLabel || field.fieldName;
     const matched = matchIntent(label);
-    const value = matched ? getByPath(canonicalProfile, matched.canonicalPath) : undefined;
+    const value = matched ? getByPath(subjectProfile, matched.canonicalPath) : undefined;
     if (matched && hasValue(value)) {
       nextFieldValues[canonicalId] = value;
       MappingResolver.setPath(nextFilledData, canonicalId, value);

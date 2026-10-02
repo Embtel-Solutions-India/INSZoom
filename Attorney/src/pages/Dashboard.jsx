@@ -34,24 +34,24 @@ export default function Dashboard() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-foreground font-serif">Dashboard</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <StatCard icon={Briefcase} label="Assigned cases" value={stats.totalCases} />
         <StatCard icon={Activity} label="Active cases" value={stats.activeCases} />
         <StatCard icon={MessageSquare} label="Unread messages" value={stats.pendingFeedback} />
       </div>
 
       <section className="card !p-0 overflow-hidden">
-        <h2 className="px-5 py-3 border-b border-border text-sm font-semibold text-foreground">Recent cases</h2>
+        <h2 className="px-4 sm:px-5 py-3 border-b border-border text-sm font-semibold text-foreground">Recent cases</h2>
         {stats.recentCases?.length ? (
           <ul>
             {stats.recentCases.map((item) => (
               <li key={item._id} className="border-b border-border last:border-0">
-                <Link to={`/cases/${item._id}/overview`} className="flex items-center justify-between px-5 py-3 hover:bg-secondary transition-colors">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">{item.caseNumber || item.caseId}</p>
-                    <p className="text-xs text-muted-foreground">{item.clientName} · {item.visaType}</p>
+                <Link to={`/cases/${item._id}/overview`} className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 hover:bg-secondary transition-colors">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{item.caseNumber || item.caseId}</p>
+                    <p className="text-xs text-muted-foreground truncate">{item.clientName} · {item.visaType}</p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 shrink-0">
                     {item.unreadFeedback > 0 && (
                       <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
                         {item.unreadFeedback}

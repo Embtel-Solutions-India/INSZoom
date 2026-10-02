@@ -40,7 +40,7 @@ export default function EmployeeHandoffModal({ open, onClose, onChooseFillMyself
         exit={{ opacity: 0 }}
       >
         <motion.div
-          className="w-full max-w-lg rounded-2xl bg-card p-7 shadow-xl"
+          className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-card p-5 sm:p-7 shadow-xl"
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: 8 }}

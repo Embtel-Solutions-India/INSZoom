@@ -106,7 +106,7 @@ export default function PetitionOutline({ pkg, validation, activeSectionKey, onJ
   }
 
   return (
-    <nav className="w-64 shrink-0 overflow-y-auto border-r border-border bg-card p-3">
+    <nav className="max-h-40 w-full shrink-0 overflow-y-auto border-b border-border md:max-h-none md:w-64 md:border-b-0 md:border-r bg-card p-3">
       <div className="space-y-0.5">
         {nonExhibitSections.map((section) => (
           <OutlineLink

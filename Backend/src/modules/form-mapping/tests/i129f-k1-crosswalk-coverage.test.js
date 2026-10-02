@@ -58,9 +58,10 @@ test("every crosswalk edge's source key is a real k1.js fieldCatalog key", () =>
 });
 
 test("gender and marital-status checkboxes cover every option k1.js's questionnaire actually offers", () => {
-  const genderEdges = MAPPED_EDGES.filter((e) => e.source.includes("_gender"));
-  const maritalEdges = MAPPED_EDGES.filter((e) => e.source.includes("_maritalStatus"));
-  // 2 widgets (Male/Female) x 2 parties, 4 widgets (single/married/widowed/divorced) x 2 parties.
-  assert.equal(genderEdges.length, 4);
-  assert.equal(maritalEdges.length, 8);
+  // One checkbox per answer option, per party: the widget's own condition is on the identity answer.
+  const boxesFor = (key) => MAPPED_EDGES.filter((e) => e.condition?.field?.endsWith(`${key}.value`) && e.condition.operator === "equals");
+  assert.equal(boxesFor("petitioner_info_gender").length, 2);
+  assert.equal(boxesFor("beneficiary_info_gender").length, 2);
+  assert.equal(boxesFor("petitioner_info_maritalStatus").length, 4);
+  assert.equal(boxesFor("beneficiary_info_maritalStatus").length, 4);
 });
