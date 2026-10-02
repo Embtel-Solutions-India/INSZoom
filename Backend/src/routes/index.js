@@ -32,6 +32,7 @@ router.use("/forms", require("../modules/form-generation/routes/formGenerationRo
 router.use("/forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/leaderboard", require("../modules/leaderboard/leaderboard.routes"));
 router.use("/", require("../modules/case-collaboration/routes/collaborationRoutes"));
+router.use("/cases/:id/information-requests", require("../modules/information-requests/information-request.routes"));
 router.use("/cases", require("../modules/cases/case.routes"));
 router.use("/cases", require("../modules/form-mapping/routes/autoFillRoutes"));
 router.use("/cases", require("../modules/form-registry/form-registry.routes"));

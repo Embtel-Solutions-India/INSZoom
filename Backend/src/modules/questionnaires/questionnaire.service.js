@@ -12,6 +12,8 @@ const canonicalSyncService = require("../canonical/services/CanonicalSyncService
 const IntelligentQuestionnaireService = require("./intelligent-questionnaire.service");
 const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
+const fileSecurityService = require("../uploads/file-security.service");
+const uploadLimits = require("../uploads/upload-limits");
 const workflowService = require("../workflows/workflow.service");
 const logger = require("../../utils/logger");
 const { normalizeRole } = require("../authorization/roleHierarchy");
@@ -1173,6 +1175,31 @@ async function applyQuestionnaireCaseSyncAtomic({ caseId, questionnaire, respons
   );
 }
 
+function sameStoredFile(left, right) {
+  if (left?.documentId && right?.documentId && String(left.documentId) === String(right.documentId)) return true;
+  return Boolean(left?.storageKey && right?.storageKey && left.storageKey === right.storageKey);
+}
+
+// Resolves the files/value an item will persist. `appendFiles` (set by the
+// upload + Document-sync paths) APPENDS to what is already on the Answer -
+// previously every upload did `$set: { files: <just this request's files> }`,
+// silently replacing earlier files. The per-row cap is checked against the
+// files already stored, so it also holds across separate requests. An
+// explicit `files` array without appendFiles still replaces (staff/API
+// callers that intentionally rewrite the list) but can never exceed the cap.
+function resolveFileItem(item, existingAnswer) {
+  if (!Array.isArray(item.files)) return item;
+  const existing = existingAnswer?.files || [];
+  if (!item.appendFiles) {
+    uploadLimits.assertRowCapacity(0, item.files.length);
+    return item;
+  }
+  const newFiles = item.files.filter((file) => !existing.some((stored) => sameStoredFile(stored, file)));
+  uploadLimits.assertRowCapacity(existing.length, newFiles.length);
+  const merged = [...existing.map((file) => (file.toObject ? file.toObject() : file)), ...newFiles];
+  return { ...item, files: merged, newFiles, value: merged.map((file) => file.originalName) };
+}
+
 // Sentinel passed as the `status` argument by a staff-edit call (Admin
 // correcting a client's already-submitted/approved answer): a case manager
 // fixing a value must never silently downgrade that answer's own status back
@@ -1244,9 +1271,10 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   }, {});
   const saved = [];
   const answerItems = payload.answers || (payload.questionKey ? [{ questionKey: payload.questionKey, value: payload.value, files: payload.files }] : []);
-  for (const item of answerItems) {
-    const question = questionByKey[item.questionKey];
+  for (const rawItem of answerItems) {
+    const question = questionByKey[rawItem.questionKey];
     if (!question) continue;
+    const item = resolveFileItem(rawItem, answerMap[rawItem.questionKey]);
     const visible = isQuestionVisible(question, { ...answerMap, [item.questionKey]: { value: item.value } }, user);
     const effectiveStatus = status === PRESERVE_ANSWER_STATUS
       ? (answerMap[item.questionKey]?.status || "auto_saved")
@@ -1327,7 +1355,7 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     answerMap[item.questionKey] = answer;
     saved.push(answer);
     if (question.type === "file" && Array.isArray(item.files) && item.files.length && effectiveCaseId) {
-      await syncDocumentRecordsFromFileAnswer(question, item.files, effectiveCaseId, user, req);
+      await syncDocumentRecordsFromFileAnswer(question, item.newFiles || item.files, effectiveCaseId, user, req);
     }
   }
   const completion = await calculateCompletion(questionnaire, answerMap, user);
@@ -1343,6 +1371,12 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   }
   questionnaire.analytics.averageCompletionPercent = Math.round(((questionnaire.analytics.averageCompletionPercent || 0) + completion.percent) / 2);
   await questionnaire.save();
+  // Staff-requested rows: flip the matching informationRequests to submitted and notify the requester.
+  if (caseData && (questionnaire.tags || []).includes("staff_request")) {
+    await require("../information-requests/information-request.service")
+      .markAnswered({ caseId: caseData._id, questionnaire, answerMap, user, req })
+      .catch(() => null);
+  }
   await writeAuditLog(status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
   if (caseData) {
     // Merge onto the prior masterData rather than replacing it outright —
@@ -1448,6 +1482,13 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
 
 async function storeAnswerFiles(files = [], context = {}) {
   const uploaded = [];
+  // Validate every file BEFORE storing any, so a rejected batch leaves no
+  // orphaned blobs behind.
+  for (const file of files) {
+    uploadLimits.assertFileNameAllowed(file.originalname);
+    uploadLimits.assertFileSize(file);
+    await fileSecurityService.inspect(file);
+  }
   for (const file of files) {
     const key = storageService.generateDocumentKey({
       caseId: context.caseId,
@@ -1529,16 +1570,125 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
   return synced;
 }
 
+// Serializes concurrent uploads to the SAME checklist row inside this process
+// so two parallel requests cannot both pass the 10-file check against the same
+// stored count and then overwrite each other's merged list.
+const rowUploadChains = new Map();
+function withRowLock(lockKey, task) {
+  const previous = rowUploadChains.get(lockKey) || Promise.resolve();
+  const run = previous.then(task);
+  const tail = run.catch(() => null);
+  rowUploadChains.set(lockKey, tail);
+  tail.then(() => { if (rowUploadChains.get(lockKey) === tail) rowUploadChains.delete(lockKey); });
+  return run;
+}
+
 async function saveFileAnswer(payload, files, user, req, { preserveStatus = false } = {}) {
-  const storedFiles = await storeAnswerFiles(files, { caseId: payload.caseId, userId: user?._id });
-  return saveAnswers({
-    ...payload,
-    answers: [{
-      questionKey: payload.questionKey,
-      value: storedFiles.map((file) => file.originalName),
-      files: storedFiles,
-    }],
-  }, user, req, preserveStatus ? PRESERVE_ANSWER_STATUS : "auto_saved");
+  if (!files?.length) {
+    const error = new Error("No file was provided");
+    error.status = 400;
+    throw error;
+  }
+  const lockKey = [payload.questionnaireId, payload.caseId, payload.responseId, payload.participantId, payload.questionKey].join(":");
+  return withRowLock(lockKey, async () => {
+    const storedFiles = await storeAnswerFiles(files, { caseId: payload.caseId, userId: user?._id });
+    try {
+      return await saveAnswers({
+        ...payload,
+        answers: [{
+          questionKey: payload.questionKey,
+          value: storedFiles.map((file) => file.originalName),
+          files: storedFiles,
+          appendFiles: true,
+        }],
+      }, user, req, preserveStatus ? PRESERVE_ANSWER_STATUS : "auto_saved");
+    } catch (error) {
+      // Row already full (or save failed): don't leave the just-stored blobs orphaned.
+      await Promise.all(storedFiles.map((file) => storageService.deleteObject(file.storageKey).catch(() => false)));
+      throw error;
+    }
+  });
+}
+
+// Reads one stored answer file for viewing/downloading. Authorized against the
+// Answer's own case (staff, owning client, or an attorney granted on the case);
+// the storageKey must belong to that Answer, so it cannot be used to read
+// arbitrary storage objects.
+async function readAnswerFile(payload, user) {
+  const { responseId, questionKey, storageKey } = payload;
+  if (!responseId || !questionKey || !storageKey) {
+    const error = new Error("responseId, questionKey and storageKey are required");
+    error.status = 400;
+    throw error;
+  }
+  const answer = await Answer.findOne({ responseId, questionKey });
+  const entry = answer?.files?.find((file) => file.storageKey === storageKey);
+  if (!entry) {
+    const error = new Error("File entry not found");
+    error.status = 404;
+    throw error;
+  }
+  const caseData = answer.caseId ? await Case.findById(answer.caseId) : null;
+  const authorized = caseData ? caseService.canAccessCase(user, caseData) : String(answer.user || "") === String(user?._id || "");
+  if (!authorized) {
+    const error = new Error("Not authorized to view this file");
+    error.status = 403;
+    throw error;
+  }
+  const buffer = await storageService.readBuffer(entry.storageKey);
+  return { buffer, name: entry.originalName || "document", mimeType: entry.mimeType || "application/octet-stream" };
+}
+
+// Removes ONE entry from a file answer (identified by storageKey, or
+// documentId for Document-synced entries). Staff may always remove; the
+// uploading side may not remove an entry from an already-approved row (same
+// rule as DELETE /documents/:id). Dropping the last file un-answers the
+// question, mirroring removeFileAnswerForDocument.
+async function removeAnswerFile(payload, user, req) {
+  const { responseId, questionKey, storageKey, documentId } = payload;
+  if (!responseId || !questionKey || (!storageKey && !documentId)) {
+    const error = new Error("responseId, questionKey and storageKey are required");
+    error.status = 400;
+    throw error;
+  }
+  const answer = await Answer.findOne({ responseId, questionKey });
+  const target = { storageKey, documentId };
+  const entry = answer?.files?.find((file) => sameStoredFile(file, target));
+  if (!entry) {
+    const error = new Error("File entry not found");
+    error.status = 404;
+    throw error;
+  }
+  // Authorize against the Answer's own case, never a client-supplied caseId.
+  const caseData = answer.caseId ? await Case.findById(answer.caseId) : null;
+  const authorized = caseData ? caseService.canAccessCase(user, caseData) : String(answer.user || "") === String(user?._id || "");
+  if (!authorized) {
+    const error = new Error("Not authorized to modify this questionnaire");
+    error.status = 403;
+    throw error;
+  }
+  if (!caseService.isStaff(user) && answer.status === "approved") {
+    const error = new Error("This document has been approved and can no longer be changed.");
+    error.status = 409;
+    throw error;
+  }
+  const remaining = answer.files.filter((file) => !sameStoredFile(file, target));
+  if (remaining.length) {
+    answer.files = remaining;
+    answer.value = remaining.map((file) => file.originalName);
+    answer.auditHistory.push({ action: "file_removed", changes: { removed: entry.originalName }, performedBy: user?._id, performedAt: new Date(), ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] });
+    await answer.save();
+  } else {
+    await Answer.deleteOne({ _id: answer._id });
+  }
+  // Soft-delete the matching Documents record (same fields DELETE /documents/:id sets).
+  if (answer.caseId) {
+    await Document.updateMany(
+      { caseId: answer.caseId, deletedAt: { $exists: false }, $or: [{ storageKey: entry.storageKey }, ...(entry.documentId ? [{ _id: entry.documentId }] : [])] },
+      { $set: { deletedAt: new Date(), deletedBy: user?._id } }
+    ).catch(() => null);
+  }
+  return { removed: true, remaining: remaining.length, responseId, questionKey };
 }
 
 // Symmetric counterpart to syncFileAnswerFromDocument, called when a Document
@@ -1549,9 +1699,9 @@ async function saveFileAnswer(payload, files, user, req, { preserveStatus = fals
 // fallback — so "delete the Answer" is the only correct way to un-answer it).
 async function removeFileAnswerForDocument(document) {
   if (!document?._id) return null;
-  const answer = await Answer.findOne({ "files.documentId": document._id });
+  const answer = await Answer.findOne({ $or: [{ "files.documentId": document._id }, ...(document.storageKey ? [{ caseId: document.caseId, "files.storageKey": document.storageKey }] : [])] });
   if (!answer) return null;
-  const remainingFiles = (answer.files || []).filter((file) => String(file.documentId) !== String(document._id));
+  const remainingFiles = (answer.files || []).filter((file) => !sameStoredFile(file, { documentId: document._id, storageKey: document.storageKey }));
   if (remainingFiles.length) {
     answer.files = remainingFiles;
     answer.value = remainingFiles.map((file) => file.originalName);
@@ -1591,6 +1741,7 @@ async function syncFileAnswerFromDocument(caseData, document, user, req) {
         assignedTo: reference.assignedTo,
         questionKey: question.key,
         value: [document.originalName],
+        appendFiles: true,
         files: [{
           documentId: document._id,
           originalName: document.originalName,
@@ -2327,7 +2478,9 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   let eligibleReferences = (referenceCase.questionnaireReferences || [])
     .filter((reference) => reference.active !== false && reference.status !== "returned")
     .filter((reference) => !targetRole || reference.targetRole === targetRole)
-    .filter((reference) => !options.participantId || String(reference.participantId || "") === String(options.participantId));
+    .filter((reference) => !options.participantId || String(reference.participantId || "") === String(options.participantId))
+    // Staff-requested "Additional Requested Information" checklists never act as a role's default.
+    .filter((reference) => !reference.staffRequest || options.referenceId);
   // Disambiguates between multiple active references that legitimately
   // share the same targetRole (e.g. the family workflow's Green Card
   // Beneficiary checklist and the separate, optional GC-NVC Beneficiary
@@ -2548,6 +2701,7 @@ async function resolveCaseQuestionnaires(caseId) {
         targetRole: reference.targetRole || "",
         title: reference.title,
         status: reference.status || "not_started",
+        staffRequest: Boolean(reference.staffRequest),
         explicit: true,
       });
     }
@@ -2620,6 +2774,7 @@ async function resolveCaseQuestionnaires(caseId) {
   timer.mark("resolved_questionnaire_lookup", { count: questionnaires.length });
   const questionnaireById = new Map(questionnaires.map((questionnaire) => [String(questionnaire._id), questionnaire]));
   const result = [...resolved.values()]
+    .sort((left, right) => Number(Boolean(left.staffRequest)) - Number(Boolean(right.staffRequest)))
     .map((entry) => {
       const questionnaire = questionnaireById.get(String(entry.questionnaireId));
       if (!questionnaire) return null;
@@ -2680,6 +2835,7 @@ async function listCaseChecklists(caseId, user) {
     );
     return {
       referenceId: entry.referenceId,
+      staffRequest: Boolean(entry.staffRequest),
       questionnaireId: entry.questionnaire._id,
       key: entry.questionnaire.key,
       title: entry.title || entry.questionnaire.title,
@@ -3046,6 +3202,8 @@ module.exports = {
   responseIdFor,
   saveAnswers,
   saveFileAnswer,
+  removeAnswerFile,
+  readAnswerFile,
   PRESERVE_ANSWER_STATUS,
   submitResponse,
   unlockQuestionnaire,

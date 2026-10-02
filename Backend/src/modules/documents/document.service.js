@@ -14,12 +14,17 @@ const RequestManagementService = require("../case-collaboration/services/Request
 const TimelineService = require("../case-collaboration/services/TimelineService");
 const storageService = require("../uploads/storage.service");
 const fileSecurityService = require("../uploads/file-security.service");
+const uploadLimits = require("../uploads/upload-limits");
 
 const REVIEW_ROLES = ["super_admin", "admin", "case_manager", "reviewer"];
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "reviewer"];
 const MIN_CHUNK_SIZE = 256 * 1024;
 const DEFAULT_CHUNK_SIZE = Number(process.env.DOCUMENT_UPLOAD_CHUNK_SIZE_BYTES || 5 * 1024 * 1024);
 const MAX_UPLOAD_SIZE = Number(process.env.MAX_DOCUMENT_UPLOAD_SIZE_BYTES || 250 * 1024 * 1024);
+// Slots that intentionally hold ONE current file (new uploads become versions
+// of it). Every other checklist documentType accepts up to
+// MAX_FILES_PER_ROW separate entries.
+const SINGLE_SLOT_DOCUMENT_TYPES = new Set(["petition_manual_upload"]);
 const UPLOAD_SESSION_TTL_MS = Number(process.env.DOCUMENT_UPLOAD_SESSION_TTL_MS || 24 * 60 * 60 * 1000);
 
 function sameId(left, right) {
@@ -346,6 +351,15 @@ async function createDocumentFromFile({ file, body, user, req }) {
   }
   const ownerId = resolvedDocumentOwnerId(body, context, user);
   const participantId = body.participantId || context.participantId;
+  // Row-capacity count is started now so it overlaps the file inspection and
+  // duplicate lookup instead of adding its own sequential round trip between
+  // loading the case above and saving it below (a longer gap there makes the
+  // case save lose races against background canonical/autofill saves).
+  const slotFilter = body.caseId && body.documentType
+    ? { caseId: body.caseId, ...(participantId ? { participantId } : {}), documentType: body.documentType, deletedAt: { $exists: false } }
+    : null;
+  const slotCountPromise = slotFilter && !SINGLE_SLOT_DOCUMENT_TYPES.has(body.documentType) ? Document.countDocuments(slotFilter) : null;
+  if (slotCountPromise) slotCountPromise.catch(() => null);
   const security = await fileSecurityService.inspect(file);
   const checksum = storageService.checksum(file.buffer);
   const duplicate = await Document.findOne({
@@ -359,22 +373,21 @@ async function createDocumentFromFile({ file, body, user, req }) {
     duplicate.$locals.wasDuplicate = true;
     return duplicate;
   }
-  // Re-uploading a DIFFERENT file (different checksum, so it missed the
-  // dedup check above) into the same case's checklist slot (caseId +
-  // documentType) should version the existing Document rather than create a
-  // second, separate row for the same requirement - see addDocumentVersion
-  // below, which is otherwise only reachable via POST /:id/versions.
-  if (body.caseId && body.documentType) {
-    const existingSlotDocument = await Document.findOne({
-      caseId: body.caseId,
-      ...(participantId ? { participantId } : {}),
-      documentType: body.documentType,
-      deletedAt: { $exists: false },
-    });
-    if (existingSlotDocument) {
-      const updated = await addDocumentVersion(existingSlotDocument, file, user, req, "Replaced via checklist re-upload");
-      await linkDocumentToCaseRequests(context.caseData, updated, user, req);
-      return updated;
+  // Checklist rows (caseId + documentType) accept multiple entries: a new
+  // upload APPENDS another Document to the row (cap: MAX_FILES_PER_ROW, checked
+  // against what is already stored) instead of silently versioning/replacing
+  // the first one. Only SINGLE_SLOT_DOCUMENT_TYPES keep the versioning behaviour.
+  if (body.documentType) uploadLimits.assertFileSize(file);
+  if (slotFilter) {
+    if (SINGLE_SLOT_DOCUMENT_TYPES.has(body.documentType)) {
+      const existingSlotDocument = await Document.findOne(slotFilter);
+      if (existingSlotDocument) {
+        const updated = await addDocumentVersion(existingSlotDocument, file, user, req, "Replaced via checklist re-upload");
+        await linkDocumentToCaseRequests(context.caseData, updated, user, req);
+        return updated;
+      }
+    } else {
+      uploadLimits.assertRowCapacity(await slotCountPromise, 1);
     }
   }
   const key = storageService.generateDocumentKey({ caseId: body.caseId, userId: ownerId, originalName: file.originalname });
@@ -547,10 +560,17 @@ async function createUploadSession(payload, user) {
     }
   }
   const expectedSize = Number(payload.expectedSize || payload.fileSize);
-  if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > MAX_UPLOAD_SIZE) {
-    const error = new Error(`File size must be between 1 byte and ${MAX_UPLOAD_SIZE} bytes`);
+  // Checklist-row uploads (documentType given) are capped at 50 MB per file.
+  const sizeCap = payload.documentType ? Math.min(MAX_UPLOAD_SIZE, uploadLimits.MAX_FILE_BYTES) : MAX_UPLOAD_SIZE;
+  if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > sizeCap) {
+    const error = new Error(`File size must be between 1 byte and ${uploadLimits.formatBytes(sizeCap)}`);
     error.statusCode = 413;
+    error.status = 413;
     throw error;
+  }
+  uploadLimits.assertFileNameAllowed(payload.originalName);
+  if (payload.caseId && payload.documentType && !SINGLE_SLOT_DOCUMENT_TYPES.has(payload.documentType)) {
+    uploadLimits.assertRowCapacity(await Document.countDocuments({ caseId: payload.caseId, documentType: payload.documentType, ...(payload.participantId ? { participantId: payload.participantId } : {}), deletedAt: { $exists: false } }), 1);
   }
   const chunkSize = Math.max(MIN_CHUNK_SIZE, Math.min(Number(payload.chunkSize) || DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE));
   const totalChunks = Math.ceil(expectedSize / chunkSize);
@@ -568,6 +588,7 @@ async function createUploadSession(payload, user) {
     context: {
       caseId: payload.caseId,
       beneficiaryId: payload.beneficiaryId,
+      participantId: payload.participantId,
       clientId: payload.clientId,
       category: payload.category,
       documentType: payload.documentType,

@@ -13,6 +13,8 @@ function listFilter(query) {
   if (query.key) filter.key = query.key;
   if (query.visaType) filter.visaTypes = query.visaType;
   if (query.type) filter.type = query.type;
+  // Per-case staff-request checklists (modules/information-requests) are not library templates.
+  filter.tags = { $ne: "staff_request" };
   if (query.isTemplate !== undefined) filter.isTemplate = query.isTemplate === "true";
   // Without this the list returns every historical version of every
   // checklist, which (sorted by key, capped by `limit`) pushed later

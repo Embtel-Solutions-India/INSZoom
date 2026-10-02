@@ -18,6 +18,7 @@ import EmployeeHandoffModal from "../../components/checklist/EmployeeHandoffModa
 import CaseIntakeExtras from "../../components/checklist/CaseIntakeExtras";
 import SmartScanStep from "../../components/checklist/SmartScanStep";
 import QuestionInput from "../../components/questionnaire/QuestionInput";
+import StaffRequestedItems from "../../components/questionnaire/StaffRequestedItems";
 import PrefillBadge from "../../components/PrefillBadge";
 import PrincipalCaseWorkspace from "../../components/questionnaire/PrincipalCaseWorkspace";
 import EmployeeSelfServiceView from "../../components/questionnaire/EmployeeSelfServiceView";
@@ -812,6 +813,7 @@ export default function Documents() {
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
           <FamilyWorkflowCaseView activeCase={activeCase} allowedRoles={allowedRoles} onCaseChanged={refetchActiveCase} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} />
         </div>
       </div>
     );
@@ -832,6 +834,7 @@ export default function Documents() {
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
           <PrincipalCaseWorkspace activeCase={activeCase} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} />
         </div>
       </div>
     );
@@ -845,6 +848,7 @@ export default function Documents() {
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
           <EmployeeSelfServiceView activeCase={activeCase} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} />
         </div>
       </div>
     );
@@ -1140,6 +1144,7 @@ export default function Documents() {
               components/checklist/CaseIntakeExtras.jsx) — not shown to an
               employee viewing only their own section. */}
           {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} caseData={activeCase} />}
+          <StaffRequestedItems caseId={activeCaseId} user={user} />
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
             <div>

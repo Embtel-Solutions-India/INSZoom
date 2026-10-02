@@ -588,7 +588,7 @@ exports.submitParticipantInfo = async (req, res, next) => {
       caseData.employerEmployeeWorkflow.employeeSubmittedAt = now;
     }
     caseData.informationRequests.forEach((request) => {
-      if (request.target === role && request.status === "open") {
+      if (request.target === role && request.status === "open" && !request.questionKey) {
         request.status = "submitted";
         request.submittedAt = now;
       }
