@@ -196,12 +196,12 @@ const FormGovernance = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><FileCheck2 className="w-6 h-6" /> Form Governance</h1>
           <p className="text-muted-foreground mt-1">Every USCIS form this system knows about — whether it's been fetched from uscis.gov, how it's mapped and autofilled, and which visa types use it.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => (showCoverage ? setShowCoverage(false) : loadCoverage())}
             className="btn-secondary text-sm flex items-center gap-1 shrink-0"
@@ -236,7 +236,7 @@ const FormGovernance = () => {
             <p className="text-sm text-muted-foreground">No active form templates found.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="text-left text-muted-foreground border-b">
                     <th className="py-2 pr-4">Form</th>
@@ -308,7 +308,7 @@ const FormGovernance = () => {
             <p className="text-sm text-muted-foreground">No checklists match this filter.</p>
           ) : (
             <div className="overflow-x-auto max-h-[36rem] overflow-y-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-left text-muted-foreground border-b">
                     <th className="py-2 pr-4">Checklist</th>

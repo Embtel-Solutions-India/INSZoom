@@ -28,7 +28,7 @@ export default function EmployeeSelfServiceView({ activeCase }) {
 
   if (submitted) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center space-y-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-10 text-center space-y-3">
         <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl">✓</div>
         <h2 className="text-lg font-bold text-slate-900">You're all set{activeCase.clientName ? `, ${activeCase.clientName.split(" ")[0]}` : ""}.</h2>
         <p className="text-sm text-slate-500">

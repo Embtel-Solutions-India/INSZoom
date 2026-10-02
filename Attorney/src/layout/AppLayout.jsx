@@ -98,7 +98,7 @@ export default function AppLayout() {
 
       <div className="flex-1 flex flex-col min-w-0 bg-background">
         <header className="sticky top-0 z-30 bg-card border-b border-border">
-          <div className="flex items-center gap-4 px-6 py-3">
+          <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-3">
             <div className="flex items-center gap-3 shrink-0">
               <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-muted-foreground hover:text-foreground">
                 <Menu className="w-6 h-6" />
@@ -111,7 +111,7 @@ export default function AppLayout() {
               </span>
             </div>
 
-            <div className="flex items-center gap-3 ml-auto shrink-0">
+            <div className="flex items-center gap-1 sm:gap-3 ml-auto shrink-0">
               <button
                 onClick={toggleTheme}
                 title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -122,7 +122,7 @@ export default function AppLayout() {
 
               <NotificationBell />
 
-              <div className="flex items-center gap-3 pl-4 border-l border-border">
+              <div className="flex items-center gap-3 sm:pl-4 sm:border-l border-border">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-foreground">{user?.displayName || user?.name}</p>
                   <p className="text-xs text-muted-foreground">Attorney</p>
@@ -135,7 +135,7 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

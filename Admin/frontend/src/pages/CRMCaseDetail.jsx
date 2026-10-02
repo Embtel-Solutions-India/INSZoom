@@ -309,9 +309,14 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
         ref={inputRef}
         type="file"
         multiple
-        accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.doc,.docx,.txt,.csv,.zip"
         className="hidden"
-        onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))}
+        onChange={(event) => {
+          // Any file type; max 50 MB per file (server enforces this and the 10-files-per-row cap).
+          const picked = Array.from(event.target.files || [])
+          const tooBig = picked.filter((file) => file.size > 50 * 1024 * 1024)
+          setMessage(tooBig.length ? `${tooBig.map((file) => file.name).join(', ')} exceed the 50 MB per-file limit and were skipped.` : '')
+          setSelectedFiles(picked.filter((file) => file.size <= 50 * 1024 * 1024))
+        }}
       />
       {selectedFiles.length > 0 && (
         <div className="mt-3 space-y-2">
@@ -2473,6 +2478,7 @@ const CRMCaseDetail = () => {
           loading={employerQuestionnaire.loading}
           onSaveAnswer={employerQuestionnaire.saveAnswer}
           onSaveFile={employerQuestionnaire.saveFileAnswer}
+          onRemoveFile={employerQuestionnaire.removeFileAnswer}
           onAutofill={employerQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
@@ -2485,6 +2491,7 @@ const CRMCaseDetail = () => {
           loading={employeeQuestionnaire.loading}
           onSaveAnswer={employeeQuestionnaire.saveAnswer}
           onSaveFile={employeeQuestionnaire.saveFileAnswer}
+          onRemoveFile={employeeQuestionnaire.removeFileAnswer}
           onAutofill={employeeQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
@@ -2497,6 +2504,7 @@ const CRMCaseDetail = () => {
           loading={businessPlanQuestionnaire.loading}
           onSaveAnswer={businessPlanQuestionnaire.saveAnswer}
           onSaveFile={businessPlanQuestionnaire.saveFileAnswer}
+          onRemoveFile={businessPlanQuestionnaire.removeFileAnswer}
           onAutofill={businessPlanQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
@@ -2509,6 +2517,7 @@ const CRMCaseDetail = () => {
           loading={supportingDocumentsQuestionnaire.loading}
           onSaveAnswer={supportingDocumentsQuestionnaire.saveAnswer}
           onSaveFile={supportingDocumentsQuestionnaire.saveFileAnswer}
+          onRemoveFile={supportingDocumentsQuestionnaire.removeFileAnswer}
           onAutofill={supportingDocumentsQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
@@ -2521,6 +2530,7 @@ const CRMCaseDetail = () => {
           loading={petitionerQuestionnaire.loading}
           onSaveAnswer={petitionerQuestionnaire.saveAnswer}
           onSaveFile={petitionerQuestionnaire.saveFileAnswer}
+          onRemoveFile={petitionerQuestionnaire.removeFileAnswer}
           onAutofill={petitionerQuestionnaire.autofillFromDocument}
         />
         <QuestionnaireAnswersPanel
@@ -2533,6 +2543,7 @@ const CRMCaseDetail = () => {
           loading={beneficiaryQuestionnaire.loading}
           onSaveAnswer={beneficiaryQuestionnaire.saveAnswer}
           onSaveFile={beneficiaryQuestionnaire.saveFileAnswer}
+          onRemoveFile={beneficiaryQuestionnaire.removeFileAnswer}
           onAutofill={beneficiaryQuestionnaire.autofillFromDocument}
         />
         {showJointSponsorPanel && (
@@ -2546,6 +2557,7 @@ const CRMCaseDetail = () => {
             loading={jointSponsorQuestionnaire.loading}
             onSaveAnswer={jointSponsorQuestionnaire.saveAnswer}
             onSaveFile={jointSponsorQuestionnaire.saveFileAnswer}
+            onRemoveFile={jointSponsorQuestionnaire.removeFileAnswer}
             onAutofill={jointSponsorQuestionnaire.autofillFromDocument}
           />
         )}
@@ -2561,6 +2573,7 @@ const CRMCaseDetail = () => {
             loading={greenCardRenewalQuestionnaire.loading}
             onSaveAnswer={greenCardRenewalQuestionnaire.saveAnswer}
             onSaveFile={greenCardRenewalQuestionnaire.saveFileAnswer}
+            onRemoveFile={greenCardRenewalQuestionnaire.removeFileAnswer}
             onAutofill={greenCardRenewalQuestionnaire.autofillFromDocument}
           />
         )}
@@ -2594,6 +2607,7 @@ const CRMCaseDetail = () => {
             loading={gcNvcQuestionnaire.loading}
             onSaveAnswer={gcNvcQuestionnaire.saveAnswer}
             onSaveFile={gcNvcQuestionnaire.saveFileAnswer}
+            onRemoveFile={gcNvcQuestionnaire.removeFileAnswer}
             onAutofill={gcNvcQuestionnaire.autofillFromDocument}
           />
         )}
@@ -2727,7 +2741,7 @@ const CRMCaseDetail = () => {
             renderSkeleton()
           ) : documents.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filename</th>
@@ -2884,7 +2898,7 @@ const CRMCaseDetail = () => {
               </div>
             ) : caseForms.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[640px]">
                   <thead>
                     <tr className="border-b border-border">
                       <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form</th>
@@ -3015,7 +3029,7 @@ const CRMCaseDetail = () => {
                   on uscis.gov; always confirm the edition date matches the latest USCIS release before filing.
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b border-border">
                         <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Form</th>
@@ -3145,8 +3159,8 @@ const CRMCaseDetail = () => {
 
       {/* Staff Details Modal */}
       {showStaffDetailsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Staff Assignment</h3>
             <div className="space-y-3 mb-6">
               <div>
@@ -3187,8 +3201,8 @@ const CRMCaseDetail = () => {
 
       {/* Assign Staff Modal */}
       {showAssignModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Assign Staff</h3>
             {assignError && (
               <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
@@ -3293,8 +3307,8 @@ const CRMCaseDetail = () => {
 
       {/* Stage Update Modal */}
       {showStageUpdateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Update Stage</h3>
             <div className="space-y-4">
               <div>
@@ -3325,8 +3339,8 @@ const CRMCaseDetail = () => {
 
       {/* Record Payment Modal */}
       {showRecordPaymentModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Record Payment</h3>
             <form onSubmit={handleRecordPayment} className="space-y-4">
               <div className="rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground">
@@ -3393,8 +3407,8 @@ const CRMCaseDetail = () => {
 
       {/* Create Letter Modal */}
       {showCreateLetterModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Create Letter</h3>
             <div className="space-y-4">
               <div>

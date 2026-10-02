@@ -111,7 +111,7 @@ export default function BookConsultation() {
                 {slotsLoading ? (
                   <div className="h-64 rounded-xl bg-muted animate-pulse" />
                 ) : (
-                  <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="grid sm:max-md:grid-cols-2 lg:grid-cols-2 gap-6">
                     <MonthCalendar availableDateKeys={availableDateKeys} selectedDate={selectedDate} onSelectDate={setSelectedDate} />
                     <div>
                       {selectedDate ? (

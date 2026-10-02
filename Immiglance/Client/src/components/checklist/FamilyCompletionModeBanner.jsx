@@ -17,8 +17,12 @@ export default function FamilyCompletionModeBanner({ activeCase, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const isPetitionerCompletes = activeCase?.familyCompletionMode === "petitioner_completes";
+  // "Invited" = a real invite is out. An unset mode ("") is the same as
+  // filling it yourself, so it offers the invite instead of claiming one was sent.
   const beneficiaryEmail = activeCase?.beneficiaryInvite?.email;
+  const beneficiaryName = activeCase?.beneficiaryInvite?.name || activeCase?.beneficiaryUser?.name || activeCase?.beneficiaryUser?.displayName;
+  const isInvited = activeCase?.familyCompletionMode === "invite_beneficiary" && Boolean(beneficiaryEmail);
+  const isPetitionerCompletes = !isInvited;
 
   const switchToSelfComplete = async () => {
     setSaving(true);
@@ -77,7 +81,7 @@ export default function FamilyCompletionModeBanner({ activeCase, onChanged }) {
       {!showInviteForm && !isPetitionerCompletes && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-foreground">
-            {beneficiaryEmail ? `${beneficiaryEmail} has been invited to complete their own section.` : "Your family member will complete their own section once invited."}
+            {beneficiaryName ? `${beneficiaryName} (${beneficiaryEmail})` : beneficiaryEmail} has been invited to complete their own section.
           </p>
           <button
             type="button"

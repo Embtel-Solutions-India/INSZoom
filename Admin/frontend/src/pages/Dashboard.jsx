@@ -678,7 +678,7 @@ const TeamLeadPanel = ({
         </div>
         {roleStats?.unassignedCaseList?.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide border-b border-border">
                   <th className="py-2 pr-4">Case Number</th>

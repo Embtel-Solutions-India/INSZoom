@@ -25,7 +25,7 @@ function DocumentPreviewModal({ doc, onClose }) {
   }, [doc._id])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" onClick={onClose}>
       <div className="bg-card w-full max-w-4xl h-[90vh] rounded-lg shadow-xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <p className="text-sm font-semibold text-foreground truncate">{doc.originalName || doc.fileName}</p>
@@ -92,23 +92,29 @@ export default function DocumentsTab() {
           <p className="text-sm text-muted-foreground card text-center">No documents submitted on this case yet.</p>
         ) : (
           <div className="card !p-0 divide-y divide-border">
-            {documents.map((doc) => (
+            {documents.map((doc) => {
+              // Rows of one checklist item can hold several entries: number them.
+              const siblings = documents.filter((other) => other.documentType && other.documentType === doc.documentType)
+              const entryNumber = siblings.length > 1 ? siblings.indexOf(doc) + 1 : 0
+              return (
               <button
                 key={doc._id}
                 onClick={() => setOpenDoc(doc)}
-                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-muted/50"
+                className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 text-left hover:bg-muted/50"
               >
                 <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground truncate">{doc.originalName || doc.fileName || doc.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {doc.documentType || doc.category || 'Document'}
+                    {entryNumber ? ` · Entry ${entryNumber} of ${siblings.length}` : ''}
                     {doc.createdAt ? ` · ${new Date(doc.createdAt).toLocaleDateString()}` : ''}
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-primary shrink-0">Preview</span>
               </button>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -118,7 +124,7 @@ export default function DocumentsTab() {
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Pending</h3>
           <div className="card !p-0 divide-y divide-border">
             {pending.map((item, index) => (
-              <div key={`${item.key}-${index}`} className="flex items-center gap-3 px-5 py-3">
+              <div key={`${item.key}-${index}`} className="flex items-center gap-3 px-4 sm:px-5 py-3">
                 <Clock className="w-4 h-4 text-amber-500 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-foreground truncate">{item.label}</p>

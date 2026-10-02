@@ -79,7 +79,7 @@ export default function SimpleCrudPanel({ title, endpoint, fields, columns, rend
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing here yet.</p>
       ) : (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-left text-muted-foreground border-b border-border">
               {columns.map((c) => <th key={c} className="py-2">{c}</th>)}
@@ -98,7 +98,7 @@ export default function SimpleCrudPanel({ title, endpoint, fields, columns, rend
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   )

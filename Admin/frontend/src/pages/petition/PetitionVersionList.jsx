@@ -66,7 +66,7 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
     <div className="space-y-4">
       <PetitionUploadPanel caseId={caseId} canUpload={canAssemble} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-foreground">Petition</h3>
           <p className="text-sm text-muted-foreground">Assemble, review, and file the petition package for this case.</p>
@@ -97,7 +97,7 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
         </div>
       ) : (
         <div className="card overflow-hidden !p-0">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
             <thead className="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3">Version</th>
@@ -129,7 +129,7 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
     </div>

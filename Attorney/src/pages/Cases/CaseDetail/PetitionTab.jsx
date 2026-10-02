@@ -34,7 +34,7 @@ function PetitionPreviewModal({ title, fetcher, onClose }) {
   }, [fetcher])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" onClick={onClose}>
       <div className="bg-card w-full max-w-4xl h-[90vh] rounded-lg shadow-xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <p className="text-sm font-semibold text-foreground truncate">{title}</p>
@@ -85,7 +85,7 @@ export default function PetitionTab() {
             <button
               key={doc._id}
               onClick={() => setPreview({ title: doc.originalName || doc.fileName, fetcher: () => caseDataApi.previewDocument(doc._id) })}
-              className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-muted/50"
+              className="w-full flex items-center gap-3 px-4 sm:px-5 py-4 text-left hover:bg-muted/50"
             >
               <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
               <div className="min-w-0 flex-1">
@@ -104,15 +104,15 @@ export default function PetitionTab() {
         packages.length > 0 && (
           <div className="card !p-0 divide-y divide-border">
             {packages.map((pkg) => (
-              <div key={pkg._id} className="flex items-center justify-between px-5 py-4">
-                <div>
+              <div key={pkg._id} className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-4">
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">Version {pkg.versionNumber}</p>
                   <p className="text-xs text-muted-foreground">
                     {pkg.packageDefinitionKey}
                     {pkg.filing?.receiptNumber ? ` · Receipt ${pkg.filing.receiptNumber}` : ''}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className={`badge capitalize ${STATUS_TONE[pkg.status] || 'badge-neutral'}`}>{String(pkg.status || 'unknown').replace(/_/g, ' ')}</span>
                   {pkg.outputs?.mailingPdfDocumentId && (
                     <button

@@ -741,6 +741,8 @@ export default function Documents() {
                 saving={src.savingKey === key}
                 onChange={(nextValue) => src.saveAnswer(question, nextValue)}
                 onFileChange={(uploadedFiles) => src.saveFiles(question, uploadedFiles)}
+                files={src.answerByKey?.get(key)?.files}
+                onRemoveFile={(file) => src.removeFile(question, file)}
               />
               <PrefillBadge
                 meta={src.prefillMeta[key]}
@@ -904,7 +906,7 @@ export default function Documents() {
                 </div>
                 <span className="text-sm font-semibold text-foreground">{overall.done} of {overall.total} complete</span>
               </div>
-              {!allRolesSubmitted && (
+              {!allRolesSubmitted && overall.total > 0 && (
                 <button
                   type="button"
                   onClick={() => setScanStep("scan")}

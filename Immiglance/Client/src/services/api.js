@@ -289,6 +289,7 @@ export const documentsApi = {
       documentType,
       caseId: context.caseId,
       beneficiaryId: context.beneficiaryId,
+      participantId: context.participantId,
       legacySource: "Immiglance",
     }),
   uploadChunk: (uploadId, chunkIndex, chunk, fileName) => {
@@ -665,6 +666,8 @@ export const questionnairesApi = {
     files.forEach((file) => fd.append("files", file));
     return api.post(`/questionnaires/${id}/answers/files`, fd);
   },
+  // Removes ONE entry (by storageKey) from a file question's answer.
+  removeAnswerFile: (id, payload) => api.delete(`/questionnaires/${id}/answers/files`, payload),
   getProgress: (id, params = {}) => {
     const q = new URLSearchParams(params).toString();
     return api.get(`/questionnaires/${id}/progress${q ? "?" + q : ""}`);

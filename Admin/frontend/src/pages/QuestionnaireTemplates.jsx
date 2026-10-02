@@ -640,9 +640,9 @@ export default function QuestionnaireTemplates() {
   const sectionsToRender = sections.length ? sections : (questionsBySection[''] ? [{ key: '', title: '', order: 0 }] : [])
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] -m-6 overflow-hidden">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-5rem)] -m-3 sm:-m-4 lg:-m-6 overflow-hidden">
       {/* ── Left sidebar ─────────────────────────────────────────────── */}
-      <div className="w-72 shrink-0 border-r border-border bg-card flex flex-col">
+      <div className="w-full md:w-72 max-h-48 md:max-h-none shrink-0 border-b md:border-b-0 md:border-r border-border bg-card flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-bold text-foreground">Checklists</h2>
           <button onClick={openCreateWizard} className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700" title="Create checklist">
@@ -701,7 +701,7 @@ export default function QuestionnaireTemplates() {
       </div>
 
       {/* ── Builder area ─────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto relative">
+      <div className="flex-1 min-h-0 overflow-y-auto relative">
         {message && (
           <div className="sticky top-0 z-20 p-3 border-b border-blue-200 bg-blue-50 text-sm font-medium text-blue-700 flex items-center justify-between">
             {message}
@@ -971,7 +971,7 @@ export default function QuestionnaireTemplates() {
 
         {/* Floating right toolbar (Google Forms-style) */}
         {selectedTemplate && !isPublished && (
-          <div className="fixed right-8 top-1/2 -translate-y-1/2 bg-card border border-border rounded-2xl shadow-lg flex flex-col divide-y divide-border z-20">
+          <div className="fixed right-2 sm:right-8 top-1/2 -translate-y-1/2 bg-card border border-border rounded-2xl shadow-lg flex flex-col divide-y divide-border z-20">
             <button onClick={() => beginNewQuestion(sections[sections.length - 1]?.key)} disabled={!sections.length} className="p-3 hover:bg-muted rounded-t-2xl disabled:opacity-30" title="Add question">
               <Plus className="w-5 h-5 text-muted-foreground" />
             </button>
@@ -1214,7 +1214,7 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-6">
+      <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-foreground">Create checklist</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>
@@ -1287,7 +1287,7 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
 // ── Advanced options slide-out ───────────────────────────────────────────
 function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
   return (
-    <div className="fixed inset-y-0 right-0 w-96 bg-card shadow-2xl border-l border-border z-40 overflow-y-auto">
+    <div className="fixed inset-y-0 right-0 w-96 max-w-full bg-card shadow-2xl border-l border-border z-40 overflow-y-auto">
       <div className="p-5 border-b border-border flex items-center justify-between sticky top-0 bg-card">
         <h3 className="font-bold text-foreground">Advanced options</h3>
         <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>

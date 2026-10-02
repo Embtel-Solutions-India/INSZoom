@@ -206,7 +206,7 @@ const Layout = () => {
       <div className="flex-1 flex flex-col min-w-0 bg-background">
         {/* Header */}
         <header className="sticky top-0 z-30 bg-card border-b border-border">
-          <div className="flex items-center gap-4 px-6 py-3">
+          <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-6 py-3">
             <div className="flex items-center gap-3 shrink-0">
               <button
                 onClick={() => setSidebarOpen(true)}
@@ -236,7 +236,7 @@ const Layout = () => {
               </div>
             </form>
 
-            <div className="flex items-center gap-3 ml-auto shrink-0">
+            <div className="flex items-center gap-1 sm:gap-3 ml-auto shrink-0">
               <span className="hidden lg:block text-xs text-muted-foreground font-mono">
                 Snapshot · {snapshotDate}
               </span>
@@ -274,7 +274,7 @@ const Layout = () => {
                 </button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 w-80 bg-popover rounded-lg shadow-none border border-border z-50">
+                  <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-auto mt-0 sm:mt-2 sm:w-80 bg-popover rounded-lg shadow-none border border-border z-50">
                     {/* Header row */}
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                       <h3 className="font-semibold text-popover-foreground">Notifications</h3>
@@ -360,7 +360,7 @@ const Layout = () => {
               </div>
 
               {/* User menu */}
-              <div className="flex items-center gap-3 pl-4 border-l border-border">
+              <div className="flex items-center gap-3 sm:pl-4 sm:border-l border-border">
                 <div className="text-right hidden sm:block">
                   <p className="text-sm font-medium text-foreground">{user?.name}</p>
                   <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace('_', ' ')}</p>
@@ -374,7 +374,7 @@ const Layout = () => {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 lg:p-6">
           <Outlet />
         </main>
       </div>

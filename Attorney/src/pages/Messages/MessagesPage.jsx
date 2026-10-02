@@ -38,7 +38,7 @@ export default function MessagesPage() {
           <ul className="divide-y divide-border">
             {cases.map((item) => (
               <li key={item._id}>
-                <Link to={`/messages/${item._id}`} className="flex items-center justify-between px-5 py-3 hover:bg-secondary transition-colors">
+                <Link to={`/messages/${item._id}`} className="flex items-center justify-between px-4 sm:px-5 py-3 hover:bg-secondary transition-colors">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{item.caseNumber || item.caseId}</p>
                     <p className="text-xs text-muted-foreground truncate">{item.clientName} · {item.visaType}</p>

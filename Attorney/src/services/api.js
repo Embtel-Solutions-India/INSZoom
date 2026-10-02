@@ -158,6 +158,8 @@ export const caseDataApi = {
 export const questionnairesApi = {
   listChecklists: (caseId) => api.get(`/questionnaires/case/${caseId}/checklists`),
   getForCase: (caseId, params = {}) => api.get(`/questionnaires/case/${caseId}`, { params }),
+  // One entry of a multi-entry checklist file row, streamed with the auth header (preview only in this portal).
+  previewAnswerFile: (questionnaireId, params) => api.get(`/questionnaires/${questionnaireId}/answers/files/download`, { params: { ...params, inline: true }, responseType: 'blob' }),
 }
 
 export const notificationsApi = {

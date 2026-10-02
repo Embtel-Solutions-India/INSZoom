@@ -49,7 +49,7 @@ export default function NewTaskModal({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
-      <div className="card w-full max-w-md" onClick={(event) => event.stopPropagation()}>
+      <div className="card w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-foreground font-serif">New Task</h2>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground">
@@ -91,7 +91,7 @@ export default function NewTaskModal({ onClose, onCreated }) {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="task-priority" className="block text-sm font-medium text-foreground mb-1.5">Priority</label>
               <select id="task-priority" value={priority} onChange={(event) => setPriority(event.target.value)} className="input-field capitalize">

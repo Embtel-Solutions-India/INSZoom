@@ -21,7 +21,7 @@ const STEPS = [
 export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExit, onSubmitted, readOnly = false }) {
   const {
     questionnaire, initialLoading, error, sections, questionsBySection, answers, answerByKey,
-    prefillMeta, savingKey, saveAnswer, saveFiles, commitAll, handleAutofillResult, responseId,
+    prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult, responseId,
     questionnaireId, missingRequiredCount, dirty, saveState, lastSavedAt,
   } = qa;
 
@@ -91,6 +91,8 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
           saving={savingKey === key}
           onChange={(nextValue) => saveAnswer(question, nextValue)}
           onFileChange={(uploadedFiles) => saveFiles(question, uploadedFiles)}
+          files={answerByKey.get(key)?.files}
+          onRemoveFile={(file) => removeFile(question, file)}
         />
         {!readOnly && (
           <PrefillBadge

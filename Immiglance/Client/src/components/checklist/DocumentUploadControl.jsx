@@ -1,107 +1,45 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
+import EntryFileList from "./EntryFileList";
 
-// Compact drag-drop + file-picker + thumbnail-list control for one document
-// slot. Deliberately minimal — no label/required/status chrome here, since
-// ChecklistItemRow already renders that as part of the uniform item row.
-export default function DocumentUploadControl({ docId, category, accept = ".pdf,.jpg,.jpeg,.png,.docx,.doc", disabled = false, files = [], onUpload, onRemove }) {
-  const inputRef = useRef();
-  const [drag, setDrag] = useState(false);
+// Multi-entry upload control for one legacy document-baseline slot (backed by
+// Document records grouped by documentType). Deliberately minimal - no
+// label/required/status chrome, since ChecklistItemRow already renders that.
+// Entry list / "Add entry" / 10-file + 50 MB limits live in EntryFileList.
+// `accept` is intentionally no longer applied: any file type is allowed
+// (the server blocks executables).
+export default function DocumentUploadControl({ docId, category, disabled = false, files = [], onUpload, onRemove }) {
   const [uploading, setUploading] = useState(false);
-  const [removingId, setRemovingId] = useState("");
-  const [error, setError] = useState("");
 
-  const uploadFiles = async (fileList) => {
+  const entries = files.map((file) => ({
+    id: file._id,
+    name: file.originalName || file.name || "Document",
+    size: file.size || file.fileSize,
+    mimeType: file.mimeType,
+    url: file.url || file.documentUrl,
+  }));
+
+  const addFiles = async (fileList) => {
     setUploading(true);
-    setError("");
+    let firstError = null;
     for (const file of fileList) {
       try {
         await onUpload(file, category, docId);
       } catch (uploadError) {
-        setError(uploadError.message || "Upload failed. Please try again.");
+        firstError = firstError || uploadError;
       }
     }
     setUploading(false);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setDrag(false);
-    if (disabled) return;
-    uploadFiles(Array.from(event.dataTransfer.files));
-  };
-
-  const handleInput = (event) => {
-    uploadFiles(Array.from(event.target.files));
-    event.target.value = "";
-  };
-
-  const removeFile = async (fileId) => {
-    setRemovingId(fileId);
-    setError("");
-    try {
-      await onRemove(fileId);
-    } catch (removeError) {
-      setError(removeError.message || "Unable to remove this file. Please try again.");
-    } finally {
-      setRemovingId("");
-    }
+    if (firstError) throw firstError;
   };
 
   return (
-    <div>
-      <div
-        onDragOver={(event) => { if (!disabled) { event.preventDefault(); setDrag(true); } }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={handleDrop}
-        onClick={() => !disabled && !uploading && inputRef.current.click()}
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        aria-disabled={disabled}
-        onKeyDown={(event) => { if (!disabled && (event.key === "Enter" || event.key === " ")) inputRef.current.click(); }}
-        className={`flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-4 py-4 text-center transition ${
-          disabled ? "cursor-not-allowed border-border bg-secondary opacity-60" : drag ? "cursor-pointer border-ring bg-accent" : "cursor-pointer border-border bg-secondary hover:bg-secondary/70"
-        }`}
-      >
-        <p className="text-xs font-medium text-muted-foreground">
-          {uploading ? "Uploading…" : disabled ? "Uploads are locked" : (
-            <>Drop a file here or <span className="text-primary underline">browse</span></>
-          )}
-        </p>
-        <p className="text-[0.65rem] text-muted-foreground">{accept.replace(/\./g, "").replace(/,/g, ", ").toUpperCase()}</p>
-        <input ref={inputRef} type="file" id={`upload-${docId}`} name={`upload-${docId}`} multiple accept={accept} onChange={handleInput} className="hidden" disabled={disabled} />
-      </div>
-
-      {error && <p role="alert" className="mt-1.5 text-xs font-semibold text-destructive">{error}</p>}
-
-      {files.length > 0 && (
-        <ul className="mt-2 space-y-1.5">
-          {files.map((file) => {
-            const isImage = /^image\//.test(file.mimeType || "") && file.url;
-            return (
-              <li key={file._id} className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2 text-xs">
-                {isImage ? (
-                  <img src={file.url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
-                ) : (
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-secondary text-muted-foreground">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                  </span>
-                )}
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={file.originalName || file.name}>{file.originalName || file.name}</span>
-                {!disabled && (
-                  <button
-                    type="button"
-                    onClick={() => removeFile(file._id)}
-                    disabled={removingId === file._id}
-                    className="shrink-0 font-semibold text-muted-foreground hover:text-destructive disabled:opacity-50"
-                  >
-                    {removingId === file._id ? "Removing…" : "Remove"}
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
+    <EntryFileList
+      inputId={`upload-${docId}`}
+      entries={entries}
+      disabled={disabled}
+      busy={uploading}
+      onAdd={addFiles}
+      onRemove={(entry) => onRemove(entry.id)}
+    />
   );
 }

@@ -46,7 +46,7 @@ function FieldRow({ extraction, field, onDone }) {
       )}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input
-          className="min-w-[200px] flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm"
+          className="min-w-0 sm:min-w-[200px] flex-1 rounded-lg border border-border bg-card px-3 py-1.5 text-sm"
           value={typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}
           onChange={(event) => setValue(event.target.value)}
           disabled={busy}

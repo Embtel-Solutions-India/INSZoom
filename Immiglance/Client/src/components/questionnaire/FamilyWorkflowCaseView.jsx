@@ -29,9 +29,20 @@ function RoleChecklistGroup({ caseId, targetRole, checklists, roleLabel, readOnl
 
   const qa = useQuestionnaireAnswers(caseId, targetRole, { referenceId: activeReferenceId });
   const active = checklists.find((c) => c.referenceId === activeReferenceId);
-  const effectivelyReadOnly = readOnly || submitted;
+  // A submitted checklist is NOT locked: the client can keep editing and
+  // re-submit, and every edit lands on the same Answer records Admin and the
+  // Attorney Portal read, so all three stay in sync.
+
+  // Submit needs every checklist in this role complete: the active one is
+  // judged live (unsaved edits included), the others from server progress.
+  const otherIncomplete = checklists.filter(
+    (c) => c.referenceId !== activeReferenceId && (c.progress?.answeredRequired || 0) < (c.progress?.totalRequired || 0)
+  );
+  const remainingRequired = qa.missingRequiredCount + otherIncomplete.length;
+  const canSubmit = !qa.initialLoading && !qa.error && remainingRequired === 0 && !qa.uploadsInFlight;
 
   const handleSubmit = async () => {
+    if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -65,22 +76,29 @@ function RoleChecklistGroup({ caseId, targetRole, checklists, roleLabel, readOnl
         </div>
       )}
       <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{roleLabel} — {active?.title}</p>
-      <CaseRoleChecklistView qa={qa} caseId={caseId} readOnly={effectivelyReadOnly} />
+      <CaseRoleChecklistView qa={qa} caseId={caseId} readOnly={readOnly} />
       {!readOnly && onSubmit && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              {submitted ? "Submitted for review" : "Done filling this in?"}
+              {submitted ? "Submitted — you can still make changes and update your submission" : "Done filling this in?"}
             </p>
+            {!canSubmit && remainingRequired > 0 && (
+              <p className="mt-1 text-xs text-slate-500">
+                {qa.missingRequiredCount > 0
+                  ? `${qa.missingRequiredCount} required item${qa.missingRequiredCount === 1 ? "" : "s"} remaining in this checklist`
+                  : `Complete the other ${roleLabel.toLowerCase()} tab${otherIncomplete.length === 1 ? "" : "s"} first`}
+              </p>
+            )}
             {submitError && <p className="mt-1 text-xs font-semibold text-red-600">{submitError}</p>}
           </div>
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={submitted || submitting}
+            disabled={!canSubmit || submitting}
             className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {submitted ? "Submitted" : submitting ? "Submitting…" : "Submit"}
+            {submitting ? "Submitting…" : submitted ? "Update submission" : "Submit"}
           </button>
         </div>
       )}
@@ -116,7 +134,11 @@ export default function FamilyWorkflowCaseView({ activeCase, allowedRoles, onCas
   const beneficiaryProgress = beneficiaryChecklists.length
     ? Math.round(beneficiaryChecklists.reduce((sum, c) => sum + (c.progress?.percent || 0), 0) / beneficiaryChecklists.length)
     : 0;
-  const isPetitionerCompletes = activeCase.familyCompletionMode === "petitioner_completes";
+  // The petitioner fills (and submits) the beneficiary's section unless a real
+  // invite is out - an unset mode (""), which cases created outside the invite
+  // flow have, used to leave this card read-only with no Submit button at all.
+  const beneficiaryInvited = activeCase.familyCompletionMode === "invite_beneficiary" && Boolean(activeCase.beneficiaryInvite?.email || activeCase.beneficiaryUser);
+  const isPetitionerCompletes = !beneficiaryInvited;
   const petitionerSubmitted = activeCase.familyWorkflow?.petitionerStatus === "submitted";
   const beneficiarySubmitted = activeCase.familyWorkflow?.beneficiaryStatus === "submitted";
 
@@ -152,7 +174,7 @@ export default function FamilyWorkflowCaseView({ activeCase, allowedRoles, onCas
 
   return (
     <div className="space-y-6">
-      <FamilyCompletionModeBanner activeCase={activeCase} onChanged={refetchChecklists} />
+      <FamilyCompletionModeBanner activeCase={activeCase} onChanged={async () => { await refetchChecklists(); await onCaseChanged?.(); }} />
 
       {petitionerChecklists.length > 0 ? (
         <RoleChecklistGroup

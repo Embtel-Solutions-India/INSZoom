@@ -118,7 +118,7 @@ export default function LetterSheet({ section, exhibitIndex, isDraft, disabled, 
             <div className="mt-6">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Index of Exhibits</p>
               <p className="mb-3 text-xs text-muted-foreground">This table is derived from the exhibits below and can't be edited directly — reorder exhibits in the outline to change it.</p>
-              <table className="w-full border-collapse text-sm">
+              <div className="overflow-x-auto"><table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead>
                   <tr className="bg-muted">
                     <th className="border border-border px-3 py-2 text-left font-semibold">Exhibit</th>
@@ -133,7 +133,7 @@ export default function LetterSheet({ section, exhibitIndex, isDraft, disabled, 
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )}
           <LetterheadFooter branding={branding} />

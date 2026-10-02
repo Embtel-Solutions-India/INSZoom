@@ -224,14 +224,38 @@ function mappingSourcesForField(field = {}) {
   if (mapping.masterDataPath || field.masterDataPath) sources.push({ source: "masterData", path: mapping.masterDataPath || field.masterDataPath });
   if (mapping.canonicalPath || field.canonicalPath) sources.push({ source: "canonical", path: mapping.canonicalPath || field.canonicalPath });
   for (const item of field.mappings || []) {
+    // Mapping-graph edges (they carry a mappingId - see FormMappingService.applyMappingGraph) are
+    // resolved by resolveMappedValue through MappingResolver, which applies the edge's
+    // condition / transform / fallback; the plain path lookup below would ignore all three.
+    if (isGraphMapping(item)) continue;
     sources.push({ source: item.source || item.from || "canonical", path: item.path || item.sourceField || item.field });
   }
   return sources.filter((item) => item.path || item.value !== undefined);
 }
 
+function isGraphMapping(item) {
+  return Boolean(item && item.mappingId);
+}
+
 function resolveMappedValue(field, context = {}) {
+  // A mapping-graph edge is NOT a plain "read this path" instruction: checkbox edges
+  // are conditional (tick only the box that matches the answer), dates/SSNs/A-numbers/
+  // address parts carry a transform, and shared-graph edges carry a canonical fallback.
+  // Reading the raw path here (this is the fill that runs when a form is opened in the
+  // workspace before any auto-fill ran) put the raw answer in EVERY checkbox of a group,
+  // un-formatted dates, and whole free-text addresses in the street widget - so graph
+  // edges go through the same MappingResolver the auto-fill pipeline uses.
+  const graphMappings = (field.mappings || []).filter(isGraphMapping);
+  for (const mapping of graphMappings) {
+    const result = MappingResolver.resolveMapping(mapping, context.canonical || {}, {});
+    if (!result.skipped && hasValue(result.value)) return { value: result.value, source: "canonical", sourceField: result.sourceField, mappingUsed: mapping };
+  }
   const sources = mappingSourcesForField(field);
-  if (!sources.length) return { value: undefined, source: "unmapped", sourceField: undefined, mappingUsed: null };
+  if (!sources.length) {
+    return graphMappings.length
+      ? { value: undefined, source: "canonical", sourceField: graphMappings[0].sourceField || graphMappings[0].path, mappingUsed: graphMappings[0] }
+      : { value: undefined, source: "unmapped", sourceField: undefined, mappingUsed: null };
+  }
   for (const source of sources) {
     if (source.source === "static") return { value: source.value, source: "static", sourceField: source.path, mappingUsed: source };
     const value = getByPath(context[source.source], source.path);

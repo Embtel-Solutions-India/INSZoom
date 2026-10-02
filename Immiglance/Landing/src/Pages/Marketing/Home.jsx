@@ -116,7 +116,7 @@ function FAQItem({ q, a }) {
     <div className="rounded-xl border border-border bg-card hover:border-primary/30 transition-all duration-200 overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-secondary transition-colors gap-4 cursor-pointer"
+        className="w-full flex items-center justify-between px-4 sm:px-6 py-4 text-left hover:bg-secondary transition-colors gap-4 cursor-pointer"
       >
         <span className="font-semibold text-foreground">{q}</span>
         <span
@@ -130,7 +130,7 @@ function FAQItem({ q, a }) {
         </span>
       </button>
       {isOpen && (
-        <div className="px-6 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-border pt-4 bg-secondary/50">
+        <div className="px-4 sm:px-6 pb-4 text-sm text-muted-foreground leading-relaxed border-t border-border pt-4 bg-secondary/50">
           {a}
         </div>
       )}
@@ -238,7 +238,7 @@ export default function Home() {
         <span className="inline-block mb-6 px-4 py-1.5 rounded-full bg-secondary text-xs font-semibold text-muted-foreground">
           Attorney-managed case evaluation &amp; client portal
         </span>
-        <h1 className="text-4xl sm:text-6xl font-serif font-bold text-foreground leading-[1.05] tracking-tight mb-6 max-w-3xl">
+        <h1 className="text-4xl sm:text-6xl font-serif font-bold text-foreground leading-[1.05] tracking-tight mb-6 max-w-3xl wrap-break-word">
           Your immigration case, at a glance.
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-2xl mb-8">
@@ -509,7 +509,7 @@ export default function Home() {
               </div>
             </div>
             <div>
-              <div className="p-8 sm:p-10 rounded-2xl bg-secondary border border-border h-full flex flex-col justify-center">
+              <div className="p-6 sm:p-10 rounded-2xl bg-secondary border border-border h-full flex flex-col justify-center">
                 <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-3">Still have questions?</h2>
                 <p className="text-muted-foreground mb-6 leading-relaxed">
                   Our team is ready to help. Leave your email and we'll reach out for a free
@@ -522,7 +522,7 @@ export default function Home() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="flex-1 px-4 py-3 rounded-lg border border-border bg-card text-foreground placeholder-muted-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition-all"
+                    className="flex-1 min-w-0 px-4 py-3 rounded-lg border border-border bg-card text-foreground placeholder-muted-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15 transition-all"
                   />
                   <button
                     type="submit"

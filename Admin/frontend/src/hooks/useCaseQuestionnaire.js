@@ -58,7 +58,10 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
   const filesByKey = {}
   state.answers.forEach((answer) => {
     answerMap[answer.questionKey] = answer.value ?? answer.normalizedValue
-    if (answer.files?.length) filesByKey[answer.questionKey] = answer.files
+    // Each entry carries the answer coordinates the viewer/remover need.
+    if (answer.files?.length) {
+      filesByKey[answer.questionKey] = answer.files.map((file) => ({ ...file, responseId: answer.responseId, questionKey: answer.questionKey }))
+    }
   })
 
   // saveAnswers() resolves which response a save belongs to from
@@ -101,6 +104,19 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     await load()
   }, [state.questionnaire, responseId, caseId, targetRole, referenceId, load])
 
+  // Removes ONE entry from a multi-entry file row (staff may always remove).
+  const removeFileAnswer = useCallback(async (file) => {
+    if (!state.questionnaire?._id) throw new Error('Questionnaire not loaded')
+    await questionnairesApi.removeAnswerFile(state.questionnaire._id, {
+      responseId: file.responseId,
+      questionKey: file.questionKey,
+      storageKey: file.storageKey,
+      documentId: file.documentId,
+    })
+    invalidateCachedGet(`/questionnaires/case/${caseId}`)
+    await load()
+  }, [state.questionnaire, caseId, load])
+
   // Scans a document (passport, I-94, ...) with OCR/Document AI; the backend
   // writes the extracted values into this case's answers, then we reload.
   const autofillFromDocument = useCallback(async (documentType, file) => {
@@ -110,5 +126,5 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     return response.data
   }, [caseId, load])
 
-  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer, autofillFromDocument }
+  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer, removeFileAnswer, autofillFromDocument }
 }

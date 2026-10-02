@@ -258,6 +258,7 @@ class MappingGraphService {
         mappingType: edge.mappingType,
         transform: edge.transform,
         condition: edge.condition,
+        fallback: edge.fallback,
         confidence: edge.confidence,
         status: edge.status,
         mappingId: edge.mappingId,

@@ -1,3 +1,5 @@
+const AddressParser = require("./AddressParser");
+
 const COUNTRY_NAMES = {
   usa: "United States",
   us: "United States",
@@ -106,13 +108,35 @@ class MappingResolver {
     return this.compare(currentValue, rule.operator, rule.value);
   }
 
+  // Splits a calendar-date STRING without round-tripping it through Date, so
+  // the result never depends on the server's timezone: "2020-01-15" and
+  // "2020-01-15T00:00:00Z" (ISO) and "01/15/2020" (US) all keep their own
+  // calendar day. (new Date("01/15/2020") is LOCAL midnight; reading it back
+  // with getUTC* shifted the day for any server east of UTC.) Returns null
+  // for anything else so the Date fallback below handles it as before.
+  static calendarParts(value) {
+    if (typeof value !== "string") return null;
+    const text = value.trim();
+    let match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(text);
+    if (match) return { yyyy: match[1], mm: match[2], dd: match[3] };
+    match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
+    if (match) return { yyyy: match[3], mm: match[1].padStart(2, "0"), dd: match[2].padStart(2, "0") };
+    return null;
+  }
+
   static formatDate(value, format = "yyyy-mm-dd") {
     if (!value) return value;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    const yyyy = String(date.getUTCFullYear());
-    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(date.getUTCDate()).padStart(2, "0");
+    let parts = this.calendarParts(value);
+    if (!parts) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      parts = {
+        yyyy: String(date.getUTCFullYear()),
+        mm: String(date.getUTCMonth() + 1).padStart(2, "0"),
+        dd: String(date.getUTCDate()).padStart(2, "0"),
+      };
+    }
+    const { yyyy, mm, dd } = parts;
     if (format === "mm/dd/yyyy") return `${mm}/${dd}/${yyyy}`;
     if (format === "dd/mm/yyyy") return `${dd}/${mm}/${yyyy}`;
     return `${yyyy}-${mm}-${dd}`;
@@ -183,6 +207,52 @@ class MappingResolver {
         const item = collection[index];
         return transform.itemPath ? this.resolvePath(item, transform.itemPath) : item;
       }
+      // --- Family (K-1/K-3) crosswalk transforms. Each is opt-in per edge. ---
+      // Digits only: SSN / A-Number widgets are maxLength 9 with the "A-" /
+      // dashes pre-printed, so "111-22-3333" / "A123456789" would overflow
+      // and be dropped (left blank) by FieldValueFitter at render time.
+      case "digits": {
+        const digits = String(value ?? "").replace(/\D/g, "");
+        return digits || undefined;
+      }
+      // Part of ONE free-text address answer - see AddressParser (never
+      // guesses; returns undefined when the text does not show the part).
+      case "address":
+        return AddressParser.addressPart(value, transform.part);
+      // "USA" / "U.S." -> "United States" (other names pass through unchanged).
+      case "country":
+        return AddressParser.canonicalCountry(value);
+      // "City, Country" answer -> city or country.
+      case "cityCountry": {
+        const parsed = AddressParser.parseCityCountry(value);
+        return parsed ? parsed[transform.part] : undefined;
+      }
+      // A US-state dropdown only ever receives a recognised US state, and
+      // only when the row's country (if any) is the United States - a
+      // foreign province never lands in the State dropdown.
+      case "usState": {
+        if (transform.countryPath) {
+          const country = this.resolvePath(canonicalData, transform.countryPath);
+          if (!this.isEmpty(country) && !AddressParser.isUsCountry(country)) return undefined;
+        }
+        return AddressParser.stateCode(value);
+      }
+      // ...and the free-text Province widget only receives what is NOT a US
+      // state of a US row.
+      case "nonUsProvince": {
+        const country = transform.countryPath ? this.resolvePath(canonicalData, transform.countryPath) : undefined;
+        if (!this.isEmpty(country)) return AddressParser.isUsCountry(country) ? undefined : value;
+        return AddressParser.stateCode(value) ? undefined : value;
+      }
+      // "5, 8" / "5 and 8" -> nth item (children's ages on I-129F Pt1 49).
+      case "listItem": {
+        const items = String(value ?? "").split(/\s*(?:,|;|\band\b|&)\s*/i).map((item) => item.trim()).filter(Boolean);
+        return items[Number(transform.index ?? 0)];
+      }
+      // A fixed value, emitted only when the edge's own condition passed
+      // (e.g. relationship "Child" beside a listed child's name).
+      case "constant":
+        return transform.value;
       case "uppercase":
         return String(value ?? "").toUpperCase();
       case "lowercase":
@@ -253,7 +323,7 @@ class MappingResolver {
     const sourceField = this.getSourcePath(mapping);
     if (value === undefined && sourceField) value = this.resolvePath(canonicalData, sourceField);
     if (value === undefined) value = this.resolveDefaultValue(mapping);
-    if (value === undefined && mapping.fallback) value = this.resolvePath(canonicalData, mapping.fallback);
+    if (this.isEmpty(value) && mapping.fallback) value = this.resolvePath(canonicalData, mapping.fallback);
     if (value !== undefined) value = this.applyTransform(value, mapping, canonicalData);
     if (value === undefined) warnings.push({ code: "MISSING_SOURCE_VALUE", sourceField });
 

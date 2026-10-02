@@ -122,7 +122,7 @@ const EODReports = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">EOD Reports</h1>
           <p className="text-muted-foreground mt-1">Daily, weekly, and monthly staff reports</p>
@@ -269,8 +269,8 @@ const EODReports = () => {
 
       {/* Create Report Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <h3 className="text-xl font-bold text-foreground mb-4">Create EOD Report</h3>
             <form onSubmit={handleCreateReport} className="space-y-4">
               <div>
@@ -347,11 +347,11 @@ const EODReports = () => {
 
       {/* View/Review Report Modal */}
       {selectedReport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-foreground mb-4">Report Details</h3>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Staff</p>
                   <p className="font-medium">{selectedReport.staff?.name || selectedReport.staff?.displayName || selectedReport.staff?.email || 'Staff member'}</p>
@@ -370,7 +370,7 @@ const EODReports = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t">
                 <div className="p-3 bg-blue-50 rounded-lg">
                   <p className="text-sm text-muted-foreground">Cases Worked</p>
                   <p className="text-xl font-bold text-blue-600">{selectedReport.casesWorked}</p>

@@ -181,7 +181,7 @@ const Leads = () => {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="p-2 sm:p-4 lg:p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-muted rounded w-1/4" />
           <div className="h-64 bg-muted rounded" />
@@ -191,7 +191,7 @@ const Leads = () => {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-2 sm:p-4 lg:p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>

@@ -47,7 +47,7 @@ export default function TasksPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-foreground font-serif">Tasks</h1>
         <button onClick={() => setShowNewTask(true)} className="btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" />
@@ -74,8 +74,8 @@ export default function TasksPage() {
         ) : (
           <ul className="divide-y divide-border">
             {tasks.map((task) => (
-              <li key={task._id} className="px-5 py-4 flex items-start justify-between gap-4">
-                <div className="min-w-0">
+              <li key={task._id} className="px-4 py-4 sm:px-5 flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
+                <div className="min-w-0 break-words">
                   <p className="text-sm font-semibold text-foreground">{task.title}</p>
                   {task.description && <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>}
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -97,7 +97,7 @@ export default function TasksPage() {
                   value={task.status}
                   disabled={savingId === task._id}
                   onChange={(event) => updateStatus(task, event.target.value)}
-                  className="input-field w-auto shrink-0 capitalize"
+                  className="input-field w-full sm:w-auto shrink-0 capitalize"
                 >
                   {STATUS_OPTIONS.map((status) => (
                     <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>

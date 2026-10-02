@@ -31,7 +31,7 @@ function IssueRow({ issue, onJump }) {
 export default function ValidationPanel({ validation, onJump }) {
   if (!validation) {
     return (
-      <aside className="w-72 shrink-0 border-l border-border bg-card p-4">
+      <aside className="w-full shrink-0 border-t border-border bg-card p-4 md:w-72 md:border-l md:border-t-0">
         <p className="text-xs text-muted-foreground">Validation not yet available.</p>
       </aside>
     )
@@ -43,7 +43,7 @@ export default function ValidationPanel({ validation, onJump }) {
   const warnings = (validation.issues || []).filter((i) => i.severity === 'warning')
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l border-border bg-card p-4">
+    <aside className="max-h-40 w-full shrink-0 overflow-y-auto border-t border-border bg-card p-4 md:max-h-none md:w-72 md:border-l md:border-t-0">
       <div className={`mb-4 flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${meta.tone}`}>
         <StatusIcon className="h-4 w-4 shrink-0" />
         {meta.label}

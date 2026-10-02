@@ -11,6 +11,7 @@ const User = require("../../../models/User");
 const MappingResolver = require("../../form-mapping/services/MappingResolver");
 const CanonicalMergeService = require("./CanonicalMergeService");
 const { CASE_SCOPED_CANONICAL_PATHS } = require("../config/fieldScope");
+const { isFamilyPartiesCase, partyOf, scopeFamilyPath } = require("../config/familyPartyPaths");
 const {
   EMPLOYER_PROFILE_TO_CANONICAL,
   EMPLOYEE_PROFILE_TO_CANONICAL,
@@ -322,7 +323,7 @@ class CanonicalBuilderService {
     const familyCaseIds = caseRecord.caseRole === "principal" || caseRecord.caseStructure === "family"
       ? [caseRecord._id, ...(caseRecord.childCases || [])]
       : [principalCaseId, caseRecord._id].filter(Boolean);
-    const [beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile] = await Promise.all([
+    const [beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile, petitionerUser] = await Promise.all([
       caseRecord.beneficiary ? Beneficiary.findById(caseRecord.beneficiary).lean() : null,
       caseRecord.companyId ? Company.findById(caseRecord.companyId).lean() : null,
       caseRecord.user ? User.findById(caseRecord.user).select("-password").lean() : null,
@@ -331,8 +332,11 @@ class CanonicalBuilderService {
       DocumentExtraction.find({ caseId }).sort({ updatedAt: -1 }).lean(),
       principalCaseId ? EmployerProfile.findOne({ principalCaseId }).lean() : null,
       ["employee", "beneficiary"].includes(caseRecord.caseRole) ? EmployeeProfile.findOne({ caseId: caseRecord._id }).lean() : null,
+      // Family (K-1/K-3/I-130) cases: the petitioner's OWN account - Case.user is the
+      // beneficiary's account on these cases, so it can never stand in for the petitioner.
+      caseRecord.petitionerUser ? User.findById(caseRecord.petitionerUser).select("email phone name displayName").lean() : null,
     ]);
-    return { caseRecord, beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile };
+    return { caseRecord, beneficiary, company, user, answers, documents, extractions, employerProfile, employeeProfile, petitionerUser };
   }
 
   static addMappedObjectCandidates(candidates, prefix, sourceObject, sourceId, sourceType = "database") {
@@ -357,7 +361,11 @@ class CanonicalBuilderService {
     });
   }
 
-  static addQuestionnaireCandidates(candidates, answers = []) {
+  // options.family: a two-party (petitioner + beneficiary) case - see
+  // config/familyPartyPaths.js. An answer for a party-ambiguous path
+  // (person.* / contact.*) is routed by WHO answered it, never written to
+  // the shared namespace as "the applicant".
+  static addQuestionnaireCandidates(candidates, answers = [], options = {}) {
     answers.forEach((answer) => {
       // question.mapping.canonicalPath is how an admin explicitly wires a
       // custom questionnaire question to the canonical profile (set via the
@@ -366,7 +374,10 @@ class CanonicalBuilderService {
       // only covers a fixed set of well-known keys, so without this an
       // admin-authored question for a new visa type would never reach
       // autofill even though the mapping exists on the question itself.
-      const targetPath = answer.question?.mapping?.canonicalPath || QUESTION_KEY_MAP[answer.questionKey];
+      let targetPath = answer.question?.mapping?.canonicalPath || QUESTION_KEY_MAP[answer.questionKey];
+      if (targetPath && options.family) {
+        targetPath = scopeFamilyPath(targetPath, partyOf(answer.participantRole, answer.questionnaireKey, answer.questionKey));
+      }
       if (!targetPath) return;
       pushCandidate(candidates, targetPath, answer.normalizedValue !== undefined ? answer.normalizedValue : answer.value, {
         sourceType: "questionnaire",
@@ -393,7 +404,12 @@ class CanonicalBuilderService {
     return field.reviewStatus === "auto_accepted";
   }
 
-  static addOcrCandidates(candidates, extractions = []) {
+  // options.family / options.documents: see addQuestionnaireCandidates. An
+  // extraction is attributed to a party by its own participantRole, else its
+  // source Document's, else its document type's name; one that cannot be
+  // attributed never writes a party-ambiguous path.
+  static addOcrCandidates(candidates, extractions = [], options = {}) {
+    const documentsById = new Map((options.documents || []).map((document) => [String(document._id || document.id), document]));
     extractions.forEach((extraction) => {
       const documentType = extraction.documentType || extraction.classification?.documentType || "other";
       (extraction.extractedData || []).forEach((field) => {
@@ -420,7 +436,11 @@ class CanonicalBuilderService {
         if (!this.isOcrFieldCanonicalEligible(field)) return;
         const fieldKey = field.key || field.path;
         const scopedPath = DOC_TYPE_OVERRIDES[documentType]?.[fieldKey];
-        const targetPath = scopedPath || OCR_FIELD_MAP[field.path] || OCR_FIELD_MAP[field.key] || field.canonicalPath;
+        let targetPath = scopedPath || OCR_FIELD_MAP[field.path] || OCR_FIELD_MAP[field.key] || field.canonicalPath;
+        if (targetPath && options.family) {
+          const sourceDocument = documentsById.get(String(extraction.documentId?._id || extraction.documentId));
+          targetPath = scopeFamilyPath(targetPath, partyOf(extraction.participantRole, sourceDocument?.participantRole, extraction.documentType, sourceDocument?.documentType));
+        }
         if (!targetPath) return;
         const value = field.editedValue !== undefined ? field.editedValue : field.value;
         pushCandidate(candidates, targetPath, value, {
@@ -446,8 +466,8 @@ class CanonicalBuilderService {
   // merge codepath: build() below calls addOcrCandidates directly (the
   // pre-existing call site), this alias exists only so callers reading the
   // spec's own vocabulary can find it under either name.
-  static addDocumentExtractionCandidates(candidates, extractions = []) {
-    return this.addOcrCandidates(candidates, extractions);
+  static addDocumentExtractionCandidates(candidates, extractions = [], options = {}) {
+    return this.addOcrCandidates(candidates, extractions, options);
   }
 
   static addProfileCandidates(candidates, profile, pathMap, profileOwner, caseScope = {}) {
@@ -544,7 +564,15 @@ class CanonicalBuilderService {
   static async build(caseId) {
     const sources = await this.loadSources(caseId);
     const candidates = [];
-    this.addMappedObjectCandidates(candidates, "beneficiary", sources.beneficiary, idOf(sources.beneficiary), "database");
+    // Two-party family case: person.*/contact.* = the PETITIONER, beneficiary.* =
+    // the beneficiary (config/familyPartyPaths.js). Nothing about the beneficiary
+    // may be written to person.*/contact.*, and nothing from the beneficiary's
+    // account may stand in for the petitioner.
+    const family = isFamilyPartiesCase(sources.caseRecord);
+    // The shared Beneficiary document maps onto person.* for a single-applicant
+    // case; on a family case that would write the BENEFICIARY into the
+    // petitioner's slots (it still reaches profile.beneficiary.* below).
+    if (!family) this.addMappedObjectCandidates(candidates, "beneficiary", sources.beneficiary, idOf(sources.beneficiary), "database");
     this.addMappedObjectCandidates(candidates, "case", sources.caseRecord, idOf(sources.caseRecord), "database");
     this.addMappedObjectCandidates(candidates, "company", sources.company, idOf(sources.company), "database");
     const principalCaseId = sources.caseRecord.caseRole === "employee" || sources.caseRecord.caseRole === "beneficiary"
@@ -557,12 +585,16 @@ class CanonicalBuilderService {
         principalCaseId: String(sources.caseRecord.parentCase || ""),
       });
     }
-    if (sources.user) {
-      pushCandidate(candidates, "contact.email", sources.user.email, { sourceType: "database", sourceId: sources.user._id, sourceField: "user.email", confidence: 75 });
-      pushCandidate(candidates, "person.fullName", sources.user.name || sources.user.displayName, { sourceType: "database", sourceId: sources.user._id, sourceField: "user.name", confidence: 65 });
+    // Case.user is the beneficiary's account on a family case (createFamilyCase), so
+    // the account that describes person.*/contact.* there is the petitioner's own.
+    const accountUser = family ? sources.petitionerUser : sources.user;
+    if (accountUser) {
+      pushCandidate(candidates, "contact.email", accountUser.email, { sourceType: "database", sourceId: accountUser._id, sourceField: "user.email", confidence: 75 });
+      pushCandidate(candidates, "person.fullName", accountUser.name || accountUser.displayName, { sourceType: "database", sourceId: accountUser._id, sourceField: "user.name", confidence: 65 });
+      if (family) pushCandidate(candidates, "contact.phone", accountUser.phone, { sourceType: "database", sourceId: accountUser._id, sourceField: "user.phone", confidence: 70 });
     }
-    this.addQuestionnaireCandidates(candidates, sources.answers);
-    this.addOcrCandidates(candidates, sources.extractions);
+    this.addQuestionnaireCandidates(candidates, sources.answers, { family });
+    this.addOcrCandidates(candidates, sources.extractions, { family, documents: sources.documents });
     const merged = CanonicalMergeService.merge(candidates);
     // F-4: two canonical paths CanonicalSectionValidators.js requires have no
     // real question anywhere in h1b_employee_checklist to source them from -
@@ -593,7 +625,12 @@ class CanonicalBuilderService {
     // of replacing keeps the merged questionnaire-derived fields, while a
     // real Beneficiary document still takes precedence for whichever
     // fields IT defines.
-    merged.profile.beneficiary = { ...(merged.profile.beneficiary || {}), ...rawCollections.beneficiary };
+    // Family case: THIS case's own beneficiary answers/OCR beat the shared Beneficiary
+    // record (which is many-cases-to-one, may be blank or stale for a field, and only
+    // carries the fullName/email the case manager typed at creation).
+    merged.profile.beneficiary = family
+      ? { ...rawCollections.beneficiary, ...(merged.profile.beneficiary || {}) }
+      : { ...(merged.profile.beneficiary || {}), ...rawCollections.beneficiary };
     // Same overwrite bug as company.* (below), plus PetitionerValidator
     // (CanonicalSectionValidators.js) requires petitioner.name for every
     // non-family visa unconditionally - for a company-sponsored petition
@@ -603,6 +640,15 @@ class CanonicalBuilderService {
     merged.profile.petitioner = { ...(merged.profile.petitioner || {}), ...rawCollections.petitioner };
     if (!merged.profile.petitioner.name && sources.caseRecord.caseStructure === "employer_employee") {
       merged.profile.petitioner.name = merged.profile.company?.name;
+    }
+    // Family case: the petitioner's own contact details (I-129F Part 5, I-134 sponsor,
+    // ...). The beneficiary's email/phone live on profile.beneficiary.*.
+    if (family && sources.petitionerUser) {
+      const account = sources.petitionerUser;
+      const petitionerName = account.displayName || account.name;
+      if (account.email) merged.profile.petitioner.email = account.email;
+      if (account.phone) merged.profile.petitioner.phone = account.phone;
+      if (petitionerName && !merged.profile.petitioner.name) merged.profile.petitioner.name = petitionerName;
     }
     // F-4 fix (N2): rawCollections.company comes from the OLD Company model
     // (caseRecord.companyId) - always {} for an employer/employee (Phase 9)

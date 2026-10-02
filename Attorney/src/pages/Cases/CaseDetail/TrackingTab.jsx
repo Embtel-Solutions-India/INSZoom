@@ -7,7 +7,7 @@ function Field({ label, value }) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
-      <p className="text-sm text-foreground">{value || '—'}</p>
+      <p className="text-sm text-foreground break-words">{value || '—'}</p>
     </div>
   )
 }

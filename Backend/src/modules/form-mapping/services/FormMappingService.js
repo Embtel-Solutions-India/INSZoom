@@ -21,6 +21,11 @@ class FormMappingService {
         mappingType: edge.mappingType,
         transform: edge.transform,
         condition: edge.condition,
+        // Optional canonical path read ONLY when the primary sourcePath resolves to nothing
+        // (MappingResolver.resolveMapping already honours mapping.fallback). Used by the
+        // shared I-130 graph so K-3 reads its role-keyed answers first and the I-130
+        // family checklists (IR/CR/F) keep working through the canonical profile.
+        fallback: edge.fallback,
         repeatable: edge.repeatable,
         profileOwner: edge.profileOwner,
         allowsOccurrenceOverride: edge.allowsOccurrenceOverride === true,

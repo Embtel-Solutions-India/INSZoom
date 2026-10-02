@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import EntryFileList from "../checklist/EntryFileList";
 import { documentIntelligenceApi } from "../../services/api";
 import { IconSparkles } from "../../utils/iconComponents";
 import {
@@ -128,7 +129,7 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
 // The one field+file+repeating-group renderer for every question type a
 // Questionnaire template can define. Used exclusively by
 // QuestionnaireRenderer — nothing else should hand-code per-type question JSX.
-export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange }) {
+export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange, files, onRemoveFile }) {
   const type = normalizeType(question);
   const options = normalizeOptions(question.options);
 
@@ -242,12 +243,27 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
   }
 
   if (type === "file") {
-    const multiple = question?.metadata?.requestedType === "file-multiple" || question?.metadata?.multiple || question?.fileConstraints?.maxFiles > 1;
+    // Every file question is multi-entry (max 10 files, 50 MB each): entries
+    // come from the saved Answer.files; new uploads APPEND server-side.
+    const entries = (Array.isArray(files) ? files : []).map((file) => ({
+      id: file.storageKey || String(file.documentId || file.originalName),
+      name: file.originalName || "Document",
+      size: file.size,
+      mimeType: file.mimeType,
+      url: file.url,
+      raw: file,
+    }));
     return (
       <div className="space-y-2">
-        <input id={question.key} name={question.key} className={INPUT_CLASS} type="file" multiple={multiple} disabled={disabled} onChange={(event) => onFileChange(Array.from(event.target.files || []))} />
-        {Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-slate-500">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
-        {saving && <p className="text-xs font-bold text-emerald-600">Uploading files...</p>}
+        <EntryFileList
+          inputId={question.key}
+          entries={entries}
+          disabled={disabled}
+          busy={Boolean(saving)}
+          onAdd={(picked) => onFileChange(picked)}
+          onRemove={(entry) => onRemoveFile?.(entry.raw)}
+        />
+        {!entries.length && Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-slate-500">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
       </div>
     );
   }

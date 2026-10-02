@@ -103,21 +103,21 @@ export default function CaseDetailLayout() {
         <ArrowLeft className="w-4 h-4" /> Back to my cases
       </Link>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground font-serif">{caseData.caseNumber || caseData.caseId}</h1>
+      <div className="flex items-start sm:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-foreground font-serif break-words">{caseData.caseNumber || caseData.caseId}</h1>
           <p className="text-sm text-muted-foreground">{caseData.clientName} · {caseData.visaType}</p>
         </div>
-        <CaseStatusBadge status={caseData.status} />
+        <div className="shrink-0"><CaseStatusBadge status={caseData.status} /></div>
       </div>
 
-      <nav className="flex gap-1 border-b border-border overflow-x-auto">
+      <nav className="flex gap-1 border-b border-border overflow-x-auto overflow-y-hidden -mx-1 px-1 sm:mx-0 sm:px-0">
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             className={({ isActive }) =>
-              `px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+              `px-3 sm:px-4 py-2.5 sm:py-2 text-sm font-medium whitespace-nowrap shrink-0 border-b-2 -mb-px transition-colors ${
                 isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`
             }

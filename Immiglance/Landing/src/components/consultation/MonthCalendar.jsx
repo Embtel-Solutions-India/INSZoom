@@ -28,11 +28,11 @@ export default function MonthCalendar({ availableDateKeys, selectedDate, onSelec
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <button type="button" onClick={() => changeMonth(-1)} aria-label="Previous month" className="w-8 h-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
+        <button type="button" onClick={() => changeMonth(-1)} aria-label="Previous month" className="w-10 h-10 sm:w-8 sm:h-8rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
         </button>
         <p className="font-bold text-foreground text-sm">{viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
-        <button type="button" onClick={() => changeMonth(1)} aria-label="Next month" className="w-8 h-8 rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
+        <button type="button" onClick={() => changeMonth(1)} aria-label="Next month" className="w-10 h-10 sm:w-8 sm:h-8rounded-lg hover:bg-secondary flex items-center justify-center text-muted-foreground cursor-pointer">
           <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>

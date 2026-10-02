@@ -802,7 +802,7 @@ const USCISForms = () => {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-border">
+      <div className="flex gap-2 border-b border-border overflow-x-auto whitespace-nowrap [&>button]:shrink-0">
         <button
           onClick={() => setActiveTab('templates')}
           className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -868,7 +868,7 @@ const USCISForms = () => {
               )}
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[640px]">
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form</th>
@@ -1034,7 +1034,7 @@ const USCISForms = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form Number</th>
@@ -1217,7 +1217,7 @@ const USCISForms = () => {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-muted-foreground">Case Number</th>
@@ -1276,7 +1276,7 @@ const USCISForms = () => {
       {/* Upload → analyze → review → publish → activate */}
       {showImportPdfModal && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-xl font-bold text-foreground">Add Official USCIS PDF</h3>
@@ -1527,7 +1527,7 @@ const USCISForms = () => {
         const checksum = getChecksum(template)
         return (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-card rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto space-y-6">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-xl font-bold text-foreground">{getFormNumber(template)}</h3>
@@ -1733,7 +1733,7 @@ const USCISForms = () => {
                 ) : mappings.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No visa mappings — this form is never auto-assigned to a case.</p>
                 ) : (
-                  <table className="w-full">
+                  <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b border-border">
                         <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Visa</th>
@@ -1779,7 +1779,7 @@ const USCISForms = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
 
                 {isAdmin && mappingDraft && (
@@ -1879,7 +1879,7 @@ const USCISForms = () => {
                 ) : detailVersions.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No other versions recorded for this form.</p>
                 ) : (
-                  <table className="w-full">
+                  <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b border-border">
                         <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Version</th>
@@ -1902,7 +1902,7 @@ const USCISForms = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 )}
               </div>
             </div>
@@ -1912,8 +1912,8 @@ const USCISForms = () => {
 
       {/* Import Definition Modal */}
       {showImportDefinitionModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-xl font-bold text-foreground">Import USCIS Form Definition</h3>
@@ -1954,8 +1954,8 @@ const USCISForms = () => {
 
       {/* Add Template Modal */}
       {showAddTemplateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-foreground">Add Form Template</h3>
               <button onClick={() => setShowAddTemplateModal(false)} className="text-muted-foreground hover:text-muted-foreground">
@@ -1963,7 +1963,7 @@ const USCISForms = () => {
               </button>
             </div>
             <form onSubmit={handleCreateTemplate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">Form Code</label>
                   <input
@@ -2005,7 +2005,7 @@ const USCISForms = () => {
                   className="input-field min-h-[80px]"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">Edition Date</label>
                   <input
@@ -2052,8 +2052,8 @@ const USCISForms = () => {
 
       {/* Edit Template Modal */}
       {showEditTemplateModal && selectedTemplate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-foreground">Edit Form Template</h3>
               <button onClick={() => setShowEditTemplateModal(false)} className="text-muted-foreground hover:text-muted-foreground">
@@ -2061,7 +2061,7 @@ const USCISForms = () => {
               </button>
             </div>
             <form onSubmit={handleUpdateTemplate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">Form Code</label>
                   <input
@@ -2101,7 +2101,7 @@ const USCISForms = () => {
                   className="input-field min-h-[80px]"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-muted-foreground mb-1">Edition Date</label>
                   <input
@@ -2148,8 +2148,8 @@ const USCISForms = () => {
 
       {/* Fill Form Modal */}
       {showFillFormModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-foreground">Fill Form for Case</h3>
               <button onClick={() => setShowFillFormModal(false)} className="text-muted-foreground hover:text-muted-foreground">
@@ -2204,8 +2204,8 @@ const USCISForms = () => {
 
       {/* View Form Modal */}
       {showViewFormModal && selectedCaseForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-foreground">Case Form Details</h3>
               <button onClick={() => setShowViewFormModal(false)} className="text-muted-foreground hover:text-muted-foreground">
@@ -2213,7 +2213,7 @@ const USCISForms = () => {
               </button>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Form Code</p>
                   <p className="font-medium">{selectedCaseForm.formCode}</p>

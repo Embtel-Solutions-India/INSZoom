@@ -15,6 +15,7 @@
 
 import { useState } from 'react'
 import { Pencil, X, Loader2, Paperclip, ScanLine } from 'lucide-react'
+import { questionnairesApi } from '../services/api'
 
 const EDITABLE_SCALAR_TYPES = new Set([
   'text', 'textarea', 'number', 'currency', 'percent', 'date', 'datetime',
@@ -148,44 +149,115 @@ function RepeatingGroupRows({ question, rows: rawRows }) {
   )
 }
 
-function FileAnswerRow({ question, files, onReplace }) {
+const MAX_FILES_PER_ROW = 10
+const MAX_FILE_BYTES = 50 * 1024 * 1024
+const BLOCKED_EXTENSIONS = /\.(exe|dll|msi|com|scr|pif|cpl|sys|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|hta|jar|app|apk|ipa|dmg|pkg|deb|rpm|sh|bash|run|bin|reg|lnk|inf|html?|xhtml|svg)$/i
+
+function formatFileSize(bytes = 0) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`
+  return bytes ? `${bytes} B` : ''
+}
+
+// One checklist row with ALL of its entries. Each entry is labelled
+// "<question label> 1", "<question label> 2", ... and can be viewed/downloaded
+// (fetched with the auth header - the stored /storage url is not publicly
+// served). Staff can add entries (up to 10, 50 MB each) and remove one.
+// Review: per-file approve/reject lives on each file's Documents record (the
+// Uploaded Documents table); the row-level answer status is unchanged.
+function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove }) {
   const [uploading, setUploading] = useState(false)
+  const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
   const current = files || []
-  const handleFile = async (event) => {
-    const file = event.target.files?.[0]
+  const full = current.length >= MAX_FILES_PER_ROW
+
+  const handleFiles = async (event) => {
+    const picked = Array.from(event.target.files || [])
     event.target.value = ''
-    if (!file) return
+    if (!picked.length) return
+    const problems = []
+    const accepted = []
+    picked.forEach((file) => {
+      if (BLOCKED_EXTENSIONS.test(file.name)) problems.push(`"${file.name}" is not an allowed file type.`)
+      else if (file.size > MAX_FILE_BYTES) problems.push(`"${file.name}" is over the 50 MB per-file limit.`)
+      else if (current.length + accepted.length >= MAX_FILES_PER_ROW) problems.push(`Only ${MAX_FILES_PER_ROW} entries are allowed per row - "${file.name}" was not added.`)
+      else accepted.push(file)
+    })
+    setError(problems.join(' '))
+    if (!accepted.length) return
     setUploading(true)
-    setError('')
     try {
-      await onReplace(question.key, file)
+      for (const file of accepted) await onAdd(question.key, file)
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Upload failed')
     } finally {
       setUploading(false)
     }
   }
+
+  const openEntry = async (file, download) => {
+    setBusyKey(file.storageKey)
+    setError('')
+    try {
+      const response = await questionnairesApi.downloadAnswerFile(questionnaireId, {
+        responseId: file.responseId, questionKey: file.questionKey, storageKey: file.storageKey, inline: !download,
+      })
+      const url = URL.createObjectURL(response.data)
+      if (download) {
+        const link = document.createElement('a')
+        link.href = url
+        link.download = file.originalName || 'document'
+        link.click()
+      } else {
+        window.open(url, '_blank', 'noopener')
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch (err) {
+      setError('Unable to open this file.')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
+  const removeEntry = async (file) => {
+    setBusyKey(file.storageKey)
+    setError('')
+    try {
+      await onRemove(file)
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Unable to remove this entry')
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   return (
     <div className="rounded-lg border border-border bg-muted p-3 text-sm">
-      <p className="font-semibold text-foreground mb-1">{question.label}</p>
+      <p className="font-semibold text-foreground mb-1">{question.label}{current.length > 1 ? ` (${current.length})` : ''}</p>
       {current.length ? (
-        <ul className="space-y-1">
+        <ul className="space-y-1.5">
           {current.map((file, index) => (
-            <li key={file.storageKey || index} className="flex items-center gap-1 text-muted-foreground">
+            <li key={file.storageKey || index} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
               <Paperclip className="h-3.5 w-3.5 shrink-0" />
-              {file.url ? <a href={file.url} target="_blank" rel="noreferrer" className="hover:underline">{file.originalName}</a> : <span>{file.originalName}</span>}
+              <span className="font-medium text-foreground">{question.label} {index + 1}</span>
+              <span className="min-w-0 break-all text-xs">{file.originalName}{formatFileSize(file.size) ? ` · ${formatFileSize(file.size)}` : ''}</span>
+              <span className="ml-auto flex shrink-0 items-center gap-2 text-xs font-semibold">
+                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, false)} className="hover:underline disabled:opacity-50">View</button>
+                <button type="button" disabled={busyKey === file.storageKey} onClick={() => openEntry(file, true)} className="hover:underline disabled:opacity-50">Download</button>
+                {onRemove && <button type="button" disabled={busyKey === file.storageKey} onClick={() => removeEntry(file)} className="text-red-600 hover:underline disabled:opacity-50">Remove</button>}
+              </span>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-muted-foreground">Needed</p>
       )}
-      {onReplace && (
-        <label className="mt-2 inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+      {onAdd && (
+        <label className={`mt-2 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 ${full || uploading ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-slate-50'}`}>
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
-          {current.length ? 'Replace file' : 'Upload file'}
-          <input type="file" className="hidden" onChange={handleFile} disabled={uploading} />
+          {full ? `Maximum ${MAX_FILES_PER_ROW} entries` : current.length ? 'Add entry' : 'Upload file'}
+          <input type="file" multiple className="hidden" onChange={handleFiles} disabled={uploading || full} />
         </label>
       )}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
@@ -228,7 +300,7 @@ function PassportScanButton({ onAutofill }) {
 
 const PASSPORT_FIELD_KEY = /_passportNumber$/
 
-export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile, onAutofill }) {
+export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile, onRemoveFile, onAutofill }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({})
   const [saving, setSaving] = useState(false)
@@ -350,7 +422,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
               {fileQuestions.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                   {fileQuestions.map((question) => (
-                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} onReplace={onSaveFile} />
+                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} />
                   ))}
                 </div>
               )}

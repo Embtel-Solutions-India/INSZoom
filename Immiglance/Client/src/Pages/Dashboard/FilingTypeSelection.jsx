@@ -83,7 +83,7 @@ export default function FilingTypeSelection() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
+      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
 
       {(grouped.transitions || []).length > 0 && (
         <section className="rounded-2xl border border-border bg-card p-5">

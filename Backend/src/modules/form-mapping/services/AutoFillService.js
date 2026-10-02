@@ -295,6 +295,25 @@ class AutoFillService {
     };
   }
 
+  // A CaseForm is provisioned (ensureAssignedForms) with its mapping version LOCKED
+  // to whatever was active at that moment, and generate() reads the lock, not the
+  // template's active version. Provisioning happens at case creation - long before
+  // anything is generated - so a mapping (re)seeded afterwards (the K-1/K-3
+  // crosswalks, a fixed edge) never reached a form that had not been generated yet:
+  // it kept rendering from the stale lock, i.e. blank. The lock exists to keep a
+  // form's *produced/reviewed data* stable across mapping changes, so it is only
+  // honoured once there is something to keep: relock to the active mapping when
+  // the form has never been generated, or when an explicit regenerate/refresh hits
+  // an untouched, unlocked form (no manual override, no field review).
+  static shouldRelockMapping(caseForm, options = {}) {
+    if (!caseForm || caseForm.isLocked) return false;
+    if ((caseForm.versionNumber || 0) === 0) return true;
+    if (!options.regenerate) return false;
+    if (!["pending", "draft", "ai_filled"].includes(caseForm.status)) return false;
+    const hasKeys = (value) => Object.keys((value && typeof value.toObject === "function" ? value.toObject() : value) || {}).length > 0;
+    return !hasKeys(caseForm.manualOverrides) && !hasKeys(caseForm.fieldReviews);
+  }
+
   static async findCaseForm(caseId, formType) {
     const normalizedFormType = FormMappingService.normalizeFormType(formType);
     return CaseForm.findOne({ caseId, formCode: normalizedFormType }).sort({ updatedAt: -1 });
@@ -304,11 +323,13 @@ class AutoFillService {
     const existingCaseForm = await this.findCaseForm(caseId, formType);
     let template;
     let usingBiographicTier = false;
+    let relockedMapping = false;
     if (existingCaseForm?.formTemplateId) {
       template = await existingCaseForm.populate({ path: "formTemplateId", select: "-definition" }).then((item) => item.formTemplateId.toObject());
+      relockedMapping = this.shouldRelockMapping(existingCaseForm, options);
       const lockedMapping = await FormMappingService.loadMappingVersion(
         template,
-        existingCaseForm.formVersionLock?.mappingVersionId || existingCaseForm.mappingVersionId,
+        relockedMapping ? undefined : (existingCaseForm.formVersionLock?.mappingVersionId || existingCaseForm.mappingVersionId),
       );
       template = FormMappingService.applyMappingGraph(template, lockedMapping);
       usingBiographicTier = template.mappingStatus === "biographic_active";
@@ -406,6 +427,11 @@ class AutoFillService {
     caseForm.set("formEditionDate", template.editionDate);
     caseForm.set("mappingVersion", template.mappingVersion || 0);
     caseForm.set("mappingVersionId", template.mappingVersionId || template.activeMappingVersionId || template.latestMappingVersionId);
+    if (relockedMapping) {
+      // Move the version lock itself (what generate()/the review workspace read) to the mapping just used.
+      caseForm.set("formVersionLock.mappingVersion", template.mappingVersion || 0);
+      caseForm.set("formVersionLock.mappingVersionId", template.mappingVersionId || template.activeMappingVersionId || template.latestMappingVersionId);
+    }
     caseForm.set("validationVersion", template.validationVersion || 0);
     caseForm.set("renderingVersion", template.renderingVersion || 0);
     caseForm.set("filledData", merged.filledData);
