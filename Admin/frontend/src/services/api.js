@@ -303,6 +303,13 @@ export const lifecycleApi = {
   saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),
 }
 
+// Generic staff "Request information" flow (recipient selector + per-person checklist row).
+export const informationRequestsApi = {
+  recipients: (caseId) => api.get(`/cases/${caseId}/information-requests/recipients`),
+  list: (caseId) => api.get(`/cases/${caseId}/information-requests`),
+  create: (caseId, payload) => api.post(`/cases/${caseId}/information-requests`, payload),
+}
+
 export const employmentWorkflowApi = {
   createRequest: (caseId, payload) => api.post(`/employment-workflow/${caseId}/requests`, payload),
 }

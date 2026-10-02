@@ -33,7 +33,7 @@ const TYPE_RULES = {
   document_uploaded: { priority: "medium", channels: ["in_app"] },
   document_approved: { priority: "medium", channels: ["in_app"] },
   document_rejected: { priority: "high", channels: ["in_app", "push"] },
-  additional_information_requested: { priority: "high", channels: ["in_app", "push"] },
+  additional_information_requested: { priority: "high", channels: ["in_app", "push", "email"] },
   petition_draft_completed: { priority: "medium", channels: ["in_app"] },
   petition_filed: { priority: "high", channels: ["in_app", "push", "email"] },
   receipt_number_generated: { priority: "high", channels: ["in_app", "push", "email"] },

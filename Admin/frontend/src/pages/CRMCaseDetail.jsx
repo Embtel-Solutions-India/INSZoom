@@ -3,8 +3,9 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, employmentWorkflowApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
+import InformationRequestPanel from '../components/InformationRequestPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
@@ -667,14 +668,6 @@ const CRMCaseDetail = () => {
   const [selectedPaymentId, setSelectedPaymentId] = useState('')
   const [showCreateLetterModal, setShowCreateLetterModal] = useState(false)
   const [letterType, setLetterType] = useState('')
-  const [infoRequestForm, setInfoRequestForm] = useState({
-    target: 'employee',
-    requestType: 'profile',
-    title: '',
-    description: '',
-  })
-  const [infoRequestMessage, setInfoRequestMessage] = useState('')
-  const [sendingInfoRequest, setSendingInfoRequest] = useState(false)
 
   const STAGES = ['intake', 'strategy', 'evidence', 'letters', 'form_preparation', 'filing', 'uscis_pending', 'approved', 'denied']
   const normalizedRole = String(user?.role || '').toLowerCase().replace(/[\s-]+/g, '_')
@@ -801,30 +794,6 @@ const CRMCaseDetail = () => {
   const handleRemoveEmployee = (childCaseId) => {
     if (!window.confirm('Remove this employee from the matter? Their data is kept and this can be undone.')) return
     runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed')
-  }
-
-  const handleCreateInformationRequest = async () => {
-    if (!infoRequestForm.title.trim()) {
-      setInfoRequestMessage('Add a request title before sending.')
-      return
-    }
-    try {
-      setSendingInfoRequest(true)
-      setInfoRequestMessage('')
-      const response = await employmentWorkflowApi.createRequest(id, infoRequestForm)
-      setCaseData(response.data.case || caseData)
-      setInfoRequestForm({
-        target: 'employee',
-        requestType: 'profile',
-        title: '',
-        description: '',
-      })
-      setInfoRequestMessage('Information request sent and task created.')
-    } catch (error) {
-      setInfoRequestMessage(error.response?.data?.message || 'Unable to send information request.')
-    } finally {
-      setSendingInfoRequest(false)
-    }
   }
 
   const fetchDocuments = useCallback(async (force = false) => {
@@ -1570,82 +1539,13 @@ const CRMCaseDetail = () => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
   }
 
-  const renderInformationRequestsPanel = () => {
-    const requests = caseData?.informationRequests || []
-    return (
-      <div className="card">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-foreground">Request Missing Information</h3>
-            <p className="text-sm text-muted-foreground">Send employee or employer tasks from this case review.</p>
-          </div>
-          <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-muted-foreground">
-            {requests.filter((request) => request.status !== 'completed').length} open
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <select
-            value={infoRequestForm.target}
-            onChange={(event) => setInfoRequestForm((current) => ({ ...current, target: event.target.value }))}
-            className="input-field"
-          >
-            <option value="employee">Employee</option>
-            <option value="employer">Employer</option>
-          </select>
-          <select
-            value={infoRequestForm.requestType}
-            onChange={(event) => setInfoRequestForm((current) => ({ ...current, requestType: event.target.value }))}
-            className="input-field"
-          >
-            <option value="profile">Profile information</option>
-            <option value="questionnaire">Questionnaire</option>
-            <option value="document">Document</option>
-            <option value="approval">Approval</option>
-          </select>
-          <input
-            value={infoRequestForm.title}
-            onChange={(event) => setInfoRequestForm((current) => ({ ...current, title: event.target.value }))}
-            className="input-field md:col-span-2"
-            placeholder="Example: Upload clearer passport"
-          />
-          <textarea
-            value={infoRequestForm.description}
-            onChange={(event) => setInfoRequestForm((current) => ({ ...current, description: event.target.value }))}
-            className="input-field md:col-span-3 min-h-[88px]"
-            placeholder="Add details for the employee or employer..."
-          />
-          <button
-            type="button"
-            onClick={handleCreateInformationRequest}
-            disabled={sendingInfoRequest}
-            className="btn-primary self-start md:self-stretch"
-          >
-            {sendingInfoRequest ? 'Sending...' : 'Send Request'}
-          </button>
-        </div>
-        {infoRequestMessage && (
-          <p className="mt-3 text-sm font-medium text-muted-foreground">{infoRequestMessage}</p>
-        )}
-
-        {requests.length > 0 && (
-          <div className="mt-5 space-y-2">
-            {requests.slice().reverse().slice(0, 5).map((request, index) => (
-              <div key={request._id || index} className="rounded-lg border border-border bg-muted px-3 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground">{request.title}</p>
-                  <span className="rounded-full bg-card px-2 py-1 text-[11px] font-bold uppercase text-muted-foreground">
-                    {request.target} · {String(request.status || 'open').replace(/_/g, ' ')}
-                  </span>
-                </div>
-                {request.description && <p className="mt-1 text-sm text-muted-foreground">{request.description}</p>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
+  const renderInformationRequestsPanel = () => (
+    <InformationRequestPanel
+      caseId={id}
+      caseData={caseData}
+      onCaseUpdated={(updated) => updated && setCaseData(updated)}
+    />
+  )
 
   const getClientProfileEntries = () => {
     const profile = intakeBundle?.client || caseData?.clientProfile || {}

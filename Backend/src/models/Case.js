@@ -274,6 +274,11 @@ const questionnaireReferenceSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     sentBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     notes: String,
+    // True for the per-case/per-participant "Additional Requested Information"
+    // checklist created by modules/information-requests. Never the default
+    // checklist for its role (see getQuestionnaireForCase) - only reachable by
+    // an explicit referenceId, so it can't hijack the role's primary checklist.
+    staffRequest: { type: Boolean, default: false },
   },
   { _id: true }
 );
@@ -376,11 +381,25 @@ const participantApprovalSchema = new mongoose.Schema(
 
 const informationRequestSchema = new mongoose.Schema(
   {
-    target: { type: String, enum: ["employer", "employee"], required: true, index: true },
+    // "petitioner"/"beneficiary"/"joint_sponsor"/"client" are additive - used
+    // by the generic staff "Request information" flow (modules/information-requests).
+    target: { type: String, enum: ["employer", "employee", "petitioner", "beneficiary", "joint_sponsor", "client"], required: true, index: true },
     title: { type: String, required: true },
     description: String,
     requestType: { type: String, enum: ["profile", "questionnaire", "document", "approval", "other"], default: "other", index: true },
     documentType: String,
+    // Generic staff-request fields (all optional; legacy employer/employee requests leave them unset).
+    // questionKey/questionnaireId point at the Question appended to the recipient's
+    // per-case "Additional Requested Information" checklist.
+    itemKind: { type: String, enum: ["document", "text", "textarea", "number", "date", "yes_no", "select", ""], default: "" },
+    documentCategory: String,
+    options: [String],
+    recipientRole: String,
+    recipientName: String,
+    recipientEmail: String,
+    questionnaireId: { type: mongoose.Schema.Types.ObjectId },
+    questionKey: String,
+    referenceId: { type: mongoose.Schema.Types.ObjectId },
     status: { type: String, enum: ["open", "submitted", "approved", "rejected", "closed"], default: "open", index: true },
     dueDate: Date,
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
