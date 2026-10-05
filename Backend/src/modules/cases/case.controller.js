@@ -1301,6 +1301,7 @@ exports.createCase = async (req, res, next) => {
           emailData: {
             clientName: trimmedClientName,
             caseNumber: principalCase.caseNumber,
+            visaType: principalCase.visaType,
             token: setupToken,
           },
         }, req.user, req).catch(() => null);
@@ -3305,7 +3306,7 @@ exports.createCaseWithClient = async (req, res, next) => {
     const inviteToken = await clientInviteService.createClientInviteToken(newUser);
     await emailService.sendTemplateEmail("client-portal-invitation", {
       to: email,
-      data: { clientName: clientName.trim(), caseNumber, token: inviteToken },
+      data: { clientName: clientName.trim(), caseNumber, visaType: newCase.visaType, token: inviteToken },
       caseId: lifecycle.case._id,
       userId: newUser._id,
       source: "shared",

@@ -391,7 +391,7 @@ exports.createFamilyCase = async (req, res, next) => {
           source: "shared",
           emailTemplate: "client-portal-invitation",
           emailTo: petitionerEmail,
-          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, token: petitionerSetupToken },
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, token: petitionerSetupToken },
         }, req.user, req).catch(() => null);
       });
     } else {
@@ -418,7 +418,7 @@ exports.createFamilyCase = async (req, res, next) => {
           channels: ["in_app", "socket", "push", "email"],
           emailTemplate: "case-created-client",
           emailTo: petitionerEmail,
-          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber },
+          emailData: { clientName: petitionerName, caseNumber: caseData.caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard` },
         }, req.user, req).catch(() => null);
       });
     }
