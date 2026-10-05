@@ -31,10 +31,10 @@ function getTransporter() {
 }
 
 /**
- * @param {{ to: string, subject: string, html: string, text: string, from?: string, cc?: string[], attachments?: {filename:string, content:string|Buffer, contentType?:string}[] }} message
+ * @param {{ to: string, subject: string, html: string, text: string, from?: string, cc?: string[], bcc?: string[], attachments?: {filename:string, content:string|Buffer, contentType?:string}[] }} message
  * @returns {Promise<{ messageId: string }>}
  */
-async function send({ to, subject, html, text, from, cc, attachments }) {
+async function send({ to, subject, html, text, from, cc, bcc, attachments }) {
   const client = getTransporter();
   if (!client) {
     const error = new Error("SMTP is not configured (missing SMTP_HOST/SMTP_PORT)");
@@ -45,6 +45,7 @@ async function send({ to, subject, html, text, from, cc, attachments }) {
     from: from || process.env.EMAIL_FROM || process.env.SMTP_USER,
     to,
     cc: cc?.length ? cc : undefined,
+    bcc: bcc?.length ? bcc : undefined,
     subject,
     html,
     text,

@@ -20,6 +20,7 @@ const CRMCaseDetail = lazy(() => import('./pages/CRMCaseDetail'))
 const Messaging = lazy(() => import('./pages/Messaging'))
 const PaymentsOverview = lazy(() => import('./pages/PaymentsOverview'))
 const Settings = lazy(() => import('./pages/Settings'))
+const EmailTemplates = lazy(() => import('./pages/EmailTemplates'))
 const Companies = lazy(() => import('./pages/Companies'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const USCISForms = lazy(() => import('./pages/USCISForms'))
@@ -213,6 +214,14 @@ function App() {
                     <Settings />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="email-templates"
+                element={
+                  <ProtectedRoute module="settings">
+                    <EmailTemplates />
+                  </ProtectedRoute>
+                }
               />
               <Route
                 path="questionnaires"

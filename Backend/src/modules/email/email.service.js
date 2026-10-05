@@ -1,6 +1,10 @@
 const EmailLog = require("../../models/EmailLog");
 const { getProvider } = require("./providers");
 const env = require("../../config/env");
+const logger = require("../../utils/logger");
+const { layoutHtml, renderCustom } = require("./emailRenderer");
+const customization = require("./emailCustomization.service");
+const triggerRegistry = require("./emailTriggers.registry");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
 // comment for the why). Every template's INTRINSIC recipient — the person
@@ -112,48 +116,10 @@ function isConfigured() {
 }
 
 function wrapHtml(subjectText, lines = []) {
-  const year = new Date().getFullYear();
   const paragraphs = lines
     .map((line) => `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${line}</p>`)
     .join("");
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subjectText}</title></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-        <tr>
-          <td style="background:#1e3a5f;padding:28px 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td>
-                  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Immiglance</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px 36px 28px;">
-            <h1 style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${subjectText}</h1>
-            ${paragraphs}
-          </td>
-        </tr>
-        <tr><td style="padding:0 36px;"><div style="height:1px;background:#e5e7eb;"></div></td></tr>
-        <tr>
-          <td style="padding:20px 36px 28px;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
-              This is an automated message from <strong>Immiglance</strong>. Please do not reply to this email.<br>
-              &copy; ${year} Immiglance. All rights reserved.
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  return layoutHtml({ title: subjectText, heading: subjectText, innerHtml: paragraphs });
 }
 
 /**
@@ -162,8 +128,8 @@ function wrapHtml(subjectText, lines = []) {
  * whether a provider is configured (dev-safe: records "skipped" instead of
  * throwing so callers never need try/catch around email sends).
  */
-async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
-  const log = await EmailLog.create({ templateKey, to, cc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
+async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
+  const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
 
   const provider = getProvider();
   if (!provider.isConfigured()) {
@@ -175,7 +141,7 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
 
   try {
     log.attempts += 1;
-    const result = await provider.send({ to, cc, subject, html, text, attachments });
+    const result = await provider.send({ to, cc, bcc, subject, html, text, attachments });
     log.status = "sent";
     log.sentAt = new Date();
     log.providerMessageId = result?.messageId;
@@ -186,6 +152,27 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
     log.error = error.message;
     await log.save();
     return { sent: false, error, log };
+  }
+}
+
+// Admin-customized version of a built-in email (Email Template
+// Customization page). Returns null - meaning "send the built-in email
+// exactly as before" - when there is no active customization for this key,
+// the key is locked, or ANYTHING goes wrong while resolving/rendering it:
+// customization is an enhancement and must never be able to block a send.
+async function resolveCustomization(templateKey, { to, data, caseId }) {
+  try {
+    const trigger = triggerRegistry.getTrigger(templateKey);
+    if (!trigger || trigger.locked) return null;
+    const custom = await customization.findActive(templateKey);
+    if (!custom) return null;
+    const ctx = await customization.buildContext({ data, caseId });
+    const rendered = renderCustom(custom, ctx);
+    const recipients = await customization.applyRecipientRules(custom, to, ctx);
+    return { ...rendered, recipients, customTemplateId: custom._id };
+  } catch (error) {
+    logger.error("email_customization_failed_fell_back_to_default", { templateKey, error: error.message });
+    return null;
   }
 }
 
@@ -218,6 +205,15 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     }
   }
 
+  const custom = await resolveCustomization(templateKey, { to, data, caseId });
+  if (custom) {
+    const extraCc = [...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])];
+    return dispatch({
+      templateKey, to: custom.recipients.to.join(", "), cc: extraCc, bcc: custom.recipients.bcc,
+      subject: custom.subject, html: custom.html, text: custom.text, data, caseId, userId, triggeredBy, source, attachments,
+    });
+  }
+
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
   const html = wrapHtml(subject, lines);
@@ -229,4 +225,8 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
 module.exports = {
   sendTemplateEmail,
   isConfigured,
+  dispatch,
+  wrapHtml,
+  TEMPLATES,
+  TEMPLATE_AUDIENCE,
 };

@@ -170,25 +170,8 @@ async function createQuizLead(payload, req) {
     });
   }
 
-  const publicConfig = await entityConfigService.getPublicConfig().catch(() => ({}));
-  // Fire-and-forget: SMTP round-trip (compounded with Atlas M0 latency) must
-  // never block the quiz submission response - same reasoning as
-  // notifyStaffOfLead below.
-  emailService.sendTemplateEmail("quiz-lead-confirmation", {
-    to: lead.email,
-    data: {
-      fullName: lead.fullName,
-      visaPathway: lead.visaPathway,
-      pathwayString: lead.scoreResult?.pathwayString,
-      nextStep: payload.nextStep,
-      msoEntityShortName: publicConfig.msoEntityShortName,
-    },
-    source: "shared",
-  }).catch(() => null);
-  // Fire-and-forget, same reason as createConsultationLead/createLeadFromQuiz/
-  // createLeadFromIntake below - never block the quiz submit response on the
-  // internal staff notification.
-  notifyStaffOfLead(lead).catch(() => {});
+  // No prospect result email and no staff email/in-app/push notification for
+  // completed quiz leads - the lead still appears in the admin Leads Inbox.
 
   telemetryService.track({
     name: "lead.created",
@@ -292,8 +275,7 @@ async function createLeadFromQuiz(payload = {}, req) {
   leadData.userAgent = req?.headers?.["user-agent"];
 
   const lead = await LeadModel.create(leadData);
-  // Fire-and-forget - see createConsultationLead's comment above for why.
-  notifyStaffOfLead(lead).catch(() => {});
+  // Quiz leads intentionally trigger no email / in-app / push notification.
   return lead;
 }
 

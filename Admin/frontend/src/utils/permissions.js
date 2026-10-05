@@ -6,6 +6,7 @@ import {
   FileText,
   Inbox,
   LayoutDashboard,
+  Mail,
   MessageSquare,
   Scale,
   Settings,
@@ -135,6 +136,7 @@ export const getSidebarMenuItems = (user) => {
     { path: '/payments', icon: DollarSign, label: 'Payments', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/questionnaires', icon: FileText, label: 'Questionnaires', roles: ADMIN_PORTAL_ROLES },
     { path: '/form-governance', icon: FileCheck2, label: 'Form Governance', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },
+    { path: '/email-templates', icon: Mail, label: 'Email Templates', roles: ['super_admin', 'admin'] },
     { path: '/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin'] },
     { path: '/analytics', icon: Scale, label: 'Analytics', roles: ['super_admin', 'admin', 'team_lead'] },
   ]

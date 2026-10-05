@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, LogOut, Menu, X, Moon, Sun } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import NotificationBell from '../components/NotificationBell'
@@ -24,6 +24,16 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-only collapse; remembered per browser.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebarCollapsed') === '1' } catch { return false }
+  })
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      try { localStorage.setItem('sidebarCollapsed', prev ? '0' : '1') } catch { /* ignore */ }
+      return !prev
+    })
+  }
   const unread = useUnreadCounts()
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
@@ -40,9 +50,9 @@ export default function AppLayout() {
       )}
 
       <aside
-        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-transform duration-300 ease-in-out flex flex-col shrink-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-[transform,margin] duration-300 ease-in-out flex flex-col shrink-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${sidebarCollapsed ? 'lg:-translate-x-full lg:-ml-64' : 'lg:translate-x-0 lg:ml-0'}`}
       >
         <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -102,6 +112,14 @@ export default function AppLayout() {
             <div className="flex items-center gap-3 shrink-0">
               <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-muted-foreground hover:text-foreground">
                 <Menu className="w-6 h-6" />
+              </button>
+              <button
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                className="hidden lg:flex p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
               </button>
               <h2 className="text-base font-semibold text-foreground hidden md:block">
                 {NAV.find((item) => isActive(item.path))?.label || 'Dashboard'}

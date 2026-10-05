@@ -449,6 +449,14 @@ class CaseLifecycleOrchestrator {
     const caseNumber = caseData.caseNumber || caseData.caseId;
     const clientEmail = caseData.clientEmail || user?.email;
     if (caseData.user || clientEmail) {
+      // A client who still has to set a password gets ONE combined email
+      // ("client-portal-invitation": case created + Case ID + activate
+      // button) - sending case-created-client as well would be a second,
+      // redundant email for the same event.
+      const clientUser = caseData.user
+        ? await User.findById(caseData.user).select("+password role").catch(() => null)
+        : null;
+      const invitePending = Boolean(clientUser) && clientUser.role === "client" && !clientUser.password;
       await notificationService.createNotification({
         userId: caseData.user,
         type: "case_created",
@@ -459,9 +467,11 @@ class CaseLifecycleOrchestrator {
         link: "/dashboard",
         priority: "medium",
         source: ["Immiglance", "BAIS"].includes(caseData.legacySource) ? "Immiglance" : "shared",
-        emailTemplate: "case-created-client",
-        emailTo: clientEmail,
-        emailData: { clientName: caseData.clientName, caseNumber },
+        ...(invitePending ? {} : {
+          emailTemplate: "case-created-client",
+          emailTo: clientEmail,
+          emailData: { clientName: caseData.clientName, caseNumber },
+        }),
       }, user, req).catch(() => null);
     }
 

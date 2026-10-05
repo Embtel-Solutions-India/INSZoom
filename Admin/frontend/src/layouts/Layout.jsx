@@ -32,7 +32,9 @@ import {
   Search,
   RefreshCw,
   Moon,
-  Sun
+  Sun,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react'
 
 const Layout = () => {
@@ -42,6 +44,16 @@ const Layout = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop-only collapse; remembered per browser.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebarCollapsed') === '1' } catch { return false }
+  })
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      try { localStorage.setItem('sidebarCollapsed', prev ? '0' : '1') } catch { /* ignore */ }
+      return !prev
+    })
+  }
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const [pushPermission, setPushPermission] = useState(
@@ -140,9 +152,9 @@ const Layout = () => {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-transform duration-300 ease-in-out flex flex-col shrink-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-[transform,margin] duration-300 ease-in-out flex flex-col shrink-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${sidebarCollapsed ? 'lg:-translate-x-full lg:-ml-64' : 'lg:translate-x-0 lg:ml-0'}`}
       >
         <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -213,6 +225,14 @@ const Layout = () => {
                 className="lg:hidden text-muted-foreground hover:text-foreground"
               >
                 <Menu className="w-6 h-6" />
+              </button>
+              <button
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                className="hidden lg:flex p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors"
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
               </button>
               <h2 className="text-base font-semibold text-foreground hidden md:block">
                 {filteredMenuItems.find(item => isActive(item.path))?.label || 'Dashboard'}
