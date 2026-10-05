@@ -69,6 +69,34 @@ describe('TemplateLibrary', () => {
   })
 })
 
+describe('TemplateLibrary sections', () => {
+  const audiences = [{ key: 'client', label: 'Client' }, { key: 'case_manager', label: 'Case Manager' }, { key: 'admin', label: 'Admin' }]
+  const sectionRows = [
+    { id: null, kind: 'default', name: 'Case Created', category: 'Case', status: 'default', triggerKey: 'a', triggerLabel: 'Case Created', audience: 'client' },
+    { id: null, kind: 'default', name: 'Case Assigned', category: 'Case', status: 'default', triggerKey: 'b', triggerLabel: 'Case Assigned', audience: 'case_manager' },
+    { id: 'x', kind: 'custom', name: 'Custom Client Mail', category: 'Case', status: 'active', triggerKey: 'a2', triggerLabel: 'Other', audience: 'client' },
+  ]
+
+  it('groups templates into one section per audience, skipping empty ones', () => {
+    render(<TemplateLibrary rows={sectionRows} meta={{ ...meta, audiences }} onOpen={() => {}} onCreate={() => {}} />)
+    const client = screen.getByRole('heading', { name: 'Client' }).closest('section')
+    const manager = screen.getByRole('heading', { name: 'Case Manager' }).closest('section')
+    expect(within(client).getAllByText('Case Created').length).toBeGreaterThan(0)
+    expect(within(client).getByText('Custom Client Mail')).toBeTruthy()
+    expect(within(client).queryAllByText('Case Assigned')).toHaveLength(0)
+    expect(within(manager).getAllByText('Case Assigned').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('heading', { name: 'Admin' })).toBeNull()
+    expect(within(client).getByText('2 templates')).toBeTruthy()
+  })
+
+  it('the audience filter narrows the sections', () => {
+    render(<TemplateLibrary rows={sectionRows} meta={{ ...meta, audiences }} onOpen={() => {}} onCreate={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Audience'), { target: { value: 'case_manager' } })
+    expect(screen.queryByRole('heading', { name: 'Client' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Case Manager' })).toBeTruthy()
+  })
+})
+
 describe('TemplateEditor', () => {
   beforeEach(() => vi.clearAllMocks())
 

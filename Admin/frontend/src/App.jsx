@@ -218,7 +218,7 @@ function App() {
               <Route
                 path="email-templates"
                 element={
-                  <ProtectedRoute module="settings">
+                  <ProtectedRoute module="email-templates">
                     <EmailTemplates />
                   </ProtectedRoute>
                 }

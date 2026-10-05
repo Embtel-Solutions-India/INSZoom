@@ -66,7 +66,10 @@ export const canAccessModule = (user, module) => {
     cases: ADMIN_PORTAL_ROLES,
     clients: ADMIN_PORTAL_ROLES,
     reports: ADMIN_PORTAL_ROLES,
-    settings: ['super_admin', 'admin'],
+    // Team leads / case managers reach Settings for its Email & Templates tab only
+    // (Settings.jsx hides every other category from them).
+    settings: ['super_admin', 'admin', 'team_lead', 'case_manager'],
+    'email-templates': ['super_admin', 'admin', 'team_lead', 'case_manager'],
     companies: ['super_admin', 'admin'],
     payments: ['super_admin', 'admin', 'team_lead'],
     notifications: ADMIN_PORTAL_ROLES,
@@ -136,8 +139,8 @@ export const getSidebarMenuItems = (user) => {
     { path: '/payments', icon: DollarSign, label: 'Payments', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/questionnaires', icon: FileText, label: 'Questionnaires', roles: ADMIN_PORTAL_ROLES },
     { path: '/form-governance', icon: FileCheck2, label: 'Form Governance', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },
-    { path: '/email-templates', icon: Mail, label: 'Email Templates', roles: ['super_admin', 'admin'] },
-    { path: '/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin'] },
+    { path: '/email-templates', icon: Mail, label: 'Email Templates', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },
+    { path: '/settings', icon: Settings, label: 'Settings', roles: ['super_admin', 'admin', 'team_lead', 'case_manager'] },
     { path: '/analytics', icon: Scale, label: 'Analytics', roles: ['super_admin', 'admin', 'team_lead'] },
   ]
   return allMenuItems.filter((item) => item.roles.includes(user.role))

@@ -33,12 +33,13 @@ async function buildContext({ data = {}, caseId } = {}) {
   const ctx = { data, caseContext: {} };
   if (!caseId) return ctx;
   const caseDoc = await Case.findById(caseId)
-    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user assignedCaseManager assignedTeamLead attorneyAccess companyId employerUser")
+    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager assignedTeamLead attorneyAccess companyId employerUser")
     .lean();
   if (!caseDoc) return ctx;
 
-  const attorneyId = (caseDoc.attorneyAccess || []).find((grant) => grant.status === "active")?.attorneyId;
-  const ids = [caseDoc.user, caseDoc.assignedCaseManager, caseDoc.assignedTeamLead, attorneyId].filter(Boolean);
+  const activeAttorneyIds = (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active").map((grant) => grant.attorneyId);
+  const attorneyId = activeAttorneyIds[0];
+  const ids = [caseDoc.user, caseDoc.petitionerUser, caseDoc.assignedCaseManager, caseDoc.assignedTeamLead, ...activeAttorneyIds].filter(Boolean);
   const [users, company] = await Promise.all([
     User.find({ _id: { $in: ids } }).select("name displayName email").lean(),
     caseDoc.companyId ? Company.findById(caseDoc.companyId).select("name contact hrContact").lean() : null,
@@ -57,6 +58,13 @@ async function buildContext({ data = {}, caseId } = {}) {
     teamLead: teamLead && { name: nameOf(teamLead), email: teamLead.email },
     attorney: attorney && { name: nameOf(attorney), id: String(attorney._id), email: attorney.email },
     company: company && { name: company.name, id: String(company._id), email: company.hrContact?.email || company.contact?.email },
+  };
+  // User ids per audience, for the notification dispatcher (triggerEvents.service).
+  ctx.people = {
+    client: [caseDoc.user, caseDoc.petitionerUser].filter(Boolean).map(String),
+    case_manager: caseDoc.assignedCaseManager ? [String(caseDoc.assignedCaseManager)] : [],
+    team_lead: caseDoc.assignedTeamLead ? [String(caseDoc.assignedTeamLead)] : [],
+    attorney: activeAttorneyIds.map(String),
   };
   return ctx;
 }
@@ -95,9 +103,11 @@ async function resolveRuleList(rules = [], ctx = {}) {
 //   when they resolve to nothing the call site's recipient is kept, so a
 //   mis-configured rule can never leave an email with nobody to send to.
 // - CC/BCC are additive and never repeat an address already in To.
-async function applyRecipientRules(template, baseTo, ctx) {
+//   Event-based triggers pass toFromRules:false - the dispatcher already sends
+//   one email per audience member, so To rules must not redirect it.
+async function applyRecipientRules(template, baseTo, ctx, { toFromRules = true } = {}) {
   const rules = template.recipients || {};
-  const resolvedTo = await resolveRuleList(rules.to, ctx);
+  const resolvedTo = toFromRules ? await resolveRuleList(rules.to, ctx) : [];
   const to = resolvedTo.length ? resolvedTo : [String(baseTo).toLowerCase()];
   const taken = new Set(to);
   const cc = (await resolveRuleList(rules.cc, ctx)).filter((address) => !taken.has(address));
@@ -124,7 +134,20 @@ function tokenProxy() {
 
 function defaultContentFor(triggerKey, templates) {
   const template = templates[triggerKey];
-  if (!template) return null;
+  if (!template) {
+    // Event-based trigger with no built-in email: start from its professionally written default.
+    const { EVENT_EMAILS } = require("./eventTriggers.emails");
+    if (EVENT_EMAILS[triggerKey]) return { ...EVENT_EMAILS[triggerKey], converted: true };
+    const trigger = triggers.getTrigger(triggerKey);
+    if (!trigger?.push) return null;
+    const body = [
+      "<p>Hi [recipient.name],</p>",
+      `<p>${trigger.push.message}</p>`,
+      "<p>Case ID: <strong>[case.id]</strong></p>",
+      '<a href="[system.portal_link]" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Open in Immiglance</a>',
+    ].join("\n");
+    return { subject: trigger.push.title, heading: trigger.push.title, body, converted: true };
+  }
   try {
     const subject = template.subject(tokenProxy());
     const lines = template.bodyLines(tokenProxy());

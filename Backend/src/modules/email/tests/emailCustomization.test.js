@@ -11,7 +11,7 @@ const { getProvider } = require("../providers");
 
 test("every built-in email key has trigger metadata and vice versa", () => {
   const codeKeys = Object.keys(emailService.TEMPLATES).sort();
-  const triggerKeys = triggers.TRIGGERS.map((t) => t.key).sort();
+  const triggerKeys = triggers.TRIGGERS.filter((t) => t.builtIn).map((t) => t.key).sort(); // event-based triggers have no built-in email
   assert.deepEqual(triggerKeys, codeKeys);
   triggers.TRIGGERS.forEach((t) => assert.ok(triggers.CATEGORIES.includes(t.category), `${t.key} has unknown category ${t.category}`));
 });
@@ -67,7 +67,7 @@ test("built-in wrapHtml output equals layoutHtml with the subject as heading (no
 });
 
 test("every unlocked built-in email converts to editable content whose tokens are all valid", () => {
-  triggers.TRIGGERS.filter((t) => !t.locked).forEach((trigger) => {
+  triggers.TRIGGERS.filter((t) => !t.locked && t.available).forEach((trigger) => {
     const content = customization.defaultContentFor(trigger.key, emailService.TEMPLATES);
     assert.ok(content && content.subject && content.body, `${trigger.key} produced no content`);
     const check = registry.validateTokens([content.subject, content.heading, content.body], null);
@@ -203,4 +203,32 @@ test("an edit to the active template is used by the very next real send (no cach
   assert.equal(sent[1].subject, "Version two for B1");
   assert.match(sent[1].html, /<p>v2<\/p>/);
   assert.ok(queries.every((query) => query.status === "active" && query.managed === true && query.triggerKey === "case-created-client"));
+});
+
+test("every event email is a complete professional message: greeting, substance, details/callout, button, sign-off", () => {
+  const { EVENT_EMAILS } = require("../eventTriggers.emails");
+  const visible = triggers.listVisible().filter((t) => !t.builtIn);
+  assert.deepEqual(Object.keys(EVENT_EMAILS).sort(), visible.map((t) => t.key).sort(), "one email per visible event trigger, no strays");
+  visible.forEach((trigger) => {
+    const content = customization.defaultContentFor(trigger.key, emailService.TEMPLATES);
+    const text = require("../emailRenderer").htmlToText(content.body);
+    assert.match(content.body, /Hi \[recipient\.name\]/, `${trigger.key}: greeting`);
+    assert.match(content.body, /<table/, `${trigger.key}: details card or callout`);
+    assert.match(content.body, /<a href="\[system\.portal_link\]"/, `${trigger.key}: button`);
+    assert.match(content.body, /Regards,/, `${trigger.key}: sign-off`);
+    assert.ok(text.length > 280, `${trigger.key}: too thin (${text.length} chars)`);
+    assert.ok(content.subject.length > 15 && content.heading.length > 10, `${trigger.key}: subject/heading`);
+    const check = registry.validateTokens([content.subject, content.heading, content.body], trigger.groups);
+    assert.deepEqual([check.unknown, check.unavailable], [[], []], trigger.key);
+  });
+});
+
+test("reused wording: the questionnaire and rejected-document emails keep their original text", () => {
+  const q = customization.defaultContentFor("questionnaire.assigned:client", emailService.TEMPLATES);
+  assert.match(q.subject, /^Action required: questionnaire assigned/);
+  assert.match(q.body, /Your case manager has assigned a questionnaire that requires your input for your immigration case\./);
+  const d = customization.defaultContentFor("document.rejected:client", emailService.TEMPLATES);
+  assert.match(d.subject, /^Action required: document needs to be replaced/);
+  assert.match(d.body, /has requested a replacement\./);
+  assert.match(d.body, /upload a corrected version as soon as possible to avoid delays to your case\./);
 });

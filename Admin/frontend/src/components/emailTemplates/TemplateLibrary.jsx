@@ -1,8 +1,17 @@
 import { useMemo, useState } from 'react'
-import { Plus, Lock, Mail } from 'lucide-react'
+import { Plus, Lock, Mail, BellRing } from 'lucide-react'
 import SearchInput from '../ui/SearchInput'
 import EmptyState, { LoadingState, ErrorState } from '../ui/EmptyState'
 
+const AUDIENCE_LABEL = { client: 'Client', case_manager: 'Case Manager', team_lead: 'Team Lead', admin: 'Admin', super_admin: 'Super Admin', attorney: 'Attorney' }
+const AUDIENCE_HELP = {
+  client: 'Emails and alerts sent to the client on the case.',
+  case_manager: 'Sent to the case manager assigned to the case.',
+  team_lead: 'Sent to the team lead assigned to the case.',
+  admin: 'Sent to administrators.',
+  super_admin: 'Critical and system alerts only.',
+  attorney: 'Sent to attorneys with access to the case.',
+}
 const RECIPIENT_LABEL = { client: 'Client', team_member: 'Internal team', attorney: 'Attorney' }
 const STATUS_META = {
   default: { label: 'Built-in', className: 'bg-secondary text-muted-foreground' },
@@ -20,6 +29,7 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('all')
   const [trigger, setTrigger] = useState('all')
+  const [audience, setAudience] = useState('all')
   const [status, setStatus] = useState('all')
   const [sort, setSort] = useState('name')
 
@@ -29,6 +39,7 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
       if (status === 'all' ? row.status === 'archived' : row.status !== status) return false
       if (category !== 'all' && row.category !== category) return false
       if (trigger !== 'all' && row.triggerKey !== trigger) return false
+      if (audience !== 'all' && row.audience !== audience) return false
       return !q || `${row.name} ${row.triggerLabel || ''} ${row.category} ${row.description || ''}`.toLowerCase().includes(q)
     })
     return filtered.sort((a, b) => {
@@ -36,7 +47,16 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
       if (sort === 'category') return a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
       return a.name.localeCompare(b.name)
     })
-  }, [rows, search, category, trigger, status, sort])
+  }, [rows, search, category, trigger, audience, status, sort])
+
+  // One section per audience, in a fixed order; templates not attached to a trigger yet go last.
+  const sections = useMemo(() => {
+    const order = (meta?.audiences || []).map((a) => a.key)
+    const known = new Set(order)
+    const groups = [...order.map((key) => ({ key, label: AUDIENCE_LABEL[key] || key, description: AUDIENCE_HELP[key], rows: visible.filter((row) => row.audience === key) })),
+      { key: 'other', label: 'Not attached to a trigger', description: 'Drafts that are not linked to an email yet.', rows: visible.filter((row) => !known.has(row.audience)) }]
+    return groups.filter((group) => group.rows.length)
+  }, [visible, meta])
 
   return (
     <div className="space-y-5">
@@ -54,6 +74,10 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
           <option value="all">All categories</option>
           {(meta?.categories || []).map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <select value={audience} onChange={(e) => setAudience(e.target.value)} className="input-field !w-auto" aria-label="Audience">
+          <option value="all">All audiences</option>
+          {(meta?.audiences || []).map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+        </select>
         <select value={trigger} onChange={(e) => setTrigger(e.target.value)} className="input-field !w-auto max-w-[16rem]" aria-label="Trigger">
           <option value="all">All triggers</option>
           {(meta?.triggers || []).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -66,26 +90,32 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        {loading ? <LoadingState label="Loading templates…" />
-          : error ? <ErrorState message={error} onRetry={onRetry} />
-          : visible.length === 0 ? (
-            <EmptyState icon={Mail} title="No templates match" description="Try clearing a filter, or create a new template." />
-          ) : (
+      {loading ? <div className="rounded-xl border border-border bg-card"><LoadingState label="Loading templates…" /></div>
+        : error ? <div className="rounded-xl border border-border bg-card"><ErrorState message={error} onRetry={onRetry} /></div>
+        : visible.length === 0 ? (
+          <div className="rounded-xl border border-border bg-card"><EmptyState icon={Mail} title="No templates match" description="Try clearing a filter, or create a new template." /></div>
+        ) : sections.map((section) => (
+          <section key={section.key} className="overflow-hidden rounded-xl border border-border bg-card">
+            <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border bg-secondary/40 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">{section.label}</h2>
+                <p className="text-xs text-muted-foreground">{section.description}</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{section.rows.length} {section.rows.length === 1 ? 'template' : 'templates'}</span>
+            </header>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Template</th>
-                    <th className="px-4 py-3 font-medium">Trigger</th>
-                    <th className="px-4 py-3 font-medium">Recipient</th>
-                    <th className="px-4 py-3 font-medium">Category</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Updated</th>
+                    <th className="px-4 py-2.5 font-medium">Template</th>
+                    <th className="px-4 py-2.5 font-medium">Trigger</th>
+                    <th className="px-4 py-2.5 font-medium">Category</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 font-medium">Updated</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((row) => {
+                  {section.rows.map((row) => {
                     const badge = STATUS_META[row.status] || STATUS_META.draft
                     return (
                       <tr
@@ -95,14 +125,14 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
                         className={`border-b border-border last:border-0 ${row.locked ? 'opacity-60' : 'cursor-pointer hover:bg-secondary/50'}`}
                       >
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 font-medium text-foreground">
+                          <div className="flex flex-wrap items-center gap-2 font-medium text-foreground">
                             {row.locked && <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
                             {row.name}
+                            {row.sendsPush && <span title="Also sends an in-app and browser push notification" className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700"><BellRing className="h-3 w-3" /> Push</span>}
                           </div>
                           {row.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{row.description}</p>}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{row.triggerLabel || <span className="italic">Not attached</span>}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{RECIPIENT_LABEL[row.recipient] || '—'}</td>
                         <td className="px-4 py-3 text-muted-foreground">{row.category}</td>
                         <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span></td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—'}</td>
@@ -112,8 +142,8 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
                 </tbody>
               </table>
             </div>
-          )}
-      </div>
+          </section>
+        ))}
     </div>
   )
 }

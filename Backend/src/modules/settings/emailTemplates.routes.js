@@ -2,6 +2,7 @@ const router = require("express").Router();
 const { body } = require("express-validator");
 const authenticate = require("../../middleware/authenticate");
 const authorizePermissions = require("../../middleware/authorizePermissions");
+const { hasPermission } = require("../authorization/rbac.service");
 const validate = require("../../middleware/validate");
 const EmailTemplate = require("../../models/EmailTemplate");
 const SettingsAuditLog = require("../../models/SettingsAuditLog");
@@ -20,7 +21,17 @@ router.use(authenticate);
 //    Customization page; each customizes one built-in email (its triggerKey)
 //    and, while active, replaces that email's content/recipients at send time
 //    (see modules/email/email.service.js resolveCustomization()).
-const PERMISSION = "settings:manage_email";
+// Super Admin / Admin / Team Lead / Case Manager may use the customization page
+// (settings:manage_email_templates). The legacy Settings -> Email panel rows
+// (managed:false) and the firm-wide email defaults stay behind the original,
+// stricter settings:manage_email (Admin / Super Admin only).
+const PERMISSION = "settings:manage_email_templates";
+const LEGACY_PERMISSION = "settings:manage_email";
+const legacyDenied = (req, res) => {
+  if (hasPermission(req.user, LEGACY_PERMISSION)) return false;
+  res.status(403).json({ success: false, message: "Missing required permission" });
+  return true;
+};
 const CONTENT_FIELDS = ["name", "description", "category", "subject", "heading", "body", "triggerKey", "recipients"];
 
 const cleanRules = (list) => (Array.isArray(list) ? list : [])
@@ -44,8 +55,9 @@ const snapshot = (template) => template && ({
 // Returns an error message (string) or null.
 function contentError(fields, { requireComplete = false } = {}) {
   const trigger = fields.triggerKey ? triggerRegistry.getTrigger(fields.triggerKey) : null;
-  if (fields.triggerKey && !trigger) return `Unknown trigger "${fields.triggerKey}"`;
+  if (fields.triggerKey && (!trigger || trigger.hidden)) return `Unknown trigger "${fields.triggerKey}"`;
   if (trigger?.locked) return `"${trigger.label}" is a security email and cannot be customized`;
+  if (trigger && trigger.available === false) return `"${trigger.label}" is not available yet: ${trigger.unavailableReason}`;
   if (requireComplete) {
     if (!fields.triggerKey) return "Choose the trigger this email is sent for before activating";
     if (!String(fields.subject || "").trim() || !String(fields.body || "").replace(/<[^>]*>/g, "").trim()) return "Subject and body are required to activate a template";
@@ -56,7 +68,9 @@ function contentError(fields, { requireComplete = false } = {}) {
   return recipientErrors.length ? recipientErrors.join(". ") : null;
 }
 
-const defaultTo = (trigger) => (trigger?.recipient === "team_member" ? "case_manager" : trigger?.recipient || "client");
+// The recipient role a trigger normally addresses (its audience), as a recipient-rule type.
+const RULE_TYPES = new Set(triggerRegistry.RECIPIENT_TYPES.map((entry) => entry.type));
+const defaultTo = (trigger) => (RULE_TYPES.has(trigger?.audience) ? trigger.audience : trigger?.recipient === "team_member" ? "case_manager" : trigger?.recipient || "client");
 
 // Static metadata for the editor: variable registry, triggers, categories,
 // recipient types. One call so the UI never keeps its own copy.
@@ -66,9 +80,10 @@ router.get("/meta", authorizePermissions(PERMISSION), (req, res) => {
     data: {
       variableGroups: registry.GROUPS,
       variables: registry.listVariables(),
-      triggers: triggerRegistry.TRIGGERS,
+      triggers: triggerRegistry.listVisible(),
       categories: triggerRegistry.CATEGORIES,
       recipientTypes: triggerRegistry.RECIPIENT_TYPES,
+      audiences: triggerRegistry.AUDIENCES.map((key) => ({ key, label: triggerRegistry.AUDIENCE_LABEL[key] })),
       fromName: process.env.EMAIL_FROM_NAME || "Immiglance",
       previewShells: previewShells(),
     },
@@ -87,14 +102,17 @@ router.get("/library", authorizePermissions(PERMISSION), async (req, res, next) 
       return {
         id: String(t._id), kind: "custom", name: t.name, category: t.category, status: t.status,
         triggerKey: t.triggerKey, triggerLabel: trigger?.label || null, recipient: trigger?.recipient || null,
+        audience: trigger?.audience || null, available: true, sendsPush: Boolean(trigger && !trigger.builtIn),
         locked: false, updatedAt: t.updatedAt, description: t.description,
       };
     });
-    triggerRegistry.TRIGGERS.forEach((trigger) => {
+    triggerRegistry.listVisible().forEach((trigger) => {
       if (activeKeys.has(trigger.key)) return;
       rows.push({
         id: null, kind: "default", name: trigger.label, category: trigger.category, status: "default",
         triggerKey: trigger.key, triggerLabel: trigger.label, recipient: trigger.recipient,
+        audience: trigger.audience, available: trigger.available !== false, unavailableReason: trigger.unavailableReason || null,
+        sendsPush: !trigger.builtIn && trigger.available !== false,
         locked: trigger.locked, updatedAt: null, description: trigger.description,
       });
     });
@@ -106,14 +124,15 @@ router.get("/library", authorizePermissions(PERMISSION), async (req, res, next) 
 // [variables] already inserted.
 router.get("/defaults/:triggerKey", authorizePermissions(PERMISSION), (req, res) => {
   const trigger = triggerRegistry.getTrigger(req.params.triggerKey);
-  if (!trigger) return res.status(404).json({ success: false, message: "Unknown email trigger" });
+  if (!trigger || trigger.hidden) return res.status(404).json({ success: false, message: "Unknown email trigger" });
   if (trigger.locked) return res.status(403).json({ success: false, message: `"${trigger.label}" is a security email and cannot be customized` });
+  if (trigger.available === false) return res.status(409).json({ success: false, message: `"${trigger.label}" is not available yet: ${trigger.unavailableReason}` });
   const content = customization.defaultContentFor(trigger.key, emailService.TEMPLATES);
   res.json({
     success: true,
     data: {
       name: trigger.label, description: trigger.description, category: trigger.category, triggerKey: trigger.key,
-      ...content, recipients: { to: [{ type: defaultTo(trigger) }], cc: [], bcc: [] },
+      ...content, recipients: { to: trigger.builtIn ? [{ type: defaultTo(trigger) }] : [], cc: [], bcc: [] },
     },
   });
 });
@@ -126,9 +145,9 @@ function previewRecipients(fields) {
     return variableKey ? registry.getVariable(variableKey).sample : rule.value;
   };
   const recipients = cleanRecipients(fields.recipients);
-  let to = recipients.to.map(sampleFor).filter(Boolean);
+  const trigger = triggerRegistry.getTrigger(fields.triggerKey);
+  let to = trigger && !trigger.builtIn ? [] : recipients.to.map(sampleFor).filter(Boolean);
   if (!to.length) {
-    const trigger = triggerRegistry.getTrigger(fields.triggerKey);
     to = [types.find((entry) => entry.type === defaultTo(trigger))?.sample || "john.smith@example.com"];
   }
   return { to, cc: recipients.cc.map(sampleFor).filter(Boolean), bcc: recipients.bcc.map(sampleFor).filter(Boolean) };
@@ -164,7 +183,7 @@ router.post("/test", authorizePermissions(PERMISSION), [body("to").isEmail().wit
   } catch (error) { next(error); }
 });
 
-router.get("/", authorizePermissions(PERMISSION), async (req, res, next) => {
+router.get("/", authorizePermissions(LEGACY_PERMISSION), async (req, res, next) => {
   try {
     const templates = await EmailTemplate.find({}).sort({ updatedAt: -1 });
     res.json({ success: true, data: templates });
@@ -191,6 +210,7 @@ router.post(
         await audit(req, template._id, null, snapshot(template));
         return res.status(201).json({ success: true, data: template });
       }
+      if (legacyDenied(req, res)) return;
       const template = await EmailTemplate.create({
         name: req.body.name, subject: req.body.subject, body: req.body.body,
         category: req.body.category || "general", tags: req.body.tags || [],
@@ -205,6 +225,7 @@ router.get("/:id", authorizePermissions(PERMISSION), async (req, res, next) => {
   try {
     const template = await EmailTemplate.findById(req.params.id);
     if (!template) return res.status(404).json({ success: false, message: "Template not found" });
+    if (!template.managed && legacyDenied(req, res)) return;
     res.json({ success: true, data: template });
   } catch (error) { next(error); }
 });
@@ -233,6 +254,7 @@ router.patch("/:id", authorizePermissions(PERMISSION), async (req, res, next) =>
       await audit(req, template._id, before, snapshot(template));
       return res.json({ success: true, data: template });
     }
+    if (legacyDenied(req, res)) return;
     if (template.isSystem) {
       // System templates: only subject may be edited, never the body — the
       // rest of the app's transactional logic assumes the core body shape.
@@ -300,6 +322,7 @@ router.delete("/:id", authorizePermissions(PERMISSION), async (req, res, next) =
       await audit(req, template._id, before, snapshot(template));
       return res.json({ success: true, data: template });
     }
+    if (legacyDenied(req, res)) return;
     if (template.isSystem) return res.status(403).json({ success: false, message: "System templates cannot be deleted" });
     await template.deleteOne();
     res.json({ success: true });

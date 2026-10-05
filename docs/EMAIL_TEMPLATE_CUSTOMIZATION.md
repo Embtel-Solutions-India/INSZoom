@@ -47,3 +47,24 @@ Saves are audited to `SettingsAuditLog` (`key: email_template:<id>`, who/when/be
 * Customizations are cached 30 s per server instance.
 * Leaving the page via the sidebar with unsaved edits is not intercepted (Back button and tab close are).
 * The body editor is a lightweight contentEditable editor (HTML view available), not Tiptap, to preserve inline styles.
+
+## Event triggers + browser push (added)
+* `Backend/src/modules/email/eventTriggers.catalog.js` – one trigger per (event, audience): Client, Case Manager,
+  Team Lead, Admin, Super Admin (critical/system only), Attorney. Only events the app can actually produce are listed
+  (the team-lead review flow, attorney review requests, unassigned-case sweeps etc. are not, until they exist).
+  Unused built-in emails (case-on-hold, document-rejected, payment-required, questionnaire-assigned, quiz-lead-confirmation,
+  signature-required, staff-invitation) were removed. Where a moment has both a built-in email and an event trigger
+  (attorney assigned, documents requested, new lead) the event trigger is `hidden` and its email is customized through the
+  built-in (`emailKey`), so the library shows one entry per moment, grouped by audience.
+* `notifications/triggerEvents.service.js` – `emit(event, { caseId, actor, data, covered, recipients, skipUserIds })`
+  resolves each audience from the live case and sends in-app + socket + **browser push**; an email is added only when an
+  admin has ACTIVATED a customized template for that trigger. It is a gap-filler: audiences in `covered` (already notified
+  by existing code) get no second alert, nobody is notified twice per emit, the actor is skipped, and the same event on the
+  same case within 60 s is reported once.
+* `notificationRules.js` `PUSH_ON_TYPES` – existing alerts that hard-coded in-app/socket (case assigned, RFE, approved,
+  denied, filed, questionnaire sent, …) now also push. Role-wide workflow broadcasts (`source: "workflow"`) never push.
+* Hooked at: case created, CM/TL assigned, attorney granted/revoked, questionnaire assigned/submitted, documents requested,
+  client document upload, RFE / USCIS decision / filed / closed (via NotificationLifecycleService), reopened, SLA breach,
+  failed email delivery, account lockout, lead created/approved, attorney feedback.
+* Known pre-existing issue (not changed): workflow `notify` actions use `createForRoles`, i.e. every user with the role,
+  not just the people on the case.

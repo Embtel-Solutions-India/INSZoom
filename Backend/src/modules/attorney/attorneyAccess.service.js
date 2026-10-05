@@ -116,6 +116,19 @@ async function setAccess({ caseId, attorneyId, action, actor, req }) {
     await sendAssignmentEmail({ caseDoc, attorney, actor });
   }
 
+  // In-app + browser push (attorney, client, admin) for the grant, and an
+  // access-removed alert for the revoke. The attorney's grant email is the
+  // existing attorney-assignment email above, so it is marked as already sent.
+  const attorneyName = attorney.name || attorney.displayName || attorney.email;
+  require("../notifications/triggerEvents.service").emitInBackground(
+    action === "grant" ? "attorney.assigned" : "attorney.removed",
+    {
+      caseId: caseDoc._id, actor, req, data: { attorneyName },
+      recipients: { attorney: [attorney._id] },
+      covered: action === "grant" ? { attorney: { notified: false, emailed: true } } : {},
+    },
+  );
+
   return listAccess(caseDoc._id);
 }
 

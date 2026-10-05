@@ -28,7 +28,7 @@ const VARIABLES = [
   v("case.id", "Case", "Case ID", "CASE-10234", { dataKeys: ["caseNumber"], path: "case.id", fallback: "your case" }),
   v("case.type", "Case", "Case type", "Employment-Based", { dataKeys: ["filingType"], path: "case.type", fallback: "N/A" }),
   v("case.visa_type", "Case", "Visa type", "H-1B", { dataKeys: ["visaType", "visaPathway"], path: "case.visaType", fallback: "N/A" }),
-  v("case.status", "Case", "Case status", "In Progress", { path: "case.status", fallback: "N/A" }),
+  v("case.status", "Case", "Case status / decision", "In Progress", { dataKeys: ["decision"], path: "case.status", fallback: "N/A" }),
   v("case.stage", "Case", "Case stage", "Form Preparation", { dataKeys: ["stageName", "stage"], path: "case.stage", fallback: "N/A" }),
   v("case.receipt_number", "Case", "Receipt number", "WAC2512345678", { dataKeys: ["receiptNumber"], fallback: "N/A" }),
   v("case.receipt_date", "Case", "Receipt date", "Oct 3, 2026", { dataKeys: ["receiptDate"], fallback: "N/A" }),

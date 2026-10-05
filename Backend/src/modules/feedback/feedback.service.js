@@ -111,6 +111,14 @@ async function notifyRecipients({ recipients, caseDoc, author, feedback, isReply
         .catch((error) => logger.error("attorney_feedback_notification_failed", { error, userId: String(userId) }))
     )
   );
+
+  // Customizable email for the same moment (the in-app + push alert above is the existing one).
+  const fromAttorney = isAttorneyRole(author.role);
+  require("../notifications/triggerEvents.service").emitInBackground("attorney.feedback", {
+    caseId: caseDoc._id, actor: author, data: { attorneyName: authorLabel, details: previewOf(feedback.message, feedback.attachments?.length) },
+    recipients: { case_manager: fromAttorney ? recipients : [], attorney: fromAttorney ? [] : recipients },
+    covered: { case_manager: { notified: true, emailed: false }, attorney: { notified: true, emailed: false } },
+  });
 }
 
 async function listFeedback(caseId) {

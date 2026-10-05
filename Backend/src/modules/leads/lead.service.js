@@ -62,6 +62,12 @@ async function notifyStaffOfLead(lead) {
 
   realtimeGateway.emitToRole("admin", "lead:created", lead);
   realtimeGateway.emitToRole("case_manager", "lead:created", lead);
+
+  // Customizable admin email for the same moment (the in-app + push alert above is the existing one).
+  require("../notifications/triggerEvents.service").emitInBackground("lead.created", {
+    data: { fullName: lead.fullName, email: lead.email, phone: lead.phone, visaPathway: lead.visaPathway },
+    covered: { admin: { notified: true, emailed: true } }, // the internal lead email above is the existing one
+  });
 }
 
 async function createConsultationLead(payload = {}, req, options = {}) {

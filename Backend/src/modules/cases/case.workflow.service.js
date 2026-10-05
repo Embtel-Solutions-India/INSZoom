@@ -39,6 +39,9 @@ async function statusChanged(caseData, oldStatus, newStatus, user) {
   if (eventByStatus[newStatus]) {
     await workflowEngine.triggerWorkflow(eventByStatus[newStatus], { caseId: caseData._id, entityId: caseData._id, oldStatus, newStatus }, user).catch(() => {});
   }
+  if (newStatus === "closed") {
+    require("../notifications/triggerEvents.service").emitInBackground("case.closed", { caseId: caseData._id, actor: user });
+  }
 }
 
 async function questionnaireSent(caseData, user, metadata = {}) {

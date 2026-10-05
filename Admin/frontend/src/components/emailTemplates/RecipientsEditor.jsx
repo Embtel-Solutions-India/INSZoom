@@ -104,11 +104,17 @@ function RuleList({ list, rules, recipientTypes, emailVariables, onChange }) {
   )
 }
 
-export default function RecipientsEditor({ recipients, recipientTypes, variables = [], onChange }) {
+export default function RecipientsEditor({ recipients, recipientTypes, variables = [], toLocked = null, onChange }) {
   const emailVariables = variables.filter((variable) => variable.email)
   return (
     <div className="space-y-3">
-      {LISTS.map((list) => (
+      {toLocked && (
+        <div className="rounded-lg border border-border bg-secondary/30 p-3 text-sm">
+          <span className="font-semibold text-foreground">To</span>
+          <span className="ml-2 text-muted-foreground">{toLocked}</span>
+        </div>
+      )}
+      {LISTS.filter((list) => !(toLocked && list.key === 'to')).map((list) => (
         <RuleList
           key={list.key}
           list={list}

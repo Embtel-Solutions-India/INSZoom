@@ -9,7 +9,7 @@ const stub = (relative, exports) => {
   require.cache[resolved] = { id: resolved, filename: resolved, loaded: true, exports };
 };
 let permissionsChecked = [];
-stub("../../middleware/authenticate", (req, res, next) => { req.user = { _id: "507f1f77bcf86cd799439011", role: "admin" }; next(); });
+stub("../../middleware/authenticate", (req, res, next) => { req.user = { _id: "507f1f77bcf86cd799439011", role: req.headers["x-role"] || "admin" }; next(); });
 stub("../../middleware/authorizePermissions", (permission) => (req, res, next) => { permissionsChecked.push(permission); next(); });
 
 const express = require("express");
@@ -27,8 +27,8 @@ let server; let base;
 test.before(async () => { server = http.createServer(app); await new Promise((r) => server.listen(0, r)); base = `http://127.0.0.1:${server.address().port}/email-templates`; });
 test.after(() => server.close());
 
-const call = async (method, url, body) => {
-  const res = await fetch(base + url, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+const call = async (method, url, body, role) => {
+  const res = await fetch(base + url, { method, headers: { "content-type": "application/json", ...(role ? { "x-role": role } : {}) }, body: body ? JSON.stringify(body) : undefined });
   return { status: res.status, body: await res.json() };
 };
 
@@ -53,13 +53,13 @@ function makeDoc(data) {
 
 const valid = { managed: true, name: "RFE Notice", subject: "RFE for [case.id]", heading: "Hello [client.name]", body: "<p>Dear [client.name]</p>", triggerKey: "rfe-received", category: "RFE", recipients: { to: [{ type: "client" }], cc: [{ type: "attorney" }], bcc: [] } };
 
-test("every endpoint requires settings:manage_email", async (t) => {
+test("customization endpoints require settings:manage_email_templates", async (t) => {
   fakeStore(t);
   permissionsChecked = [];
   await call("GET", "/meta");
   await call("GET", "/library");
   await call("POST", "/preview", { subject: "x", body: "y" });
-  assert.deepEqual([...new Set(permissionsChecked)], ["settings:manage_email"]);
+  assert.deepEqual([...new Set(permissionsChecked)], ["settings:manage_email_templates"]);
   assert.equal(permissionsChecked.length, 3);
 });
 
@@ -177,4 +177,57 @@ test("legacy (non-managed) template creation is unchanged", async (t) => {
   const { status } = await call("POST", "/", { name: "Old", subject: "s", body: "b" });
   assert.equal(status, 201);
   assert.equal(docs[0].managed, undefined);
+});
+
+test("RBAC: super admin, admin, team lead and case manager can manage email templates and Settings -> Email; nobody else", () => {
+  const { hasPermission } = require("../../authorization/rbac.service");
+  for (const role of ["super_admin", "admin", "team_lead", "case_manager"]) {
+    assert.equal(hasPermission({ role }, "settings:manage_email_templates"), true, `${role} should manage email templates`);
+    assert.equal(hasPermission({ role }, "settings:manage_email"), true, `${role} should manage Settings -> Email`);
+  }
+  for (const role of ["client", "attorney", "beneficiary"]) {
+    assert.equal(hasPermission({ role }, "settings:manage_email_templates"), false);
+    assert.equal(hasPermission({ role }, "settings:manage_email"), false);
+  }
+  // other settings categories stay admin-only
+  assert.equal(hasPermission({ role: "case_manager" }, "settings:manage_firm"), false);
+  assert.equal(hasPermission({ role: "case_manager" }, "settings:manage_security"), false);
+  assert.equal(hasPermission({ role: "team_lead" }, "settings:manage_users"), false);
+  assert.equal(hasPermission({ role: "team_lead" }, "settings:manage_invoice"), false);
+});
+
+test("legacy Settings-panel templates are reachable by case manager / team lead, but not by roles without settings:manage_email", async (t) => {
+  const docs = fakeStore(t, [{ name: "Legacy", subject: "s", body: "b", managed: false, isSystem: false }]);
+  let r = await call("GET", "/id1", undefined, "case_manager");
+  assert.equal(r.status, 200);
+  r = await call("POST", "/", { name: "Old", subject: "s", body: "b" }, "team_lead");
+  assert.equal(r.status, 201);
+  r = await call("GET", "/id1", undefined, "attorney");
+  assert.equal(r.status, 403);
+  r = await call("DELETE", "/id1", undefined, "client");
+  assert.equal(r.status, 403);
+  assert.equal(docs.length, 2);
+});
+
+test("library offers only emails that exist, one entry per moment (hidden duplicates and removed emails are not listed)", async (t) => {
+  fakeStore(t);
+  const lib = await call("GET", "/library");
+  const keys = lib.body.data.map((row) => row.triggerKey);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(lib.body.data.every((row) => row.available !== false && row.audience));
+  ["case.ready_for_tl_review:team_lead", "case-on-hold", "questionnaire-assigned", "attorney.assigned:attorney", "documents.requested:client", "lead.created:admin"].forEach((key) => assert.ok(!keys.includes(key), `${key} should not be listed`));
+  ["attorney-assignment", "document-requested", "quiz-lead-internal", "questionnaire.assigned:client", "document.rejected:client"].forEach((key) => assert.ok(keys.includes(key), `${key} should be listed`));
+  const live = lib.body.data.find((row) => row.triggerKey === "rfe.received:admin");
+  assert.equal(live.sendsPush, true);
+  assert.equal(live.audience, "admin");
+  const meta = await call("GET", "/meta");
+  assert.ok(meta.body.data.audiences.some((a) => a.key === "super_admin"));
+  assert.ok(!meta.body.data.triggers.some((trigger) => trigger.hidden));
+  let r = await call("GET", "/defaults/attorney.assigned:attorney");
+  assert.equal(r.status, 404);
+  r = await call("POST", "/", { ...valid, triggerKey: "documents.requested:client", subject: "s", body: "<p>x</p>" });
+  assert.equal(r.status, 400);
+  r = await call("GET", "/defaults/rfe.received:admin");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.data.recipients.to, [], "event triggers have no To rule - the event decides");
 });

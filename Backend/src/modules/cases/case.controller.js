@@ -1776,6 +1776,8 @@ exports.assignCaseManager = async (req, res, next) => {
     await caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req);
     await notifyAssignee(assignee, caseData, "case_manager", req.user, req);
     await notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req);
+    // Team lead + admin alerts (the case manager and client are already covered above).
+    require("../notifications/triggerEvents.service").emitInBackground("case.cm_assigned", { caseId: caseData._id, actor: req.user, req });
 
     // Phase 7 — cascade to non-overridden children after the principal's own
     // assignment has committed; a cascade failure must not roll back or fail
@@ -1817,6 +1819,8 @@ exports.assignTeamLead = async (req, res, next) => {
     await recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req);
     await caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req);
     await notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req);
+    // The case manager is told who the team lead is (the new team lead is covered above).
+    require("../notifications/triggerEvents.service").emitInBackground("case.tl_assigned", { caseId: caseData._id, actor: req.user, req });
 
     let childrenCascaded = 0;
     if (caseData.caseRole === "principal") {
@@ -2740,6 +2744,12 @@ exports.requestDocuments = async (req, res, next) => {
     caseService.addAuditEntry(caseData, "request_documents", "Documents requested", req.user, req.body, req);
     await caseData.save();
     await caseService.writeAuditLog("request_documents", caseData, req.user, req.body, req);
+    // The client's own alert (in-app + browser push, + customized email if active).
+    // (The workflow rule above is a role-wide broadcast and does not reach this case's client directly.)
+    require("../notifications/triggerEvents.service").emitInBackground("documents.requested", {
+      caseId: caseData._id, actor: req.user, req,
+      data: { documentList: requiredDocuments.map((doc) => doc.name || doc.documentType || doc).join(", "), documentCount: requiredDocuments.length, dueDate: req.body.dueDate },
+    });
 
     res.json({ success: true, message: "Document request sent", case: caseData });
   } catch (error) {

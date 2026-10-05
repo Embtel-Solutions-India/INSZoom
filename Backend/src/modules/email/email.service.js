@@ -22,13 +22,11 @@ const TEMPLATE_AUDIENCE = {
   "case-assigned-case-manager": "team_member",
   "client-intake-submitted-case-manager": "team_member",
   "employee-case-invitation": "client",
-  "staff-invitation": "team_member",
   "staff-credentials": "team_member",
   "attorney-assignment": "attorney",
   "client-portal-invitation": "client",
   "password-reset": "client",
   "family-beneficiary-invitation": "client",
-  "quiz-lead-confirmation": "client",
   "quiz-lead-internal": "team_member",
   "consultation-confirmation": "client",
   "consultation-reschedule": "client",
@@ -36,22 +34,17 @@ const TEMPLATE_AUDIENCE = {
   "consultation-host-notify": "team_member",
   "lead-approved": "client",
   "lead-rejected": "client",
-  "document-rejected": "client",
   "document-requested": "client",
-  "signature-required": "client",
   "filing-submitted": "client",
   "receipt-received": "client",
   "rfe-received": "client",
   "case-approved": "client",
   "case-denied": "client",
   "case-stage-changed": "client",
-  "payment-required": "client",
   "case-manager-assigned": "team_member",
   "case-manager-reassigned": "team_member",
   "case-closed": "client",
-  "questionnaire-assigned": "client",
   "additional-info-requested": "client",
-  "case-on-hold": "client",
 };
 
 // recipientRole (an actual User.role, when the caller has it handy) always
@@ -63,7 +56,10 @@ function resolveAudience(templateKey, recipientRole) {
     if (STAFF_ROLES.includes(recipientRole)) return "team_member";
     return "client";
   }
-  return TEMPLATE_AUDIENCE[templateKey] || "client";
+  if (TEMPLATE_AUDIENCE[templateKey]) return TEMPLATE_AUDIENCE[templateKey];
+  // Event-based triggers have no entry above - derive from their audience.
+  const audience = triggerRegistry.getTrigger(templateKey)?.audience;
+  return audience === "attorney" ? "attorney" : audience && audience !== "client" ? "team_member" : "client";
 }
 
 // Reusable template registry — one file per template under ./templates.
@@ -76,13 +72,11 @@ const TEMPLATES = {
   "case-assigned-case-manager": require("./templates/case-assigned-case-manager"),
   "client-intake-submitted-case-manager": require("./templates/client-intake-submitted-case-manager"),
   "employee-case-invitation": require("./templates/employee-case-invitation"),
-  "staff-invitation": require("./templates/staff-invitation"),
   "staff-credentials": require("./templates/staff-credentials"),
   "attorney-assignment": require("./templates/attorney-assignment"),
   "client-portal-invitation": require("./templates/client-portal-invitation"),
   "password-reset": require("./templates/password-reset"),
   "family-beneficiary-invitation": require("./templates/family-beneficiary-invitation"),
-  "quiz-lead-confirmation": require("./templates/quiz-lead-confirmation"),
   "quiz-lead-internal": require("./templates/quiz-lead-internal"),
   "consultation-confirmation": require("./templates/consultation-confirmation"),
   "consultation-reschedule": require("./templates/consultation-reschedule"),
@@ -90,22 +84,17 @@ const TEMPLATES = {
   "consultation-host-notify": require("./templates/consultation-host-notify"),
   "lead-approved": require("./templates/lead-approved"),
   "lead-rejected": require("./templates/lead-rejected"),
-  "document-rejected": require("./templates/document-rejected"),
   "document-requested": require("./templates/document-requested"),
-  "signature-required": require("./templates/signature-required"),
   "filing-submitted": require("./templates/filing-submitted"),
   "receipt-received": require("./templates/receipt-received"),
   "rfe-received": require("./templates/rfe-received"),
   "case-approved": require("./templates/case-approved"),
   "case-denied": require("./templates/case-denied"),
   "case-stage-changed": require("./templates/case-stage-changed"),
-  "payment-required": require("./templates/payment-required"),
   "case-manager-assigned": require("./templates/case-manager-assigned"),
   "case-manager-reassigned": require("./templates/case-manager-reassigned"),
   "case-closed": require("./templates/case-closed"),
-  "questionnaire-assigned": require("./templates/questionnaire-assigned"),
   "additional-info-requested": require("./templates/additional-info-requested"),
-  "case-on-hold": require("./templates/case-on-hold"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully
@@ -151,6 +140,13 @@ async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, c
     log.status = "failed";
     log.error = error.message;
     await log.save();
+    // Super Admin is told about delivery failures - but never about a failure
+    // of the alert itself (that would loop), and never for test sends.
+    if (templateKey !== "custom-test" && !String(templateKey).startsWith("system.")) {
+      require("../notifications/triggerEvents.service").emitInBackground("system.email_failed", {
+        data: { details: `${templateKey} to ${to} (${error.message})` },
+      });
+    }
     return { sent: false, error, log };
   }
 }
@@ -168,7 +164,7 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
     if (!custom) return null;
     const ctx = await customization.buildContext({ data, caseId });
     const rendered = renderCustom(custom, ctx);
-    const recipients = await customization.applyRecipientRules(custom, to, ctx);
+    const recipients = await customization.applyRecipientRules(custom, to, ctx, { toFromRules: Boolean(trigger.builtIn) });
     return { ...rendered, recipients, customTemplateId: custom._id };
   } catch (error) {
     logger.error("email_customization_failed_fell_back_to_default", { templateKey, error: error.message });
@@ -182,9 +178,13 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
  * HTML or talk to a provider directly.
  */
 async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
-  const template = TEMPLATES[templateKey];
-  if (!template) throw new Error(`Unknown email template: ${templateKey}`);
+  const builtIn = TEMPLATES[templateKey];
+  const eventTrigger = !builtIn ? triggerRegistry.getTrigger(templateKey) : null;
+  if (!builtIn && !eventTrigger) throw new Error(`Unknown email template: ${templateKey}`);
   if (!to) return { skipped: true, reason: "missing_recipient" };
+  // Event-based triggers have no built-in email: they only ever send once an
+  // admin has activated a customized template for them.
+  const template = builtIn || { subject: () => eventTrigger.label, bodyLines: () => [] };
 
   // Dev/testing-phase gate — team-member and attorney recipients are
   // suppressed (still logged, never actually dispatched); client recipients
@@ -213,6 +213,8 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
       subject: custom.subject, html: custom.html, text: custom.text, data, caseId, userId, triggeredBy, source, attachments,
     });
   }
+
+  if (!builtIn) return { skipped: true, reason: "no_active_template" };
 
   const subject = template.subject(data);
   const lines = template.bodyLines(data);

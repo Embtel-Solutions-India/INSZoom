@@ -79,6 +79,12 @@ async function runSlaSweep() {
         priority: "high",
       }).catch(() => {});
     }
+    // Team lead / admin / super admin escalation (the case manager is covered above).
+    if (nextStatus === "breached") {
+      require("../notifications/triggerEvents.service").emitInBackground("case.escalated", {
+        caseId: caseDoc._id, covered: { case_manager: { notified: true, emailed: false } },
+      });
+    }
   }
   return { checked: candidates.length, breached, atRisk };
 }

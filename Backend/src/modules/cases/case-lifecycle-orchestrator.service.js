@@ -505,9 +505,12 @@ class CaseLifecycleOrchestrator {
         status: caseData.status,
         createdAt: caseData.createdAt,
       };
+      // Only the team lead assigned to this case sees it live - not every team lead.
       realtimeGateway.emitToUser(caseData.assignedTeamLead, "case:created", caseSummary);
-      realtimeGateway.emitToRole("team_lead", "case:created", caseSummary);
     }
+
+    // Admin alert (the client and team lead are covered above).
+    require("../notifications/triggerEvents.service").emitInBackground("case.created", { caseId: caseData._id, actor: user, req });
   }
 
   static async onAssignment(caseData, user, req) {

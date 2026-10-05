@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Save, Power, PowerOff, Copy, Archive, Send, AlertTriangle, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { BellRing, ArrowLeft, Save, Power, PowerOff, Copy, Archive, Send, AlertTriangle, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { emailTemplatesApi } from '../../services/api'
 import RichTextEditor from './RichTextEditor'
 import { VariableInput } from './VariableSuggest'
@@ -234,7 +234,7 @@ export default function TemplateEditor({ initial, meta, onBack, onChanged }) {
   const [badgeLabel, badgeClass] = STATUS_BADGE[form.status] || STATUS_BADGE.draft
   const groupedTriggers = useMemo(() => {
     const map = new Map()
-    meta.triggers.filter((t) => !t.locked).forEach((t) => { map.set(t.category, [...(map.get(t.category) || []), t]) })
+    meta.triggers.filter((t) => !t.locked && t.available !== false).forEach((t) => { map.set(t.category, [...(map.get(t.category) || []), t]) })
     return [...map.entries()]
   }, [meta])
 
@@ -344,6 +344,12 @@ export default function TemplateEditor({ initial, meta, onBack, onChanged }) {
               </select>
             </Field>
             {trigger && <p className="text-xs text-muted-foreground">{trigger.description}</p>}
+            {trigger?.builtIn === false && (
+              <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                <BellRing className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>When this happens the person also gets an in-app notification and a browser push notification (<strong>{trigger.push?.title}</strong>) — that is sent automatically. The email below is only sent once this template is <strong>activated</strong>.</span>
+              </div>
+            )}
             {form.status === 'active' && <p className="text-xs text-muted-foreground">Deactivate this template to change its trigger.</p>}
           </Section>
 
@@ -384,7 +390,7 @@ export default function TemplateEditor({ initial, meta, onBack, onChanged }) {
           </Section>
 
           <Section title="Recipients" description="Who receives this email. Roles are looked up from the actual case when the email is sent.">
-            <RecipientsEditor recipients={form.recipients} recipientTypes={meta.recipientTypes} variables={meta.variables} onChange={(recipients) => set({ recipients })} />
+            <RecipientsEditor recipients={form.recipients} recipientTypes={meta.recipientTypes} variables={meta.variables} toLocked={trigger?.builtIn === false ? `Always the ${((meta.audiences || []).find((a) => a.key === trigger.audience) || {}).label || 'audience'} on the case — it is decided by the event.` : null} onChange={(recipients) => set({ recipients })} />
           </Section>
         </div>
 
