@@ -343,6 +343,11 @@ async function approveLead(id, user, req) {
     message: `${lead.fullName || lead.email} is approved and ready to convert to a case.`,
     link: "/leads",
   }, user, req).catch(() => {});
+  // Customizable admin email (the in-app alert above is the existing one).
+  require("../notifications/triggerEvents.service").emitInBackground("lead.approved", {
+    actor: user, data: { fullName: lead.fullName, email: lead.email },
+    covered: { admin: { notified: true, emailed: false } },
+  });
   return repopulateLead(lead);
 }
 

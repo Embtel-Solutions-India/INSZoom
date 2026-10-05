@@ -339,6 +339,22 @@ export const singlePartyFilingsApi = {
   changeFilingType: (caseId, payload) => api.patch(`/single-party-filings/cases/${caseId}/filing-type`, payload),
 }
 
+// Email Template Customization page (Backend modules/settings/emailTemplates.routes.js).
+export const emailTemplatesApi = {
+  meta: () => api.get('/email-templates/meta'),
+  library: () => api.get('/email-templates/library'),
+  defaults: (triggerKey) => api.get(`/email-templates/defaults/${triggerKey}`),
+  get: (id) => api.get(`/email-templates/${id}`),
+  create: (payload) => api.post('/email-templates', { ...payload, managed: true }),
+  update: (id, payload) => api.patch(`/email-templates/${id}`, payload),
+  activate: (id) => api.post(`/email-templates/${id}/activate`),
+  deactivate: (id) => api.post(`/email-templates/${id}/deactivate`),
+  duplicate: (id) => api.post(`/email-templates/${id}/duplicate`),
+  archive: (id) => api.delete(`/email-templates/${id}`),
+  preview: (payload) => api.post('/email-templates/preview', payload),
+  sendTest: (payload) => api.post('/email-templates/test', payload),
+}
+
 export const questionnairesApi = {
   list: (params = {}) => api.get('/questionnaires', { params }),
   defaults: () => api.get('/questionnaires/defaults'),

@@ -33,7 +33,7 @@ const NAV = [
   { id: 'portal', label: 'Client Portal', icon: Globe, roles: ['admin', 'super_admin'] },
   { id: 'notifications', label: 'Notifications', icon: Bell, roles: ['admin', 'super_admin'] },
   { id: 'intake', label: 'Questionnaires & Intake', icon: ClipboardList, roles: ['admin', 'super_admin'] },
-  { id: 'email', label: 'Email & Templates', icon: Mail, roles: ['admin', 'super_admin'] },
+  { id: 'email', label: 'Email & Templates', icon: Mail, roles: ['admin', 'super_admin', 'team_lead', 'case_manager'] },
   { id: 'invoice', label: 'Invoice & Billing', icon: DollarSign, roles: ['admin', 'super_admin'] },
   { id: 'security', label: 'Security', icon: Shield, roles: ['super_admin'] },
   { id: 'ai', label: 'AI Platform', icon: Brain, roles: ['admin', 'super_admin'] },

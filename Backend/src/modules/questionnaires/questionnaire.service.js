@@ -790,6 +790,13 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
     }, user, req);
   }
   await workflowService.triggerWorkflow("questionnaire.sent", { caseId: caseData._id, questionnaireId: questionnaire._id, responseId }, user, req);
+  // Customizable email for "Questionnaire available" - the in-app alert above is the existing one (it now also pushes).
+  if (assignedTo) {
+    require("../notifications/triggerEvents.service").emitInBackground("questionnaire.assigned", {
+      caseId: caseData._id, actor: user, req, data: { questionnaireName: questionnaire.title },
+      recipients: { client: [assignedTo] }, covered: { client: { notified: true, emailed: false } },
+    });
+  }
   return { responseId, case: caseData, questionnaire };
 }
 
@@ -1804,6 +1811,8 @@ async function submitResponse(payload, user, req) {
       });
       await caseService.writeAuditLog("submit_questionnaire", caseData, user, { responseId: result.responseId }, req);
       await workflowService.triggerWorkflow("questionnaire.submitted", { caseId: caseData._id, questionnaireId: payload.questionnaireId, responseId: result.responseId }, user, req);
+      // The assigned case manager's own alert (in-app + browser push); the workflow rule above is a role-wide broadcast.
+      require("../notifications/triggerEvents.service").emitInBackground("questionnaire.submitted", { caseId: caseData._id, actor: user, req });
       // Dynamic checklist assignment: evaluate this questionnaire's
       // checklistTriggers against the full answer set (not just what was in
       // this submit's payload - earlier autosaves may hold the triggering

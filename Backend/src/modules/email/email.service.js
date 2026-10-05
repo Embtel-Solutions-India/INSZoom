@@ -1,6 +1,10 @@
 const EmailLog = require("../../models/EmailLog");
 const { getProvider } = require("./providers");
 const env = require("../../config/env");
+const logger = require("../../utils/logger");
+const { layoutHtml, renderCustom } = require("./emailRenderer");
+const customization = require("./emailCustomization.service");
+const triggerRegistry = require("./emailTriggers.registry");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
 // comment for the why). Every template's INTRINSIC recipient — the person
@@ -18,13 +22,11 @@ const TEMPLATE_AUDIENCE = {
   "case-assigned-case-manager": "team_member",
   "client-intake-submitted-case-manager": "team_member",
   "employee-case-invitation": "client",
-  "staff-invitation": "team_member",
   "staff-credentials": "team_member",
   "attorney-assignment": "attorney",
   "client-portal-invitation": "client",
   "password-reset": "client",
   "family-beneficiary-invitation": "client",
-  "quiz-lead-confirmation": "client",
   "quiz-lead-internal": "team_member",
   "consultation-confirmation": "client",
   "consultation-reschedule": "client",
@@ -32,22 +34,17 @@ const TEMPLATE_AUDIENCE = {
   "consultation-host-notify": "team_member",
   "lead-approved": "client",
   "lead-rejected": "client",
-  "document-rejected": "client",
   "document-requested": "client",
-  "signature-required": "client",
   "filing-submitted": "client",
   "receipt-received": "client",
   "rfe-received": "client",
   "case-approved": "client",
   "case-denied": "client",
   "case-stage-changed": "client",
-  "payment-required": "client",
   "case-manager-assigned": "team_member",
   "case-manager-reassigned": "team_member",
   "case-closed": "client",
-  "questionnaire-assigned": "client",
   "additional-info-requested": "client",
-  "case-on-hold": "client",
 };
 
 // recipientRole (an actual User.role, when the caller has it handy) always
@@ -59,7 +56,10 @@ function resolveAudience(templateKey, recipientRole) {
     if (STAFF_ROLES.includes(recipientRole)) return "team_member";
     return "client";
   }
-  return TEMPLATE_AUDIENCE[templateKey] || "client";
+  if (TEMPLATE_AUDIENCE[templateKey]) return TEMPLATE_AUDIENCE[templateKey];
+  // Event-based triggers have no entry above - derive from their audience.
+  const audience = triggerRegistry.getTrigger(templateKey)?.audience;
+  return audience === "attorney" ? "attorney" : audience && audience !== "client" ? "team_member" : "client";
 }
 
 // Reusable template registry — one file per template under ./templates.
@@ -72,13 +72,11 @@ const TEMPLATES = {
   "case-assigned-case-manager": require("./templates/case-assigned-case-manager"),
   "client-intake-submitted-case-manager": require("./templates/client-intake-submitted-case-manager"),
   "employee-case-invitation": require("./templates/employee-case-invitation"),
-  "staff-invitation": require("./templates/staff-invitation"),
   "staff-credentials": require("./templates/staff-credentials"),
   "attorney-assignment": require("./templates/attorney-assignment"),
   "client-portal-invitation": require("./templates/client-portal-invitation"),
   "password-reset": require("./templates/password-reset"),
   "family-beneficiary-invitation": require("./templates/family-beneficiary-invitation"),
-  "quiz-lead-confirmation": require("./templates/quiz-lead-confirmation"),
   "quiz-lead-internal": require("./templates/quiz-lead-internal"),
   "consultation-confirmation": require("./templates/consultation-confirmation"),
   "consultation-reschedule": require("./templates/consultation-reschedule"),
@@ -86,22 +84,17 @@ const TEMPLATES = {
   "consultation-host-notify": require("./templates/consultation-host-notify"),
   "lead-approved": require("./templates/lead-approved"),
   "lead-rejected": require("./templates/lead-rejected"),
-  "document-rejected": require("./templates/document-rejected"),
   "document-requested": require("./templates/document-requested"),
-  "signature-required": require("./templates/signature-required"),
   "filing-submitted": require("./templates/filing-submitted"),
   "receipt-received": require("./templates/receipt-received"),
   "rfe-received": require("./templates/rfe-received"),
   "case-approved": require("./templates/case-approved"),
   "case-denied": require("./templates/case-denied"),
   "case-stage-changed": require("./templates/case-stage-changed"),
-  "payment-required": require("./templates/payment-required"),
   "case-manager-assigned": require("./templates/case-manager-assigned"),
   "case-manager-reassigned": require("./templates/case-manager-reassigned"),
   "case-closed": require("./templates/case-closed"),
-  "questionnaire-assigned": require("./templates/questionnaire-assigned"),
   "additional-info-requested": require("./templates/additional-info-requested"),
-  "case-on-hold": require("./templates/case-on-hold"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully
@@ -112,48 +105,10 @@ function isConfigured() {
 }
 
 function wrapHtml(subjectText, lines = []) {
-  const year = new Date().getFullYear();
   const paragraphs = lines
     .map((line) => `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${line}</p>`)
     .join("");
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subjectText}</title></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-        <tr>
-          <td style="background:#1e3a5f;padding:28px 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td>
-                  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Immiglance</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px 36px 28px;">
-            <h1 style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${subjectText}</h1>
-            ${paragraphs}
-          </td>
-        </tr>
-        <tr><td style="padding:0 36px;"><div style="height:1px;background:#e5e7eb;"></div></td></tr>
-        <tr>
-          <td style="padding:20px 36px 28px;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
-              This is an automated message from <strong>Immiglance</strong>. Please do not reply to this email.<br>
-              &copy; ${year} Immiglance. All rights reserved.
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  return layoutHtml({ title: subjectText, heading: subjectText, innerHtml: paragraphs });
 }
 
 /**
@@ -162,8 +117,8 @@ function wrapHtml(subjectText, lines = []) {
  * whether a provider is configured (dev-safe: records "skipped" instead of
  * throwing so callers never need try/catch around email sends).
  */
-async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
-  const log = await EmailLog.create({ templateKey, to, cc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
+async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
+  const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
 
   const provider = getProvider();
   if (!provider.isConfigured()) {
@@ -175,7 +130,7 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
 
   try {
     log.attempts += 1;
-    const result = await provider.send({ to, cc, subject, html, text, attachments });
+    const result = await provider.send({ to, cc, bcc, subject, html, text, attachments });
     log.status = "sent";
     log.sentAt = new Date();
     log.providerMessageId = result?.messageId;
@@ -185,7 +140,35 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
     log.status = "failed";
     log.error = error.message;
     await log.save();
+    // Super Admin is told about delivery failures - but never about a failure
+    // of the alert itself (that would loop), and never for test sends.
+    if (templateKey !== "custom-test" && !String(templateKey).startsWith("system.")) {
+      require("../notifications/triggerEvents.service").emitInBackground("system.email_failed", {
+        data: { details: `${templateKey} to ${to} (${error.message})` },
+      });
+    }
     return { sent: false, error, log };
+  }
+}
+
+// Admin-customized version of a built-in email (Email Template
+// Customization page). Returns null - meaning "send the built-in email
+// exactly as before" - when there is no active customization for this key,
+// the key is locked, or ANYTHING goes wrong while resolving/rendering it:
+// customization is an enhancement and must never be able to block a send.
+async function resolveCustomization(templateKey, { to, data, caseId }) {
+  try {
+    const trigger = triggerRegistry.getTrigger(templateKey);
+    if (!trigger || trigger.locked) return null;
+    const custom = await customization.findActive(templateKey);
+    if (!custom) return null;
+    const ctx = await customization.buildContext({ data, caseId });
+    const rendered = renderCustom(custom, ctx);
+    const recipients = await customization.applyRecipientRules(custom, to, ctx, { toFromRules: Boolean(trigger.builtIn) });
+    return { ...rendered, recipients, customTemplateId: custom._id };
+  } catch (error) {
+    logger.error("email_customization_failed_fell_back_to_default", { templateKey, error: error.message });
+    return null;
   }
 }
 
@@ -195,9 +178,13 @@ async function dispatch({ templateKey, to, cc, subject, html, text, data, caseId
  * HTML or talk to a provider directly.
  */
 async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
-  const template = TEMPLATES[templateKey];
-  if (!template) throw new Error(`Unknown email template: ${templateKey}`);
+  const builtIn = TEMPLATES[templateKey];
+  const eventTrigger = !builtIn ? triggerRegistry.getTrigger(templateKey) : null;
+  if (!builtIn && !eventTrigger) throw new Error(`Unknown email template: ${templateKey}`);
   if (!to) return { skipped: true, reason: "missing_recipient" };
+  // Event-based triggers have no built-in email: they only ever send once an
+  // admin has activated a customized template for them.
+  const template = builtIn || { subject: () => eventTrigger.label, bodyLines: () => [] };
 
   // Dev/testing-phase gate — team-member and attorney recipients are
   // suppressed (still logged, never actually dispatched); client recipients
@@ -218,6 +205,17 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     }
   }
 
+  const custom = await resolveCustomization(templateKey, { to, data, caseId });
+  if (custom) {
+    const extraCc = [...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])];
+    return dispatch({
+      templateKey, to: custom.recipients.to.join(", "), cc: extraCc, bcc: custom.recipients.bcc,
+      subject: custom.subject, html: custom.html, text: custom.text, data, caseId, userId, triggeredBy, source, attachments,
+    });
+  }
+
+  if (!builtIn) return { skipped: true, reason: "no_active_template" };
+
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
   const html = wrapHtml(subject, lines);
@@ -229,4 +227,8 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
 module.exports = {
   sendTemplateEmail,
   isConfigured,
+  dispatch,
+  wrapHtml,
+  TEMPLATES,
+  TEMPLATE_AUDIENCE,
 };

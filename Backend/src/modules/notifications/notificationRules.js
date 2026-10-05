@@ -78,4 +78,25 @@ function resolveNotificationDefaults(type) {
   return type ? TYPE_RULES[type] : undefined;
 }
 
-module.exports = { TYPE_RULES, resolveNotificationDefaults };
+// Notification types that correspond to a customizable trigger
+// (modules/email/eventTriggers.catalog.js) and must reach the user's browser
+// as a push notification. Several existing call sites hard-code
+// ["in_app","socket"], which silently bypassed the push defaults above; this
+// adds "push" for exactly these types. Per-user preferences (applyPreferences)
+// can still mute push, and role-wide workflow broadcasts (source "workflow")
+// are excluded so a push never goes to every user with a role.
+const PUSH_ON_TYPES = new Set([
+  "case_created", "team_case_created", "case_assigned", "case_reassigned",
+  "questionnaire_sent", "questionnaire_assigned", "questionnaire_submitted", "client_intake_submitted",
+  "document_requested", "document_rejected", "new_document_uploaded", "additional_information_requested",
+  "rfe_received", "rfe_submitted", "case_approved", "case_rejected", "petition_filed", "case_stage_changed",
+  "case_closed", "case_reopened", "workflow_sla_breached", "attorney_access_granted", "attorney_feedback",
+  "lead_created", "lead_approved", "receipt_number_generated",
+]);
+
+function withPushForTriggerTypes(type, source, channels) {
+  if (!PUSH_ON_TYPES.has(type) || source === "workflow" || channels.includes("push")) return channels;
+  return [...channels, "push"];
+}
+
+module.exports = { TYPE_RULES, resolveNotificationDefaults, withPushForTriggerTypes };

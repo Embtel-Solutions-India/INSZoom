@@ -117,3 +117,14 @@
     @apply inline-block w-2 h-2 rounded-full shrink-0;
   }
 }
+
+
+/* Email template editor: show where each link / button in the body points.
+   Editor-only (pseudo-element) - never part of the saved email HTML. */
+.email-editor a::after {
+  content: " → " attr(href);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.75;
+  word-break: break-all;
+}

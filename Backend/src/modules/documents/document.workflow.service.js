@@ -85,6 +85,13 @@ async function documentUploaded(document, user) {
   await canonicalSyncService.syncFromDocument(document, user, null).catch(() => null);
   await workflowEngine.triggerWorkflow("document.uploaded", { caseId, entityId: caseId, documentId: document._id, documentType: document.documentType }, user).catch(() => {});
   if (caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseId, user, null, "document_uploaded").catch(() => null);
+  // Case-manager alert (in-app + browser push) when the CLIENT side uploads; staff uploads don't alert anyone.
+  const STAFF = ["super_admin", "admin", "team_lead", "case_manager", "attorney"];
+  if (caseId && !STAFF.includes(user?.role)) {
+    require("../notifications/triggerEvents.service").emitInBackground("document.uploaded", {
+      caseId, actor: user, data: { documentName: document.originalName || document.documentType },
+    });
+  }
 }
 
 async function documentReviewed(document, user) {
@@ -118,6 +125,13 @@ async function documentReviewed(document, user) {
       link: "/dashboard/documents",
       dedupeKey: `document-reupload:${document._id}:${document.currentVersion}`,
     }, user, null).catch(() => []);
+    // Customizable client email for the same moment (the in-app + push alert above is the existing one).
+    if (caseId && document.user) {
+      require("../notifications/triggerEvents.service").emitInBackground("document.rejected", {
+        caseId, actor: user, data: { documentName: document.originalName || document.documentType, rejectionReason: document.reviewNotes },
+        recipients: { client: [document.user] }, covered: { client: { notified: true, emailed: false } },
+      });
+    }
   }
   if (caseId) await require("../cases/case-lifecycle-orchestrator.service").recalculate(caseId, user, null, "document_reviewed").catch(() => null);
 }

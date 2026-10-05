@@ -62,6 +62,12 @@ async function notifyStaffOfLead(lead) {
 
   realtimeGateway.emitToRole("admin", "lead:created", lead);
   realtimeGateway.emitToRole("case_manager", "lead:created", lead);
+
+  // Customizable admin email for the same moment (the in-app + push alert above is the existing one).
+  require("../notifications/triggerEvents.service").emitInBackground("lead.created", {
+    data: { fullName: lead.fullName, email: lead.email, phone: lead.phone, visaPathway: lead.visaPathway },
+    covered: { admin: { notified: true, emailed: true } }, // the internal lead email above is the existing one
+  });
 }
 
 async function createConsultationLead(payload = {}, req, options = {}) {
@@ -170,25 +176,8 @@ async function createQuizLead(payload, req) {
     });
   }
 
-  const publicConfig = await entityConfigService.getPublicConfig().catch(() => ({}));
-  // Fire-and-forget: SMTP round-trip (compounded with Atlas M0 latency) must
-  // never block the quiz submission response - same reasoning as
-  // notifyStaffOfLead below.
-  emailService.sendTemplateEmail("quiz-lead-confirmation", {
-    to: lead.email,
-    data: {
-      fullName: lead.fullName,
-      visaPathway: lead.visaPathway,
-      pathwayString: lead.scoreResult?.pathwayString,
-      nextStep: payload.nextStep,
-      msoEntityShortName: publicConfig.msoEntityShortName,
-    },
-    source: "shared",
-  }).catch(() => null);
-  // Fire-and-forget, same reason as createConsultationLead/createLeadFromQuiz/
-  // createLeadFromIntake below - never block the quiz submit response on the
-  // internal staff notification.
-  notifyStaffOfLead(lead).catch(() => {});
+  // No prospect result email and no staff email/in-app/push notification for
+  // completed quiz leads - the lead still appears in the admin Leads Inbox.
 
   telemetryService.track({
     name: "lead.created",
@@ -292,8 +281,7 @@ async function createLeadFromQuiz(payload = {}, req) {
   leadData.userAgent = req?.headers?.["user-agent"];
 
   const lead = await LeadModel.create(leadData);
-  // Fire-and-forget - see createConsultationLead's comment above for why.
-  notifyStaffOfLead(lead).catch(() => {});
+  // Quiz leads intentionally trigger no email / in-app / push notification.
   return lead;
 }
 

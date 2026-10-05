@@ -7,6 +7,7 @@ const emailLogSchema = new mongoose.Schema(
     templateKey: { type: String, required: true, index: true },
     to: { type: String, required: true, trim: true, lowercase: true, index: true },
     cc: [{ type: String, trim: true, lowercase: true }],
+    bcc: [{ type: String, trim: true, lowercase: true }],
     subject: { type: String, required: true },
     status: { type: String, enum: EMAIL_STATUSES, default: "queued", index: true },
     error: String,

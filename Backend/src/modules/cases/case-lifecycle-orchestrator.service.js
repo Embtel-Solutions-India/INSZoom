@@ -449,6 +449,14 @@ class CaseLifecycleOrchestrator {
     const caseNumber = caseData.caseNumber || caseData.caseId;
     const clientEmail = caseData.clientEmail || user?.email;
     if (caseData.user || clientEmail) {
+      // A client who still has to set a password gets ONE combined email
+      // ("client-portal-invitation": case created + Case ID + activate
+      // button) - sending case-created-client as well would be a second,
+      // redundant email for the same event.
+      const clientUser = caseData.user
+        ? await User.findById(caseData.user).select("+password role").catch(() => null)
+        : null;
+      const invitePending = Boolean(clientUser) && clientUser.role === "client" && !clientUser.password;
       await notificationService.createNotification({
         userId: caseData.user,
         type: "case_created",
@@ -459,9 +467,11 @@ class CaseLifecycleOrchestrator {
         link: "/dashboard",
         priority: "medium",
         source: ["Immiglance", "BAIS"].includes(caseData.legacySource) ? "Immiglance" : "shared",
-        emailTemplate: "case-created-client",
-        emailTo: clientEmail,
-        emailData: { clientName: caseData.clientName, caseNumber },
+        ...(invitePending ? {} : {
+          emailTemplate: "case-created-client",
+          emailTo: clientEmail,
+          emailData: { clientName: caseData.clientName, caseNumber },
+        }),
       }, user, req).catch(() => null);
     }
 
@@ -495,9 +505,12 @@ class CaseLifecycleOrchestrator {
         status: caseData.status,
         createdAt: caseData.createdAt,
       };
+      // Only the team lead assigned to this case sees it live - not every team lead.
       realtimeGateway.emitToUser(caseData.assignedTeamLead, "case:created", caseSummary);
-      realtimeGateway.emitToRole("team_lead", "case:created", caseSummary);
     }
+
+    // Admin alert (the client and team lead are covered above).
+    require("../notifications/triggerEvents.service").emitInBackground("case.created", { caseId: caseData._id, actor: user, req });
   }
 
   static async onAssignment(caseData, user, req) {

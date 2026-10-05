@@ -824,6 +824,7 @@ async function checkSlaBreaches(user, req) {
       caseId: workflow.caseId,
       source: "workflow",
     }, user, req).catch(() => null);
+    if (workflow.caseId) require("../notifications/triggerEvents.service").emitInBackground("case.escalated", { caseId: workflow.caseId, actor: user, req });
     await workflow.save();
   }
   const reminderTasks = await Task.find({

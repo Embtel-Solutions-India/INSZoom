@@ -42,7 +42,13 @@ async function recordFailedLoginAttempt(user) {
   ]);
   user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
   if (user.failedLoginAttempts >= maxAttempts) {
+    const alreadyLocked = user.lockedUntil && new Date(user.lockedUntil) > new Date();
     user.lockedUntil = new Date(Date.now() + lockoutMinutes * 60 * 1000);
+    if (!alreadyLocked) {
+      require("../notifications/triggerEvents.service").emitInBackground("system.account_locked", {
+        data: { recipientName: user.name || user.displayName || user.email },
+      });
+    }
   }
 }
 

@@ -850,6 +850,7 @@ async function reopenCase(caseData, user, req) {
   addAuditEntry(caseData, "reopen", "Case reopened", user, {}, req);
   await caseData.save();
   await writeAuditLog("reopen", caseData, user, {}, req);
+  require("../notifications/triggerEvents.service").emitInBackground("case.reopened", { caseId: caseData._id, actor: user, req });
   return caseData;
 }
 
