@@ -47,13 +47,24 @@ async function findEntry(caseId, wantedId) {
 async function approveChecklists(caseId, { checklistIds = [], all = false } = {}, user, req) {
   const principal = await loadCase(caseId, user);
   const targets = [principal];
-  if (all) targets.push(...(await Case.find({ parentCase: principal._id })));
+  // Approving an EMPLOYEE checklist on the principal case approves it on every child case too (and sends it to each client),
+  // so the case manager never has to open each child case. "all" covers every checklist role.
+  const employeeIdsRequested = checklistIds.filter((id) => String(id).endsWith("|employee"));
+  const cascadeToChildren = all || employeeIdsRequested.length > 0;
+  const isChildTarget = (target) => String(target._id) !== String(principal._id);
+  if (cascadeToChildren && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
 
   const approved = [];
   for (const target of targets) {
     if (!isGated(target)) continue;
     const entries = (await service().resolveCaseQuestionnaires(target._id)).filter((entry) => !entry.staffRequest);
-    const pending = entries.filter((entry) => !isApproved(target, gateEntry(entry)) && (all || checklistIds.includes(gateChecklistId(gateEntry(entry)))));
+    const pending = entries.filter((entry) => {
+      if (isApproved(target, gateEntry(entry))) return false;
+      if (all) return true;
+      const id = gateChecklistId(gateEntry(entry));
+      // on a child case only the employee checklists cascade from the principal's approval
+      return isChildTarget(target) ? employeeIdsRequested.includes(id) : checklistIds.includes(id);
+    });
     if (!pending.length) continue;
 
     const fresh = await Case.findById(target._id);

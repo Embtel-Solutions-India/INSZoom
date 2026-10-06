@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import api, { casesApi } from '../services/api'
+import api, { casesApi, invalidateCachedGet } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox, List, LayoutGrid } from 'lucide-react'
+import { Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox, List, LayoutGrid, Trash2 } from 'lucide-react'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import CreateCaseModal from '../components/CreateCaseModal'
 import CaseCreatedSuccessModal from '../components/CaseCreatedSuccessModal'
+import ConfirmModal from '../components/ConfirmModal'
 import Card from '../components/ui/Card'
 import StatBadge from '../components/ui/StatBadge'
 import SearchInput from '../components/ui/SearchInput'
@@ -28,6 +29,8 @@ const BOARD_COLUMNS = [
 
 // Phase 5 case creation is restricted to admins and team leads.
 const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
+// Permanent case deletion (database removal) is open to the internal roles that manage cases.
+const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager']
 // Phase 7 — who sees the Pending Assignment queue panel. Matches the roles
 // GET /cases/dashboard/team-lead itself scopes to (team leads see their own
 // team's queue; admins see every team's).
@@ -39,6 +42,10 @@ const CRMCases = () => {
   const { user } = useAuth()
   const { subscribe, connected } = useSocket()
   const [cases, setCases] = useState([])
+  const canDeleteCase = CAN_DELETE_CASE_ROLES.includes(user?.role)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '')
@@ -144,6 +151,23 @@ const CRMCases = () => {
 
   // Back on this (kept-alive) list after a while: refresh quietly - rows stay, no spinner.
   useRouteRevisit(() => { fetchCases() })
+
+  const runDeleteCase = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await casesApi.deletePermanently(deleteTarget._id)
+      invalidateCachedGet('/cases')
+      setDeleteTarget(null)
+      await fetchCases()
+      fetchPendingQueue()
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || err.message || 'Could not delete the case. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const fetchCases = async () => {
     const seq = activeFetchRef.current.seq + 1
@@ -320,6 +344,19 @@ const CRMCases = () => {
           </button>
         </div>
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Are you sure?"
+          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be permanently deleted from the database, together with its documents, answers, forms and messages${(deleteTarget.childCases?.length || deleteTarget.caseRole === 'principal') ? ', and all of its child cases' : ''}. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Yes, delete'}
+          cancelLabel="No"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={runDeleteCase}
+          onCancel={() => { if (!deleting) setDeleteTarget(null) }}
+        />
+      )}
 
       {showCreateModal && (
         <CreateCaseModal
@@ -542,6 +579,17 @@ const CRMCases = () => {
                         <span className="text-xs text-amber-700 font-medium dark:text-amber-400">Awaiting assignment</span>
                       )}
                       <div className="flex items-center gap-2 shrink-0">
+                          {canDeleteCase && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(caseItem); setDeleteError('') }}
+                              title="Delete case"
+                              aria-label={`Delete case ${caseItem.caseNumber}`}
+                              data-testid={`delete-case-${caseItem.caseNumber}`}
+                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         {awaitingAssignment && (
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}
@@ -649,6 +697,17 @@ const CRMCases = () => {
                       </td>
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center justify-end gap-1.5">
+                          {canDeleteCase && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(caseItem); setDeleteError('') }}
+                              title="Delete case"
+                              aria-label={`Delete case ${caseItem.caseNumber}`}
+                              data-testid={`delete-case-${caseItem.caseNumber}`}
+                              className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                           {awaitingAssignment && (
                             <button
                               onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}?assign=case_manager`) }}

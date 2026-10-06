@@ -68,6 +68,8 @@ router.post(
 router.get("/:id", authenticate, authorizePermissions("cases:read"), ctrl.getCase);
 router.put("/:id", authenticate, authorizeRoles(...staffRoles), authorizePermissions("cases:update"), ctrl.updateCase);
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ctrl.archiveCase);
+// Permanent delete (database removal): internal staff who manage cases. Declared before nothing that could shadow it.
+router.delete("/:id/permanent", authenticate, authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("cases:delete"), ctrl.deleteCasePermanently);
 
 router.put("/:id/stage", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updateCaseStage);
 router.post("/:id/n400-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN400Process);

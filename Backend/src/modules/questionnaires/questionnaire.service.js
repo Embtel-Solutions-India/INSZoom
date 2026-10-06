@@ -2227,32 +2227,97 @@ function reconcileQuestionFields(existingDoc, definitionQuestion) {
 const ENSURE_TTL_MS = 5 * 60 * 1000;
 let ensureCache = { at: 0, promise: null };
 
+// FULL reconcile of every built-in template. Explicit trigger only (POST /questionnaires/defaults/seed, the opt-in
+// SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP flag, tests). It is never run from server start-up or from any page load - those use
+// ensureTemplate()/ensureTemplatesForVisa() below, which touch only the checklists they need.
 async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
   const now = Date.now();
   if (!force && ensureCache.promise && now - ensureCache.at < ENSURE_TTL_MS) return ensureCache.promise;
-  // Stale-while-revalidate. Re-syncing every built-in template is ~400 database round trips (10-15 s on this deployment), and it
-  // used to run INSIDE whichever client request happened to arrive after the 5-minute TTL - that request (a checklist load or
-  // save) stalled for the whole re-sync. The templates are already in the database from the previous sync, so serve them now
-  // and refresh in the background. Only the very first call after a restart (nothing cached yet) still waits.
-  if (!force && ensureCache.promise && !ensureCache.refreshing) {
-    ensureCache.refreshing = true;
-    const previous = ensureCache.promise;
-    ensureDefaultVisaTemplatesUncached(user, req)
-      .then((result) => { ensureCache = { at: Date.now(), promise: Promise.resolve(result) }; })
-      .catch((error) => {
-        logger.error("questionnaire_template_background_refresh_failed", { error: error.message });
-        ensureCache = { at: Date.now() - ENSURE_TTL_MS + 30_000, promise: previous }; // try again in 30 s
-      });
-    return previous;
-  }
-  if (!force && ensureCache.promise && ensureCache.refreshing) return ensureCache.promise;
   const promise = ensureDefaultVisaTemplatesUncached(user, req).catch((error) => {
-    // Don't cache a failure — the next call should retry against the DB.
+    // Don't cache a failure - the next call should retry against the DB.
     ensureCache = { at: 0, promise: null };
     throw error;
   });
   ensureCache = { at: now, promise };
   return promise;
+}
+
+// ── lazy, per-template reconciliation ─────────────────────────────────────
+// Same create-or-patch logic as the full seed, scoped to the checklists a request actually needs, cached per template key
+// (ENSURE_TTL_MS) so repeated page loads cost nothing.
+const lazyTemplateCache = new Map(); // definition.key -> { at, promise, present }
+const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-s]/g, "").toUpperCase();
+
+function reconcileInBackground(definition, user, req) {
+  const state = lazyTemplateCache.get(definition.key) || {};
+  if (state.refreshing) return;
+  lazyTemplateCache.set(definition.key, { ...state, refreshing: true });
+  reconcileDefinition(definition, user || { _id: undefined, role: "super_admin" }, req)
+    .then((result) => lazyTemplateCache.set(definition.key, { at: Date.now(), promise: Promise.resolve(result), present: true }))
+    .catch((error) => {
+      logger.error("questionnaire_template_background_refresh_failed", { key: definition.key, error: error.message });
+      lazyTemplateCache.set(definition.key, { ...state, refreshing: false, at: Date.now() - ENSURE_TTL_MS + 30_000 }); // retry in 30 s
+    });
+}
+
+// Speed rule: a page load never waits on a reconcile of a template that is already in the database. The only request that
+// waits is the first one for a template that does not exist yet (nothing to serve without it). Everything else is
+// stale-while-revalidate: serve what is stored, refresh it from the code definition in the background (at most once per
+// ENSURE_TTL_MS per template), so a code change still reaches the database without ever stalling a user.
+async function ensureDefinitions(definitions, user, req, { wait = false } = {}) {
+  const now = Date.now();
+  const unknown = [];
+  for (const definition of definitions) {
+    const state = lazyTemplateCache.get(definition.key);
+    // Default (wait:false): never block the request - a template the caller needs but that does not exist yet is detected by the
+    // caller's own lookup (which then retries with wait:true), so a healthy page load pays zero extra database round trips.
+    if (!wait && (!state || now - state.at >= ENSURE_TTL_MS)) { reconcileInBackground(definition, user, req); continue; }
+    if (!state) { unknown.push(definition); continue; }
+    if (state.present && now - state.at >= ENSURE_TTL_MS) reconcileInBackground(definition, user, req);
+    else if (!state.present && state.promise && now - state.at >= ENSURE_TTL_MS) unknown.push(definition);
+  }
+  if (!unknown.length) return;
+  const stored = await Questionnaire.find({ key: { $in: unknown.map((definition) => definition.key) }, latestVersion: true }).select("key").lean();
+  const storedKeys = new Set((stored || []).map((row) => row.key));
+  const missing = [];
+  for (const definition of unknown) {
+    if (storedKeys.has(definition.key)) {
+      lazyTemplateCache.set(definition.key, { at: 0, promise: null, present: true }); // stale on purpose: refresh in the background now
+      reconcileInBackground(definition, user, req);
+    } else {
+      missing.push(definition);
+    }
+  }
+  await Promise.all(missing.map(async (definition) => {
+    try {
+      const result = await reconcileDefinition(definition, user || { _id: undefined, role: "super_admin" }, req);
+      lazyTemplateCache.set(definition.key, { at: Date.now(), promise: Promise.resolve(result), present: true });
+    } catch (error) {
+      lazyTemplateCache.delete(definition.key); // never cache a failure
+      throw error;
+    }
+  }));
+}
+
+// One checklist template by key ("n400_checklist", "i907_checklist", ...). Resolves null for a key with no code definition
+// (an admin-created template already lives in the database and needs no reconciling).
+async function ensureTemplate(key, user, req, options) {
+  const definition = VISA_TEMPLATE_DEFINITIONS.find((item) => item.key === key);
+  if (!definition) return null;
+  await ensureDefinitions([definition], user, req, options);
+  return definition;
+}
+
+// The built-in checklists that apply to one visa type (the ones resolveCaseQuestionnaires/provisioning can pick for it).
+async function ensureTemplatesForVisa(visaType, user, req, options) {
+  const wanted = normalizeVisaForTemplates(visaType);
+  if (!wanted) return [];
+  const matching = VISA_TEMPLATE_DEFINITIONS.filter((definition) => (
+    [definition.visaType, ...(definition.visaTypes || [])].some((value) => normalizeVisaForTemplates(value) === wanted)
+    || normalizeVisaForTemplates(definition.key) === `${wanted}QUESTIONNAIRE`
+  ));
+  await ensureDefinitions(matching, user, req, options);
+  return matching;
 }
 
 async function ensureDefaultVisaTemplatesUncached(user, req) {
@@ -2263,232 +2328,236 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
   // what actually cuts wall-clock time with ~20 definitions today. The other
   // half of the fix (bulkWrite instead of one round trip per question) is
   // below; see its comment for why that part mattered most.
-  const results = await Promise.all(VISA_TEMPLATE_DEFINITIONS.map(async (definition) => {
-    let questionnaire = await Questionnaire.findOne({ key: definition.key, latestVersion: true });
-    if (!questionnaire) {
-      questionnaire = await Questionnaire.create({
-        key: definition.key,
-        title: definition.title,
-        description: definition.description,
-        version: 1,
-        status: definition.status || "draft",
-        type: "template",
-        module: "cases",
-        category: "immigration",
-        visaType: definition.visaType,
-        // A definition may serve several case-level visa sub-codes under one
-        // shared questionnaire (e.g. the P checklist covers P-1A/P-1B/P-3
-        // cases) — definition.visaTypes lets it declare the full match set;
-        // falling back to [definition.visaType] keeps every other
-        // single-code definition (H1B, L1A, ...) unchanged.
-        visaTypes: definition.visaTypes || [definition.visaType],
+  return Promise.all(VISA_TEMPLATE_DEFINITIONS.map((definition) => reconcileDefinition(definition, systemUser, req)));
+}
+
+// Create-or-patch ONE built-in checklist template (its Questionnaire and its own Questions) from its code definition.
+// This is the unit of work for every path: the full seed (ensureDefaultVisaTemplatesUncached, explicit admin trigger only)
+// and the lazy per-template/per-visa paths above. It only ever touches this definition's own records.
+async function reconcileDefinition(definition, systemUser, req) {
+  let questionnaire = await Questionnaire.findOne({ key: definition.key, latestVersion: true });
+  if (!questionnaire) {
+    questionnaire = await Questionnaire.create({
+      key: definition.key,
+      title: definition.title,
+      description: definition.description,
+      version: 1,
+      status: definition.status || "draft",
+      type: "template",
+      module: "cases",
+      category: "immigration",
+      visaType: definition.visaType,
+      // A definition may serve several case-level visa sub-codes under one
+      // shared questionnaire (e.g. the P checklist covers P-1A/P-1B/P-3
+      // cases) — definition.visaTypes lets it declare the full match set;
+      // falling back to [definition.visaType] keeps every other
+      // single-code definition (H1B, L1A, ...) unchanged.
+      visaTypes: definition.visaTypes || [definition.visaType],
+      isActive: true,
+      isTemplate: true,
+      templateCategory: definition.visaType,
+      checklistRole: definition.checklistRole || "",
+      assignmentRules: definition.assignmentRules || undefined,
+      isDefault: Boolean(definition.isDefault),
+      latestVersion: true,
+      sections: definition.sections.map((title, index) => ({
+        key: slugSection(title),
+        title,
+        description: "",
+        order: index + 1,
         isActive: true,
-        isTemplate: true,
-        templateCategory: definition.visaType,
-        checklistRole: definition.checklistRole || "",
-        assignmentRules: definition.assignmentRules || undefined,
-        isDefault: Boolean(definition.isDefault),
-        latestVersion: true,
-        sections: definition.sections.map((title, index) => ({
-          key: slugSection(title),
-          title,
-          description: "",
-          order: index + 1,
-          isActive: true,
-        })),
-        pages: definition.sections.map((title, index) => ({
-          key: slugSection(title),
-          title,
-          order: index + 1,
-          sectionKeys: [slugSection(title)],
-        })),
-        builder: {
-          layout: "wizard",
-          pageOrder: definition.sections.map(slugSection),
-          sectionOrder: definition.sections.map(slugSection),
-          questionOrder: definition.questions.map((question) => question.key),
-        },
-        settings: {
-          multiStep: true,
-          autoSave: true,
-          allowBackNavigation: true,
-          requireReview: true,
-          progressMode: "questions",
-          defaultLocale: "en",
-          enableBranching: true,
-        },
-        createdBy: systemUser._id,
-        updatedBy: systemUser._id,
-      });
-      questionnaire.rootQuestionnaire = questionnaire._id;
-      addQuestionnaireAudit(questionnaire, "seed_default_template", systemUser, { visaType: definition.visaType }, req);
-      await questionnaire.save();
-    } else {
-      // Non-destructive content update: the master content's own copy (e.g.
-      // an intro paragraph) or section list changed — patch the existing
-      // record in place, never recreate it.
-      let changed = false;
-      if (questionnaire.description !== definition.description) {
-        questionnaire.description = definition.description;
-        changed = true;
-      }
-      if (definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
-        questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
-        changed = true;
-      }
-      // Code-defined visas plus any an admin mapped from the UI (adminVisaTypes).
-      const definitionVisaTypes = [...new Set([...(definition.visaTypes || [definition.visaType]), ...(questionnaire.adminVisaTypes || [])])];
-      if (JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
-        questionnaire.visaTypes = definitionVisaTypes;
-        changed = true;
-      }
-      // A seeded checklist must always be listed on the Questionnaire page.
-      // (Left alone if an admin deliberately archived it.)
-      if (!questionnaire.isTemplate && questionnaire.status !== "archived") {
-        questionnaire.isTemplate = true;
-        changed = true;
-      }
-      // Opt-in (definition.reconcileMetadata): a definition that took over an
-      // EXISTING Questionnaire key also needs its identity fields brought up to
-      // date in place - otherwise the old record's visaType/isDefault/checklistRole
-      // would keep it from ever being resolved the new way. Never applied to
-      // definitions that don't ask for it, so admin edits elsewhere are untouched.
-      if (definition.reconcileMetadata && questionnaire.status !== "archived") {
-        for (const field of ["title", "visaType", "checklistRole", "isDefault"]) {
-          const next = field === "isDefault" ? Boolean(definition.isDefault) : (definition[field] ?? "");
-          if (questionnaire[field] !== next) {
-            questionnaire[field] = next;
-            changed = true;
-          }
-        }
-        if (questionnaire.templateCategory !== definition.visaType) {
-          questionnaire.templateCategory = definition.visaType;
+      })),
+      pages: definition.sections.map((title, index) => ({
+        key: slugSection(title),
+        title,
+        order: index + 1,
+        sectionKeys: [slugSection(title)],
+      })),
+      builder: {
+        layout: "wizard",
+        pageOrder: definition.sections.map(slugSection),
+        sectionOrder: definition.sections.map(slugSection),
+        questionOrder: definition.questions.map((question) => question.key),
+      },
+      settings: {
+        multiStep: true,
+        autoSave: true,
+        allowBackNavigation: true,
+        requireReview: true,
+        progressMode: "questions",
+        defaultLocale: "en",
+        enableBranching: true,
+      },
+      createdBy: systemUser._id,
+      updatedBy: systemUser._id,
+    });
+    questionnaire.rootQuestionnaire = questionnaire._id;
+    addQuestionnaireAudit(questionnaire, "seed_default_template", systemUser, { visaType: definition.visaType }, req);
+    await questionnaire.save();
+  } else {
+    // Non-destructive content update: the master content's own copy (e.g.
+    // an intro paragraph) or section list changed — patch the existing
+    // record in place, never recreate it.
+    let changed = false;
+    if (questionnaire.description !== definition.description) {
+      questionnaire.description = definition.description;
+      changed = true;
+    }
+    if (definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
+      questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
+      changed = true;
+    }
+    // Code-defined visas plus any an admin mapped from the UI (adminVisaTypes).
+    const definitionVisaTypes = [...new Set([...(definition.visaTypes || [definition.visaType]), ...(questionnaire.adminVisaTypes || [])])];
+    if (JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
+      questionnaire.visaTypes = definitionVisaTypes;
+      changed = true;
+    }
+    // A seeded checklist must always be listed on the Questionnaire page.
+    // (Left alone if an admin deliberately archived it.)
+    if (!questionnaire.isTemplate && questionnaire.status !== "archived") {
+      questionnaire.isTemplate = true;
+      changed = true;
+    }
+    // Opt-in (definition.reconcileMetadata): a definition that took over an
+    // EXISTING Questionnaire key also needs its identity fields brought up to
+    // date in place - otherwise the old record's visaType/isDefault/checklistRole
+    // would keep it from ever being resolved the new way. Never applied to
+    // definitions that don't ask for it, so admin edits elsewhere are untouched.
+    if (definition.reconcileMetadata && questionnaire.status !== "archived") {
+      for (const field of ["title", "visaType", "checklistRole", "isDefault"]) {
+        const next = field === "isDefault" ? Boolean(definition.isDefault) : (definition[field] ?? "");
+        if (questionnaire[field] !== next) {
+          questionnaire[field] = next;
           changed = true;
         }
       }
-      const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);
-      if (JSON.stringify(currentSectionTitles) !== JSON.stringify(definition.sections)) {
-        questionnaire.sections = definition.sections.map((title, index) => {
-          const existingSection = (questionnaire.sections || []).find((section) => section.key === slugSection(title));
-          return { key: slugSection(title), title, description: existingSection?.description || "", order: index + 1, isActive: true };
-        });
-        questionnaire.pages = definition.sections.map((title, index) => ({
-          key: slugSection(title),
-          title,
-          order: index + 1,
-          sectionKeys: [slugSection(title)],
-        }));
-        questionnaire.builder = {
-          ...(questionnaire.builder || {}),
-          pageOrder: definition.sections.map(slugSection),
-          sectionOrder: definition.sections.map(slugSection),
-          questionOrder: definition.questions.map((question) => question.key),
-        };
+      if (questionnaire.templateCategory !== definition.visaType) {
+        questionnaire.templateCategory = definition.visaType;
         changed = true;
       }
-      if (changed) {
-        addQuestionnaireAudit(questionnaire, "update_default_template", systemUser, { visaType: definition.visaType }, req);
-        await questionnaire.save();
-      }
     }
+    const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);
+    if (JSON.stringify(currentSectionTitles) !== JSON.stringify(definition.sections)) {
+      questionnaire.sections = definition.sections.map((title, index) => {
+        const existingSection = (questionnaire.sections || []).find((section) => section.key === slugSection(title));
+        return { key: slugSection(title), title, description: existingSection?.description || "", order: index + 1, isActive: true };
+      });
+      questionnaire.pages = definition.sections.map((title, index) => ({
+        key: slugSection(title),
+        title,
+        order: index + 1,
+        sectionKeys: [slugSection(title)],
+      }));
+      questionnaire.builder = {
+        ...(questionnaire.builder || {}),
+        pageOrder: definition.sections.map(slugSection),
+        sectionOrder: definition.sections.map(slugSection),
+        questionOrder: definition.questions.map((question) => question.key),
+      };
+      changed = true;
+    }
+    if (changed) {
+      addQuestionnaireAudit(questionnaire, "update_default_template", systemUser, { visaType: definition.visaType }, req);
+      await questionnaire.save();
+    }
+  }
 
-    // Published questionnaires are immutable (assertDraft already enforces this
-    // for every user-facing create/update/delete path - see line ~200). This
-    // reconciliation loop was the one remaining path that bypassed that rule:
-    // it ran unconditionally and could silently rewrite a published
-    // questionnaire's live questions (and add brand-new ones) whenever a code
-    // change to VISA_TEMPLATE_DEFINITIONS ran, potentially affecting
-    // in-progress client responses. Skip reconciliation entirely once
-    // published; a real content change must go through the builder's
-    // create-new-version flow instead.
-    if (questionnaire.status !== "published") {
-      const existingQuestions = await Question.find({ questionnaire: questionnaire._id });
-      const existingByKey = new Map(existingQuestions.map((question) => [question.key, question]));
-      const definitionKeys = new Set(definition.questions.map((question) => question.key));
+  // Published questionnaires are immutable (assertDraft already enforces this
+  // for every user-facing create/update/delete path - see line ~200). This
+  // reconciliation loop was the one remaining path that bypassed that rule:
+  // it ran unconditionally and could silently rewrite a published
+  // questionnaire's live questions (and add brand-new ones) whenever a code
+  // change to VISA_TEMPLATE_DEFINITIONS ran, potentially affecting
+  // in-progress client responses. Skip reconciliation entirely once
+  // published; a real content change must go through the builder's
+  // create-new-version flow instead.
+  if (questionnaire.status !== "published") {
+    const existingQuestions = await Question.find({ questionnaire: questionnaire._id });
+    const existingByKey = new Map(existingQuestions.map((question) => [question.key, question]));
+    const definitionKeys = new Set(definition.questions.map((question) => question.key));
 
-      // One awaited create/save per question (some definitions carry 70+)
-      // was the actual cost driver here: hundreds of sequential DB round
-      // trips per full reconciliation, which is what turned a "make sure
-      // these exist" check into a multi-minute page load. Collapsing the
-      // same create-or-patch-or-retire decisions into a single bulkWrite
-      // keeps the exact per-question logic below, just batched into one
-      // round trip instead of one per question. `ordered: false` so one
-      // bad op (e.g. a stale duplicate key racing a concurrent reconcile)
-      // doesn't abort the rest of the batch.
-      const ops = [];
-      for (const question of definition.questions) {
-        const existing = existingByKey.get(question.key);
-        if (!existing) {
-          ops.push({
-            insertOne: {
-              document: {
-                ...question,
-                questionnaire: questionnaire._id,
-                questionnaireKey: questionnaire.key,
-                questionnaireVersion: questionnaire.version,
-                createdBy: systemUser._id,
-                updatedBy: systemUser._id,
-              },
+    // One awaited create/save per question (some definitions carry 70+)
+    // was the actual cost driver here: hundreds of sequential DB round
+    // trips per full reconciliation, which is what turned a "make sure
+    // these exist" check into a multi-minute page load. Collapsing the
+    // same create-or-patch-or-retire decisions into a single bulkWrite
+    // keeps the exact per-question logic below, just batched into one
+    // round trip instead of one per question. `ordered: false` so one
+    // bad op (e.g. a stale duplicate key racing a concurrent reconcile)
+    // doesn't abort the rest of the batch.
+    const ops = [];
+    for (const question of definition.questions) {
+      const existing = existingByKey.get(question.key);
+      if (!existing) {
+        ops.push({
+          insertOne: {
+            document: {
+              ...question,
+              questionnaire: questionnaire._id,
+              questionnaireKey: questionnaire.key,
+              questionnaireVersion: questionnaire.version,
+              createdBy: systemUser._id,
+              updatedBy: systemUser._id,
             },
-          });
-          continue;
-        }
-        const patch = reconcileQuestionFields(existing, question);
-        if (existing.active === false || existing.isActive === false) {
-          patch.active = true;
-          patch.isActive = true;
-        }
-        if (Object.keys(patch).length) {
-          ops.push({
-            updateOne: {
-              filter: { _id: existing._id },
-              update: { $set: { ...patch, updatedBy: systemUser._id } },
-            },
-          });
-        }
+          },
+        });
+        continue;
       }
-
-      // A question the master definition no longer lists is retired, not
-      // deleted — any client answer or admin edit referencing it stays
-      // intact; it simply stops rendering/being required going forward.
-      // Same immutability concern as the reconciliation above (it also
-      // mutates a live question), so it stays inside this same
-      // published-status guard rather than running unconditionally.
-      for (const existing of existingQuestions) {
-        if (definitionKeys.has(existing.key)) continue;
-        if (existing.active === false && existing.isActive === false) continue;
+      const patch = reconcileQuestionFields(existing, question);
+      if (existing.active === false || existing.isActive === false) {
+        patch.active = true;
+        patch.isActive = true;
+      }
+      if (Object.keys(patch).length) {
         ops.push({
           updateOne: {
             filter: { _id: existing._id },
-            update: { $set: { active: false, isActive: false, updatedBy: systemUser._id } },
+            update: { $set: { ...patch, updatedBy: systemUser._id } },
           },
         });
       }
+    }
 
-      if (ops.length) {
-        try {
-          await Question.bulkWrite(ops, { ordered: false });
-        } catch (error) {
-          // E11000 on the {questionnaire, key} unique index means another
-          // concurrent reconcile already inserted the same question -
-          // harmless, the content converged either way. Anything else is a
-          // real failure and must still surface.
-          if (error?.code !== 11000 && !(error?.writeErrors || []).every((writeError) => writeError.code === 11000)) {
-            throw error;
-          }
-        }
-      }
-    } else {
-      logger.info("questionnaire_definition_reconcile_skipped_published", {
-        key: definition.key,
-        questionnaireId: String(questionnaire._id),
-        message: "Questionnaire is published (immutable) - skipped question reconciliation. Create a new version via the builder to apply definition changes.",
+    // A question the master definition no longer lists is retired, not
+    // deleted — any client answer or admin edit referencing it stays
+    // intact; it simply stops rendering/being required going forward.
+    // Same immutability concern as the reconciliation above (it also
+    // mutates a live question), so it stays inside this same
+    // published-status guard rather than running unconditionally.
+    for (const existing of existingQuestions) {
+      if (definitionKeys.has(existing.key)) continue;
+      if (existing.active === false && existing.isActive === false) continue;
+      ops.push({
+        updateOne: {
+          filter: { _id: existing._id },
+          update: { $set: { active: false, isActive: false, updatedBy: systemUser._id } },
+        },
       });
     }
 
-    return questionnaire;
-  }));
-  return results;
+    if (ops.length) {
+      try {
+        await Question.bulkWrite(ops, { ordered: false });
+      } catch (error) {
+        // E11000 on the {questionnaire, key} unique index means another
+        // concurrent reconcile already inserted the same question -
+        // harmless, the content converged either way. Anything else is a
+        // real failure and must still surface.
+        if (error?.code !== 11000 && !(error?.writeErrors || []).every((writeError) => writeError.code === 11000)) {
+          throw error;
+        }
+      }
+    }
+  } else {
+    logger.info("questionnaire_definition_reconcile_skipped_published", {
+      key: definition.key,
+      questionnaireId: String(questionnaire._id),
+      message: "Questionnaire is published (immutable) - skipped question reconciliation. Create a new version via the builder to apply definition changes.",
+    });
+  }
+
+  return questionnaire;
 }
 
 async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
@@ -2505,7 +2574,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 403;
     throw error;
   }
-  await ensureDefaultVisaTemplates();
+  await ensureTemplatesForVisa(caseData.visaType);
   timer.mark("template_initialization");
   // Shared-role resolution: a role like "employer" on an employer_employee
   // case belongs to the matter as a whole, not to any one child case — a
@@ -2626,6 +2695,11 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   // keeps throwing — for those, a missing questionnaire really is a
   // configuration problem worth surfacing loudly.
   const OPTIONAL_ROLES = new Set(["business_plan", "supporting_documents"]);
+  if (!questionnaire && !options._templatesEnsured && !(targetRole && OPTIONAL_ROLES.has(targetRole))) {
+    // The template may simply not have been created yet (first use on a fresh database): create it now, then look once more.
+    await ensureTemplatesForVisa(caseData.visaType, undefined, undefined, { wait: true });
+    return getQuestionnaireForCase(caseId, user, targetRole, { ...options, _templatesEnsured: true });
+  }
   if (!questionnaire) {
     if (targetRole && OPTIONAL_ROLES.has(targetRole)) {
       return {
@@ -2733,7 +2807,7 @@ async function resolveCaseQuestionnaires(caseId) {
   const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants parentCase caseStructure caseRole").lean();
   timer.mark("case_lookup");
   if (!caseData) return [];
-  await ensureDefaultVisaTemplates();
+  await ensureTemplatesForVisa(caseData.visaType);
   timer.mark("template_initialization");
   const visaType = String(caseData.visaType || "").replace(/[-\s]/g, "").toUpperCase();
 
@@ -2780,6 +2854,15 @@ async function resolveCaseQuestionnaires(caseId) {
       $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }],
     }).lean();
     timer.mark("default_template_lookup", { count: defaults.length, visaType });
+    const expectedKeys = VISA_TEMPLATE_DEFINITIONS.filter((definition) => definition.isDefault && [definition.visaType, ...(definition.visaTypes || [])].some((value) => normalizeVisaForTemplates(value) === visaType)).map((definition) => definition.key);
+    if (expectedKeys.some((key) => !defaults.some((row) => row.key === key))) {
+      // a built-in default for this visa is not in the database yet: create it now, then look again (first use only)
+      await ensureTemplatesForVisa(visaType, undefined, undefined, { wait: true });
+      defaults.splice(0, defaults.length, ...(await Questionnaire.find({
+        status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true, isDefault: true,
+        $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }],
+      }).lean()));
+    }
     for (const questionnaire of defaults) {
       const id = String(questionnaire._id);
       const targetRole = questionnaire.checklistRole || "";
@@ -3244,6 +3327,8 @@ module.exports = {
   createQuestion,
   createQuestionnaire,
   ensureDefaultVisaTemplates,
+  ensureTemplate,
+  ensureTemplatesForVisa,
   notifyChecklistAssigned,
   VISA_TEMPLATE_DEFINITIONS,
   isPassportInformation,

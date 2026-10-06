@@ -102,6 +102,20 @@ exports.createCustomLibraryQuestion = async (req, res, next) => {
   }
 };
 
+// GET /defaults: template METADATA only (Questionnaire rows, never their Questions, no reconciliation) - a page load must not
+// sync templates. POST /defaults/seed is the explicit "reconcile every built-in template now" admin action below.
+exports.listDefaultTemplates = async (req, res, next) => {
+  try {
+    const templates = await Questionnaire.find({ isTemplate: true, latestVersion: true, status: { $ne: "archived" } })
+      .select("key title description visaType visaTypes status isDefault checklistRole version")
+      .sort({ key: 1 })
+      .lean();
+    res.json({ success: true, count: templates.length, data: templates });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.ensureDefaultTemplates = async (req, res, next) => {
   try {
     // POST /defaults/seed is an explicit "reconcile now" admin trigger — skip

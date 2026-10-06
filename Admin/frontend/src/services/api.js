@@ -221,6 +221,8 @@ export const casesApi = {
   createWithClient: (payload) => api.post('/cases/create-with-client', payload),
   update: (id, payload) => api.put(`/cases/${id}`, payload),
   archive: (id) => api.delete(`/cases/${id}`),
+  // Permanent: removes the case (and its child cases) from the database.
+  deletePermanently: (id) => api.delete(`/cases/${id}/permanent`),
   updateStage: (id, payload) => api.put(`/cases/${id}/stage`, payload),
   addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
   assignCaseManager: (id, caseManagerId, notes, extra = {}) =>

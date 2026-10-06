@@ -624,7 +624,7 @@ exports.purchaseAddon = async (req, res, next) => {
     caseService.addTimelineEvent(caseData, "addon", "Premium Processing Purchased", "Premium Processing (Form I-907) upgrade was added and is pending payment.", req.user, { addonKey: PREMIUM_PROCESSING_ADDON.key, paymentId: payment._id });
     await caseData.save();
 
-    await questionnaireService.ensureDefaultVisaTemplates(req.user, req).catch(() => []);
+    await questionnaireService.ensureTemplate(I907_QUESTIONNAIRE_KEY, req.user, req).catch(() => null);
     const i907Questionnaire = await Questionnaire.findOne({
       key: I907_QUESTIONNAIRE_KEY,
       status: { $ne: "archived" },
@@ -692,7 +692,7 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
       return res.status(409).json({ success: false, code: "ALREADY_PREMIUM_PROCESSING_CASE", message: "This is already a Premium Processing case - Form I-907 and its checklist are part of it." });
     }
 
-    await questionnaireService.ensureDefaultVisaTemplates(req.user, req).catch(() => []);
+    await questionnaireService.ensureTemplate(I907_QUESTIONNAIRE_KEY, req.user, req).catch(() => null);
     const questionnaire = await Questionnaire.findOne({ key: I907_QUESTIONNAIRE_KEY, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
     if (!questionnaire) {
       return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No Form I-907 checklist template found" });
@@ -1614,6 +1614,7 @@ exports.approveN400Process = async (req, res, next) => {
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
 
+    await questionnaireService.ensureTemplate("n400_checklist", req.user, req).catch(() => null);
     const questionnaire = await Questionnaire.findOne({ key: "n400_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
     if (!questionnaire) {
       return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-400 checklist template found" });
@@ -1658,6 +1659,7 @@ exports.approveN600Process = async (req, res, next) => {
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
 
+    await questionnaireService.ensureTemplate("n600_checklist", req.user, req).catch(() => null);
     const questionnaire = await Questionnaire.findOne({ key: "n600_checklist", status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
     if (!questionnaire) {
       return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No N-600 checklist template found" });
@@ -1712,6 +1714,7 @@ exports.addChangeOfAddress = async (req, res, next) => {
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
 
     const checklistKey = CHECKLIST_KEY_BY_TARGET_ROLE[targetRole];
+    await questionnaireService.ensureTemplate(checklistKey, req.user, req).catch(() => null);
     const questionnaire = await Questionnaire.findOne({ key: checklistKey, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
     if (!questionnaire) {
       return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: `No Change of Address checklist template found for ${targetRole}` });
@@ -3208,6 +3211,19 @@ exports.archiveCase = async (req, res, next) => {
     if (!caseData) return;
     const archived = await caseService.archiveCase(caseData, req.user, req);
     res.json({ success: true, message: "Case archived successfully", case: archived });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// DELETE /cases/:id/permanent - removes the case (and its child cases) from the database, not an archive.
+exports.deleteCasePermanently = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
+    const result = await require("./case-deletion.service").deleteCasePermanently(caseData, req.user);
+    res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, ...result });
   } catch (error) {
     handleError(error, next);
   }

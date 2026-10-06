@@ -88,7 +88,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
           title={confirm.all ? 'Approve all checklists?' : 'Approve this checklist?'}
           message={confirm.all
             ? 'Every draft checklist on this case (and its employee cases) will be sent to the client. They will be notified and can start answering.'
-            : `"${confirm.checklist.title}" will be sent to the client. They will be notified and can start answering.`}
+            : `"${confirm.checklist.title}" will be sent to the client. They will be notified and can start answering.${confirm.checklist.targetRole === 'employee' ? ' The employee checklist is approved for every employee case under this case too - no need to approve it on each one.' : ''}`}
           confirmLabel="Yes, approve"
           cancelLabel="No"
           busy={busy}

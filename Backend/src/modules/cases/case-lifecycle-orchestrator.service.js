@@ -426,6 +426,7 @@ class CaseLifecycleOrchestrator {
         const resolved = await visaFormMappingService.resolveChecklistsForCase(target);
         for (const entry of resolved.auto) {
           try {
+            await questionnaireService.ensureTemplate(entry.checklistKey, user, req).catch(() => null);
             const questionnaire = await Questionnaire.findOne({ key: entry.checklistKey, latestVersion: true });
             if (!questionnaire) continue;
             await questionnaireService.assignQuestionnaireIfNotActive(questionnaire, { caseData: target }, user, req);
