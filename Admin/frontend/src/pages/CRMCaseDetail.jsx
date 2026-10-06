@@ -48,6 +48,9 @@ import {
   Zap
 } from 'lucide-react'
 
+// Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`).
+const NO_FORM_VISA_TYPES = new Set(['PERM'])
+
 const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
 const PetitionTab = lazy(() => import('./petition/PetitionTab'))
 
@@ -521,31 +524,6 @@ const CRMCaseDetail = () => {
     await fetchChecklistsProgress(caseData._id)
     ;[employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire, jointSponsorQuestionnaire, greenCardRenewalQuestionnaire, premiumProcessingQuestionnaire]
       .forEach((panel) => panel?.refetch?.())
-  }
-  // PERM stage - which USCIS forms the matter has reached (see Backend config/permStages.js). Nothing
-  // USCIS appears on a new PERM case; the Case Manager advances it here and the backend provisions
-  // (and autofills) the forms of each stage.
-  const isPermCase = caseData?.visaType === 'PERM'
-  const permWorkflow = caseData?.permWorkflow || {}
-  const [permConfirm, setPermConfirm] = useState(null)
-  const [permSaving, setPermSaving] = useState(false)
-  const [permError, setPermError] = useState('')
-  const [permCertForm, setPermCertForm] = useState({ certificationNumber: '', certifiedDate: '' })
-  const openPermConfirm = (title, message, patch) => { setPermError(''); setPermConfirm({ title, message, patch }) }
-  const handleAdvancePerm = async () => {
-    if (!permConfirm) return
-    setPermSaving(true)
-    setPermError('')
-    try {
-      await casesApi.updatePermWorkflow(caseData._id, { ...permConfirm.patch, ...(permConfirm.patch.certified ? permCertForm : {}) })
-      setPermConfirm(null)
-      await fetchCaseDetail()
-      fetchCaseForms(true)
-    } catch (err) {
-      setPermError(err.response?.data?.message || err.message || 'Could not update the PERM stage.')
-    } finally {
-      setPermSaving(false)
-    }
   }
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId, supportingDocumentsQuestionnaire.responseId].filter(Boolean)
   const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
@@ -1855,7 +1833,7 @@ const CRMCaseDetail = () => {
                     Show withdrawn ({removedCount})
                   </label>
                 )}
-                {isEmployerMatter && !caseData.singleEmployee && caseData.visaType !== 'PERM' && (
+                {isEmployerMatter && (
                   <button
                     type="button"
                     onClick={handleAddEmployee}
@@ -2445,36 +2423,6 @@ const CRMCaseDetail = () => {
         <div className="space-y-6">
         {renderInformationRequestsPanel()}
         <ChecklistApprovalCard caseId={caseData?._id} checklists={checklistsProgress} onChanged={reloadCaseChecklists} />
-        {isPermCase && (
-          <div className="card" data-testid="perm-stage-card">
-            <h3 className="text-lg font-semibold text-foreground">PERM Stage</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              PERM is a Department of Labor process, so a new PERM case has no USCIS form. Advance the stage to bring the next forms onto the case.
-            </p>
-            <ol className="mt-4 space-y-3">
-              <li className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm"><b>1. Labor certification certified</b> - adds Form I-140{permWorkflow.certificationNumber ? ` (ETA case ${permWorkflow.certificationNumber})` : ''}</span>
-                {permWorkflow.certified ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Certified</span>
-                  : canUpgradePremium && <button type="button" data-testid="perm-mark-certified" className="btn-primary text-sm" onClick={() => openPermConfirm('Mark PERM as certified?', 'The labor certification was approved by the Department of Labor. Form I-140 will be added to this case and filled from the checklist data.', { certified: true })}>Mark PERM certified</button>}
-              </li>
-              <li className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm"><b>2. Proceeding with adjustment of status</b> - adds Form I-485</span>
-                {permWorkflow.adjustmentOfStatus ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Started</span>
-                  : <button type="button" data-testid="perm-start-aos" disabled={!permWorkflow.certified || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Start adjustment of status?', 'Form I-485 will be added to this case.', { adjustmentOfStatus: true })}>Start adjustment of status</button>}
-              </li>
-              <li className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm"><b>3. Employment authorization applies</b> - adds Form I-765</span>
-                {permWorkflow.employmentAuthorization ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Added</span>
-                  : <button type="button" data-testid="perm-add-ead" disabled={!permWorkflow.adjustmentOfStatus || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Add employment authorization?', 'Form I-765 will be added to this case. The eligibility category is not inferred - enter it on the form.', { employmentAuthorization: true })}>Add I-765</button>}
-              </li>
-              <li className="flex flex-wrap items-center justify-between gap-3">
-                <span className="text-sm"><b>4. Advance parole applies</b> - adds Form I-131</span>
-                {permWorkflow.advanceParole ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Added</span>
-                  : <button type="button" data-testid="perm-add-ap" disabled={!permWorkflow.adjustmentOfStatus || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Add advance parole?', 'Form I-131 will be added to this case.', { advanceParole: true })}>Add I-131</button>}
-              </li>
-            </ol>
-          </div>
-        )}
         {!isPremiumProcessingCase && (canUpgradePremium || hasPremiumAddon) && (
           <div className="card flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -2866,7 +2814,15 @@ const CRMCaseDetail = () => {
       </KeepTab>
 
       <KeepTab name="forms" active={activeTab === 'forms'} visited={visitedTabs}>
-        {selectedCaseForm ? (
+        {NO_FORM_VISA_TYPES.has(caseData?.visaType) ? (
+          <div className="card text-center py-10" data-testid="no-forms-for-case-type">
+            <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
+            <h3 className="text-lg font-semibold text-foreground">No forms are associated with the {caseData.visaType} case type</h3>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+              {caseData.visaType} is a Department of Labor process. Only its checklists are sent to the client, and the client's answers and documents are synced to the Documents tab - there are no USCIS forms and no form mapping for this case.
+            </p>
+          </div>
+        ) : selectedCaseForm ? (
           <FormRendererErrorBoundary resetKey={selectedCaseForm._id} onBack={() => setSelectedCaseForm(null)}>
             <Suspense fallback={renderSkeleton()}>
               <USCISFormRenderer
@@ -3480,30 +3436,6 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
-      )}
-
-      {permConfirm && (
-        <ConfirmModal
-          title={permConfirm.title}
-          message={permConfirm.message}
-          confirmLabel="Yes"
-          cancelLabel="No"
-          busy={permSaving}
-          error={permError}
-          onConfirm={handleAdvancePerm}
-          onCancel={() => setPermConfirm(null)}
-        >
-          {permConfirm.patch.certified && (
-            <div className="mt-4 space-y-3 text-left">
-              <label className="block text-sm font-medium text-muted-foreground">ETA case number (optional)
-                <input data-testid="perm-cert-number" className="mt-1 w-full rounded-lg border px-3 py-2" value={permCertForm.certificationNumber} onChange={(event) => setPermCertForm((form) => ({ ...form, certificationNumber: event.target.value }))} />
-              </label>
-              <label className="block text-sm font-medium text-muted-foreground">Certification date (optional)
-                <input type="date" className="mt-1 w-full rounded-lg border px-3 py-2" value={permCertForm.certifiedDate} onChange={(event) => setPermCertForm((form) => ({ ...form, certifiedDate: event.target.value }))} />
-              </label>
-            </div>
-          )}
-        </ConfirmModal>
       )}
 
       {premiumConfirmOpen && (

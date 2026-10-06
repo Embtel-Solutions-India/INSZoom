@@ -17,7 +17,6 @@ const visible = (path, answers) => evaluateConditionGroup(byPath(path).condition
 test("Premium Processing is a single-party case type whose only form is I-907", () => {
   assert.equal(visaCategories.getCaseStructure("Premium Processing"), "single");
   assert.deepEqual(visaCategories.getFormIds("Premium Processing"), ["i-907"]);
-  assert.equal(visaCategories.isSingleEmployeeType("Premium Processing"), false);
 });
 
 test("the checklist is the case's default 'client' checklist and keeps the existing Questionnaire key", () => {
@@ -103,15 +102,12 @@ test("registry: Premium Processing I-907 is AUTO on its own case type; every oth
   const others = mappings.filter((row) => row.formNumber === "I-907" && row.visaType !== "Premium Processing");
   assert.ok(others.length > 10);
   assert.ok(others.every((row) => row.provisioningType === "CONDITIONAL"));
-  assert.deepEqual(mappings.filter((row) => row.visaType === "PERM" && row.agency === "DOL").map((row) => row.formNumber).sort(), ["ETA-9089", "ETA-9141"]);
+  assert.deepEqual(mappings.filter((row) => row.visaType === "PERM"), [], "PERM has no registry rows at all");
 });
 
-test("checklist registry: Premium Processing and PERM are mapped; other I-907 rows only offer it explicitly", () => {
+test("checklist registry: Premium Processing is mapped; other I-907 rows only offer it explicitly", () => {
   const find = (visaType, formNumber) => checklistSeed.ENTRIES.find((entry) => entry.visaType === visaType && entry.formNumber === formNumber);
   assert.deepEqual(find("Premium Processing", "I-907").checklistMappings.map((m) => [m.checklistKey, m.assignmentType]), [["i907_premium_processing_profile", "AUTO"]]);
-  for (const form of ["ETA-9141", "ETA-9089"]) {
-    assert.deepEqual(find("PERM", form).checklistMappings.map((m) => m.checklistKey).sort(), ["perm_employee_information", "perm_employer_information"]);
-  }
   const h1b = find("H-1B", "I-907").checklistMappings;
   const added = h1b.find((m) => m.checklistKey === "i907_premium_processing_profile");
   assert.equal(added.assignmentType, "EXPLICIT_CM", "never auto-assigned to an ordinary case");

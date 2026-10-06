@@ -38,6 +38,7 @@ async function extract({ document, buffer, geminiResponse }) {
     prompt: resumeExtractionPrompt(document),
     buffer,
     mimeType: document.mimeType || document.fileType,
+    provider: providerRegistry.promptProviderName(), // Document AI cannot follow this prompt
   });
   return applyValidation(normalizeResumeExtractionDto(response));
 }

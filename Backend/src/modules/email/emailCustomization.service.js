@@ -127,6 +127,10 @@ function tokenProxy() {
   return new Proxy({}, {
     get(_, prop) {
       if (typeof prop !== "string") return undefined;
+      // The two client-page links are shown as the real address in the editor (the invite token stays a variable: it is per client).
+      const origin = String(require("../../config/env").clientUrl || "").replace(/\/+$/, "");
+      if (prop === "loginLink") return `${origin}/login`;
+      if (prop === "setPasswordLink") return `${origin}/accept-invite?token=[system.invite_token]`;
       const variable = registry.variableForDataKey(prop);
       return variable ? `[${variable.key}]` : "";
     },

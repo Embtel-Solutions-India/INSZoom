@@ -76,6 +76,8 @@ export function prefillMetaFromAnswers(answers = []) {
 // bare keys like "firstName"/"education" that don't exist anywhere in the
 // real checklist, so no H-1B section ever showed an Autofill button at all).
 export const AUTOFILL_SOURCES = {
+  // PERM employee checklist: a resume fills the repeatable Employment History (company, dates, position, duties).
+  perm_resume: ["employee_employment_history"],
   passport: [
     "employee_personal_firstName", "employee_personal_middleName", "employee_personal_lastName",
     "employee_personal_passportNumber", "employee_personal_passportIssueDate", "employee_personal_passportExpirationDate",
@@ -119,6 +121,7 @@ export const AUTOFILL_SOURCES = {
   ],
 };
 export const AUTOFILL_LABELS = {
+  perm_resume: "resume",
   passport: "passport",
   employee_i94_copy: "I-94",
   previous_i797_notices: "I-797 notice",

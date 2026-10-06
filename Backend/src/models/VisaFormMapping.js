@@ -57,11 +57,6 @@ const TRIGGER_FIELD_WHITELIST = [
   // Boolean(caseData.jointSponsorUser).
   "newOfficePetition",
   "hasJointSponsor",
-  // PERM stage gates (config/permStages.js) - derived from Case.permWorkflow.
-  "permCertified",
-  "permAdjustmentStage",
-  "permEmploymentAuthorization",
-  "permAdvanceParole",
 ];
 
 const CHECKLIST_ASSIGNMENT_TYPES = ["AUTO", "CONDITIONAL", "EXPLICIT_CM"];

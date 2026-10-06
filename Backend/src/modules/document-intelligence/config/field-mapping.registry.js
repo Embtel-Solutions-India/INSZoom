@@ -86,6 +86,10 @@ const FIELD_MAPPINGS = {
     educationDegreeType: {
       questionnaire: ["degreeType", "employee_education_degreeType"],
     },
+    // Derived (extraction-mapping.service.js derivePermResumeFields): one Employment History row per job on the resume.
+    permEmploymentHistory: {
+      questionnaire: ["employee_employment_history"],
+    },
     educationHighestLevel: {
       questionnaire: ["degreeLevel", "highestLevel", "employee_education_highestLevel"],
     },

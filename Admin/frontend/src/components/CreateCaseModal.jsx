@@ -51,7 +51,7 @@ const VISA_TYPE_OPTIONS = [
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },
-  // DOL labor certification: an employer + exactly one employee matter (see PERM_STRUCTURE below).
+  // DOL labor certification: an ordinary employer + employees matter (see PERM_STRUCTURE below).
   { value: 'perm', label: 'PERM (Labor Certification)', canonicalLabel: 'PERM' },
   // Premium Processing as its own case: single party, Form I-907 only (see visaCategories.js).
   { value: 'premiumprocessing', label: 'Premium Processing (Form I-907)', canonicalLabel: 'Premium Processing' },
@@ -476,7 +476,7 @@ const CreateCaseModal = ({
                 {PERM_STRUCTURE.map((item) => (
                   <li key={item.title}><span className="font-medium">{item.title}</span> - {item.detail}</li>
                 ))}
-                <li>One employee (PERM has a single employee, so no additional employees can be added)</li>
+                <li>No USCIS forms - PERM is a Department of Labor process. Add as many employees as the matter needs once the case exists.</li>
               </ul>
             </div>
           )}

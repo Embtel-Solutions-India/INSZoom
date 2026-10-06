@@ -626,7 +626,19 @@ async function applyAnswerMatches({ caseId, documentType, extraction, matches, l
       if (match.value === undefined) continue;
       const label = labelByTarget.get(`answer:${match.targetPath}`);
       const existingValue = existingByKey.get(match.targetPath);
-      const isEmpty = existingValue === undefined || existingValue === null || existingValue === "";
+      // An Employment History (repeating group) is APPENDED to, never overwritten: rows the person already has stay,
+      // and only jobs not already listed (same company + title + start date) are added from the resume.
+      if (match.targetPath === "employee_employment_history" && Array.isArray(match.value)) {
+        const current = Array.isArray(existingValue) ? existingValue : [];
+        const sameJob = (a, b) => ["company_name", "job_title", "start_date"].every((column) => String(a?.[column] || "").trim().toLowerCase() === String(b?.[column] || "").trim().toLowerCase());
+        const added = match.value.filter((row) => !current.some((existing) => sameJob(existing, row)));
+        if (!added.length) continue;
+        const merged = [...current, ...added];
+        toWrite.push({ questionKey: match.targetPath, value: merged });
+        pendingItems.push({ key: match.targetPath, value: merged, label, confidence: match.combinedConfidence, sourceDocumentType: documentType, targetSystem: "answer", questionnaireId: target.questionnaire._id, applied: true, conflict: false });
+        continue;
+      }
+      const isEmpty = existingValue === undefined || existingValue === null || existingValue === "" || (Array.isArray(existingValue) && !existingValue.length);
       const isSame = !isEmpty && String(existingValue) === String(match.value);
       const base = {
         key: match.targetPath,
@@ -730,7 +742,7 @@ async function applyQuestionnairePrefill(extraction, caseId, user, req, options 
   // something to match against; never persisted back onto `extraction`
   // itself, only used in-memory for this matching pass.
   const derivedFields = ["resume", "cv"].includes(documentType)
-    ? extractionMappingService.deriveEducationScalarFields(fields)
+    ? [...extractionMappingService.deriveEducationScalarFields(fields), ...extractionMappingService.derivePermResumeFields(fields)]
     : documentType === "passport"
       ? extractionMappingService.derivePassportScalarFields(fields)
       : [];

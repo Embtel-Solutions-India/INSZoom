@@ -525,35 +525,6 @@ function eb1(visaType, opts = {}) {
 }
 eb1("EB-1A"); eb1("EB-1B", { supplementJ: true }); eb1("EB-1C", { supplementJ: true });
 
-// ===================== PERM (standalone Department of Labor matter) =====================
-// A labor-certification matter with its own two checklists (perm_employer_information /
-// perm_employee_information - see checklistMappings.seed.js). Both filings are DOL online
-// applications (no USCISFormTemplate, nothing auto-created as a CaseForm), so they are
-// registered LATER_STAGE/ONLINE exactly like EB-2 PERM's own ETA rows below; the USCIS
-// forms that follow certification (I-140 ...) belong to their own EB case, not to this one.
-add(
-  m("PERM", "ETA-9141", "Application for Prevailing Wage Determination", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" }),
-  m("PERM", "ETA-9089", "Application for Permanent Employment Certification", "DOL", LATER, ONLINE, { immigrationNature: IMMIGRANT, stage: "perm" })
-);
-
-// PERM -> USCIS stages. Each row is CONDITIONAL and gated by a PERM stage trigger (config/permStages.js,
-// whitelisted perm* trigger fields, set from Case.permWorkflow by a Case Manager), so a new PERM case has
-// NO USCIS form: I-140 appears once the labor certification is certified; I-485 once the matter proceeds
-// with adjustment of status; I-765 / I-131 only when employment authorization / advance parole applies.
-// initialCaseCreation is false for all (never created with the case).
-{
-  const { permTriggerFor } = require("../../../config/permStages");
-  const stageRow = (formNumber, formName, stage, opts = {}) => m("PERM", formNumber, formName, "USCIS", COND, STANDALONE, {
-    formTemplateFormCode: formNumber.toLowerCase(), immigrationNature: IMMIGRANT, stage, triggerCondition: permTriggerFor(formNumber), initialCaseCreation: false, ...opts,
-  });
-  add(
-    stageRow("I-140", "Immigrant Petition for Alien Worker", "post_perm", { notes: "Appears once the PERM labor certification is certified." }),
-    stageRow("I-485", "Application to Register Permanent Residence or Adjust Status", "adjustment_of_status", { notes: "Appears once the matter proceeds with adjustment of status (after PERM certification)." }),
-    stageRow("I-765", "Application for Employment Authorization", "adjustment_of_status", { notes: "Only when employment authorization applies at the adjustment stage; the eligibility category is never inferred from PERM." }),
-    stageRow("I-131", "Application for Travel Documents, Parole Documents, and Arrival/Departure Records", "adjustment_of_status", { notes: "Only when advance parole applies at the adjustment stage." })
-  );
-}
-
 // ===================== PREMIUM PROCESSING (standalone case) =====================
 // A case opened only to expedite an already-filed petition/application: Form I-907 is the
 // ONLY form on it, created with the case (AUTO_CREATE) and filled from the Form I-907

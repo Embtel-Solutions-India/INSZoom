@@ -46,7 +46,7 @@ export function AutofillButton({ documentType, caseId, disabled, onUploaded }) {
         onClick={() => inputRef.current?.click()}
         className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-accent px-3 py-1 text-xs font-bold text-accent-foreground transition hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {uploading ? `Reading your ${AUTOFILL_LABELS[documentType]}...` : <><IconSparkles size={14} className="text-accent-foreground" /> {documentType === "passport" ? "Scan passport" : `Autofill from ${AUTOFILL_LABELS[documentType]}`}</>}
+        {uploading ? `Reading your ${AUTOFILL_LABELS[documentType]}...` : <><IconSparkles size={14} className="text-accent-foreground" /> {documentType === "passport" ? "Scan passport" : documentType === "perm_resume" ? "Autofill with resume" : `Autofill from ${AUTOFILL_LABELS[documentType]}`}</>}
       </button>
     </>
   );

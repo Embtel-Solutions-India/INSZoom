@@ -17,13 +17,17 @@ const q = (definition, path) => definition.questions.find((question) => question
 const byKey = (definition, key) => definition.questions.find((question) => question.key === key);
 
 // ── registration / case type ───────────────────────────────────────────
-test("PERM is a case type: employer_employee with exactly one employee, no USCIS forms", () => {
+test("PERM is an ordinary employer/employee case type: employees can be added, and it has no USCIS forms or mapping", () => {
   assert.equal(visaCategories.getCaseStructure("PERM"), "employer_employee");
-  assert.equal(visaCategories.isSingleEmployeeType("PERM"), true);
   assert.deepEqual(visaCategories.getFormIds("PERM"), []);
-  // no other employer/employee type is a single-employee matter
-  assert.equal(visaCategories.isSingleEmployeeType("H-1B"), false);
-  assert.equal(visaCategories.isSingleEmployeeType("EB-2 PERM"), false);
+  assert.equal(visaCategories.hasNoForms("PERM"), true, "PERM never has forms (the Forms list is always empty)");
+  assert.equal(visaCategories.hasNoForms("H-1B"), false);
+  assert.equal(visaCategories.isSingleEmployeeType, undefined, "the one-employee rule no longer exists");
+  assert.equal(visaCategories.VISA_CATEGORIES.PERM.singleEmployee, undefined);
+  const { mappings } = require("../../form-registry/seeds/visaFormMappings.seed");
+  assert.deepEqual(mappings.filter((row) => row.visaType === "PERM"), [], "no registry row (no form, no DOL/USCIS mapping) for PERM");
+  const checklistSeed = require("../../form-registry/seeds/checklistMappings.seed");
+  assert.deepEqual(checklistSeed.ENTRIES.filter((entry) => entry.visaType === "PERM"), []);
   assert.equal(visaCategories.getCaseStructure("EB-2 PERM"), "employer_employee"); // existing type untouched
 });
 

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import PasswordField from "../../components/auth/PasswordField";
 
@@ -15,7 +14,6 @@ export default function AcceptInvite() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
-  const { acceptInvite } = useAuth();
 
   const [status, setStatus] = useState("checking"); // checking | valid | invalid
   const [invite, setInvite] = useState(null);
@@ -46,8 +44,8 @@ export default function AcceptInvite() {
 
     setSubmitting(true);
     try {
-      await acceptInvite(token, password, confirmPassword, username.trim() || undefined);
-      navigate("/dashboard", { replace: true });
+      const result = await authApi.acceptInvite(token, password, confirmPassword, username.trim() || undefined);
+      navigate("/login", { replace: true, state: { notice: "Your password has been set. Please log in to continue.", email: result?.email || invite?.email || "" } });
     } catch (err) {
       setError(err.message || "Unable to activate your account. The link may have expired.");
       setSubmitting(false);

@@ -6,6 +6,10 @@ import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWid
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
 
+// The "Autofill with resume" button on a PERM employee's Employment History is built (backend converter + upload) but
+// hidden while OCR is not reliable. Set to true to show it again - nothing else needs to change.
+const PERM_RESUME_AUTOFILL_ENABLED = false;
+
 const STEPS = [
   { key: "documents", label: "Documents" },
   { key: "information", label: "Information" },
@@ -219,6 +223,9 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
               <section>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{infoSections[activeInfoSection].title}</h2>
+                  {PERM_RESUME_AUTOFILL_ENABLED && !readOnly && infoSections[activeInfoSection].autofillSources.includes("perm_resume") && (
+                    <AutofillButton documentType="perm_resume" caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
+                  )}
                   <span className="text-xs text-muted-foreground">
                     {/* BUG (fixed): this ternary never checked saveState === "error"
                         at all, unlike the equivalent status line in the sibling

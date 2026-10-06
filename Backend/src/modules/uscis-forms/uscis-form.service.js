@@ -21,7 +21,7 @@ const { createPerfTimer } = require("../../utils/perfTimer");
 const { isUscisUseOnly } = require("../uscis-form-import/services/FieldLabelEnrichmentService");
 const { isDatabaseUnavailableError } = require("../../middleware/errorHandler");
 const logger = require("../../utils/logger");
-const { permStageAllowsForm } = require("../../config/permStages");
+const { hasNoForms } = require("../../config/visaCategories");
 
 const ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS = Number(process.env.ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS || 3000);
 // Server-side execution budget for renderCaseForm's CaseForm read. Same
@@ -541,10 +541,7 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
   // templateAppliesToCase directly (every family form's registry status
   // came back TEMPLATE_RULE_CONFLICT instead).
   const skipLegacyScan = caseData.visaCategory === "Family";
-  // PERM: its USCIS forms (I-140 / I-485 / I-765 / I-131) are stage-gated (config/permStages.js). The
-  // templates list PERM in visaTypes so the registry can resolve them, so this visa-type scan must not
-  // be what brings one onto a PERM case before its stage - the registry trigger is.
-  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData) && permStageAllowsForm(caseData, template.formCode || template.formNumber))).forEach((template) => {
+  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData))).forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     const existing = grouped.get(code);
     if (!existing || latestTemplateSort(template, existing) < 0) grouped.set(code, template);
@@ -574,6 +571,7 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
 }
 
 async function ensureAssignedForms(caseData, user, req, options = {}) {
+  if (hasNoForms(caseData?.visaType)) return []; // PERM: no form is ever assigned
   // metadataOnly: skip all DB writes - used by listCaseForms (GET path) so a
   // simple tab-open does not mutate CaseForm documents. Moved to the very
   // first line: this used to sit AFTER latestTemplatesByAssignmentRules()/
@@ -1221,6 +1219,8 @@ async function listCaseForms(caseId, user, req) {
   // the primary itself is unavailable/timed out) can't authorize a write off
   // out-of-date case-assignment data - see getAccessibleCase's own comment.
   const caseData = await getAccessibleCase(caseId, user, { allowStaleFallback: true, requestId: req?.requestId });
+  // A PERM case has no forms at all (no USCIS form, no mapping) - never list any, whatever is left in the database.
+  if (hasNoForms(caseData.visaType)) return [];
   const tAssign = Date.now();
   await ensureAssignedForms(caseData, user, req, { metadataOnly: true });
   logger.info("uscis_forms_list_ensureAssignedForms_ok", { requestId: req?.requestId, pid: process.pid, caseId, elapsedMs: Date.now() - tAssign });

@@ -5,8 +5,6 @@ import { loginAs, taggedClientEmail, queryDatabase, pollDatabase } from './fixtu
 //   Admin creates the case -> employer (client portal) fills the employer checklist -> chooses to enter the
 //   employee information himself -> fills the employee checklist (repeatable employment history) and uploads
 //   documents -> Admin sees exactly the same persisted answers/documents -> no USCIS form exists yet ->
-//   Admin advances the PERM stage -> I-140 / I-485 / I-765 / I-131 appear one stage at a time, filled from the
-//   canonical profile with the client's data.
 // Every case this spec creates carries a tagged client email, so global teardown removes it (and its answers,
 // documents, profiles, forms) even if the run fails part way.
 
@@ -320,49 +318,5 @@ test.describe('PERM workflow, end to end', () => {
     for (const name of ['perm_resume.pdf', 'perm_degree_documents.pdf', 'perm_transcripts.pdf', 'perm_experience_letters.pdf']) {
       await expect(page.getByText(name).first(), `Admin sees uploaded ${name}`).toBeVisible()
     }
-  })
-
-  test('6. no USCIS form until the PERM stage is advanced; each stage brings its form, filled from the client data', async ({ page }) => {
-    const formsExpression = `async ({ Case, CaseForm }) => {
-      const ids = [${JSON.stringify(state.caseId)}, ${JSON.stringify(state.childId)}];
-      const forms = await CaseForm.find({ caseId: { $in: ids }, status: { $ne: 'archived' } }).lean();
-      return forms.map((f) => ({ code: f.formCode, caseId: String(f.caseId), values: JSON.stringify({ a: f.fieldValues, b: f.filledData }) }));
-    }`
-    const formsNow = (isReady, timeoutMs = 120_000) => pollDatabase(formsExpression, isReady, { timeoutMs, intervalMs: 4_000 })
-    const codes = (result) => (Array.isArray(result) ? result : []).map((f) => f.code).sort()
-
-    await loginAs(page, 'admin')
-    await page.goto(`/crm-cases/${state.childId}`)
-    await page.getByRole('button', { name: /^Documents/ }).first().click()
-    await expect(page.getByTestId('perm-stage-card')).toBeVisible({ timeout: 60_000 })
-    expect(codes(queryDatabase(formsExpression)), 'no USCIS form before certification').toEqual([])
-
-    const advance = async (testId, expectCodes) => {
-      await page.getByTestId(testId).click()
-      await page.getByRole('dialog').getByRole('button', { name: 'Yes', exact: true }).click()
-      await expect(page.getByRole('dialog')).toBeHidden({ timeout: 90_000 })
-      const result = await formsNow((rows) => JSON.stringify(codes(rows)) === JSON.stringify(expectCodes))
-      expect(codes(result), `forms after ${testId}`).toEqual(expectCodes)
-      return result
-    }
-
-    await page.getByTestId('perm-mark-certified').click()
-    await page.getByTestId('perm-cert-number').fill('A-26001-12345')
-    await page.getByRole('dialog').getByRole('button', { name: 'Yes', exact: true }).click()
-    await expect(page.getByRole('dialog')).toBeHidden({ timeout: 90_000 })
-    const afterCert = await formsNow((rows) => codes(rows).length > 0)
-    expect(codes(afterCert), 'PERM certified -> I-140 only').toEqual(['I-140'])
-    const i140 = afterCert.find((f) => f.code === 'I-140').values
-    for (const expected of ['Rao', 'Anita', 'Acme Robotics Inc', '123456789']) expect(i140, `I-140 carries "${expected}" from the client data`).toContain(expected)
-    state.i140 = i140
-
-    const afterAos = await advance('perm-start-aos', ['I-140', 'I-485'])
-    const i485 = afterAos.find((f) => f.code === 'I-485').values
-    for (const expected of ['Rao', 'Anita']) expect(i485, `I-485 carries "${expected}"`).toContain(expected)
-
-    const afterEad = await advance('perm-add-ead', ['I-140', 'I-485', 'I-765'])
-    expect(afterEad.find((f) => f.code === 'I-765').values).toContain('Rao')
-    const afterAp = await advance('perm-add-ap', ['I-131', 'I-140', 'I-485', 'I-765'])
-    expect(afterAp.find((f) => f.code === 'I-131').values).toContain('Rao')
   })
 })

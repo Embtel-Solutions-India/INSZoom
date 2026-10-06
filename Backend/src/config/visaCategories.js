@@ -29,12 +29,10 @@
 
 const VISA_CATEGORIES = {
   // ─── PERM (DOL LABOR CERTIFICATION) ──────────────────────────────────────
-  // An employer_employee matter with exactly ONE employee - the person the labor
-  // certification is filed for - so there is no "+ Add Employee" (singleEmployee).
-  // A Department of Labor process, not a USCIS filing: no USCIS forms are
-  // auto-assigned (forms: []); its checklists (perm_employer_information /
-  // perm_employee_information) are assigned automatically at case creation.
-  PERM: { caseStructure: "employer_employee", singleEmployee: true, forms: [], label: "PERM (Labor Certification)" },
+  // A plain employer_employee matter: the employer (or a case manager) adds as many employees as needed, each with
+  // their own checklist. A Department of Labor process, not a USCIS filing: NO USCIS forms and no USCIS mapping.
+  // Its checklists (perm_employer_information / perm_employee_information) are assigned at case creation.
+  PERM: { caseStructure: "employer_employee", forms: [], noForms: true, label: "PERM (Labor Certification)" },
 
   // ─── EMPLOYER / EMPLOYEE VISAS ───────────────────────────────────────────
   "H-1B": {
@@ -320,10 +318,10 @@ function getCaseStructure(visaType) {
  * @param {string} visaType
  * @returns {string[]}
  */
-// True for matters that have exactly one employee child case (PERM): the child
-// is created with the case and no further employee can be added.
-function isSingleEmployeeType(visaType) {
-  return Boolean(VISA_CATEGORIES[visaType]?.singleEmployee);
+// True for a case type that has NO forms of any kind attached (PERM): nothing is ever assigned to it, and its Forms
+// list is always empty. Distinct from a type that merely has no forms yet.
+function hasNoForms(visaType) {
+  return Boolean(VISA_CATEGORIES[visaType]?.noForms);
 }
 
 function getFormIds(visaType) {
@@ -343,8 +341,8 @@ function getVisaTypesByStructure(structure) {
 
 module.exports = {
   VISA_CATEGORIES,
+  hasNoForms,
   getCaseStructure,
-  isSingleEmployeeType,
   getFormIds,
   getVisaTypesByStructure,
 };

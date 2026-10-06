@@ -32,7 +32,7 @@ const { generateOpaqueToken, hashToken } = require("../auth/password.service");
 const workflowSlaService = require("../settings/workflowSla.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
-const { getCaseStructure, isSingleEmployeeType } = require("../../config/visaCategories");
+const { getCaseStructure } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
@@ -84,7 +84,6 @@ const PREMIUM_PROCESSING_ADDON = {
 
 const I907_QUESTIONNAIRE_KEY = "i907_premium_processing_profile";
 const PREMIUM_PROCESSING_VISA_TYPE = "Premium Processing";
-const { PERM_VISA_TYPE } = require("../../config/permStages");
 const CASE_PLAN_STATUSES = new Set(["not_started", "pending", "failed"]);
 const PHASE5_CASE_CREATE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -130,10 +129,9 @@ function resolveCreationSource(input, userRole) {
   return normalizeRole(userRole) === "team_lead" ? "team_lead_direct" : "admin_direct";
 }
 
-function resolveChildCaseCount(caseStructure, input, singleEmployee = false) {
+function resolveChildCaseCount(caseStructure, input) {
   if (caseStructure === "single") return 0;
   if (caseStructure === "family") return 1;
-  if (singleEmployee) return 1; // PERM: the one employee the labor certification is filed for
   const parsed = Number.parseInt(input, 10);
   return Math.max(1, Number.isFinite(parsed) ? parsed : 1);
 }
@@ -159,7 +157,6 @@ function publicCaseSummary(caseData) {
     caseRole: caseData.caseRole,
     childIndex: caseData.childIndex,
     visaType: caseData.visaType,
-    singleEmployee: isSingleEmployeeType(caseData.visaType),
   };
 }
 
@@ -773,89 +770,6 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
   }
 };
 
-// PERM stage (Case Manager): certification -> adjustment of status -> employment authorization /
-// advance parole. The only thing that brings a USCIS form onto a PERM case (config/permStages.js):
-// this stores the stage on the principal case and its employee case(s), then re-runs the existing
-// orchestration, whose registry triggers provision I-140 / I-485 / I-765 / I-131 and autofill them
-// from the canonical profile. Stages only move forward; each later stage needs the one before it.
-exports.updatePermWorkflow = async (req, res, next) => {
-  try {
-    const caseData = await getCaseOr404(req.params.id, res);
-    if (!caseData) return;
-    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
-    if (caseData.visaType !== PERM_VISA_TYPE) {
-      return res.status(409).json({ success: false, code: "NOT_A_PERM_CASE", message: "Only a PERM case has a PERM stage." });
-    }
-    const principal = caseData.parentCase ? await Case.findById(caseData.parentCase) : caseData;
-    if (!principal) return res.status(404).json({ success: false, message: "PERM principal case not found" });
-
-    const current = principal.permWorkflow?.toObject?.() || principal.permWorkflow || {};
-    const bool = (key) => (req.body[key] === undefined ? Boolean(current[key]) : Boolean(req.body[key]));
-    const next = {
-      certified: bool("certified"),
-      adjustmentOfStatus: bool("adjustmentOfStatus"),
-      employmentAuthorization: bool("employmentAuthorization"),
-      advanceParole: bool("advanceParole"),
-    };
-    for (const key of Object.keys(next)) {
-      if (current[key] && !next[key]) {
-        return res.status(409).json({ success: false, code: "STAGE_FORWARD_ONLY", message: "A PERM stage cannot be undone once forms may have been created from it." });
-      }
-    }
-    if (next.adjustmentOfStatus && !next.certified) {
-      return res.status(400).json({ success: false, code: "STAGE_ORDER", message: "Adjustment of status requires the PERM to be certified first." });
-    }
-    if ((next.employmentAuthorization || next.advanceParole) && !next.adjustmentOfStatus) {
-      return res.status(400).json({ success: false, code: "STAGE_ORDER", message: "Employment authorization and advance parole apply at the adjustment-of-status stage." });
-    }
-
-    const now = new Date();
-    const targets = [principal, ...(await Case.find({ parentCase: principal._id }))];
-    for (const target of targets) {
-      const workflow = {
-        ...(target.permWorkflow?.toObject?.() || target.permWorkflow || {}),
-        ...next,
-        updatedAt: now,
-        updatedBy: req.user._id,
-      };
-      if (next.certified && !workflow.certifiedAt) {
-        workflow.certifiedAt = now;
-        workflow.certifiedBy = req.user._id;
-      }
-      if (req.body.certificationNumber !== undefined) workflow.certificationNumber = cleanString(req.body.certificationNumber);
-      if (req.body.certifiedDate) workflow.certifiedDate = new Date(req.body.certifiedDate);
-      target.permWorkflow = workflow;
-      if (next.adjustmentOfStatus && !target.processingPath) target.processingPath = "ADJUSTMENT_OF_STATUS";
-      target.lastModifiedBy = req.user._id;
-      await target.save();
-    }
-    const changed = ["certified", "adjustmentOfStatus", "employmentAuthorization", "advanceParole"].filter((key) => next[key] && !current[key]);
-    if (changed.length) {
-      const fresh = await Case.findById(principal._id);
-      caseService.addTimelineEvent(fresh, "case_manager", "PERM Stage Updated", `PERM stage advanced: ${changed.join(", ")}.`, req.user, { changed, certificationNumber: req.body.certificationNumber });
-      caseService.addAuditEntry(fresh, "perm_stage_update", "PERM stage updated", req.user, { changed, next }, req);
-      await fresh.save();
-    }
-
-    // Provision the forms the new stage opens (registry triggers), and autofill them from the canonical profile.
-    const lifecycle = require("./case-lifecycle-orchestrator.service");
-    const orchestrationErrors = [];
-    for (const target of targets) {
-      try {
-        await lifecycle.orchestrateOne(target._id, req.user, req);
-      } catch (error) {
-        orchestrationErrors.push({ caseId: String(target._id), message: error.message });
-      }
-    }
-    const refreshed = await Case.findById(principal._id);
-    await lifecycle.provisionRequiredForms(refreshed, req.user, req);
-
-    res.json({ success: true, case: refreshed, permWorkflow: refreshed.permWorkflow, changed, orchestrationErrors });
-  } catch (error) {
-    handleError(error, next);
-  }
-};
-
 exports.getCases = async (req, res, next) => {
   const timer = createPerfTimer("cases_list_performance", {
     requestId: req.requestId,
@@ -1122,7 +1036,7 @@ exports.createCase = async (req, res, next) => {
       });
     }
 
-    const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount, isSingleEmployeeType(trimmedVisaType));
+    const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
     const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
     const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;
     const normalizedPackage = packageInput ? normalizePackageName(packageInput) : "";
@@ -1478,6 +1392,7 @@ exports.createCase = async (req, res, next) => {
       } catch (err) {
         require("../../utils/logger").error("create_case_background_orchestration_failed", { caseId: principalCase._id, error: err.message });
       }
+      // Clients who already have a password get the separate "Case Created" email (case-created-client, login link) from the lifecycle orchestrator.
       if (setupToken) {
         await notificationService.createNotification({
           userId: clientUser._id,
@@ -2492,9 +2407,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     if (principal.caseStructure !== "employer_employee" || principal.caseRole !== "principal") {
       return res.status(400).json({ success: false, code: "NOT_EMPLOYER_MATTER", message: "This case is not an employer/employee matter" });
     }
-    if (isSingleEmployeeType(principal.visaType)) {
-      return res.status(409).json({ success: false, code: "SINGLE_EMPLOYEE_MATTER", message: `${principal.visaType} cases have exactly one employee - the person the labor certification is filed for. Another employee cannot be added.` });
-    }
+  
 
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
     if (!isStaff && String(principal.user) !== String(req.user._id)) {

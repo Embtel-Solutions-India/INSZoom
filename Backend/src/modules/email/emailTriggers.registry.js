@@ -18,7 +18,7 @@ const t = (key, label, category, recipient, description, { groups = CASE_GROUPS,
   ({ key, label, category, recipient, description, groups, locked });
 
 const TRIGGERS = [
-  t("client-portal-invitation", "Client Account Created", "Account", "client", "A client's portal account is created and they are asked to set a password.", { groups: ["Client", "Case"] }),
+  t("client-portal-invitation", "Case Created - New Client (Set Password)", "Case", "client", "A case is created for a client with no password yet: the email asks them to set a password by the link, then log in.", { groups: ["Client", "Case"] }),
   t("employee-case-invitation", "Employee Invited to Case", "Account", "client", "An employer's employee is invited to complete their case.", { groups: ["Client", "Case", "Company"] }),
   t("family-beneficiary-invitation", "Beneficiary Invited to Case", "Account", "client", "A family-visa beneficiary is invited to the petitioner's case.", { groups: ["Client", "Case", "Company"] }),
   t("password-reset", "Password Reset", "Account", "client", "Password reset link. Locked for security.", { groups: ["Client"], locked: true }),
@@ -33,7 +33,7 @@ const TRIGGERS = [
   t("lead-rejected", "Lead Declined", "Lead", "client", "A lead is declined.", { groups: ["Client"] }),
   t("quiz-lead-internal", "New Lead Notice (Admin)", "Lead", "team_member", "The team is told about a new lead or consultation request.", { groups: ["Client"] }),
 
-  t("case-created-client", "Case Created", "Case", "client", "A client is told their case has been created.", { groups: ["Client", "Case"] }),
+  t("case-created-client", "Case Created - Existing Client (Login)", "Case", "client", "A case is created for a client who already has a password: the email sends them to the login page.", { groups: ["Client", "Case"] }),
 
   t("case-created-team-lead", "Case Created (Team Lead)", "Internal Team", "team_member", "The team lead is told a new case awaits assignment.", { groups: ["Client", "Case", "Team Lead"] }),
   t("case-assigned-case-manager", "Case Assigned to Case Manager", "Internal Team", "team_member", "A case manager is told a case was assigned to them.", { groups: ["Client", "Case", "Case Manager"] }),

@@ -213,8 +213,6 @@ export const casesApi = {
   workflow: (id) => api.get(`/cases/${id}/workflow`),
   // Case Manager upgrade: assigns the Form I-907 checklist to the client and adds Form I-907 to the case.
   upgradePremiumProcessing: (id) => api.post(`/cases/${id}/premium-processing/upgrade`),
-  // PERM stage (certified -> adjustment of status -> employment authorization / advance parole): opens the USCIS forms of that stage.
-  updatePermWorkflow: (id, body) => api.put(`/cases/${id}/perm-workflow`, body),
   recalculateWorkflow: (id, reason) => api.post(`/cases/${id}/workflow/recalculate`, { reason }),
   generateForms: (id) => api.post(`/cases/${id}/workflow/generate-forms`),
   generatePackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-package`, payload),

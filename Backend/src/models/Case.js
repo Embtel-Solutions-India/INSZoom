@@ -672,20 +672,6 @@ const caseSchema = new mongoose.Schema(
       approvedAt: Date,
       approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
-    // PERM (labor certification) stage - which USCIS forms may appear (config/permStages.js). Set
-    // only by case.controller.js updatePermWorkflow, on the principal case and its employee case(s).
-    permWorkflow: {
-      certified: { type: Boolean, default: false },
-      certificationNumber: String, // DOL ETA-9089 case number
-      certifiedDate: Date,
-      certifiedAt: Date,
-      certifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      adjustmentOfStatus: { type: Boolean, default: false },
-      employmentAuthorization: { type: Boolean, default: false },
-      advanceParole: { type: Boolean, default: false },
-      updatedAt: Date,
-      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    },
     // Same pattern as n400Process immediately above, for the optional
     // Certificate of Citizenship (Form N-600) add-on process
     // (n600Checklist.js's n600_checklist, case.controller.js's
