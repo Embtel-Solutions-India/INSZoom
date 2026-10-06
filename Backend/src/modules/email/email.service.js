@@ -5,6 +5,7 @@ const logger = require("../../utils/logger");
 const { layoutHtml, renderCustom } = require("./emailRenderer");
 const customization = require("./emailCustomization.service");
 const triggerRegistry = require("./emailTriggers.registry");
+const emailPolicy = require("./emailPolicy");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
 // comment for the why). Every template's INTRINSIC recipient — the person
@@ -151,6 +152,26 @@ async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, c
   }
 }
 
+// Where an email's button/link should land when the call site did not supply
+// one: the portal the RECIPIENT actually uses, deep-linked to the case where
+// that portal has a case page. (Several built-in emails fall back to "#" in
+// their own text when no link is passed - this makes sure they never do.)
+const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
+const PORTAL_OF_AUDIENCE = {
+  client: () => `${trimSlash(env.clientUrl)}/dashboard`,
+  attorney: (caseId) => `${trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174")}${caseId ? `/cases/${caseId}` : "/dashboard"}`,
+  staff: (caseId) => `${trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002")}${caseId ? `/crm-cases/${caseId}` : "/dashboard"}`,
+};
+function defaultPortalLink(templateKey, recipientRole, caseId) {
+  let audience;
+  if (recipientRole) audience = recipientRole === "attorney" ? "attorney" : STAFF_ROLES.includes(recipientRole) ? "staff" : "client";
+  else {
+    const declared = triggerRegistry.getTrigger(templateKey)?.audience;
+    audience = declared === "attorney" ? "attorney" : declared && declared !== "client" ? "staff" : "client";
+  }
+  return PORTAL_OF_AUDIENCE[audience](caseId);
+}
+
 // Admin-customized version of a built-in email (Email Template
 // Customization page). Returns null - meaning "send the built-in email
 // exactly as before" - when there is no active customization for this key,
@@ -160,7 +181,15 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
   try {
     const trigger = triggerRegistry.getTrigger(templateKey);
     if (!trigger || trigger.locked) return null;
-    const custom = await customization.findActive(templateKey);
+    const active = await customization.findActive(templateKey);
+    // An admin switched this email off: nothing is emailed (alerts are unaffected).
+    if (active && active.sendEmail === false) return { suppressed: true };
+    let custom = active;
+    if (!custom && !trigger.builtIn && trigger.emailAuto) {
+      // Event email that is sent by default: its professionally written default wording.
+      const defaults = customization.defaultContentFor(templateKey, TEMPLATES);
+      if (defaults) custom = { _id: "default", subject: defaults.subject, heading: defaults.heading, body: defaults.body, recipients: {} };
+    }
     if (!custom) return null;
     const ctx = await customization.buildContext({ data, caseId });
     const rendered = renderCustom(custom, ctx);
@@ -178,13 +207,32 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
  * HTML or talk to a provider directly.
  */
 async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
+  data = { ...data, portalLink: data.portalLink || defaultPortalLink(templateKey, recipientRole, caseId) };
   const builtIn = TEMPLATES[templateKey];
   const eventTrigger = !builtIn ? triggerRegistry.getTrigger(templateKey) : null;
   if (!builtIn && !eventTrigger) throw new Error(`Unknown email template: ${templateKey}`);
   if (!to) return { skipped: true, reason: "missing_recipient" };
-  // Event-based triggers have no built-in email: they only ever send once an
-  // admin has activated a customized template for them.
+  // Event-based triggers have no built-in email: they send their default wording
+  // when the trigger is set to email automatically (emailPolicy.js), or an
+  // admin's activated template - never anything else.
   const template = builtIn || { subject: () => eventTrigger.label, bodyLines: () => [] };
+
+  // A skipped send is still logged, so "why didn't X get an email?" is answerable.
+  const skip = async (reason, message) => {
+    const log = await EmailLog.create({ templateKey, to, cc, subject: template.subject(data), status: "skipped", caseId, userId, triggeredBy, data, source, error: `Not sent: ${message}` }).catch(() => null);
+    return { sent: false, skipped: true, reason, log };
+  };
+
+  // Guards for EVERY email (see emailPolicy.js): never a malformed or placeholder
+  // address, and never the same email to the same person for the same case twice
+  // in a short window (retried requests, bursts). Credential/invite mails are exempt.
+  const badAddress = emailPolicy.undeliverableReason(to);
+  if (badAddress) return skip(badAddress, badAddress === "invalid_address" ? "invalid email address" : "placeholder/test email domain");
+  if (caseId && !emailPolicy.NEVER_THROTTLED.has(templateKey)) {
+    const windowMs = triggerRegistry.getTrigger(templateKey)?.cooldownMs || emailPolicy.DEFAULT_COOLDOWN_MS;
+    const repeated = await emailPolicy.recentlySent({ templateKey, to, caseId, windowMs }).catch(() => false);
+    if (repeated) return skip("repeat", "the same email was already sent for this case a moment ago");
+  }
 
   // Dev/testing-phase gate — team-member and attorney recipients are
   // suppressed (still logged, never actually dispatched); client recipients
@@ -206,10 +254,14 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   }
 
   const custom = await resolveCustomization(templateKey, { to, data, caseId });
+  if (custom?.suppressed) return skip("disabled_by_admin", "This email is switched off on the Email Templates page");
   if (custom) {
-    const extraCc = [...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])];
+    const deliverable = (list) => list.filter((address) => !emailPolicy.undeliverableReason(address));
+    const finalTo = deliverable(custom.recipients.to);
+    if (!finalTo.length) return skip("undeliverable_address", "No deliverable recipient address");
+    const extraCc = deliverable([...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])]);
     return dispatch({
-      templateKey, to: custom.recipients.to.join(", "), cc: extraCc, bcc: custom.recipients.bcc,
+      templateKey, to: finalTo.join(", "), cc: extraCc, bcc: deliverable(custom.recipients.bcc),
       subject: custom.subject, html: custom.html, text: custom.text, data, caseId, userId, triggeredBy, source, attachments,
     });
   }
@@ -228,6 +280,7 @@ module.exports = {
   sendTemplateEmail,
   isConfigured,
   dispatch,
+  defaultPortalLink,
   wrapHtml,
   TEMPLATES,
   TEMPLATE_AUDIENCE,

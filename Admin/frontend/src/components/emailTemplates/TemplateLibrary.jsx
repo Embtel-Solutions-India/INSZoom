@@ -109,7 +109,7 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
                   <tr>
                     <th className="px-4 py-2.5 font-medium">Template</th>
                     <th className="px-4 py-2.5 font-medium">Trigger</th>
-                    <th className="px-4 py-2.5 font-medium">Category</th>
+                    <th className="px-4 py-2.5 font-medium">Email</th>
                     <th className="px-4 py-2.5 font-medium">Status</th>
                     <th className="px-4 py-2.5 font-medium">Updated</th>
                   </tr>
@@ -133,7 +133,13 @@ export default function TemplateLibrary({ rows, meta, loading, error, onRetry, o
                           {row.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{row.description}</p>}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">{row.triggerLabel || <span className="italic">Not attached</span>}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{row.category}</td>
+                        <td className="px-4 py-3 text-xs" title={row.sendRule ? `Sent when: ${row.sendRule.when}\nNot sent when: ${row.sendRule.unless}` : undefined}>
+                          {row.sendEmail === false
+                            ? <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">Off</span>
+                            : row.emailAuto
+                              ? <span className="rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-700">Automatic</span>
+                              : <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-muted-foreground">On activation</span>}
+                        </td>
                         <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span></td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{row.updatedAt ? new Date(row.updatedAt).toLocaleDateString() : '—'}</td>
                       </tr>

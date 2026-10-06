@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import api, { casesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
@@ -140,6 +141,9 @@ const CRMCases = () => {
   useEffect(() => () => {
     activeFetchRef.current.controller?.abort()
   }, [])
+
+  // Back on this (kept-alive) list after a while: refresh quietly - rows stay, no spinner.
+  useRouteRevisit(() => { fetchCases() })
 
   const fetchCases = async () => {
     const seq = activeFetchRef.current.seq + 1

@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { emailTemplatesApi } from '../services/api'
 import TemplateLibrary from '../components/emailTemplates/TemplateLibrary'
 import TemplateEditor from '../components/emailTemplates/TemplateEditor'
 import { LoadingState, ErrorState } from '../components/ui/EmptyState'
+import { restoreScrollTo } from '../hooks/useScrollRestoration'
 
 // Email Template Customization. Two states: the full-width library, and -
 // once a template is chosen - a two-halves editor/preview with the library
 // hidden entirely.
 const EMPTY_RECIPIENTS = { to: [], cc: [], bcc: [] }
-const BLANK = { id: null, name: '', description: '', category: 'Case', subject: '', heading: '', body: '', triggerKey: null, recipients: EMPTY_RECIPIENTS, status: 'draft' }
+const BLANK = { id: null, name: '', description: '', category: 'Case', subject: '', heading: '', body: '', triggerKey: null, recipients: EMPTY_RECIPIENTS, status: 'draft', sendEmail: true }
 
 const fromRecord = (record) => ({
   id: record._id, name: record.name || '', description: record.description || '', category: record.category || 'Case',
   subject: record.subject || '', heading: record.heading || '', body: record.body || '', triggerKey: record.triggerKey || null,
-  recipients: { ...EMPTY_RECIPIENTS, ...(record.recipients || {}) }, status: record.status || 'draft',
+  recipients: { ...EMPTY_RECIPIENTS, ...(record.recipients || {}) }, status: record.status || 'draft', sendEmail: record.sendEmail !== false,
 })
 
 export default function EmailTemplates() {
@@ -24,9 +25,12 @@ export default function EmailTemplates() {
   const [editing, setEditing] = useState(null) // { key, form } while the editor is open
   const [opening, setOpening] = useState(false)
   const [openError, setOpenError] = useState('')
+  const libraryScroll = useRef(0) // where the library was scrolled when a template was opened
 
   const loadLibrary = useCallback(async () => {
-    setLoading(true)
+    // Refresh in the background when we already have rows: swapping the table for
+    // a spinner collapses the page and throws the scroll position back to the top.
+    setLoading((current) => (rows.length ? current : true))
     setError('')
     try {
       const [metaRes, libraryRes] = await Promise.all([meta ? Promise.resolve(null) : emailTemplatesApi.meta(), emailTemplatesApi.library()])
@@ -37,7 +41,7 @@ export default function EmailTemplates() {
     } finally {
       setLoading(false)
     }
-  }, [meta])
+  }, [meta, rows.length])
 
   useEffect(() => { loadLibrary() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -55,6 +59,7 @@ export default function EmailTemplates() {
   }, [])
 
   const handleOpen = async (row) => {
+    libraryScroll.current = window.scrollY
     if (row.kind === 'custom') return openCustom(row.id)
     // Built-in email: start a customization pre-filled with its real wording.
     setOpening(true)
@@ -62,7 +67,7 @@ export default function EmailTemplates() {
     try {
       const res = await emailTemplatesApi.defaults(row.triggerKey)
       const d = res.data.data
-      setEditing({ key: `new-${row.triggerKey}`, form: { ...BLANK, name: d.name, description: d.description, category: d.category, subject: d.subject, heading: d.heading, body: d.body, triggerKey: d.triggerKey, recipients: d.recipients } })
+      setEditing({ key: `new-${row.triggerKey}`, form: { ...BLANK, name: d.name, description: d.description, category: d.category, subject: d.subject, heading: d.heading, body: d.body, triggerKey: d.triggerKey, recipients: d.recipients, sendEmail: true } })
     } catch (err) {
       setOpenError(err.response?.data?.message || 'Could not open this email')
     } finally {
@@ -75,6 +80,12 @@ export default function EmailTemplates() {
     loadLibrary()
     if (openId) openCustom(openId)
   }
+
+  // Back from the editor: return to exactly where the library was, then stop.
+  useEffect(() => {
+    if (editing || loading || opening) return undefined
+    return restoreScrollTo(libraryScroll.current)
+  }, [editing, loading, opening])
 
   if (editing && meta) {
     return <TemplateEditor key={editing.key} initial={editing.form} meta={meta} onBack={handleBack} onChanged={loadLibrary} />

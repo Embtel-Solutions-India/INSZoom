@@ -784,14 +784,14 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
       type: "questionnaire_sent",
       title: "Questionnaire Available",
       message: payload.message || `Please complete ${questionnaire.title}.`,
-      link: profileOnlyQuestionnaire ? "/dashboard/profile" : `/questionnaire/${responseId}`,
+      link: profileOnlyQuestionnaire ? "/dashboard/profile" : "/dashboard",
       caseId: caseData._id,
       source: "shared",
     }, user, req);
   }
   await workflowService.triggerWorkflow("questionnaire.sent", { caseId: caseData._id, questionnaireId: questionnaire._id, responseId }, user, req);
   // Customizable email for "Questionnaire available" - the in-app alert above is the existing one (it now also pushes).
-  if (assignedTo) {
+  if (assignedTo && !/i907_premium_processing_profile/.test(questionnaire.key || "") && !/i-?907|premium processing/i.test(questionnaire.title || "")) {
     require("../notifications/triggerEvents.service").emitInBackground("questionnaire.assigned", {
       caseId: caseData._id, actor: user, req, data: { questionnaireName: questionnaire.title },
       recipients: { client: [assignedTo] }, covered: { client: { notified: true, emailed: false } },

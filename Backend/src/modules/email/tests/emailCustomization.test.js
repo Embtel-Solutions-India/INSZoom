@@ -205,30 +205,62 @@ test("an edit to the active template is used by the very next real send (no cach
   assert.ok(queries.every((query) => query.status === "active" && query.managed === true && query.triggerKey === "case-created-client"));
 });
 
-test("every event email is a complete professional message: greeting, substance, details/callout, button, sign-off", () => {
+test("every event email is complete: greeting, substance, the standard navy/red button, valid variables", () => {
   const { EVENT_EMAILS } = require("../eventTriggers.emails");
   const visible = triggers.listVisible().filter((t) => !t.builtIn);
   assert.deepEqual(Object.keys(EVENT_EMAILS).sort(), visible.map((t) => t.key).sort(), "one email per visible event trigger, no strays");
   visible.forEach((trigger) => {
     const content = customization.defaultContentFor(trigger.key, emailService.TEMPLATES);
     const text = require("../emailRenderer").htmlToText(content.body);
-    assert.match(content.body, /Hi \[recipient\.name\]/, `${trigger.key}: greeting`);
-    assert.match(content.body, /<table/, `${trigger.key}: details card or callout`);
-    assert.match(content.body, /<a href="\[system\.portal_link\]"/, `${trigger.key}: button`);
-    assert.match(content.body, /Regards,/, `${trigger.key}: sign-off`);
-    assert.ok(text.length > 280, `${trigger.key}: too thin (${text.length} chars)`);
-    assert.ok(content.subject.length > 15 && content.heading.length > 10, `${trigger.key}: subject/heading`);
+    assert.match(content.body, /<p>Hi \[recipient\.name\],<\/p>/, `${trigger.key}: greeting`);
+    assert.match(content.body, /<a href="\[system\.portal_link\]" style="display:inline-block;padding:12px 24px;background:#(1e3a5f|dc2626);color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">/, `${trigger.key}: button in the standard style`);
+    assert.ok(text.length > 150, `${trigger.key}: too thin (${text.length} chars)`);
+    assert.ok(content.subject.length > 15, `${trigger.key}: subject`);
     const check = registry.validateTokens([content.subject, content.heading, content.body], trigger.groups);
     assert.deepEqual([check.unknown, check.unavailable], [[], []], trigger.key);
   });
 });
 
-test("reused wording: the questionnaire and rejected-document emails keep their original text", () => {
-  const q = customization.defaultContentFor("questionnaire.assigned:client", emailService.TEMPLATES);
-  assert.match(q.subject, /^Action required: questionnaire assigned/);
+test("exact wording is reused from the existing emails (as shown in the sample PDF)", () => {
+  const body = (key) => customization.defaultContentFor(key, emailService.TEMPLATES);
+  const q = body("questionnaire.assigned:client");
+  assert.equal(q.subject, "Action required: questionnaire assigned — Case [case.id]");
   assert.match(q.body, /Your case manager has assigned a questionnaire that requires your input for your immigration case\./);
-  const d = customization.defaultContentFor("document.rejected:client", emailService.TEMPLATES);
-  assert.match(d.subject, /^Action required: document needs to be replaced/);
-  assert.match(d.body, /has requested a replacement\./);
-  assert.match(d.body, /upload a corrected version as soon as possible to avoid delays to your case\./);
+  assert.match(q.body, /<strong>Questionnaire:<\/strong> \[document\.name\]/);
+  assert.match(q.body, /Please complete it as soon as possible to avoid delays\./);
+  assert.match(q.body, />Complete Questionnaire<\/a>/);
+
+  const d = body("document.rejected:client");
+  assert.equal(d.subject, "Action required: document needs to be replaced — Case [case.id]");
+  assert.match(d.body, /Your case manager has reviewed the document you submitted \(<strong>\[document\.name\]<\/strong>\) and has requested a replacement\./);
+  assert.match(d.body, /<strong>Reason:<\/strong> \[document\.rejection_reason\]/);
+  assert.match(d.body, /Please log in to the portal and upload a corrected version as soon as possible to avoid delays to your case\./);
+  assert.match(d.body, />Upload Replacement Document<\/a>/);
+
+  for (const key of ["rfe.received:team_lead", "rfe.received:admin", "rfe.received:attorney"]) {
+    const rfe = body(key);
+    assert.equal(rfe.subject, "URGENT: USCIS has requested additional evidence — Case [case.id]");
+    assert.match(rfe.body, /USCIS has issued a <strong>Request for Evidence \(RFE\)<\/strong> for the immigration case of \[client\.name\]\./);
+    assert.match(rfe.body, /<p style="color:#dc2626;font-weight:700;font-size:16px;margin:0 0 16px;">Response deadline: \[case\.rfe_deadline\]<\/p>/);
+    assert.match(rfe.body, /background:#dc2626/);
+    assert.match(rfe.body, />View RFE Details<\/a>/);
+  }
+
+  const filed = body("case.filed:attorney");
+  assert.match(filed.body, /has been officially submitted to USCIS\./);
+  assert.match(filed.body, /Filing Date/);
+  assert.match(filed.body, /USCIS will send a receipt notice \(Form I-797\) to the address of record\. Processing times vary — the case manager will notify you as soon as any updates arrive\./);
+
+  const closed = body("case.closed:admin");
+  assert.match(closed.body, /has been officially closed\./);
+  assert.match(closed.body, /If you have any questions about this closure or would like to discuss next steps, please contact us through the portal\./);
+  assert.match(closed.body, />View Case Details<\/a>/);
+
+  const created = body("case.created:admin");
+  assert.equal(created.subject, "New Immigration Case Created");
+  assert.match(created.body, /A new case \[case\.id\] for \[client\.name\] has been created and is awaiting assignment\./);
+
+  const intake = body("questionnaire.submitted:case_manager");
+  assert.equal(intake.subject, "Client intake submitted for [case.id]");
+  assert.match(intake.body, /Please review the client profile, questionnaire responses, uploaded documents, and missing document list in Admin\./);
 });

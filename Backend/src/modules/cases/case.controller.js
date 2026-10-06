@@ -401,7 +401,7 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
   // env.clientUrl is the Client portal's own origin — /dashboard/* has
   // always lived there, never in Landing, so this must never fall back to
   // Landing's port regardless of which env var names get set.
-  const portalLink = `${env.clientUrl}/dashboard/case/${caseData._id}`;
+  const portalLink = `${env.clientUrl}/dashboard`; // the client portal's case page is the dashboard itself
 
   await notificationService.createNotification({
     userId: caseData.user,
@@ -410,7 +410,7 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
     title: isReassignment ? "Your Case Has a New Case Manager" : "Your Case Manager Has Been Assigned",
     message: `${caseManagerName} is now managing your case ${caseData.caseNumber || caseData.caseId}.`,
     caseId: caseData._id,
-    link: `/dashboard/case/${caseData._id}`,
+    link: "/dashboard",
     priority: "high",
     source: "shared",
     channels: ["in_app", "socket", "push", "email"],
@@ -2747,7 +2747,7 @@ exports.requestDocuments = async (req, res, next) => {
     await caseService.writeAuditLog("request_documents", caseData, req.user, req.body, req);
     // The client's own alert (in-app + browser push, + customized email if active).
     // (The workflow rule above is a role-wide broadcast and does not reach this case's client directly.)
-    require("../notifications/triggerEvents.service").emitInBackground("documents.requested", {
+    if (requiredDocuments.length) require("../notifications/triggerEvents.service").emitInBackground("documents.requested", {
       caseId: caseData._id, actor: req.user, req,
       data: { documentList: requiredDocuments.map((doc) => doc.name || doc.documentType || doc).join(", "), documentCount: requiredDocuments.length, dueDate: req.body.dueDate },
     });

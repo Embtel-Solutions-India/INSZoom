@@ -33,9 +33,10 @@ async function buildContext({ data = {}, caseId } = {}) {
   const ctx = { data, caseContext: {} };
   if (!caseId) return ctx;
   const caseDoc = await Case.findById(caseId)
-    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager assignedTeamLead attorneyAccess companyId employerUser")
+    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager assignedTeamLead attorneyAccess companyId employerUser isDemoData")
     .lean();
   if (!caseDoc) return ctx;
+  ctx.isDemoData = Boolean(caseDoc.isDemoData);
 
   const activeAttorneyIds = (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active").map((grant) => grant.attorneyId);
   const attorneyId = activeAttorneyIds[0];

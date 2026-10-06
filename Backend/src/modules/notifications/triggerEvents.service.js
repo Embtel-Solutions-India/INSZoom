@@ -20,25 +20,39 @@ const logger = require("../../utils/logger");
 const triggers = require("../email/emailTriggers.registry");
 const registry = require("../email/emailVariables.registry");
 const customization = require("../email/emailCustomization.service");
+const emailPolicy = require("../email/emailPolicy");
 
 const env = require("../../config/env");
 
 const idOf = (value) => String(value?._id || value || "");
 
-// Where the email's button should land: the right portal, deep-linked to the case.
-const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
-function portalLinkFor(audience, caseId) {
-  if (audience === "client") return `${trimSlash(env.clientUrl)}/dashboard`;
-  if (audience === "attorney") return `${trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174")}${caseId ? `/cases/${caseId}` : "/dashboard"}`;
-  return `${trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002")}${caseId ? `/crm-cases/${caseId}` : "/dashboard"}`;
-}
-
-const linkFor = (audience, caseId) => {
+// In-app notification link (relative to the recipient's own portal). Every path
+// here must be a real route in that portal (checked by tests/emailLinks.test.js).
+const PATH_OVERRIDES = {
+  "attorney.removed": () => "/dashboard",              // the case is no longer theirs
+  "lead.approved": () => "/leads",
+  "lead.created": () => "/leads",
+  "attorney.feedback:attorney": (caseId) => `/messages/${caseId}`,
+  "system.email_failed": () => "/dashboard",
+  "system.account_locked": () => "/dashboard",
+};
+const linkFor = (trigger, caseId) => {
+  const override = PATH_OVERRIDES[trigger.key] || PATH_OVERRIDES[trigger.event];
+  if (override) return override(caseId);
   if (!caseId) return "/dashboard";
-  if (audience === "client") return "/dashboard";
-  if (audience === "attorney") return `/cases/${caseId}`;
+  if (trigger.audience === "client") return "/dashboard";
+  if (trigger.audience === "attorney") return `/cases/${caseId}`;
   return `/crm-cases/${caseId}`;
 };
+
+// Absolute version for email buttons: the right portal's origin + that path.
+const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
+function portalLinkFor(trigger, caseId) {
+  const path = linkFor(trigger, caseId);
+  if (trigger.audience === "client") return `${trimSlash(env.clientUrl)}${path}`;
+  if (trigger.audience === "attorney") return `${trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174")}${path}`;
+  return `${trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002")}${path}`;
+}
 
 // Users for an audience. Case-scoped audiences come from the loaded case
 // context; admin / super_admin are role-wide by nature.
@@ -47,14 +61,28 @@ async function resolveAudienceUsers(audience, ctx, onlyIds) {
   // who was just assigned/removed, not every attorney on the case).
   if (Array.isArray(onlyIds)) {
     if (!onlyIds.length) return [];
-    return User.find({ _id: { $in: onlyIds }, isActive: { $ne: false } }).select("_id email role name displayName").lean();
+    return User.find({ _id: { $in: onlyIds }, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
   }
   if (audience === "admin" || audience === "super_admin") {
-    return User.find({ role: audience, isActive: { $ne: false } }).select("_id email role name displayName").lean();
+    return User.find({ role: audience, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
   }
   const ids = ctx.people?.[audience] || [];
   if (!ids.length) return [];
-  return User.find({ _id: { $in: ids }, isActive: { $ne: false } }).select("_id email role name displayName").lean();
+  return User.find({ _id: { $in: ids }, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
+}
+
+// Should this person be EMAILED (in-app + push are separate and always sent)?
+//   yes when an admin activated a template, or the trigger emails automatically
+//   (emailPolicy.js) - unless an admin switched the email off, or:
+//   - the case / account is demo data, or the address is unusable (placeholder domain)
+//   - a client who has not set a password yet (the invitation email is their one email)
+function emailDecision(trigger, user, custom, ctx) {
+  if (custom && custom.sendEmail === false) return { send: false, reason: "disabled_by_admin" };
+  if (!(custom || trigger.emailAuto)) return { send: false, reason: "not_automatic" };
+  if (user.isDemoData || ctx.isDemoData) return { send: false, reason: "demo_data" };
+  if (!user.email || emailPolicy.undeliverableReason(user.email)) return { send: false, reason: "undeliverable_address" };
+  if (trigger.audience === "client" && !user.password) return { send: false, reason: "account_not_activated" };
+  return { send: true };
 }
 
 async function deliver(trigger, user, { ctx, caseId, actor, data, covered, req }) {
@@ -62,13 +90,15 @@ async function deliver(trigger, user, { ctx, caseId, actor, data, covered, req }
   const emailService = require("../email/email.service");
 
   const recipientName = user.name || user.displayName || "";
-  const mergedData = { recipientName, portalLink: portalLinkFor(trigger.audience, caseId), ...data };
+  const mergedData = { recipientName, portalLink: portalLinkFor(trigger, caseId), ...data };
   const liveCtx = { ...ctx, data: mergedData };
   // Hidden duplicates customize their email through the built-in entry (emailKey).
   const emailKey = trigger.emailKey || trigger.key;
   const custom = await customization.findActive(emailKey).catch(() => null);
   // The existing code already sent this audience an email for this event.
   const emailAlreadySent = Boolean(covered?.emailed);
+  const decision = emailDecision(trigger, user, custom, ctx);
+  const emailWanted = decision.send && !emailAlreadySent;
 
   const title = registry.substitute(trigger.push.title, liveCtx, { escape: false });
   const message = registry.substitute(trigger.push.message, liveCtx, { escape: false });
@@ -76,7 +106,7 @@ async function deliver(trigger, user, { ctx, caseId, actor, data, covered, req }
   if (covered?.notified) {
     // The existing code already sent this audience an alert; only add the
     // customized email if one is active and the existing code did not email them.
-    if (custom && !emailAlreadySent && user.email) {
+    if (emailWanted) {
       await emailService.sendTemplateEmail(emailKey, {
         to: user.email, data: mergedData, caseId, userId: user._id, triggeredBy: actor?._id, recipientRole: user.role,
       });
@@ -92,11 +122,11 @@ async function deliver(trigger, user, { ctx, caseId, actor, data, covered, req }
     category: "case",
     title,
     message,
-    link: linkFor(trigger.audience, caseId),
+    link: linkFor(trigger, caseId),
     priority: trigger.priority,
     source: "shared",
-    channels: ["in_app", "socket", "push", ...(custom && !emailAlreadySent ? ["email"] : [])],
-    ...(custom && !emailAlreadySent ? { emailTemplate: emailKey, emailData: mergedData } : {}),
+    channels: ["in_app", "socket", "push", ...(emailWanted ? ["email"] : [])],
+    ...(emailWanted ? { emailTemplate: emailKey, emailData: mergedData } : {}),
     metadata: { triggerKey: trigger.key, event: trigger.event },
   }, actor, req);
   return "notified";
@@ -151,4 +181,4 @@ function emitInBackground(event, options) {
   setImmediate(() => { emit(event, options).catch(() => null); });
 }
 
-module.exports = { emit, emitInBackground, resolveAudienceUsers };
+module.exports = { emit, emitInBackground, resolveAudienceUsers, linkFor, portalLinkFor };

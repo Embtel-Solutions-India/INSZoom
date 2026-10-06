@@ -38,6 +38,9 @@ const emailTemplateSchema = new mongoose.Schema(
       bcc: { type: [{ _id: false, type: { type: String }, value: String }], default: [] },
     },
     variables: { type: [String], default: [] },
+    // false = an admin switched this email OFF: nothing is emailed for the trigger
+    // (in-app + push alerts are unaffected). Applies to built-in emails too.
+    sendEmail: { type: Boolean, default: true },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     version: { type: Number, default: 1 },
   },

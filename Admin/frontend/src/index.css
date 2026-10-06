@@ -128,3 +128,25 @@
   opacity: 0.75;
   word-break: break-all;
 }
+
+/* Buttons in the email editor are single click-to-edit blocks; their link is shown
+   in small print underneath (editor-only), without stretching the button. */
+.email-editor a[data-editor-btn] {
+  position: relative;
+  margin-bottom: 22px;
+  cursor: pointer;
+  user-select: none;
+}
+.email-editor a[data-editor-btn]::after {
+  content: attr(href);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6b7280;
+  white-space: nowrap;
+  text-decoration: none;
+  pointer-events: none;
+}

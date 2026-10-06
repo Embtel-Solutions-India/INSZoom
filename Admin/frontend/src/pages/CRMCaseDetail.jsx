@@ -1,6 +1,8 @@
 import { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef, Component } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
+import { useRouteRevisit } from '../components/KeepAliveOutlet'
+import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
@@ -347,6 +349,7 @@ const CRMCaseDetail = () => {
   const { subscribe, connected } = useSocket()
   const [liveUpdateBanner, setLiveUpdateBanner] = useState('')
   const [activeTab, setActiveTab] = useState('overview')
+  const visitedTabs = useRef(new Set(['overview']))
   const [caseData, setCaseData] = useState(null)
   // Same SSOT questionnaire resolution the client portal uses (server-side
   // visa-type matching — no H-1B/L-1A detection lives on this frontend).
@@ -738,9 +741,9 @@ const CRMCaseDetail = () => {
     }
   }, [location.search, assignmentPrompted])
 
-  const fetchCaseDetail = async () => {
+  const fetchCaseDetail = async (silent = false) => {
     try {
-      setLoading(true)
+      if (silent !== true) setLoading(true)
       const [response, intakeResponse] = await Promise.all([
         casesApi.get(id),
         clientIntakeApi.caseIntake(id).catch(() => null)
@@ -764,6 +767,10 @@ const CRMCaseDetail = () => {
       setLoading(false)
     }
   }
+
+  // Coming back to this (kept-alive) case after a while: refresh the case quietly in the
+  // background - no spinner, nothing collapses, the open tab and scroll stay put.
+  useRouteRevisit(() => { fetchCaseDetail(true) })
 
   const refetchChildCases = async () => {
     try {
@@ -1951,7 +1958,7 @@ const CRMCaseDetail = () => {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && (
+      <KeepTab name="overview" active={activeTab === 'overview'} visited={visitedTabs}>
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Info */}
@@ -2187,9 +2194,9 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
-      )}
+      </KeepTab>
 
-      {activeTab === 'tracking' && (
+      <KeepTab name="tracking" active={activeTab === 'tracking'} visited={visitedTabs}>
         <div className="space-y-6">
           <div className="card">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -2363,9 +2370,9 @@ const CRMCaseDetail = () => {
             </>
           )}
         </div>
-      )}
+      </KeepTab>
 
-      {activeTab === 'documents' && (
+      <KeepTab name="documents" active={activeTab === 'documents'} visited={visitedTabs}>
         <div className="space-y-6">
         {renderInformationRequestsPanel()}
         <QuestionnaireAnswersPanel
@@ -2717,9 +2724,9 @@ const CRMCaseDetail = () => {
           )}
         </div>
         </div>
-      )}
+      </KeepTab>
 
-      {activeTab === 'forms' && (
+      <KeepTab name="forms" active={activeTab === 'forms'} visited={visitedTabs}>
         selectedCaseForm ? (
           <FormRendererErrorBoundary resetKey={selectedCaseForm._id} onBack={() => setSelectedCaseForm(null)}>
             <Suspense fallback={renderSkeleton()}>
@@ -3045,17 +3052,17 @@ const CRMCaseDetail = () => {
             )}
           </div>
         )
-      )}
+      </KeepTab>
 
-      {activeTab === 'petition' && (
+      <KeepTab name="petition" active={activeTab === 'petition'} visited={visitedTabs}>
         <Suspense fallback={renderSkeleton()}>
           <PetitionTab caseId={id} />
         </Suspense>
-      )}
+      </KeepTab>
 
-      {activeTab === 'feedback' && (
+      <KeepTab name="feedback" active={activeTab === 'feedback'} visited={visitedTabs}>
         <CaseFeedbackChat caseId={id} />
-      )}
+      </KeepTab>
 
       {/* Staff Details Modal */}
       {showStaffDetailsModal && (
