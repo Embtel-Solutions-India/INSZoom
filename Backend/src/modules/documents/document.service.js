@@ -308,20 +308,27 @@ async function resolveEntityContext(body = {}) {
 
 async function linkDocumentToCaseRequests(caseData, document, user, req) {
   if (!caseData) return;
-  const completedRequest = RequestManagementService.completeByDocument(caseData, document);
-  if (completedRequest) {
-    TimelineService.add(caseData, "request", "Document Request Updated", `${completedRequest.name} marked uploaded`, user, { requestId: completedRequest._id, documentId: document._id });
-    caseService.addAuditEntry(caseData, "request_completed", "Document request completed by upload", user, { requestId: completedRequest._id, documentId: document._id }, req);
-    await caseData.save();
-    await TimelineService.writeAudit("REQUEST_COMPLETED", "Case", caseData._id, user, { requestId: completedRequest._id, documentId: document._id }, req);
-  }
+  // The case was loaded at the start of the upload; background canonical/autofill saves often bump its version meanwhile, so a
+  // plain save() threw "No matching document found ... version" and failed the whole upload. Re-apply on a fresh copy instead
+  // (first attempt is the same in-memory document, so behaviour is unchanged when there is no conflict).
+  let completedRequest = null;
+  const afterRequest = await caseService.saveCaseWithVersionRetry(caseData, (current) => {
+    completedRequest = RequestManagementService.completeByDocument(current, document);
+    if (!completedRequest) return;
+    TimelineService.add(current, "request", "Document Request Updated", `${completedRequest.name} marked uploaded`, user, { requestId: completedRequest._id, documentId: document._id });
+    caseService.addAuditEntry(current, "request_completed", "Document request completed by upload", user, { requestId: completedRequest._id, documentId: document._id }, req);
+  });
+  if (afterRequest) caseData = afterRequest;
+  if (completedRequest) await TimelineService.writeAudit("REQUEST_COMPLETED", "Case", caseData._id, user, { requestId: completedRequest._id, documentId: document._id }, req);
   if (document.participantId) {
-    const participant = participantService.findParticipant(caseData, { participantId: document.participantId });
-    if (participant && !(participant.documentIds || []).some((id) => sameId(id, document._id))) {
-      participant.documentIds = [...(participant.documentIds || []), document._id];
-      participant.progress = { ...(participant.progress?.toObject?.() || participant.progress || {}), documents: { lastUploadedAt: new Date(), lastDocumentType: document.documentType } };
-      await caseData.save();
-    }
+    const afterParticipant = await caseService.saveCaseWithVersionRetry(caseData, (current) => {
+      const participant = participantService.findParticipant(current, { participantId: document.participantId });
+      if (participant && !(participant.documentIds || []).some((id) => sameId(id, document._id))) {
+        participant.documentIds = [...(participant.documentIds || []), document._id];
+        participant.progress = { ...(participant.progress?.toObject?.() || participant.progress || {}), documents: { lastUploadedAt: new Date(), lastDocumentType: document.documentType } };
+      }
+    });
+    if (afterParticipant) caseData = afterParticipant;
   }
   // Bridges this upload into any assigned questionnaire's matching file-type
   // question, so calculateDetailedProgress reflects real uploads (see
@@ -358,15 +365,21 @@ async function createDocumentFromFile({ file, body, user, req }) {
   const slotFilter = body.caseId && body.documentType
     ? { caseId: body.caseId, ...(participantId ? { participantId } : {}), documentType: body.documentType, deletedAt: { $exists: false } }
     : null;
-  const slotCountPromise = slotFilter && !SINGLE_SLOT_DOCUMENT_TYPES.has(body.documentType) ? Document.countDocuments(slotFilter) : null;
+  // .exec(): a real Promise. A bare Mongoose Query is re-executed by every .then/.catch/await, so attaching .catch below and
+  // awaiting it later ran the count twice and threw "Query was already executed" (every resume/document autofill failed with a 422).
+  const slotCountPromise = slotFilter && !SINGLE_SLOT_DOCUMENT_TYPES.has(body.documentType) ? Document.countDocuments(slotFilter).exec() : null;
   if (slotCountPromise) slotCountPromise.catch(() => null);
-  const security = await fileSecurityService.inspect(file);
   const checksum = storageService.checksum(file.buffer);
-  const duplicate = await Document.findOne({
-    checksum,
-    deletedAt: { $exists: false },
-    ...(body.caseId ? { caseId: body.caseId, ...(participantId ? { participantId } : {}) } : { user: ownerId }),
-  });
+  // The file inspection and the duplicate lookup do not depend on each other: run them together (one fewer sequential round trip).
+  // If the inspection rejects the file, that rejection is what the caller gets - same as before.
+  const [security, duplicate] = await Promise.all([
+    fileSecurityService.inspect(file),
+    Document.findOne({
+      checksum,
+      deletedAt: { $exists: false },
+      ...(body.caseId ? { caseId: body.caseId, ...(participantId ? { participantId } : {}) } : { user: ownerId }),
+    }).exec(),
+  ]);
   if (duplicate) {
     addAuditEntry(duplicate, "duplicate_upload_detected", user, { originalName: file.originalname, checksum }, req);
     await duplicate.save();

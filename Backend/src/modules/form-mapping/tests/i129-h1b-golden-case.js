@@ -108,6 +108,8 @@ async function buildGoldenH1bCase() {
   created.companies.push(company._id);
   const caseDoc = await Case.create({
     caseNumber: `${tag}-A`, visaType: "H-1B", user: user._id, beneficiary: beneficiary._id, companyId: company._id, status: "active",
+    // a case whose checklists are already released to the client (new cases start as drafts until a case manager approves them)
+    checklistApproval: { required: false },
   });
   created.cases.push(caseDoc._id);
 

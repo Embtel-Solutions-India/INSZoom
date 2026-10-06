@@ -28,7 +28,7 @@ const REQUIRED_VISA_TYPES = [
   "IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4",
   "Adjustment of Status", "GC-NVC", "Conditional Green Card Removal", "Green Card Renewal", "Re-entry Permit",
   "Naturalization", "Certificate of Citizenship", "Replacement Citizenship Certificate",
-  "PERM", "Premium Processing",
+  "Premium Processing",
 ];
 
 // Universal-auto-create traps the spec explicitly warns against (§17

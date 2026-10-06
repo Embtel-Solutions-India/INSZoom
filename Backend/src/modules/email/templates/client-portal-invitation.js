@@ -10,7 +10,7 @@ function subject(data = {}) {
 }
 
 function bodyLines(data = {}) {
-  const link = `${FRONTEND_URL}/accept-invite?token=${data.token}`;
+  const link = data.setPasswordLink || `${FRONTEND_URL}/accept-invite?token=${data.token}`;
   return [
     `Hi ${data.clientName || "there"},`,
     `Your immigration case has been created with our team.`,
@@ -21,7 +21,7 @@ function bodyLines(data = {}) {
         ${data.visaType ? `<p style="margin:0 0 6px;font-size:13px;color:#6b7280;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;">Case type</p><p style="margin:0;font-size:16px;font-weight:700;color:#065f46;">${data.visaType}</p>` : ""}
       </td></tr>
     </table>`,
-    `Please activate your account by setting your password using the button below. Once activated, you can log in to your client portal to track your case progress, upload documents, complete your questionnaires, and message your case manager.`,
+    `Set your password by the link below to activate your account. Once activated, you can log in to your client portal to track your case progress, upload documents, complete your questionnaires, and message your case manager.`,
     `<a href="${link}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Set Your Password</a>`,
     `Or copy this link into your browser: ${link}`,
     `Your client portal: <a href="${FRONTEND_URL}" style="color:#1e3a5f;">${FRONTEND_URL}</a> — keep your Case ID safe, you will use it to log in and to reference your case in any communication with our team.`,

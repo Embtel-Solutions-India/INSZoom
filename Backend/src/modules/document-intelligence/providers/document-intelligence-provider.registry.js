@@ -37,7 +37,18 @@ async function generateStructuredJson(options = {}) {
 // generateStructuredJson() still correctly throw DOCUMENT_PROVIDER_UNAVAILABLE
 // (503) rather than silently picking one.
 
+// Google Document AI OCRs and form-parses a file but cannot follow a prompt: it can neither say what kind of document
+// it is nor return a prompt-shaped JSON (resume history, ...). Those steps need an LLM, so they use this provider (Gemini
+// by default; override with DOCUMENT_INTELLIGENCE_STRUCTURED_PROVIDER) whenever the configured provider is Document AI.
+function promptProviderName() {
+  const configured = String(process.env.DOCUMENT_INTELLIGENCE_PROVIDER || "gemini").toLowerCase();
+  if (configured !== "google_document_ai") return configured;
+  const preferred = String(process.env.DOCUMENT_INTELLIGENCE_STRUCTURED_PROVIDER || "gemini").toLowerCase();
+  return providers.has(preferred) ? preferred : configured;
+}
+
 module.exports = {
+  promptProviderName,
   generateStructuredJson,
   register,
   resolve,

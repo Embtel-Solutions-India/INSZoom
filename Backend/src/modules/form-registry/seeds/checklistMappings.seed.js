@@ -222,26 +222,6 @@ set("K-3", "I-131", [cm("k3_beneficiary_checklist", COND, { role: "beneficiary" 
 // ---- Green Card Renewal (spec §9) ---------------------------------------
 set("Green Card Renewal", "I-90", [cm("green_card_renewal_checklist", AUTO)]);
 
-// ---- PERM (standalone Department of Labor matter) -----------------------
-// The two PERM checklists are default-assigned by checklistRole at case creation
-// (permChecklists.js); both DOL filings draw on the employer AND employee answers.
-for (const formNumber of ["ETA-9141", "ETA-9089"]) {
-  set("PERM", formNumber, [
-    cm("perm_employer_information", AUTO, { role: "employer" }),
-    cm("perm_employee_information", AUTO, { role: "employee" }),
-  ]);
-}
-
-// The USCIS forms a PERM matter reaches later (see config/permStages.js) draw on the SAME two checklists:
-// I-140 on both employer and employee data; the adjustment-stage forms on the employee's.
-set("PERM", "I-140", [
-  cm("perm_employer_information", AUTO, { role: "employer" }),
-  cm("perm_employee_information", AUTO, { role: "employee" }),
-]);
-for (const formNumber of ["I-485", "I-765", "I-131"]) {
-  set("PERM", formNumber, [cm("perm_employee_information", AUTO, { role: "employee" })]);
-}
-
 // ---- Premium Processing (Form I-907) ------------------------------------
 // One dedicated checklist (premiumProcessingChecklist.js). On the standalone "Premium
 // Processing" case it is the case's AUTO checklist. For every other visa type's I-907

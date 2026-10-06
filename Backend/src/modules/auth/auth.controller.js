@@ -602,11 +602,9 @@ async function acceptInvite(req, res, next) {
       user = await clientInviteService.acceptClientInvite(req.params.token, req.body.password, username);
     }
     if (!user) return res.status(400).json({ success: false, message: "Invalid or expired invitation link" });
-    const result = await authService.issueTokens(user, req, { message: "Account activated successfully" });
+    // Setting a password activates the account but never signs the person in: the first screen after it is always the login page.
     res.locals.authUserId = user._id;
-    const { refreshToken, responseBody } = splitRefreshToken(result);
-    setRefreshCookie(res, refreshToken);
-    res.json(responseBody);
+    res.json({ success: true, message: "Password set. Please log in to continue.", email: user.email });
   } catch (error) {
     next(error);
   }

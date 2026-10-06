@@ -470,7 +470,7 @@ class CaseLifecycleOrchestrator {
         ...(invitePending ? {} : {
           emailTemplate: "case-created-client",
           emailTo: clientEmail,
-          emailData: { clientName: caseData.clientName, caseNumber, visaType: caseData.visaType, portalLink: `${require("../../config/env").clientUrl}/dashboard` },
+          emailData: { clientName: caseData.clientName, caseNumber, visaType: caseData.visaType, loginLink: `${require("../../config/env").clientUrl}/login` },
         }),
       }, user, req).catch(() => null);
     }

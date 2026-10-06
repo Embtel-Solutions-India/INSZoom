@@ -208,6 +208,10 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
  */
 async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
   data = { ...data, portalLink: data.portalLink || defaultPortalLink(templateKey, recipientRole, caseId) };
+  // [system.set_password_link] / [system.login_link]: the exact pages the client's email button opens.
+  const clientOrigin = String(env.clientUrl || "").replace(/\/+$/, "");
+  if (templateKey === "client-portal-invitation" && !data.setPasswordLink && data.token) data = { ...data, setPasswordLink: `${clientOrigin}/accept-invite?token=${data.token}` };
+  if (templateKey === "case-created-client" && !data.loginLink) data = { ...data, loginLink: `${clientOrigin}/login` };
   const builtIn = TEMPLATES[templateKey];
   const eventTrigger = !builtIn ? triggerRegistry.getTrigger(templateKey) : null;
   if (!builtIn && !eventTrigger) throw new Error(`Unknown email template: ${templateKey}`);

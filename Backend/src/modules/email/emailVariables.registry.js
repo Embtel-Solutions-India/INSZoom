@@ -65,6 +65,8 @@ const VARIABLES = [
   v("recipient.name", "System", "Email recipient name", "John Smith", { dataKeys: ["recipientName", "name"], fallback: "there" }),
   v("system.firm_name", "System", "Firm name", "Immiglance", { fallback: "Immiglance" }),
   v("system.portal_link", "System", "Portal link", "https://portal.immiglance.com", { dataKeys: ["portalLink", "manageUrl", "attorneyPortalUrl", "paymentLink", "meetingUrl"], fallback: "" }),
+  v("system.login_link", "System", "Client login page link", "https://client.immiglance.com/login", { dataKeys: ["loginLink"], fallback: "" }),
+  v("system.set_password_link", "System", "Set-password link (opens the set-password page)", "https://client.immiglance.com/accept-invite?token=preview-token", { dataKeys: ["setPasswordLink"], fallback: "" }),
   v("system.date", "System", "Today's date", new Date(2026, 9, 5).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), { fallback: "" }),
   v("system.invite_token", "System", "Secure invite token (for invite/activation links)", "preview-token", { dataKeys: ["token"], fallback: "", advanced: true }),
 ];

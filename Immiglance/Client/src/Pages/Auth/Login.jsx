@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link, Navigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, Link, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../services/api";
 import { STAFF_ROLES } from "../../utils/portalRedirect";
@@ -44,7 +44,9 @@ export default function Login() {
   // account exists. check-email is a UX hint ONLY — /auth/login below still
   // independently validates the real credential regardless of this step.
   const [emailStep,   setEmailStep]   = useState("enter");
-  const [email,       setEmail]       = useState("");
+  const location = useLocation();
+  const notice = location.state?.notice || "";
+  const [email,       setEmail]       = useState(location.state?.email || "");
   const [caseId,      setCaseId]      = useState("");
   const [password,    setPassword]    = useState("");
   const [error,       setError]       = useState("");
@@ -220,6 +222,8 @@ export default function Login() {
         <h2 className="text-xl font-bold text-foreground">Welcome back</h2>
         <p className="mt-1 text-sm text-muted-foreground">Sign in to track your case in the client portal.</p>
       </div>
+
+      {notice && <NoticeBanner>{notice}</NoticeBanner>}
 
       {loginMethod === "caseId" ? (
         <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
@@ -434,6 +438,14 @@ function FieldWrap({ icon, children }) {
       <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none flex items-center z-10">
         {icon}
       </span>
+      {children}
+    </div>
+  );
+}
+
+function NoticeBanner({ children }) {
+  return (
+    <div role="status" className="mb-4 text-sm text-foreground bg-primary/10 border border-primary/30 rounded-xl px-4 py-3">
       {children}
     </div>
   );

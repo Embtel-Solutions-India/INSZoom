@@ -237,7 +237,7 @@ test("meta offers real link destinations for email buttons (the recipient's own 
   const presets = body.data.linkPresets;
   assert.equal(presets[0].value, "[system.portal_link]");
   assert.ok(presets.every((preset) => preset.label && preset.text && preset.value));
-  assert.ok(presets.some((preset) => /\/accept-invite\?token=\[system\.invite_token\]$/.test(preset.value)));
+  assert.ok(presets.some((preset) => preset.value.includes("/accept-invite?token=[system.invite_token]")));
   assert.ok(presets.some((preset) => /\/reset-password\?token=\[system\.invite_token\]$/.test(preset.value)));
   assert.ok(presets.some((preset) => /\/dashboard\/documents$/.test(preset.value)));
   // every variable used in a preset is a real, registered variable

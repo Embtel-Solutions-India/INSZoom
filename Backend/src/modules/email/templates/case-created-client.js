@@ -8,7 +8,8 @@ function subject(data = {}) {
 }
 
 function bodyLines(data = {}) {
-  const portal = data.portalLink || env.clientUrl || "";
+  // Never a link straight into the dashboard: the first page is always the login page.
+  const portal = data.loginLink || `${String(env.clientUrl || "").replace(/\/+$/, "")}/login`;
   return [
     `Hi ${data.clientName || "there"},`,
     `We're writing to confirm that your immigration case has been successfully created with our team.`,
@@ -21,7 +22,7 @@ function bodyLines(data = {}) {
     </table>`,
     `Please keep your Case ID safe — you will use it to log in to the Immiglance portal and to reference your case in any communication with our team.`,
     `Your case is now in the portal. Log in to track your case progress, upload documents, complete your questionnaires, and message your case manager directly.`,
-    portal ? `<a href="${portal}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Go to My Portal</a>` : null,
+    portal ? `<a href="${portal}" style="display:inline-block;padding:10px 20px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold;">Log In to My Portal</a>` : null,
     portal ? `Or copy this link into your browser: ${portal}` : null,
     `If you have any questions, reply to your case manager directly or reach us through the Messages section of your portal.`,
   ].filter(Boolean);

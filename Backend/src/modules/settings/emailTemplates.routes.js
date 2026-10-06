@@ -87,6 +87,7 @@ function linkPresets() {
     { label: "Client portal - dashboard", value: `${client}/dashboard`, text: "Go to My Portal" },
     { label: "Client portal - documents", value: `${client}/dashboard/documents`, text: "Upload Documents" },
     { label: "Activate account / set password (invite email)", value: `${client}/accept-invite?token=[system.invite_token]`, text: "Set Your Password" },
+    { label: "Client portal - login page", value: `${client}/login`, text: "Log In" },
     { label: "Reset password (reset email)", value: `${client}/reset-password?token=[system.invite_token]`, text: "Reset Password" },
     { label: "Admin Portal", value: `${admin}/dashboard`, text: "Open the Admin Portal" },
     { label: "Attorney Portal", value: `${attorney}/dashboard`, text: "Open the Attorney Portal" },

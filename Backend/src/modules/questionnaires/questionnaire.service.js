@@ -2230,6 +2230,22 @@ let ensureCache = { at: 0, promise: null };
 async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
   const now = Date.now();
   if (!force && ensureCache.promise && now - ensureCache.at < ENSURE_TTL_MS) return ensureCache.promise;
+  // Stale-while-revalidate. Re-syncing every built-in template is ~400 database round trips (10-15 s on this deployment), and it
+  // used to run INSIDE whichever client request happened to arrive after the 5-minute TTL - that request (a checklist load or
+  // save) stalled for the whole re-sync. The templates are already in the database from the previous sync, so serve them now
+  // and refresh in the background. Only the very first call after a restart (nothing cached yet) still waits.
+  if (!force && ensureCache.promise && !ensureCache.refreshing) {
+    ensureCache.refreshing = true;
+    const previous = ensureCache.promise;
+    ensureDefaultVisaTemplatesUncached(user, req)
+      .then((result) => { ensureCache = { at: Date.now(), promise: Promise.resolve(result) }; })
+      .catch((error) => {
+        logger.error("questionnaire_template_background_refresh_failed", { error: error.message });
+        ensureCache = { at: Date.now() - ENSURE_TTL_MS + 30_000, promise: previous }; // try again in 30 s
+      });
+    return previous;
+  }
+  if (!force && ensureCache.promise && ensureCache.refreshing) return ensureCache.promise;
   const promise = ensureDefaultVisaTemplatesUncached(user, req).catch((error) => {
     // Don't cache a failure — the next call should retry against the DB.
     ensureCache = { at: 0, promise: null };

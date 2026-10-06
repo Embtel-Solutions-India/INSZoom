@@ -239,4 +239,48 @@ function derivePassportScalarFields(fields = []) {
   return derived;
 }
 
-module.exports = { notifyUsers, applyExtractionMappings, deriveEducationScalarFields, derivePassportScalarFields, EDUCATION_LEVEL_RANK };
+// ── PERM "Employment History" (a repeating group on the employee checklist) from a resume ───────────────────────
+// A resume's `employment` field is an array of { employer, title, startDate, endDate, current, duties }. Each entry
+// becomes one row of the checklist's repeating group (column keys from permChecklists.js HISTORY_COLUMNS):
+//   employer -> company_name, title -> job_title, startDate/endDate -> start_date/end_date (+ is_current),
+//   duties -> job_details. A resume carries no supervisor, street address, hours per week or business type, so those
+// columns are left blank for the employee (or case manager) to complete - never guessed. The resume's skills list is
+// not tied to any one job, so it goes on the most recent one only; every value stays editable.
+function permHistoryDate(value) {
+  const text = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}-\d{2}$/.test(text)) return `${text}-01`;
+  if (/^\d{4}$/.test(text)) return `${text}-01-01`;
+  return "";
+}
+
+function derivePermResumeFields(fields = []) {
+  const employmentField = (fields || []).find((field) => field.key === "employment");
+  const entries = Array.isArray(employmentField?.value) ? employmentField.value : [];
+  if (!entries.length) return [];
+  const skillsField = (fields || []).find((field) => field.key === "skills");
+  const skills = Array.isArray(skillsField?.value) ? skillsField.value.map((item) => String(item).trim()).filter(Boolean) : [];
+
+  const rows = entries
+    .filter((entry) => entry && (String(entry.employer || "").trim() || String(entry.title || "").trim()))
+    .map((entry) => {
+      const current = entry.current === true || /^(present|current|now|ongoing)$/i.test(String(entry.endDate || "").trim());
+      const row = {
+        company_name: String(entry.employer || "").trim(),
+        job_title: String(entry.title || "").trim(),
+        start_date: permHistoryDate(entry.startDate),
+        is_current: current,
+        job_details: String(entry.duties || "").trim(),
+      };
+      if (!current) row.end_date = permHistoryDate(entry.endDate);
+      return row;
+    });
+  if (!rows.length) return [];
+  // most recent first (the checklist asks to start with the current / latest job)
+  rows.sort((a, b) => (Number(b.is_current) - Number(a.is_current)) || String(b.start_date).localeCompare(String(a.start_date)));
+  if (skills.length) rows[0].skills_tools = skills.join(", ");
+  const confidence = Math.max(0, Math.min(100, Number(employmentField.confidence) || 0));
+  return [{ key: "permEmploymentHistory", value: rows, confidence }];
+}
+
+module.exports = { notifyUsers, applyExtractionMappings, deriveEducationScalarFields, derivePassportScalarFields, derivePermResumeFields, EDUCATION_LEVEL_RANK };
