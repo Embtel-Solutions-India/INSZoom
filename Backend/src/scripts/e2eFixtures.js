@@ -77,6 +77,9 @@ async function teardown() {
     employeeProfiles: (await EmployeeProfile.deleteMany({ principalCaseId: { $in: principalIds } })).deletedCount,
     auditLogs: (await AuditLog.deleteMany({ caseId: { $in: allCaseIds } })).deletedCount,
     notifications: (await Notification.deleteMany({ caseId: { $in: allCaseIds } })).deletedCount,
+    // checklist answers and uploaded-document records a spec wrote through the real client flow
+    answers: (await require("../models/Answer").deleteMany({ caseId: { $in: allCaseIds } })).deletedCount,
+    documents: (await require("../models/Document").deleteMany({ caseId: { $in: allCaseIds } })).deletedCount,
     cases: (await Case.deleteMany({ _id: { $in: allCaseIds } })).deletedCount,
     users: (await User.deleteMany({ email: tagged })).deletedCount,
   };

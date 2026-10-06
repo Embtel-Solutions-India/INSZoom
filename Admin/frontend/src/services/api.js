@@ -211,6 +211,10 @@ export const casesApi = {
   list: (params = {}) => api.get('/cases', { params }),
   get: (id) => api.get(`/cases/${id}`),
   workflow: (id) => api.get(`/cases/${id}/workflow`),
+  // Case Manager upgrade: assigns the Form I-907 checklist to the client and adds Form I-907 to the case.
+  upgradePremiumProcessing: (id) => api.post(`/cases/${id}/premium-processing/upgrade`),
+  // PERM stage (certified -> adjustment of status -> employment authorization / advance parole): opens the USCIS forms of that stage.
+  updatePermWorkflow: (id, body) => api.put(`/cases/${id}/perm-workflow`, body),
   recalculateWorkflow: (id, reason) => api.post(`/cases/${id}/workflow/recalculate`, { reason }),
   generateForms: (id) => api.post(`/cases/${id}/workflow/generate-forms`),
   generatePackage: (id, payload = {}) => api.post(`/cases/${id}/workflow/generate-package`, payload),
@@ -368,6 +372,10 @@ export const questionnairesApi = {
   get: (id) => api.get(`/questionnaires/${id}`),
   getForCase: (caseId, params = {}) => cachedGet(`/questionnaires/case/${caseId}`, { params }),
   listCaseChecklists: (caseId) => cachedGet(`/questionnaires/case/${caseId}/checklists`),
+  // Case manager: release draft checklists to the client (body: { checklistIds } or { all: true }).
+  approveCaseChecklists: (caseId, body) => api.post(`/questionnaires/case/${caseId}/checklists/approve`, body),
+  // Case manager: edit / add / remove a question on this case's own copy of a checklist (never the shared template).
+  editCaseChecklist: (caseId, body) => api.post(`/questionnaires/case/${caseId}/checklists/edit`, body),
   createQuestion: (id, payload) => api.post(`/questionnaires/${id}/questions`, payload),
   updateQuestion: (id, questionId, payload) => api.put(`/questionnaires/${id}/questions/${questionId}`, payload),
   deleteQuestion: (id, questionId) => api.delete(`/questionnaires/${id}/questions/${questionId}`),

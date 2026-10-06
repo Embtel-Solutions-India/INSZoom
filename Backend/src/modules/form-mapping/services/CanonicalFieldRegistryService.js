@@ -137,6 +137,14 @@ const BASE_FIELDS = [
   { path: "beneficiary.passport.expirationDate", aliases: ["beneficiary passport expiration"], type: "date" },
 ];
 
+// PERM (labor certification) checklist paths the list above did not know yet - see
+// canonical/config/permCanonicalPaths.js. Additive only: a path already present keeps its entry.
+{
+  const { PERM_CANONICAL_FIELDS } = require("../../canonical/config/permCanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  PERM_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 class CanonicalFieldRegistryService {
   static tokenize(value = "") {
     return String(value)

@@ -672,6 +672,20 @@ const caseSchema = new mongoose.Schema(
       approvedAt: Date,
       approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
+    // PERM (labor certification) stage - which USCIS forms may appear (config/permStages.js). Set
+    // only by case.controller.js updatePermWorkflow, on the principal case and its employee case(s).
+    permWorkflow: {
+      certified: { type: Boolean, default: false },
+      certificationNumber: String, // DOL ETA-9089 case number
+      certifiedDate: Date,
+      certifiedAt: Date,
+      certifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      adjustmentOfStatus: { type: Boolean, default: false },
+      employmentAuthorization: { type: Boolean, default: false },
+      advanceParole: { type: Boolean, default: false },
+      updatedAt: Date,
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     // Same pattern as n400Process immediately above, for the optional
     // Certificate of Citizenship (Form N-600) add-on process
     // (n600Checklist.js's n600_checklist, case.controller.js's
@@ -821,6 +835,23 @@ const caseSchema = new mongoose.Schema(
     },
     uscisFormReferences: [referenceSchema],
     questionnaireReferences: [questionnaireReferenceSchema],
+    // Checklist approval gate (modules/questionnaires/checklist-gate.js). Set to required:true on every NEW case
+    // (pre-validate hook below) - its auto-assigned checklists stay drafts, invisible to the client, until a case
+    // manager approves each one. Cases created before the gate existed have no value here and are treated as
+    // fully approved (deliberately no schema default, which would also flip them on load).
+    checklistApproval: {
+      required: { type: Boolean },
+      approvals: [
+        {
+          checklistId: { type: String, required: true }, // baseKey|targetRole
+          questionnaireId: mongoose.Schema.Types.ObjectId,
+          targetRole: String,
+          approvedAt: { type: Date, default: Date.now },
+          approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          _id: false,
+        },
+      ],
+    },
     questionnaireData: {
       masterData: { type: mongoose.Schema.Types.Mixed, default: {} },
       masterDataPrefill: [
@@ -1182,6 +1213,11 @@ const caseSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+caseSchema.pre("validate", function gateNewCaseChecklists(next) {
+  if (this.isNew && this.checklistApproval?.required === undefined) this.set("checklistApproval.required", true);
+  next();
+});
 
 caseSchema.pre("validate", function syncLegacyFields(next) {
   if (!this.caseId) this.caseId = this.caseNumber;

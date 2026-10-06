@@ -5,6 +5,8 @@ import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
+import ConfirmModal from '../components/ConfirmModal'
+import ChecklistApprovalCard from '../components/ChecklistApprovalCard'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import InformationRequestPanel from '../components/InformationRequestPanel'
@@ -42,7 +44,8 @@ import {
   XCircle,
   Copy,
   Check,
-  Scale
+  Scale,
+  Zap
 } from 'lucide-react'
 
 const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
@@ -476,6 +479,72 @@ const CRMCaseDetail = () => {
       console.error('Error approving GC-NVC checklist:', err)
     } finally {
       setApprovingGcNvc(false)
+    }
+  }
+  // Premium Processing (Form I-907). A standalone 'Premium Processing' case carries the I-907
+  // checklist as its own client checklist; on every other case it is an optional add-on a Case
+  // Manager attaches with the Upgrade button below (assigned as an extra 'client' checklist, found by
+  // its key and pinned by referenceId so it never displaces the case's own checklist).
+  const isPremiumProcessingCase = caseData?.visaType === 'Premium Processing'
+  const premiumProcessingQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', { enabled: documentsActive && isPremiumProcessingCase })
+  const premiumAddonEntry = checklistsProgress.find((item) => item.key === 'i907_premium_processing_profile' && item.staffRequest)
+  const premiumAddonQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', {
+    enabled: documentsActive && !isPremiumProcessingCase && Boolean(premiumAddonEntry),
+    referenceId: premiumAddonEntry?.referenceId,
+  })
+  const hasPremiumAddon = (caseData?.addons || []).some((addon) => addon.key === 'premium_processing_i907' && addon.status !== 'cancelled')
+  const canUpgradePremium = ['super_admin', 'admin', 'team_lead', 'case_manager'].includes(user?.role)
+  const [premiumConfirmOpen, setPremiumConfirmOpen] = useState(false)
+  const [upgradingPremium, setUpgradingPremium] = useState(false)
+  const [premiumError, setPremiumError] = useState('')
+  const handleUpgradePremium = async () => {
+    setUpgradingPremium(true)
+    setPremiumError('')
+    try {
+      await casesApi.upgradePremiumProcessing(caseData._id)
+      setPremiumConfirmOpen(false)
+      invalidateCachedGet(`/questionnaires/case/${caseData._id}`)
+      await fetchCaseDetail()
+      fetchChecklistsProgress(caseData._id)
+      fetchCaseForms(true)
+      setInfoModal({ title: 'Upgraded to Premium Processing', message: 'The Form I-907 checklist is now assigned to the client, and Form I-907 has been added to this case.' })
+    } catch (err) {
+      setPremiumError(err.response?.data?.message || err.message || 'Could not upgrade this case. Please try again.')
+    } finally {
+      setUpgradingPremium(false)
+    }
+  }
+  // After a checklist is approved or edited for this case: refresh the checklist list and every open answers panel.
+  const reloadCaseChecklists = async () => {
+    if (!caseData?._id) return
+    invalidateCachedGet(`/questionnaires/case/${caseData._id}`)
+    await fetchChecklistsProgress(caseData._id)
+    ;[employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire, jointSponsorQuestionnaire, greenCardRenewalQuestionnaire, premiumProcessingQuestionnaire]
+      .forEach((panel) => panel?.refetch?.())
+  }
+  // PERM stage - which USCIS forms the matter has reached (see Backend config/permStages.js). Nothing
+  // USCIS appears on a new PERM case; the Case Manager advances it here and the backend provisions
+  // (and autofills) the forms of each stage.
+  const isPermCase = caseData?.visaType === 'PERM'
+  const permWorkflow = caseData?.permWorkflow || {}
+  const [permConfirm, setPermConfirm] = useState(null)
+  const [permSaving, setPermSaving] = useState(false)
+  const [permError, setPermError] = useState('')
+  const [permCertForm, setPermCertForm] = useState({ certificationNumber: '', certifiedDate: '' })
+  const openPermConfirm = (title, message, patch) => { setPermError(''); setPermConfirm({ title, message, patch }) }
+  const handleAdvancePerm = async () => {
+    if (!permConfirm) return
+    setPermSaving(true)
+    setPermError('')
+    try {
+      await casesApi.updatePermWorkflow(caseData._id, { ...permConfirm.patch, ...(permConfirm.patch.certified ? permCertForm : {}) })
+      setPermConfirm(null)
+      await fetchCaseDetail()
+      fetchCaseForms(true)
+    } catch (err) {
+      setPermError(err.response?.data?.message || err.message || 'Could not update the PERM stage.')
+    } finally {
+      setPermSaving(false)
     }
   }
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId, supportingDocumentsQuestionnaire.responseId].filter(Boolean)
@@ -2375,6 +2444,76 @@ const CRMCaseDetail = () => {
       <KeepTab name="documents" active={activeTab === 'documents'} visited={visitedTabs}>
         <div className="space-y-6">
         {renderInformationRequestsPanel()}
+        <ChecklistApprovalCard caseId={caseData?._id} checklists={checklistsProgress} onChanged={reloadCaseChecklists} />
+        {isPermCase && (
+          <div className="card" data-testid="perm-stage-card">
+            <h3 className="text-lg font-semibold text-foreground">PERM Stage</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              PERM is a Department of Labor process, so a new PERM case has no USCIS form. Advance the stage to bring the next forms onto the case.
+            </p>
+            <ol className="mt-4 space-y-3">
+              <li className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm"><b>1. Labor certification certified</b> - adds Form I-140{permWorkflow.certificationNumber ? ` (ETA case ${permWorkflow.certificationNumber})` : ''}</span>
+                {permWorkflow.certified ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Certified</span>
+                  : canUpgradePremium && <button type="button" data-testid="perm-mark-certified" className="btn-primary text-sm" onClick={() => openPermConfirm('Mark PERM as certified?', 'The labor certification was approved by the Department of Labor. Form I-140 will be added to this case and filled from the checklist data.', { certified: true })}>Mark PERM certified</button>}
+              </li>
+              <li className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm"><b>2. Proceeding with adjustment of status</b> - adds Form I-485</span>
+                {permWorkflow.adjustmentOfStatus ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Started</span>
+                  : <button type="button" data-testid="perm-start-aos" disabled={!permWorkflow.certified || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Start adjustment of status?', 'Form I-485 will be added to this case.', { adjustmentOfStatus: true })}>Start adjustment of status</button>}
+              </li>
+              <li className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm"><b>3. Employment authorization applies</b> - adds Form I-765</span>
+                {permWorkflow.employmentAuthorization ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Added</span>
+                  : <button type="button" data-testid="perm-add-ead" disabled={!permWorkflow.adjustmentOfStatus || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Add employment authorization?', 'Form I-765 will be added to this case. The eligibility category is not inferred - enter it on the form.', { employmentAuthorization: true })}>Add I-765</button>}
+              </li>
+              <li className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-sm"><b>4. Advance parole applies</b> - adds Form I-131</span>
+                {permWorkflow.advanceParole ? <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Added</span>
+                  : <button type="button" data-testid="perm-add-ap" disabled={!permWorkflow.adjustmentOfStatus || !canUpgradePremium} className="btn-secondary text-sm disabled:opacity-50" onClick={() => openPermConfirm('Add advance parole?', 'Form I-131 will be added to this case.', { advanceParole: true })}>Add I-131</button>}
+              </li>
+            </ol>
+          </div>
+        )}
+        {!isPremiumProcessingCase && (canUpgradePremium || hasPremiumAddon) && (
+          <div className="card flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-lg font-semibold text-foreground">Premium Processing</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {hasPremiumAddon
+                  ? 'This case has been upgraded. The Form I-907 checklist is with the client and Form I-907 is on the Forms tab.'
+                  : 'Expedite the related petition or application. Assigns the Form I-907 checklist to the client and adds Form I-907 to this case.'}
+              </p>
+            </div>
+            {hasPremiumAddon ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
+                <CheckCircle className="h-4 w-4" aria-hidden="true" /> Upgraded
+              </span>
+            ) : (
+              <button type="button" onClick={() => { setPremiumError(''); setPremiumConfirmOpen(true) }} className="btn-primary inline-flex items-center gap-2 text-sm">
+                <Zap className="h-4 w-4" aria-hidden="true" /> Premium Processing
+              </button>
+            )}
+          </div>
+        )}
+        {(isPremiumProcessingCase || premiumAddonEntry) && (() => {
+          const qa = isPremiumProcessingCase ? premiumProcessingQuestionnaire : premiumAddonQuestionnaire
+          return (
+            <QuestionnaireAnswersPanel
+              title="Form I-907 Information Checklist"
+              questionnaire={qa.questionnaire}
+              fieldQuestions={qa.fieldQuestions}
+              documentQuestions={qa.documentQuestions}
+              answerMap={qa.answerMap}
+              filesByKey={qa.filesByKey}
+              loading={qa.loading}
+              onSaveAnswer={qa.saveAnswer}
+              onSaveFile={qa.saveFileAnswer}
+              onRemoveFile={qa.removeFileAnswer}
+              onAutofill={qa.autofillFromDocument}
+            />
+          )
+        })()}
         <QuestionnaireAnswersPanel
           title="Employer Questionnaire"
           questionnaire={employerQuestionnaire.questionnaire}
@@ -3341,6 +3480,43 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {permConfirm && (
+        <ConfirmModal
+          title={permConfirm.title}
+          message={permConfirm.message}
+          confirmLabel="Yes"
+          cancelLabel="No"
+          busy={permSaving}
+          error={permError}
+          onConfirm={handleAdvancePerm}
+          onCancel={() => setPermConfirm(null)}
+        >
+          {permConfirm.patch.certified && (
+            <div className="mt-4 space-y-3 text-left">
+              <label className="block text-sm font-medium text-muted-foreground">ETA case number (optional)
+                <input data-testid="perm-cert-number" className="mt-1 w-full rounded-lg border px-3 py-2" value={permCertForm.certificationNumber} onChange={(event) => setPermCertForm((form) => ({ ...form, certificationNumber: event.target.value }))} />
+              </label>
+              <label className="block text-sm font-medium text-muted-foreground">Certification date (optional)
+                <input type="date" className="mt-1 w-full rounded-lg border px-3 py-2" value={permCertForm.certifiedDate} onChange={(event) => setPermCertForm((form) => ({ ...form, certifiedDate: event.target.value }))} />
+              </label>
+            </div>
+          )}
+        </ConfirmModal>
+      )}
+
+      {premiumConfirmOpen && (
+        <ConfirmModal
+          title="Upgrade to Premium Processing?"
+          message={'Are you sure you want to upgrade this case to Premium Processing?\n\nThe Form I-907 checklist will be assigned to the client, and Form I-907 will be added to this case.'}
+          confirmLabel="Yes, upgrade"
+          cancelLabel="No"
+          busy={upgradingPremium}
+          error={premiumError}
+          onConfirm={handleUpgradePremium}
+          onCancel={() => setPremiumConfirmOpen(false)}
+        />
       )}
 
       {infoModal && (

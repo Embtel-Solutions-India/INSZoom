@@ -346,7 +346,8 @@ class ImmigrationKnowledgeEngineService {
 
   static async assignQuestionnaires(caseData, questionnaires, user, req) {
     const activeReferences = (caseData.questionnaireReferences || []).filter((item) => item.status !== "returned" && item.active !== false && item.questionnaireId);
-    const existing = new Set(activeReferences.map((item) => idOf(item.questionnaireId || item.questionnaireTemplateId)));
+    // a per-case copy of a template (case-checklist.service.js) counts as that template being assigned
+    const existing = new Set(activeReferences.flatMap((item) => [idOf(item.questionnaireId || item.questionnaireTemplateId), item.questionnaireTemplateId ? idOf(item.questionnaireTemplateId) : null].filter(Boolean)));
     // FIX (duplicate checklist accumulation): a regenerated
     // uscis_question_library questionnaire (see ensureGeneratedForCase) gets
     // a brand-new _id every time its underlying content changes, so `existing`

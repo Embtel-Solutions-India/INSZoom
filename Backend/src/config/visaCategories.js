@@ -295,6 +295,12 @@ const VISA_CATEGORIES = {
   // Card" (greenCardRenewalChecklist.js), never "I-90".
   "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal / Replacement / Correction / Update" },
   "Re-entry Permit": { caseStructure: "single", forms: ["i-131"], label: "Re-entry Permit" },
+  // Premium Processing (Form I-907) as its OWN case - for a client who wants only the
+  // expedite request. Single party: the Form I-907 Information Checklist
+  // (premiumProcessingChecklist.js, checklistRole "client") is assigned at creation and
+  // Form I-907 is the only USCIS form provisioned. Every other case gets it as an
+  // optional add-on instead (case.controller.js upgradeToPremiumProcessing).
+  "Premium Processing": { caseStructure: "single", forms: ["i-907"], label: "Premium Processing (Form I-907)" },
   Naturalization: { caseStructure: "single", forms: ["n-400"], label: "Naturalization" },
   "Certificate of Citizenship": { caseStructure: "single", forms: ["n-600"], label: "Certificate of Citizenship" },
   "Replacement Citizenship Certificate": { caseStructure: "single", forms: ["n-565"], label: "Replacement Citizenship/Naturalization Document" },

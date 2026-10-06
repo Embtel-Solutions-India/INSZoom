@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
-import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
 
@@ -83,6 +83,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         status={status}
         statusReason={reason}
         savingLabel={savingKey === key ? "Saving…" : undefined}
+        wide={isWideQuestion(question)}
       >
         <QuestionInput
           question={question}
@@ -125,21 +126,21 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     }
   };
 
-  if (initialLoading) return <p className="text-sm text-slate-400">Loading…</p>;
-  if (error) return <p className="text-sm text-red-600">{error.message || "Unable to load this checklist."}</p>;
-  if (!questionnaire) return <p className="text-sm text-slate-400">No checklist is available for this visa type yet.</p>;
+  if (initialLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (error) return <p className="text-sm text-destructive">{error.message || "Unable to load this checklist."}</p>;
+  if (!questionnaire) return <p className="text-sm text-muted-foreground">No checklist is available for this visa type yet.</p>;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-28">
       <div className="flex items-center gap-3">
         {onExit && (
-          <button type="button" onClick={onExit} className="text-sm font-semibold text-slate-500 hover:text-slate-700 shrink-0">
+          <button type="button" onClick={onExit} className="text-sm font-semibold text-muted-foreground hover:text-foreground shrink-0">
             ← All employees
           </button>
         )}
         <div className="min-w-0">
-          <p className="text-sm font-bold text-slate-900 truncate">{employeeLabel}</p>
-          <p className="text-xs text-slate-500 truncate">{questionnaire.title}</p>
+          <p className="text-sm font-bold text-foreground truncate">{employeeLabel}</p>
+          <p className="text-xs text-muted-foreground truncate">{questionnaire.title}</p>
         </div>
       </div>
 
@@ -152,32 +153,32 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
               onClick={() => index <= stepIndex && setStepIndex(index)}
               disabled={index > stepIndex}
               className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-colors ${
-                index === stepIndex ? "text-slate-900" : index < stepIndex ? "text-emerald-600" : "text-slate-300"
+                index === stepIndex ? "text-foreground" : index < stepIndex ? "text-primary" : "text-muted-foreground"
               }`}
             >
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border transition-colors ${
-                index === stepIndex ? "border-slate-900 bg-slate-900 text-white" : index < stepIndex ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 text-slate-400"
+                index === stepIndex ? "border-primary bg-primary text-primary-foreground" : index < stepIndex ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"
               }`}>
                 {index < stepIndex ? "✓" : index + 1}
               </span>
               {step.label}
             </button>
-            {index < STEPS.length - 1 && <div className={`h-px flex-1 transition-colors ${index < stepIndex ? "bg-emerald-400" : "bg-slate-200"}`} />}
+            {index < STEPS.length - 1 && <div className={`h-px flex-1 transition-colors ${index < stepIndex ? "bg-primary" : "bg-border"}`} />}
           </div>
         ))}
       </div>
       <div className="sm:hidden space-y-1.5">
-        <p className="text-sm font-bold text-slate-900">Step {stepIndex + 1} of {STEPS.length} · {STEPS[stepIndex].label}</p>
-        <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
-          <div className="h-full rounded-full bg-slate-900 transition-all duration-300" style={{ width: `${((stepIndex + 1) / STEPS.length) * 100}%` }} />
+        <p className="text-sm font-bold text-foreground">Step {stepIndex + 1} of {STEPS.length} · {STEPS[stepIndex].label}</p>
+        <div className="h-1 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${((stepIndex + 1) / STEPS.length) * 100}%` }} />
         </div>
       </div>
 
       {/* Step 1: Documents */}
       {stepIndex === 0 && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
-            <p className="text-sm font-bold text-slate-900">Documents we need</p>
+          <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
+            <p className="text-sm font-bold text-foreground">Documents we need</p>
           </div>
           {!readOnly && documentAutofillSources.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -185,13 +186,13 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                 <AutofillButton key={documentType} documentType={documentType} caseId={caseId} disabled={!caseId} onUploaded={handleAutofillResult} />
               ))}
               {documentAutofillSources.includes("passport") && (
-                <span className="self-center text-xs text-slate-500">Optional - scan your passport to fill in your name, date of birth, nationality and passport details. You can review and edit everything on the next steps.</span>
+                <span className="self-center text-xs text-muted-foreground">Optional - scan your passport to fill in your name, date of birth, nationality and passport details. You can review and edit everything on the next steps.</span>
               )}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
             {documentQuestions.map(renderQuestionRow)}
-            {documentQuestions.length === 0 && <p className="text-sm text-slate-400">No documents required for this checklist.</p>}
+            {documentQuestions.length === 0 && <p className="text-sm text-muted-foreground">No documents required for this checklist.</p>}
           </div>
         </div>
       )}
@@ -199,14 +200,14 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
       {/* Step 2: Information */}
       {stepIndex === 1 && (
         <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
-          <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible border-b md:border-b-0 md:border-r border-slate-200 pb-2 md:pb-0 md:pr-4 md:sticky md:top-4 md:self-start">
+          <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible border-b md:border-b-0 md:border-r border-border pb-2 md:pb-0 md:pr-4 md:sticky md:top-4 md:self-start">
             {infoSections.map((section, index) => (
               <button
                 key={section.key}
                 type="button"
                 onClick={() => setActiveInfoSection(index)}
                 className={`text-left whitespace-nowrap px-3 py-2 rounded-lg text-sm font-semibold ${
-                  activeInfoSection === index ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-100"
+                  activeInfoSection === index ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
                 }`}
               >
                 {section.title}
@@ -217,8 +218,8 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             {infoSections[activeInfoSection] && (
               <section>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{infoSections[activeInfoSection].title}</h2>
-                  <span className="text-xs text-slate-400">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{infoSections[activeInfoSection].title}</h2>
+                  <span className="text-xs text-muted-foreground">
                     {/* BUG (fixed): this ternary never checked saveState === "error"
                         at all, unlike the equivalent status line in the sibling
                         CaseRoleChecklist.jsx — a failed save with no other unsaved
@@ -233,7 +234,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                 </div>
               </section>
             )}
-            {infoSections.length === 0 && <p className="text-sm text-slate-400">No further information is required.</p>}
+            {infoSections.length === 0 && <p className="text-sm text-muted-foreground">No further information is required.</p>}
           </div>
         </div>
       )}
@@ -241,14 +242,14 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
       {/* Step 3: Review */}
       {stepIndex === 2 && (
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] divide-y divide-slate-100">
+          <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] divide-y divide-border">
             {sectionsWithItems.map((section) => {
               const total = section.questions.length;
               const done = section.questions.filter((q) => questionStatus(q).status !== STATUS.NOT_STARTED).length;
               return (
                 <div key={section.key} className="flex items-center justify-between px-5 py-3">
-                  <span className="text-sm font-semibold text-slate-800">{section.title}</span>
-                  <span className={`text-xs font-semibold ${done === total ? "text-emerald-600" : "text-amber-600"}`}>
+                  <span className="text-sm font-semibold text-foreground">{section.title}</span>
+                  <span className={`text-xs font-semibold ${done === total ? "text-primary" : "text-muted-foreground"}`}>
                     {done === total ? "✓ Complete" : `${done}/${total} complete`}
                   </span>
                 </div>
@@ -256,15 +257,15 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             })}
           </div>
           {missingItems.length > 0 ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-              <p className="text-sm font-bold text-amber-800 mb-2">A few things still need attention</p>
+            <div className="rounded-xl border border-border bg-secondary p-5">
+              <p className="text-sm font-bold text-foreground mb-2">A few things still need attention</p>
               <ul className="space-y-1.5">
                 {missingItems.map((item) => (
                   <li key={item.question._id || item.question.key}>
                     <button
                       type="button"
                       onClick={() => { setStepIndex(item.isDocument ? 0 : 1); }}
-                      className="text-sm text-amber-900 underline underline-offset-2"
+                      className="text-sm text-primary underline underline-offset-2"
                     >
                       {item.section} — {item.question.label}
                     </button>
@@ -273,21 +274,21 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
               </ul>
             </div>
           ) : (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-              <p className="text-sm font-bold text-emerald-800">Everything's complete. Ready to submit.</p>
+            <div className="rounded-xl border border-accent-foreground/20 bg-accent p-5">
+              <p className="text-sm font-bold text-accent-foreground">Everything's complete. Ready to submit.</p>
             </div>
           )}
-          {submitError && <p className="text-sm text-red-600">{submitError}</p>}
+          {submitError && <p className="text-sm text-destructive">{submitError}</p>}
         </div>
       )}
 
       {/* Sticky footer */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex items-center justify-between z-10 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border px-4 py-3 flex items-center justify-between z-10 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
         <button
           type="button"
           onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
           disabled={stepIndex === 0}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40 transition-colors hover:bg-slate-50"
+          className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-40 transition-colors hover:bg-secondary"
         >
           Back
         </button>
@@ -295,7 +296,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
           <button
             type="button"
             onClick={() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))}
-            className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-700 transition-colors"
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             {stepIndex === STEPS.length - 2 ? "Continue to Review" : "Continue"}
           </button>
@@ -304,13 +305,13 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             type="button"
             onClick={handleSaveAndReturn}
             disabled={!canSubmit || submitting}
-            className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-40 transition-colors"
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
             title={!canSubmit ? "Complete every required item first" : undefined}
           >
             {submitting ? "Saving…" : "Save & Return"}
           </button>
         ) : (
-          <span className="text-xs text-slate-400">Read-only view</span>
+          <span className="text-xs text-muted-foreground">Read-only view</span>
         )}
       </div>
     </div>

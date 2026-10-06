@@ -22,6 +22,8 @@ const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
+const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
+const { isGated, isApproved, isClientSideUser, checklistId: gateChecklistId } = require("./checklist-gate");
 const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
 const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
@@ -747,6 +749,32 @@ async function reorderQuestionnaire(questionnaire, payload, user, req) {
   return questionnaire;
 }
 
+// Everything the client is told when a checklist becomes theirs: the in-app notification, the
+// "questionnaire.sent" workflow trigger and the customizable "questionnaire.assigned" email. Called when a
+// checklist is assigned to an ungated case, and on approval for a gated one.
+async function notifyChecklistAssigned(questionnaire, caseData, { assignedTo, message, responseId }, user, req) {
+  if (assignedTo) {
+    const profileOnlyQuestionnaire = questionnaire.key === "i907_premium_processing_profile" || /i-?907|premium processing/i.test(questionnaire.title || "");
+    await notificationService.createNotification({
+      userId: assignedTo,
+      type: "questionnaire_sent",
+      title: "Questionnaire Available",
+      message: message || `Please complete ${questionnaire.title}.`,
+      link: profileOnlyQuestionnaire ? "/dashboard/documents" : "/dashboard",
+      caseId: caseData._id,
+      source: "shared",
+    }, user, req);
+  }
+  await workflowService.triggerWorkflow("questionnaire.sent", { caseId: caseData._id, questionnaireId: questionnaire._id, responseId }, user, req);
+  // Customizable email for "Questionnaire available" - the in-app alert above is the existing one (it now also pushes).
+  if (assignedTo && !/i907_premium_processing_profile/.test(questionnaire.key || "") && !/i-?907|premium processing/i.test(questionnaire.title || "")) {
+    require("../notifications/triggerEvents.service").emitInBackground("questionnaire.assigned", {
+      caseId: caseData._id, actor: user, req, data: { questionnaireName: questionnaire.title },
+      recipients: { client: [assignedTo] }, covered: { client: { notified: true, emailed: false } },
+    });
+  }
+}
+
 async function assignQuestionnaire(questionnaire, payload, user, req) {
   const caseData = await Case.findById(payload.caseId);
   if (!caseData) {
@@ -779,6 +807,10 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
     assignedTo,
     sentBy: user._id,
     notes: payload.message,
+    // A checklist attached as an add-on (e.g. Premium Processing / Form I-907) must never become
+    // the role's default checklist - the case's own checklist stays the default (see
+    // getQuestionnaireForCase, which skips staffRequest references unless one is asked for by id).
+    ...(payload.staffRequest ? { staffRequest: true } : {}),
   });
   if (participant) {
     participant.questionnaireId = questionnaire._id;
@@ -791,25 +823,10 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
   await caseService.writeAuditLog("send_questionnaire", caseData, user, { questionnaireId: questionnaire._id, responseId }, req);
   questionnaire.analytics.assignedCount += 1;
   await questionnaire.save();
-  if (assignedTo) {
-    const profileOnlyQuestionnaire = questionnaire.key === "i907_premium_processing_profile" || /i-?907|premium processing/i.test(questionnaire.title || "");
-    await notificationService.createNotification({
-      userId: assignedTo,
-      type: "questionnaire_sent",
-      title: "Questionnaire Available",
-      message: payload.message || `Please complete ${questionnaire.title}.`,
-      link: profileOnlyQuestionnaire ? "/dashboard/profile" : "/dashboard",
-      caseId: caseData._id,
-      source: "shared",
-    }, user, req);
-  }
-  await workflowService.triggerWorkflow("questionnaire.sent", { caseId: caseData._id, questionnaireId: questionnaire._id, responseId }, user, req);
-  // Customizable email for "Questionnaire available" - the in-app alert above is the existing one (it now also pushes).
-  if (assignedTo && !/i907_premium_processing_profile/.test(questionnaire.key || "") && !/i-?907|premium processing/i.test(questionnaire.title || "")) {
-    require("../notifications/triggerEvents.service").emitInBackground("questionnaire.assigned", {
-      caseId: caseData._id, actor: user, req, data: { questionnaireName: questionnaire.title },
-      recipients: { client: [assignedTo] }, covered: { client: { notified: true, emailed: false } },
-    });
+  // A gated case's auto-assigned checklist is a draft: nothing is sent to the client until a case manager approves
+  // it (case-checklist.service.js approveChecklists calls notifyChecklistAssigned then).
+  if (!isGated(caseData) || isApproved(caseData, { key: questionnaire.key, targetRole, staffRequest: payload.staffRequest })) {
+    await notifyChecklistAssigned(questionnaire, caseData, { assignedTo, message: payload.message, responseId }, user, req);
   }
   return { responseId, case: caseData, questionnaire };
 }
@@ -832,7 +849,7 @@ async function assignQuestionnaireIfNotActive(questionnaire, payload, user, req)
     throw error;
   }
   const hasActiveReference = (caseData.questionnaireReferences || []).some(
-    (reference) => reference.active !== false && String(reference.questionnaireId) === String(questionnaire._id)
+    (reference) => reference.active !== false && (String(reference.questionnaireId) === String(questionnaire._id) || String(reference.questionnaireTemplateId || "") === String(questionnaire._id))
   );
   if (hasActiveReference) return null;
   return assignQuestionnaire(questionnaire, { ...payload, caseId: caseData._id }, user, req);
@@ -1256,6 +1273,21 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     const error = new Error("Not authorized to answer this questionnaire");
     error.status = 403;
     throw error;
+  }
+  if (requestedCaseData && isGated(requestedCaseData) && isClientSideUser(user)) {
+    const gateRole = payload.targetRole || questionnaire.checklistRole;
+    const gateKey = { key: questionnaire.key, targetRole: gateRole };
+    let approved = isApproved(requestedCaseData, gateKey);
+    if (!approved && requestedCaseData.parentCase) {
+      const parent = await Case.findById(requestedCaseData.parentCase).select("checklistApproval");
+      approved = Boolean(parent) && isApproved(parent, gateKey);
+    }
+    if (!approved) {
+      const error = new Error("This checklist has not been released by your case manager yet.");
+      error.status = 403;
+      error.code = "CHECKLIST_NOT_APPROVED";
+      throw error;
+    }
   }
   const targetRole = payload.targetRole || questionnaire.checklistRole || "";
   // Shared-role write-through: an answer submitted from a child case's own
@@ -1965,48 +1997,6 @@ function makeQuestion(key, label, type, sectionKey, order, extras = {}) {
 
 const VISA_TEMPLATE_DEFINITIONS = [
   {
-    key: "i907_premium_processing_profile",
-    title: "Form I-907 Information Checklist",
-    visaType: "I-907",
-    description: "Premium Processing add-on intake fields used to prepare Form I-907 for an existing eligible case.",
-    sections: ["Information About the Person Filing This Request", "Information About the Request"],
-    questions: [
-      makeQuestion("i907AlienRegistrationNumber", "Alien Registration Number (A-Number)", "text", "information_about_the_person_filing_this_request", 1, { uscisMappings: ["I907.part1.aNumber"], metadata: { profileField: "i907.alienRegistrationNumber" } }),
-      makeQuestion("i907OnlineAccountNumber", "USCIS Online Account Number", "text", "information_about_the_person_filing_this_request", 2, { uscisMappings: ["I907.part1.uscisOnlineAccountNumber"], metadata: { profileField: "i907.uscisOnlineAccountNumber" } }),
-      makeQuestion("i907FilerFamilyName", "Family Name (Last Name)", "text", "information_about_the_person_filing_this_request", 3, { required: true, uscisMappings: ["I907.part1.filer.lastName"], metadata: { profileField: "i907.filerFamilyName" } }),
-      makeQuestion("i907FilerGivenName", "Given Name (First Name)", "text", "information_about_the_person_filing_this_request", 4, { required: true, uscisMappings: ["I907.part1.filer.firstName"], metadata: { profileField: "i907.filerGivenName" } }),
-      makeQuestion("i907CompanyOrganizationName", "Company or Organization Named in the Related Case", "text", "information_about_the_person_filing_this_request", 5, { uscisMappings: ["I907.part1.companyOrganizationName"], metadata: { profileField: "i907.companyOrganizationName" } }),
-      makeQuestion("i907MailingStreet", "Mailing Street Number and Name", "text", "information_about_the_person_filing_this_request", 6, { required: true, uscisMappings: ["I907.part1.mailingAddress.street"], metadata: { profileField: "i907.mailingStreet" } }),
-      makeQuestion("i907MailingApt", "Mailing Apt/Ste/Flr", "text", "information_about_the_person_filing_this_request", 7, { uscisMappings: ["I907.part1.mailingAddress.apt" ], metadata: { profileField: "i907.mailingApt" } }),
-      makeQuestion("i907MailingCity", "Mailing City or Town", "text", "information_about_the_person_filing_this_request", 8, { required: true, metadata: { profileField: "i907.mailingCity" } }),
-      makeQuestion("i907MailingState", "Mailing State", "text", "information_about_the_person_filing_this_request", 9, { required: true, metadata: { profileField: "i907.mailingState" } }),
-      makeQuestion("i907MailingZipCode", "Mailing ZIP Code", "text", "information_about_the_person_filing_this_request", 10, { required: true, metadata: { profileField: "i907.mailingZipCode" } }),
-      makeQuestion("i907MailingProvince", "Mailing Province", "text", "information_about_the_person_filing_this_request", 11, { metadata: { profileField: "i907.mailingProvince" } }),
-      makeQuestion("i907MailingPostalCode", "Mailing Postal Code", "text", "information_about_the_person_filing_this_request", 12, { metadata: { profileField: "i907.mailingPostalCode" } }),
-      makeQuestion("i907MailingCountry", "Mailing Country", "text", "information_about_the_person_filing_this_request", 13, { required: true, metadata: { profileField: "i907.mailingCountry" } }),
-      makeQuestion("i907SamePhysicalAddress", "Is your current mailing address the same as your physical address?", "radio", "information_about_the_person_filing_this_request", 14, { required: true, options: ["Yes", "No"], metadata: { profileField: "i907.samePhysicalAddress" } }),
-      makeQuestion("i907PhysicalStreet", "Physical Street Number and Name", "text", "information_about_the_person_filing_this_request", 15, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalStreet" } }),
-      makeQuestion("i907PhysicalApt", "Physical Apt/Ste/Flr", "text", "information_about_the_person_filing_this_request", 16, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalApt" } }),
-      makeQuestion("i907PhysicalCity", "Physical City or Town", "text", "information_about_the_person_filing_this_request", 17, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalCity" } }),
-      makeQuestion("i907PhysicalState", "Physical State", "text", "information_about_the_person_filing_this_request", 18, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalState" } }),
-      makeQuestion("i907PhysicalZipCode", "Physical ZIP Code", "text", "information_about_the_person_filing_this_request", 19, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalZipCode" } }),
-      makeQuestion("i907PhysicalProvince", "Physical Province", "text", "information_about_the_person_filing_this_request", 20, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalProvince" } }),
-      makeQuestion("i907PhysicalPostalCode", "Physical Postal Code", "text", "information_about_the_person_filing_this_request", 21, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalPostalCode" } }),
-      makeQuestion("i907PhysicalCountry", "Physical Country", "text", "information_about_the_person_filing_this_request", 22, { showIf: { field: "i907SamePhysicalAddress", operator: "equals", value: "No" }, metadata: { profileField: "i907.physicalCountry" } }),
-      makeQuestion("i907RelatedFormNumber", "Form Number of Related Petition or Application", "text", "information_about_the_request", 1, { required: true, uscisMappings: ["I907.part2.relatedFormNumber"], metadata: { profileField: "i907.relatedFormNumber" } }),
-      makeQuestion("i907RelatedReceiptNumber", "Receipt Number of Related Petition or Application", "text", "information_about_the_request", 2, { required: true, uscisMappings: ["I907.part2.relatedReceiptNumber"], metadata: { profileField: "i907.relatedReceiptNumber" } }),
-      makeQuestion("i907RelatedReceiptNumber2", "Additional Receipt Number of Related Petition or Application", "text", "information_about_the_request", 3, { metadata: { profileField: "i907.relatedReceiptNumber2" } }),
-      makeQuestion("i907PetitionerFamilyName", "Petitioner or Applicant Family Name", "text", "information_about_the_request", 4, { metadata: { profileField: "i907.petitionerFamilyName" } }),
-      makeQuestion("i907PetitionerGivenName", "Petitioner or Applicant Given Name", "text", "information_about_the_request", 5, { metadata: { profileField: "i907.petitionerGivenName" } }),
-      makeQuestion("i907BeneficiaryFamilyName", "Beneficiary Family Name", "text", "information_about_the_request", 6, { required: true, metadata: { profileField: "i907.beneficiaryFamilyName" } }),
-      makeQuestion("i907BeneficiaryGivenName", "Beneficiary Given Name", "text", "information_about_the_request", 7, { required: true, metadata: { profileField: "i907.beneficiaryGivenName" } }),
-      makeQuestion("i907PointOfContactFamilyName", "Point of Contact Family Name", "text", "information_about_the_request", 8, { metadata: { profileField: "i907.pointOfContactFamilyName" } }),
-      makeQuestion("i907PointOfContactGivenName", "Point of Contact Given Name", "text", "information_about_the_request", 9, { metadata: { profileField: "i907.pointOfContactGivenName" } }),
-      makeQuestion("i907PointOfContactTitle", "Point of Contact Position Title", "text", "information_about_the_request", 10, { metadata: { profileField: "i907.pointOfContactTitle" } }),
-      makeQuestion("i907EmployerIdentificationNumber", "Company or Organization IRS Employer Identification Number (EIN)", "text", "information_about_the_request", 11, { uscisMappings: ["I907.part2.ein"], metadata: { profileField: "i907.ein" } }),
-    ],
-  },
-  {
     key: "o1a_questionnaire",
     title: "O1A Questionnaire",
     visaType: "O1A",
@@ -2101,6 +2091,9 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...FAMILY_CHECKLIST_DEFINITIONS,
   ...SINGLE_PARTY_FILING_DEFINITIONS,
   ...GREEN_CARD_RENEWAL_DEFINITIONS,
+  // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
+  // add-on a Case Manager attaches to any other case (see premiumProcessingChecklist.js).
+  ...PREMIUM_PROCESSING_DEFINITIONS,
   // I-131 — deliberately NOT isDefault and scoped to a pseudo visaType that
   // never matches a real case (see i131Checklist.js's own banner). Still
   // provisioned through this same ensureDefaultVisaTemplates() reconciler
@@ -2338,6 +2331,24 @@ async function ensureDefaultVisaTemplatesUncached(user, req) {
       if (!questionnaire.isTemplate && questionnaire.status !== "archived") {
         questionnaire.isTemplate = true;
         changed = true;
+      }
+      // Opt-in (definition.reconcileMetadata): a definition that took over an
+      // EXISTING Questionnaire key also needs its identity fields brought up to
+      // date in place - otherwise the old record's visaType/isDefault/checklistRole
+      // would keep it from ever being resolved the new way. Never applied to
+      // definitions that don't ask for it, so admin edits elsewhere are untouched.
+      if (definition.reconcileMetadata && questionnaire.status !== "archived") {
+        for (const field of ["title", "visaType", "checklistRole", "isDefault"]) {
+          const next = field === "isDefault" ? Boolean(definition.isDefault) : (definition[field] ?? "");
+          if (questionnaire[field] !== next) {
+            questionnaire[field] = next;
+            changed = true;
+          }
+        }
+        if (questionnaire.templateCategory !== definition.visaType) {
+          questionnaire.templateCategory = definition.visaType;
+          changed = true;
+        }
       }
       const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);
       if (JSON.stringify(currentSectionTitles) !== JSON.stringify(definition.sections)) {
@@ -2617,6 +2628,12 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
+  if (isGated(referenceCase) && isClientSideUser(user) && !isApproved(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest })) {
+    const error = new Error("Your case manager is still preparing this checklist. You will be notified when it is ready.");
+    error.status = 403;
+    error.code = "CHECKLIST_NOT_APPROVED";
+    throw error;
+  }
   const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, referenceCase._id, requestedParticipant?._id || referenceCase.user || user?._id);
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
@@ -2674,6 +2691,10 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     questions: visibleQuestions,
     documentQuestions: visibleQuestions.filter((question) => question.type === "file"),
     fieldQuestions: visibleQuestions.filter((question) => question.type !== "file"),
+    // Active questions a condition currently hides. Callers that show the list as-is ignore this; the client
+    // portal merges it into its own live visibility check so a follow-up question (e.g. PERM's "how long?"
+    // after "Yes") appears the moment its trigger answer changes, not only after a save and reload.
+    hiddenQuestions: questions.filter((question) => !visibleQuestions.some((visible) => String(visible._id) === String(question._id))),
     answers,
     responseId,
     participant: participantService.participantSnapshot(requestedParticipant),
@@ -2708,6 +2729,8 @@ async function resolveCaseQuestionnaires(caseId) {
     const assignedTo = reference.assignedTo ? String(reference.assignedTo) : "";
     const participantId = reference.participantId ? String(reference.participantId) : "";
     assignedKeys.add(`${id}:${participantId || assignedTo}`);
+    // a per-case copy of a template stands in for it (see case-checklist.service.js)
+    if (reference.questionnaireTemplateId) assignedKeys.add(`${String(reference.questionnaireTemplateId)}:${participantId || assignedTo}`);
     const responseId = reference.responseId || responseIdFor(reference.questionnaireId, caseData._id, reference.assignedTo || caseData.user);
     const key = `${id}:${responseId}`;
     const existing = resolved.get(key);
@@ -2833,7 +2856,9 @@ async function listCaseChecklists(caseId, user) {
     error.status = 403;
     throw error;
   }
-  const resolved = await resolveCaseQuestionnaires(caseId);
+  let resolved = await resolveCaseQuestionnaires(caseId);
+  const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
+  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => isApproved(caseData, gateEntry(entry)));
   timer.mark("questionnaire_resolution", { count: resolved.length });
   const responseIds = resolved.map((entry) => entry.responseId).filter(Boolean);
   const answers = responseIds.length ? await Answer.find({ responseId: { $in: responseIds } }).lean() : [];
@@ -2860,6 +2885,9 @@ async function listCaseChecklists(caseId, user) {
     return {
       referenceId: entry.referenceId,
       staffRequest: Boolean(entry.staffRequest),
+      checklistId: gateChecklistId(gateEntry(entry)),
+      clientApproval: isApproved(caseData, gateEntry(entry)) ? "approved" : "draft",
+      caseSpecific: String(entry.questionnaire.key || "").includes("__case_"),
       questionnaireId: entry.questionnaire._id,
       key: entry.questionnaire.key,
       title: entry.title || entry.questionnaire.title,
@@ -3200,6 +3228,7 @@ module.exports = {
   createQuestion,
   createQuestionnaire,
   ensureDefaultVisaTemplates,
+  notifyChecklistAssigned,
   VISA_TEMPLATE_DEFINITIONS,
   isPassportInformation,
   listVisaMappings,

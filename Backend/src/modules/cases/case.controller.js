@@ -83,6 +83,8 @@ const PREMIUM_PROCESSING_ADDON = {
 };
 
 const I907_QUESTIONNAIRE_KEY = "i907_premium_processing_profile";
+const PREMIUM_PROCESSING_VISA_TYPE = "Premium Processing";
+const { PERM_VISA_TYPE } = require("../../config/permStages");
 const CASE_PLAN_STATUSES = new Set(["not_started", "pending", "failed"]);
 const PHASE5_CASE_CREATE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -637,10 +639,14 @@ exports.purchaseAddon = async (req, res, next) => {
       && !["rejected"].includes(reference.status)
     ));
     if (i907Questionnaire && !alreadyAssigned) {
+      // Same add-on shape as upgradeToPremiumProcessing: a staffRequest "client" reference, shown in
+      // its own section below the case's regular checklists.
       await questionnaireService.assignQuestionnaire(i907Questionnaire, {
         caseId: caseData._id,
+        targetRole: "client",
+        staffRequest: true,
         assignedTo: caseData.user || req.user._id,
-        message: "Please complete the Form I-907 Premium Processing information in your profile.",
+        message: "Please complete the Form I-907 Premium Processing information in your case checklist.",
       }, req.user, req);
     }
 
@@ -664,6 +670,187 @@ exports.purchaseAddon = async (req, res, next) => {
         paymentRequestId: transaction.paymentRequestId,
       },
     });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// Case Manager "Upgrade to Premium Processing" (Documents tab button). Attachable to ANY
+// case except a standalone Premium Processing case, which already is the I-907 request.
+// Same visa-agnostic add-on shape as approveN400Process, with three effects:
+//   1. the "Form I-907 Information Checklist" is assigned to the case's client as an add-on
+//      checklist (staffRequest reference: shown in its own section below the case's regular
+//      checklists, never replacing one of them as the role's default),
+//   2. Form I-907 is provisioned on the case (the answers fill it - see i907-crosswalk.js),
+//   3. a "premium_processing_i907" addon is recorded, so the rest of the system (petition
+//      assembly, form reconciliation, add-on listing) sees the same state it does for the
+//      client-purchased upgrade. No payment is created here - the Case Manager decided.
+// Idempotent: every step dedupes, so confirming twice is a safe no-op.
+exports.upgradeToPremiumProcessing = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+    if (caseData.visaType === PREMIUM_PROCESSING_VISA_TYPE) {
+      return res.status(409).json({ success: false, code: "ALREADY_PREMIUM_PROCESSING_CASE", message: "This is already a Premium Processing case - Form I-907 and its checklist are part of it." });
+    }
+
+    await questionnaireService.ensureDefaultVisaTemplates(req.user, req).catch(() => []);
+    const questionnaire = await Questionnaire.findOne({ key: I907_QUESTIONNAIRE_KEY, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    if (!questionnaire) {
+      return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No Form I-907 checklist template found" });
+    }
+
+    // assignQuestionnaire works on its own copy of the case - assign first, then re-load.
+    await questionnaireService.assignQuestionnaireIfNotActive(
+      questionnaire,
+      {
+        caseData,
+        targetRole: "client",
+        staffRequest: true,
+        assignedTo: caseData.user || caseData.clientProfile,
+        message: "Please complete the Form I-907 Premium Processing information in your case checklist.",
+      },
+      req.user,
+      req
+    );
+
+    const fresh = await Case.findById(caseData._id);
+    const alreadyUpgraded = hasAddon(fresh, PREMIUM_PROCESSING_ADDON.key);
+    if (!alreadyUpgraded) {
+      fresh.addons.push({
+        key: PREMIUM_PROCESSING_ADDON.key,
+        service: PREMIUM_PROCESSING_ADDON.service,
+        form: PREMIUM_PROCESSING_ADDON.form,
+        status: "waiting_for_information",
+        paymentStatus: "not_started",
+        governmentFeeCents: PREMIUM_PROCESSING_ADDON.governmentFeeCents,
+        attorneyFeeCents: PREMIUM_PROCESSING_ADDON.attorneyFeeCents,
+        totalFeeCents: PREMIUM_PROCESSING_ADDON.totalFeeCents,
+        processingTime: PREMIUM_PROCESSING_ADDON.processingTime,
+        purchasedAt: new Date(),
+        requiredDocuments: PREMIUM_PROCESSING_ADDON.requiredDocuments,
+        intake: { relatedReceiptNumber: getCaseReceiptNumber(fresh), relatedFormNumber: fresh.petitionType || fresh.visaType },
+        history: [{ status: "waiting_for_information", note: "Premium Processing upgrade added by case manager", by: req.user._id }],
+      });
+      PREMIUM_PROCESSING_ADDON.requiredDocuments.forEach((document) => {
+        const exists = [...(fresh.documentChecklist || []), ...(fresh.checklistItems || [])].some((item) => item.documentType === document.documentType);
+        if (exists) return;
+        const next = { ...document, category: "immigration", requestedDate: new Date() };
+        fresh.documentChecklist.push(next);
+        fresh.checklistItems.push(next);
+      });
+      caseService.addTimelineEvent(fresh, "addon", "Upgraded to Premium Processing", "Form I-907 Premium Processing checklist and form were added to this case.", req.user, { addonKey: PREMIUM_PROCESSING_ADDON.key });
+      caseService.addAuditEntry(fresh, "premium_processing_upgrade", "Case upgraded to Premium Processing", req.user, { addonKey: PREMIUM_PROCESSING_ADDON.key }, req);
+      await fresh.save();
+    }
+
+    // Form I-907 itself - the same generic provisioning every optional add-on form uses.
+    let formStatus = "TEMPLATE_MISSING";
+    const template = await uscisFormService.findLatestActiveTemplate("i-907");
+    if (template) {
+      template._visaFormMapping = {
+        mappingId: null,
+        provisioningType: "OPTIONAL_ADD_ON",
+        createdReason: "Premium Processing (Form I-907) upgrade added by Case Manager",
+        visaType: fresh.visaType,
+        processingPath: fresh.processingPath || "",
+      };
+      await uscisFormService.ensureAssignedForms(fresh, req.user, req, { templates: [template] });
+      formStatus = "PROVISIONED";
+    }
+
+    const refreshed = await Case.findById(caseData._id);
+    res.status(alreadyUpgraded ? 200 : 201).json({
+      success: true,
+      alreadyUpgraded,
+      formStatus,
+      case: refreshed,
+      addon: (refreshed.addons || []).find((addon) => addon.key === PREMIUM_PROCESSING_ADDON.key && addon.status !== "cancelled") || null,
+    });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// PERM stage (Case Manager): certification -> adjustment of status -> employment authorization /
+// advance parole. The only thing that brings a USCIS form onto a PERM case (config/permStages.js):
+// this stores the stage on the principal case and its employee case(s), then re-runs the existing
+// orchestration, whose registry triggers provision I-140 / I-485 / I-765 / I-131 and autofill them
+// from the canonical profile. Stages only move forward; each later stage needs the one before it.
+exports.updatePermWorkflow = async (req, res, next) => {
+  try {
+    const caseData = await getCaseOr404(req.params.id, res);
+    if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to update this case" });
+    if (caseData.visaType !== PERM_VISA_TYPE) {
+      return res.status(409).json({ success: false, code: "NOT_A_PERM_CASE", message: "Only a PERM case has a PERM stage." });
+    }
+    const principal = caseData.parentCase ? await Case.findById(caseData.parentCase) : caseData;
+    if (!principal) return res.status(404).json({ success: false, message: "PERM principal case not found" });
+
+    const current = principal.permWorkflow?.toObject?.() || principal.permWorkflow || {};
+    const bool = (key) => (req.body[key] === undefined ? Boolean(current[key]) : Boolean(req.body[key]));
+    const next = {
+      certified: bool("certified"),
+      adjustmentOfStatus: bool("adjustmentOfStatus"),
+      employmentAuthorization: bool("employmentAuthorization"),
+      advanceParole: bool("advanceParole"),
+    };
+    for (const key of Object.keys(next)) {
+      if (current[key] && !next[key]) {
+        return res.status(409).json({ success: false, code: "STAGE_FORWARD_ONLY", message: "A PERM stage cannot be undone once forms may have been created from it." });
+      }
+    }
+    if (next.adjustmentOfStatus && !next.certified) {
+      return res.status(400).json({ success: false, code: "STAGE_ORDER", message: "Adjustment of status requires the PERM to be certified first." });
+    }
+    if ((next.employmentAuthorization || next.advanceParole) && !next.adjustmentOfStatus) {
+      return res.status(400).json({ success: false, code: "STAGE_ORDER", message: "Employment authorization and advance parole apply at the adjustment-of-status stage." });
+    }
+
+    const now = new Date();
+    const targets = [principal, ...(await Case.find({ parentCase: principal._id }))];
+    for (const target of targets) {
+      const workflow = {
+        ...(target.permWorkflow?.toObject?.() || target.permWorkflow || {}),
+        ...next,
+        updatedAt: now,
+        updatedBy: req.user._id,
+      };
+      if (next.certified && !workflow.certifiedAt) {
+        workflow.certifiedAt = now;
+        workflow.certifiedBy = req.user._id;
+      }
+      if (req.body.certificationNumber !== undefined) workflow.certificationNumber = cleanString(req.body.certificationNumber);
+      if (req.body.certifiedDate) workflow.certifiedDate = new Date(req.body.certifiedDate);
+      target.permWorkflow = workflow;
+      if (next.adjustmentOfStatus && !target.processingPath) target.processingPath = "ADJUSTMENT_OF_STATUS";
+      target.lastModifiedBy = req.user._id;
+      await target.save();
+    }
+    const changed = ["certified", "adjustmentOfStatus", "employmentAuthorization", "advanceParole"].filter((key) => next[key] && !current[key]);
+    if (changed.length) {
+      const fresh = await Case.findById(principal._id);
+      caseService.addTimelineEvent(fresh, "case_manager", "PERM Stage Updated", `PERM stage advanced: ${changed.join(", ")}.`, req.user, { changed, certificationNumber: req.body.certificationNumber });
+      caseService.addAuditEntry(fresh, "perm_stage_update", "PERM stage updated", req.user, { changed, next }, req);
+      await fresh.save();
+    }
+
+    // Provision the forms the new stage opens (registry triggers), and autofill them from the canonical profile.
+    const lifecycle = require("./case-lifecycle-orchestrator.service");
+    const orchestrationErrors = [];
+    for (const target of targets) {
+      try {
+        await lifecycle.orchestrateOne(target._id, req.user, req);
+      } catch (error) {
+        orchestrationErrors.push({ caseId: String(target._id), message: error.message });
+      }
+    }
+    const refreshed = await Case.findById(principal._id);
+    await lifecycle.provisionRequiredForms(refreshed, req.user, req);
+
+    res.json({ success: true, case: refreshed, permWorkflow: refreshed.permWorkflow, changed, orchestrationErrors });
   } catch (error) {
     handleError(error, next);
   }

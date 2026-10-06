@@ -1,52 +1,12 @@
 import { useEffect, useState } from "react";
 import { profileApi } from "../../services/api";
 
-// Case-specific data collection that used to live on Profile.jsx (moved here
-// per the client-portal overhaul — Profile is identity-only now; anything
-// visa/case-specific belongs on the Documents page alongside the rest of the
-// checklist). Covers: dynamic per-visa case fields, and — when the case has
-// the paid Premium Processing addon — the I-907 filer/request data USCIS
-// requires for that filing. Self-contained: loads and autosaves its own
-// slice of the client intake record independently of the rest of this page,
-// and only ever sends its OWN fields — the backend merges partial intake
-// saves onto the client doc (Object.assign), so this can never clobber the
-// identity fields Profile.jsx saves separately.
-
-const emptyI907 = {
-  alienRegistrationNumber: "",
-  uscisOnlineAccountNumber: "",
-  filerFamilyName: "",
-  filerGivenName: "",
-  companyOrganizationName: "",
-  mailingStreet: "",
-  mailingApt: "",
-  mailingCity: "",
-  mailingState: "",
-  mailingZipCode: "",
-  mailingProvince: "",
-  mailingPostalCode: "",
-  mailingCountry: "",
-  samePhysicalAddress: "Yes",
-  physicalStreet: "",
-  physicalApt: "",
-  physicalCity: "",
-  physicalState: "",
-  physicalZipCode: "",
-  physicalProvince: "",
-  physicalPostalCode: "",
-  physicalCountry: "",
-  relatedFormNumber: "",
-  relatedReceiptNumber: "",
-  relatedReceiptNumber2: "",
-  petitionerFamilyName: "",
-  petitionerGivenName: "",
-  beneficiaryFamilyName: "",
-  beneficiaryGivenName: "",
-  pointOfContactFamilyName: "",
-  pointOfContactGivenName: "",
-  pointOfContactTitle: "",
-  ein: "",
-};
+// Case-specific data collection that used to live on Profile.jsx (moved here per the client-portal
+// overhaul - Profile is identity-only now; anything visa/case-specific belongs on the Documents page
+// alongside the rest of the checklist): the dynamic per-visa case fields. The Form I-907 Premium
+// Processing information is now a real checklist - see questionnaire/PremiumProcessingChecklist.jsx.
+// Self-contained: loads and autosaves its own slice of the client intake record, only ever sending its
+// OWN fields, so it can never clobber the identity fields Profile.jsx saves separately.
 
 const CASE_FIELD_SETS = {
   employment: [
@@ -82,45 +42,6 @@ function classifyVisa(visaCategory, visaType) {
   return "default";
 }
 
-function hasPremiumProcessingAddon(activeCase) {
-  return (activeCase?.addons || []).some((addon) => addon.key === "premium_processing_i907" && addon.status !== "cancelled");
-}
-
-function hasI907ProfileQuestionnaire(activeCase) {
-  return (activeCase?.questionnaireReferences || activeCase?.questionnaires || []).some((reference) => {
-    const text = `${reference?.title || ""} ${reference?.questionnaireKey || ""} ${reference?.key || ""}`.toLowerCase();
-    return text.includes("i-907") || text.includes("i907") || text.includes("premium processing");
-  });
-}
-
-function receiptNumberForCase(activeCase) {
-  return activeCase?.uscisReceiptNumber
-    || activeCase?.uscisNumber
-    || activeCase?.receiptTracking?.receiptNumber
-    || activeCase?.immigrationLifecycle?.tracking?.filing?.receiptNumber
-    || "";
-}
-
-function buildI907Data(client = {}, activeCase = {}) {
-  const saved = client.i907 || client.intakeData?.i907 || {};
-  return {
-    ...emptyI907,
-    ...saved,
-    filerFamilyName: saved.filerFamilyName || client.lastName || "",
-    filerGivenName: saved.filerGivenName || client.firstName || "",
-    mailingStreet: saved.mailingStreet || client.address || "",
-    mailingApt: saved.mailingApt || client.apartment || "",
-    mailingCity: saved.mailingCity || client.city || "",
-    mailingState: saved.mailingState || client.state || "",
-    mailingZipCode: saved.mailingZipCode || client.zipCode || "",
-    mailingCountry: saved.mailingCountry || client.country || "",
-    relatedFormNumber: saved.relatedFormNumber || activeCase.petitionType || activeCase.visaType || "",
-    relatedReceiptNumber: saved.relatedReceiptNumber || receiptNumberForCase(activeCase),
-    beneficiaryFamilyName: saved.beneficiaryFamilyName || client.lastName || "",
-    beneficiaryGivenName: saved.beneficiaryGivenName || client.firstName || "",
-  };
-}
-
 function textValue(value) {
   return value === undefined || value === null ? "" : String(value);
 }
@@ -144,19 +65,6 @@ function Input({ label, required, ...props }) {
   );
 }
 
-function Select({ label, required, options, ...props }) {
-  return (
-    <Field label={label} required={required}>
-      <select {...props} className="w-full rounded-lg border border-border bg-card px-3 py-2 text-[0.82rem] text-foreground outline-none hover:border-ring/50 focus:border-ring focus:ring-2 focus:ring-ring/15">
-        <option value="">Select</option>
-        {options.map((option) => (
-          <option key={option.value || option} value={option.value || option}>{option.label || option}</option>
-        ))}
-      </select>
-    </Field>
-  );
-}
-
 // caseData: the already-resolved case object for this checklist, from the
 // Documents page's own useMyCase()/employer case-list resolution — this used
 // to independently re-fetch via casesApi.my() here, which (a) duplicated a
@@ -166,7 +74,6 @@ function Select({ label, required, options, ...props }) {
 export default function CaseIntakeExtras({ caseId, caseData: providedCaseData }) {
   const [caseData, setCaseData] = useState(null);
   const [dynamicCaseInformation, setDynamicCaseInformation] = useState({});
-  const [i907, setI907] = useState(emptyI907);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -180,7 +87,6 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
       const client = intake?.client || {};
       setCaseData(nextCase);
       setDynamicCaseInformation(client.dynamicCaseInformation || client.intakeData?.dynamicCaseInformation || {});
-      setI907(buildI907Data(client, nextCase));
       setLoading(false);
     }).catch(() => setLoading(false));
     return () => { mounted = false; };
@@ -190,25 +96,19 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
     if (!dirty) return undefined;
     const timer = setTimeout(() => {
       setSaving(true);
-      profileApi.saveIntake({ dynamicCaseInformation, i907 }, { caseId, autoSave: true })
+      profileApi.saveIntake({ dynamicCaseInformation }, { caseId, autoSave: true })
         .catch(() => null)
         .finally(() => { setSaving(false); setDirty(false); });
     }, 1000);
     return () => clearTimeout(timer);
-  }, [dynamicCaseInformation, i907, dirty, caseId]);
+  }, [dynamicCaseInformation, dirty, caseId]);
 
   const updateDynamic = (field, value) => {
     setDynamicCaseInformation((current) => ({ ...current, [field]: value }));
     setDirty(true);
   };
-  const updateI907 = (field, value) => {
-    setI907((current) => ({ ...current, [field]: value }));
-    setDirty(true);
-  };
-
   if (loading) return null;
 
-  const showPremiumProcessing = hasPremiumProcessingAddon(caseData) || hasI907ProfileQuestionnaire(caseData);
   const caseFields = CASE_FIELD_SETS[classifyVisa(caseData?.visaCategory, caseData?.visaType)];
 
   return (
@@ -227,83 +127,6 @@ export default function CaseIntakeExtras({ caseId, caseData: providedCaseData })
           ))}
         </div>
       </section>
-
-      {showPremiumProcessing && (
-        <section className="rounded-2xl border border-border bg-card p-6">
-          <h2 className="text-base font-bold text-foreground mb-1">Form I-907 — Premium Processing</h2>
-          <p className="text-xs text-muted-foreground mb-4">Required information for your Premium Processing request.</p>
-
-          <div className="space-y-6">
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Filer identity</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input id="i907-alienRegistrationNumber" name="alienRegistrationNumber" label="Alien Registration Number (A-Number)" value={textValue(i907.alienRegistrationNumber)} onChange={(e) => updateI907("alienRegistrationNumber", e.target.value)} />
-                <Input id="i907-uscisOnlineAccountNumber" name="uscisOnlineAccountNumber" label="USCIS Online Account Number" value={textValue(i907.uscisOnlineAccountNumber)} onChange={(e) => updateI907("uscisOnlineAccountNumber", e.target.value)} />
-                <Input id="i907-companyOrganizationName" name="companyOrganizationName" label="Company or Organization Named in Related Case" value={textValue(i907.companyOrganizationName)} onChange={(e) => updateI907("companyOrganizationName", e.target.value)} />
-                <Input id="i907-filerFamilyName" name="filerFamilyName" label="Family Name (Last Name)" required value={textValue(i907.filerFamilyName)} onChange={(e) => updateI907("filerFamilyName", e.target.value)} />
-                <Input id="i907-filerGivenName" name="filerGivenName" label="Given Name (First Name)" required value={textValue(i907.filerGivenName)} onChange={(e) => updateI907("filerGivenName", e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Mailing address</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input id="i907-mailingStreet" name="mailingStreet" label="Street Number and Name" required value={textValue(i907.mailingStreet)} onChange={(e) => updateI907("mailingStreet", e.target.value)} />
-                <Input id="i907-mailingApt" name="mailingApt" label="Apt/Ste/Flr" value={textValue(i907.mailingApt)} onChange={(e) => updateI907("mailingApt", e.target.value)} />
-                <Input id="i907-mailingCity" name="mailingCity" label="City or Town" required value={textValue(i907.mailingCity)} onChange={(e) => updateI907("mailingCity", e.target.value)} />
-                <Input id="i907-mailingState" name="mailingState" label="State" required value={textValue(i907.mailingState)} onChange={(e) => updateI907("mailingState", e.target.value)} />
-                <Input id="i907-mailingZipCode" name="mailingZipCode" label="ZIP Code" required value={textValue(i907.mailingZipCode)} onChange={(e) => updateI907("mailingZipCode", e.target.value)} />
-                <Input id="i907-mailingCountry" name="mailingCountry" label="Country" required value={textValue(i907.mailingCountry)} onChange={(e) => updateI907("mailingCountry", e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Physical address</p>
-              <div className="mb-4 max-w-sm">
-                <Select id="i907-samePhysicalAddress" name="samePhysicalAddress" label="Same as Mailing Address?" required value={textValue(i907.samePhysicalAddress || "Yes")} onChange={(e) => updateI907("samePhysicalAddress", e.target.value)} options={["Yes", "No"]} />
-              </div>
-              {i907.samePhysicalAddress === "No" && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <Input id="i907-physicalStreet" name="physicalStreet" label="Street Number and Name" value={textValue(i907.physicalStreet)} onChange={(e) => updateI907("physicalStreet", e.target.value)} />
-                  <Input id="i907-physicalCity" name="physicalCity" label="City or Town" value={textValue(i907.physicalCity)} onChange={(e) => updateI907("physicalCity", e.target.value)} />
-                  <Input id="i907-physicalState" name="physicalState" label="State" value={textValue(i907.physicalState)} onChange={(e) => updateI907("physicalState", e.target.value)} />
-                  <Input id="i907-physicalZipCode" name="physicalZipCode" label="ZIP Code" value={textValue(i907.physicalZipCode)} onChange={(e) => updateI907("physicalZipCode", e.target.value)} />
-                  <Input id="i907-physicalCountry" name="physicalCountry" label="Country" value={textValue(i907.physicalCountry)} onChange={(e) => updateI907("physicalCountry", e.target.value)} />
-                </div>
-              )}
-            </div>
-
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Related petition or application</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input id="i907-relatedFormNumber" name="relatedFormNumber" label="Form Number of Related Petition or Application" required value={textValue(i907.relatedFormNumber)} onChange={(e) => updateI907("relatedFormNumber", e.target.value)} />
-                <Input id="i907-relatedReceiptNumber" name="relatedReceiptNumber" label="Receipt Number of Related Petition or Application" required value={textValue(i907.relatedReceiptNumber)} onChange={(e) => updateI907("relatedReceiptNumber", e.target.value)} />
-                <Input id="i907-relatedReceiptNumber2" name="relatedReceiptNumber2" label="Additional Receipt Number" value={textValue(i907.relatedReceiptNumber2)} onChange={(e) => updateI907("relatedReceiptNumber2", e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Related case people</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Input id="i907-petitionerFamilyName" name="petitionerFamilyName" label="Petitioner or Applicant Family Name" value={textValue(i907.petitionerFamilyName)} onChange={(e) => updateI907("petitionerFamilyName", e.target.value)} />
-                <Input id="i907-petitionerGivenName" name="petitionerGivenName" label="Petitioner or Applicant Given Name" value={textValue(i907.petitionerGivenName)} onChange={(e) => updateI907("petitionerGivenName", e.target.value)} />
-                <Input id="i907-beneficiaryFamilyName" name="beneficiaryFamilyName" label="Beneficiary Family Name" required value={textValue(i907.beneficiaryFamilyName)} onChange={(e) => updateI907("beneficiaryFamilyName", e.target.value)} />
-                <Input id="i907-beneficiaryGivenName" name="beneficiaryGivenName" label="Beneficiary Given Name" required value={textValue(i907.beneficiaryGivenName)} onChange={(e) => updateI907("beneficiaryGivenName", e.target.value)} />
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">Company point of contact</p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Input id="i907-pointOfContactFamilyName" name="pointOfContactFamilyName" label="Point of Contact Family Name" value={textValue(i907.pointOfContactFamilyName)} onChange={(e) => updateI907("pointOfContactFamilyName", e.target.value)} />
-                <Input id="i907-pointOfContactGivenName" name="pointOfContactGivenName" label="Point of Contact Given Name" value={textValue(i907.pointOfContactGivenName)} onChange={(e) => updateI907("pointOfContactGivenName", e.target.value)} />
-                <Input id="i907-pointOfContactTitle" name="pointOfContactTitle" label="Position Title" value={textValue(i907.pointOfContactTitle)} onChange={(e) => updateI907("pointOfContactTitle", e.target.value)} />
-                <Input id="i907-ein" name="ein" label="Company or Organization EIN" value={textValue(i907.ein)} onChange={(e) => updateI907("ein", e.target.value)} />
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
     </div>
   );
 }

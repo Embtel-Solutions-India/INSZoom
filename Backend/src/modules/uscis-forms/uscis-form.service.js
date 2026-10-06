@@ -21,6 +21,7 @@ const { createPerfTimer } = require("../../utils/perfTimer");
 const { isUscisUseOnly } = require("../uscis-form-import/services/FieldLabelEnrichmentService");
 const { isDatabaseUnavailableError } = require("../../middleware/errorHandler");
 const logger = require("../../utils/logger");
+const { permStageAllowsForm } = require("../../config/permStages");
 
 const ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS = Number(process.env.ACCESSIBLE_CASE_PRIMARY_TIMEOUT_MS || 3000);
 // Server-side execution budget for renderCaseForm's CaseForm read. Same
@@ -540,7 +541,10 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
   // templateAppliesToCase directly (every family form's registry status
   // came back TEMPLATE_RULE_CONFLICT instead).
   const skipLegacyScan = caseData.visaCategory === "Family";
-  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData))).forEach((template) => {
+  // PERM: its USCIS forms (I-140 / I-485 / I-765 / I-131) are stage-gated (config/permStages.js). The
+  // templates list PERM in visaTypes so the registry can resolve them, so this visa-type scan must not
+  // be what brings one onto a PERM case before its stage - the registry trigger is.
+  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData) && permStageAllowsForm(caseData, template.formCode || template.formNumber))).forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     const existing = grouped.get(code);
     if (!existing || latestTemplateSort(template, existing) < 0) grouped.set(code, template);

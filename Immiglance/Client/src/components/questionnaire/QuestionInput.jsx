@@ -13,7 +13,7 @@ import {
 } from "../../utils/questionnaireEngine";
 
 const INPUT_CLASS =
-  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:bg-slate-100 disabled:text-slate-500";
+  "w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20 disabled:bg-secondary disabled:text-muted-foreground";
 
 // Autofill-from-document button (resume/passport) — same OCR extraction path
 // used everywhere else document intelligence runs; only shown for document
@@ -44,9 +44,9 @@ export function AutofillButton({ documentType, caseId, disabled, onUploaded }) {
         type="button"
         disabled={disabled || uploading}
         onClick={() => inputRef.current?.click()}
-        className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-accent px-3 py-1 text-xs font-bold text-accent-foreground transition hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {uploading ? `Reading your ${AUTOFILL_LABELS[documentType]}...` : <><IconSparkles size={14} className="text-emerald-700" /> {documentType === "passport" ? "Scan passport" : `Autofill from ${AUTOFILL_LABELS[documentType]}`}</>}
+        {uploading ? `Reading your ${AUTOFILL_LABELS[documentType]}...` : <><IconSparkles size={14} className="text-accent-foreground" /> {documentType === "passport" ? "Scan passport" : `Autofill from ${AUTOFILL_LABELS[documentType]}`}</>}
       </button>
     </>
   );
@@ -56,12 +56,12 @@ function RepeatableColumnInput({ question, column, fieldKey, rowIndex, row, disa
   const id = `${question.key}-${rowIndex}-${fieldKey}`;
   const name = `${question.key}.${rowIndex}.${fieldKey}`;
   const value = row?.[fieldKey];
-  const className = `${INPUT_CLASS} ${hasError ? "border-rose-400 focus:border-rose-400 focus:ring-rose-400/20" : ""}`;
+  const className = `${INPUT_CLASS} ${hasError ? "border-destructive focus:border-destructive focus:ring-destructive/20" : ""}`;
   const options = normalizeOptions(column.options);
 
   if (column.type === "checkbox") {
     return (
-      <input id={id} name={name} type="checkbox" className="h-4 w-4 rounded border-slate-300 text-emerald-600" checked={value === true || value === "true"} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <input id={id} name={name} type="checkbox" className="h-4 w-4 rounded border-border text-primary" checked={value === true || value === "true"} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
     );
   }
   if (column.type === "textarea") {
@@ -145,19 +145,19 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
   return (
     <div className="space-y-3">
       {instructions.length > 0 && (
-        <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3.5 py-2.5 text-xs text-slate-600">
+        <div className="space-y-1 rounded-xl border border-border bg-accent/60 px-3.5 py-2.5 text-xs text-muted-foreground">
           {instructions.map((line) => <p key={line}>{line}</p>)}
         </div>
       )}
       {rows.map((row, rowIndex) => {
         const summary = summaryFields.map((key) => row?.[key]).filter(Boolean).join(" - ");
         return (
-          <div key={`row-${rowIndex}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div key={`row-${rowIndex}`} className="rounded-2xl border border-border bg-secondary p-3">
             {itemLabel && (
               <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-sm font-bold text-slate-700">{itemLabel} {rowIndex + 1}{summary ? <span className="font-medium text-slate-500"> - {summary}</span> : null}</p>
+                <p className="text-sm font-bold text-foreground">{itemLabel} {rowIndex + 1}{summary ? <span className="font-medium text-muted-foreground"> - {summary}</span> : null}</p>
                 {!disabled && (
-                  <button type="button" onClick={() => removeRow(rowIndex)} className="text-xs font-bold text-rose-600">Delete</button>
+                  <button type="button" onClick={() => removeRow(rowIndex)} className="text-xs font-bold text-destructive">Delete</button>
                 )}
               </div>
             )}
@@ -167,9 +167,9 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
                 if (isColumnHidden(column, row)) return null;
                 const message = touched[`${rowIndex}.${fieldKey}`] ? validation.rowErrors[rowIndex]?.[fieldKey] : null;
                 const wide = column.type === "textarea";
-                const labelNode = <span>{column.label || titleFromKey(fieldKey)}{isColumnRequired(column, row) ? <span className="text-rose-500"> *</span> : null}</span>;
+                const labelNode = <span>{column.label || titleFromKey(fieldKey)}{isColumnRequired(column, row) ? <span className="text-destructive"> *</span> : null}</span>;
                 return (
-                  <label key={fieldKey} className={`space-y-1 text-xs font-bold text-slate-500 ${wide ? "md:col-span-2" : ""} ${column.type === "checkbox" ? "flex items-center gap-2 space-y-0 md:col-span-2" : ""}`}>
+                  <label key={fieldKey} className={`space-y-1 text-xs font-bold text-muted-foreground ${wide ? "md:col-span-2" : ""} ${column.type === "checkbox" ? "flex items-center gap-2 space-y-0 md:col-span-2" : ""}`}>
                     {column.type !== "checkbox" && labelNode}
                     <RepeatableColumnInput
                       question={question}
@@ -183,22 +183,22 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
                       onChange={(next) => updateRow(rowIndex, fieldKey, next)}
                     />
                     {column.type === "checkbox" && labelNode}
-                    {message && <span className="block text-[11px] font-semibold text-rose-600">{message}</span>}
+                    {message && <span className="block text-[11px] font-semibold text-destructive">{message}</span>}
                   </label>
                 );
               })}
             </div>
             {!disabled && !itemLabel && (
-              <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-bold text-rose-600">
+              <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-bold text-destructive">
                 Remove entry
               </button>
             )}
           </div>
         );
       })}
-      {validation.warnings.map((warning) => <p key={warning} className="text-xs font-semibold text-amber-600">{warning}</p>)}
+      {validation.warnings.map((warning) => <p key={warning} className="text-xs font-semibold text-muted-foreground">{warning}</p>)}
       {!disabled && (
-        <button type="button" onClick={addRow} className="rounded-xl border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50">
+        <button type="button" onClick={addRow} className="rounded-xl border border-border px-4 py-2 text-sm font-bold text-primary hover:bg-accent">
           {question?.metadata?.addLabel || "Add entry"}
         </button>
       )}
@@ -235,7 +235,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
     return (
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {options.map((option) => (
-          <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+          <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground">
             <input
               type="checkbox"
               id={`${question.key}-${option.value}`}
@@ -262,7 +262,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
             disabled={disabled}
             onClick={() => onChange(option.value)}
             className={`rounded-xl border px-4 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-              value === option.value ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              value === option.value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-secondary"
             }`}
           >
             {option.label}
@@ -278,7 +278,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
       return (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {options.map((option) => (
-            <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+            <label key={String(option.value)} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 id={`${question.key}-${option.value}`}
@@ -294,7 +294,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
       );
     }
     return (
-      <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+      <label className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-bold text-foreground">
         <input type="checkbox" id={question.key} name={question.key} disabled={disabled} checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} />
         Confirm
       </label>
@@ -343,7 +343,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
           onAdd={(picked) => onFileChange(picked)}
           onRemove={(entry) => onRemoveFile?.(entry.raw)}
         />
-        {!entries.length && Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-slate-500">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
+        {!entries.length && Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-muted-foreground">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
       </div>
     );
   }
@@ -353,7 +353,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
   }
 
   if (type === "computed") {
-    return <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-600">{isEmptyValue(value) ? "Calculated after related answers are saved" : String(value)}</div>;
+    return <div className="rounded-xl border border-border bg-secondary px-3.5 py-2.5 text-sm font-bold text-muted-foreground">{isEmptyValue(value) ? "Calculated after related answers are saved" : String(value)}</div>;
   }
 
   const inputType = {
