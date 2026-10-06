@@ -1,3 +1,4 @@
+import { validateRepeatingGroupRows } from "./repeatingGroup";
 // Single source for "what does this question mean" logic — conditional
 // visibility, requiredness, validation, and small formatting helpers. Used by
 // every questionnaire-rendering surface (QuestionnaireRenderer today; nothing
@@ -292,6 +293,9 @@ export function validateQuestion(question, value, answers) {
   const errors = [];
   if (isQuestionRequired(question, answers) && isEmptyValue(value)) {
     errors.push("This field is required.");
+  }
+  if (question.type === "repeating_group" && Array.isArray(value) && value.length) {
+    errors.push(...validateRepeatingGroupRows(question, value).errors);
   }
   (question.validationRules || []).forEach((rule) => {
     if (isEmptyValue(value)) return;

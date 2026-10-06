@@ -68,3 +68,27 @@ Saves are audited to `SettingsAuditLog` (`key: email_template:<id>`, who/when/be
   failed email delivery, account lockout, lead created/approved, attorney feedback.
 * Known pre-existing issue (not changed): workflow `notify` actions use `createForRoles`, i.e. every user with the role,
   not just the people on the case.
+
+## Sending rules (who gets which email, when, and when not)
+Source of truth: `Backend/src/modules/email/emailPolicy.js` (per-trigger table + guards); the same text is shown on the
+Email Templates page ("Sent when / Not sent when") and as an Email column (Automatic / On activation / Off).
+
+**Every email, always** (`email.service.js` + dispatcher): never to a malformed address or a placeholder domain
+(example.com/.org/.net, .test/.invalid/.local; override `EMAIL_BLOCKED_DOMAINS`); never the same email to the same person
+for the same case within a few minutes (invites/credentials/password-reset are exempt); every skip is written to the
+email log with the reason; the person who performed the action is never emailed; demo-data users/cases are never emailed;
+the existing `EMAIL_SUPPRESS_STAFF_AND_ATTORNEY` dev gate still applies.
+
+**Event emails** (new): the dispatcher always sends the in-app + browser-push alert to the right people on the case
+(client / assigned case manager / assigned team lead / attorneys with access; admins role-wide; super admin only for
+critical alerts). The EMAIL is sent when the trigger is "automatic" or an admin activated a template - and only to people
+who can use it (a client who has not set a password yet gets alerts, not these emails; their activation email is theirs).
+Automatic: attorney assigned (client), questionnaire available, document rejected, documents requested, RFE received
+(team lead/admin/attorney), USCIS decision (team lead/admin/attorney), case filed (attorney/team lead), case reopened,
+attorney removed, escalations (team lead/admin/super admin), account lockout (super admin), attorney<->staff comments
+(one email per 30 min burst), team lead assigned (case manager). Everything else is alert-only until an admin activates a
+template (e.g. every upload, every assignment, new case for admins). An admin can switch any email off ("Send this email"),
+including built-in ones - alerts are unaffected.
+
+**Built-in emails** keep their existing call-site logic unchanged (consultation, lead, invitation, USCIS-status emails ...);
+only the guards above were added.

@@ -18,6 +18,8 @@ const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
 const e2 = require("../employment-workflow/questionnaires/e2");
 const e3 = require("../employment-workflow/questionnaires/e3");
+const { slugSection, buildQuestion } = require("./definitionHelpers");
+const { buildPermEmployerChecklist, buildPermEmployeeChecklist } = require("./permChecklists");
 
 const STAFF_ROLES = ["case_manager", "team_lead", "admin", "super_admin"];
 
@@ -209,10 +211,6 @@ const REPEATABLE_FIELDS = {
   ],
 };
 
-function slugSection(title) {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-}
-
 function sectionTitleFor(path) {
   const rest = path.replace(/^(employer|employee)\./, "");
   const match = SECTION_PREFIX_MAP.find(([prefix]) => rest.startsWith(prefix));
@@ -228,29 +226,6 @@ function inferFieldType(fieldName) {
   if (/date/.test(lower)) return "date";
   if (/(duties|description|responsibilit|achievement|strategy|risk|structure|breakdown)/.test(lower)) return "textarea";
   return "text";
-}
-
-function buildQuestion(key, label, type, sectionTitle, order, extras = {}) {
-  return {
-    key,
-    label,
-    type,
-    sectionKey: slugSection(sectionTitle),
-    pageKey: slugSection(sectionTitle),
-    order,
-    required: Boolean(extras.required),
-    description: extras.description,
-    options: (extras.options || []).map((value) => (typeof value === "object" ? value : { label: value, value })),
-    evidenceCategory: extras.evidenceCategory,
-    metadata: extras.metadata || {},
-    // Omitted entirely (not even as an empty object) when a question has no
-    // canonical mapping, so questionnaire.service.js's reconciliation only
-    // ever touches/patches the handful of questions that actually carry one.
-    ...(extras.mapping ? { mapping: extras.mapping } : {}),
-    visibility: extras.visibility || {},
-    conditionalLogic: extras.conditionalLogic || { mode: "all", rules: [], groups: [] },
-    repeatable: Boolean(extras.repeatable),
-  };
 }
 
 // Maps the employee/beneficiary side's fieldCatalog paths to the case's
@@ -1310,6 +1285,9 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildI140EmployeeChecklist(),
   buildTnEmployerChecklist(),
   buildTnEmployeeChecklist(),
+  // PERM (labor certification): employer + the ONE employee it is filed for.
+  buildPermEmployerChecklist(),
+  buildPermEmployeeChecklist(),
 ];
 
 module.exports = { EMPLOYMENT_CHECKLIST_DEFINITIONS };

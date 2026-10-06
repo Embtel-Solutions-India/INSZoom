@@ -76,6 +76,16 @@ TRIGGERS.forEach((trigger) => {
 const { EVENT_TRIGGERS, AUDIENCES, AUDIENCE_LABEL } = require("./eventTriggers.catalog");
 TRIGGERS.push(...EVENT_TRIGGERS);
 
+// Delivery policy + plain-language send rules (see emailPolicy.js).
+const { emailPolicyFor, SEND_RULES } = require("./emailPolicy");
+TRIGGERS.forEach((trigger) => {
+  const policy = emailPolicyFor(trigger.key);
+  // Built-in emails are sent by their existing call sites exactly as before; event emails follow the policy table.
+  trigger.emailAuto = trigger.builtIn ? true : policy.auto;
+  trigger.cooldownMs = policy.cooldownMs;
+  trigger.sendRule = SEND_RULES[trigger.emailKey || trigger.key] || SEND_RULES[trigger.key] || null;
+});
+
 const BY_KEY = new Map(TRIGGERS.map((trigger) => [trigger.key, trigger]));
 
 function getTrigger(key) { return BY_KEY.get(key) || null; }

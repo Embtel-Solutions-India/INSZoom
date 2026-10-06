@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext'
 import NotificationBell from '../components/NotificationBell'
 import BrandMark from '../components/BrandMark'
 import useUnreadCounts from '../hooks/useUnreadCounts'
+import useScrollRestoration from '../hooks/useScrollRestoration'
 
 // Same sidebar/header shape as Admin/Immiglance's own Layout.jsx — same
 // design tokens (src/index.css, copied verbatim), same component classes
@@ -23,6 +24,7 @@ export default function AppLayout() {
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+  useScrollRestoration() // back to a list returns to exactly where you were, then stops
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // Desktop-only collapse; remembered per browser.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {

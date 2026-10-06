@@ -51,6 +51,8 @@ const VISA_TYPE_OPTIONS = [
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },
+  // DOL labor certification: an employer + exactly one employee matter (see PERM_STRUCTURE below).
+  { value: 'perm', label: 'PERM (Labor Certification)', canonicalLabel: 'PERM' },
   // Standalone single-party filing types (Backend/src/config/filingTypes.js) -
   // no second party (no petitioner/beneficiary or employer/employee), so
   // these go through singlePartyFilingsApi.createCase (POST
@@ -111,7 +113,13 @@ const PACKAGE_OPTIONS = [
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
 
-const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b'])
+const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'perm'])
+
+// What a PERM case is created with - shown read-only on the create form.
+const PERM_STRUCTURE = [
+  { title: 'Employer Information Checklist', detail: '19 questions - completed by the employer' },
+  { title: 'Employee Information Checklist', detail: 'Information, qualification, repeatable employment history and required documents - completed by the one employee' },
+]
 
 const initialForm = {
   clientName: '',
@@ -457,6 +465,18 @@ const CreateCaseModal = ({
             </select>
           </div>
           </>
+          )}
+
+          {form.visaType === 'perm' && (
+            <div className="rounded-lg border border-border bg-muted p-3 text-sm">
+              <p className="font-medium text-muted-foreground mb-1">This PERM case is created with</p>
+              <ul className="list-disc pl-5 space-y-0.5 text-muted-foreground">
+                {PERM_STRUCTURE.map((item) => (
+                  <li key={item.title}><span className="font-medium">{item.title}</span> - {item.detail}</li>
+                ))}
+                <li>One employee (PERM has a single employee, so no additional employees can be added)</li>
+              </ul>
+            </div>
           )}
 
           {showEmployerFields && (

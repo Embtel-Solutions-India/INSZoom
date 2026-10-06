@@ -1,10 +1,12 @@
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import KeepAliveOutlet from '../components/KeepAliveOutlet'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { requestPermissionAndGetToken } from '../services/notificationService'
 import BrandMark from '../components/BrandMark'
+import useScrollRestoration from '../hooks/useScrollRestoration'
 import {
   LayoutDashboard,
   Briefcase,
@@ -43,6 +45,7 @@ const Layout = () => {
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+  useScrollRestoration() // back to a list returns to exactly where you were, then stops
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // Desktop-only collapse; remembered per browser.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -395,7 +398,7 @@ const Layout = () => {
 
         {/* Page content */}
         <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 lg:p-6">
-          <Outlet />
+          <KeepAliveOutlet />
         </main>
       </div>
     </div>

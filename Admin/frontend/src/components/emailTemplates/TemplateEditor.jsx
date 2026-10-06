@@ -18,7 +18,7 @@ const TOKEN_RE = /\[([a-z][a-z_]*\.[a-z][a-z_]*)\]/g
 
 const editable = (form) => ({
   name: form.name, description: form.description, category: form.category, subject: form.subject,
-  heading: form.heading, body: form.body, triggerKey: form.triggerKey || null, recipients: form.recipients,
+  heading: form.heading, body: form.body, triggerKey: form.triggerKey || null, recipients: form.recipients, sendEmail: form.sendEmail !== false,
 })
 
 function Section({ title, description, children }) {
@@ -351,6 +351,22 @@ export default function TemplateEditor({ initial, meta, onBack, onChanged }) {
               </div>
             )}
             {form.status === 'active' && <p className="text-xs text-muted-foreground">Deactivate this template to change its trigger.</p>}
+            {trigger?.sendRule && (
+              <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3 text-xs">
+                <p><span className="font-semibold text-foreground">Sent when:</span> <span className="text-muted-foreground">{trigger.sendRule.when}</span></p>
+                <p><span className="font-semibold text-foreground">Not sent when:</span> <span className="text-muted-foreground">{trigger.sendRule.unless}</span></p>
+                <p className="text-muted-foreground">
+                  {trigger.emailAuto
+                    ? 'This email is sent automatically. Activating your template changes its wording; the switch below turns it off.'
+                    : 'This event always sends the in-app and push alert; the email is only sent once you activate a template.'}
+                  {' '}It is never sent to the person who performed the action, to accounts that cannot log in yet, to placeholder addresses, or twice for the same case within a few minutes.
+                </p>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input type="checkbox" checked={form.sendEmail !== false} onChange={(e) => set({ sendEmail: e.target.checked })} />
+                  Send this email{form.sendEmail === false ? ' (currently OFF — only the alerts are sent)' : ''}
+                </label>
+              </div>
+            )}
           </Section>
 
           <Section title="Email content">
@@ -376,7 +392,7 @@ export default function TemplateEditor({ initial, meta, onBack, onChanged }) {
               />
             </Field>
             <Field label="Body">
-              <RichTextEditor ref={bodyRef} variables={suggestable} value={form.body} onChange={(html) => set({ body: html })} onFocus={() => setActiveField('body')} />
+              <RichTextEditor ref={bodyRef} variables={suggestable} linkPresets={meta.linkPresets || []} value={form.body} onChange={(html) => set({ body: html })} onFocus={() => setActiveField('body')} />
             </Field>
             {hasIssues && (
               <div role="alert" className="flex gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">

@@ -11,6 +11,7 @@ const customization = require("../email/emailCustomization.service");
 const registry = require("../email/emailVariables.registry");
 const triggerRegistry = require("../email/emailTriggers.registry");
 const { renderCustom, previewShells } = require("../email/emailRenderer");
+const env = require("../../config/env");
 
 router.use(authenticate);
 
@@ -32,7 +33,7 @@ const legacyDenied = (req, res) => {
   res.status(403).json({ success: false, message: "Missing required permission" });
   return true;
 };
-const CONTENT_FIELDS = ["name", "description", "category", "subject", "heading", "body", "triggerKey", "recipients"];
+const CONTENT_FIELDS = ["name", "description", "category", "subject", "heading", "body", "triggerKey", "recipients", "sendEmail"];
 
 const cleanRules = (list) => (Array.isArray(list) ? list : [])
   .filter((rule) => rule && typeof rule.type === "string")
@@ -49,7 +50,7 @@ async function audit(req, templateId, previousValue, newValue) {
 
 const snapshot = (template) => template && ({
   name: template.name, status: template.status, triggerKey: template.triggerKey, subject: template.subject,
-  heading: template.heading, body: template.body, recipients: template.recipients, version: template.version,
+  heading: template.heading, body: template.body, recipients: template.recipients, sendEmail: template.sendEmail, version: template.version,
 });
 
 // Returns an error message (string) or null.
@@ -72,6 +73,27 @@ function contentError(fields, { requireComplete = false } = {}) {
 const RULE_TYPES = new Set(triggerRegistry.RECIPIENT_TYPES.map((entry) => entry.type));
 const defaultTo = (trigger) => (RULE_TYPES.has(trigger?.audience) ? trigger.audience : trigger?.recipient === "team_member" ? "case_manager" : trigger?.recipient || "client");
 
+// Where an email button can point. Real origins come from the environment
+// (CLIENT_URL / ADMIN_PORTAL_URL / ATTORNEY_PORTAL_URL / LANDING_URL); the
+// first entry resolves per recipient at send time to THEIR portal, deep-linked.
+const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
+function linkPresets() {
+  const client = trimSlash(env.clientUrl);
+  const admin = trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002");
+  const attorney = trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174");
+  const landing = trimSlash(process.env.LANDING_URL || "http://localhost:5173");
+  return [
+    { label: "Recipient's own portal (opens their case)", value: "[system.portal_link]", text: "Open in Immiglance" },
+    { label: "Client portal - dashboard", value: `${client}/dashboard`, text: "Go to My Portal" },
+    { label: "Client portal - documents", value: `${client}/dashboard/documents`, text: "Upload Documents" },
+    { label: "Activate account / set password (invite email)", value: `${client}/accept-invite?token=[system.invite_token]`, text: "Set Your Password" },
+    { label: "Reset password (reset email)", value: `${client}/reset-password?token=[system.invite_token]`, text: "Reset Password" },
+    { label: "Admin Portal", value: `${admin}/dashboard`, text: "Open the Admin Portal" },
+    { label: "Attorney Portal", value: `${attorney}/dashboard`, text: "Open the Attorney Portal" },
+    { label: "Immiglance website", value: landing, text: "Visit Immiglance" },
+  ];
+}
+
 // Static metadata for the editor: variable registry, triggers, categories,
 // recipient types. One call so the UI never keeps its own copy.
 router.get("/meta", authorizePermissions(PERMISSION), (req, res) => {
@@ -86,6 +108,7 @@ router.get("/meta", authorizePermissions(PERMISSION), (req, res) => {
       audiences: triggerRegistry.AUDIENCES.map((key) => ({ key, label: triggerRegistry.AUDIENCE_LABEL[key] })),
       fromName: process.env.EMAIL_FROM_NAME || "Immiglance",
       previewShells: previewShells(),
+      linkPresets: linkPresets(),
     },
   });
 });
@@ -103,6 +126,7 @@ router.get("/library", authorizePermissions(PERMISSION), async (req, res, next) 
         id: String(t._id), kind: "custom", name: t.name, category: t.category, status: t.status,
         triggerKey: t.triggerKey, triggerLabel: trigger?.label || null, recipient: trigger?.recipient || null,
         audience: trigger?.audience || null, available: true, sendsPush: Boolean(trigger && !trigger.builtIn),
+        sendEmail: t.sendEmail !== false, emailAuto: trigger?.emailAuto ?? null, sendRule: trigger?.sendRule || null,
         locked: false, updatedAt: t.updatedAt, description: t.description,
       };
     });
@@ -113,6 +137,7 @@ router.get("/library", authorizePermissions(PERMISSION), async (req, res, next) 
         triggerKey: trigger.key, triggerLabel: trigger.label, recipient: trigger.recipient,
         audience: trigger.audience, available: trigger.available !== false, unavailableReason: trigger.unavailableReason || null,
         sendsPush: !trigger.builtIn && trigger.available !== false,
+        sendEmail: true, emailAuto: trigger.emailAuto, sendRule: trigger.sendRule,
         locked: trigger.locked, updatedAt: null, description: trigger.description,
       });
     });

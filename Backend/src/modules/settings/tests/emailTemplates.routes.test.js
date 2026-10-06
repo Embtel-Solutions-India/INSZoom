@@ -231,3 +231,16 @@ test("library offers only emails that exist, one entry per moment (hidden duplic
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.data.recipients.to, [], "event triggers have no To rule - the event decides");
 });
+
+test("meta offers real link destinations for email buttons (the recipient's own portal first, tokens for activation/reset)", async () => {
+  const { body } = await call("GET", "/meta");
+  const presets = body.data.linkPresets;
+  assert.equal(presets[0].value, "[system.portal_link]");
+  assert.ok(presets.every((preset) => preset.label && preset.text && preset.value));
+  assert.ok(presets.some((preset) => /\/accept-invite\?token=\[system\.invite_token\]$/.test(preset.value)));
+  assert.ok(presets.some((preset) => /\/reset-password\?token=\[system\.invite_token\]$/.test(preset.value)));
+  assert.ok(presets.some((preset) => /\/dashboard\/documents$/.test(preset.value)));
+  // every variable used in a preset is a real, registered variable
+  const registry = require("../../email/emailVariables.registry");
+  presets.forEach((preset) => assert.deepEqual(registry.validateTokens([preset.value], null).unknown, [], preset.value));
+});

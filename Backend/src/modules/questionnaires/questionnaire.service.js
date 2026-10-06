@@ -34,6 +34,7 @@ const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
+const { validateRepeatingGroupRows } = require("./repeating-group-validation");
 const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
 
 const DESIGNER_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -261,6 +262,9 @@ function normalizeAnswerValue(question, value) {
   if (Array.isArray(value)) return value.map((item) => normalizeAnswerValue(question, item));
   if (typeof value === "object") return value;
   const stringValue = String(value).trim();
+  // EIN / State ID are identifiers, never numbers: store the digits as a string so a
+  // leading zero is never lost (the display format XX-XXXXXXX is a UI concern).
+  if (["ein", "state_id"].includes(question.metadata?.format)) return stringValue.replace(/\D/g, "");
   switch (question.type) {
     case "email":
       return stringValue.toLowerCase();
@@ -393,8 +397,13 @@ function validateQuestionValue(question, value) {
   const warnings = [];
   const rules = [...(question.validationRules || [])];
   if (question.required && !rules.some((rule) => rule.type === "required")) rules.push({ type: "required" });
+  const isUnanswered = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
   for (const rule of rules) {
     const bucket = rule.severity === "warning" ? warnings : errors;
+    // Format/range rules only judge an answer that was actually given; whether an
+    // answer is mandatory is the "required" rule's job alone. (An optional field
+    // such as a fax number or website must not fail its pattern just by being empty.)
+    if (rule.type !== "required" && isUnanswered) continue;
     if (rule.type === "required" && (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length))) {
       bucket.push(rule.message || `${question.label} is required`);
     }
@@ -406,6 +415,11 @@ function validateQuestionValue(question, value) {
     if (rule.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) bucket.push(rule.message || `${question.label} must be a valid email`);
     if (rule.type === "phone" && value && String(value).replace(/\D/g, "").length < Number(rule.value || 7)) bucket.push(rule.message || `${question.label} must be a valid phone number`);
     if (rule.type === "date" && value && Number.isNaN(new Date(value).getTime())) bucket.push(rule.message || `${question.label} must be a valid date`);
+  }
+  if (question.type === "repeating_group" && Array.isArray(value) && value.length) {
+    const rowResult = validateRepeatingGroupRows(question, value);
+    errors.push(...rowResult.errors);
+    warnings.push(...rowResult.warnings);
   }
   if (question.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) errors.push(`${question.label} must be a valid email`);
   if (question.type === "phone" && value && String(value).replace(/\D/g, "").length < 7) errors.push(`${question.label} must be a valid phone number`);
@@ -784,14 +798,14 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
       type: "questionnaire_sent",
       title: "Questionnaire Available",
       message: payload.message || `Please complete ${questionnaire.title}.`,
-      link: profileOnlyQuestionnaire ? "/dashboard/profile" : `/questionnaire/${responseId}`,
+      link: profileOnlyQuestionnaire ? "/dashboard/profile" : "/dashboard",
       caseId: caseData._id,
       source: "shared",
     }, user, req);
   }
   await workflowService.triggerWorkflow("questionnaire.sent", { caseId: caseData._id, questionnaireId: questionnaire._id, responseId }, user, req);
   // Customizable email for "Questionnaire available" - the in-app alert above is the existing one (it now also pushes).
-  if (assignedTo) {
+  if (assignedTo && !/i907_premium_processing_profile/.test(questionnaire.key || "") && !/i-?907|premium processing/i.test(questionnaire.title || "")) {
     require("../notifications/triggerEvents.service").emitInBackground("questionnaire.assigned", {
       caseId: caseData._id, actor: user, req, data: { questionnaireName: questionnaire.title },
       recipients: { client: [assignedTo] }, covered: { client: { notified: true, emailed: false } },
@@ -2175,6 +2189,7 @@ function slugSection(title) {
 const RECONCILABLE_QUESTION_FIELDS = [
   "label", "type", "sectionKey", "pageKey", "order", "required", "description",
   "options", "conditionalLogic", "metadata", "mapping", "evidenceCategory", "visibility", "repeatable",
+  "validationRules", "repeatableConfig",
 ];
 
 function reconcileQuestionFields(existingDoc, definitionQuestion) {
@@ -3163,6 +3178,11 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  // pure helpers, exported so definition tests can exercise real validation without a DB
+  isQuestionVisible,
+  normalizeAnswerValue,
+  validateQuestionValue,
+  validateResponse,
   addComment,
   approveQuestionnaireDefinition,
   approveResponse,

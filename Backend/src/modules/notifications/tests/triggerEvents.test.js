@@ -19,7 +19,8 @@ const USERS = {
   cm1: { _id: "cm1", email: "cm@x.com", role: "case_manager", name: "Cee Em" },
   att1: { _id: "att1", email: "att@x.com", role: "attorney", name: "Att One" },
   att2: { _id: "att2", email: "att2@x.com", role: "attorney", name: "Att Two" },
-  cl1: { _id: "cl1", email: "client@x.com", role: "client", name: "Client One" },
+  cl1: { _id: "cl1", email: "client@x.com", role: "client", name: "Client One", password: "hash" },
+  cl2: { _id: "cl2", email: "pending@x.com", role: "client", name: "Pending Client" }, // has not set a password yet
 };
 
 function setup(t, { custom = null, people } = {}) {
@@ -73,22 +74,28 @@ test("catalog: unique keys, valid variables, nothing unbuildable listed, no dupl
 });
 
 // ── dispatcher ──────────────────────────────────────────────────────────
-test("RFE received alerts team lead, every admin and the attorneys with access - in-app + socket + push, never email by default", async (t) => {
+test("RFE received alerts team lead, every admin and the attorneys with access - in-app + socket + push, and emails them automatically", async (t) => {
   const { created, emails } = setup(t);
   await triggerEvents.emit("rfe.received", { caseId: freshCase(), actor: { _id: "someone" }, data: { rfeDeadline: "Dec 15, 2026" } });
   const byUser = Object.fromEntries(created.map((p) => [p.userId, p]));
   assert.deepEqual(Object.keys(byUser).sort(), ["a1", "a2", "att1", "att2", "tl1"]);
   created.forEach((payload) => {
-    assert.deepEqual(payload.channels, ["in_app", "socket", "push"]);
+    assert.deepEqual(payload.channels, ["in_app", "socket", "push", "email"]);
+    assert.match(payload.emailTemplate, /^rfe\.received:/);
     assert.equal(payload.type, "rfe_received");
     assert.equal(payload.priority, "urgent");
-    assert.match(payload.message, /\[?B1\]?|B1/);
     assert.match(payload.message, /Dec 15, 2026/);
-    assert.equal(payload.emailTemplate, undefined);
   });
   assert.match(byUser.att1.link, /^\/cases\//);
   assert.match(byUser.tl1.link, /^\/crm-cases\//);
-  assert.equal(emails.length, 0);
+  assert.equal(emails.length, 0, "the email goes through the notification, not a second direct send");
+});
+
+test("operational events are push + in-app only by default (no email noise)", async (t) => {
+  const { created } = setup(t);
+  await triggerEvents.emit("case.created", { caseId: freshCase(), actor: { _id: "someone" } });
+  assert.ok(created.length > 0);
+  created.forEach((payload) => { assert.deepEqual(payload.channels, ["in_app", "socket", "push"]); assert.equal(payload.emailTemplate, undefined); });
 });
 
 test("the actor is never notified of their own action, and nobody is notified twice for one event", async (t) => {
@@ -116,13 +123,39 @@ test("recipients can be pinned (only the attorney just assigned, not every attor
   assert.equal(created.length, 0, "covered + no active customization = nothing new");
 });
 
-test("email: only added when an admin has ACTIVATED a customized template for that trigger", async (t) => {
-  const { created } = setup(t, { custom: { key: "rfe.received:team_lead", _id: "c1" } });
+test("a non-automatic trigger emails only once an admin ACTIVATES a template", async (t) => {
+  const { created } = setup(t, { custom: { key: "case.cm_assigned:team_lead", _id: "c1" } });
+  await triggerEvents.emit("case.cm_assigned", { caseId: freshCase() });
+  assert.deepEqual(created.find((p) => p.userId === "tl1").channels, ["in_app", "socket", "push", "email"]);
+  assert.deepEqual(created.find((p) => p.userId === "a1").channels, ["in_app", "socket", "push"], "admin audience has no active template");
+});
+
+test("sendEmail:false (admin switched the email off) keeps the alert but removes the email", async (t) => {
+  const { created } = setup(t, { custom: { key: "rfe.received:team_lead", _id: "c1", sendEmail: false } });
   await triggerEvents.emit("rfe.received", { caseId: freshCase() });
-  const tl = created.find((p) => p.userId === "tl1");
-  assert.deepEqual(tl.channels, ["in_app", "socket", "push", "email"]);
-  assert.equal(tl.emailTemplate, "rfe.received:team_lead");
-  assert.deepEqual(created.find((p) => p.userId === "a1").channels, ["in_app", "socket", "push"]);
+  assert.deepEqual(created.find((p) => p.userId === "tl1").channels, ["in_app", "socket", "push"]);
+  assert.deepEqual(created.find((p) => p.userId === "a1").channels, ["in_app", "socket", "push", "email"]);
+});
+
+test("who is NOT emailed: pending clients, demo data, placeholder domains - but they still get the in-app/push alert", async (t) => {
+  const { created } = setup(t, { people: { client: ["cl1", "cl2"], case_manager: [], team_lead: [], attorney: [] } });
+  await triggerEvents.emit("attorney.assigned", { caseId: freshCase(), data: { attorneyName: "A" }, recipients: { attorney: [] } });
+  const channels = (id) => created.find((p) => p.userId === id).channels;
+  assert.ok(channels("cl1").includes("email"), "activated client is emailed");
+  assert.ok(!channels("cl2").includes("email") && channels("cl2").includes("push"), "client without a password is not emailed");
+
+  created.length = 0;
+  USERS.cl1.email = "client@example.com";
+  t.after(() => { USERS.cl1.email = "client@x.com"; });
+  await triggerEvents.emit("attorney.assigned", { caseId: freshCase(), recipients: { attorney: [] } });
+  assert.ok(!created.find((p) => p.userId === "cl1").channels.includes("email"), "placeholder domain is not emailed");
+
+  created.length = 0;
+  USERS.cl1.email = "client@x.com";
+  USERS.cl1.isDemoData = true;
+  t.after(() => { delete USERS.cl1.isDemoData; });
+  await triggerEvents.emit("attorney.assigned", { caseId: freshCase(), recipients: { attorney: [] } });
+  assert.ok(!created.find((p) => p.userId === "cl1").channels.includes("email"), "demo data is not emailed");
 });
 
 test("covered + active customization sends ONLY the email (no duplicate in-app/push); not if the existing code already emailed", async (t) => {
@@ -195,25 +228,74 @@ function stubProvider(t) {
   return sent;
 }
 
-test("event trigger with no active template sends nothing; with one, sends the customized email to the dispatcher's recipient only", async (t) => {
+test("event email: non-automatic with no template sends nothing; automatic sends its default wording; a switched-off one is skipped", async (t) => {
   const sent = stubProvider(t);
   const original = customization.findActive;
   const originalCtx = customization.buildContext;
   t.after(() => { customization.findActive = original; customization.buildContext = originalCtx; });
-  customization.buildContext = async ({ data }) => ({ data, caseContext: { case: { id: "B1" }, attorney: { email: "att@x.com" } } });
+  customization.buildContext = async ({ data }) => ({ data, caseContext: { case: { id: "B1" }, client: { name: "John" }, attorney: { email: "att@x.com" } } });
 
   customization.findActive = async () => null;
-  let result = await emailService.sendTemplateEmail("rfe.received:admin", { to: "admin1@x.com", data: {}, recipientRole: "client" });
+  let result = await emailService.sendTemplateEmail("case.created:admin", { to: "admin1@x.com", data: {} });
   assert.equal(result.skipped, true);
-  assert.equal(sent.length, 0);
+  assert.equal(sent.length, 0, "operational event: no email without an activated template");
+
+  result = await emailService.sendTemplateEmail("rfe.received:admin", { to: "admin1@x.com", data: { portalLink: "https://admin.x.com/crm-cases/1", recipientName: "Ann" } });
+  assert.equal(result.sent, true);
+  assert.match(sent[0].subject, /^URGENT: USCIS has requested additional evidence/);
+  assert.match(sent[0].html, /Hi Ann,/);
+  assert.match(sent[0].html, /https:\/\/admin\.x\.com\/crm-cases\/1/);
+  assert.equal(sent[0].to, "admin1@x.com");
+
+  customization.findActive = async () => ({ _id: "c", sendEmail: false });
+  result = await emailService.sendTemplateEmail("rfe.received:admin", { to: "admin1@x.com", data: {} });
+  assert.equal(result.reason, "disabled_by_admin");
+  assert.equal(sent.length, 1);
 
   customization.findActive = async () => ({ _id: "c", subject: "RFE on [case.id]", heading: "", body: "<p>x</p>", recipients: { to: [{ type: "attorney" }], cc: [{ type: "attorney" }], bcc: [{ type: "custom", value: "audit@x.com" }] } });
-  result = await emailService.sendTemplateEmail("rfe.received:admin", { to: "admin1@x.com", data: {}, recipientRole: "client" });
+  result = await emailService.sendTemplateEmail("rfe.received:admin", { to: "admin1@x.com", data: {} });
   assert.equal(result.sent, true);
-  assert.equal(sent[0].to, "admin1@x.com", "To rules never redirect an event trigger's email");
-  assert.deepEqual(sent[0].cc, ["att@x.com"]);
-  assert.deepEqual(sent[0].bcc, ["audit@x.com"]);
-  assert.equal(sent[0].subject, "RFE on B1");
+  assert.equal(sent[1].to, "admin1@x.com", "To rules never redirect an event trigger's email");
+  assert.deepEqual(sent[1].cc, ["att@x.com"]);
+  assert.deepEqual(sent[1].bcc, ["audit@x.com"]);
+});
+
+test("guards on EVERY email: placeholder/invalid addresses and same-case repeats are skipped; invites are exempt", async (t) => {
+  const sent = stubProvider(t);
+  const original = customization.findActive;
+  customization.findActive = async () => null;
+  t.after(() => { customization.findActive = original; });
+  const emailPolicy = require("../../email/emailPolicy");
+  const originalRecent = emailPolicy.recentlySent;
+  let alreadySent = false;
+  emailPolicy.recentlySent = async () => alreadySent;
+  t.after(() => { emailPolicy.recentlySent = originalRecent; });
+
+  let r = await emailService.sendTemplateEmail("case-created-client", { to: "someone@example.com", data: { caseNumber: "B1" } });
+  assert.equal(r.reason, "placeholder_domain");
+  r = await emailService.sendTemplateEmail("case-created-client", { to: "not-an-email", data: { caseNumber: "B1" } });
+  assert.equal(r.reason, "invalid_address");
+  assert.equal(sent.length, 0);
+
+  alreadySent = true;
+  r = await emailService.sendTemplateEmail("case-created-client", { to: "real@x.com", data: { caseNumber: "B1" }, caseId: "c1" });
+  assert.equal(r.reason, "repeat");
+  assert.equal(sent.length, 0);
+  r = await emailService.sendTemplateEmail("client-portal-invitation", { to: "real@x.com", data: { caseNumber: "B1", token: "t" }, caseId: "c1" });
+  assert.equal(r.sent, true, "an activation email is never throttled");
+  r = await emailService.sendTemplateEmail("case-created-client", { to: "real@x.com", data: { caseNumber: "B1" } }); // no case -> no repeat guard
+  assert.equal(r.sent, true);
+});
+
+test("policy table: every visible email has a plain-language when/unless rule; automatic events are a deliberate short list", () => {
+  triggers.listVisible().forEach((trigger) => {
+    assert.ok(trigger.sendRule?.when, `${trigger.key} needs a send rule`);
+    assert.ok(trigger.sendRule.unless, `${trigger.key} needs an 'unless' rule`);
+  });
+  const auto = triggers.TRIGGERS.filter((t) => !t.builtIn && t.emailAuto).map((t) => t.key);
+  assert.ok(auto.includes("rfe.received:admin") && auto.includes("attorney.assigned:client"));
+  ["case.created:admin", "document.uploaded:case_manager", "questionnaire.submitted:case_manager", "system.email_failed:super_admin", "case.cm_assigned:admin"].forEach((key) => assert.ok(!auto.includes(key), `${key} must not email by default`));
+  assert.ok(auto.length < 25);
 });
 
 test("a failed email send tells super admins, but a failed system alert or a test send does not", async (t) => {
@@ -237,7 +319,7 @@ test("a failed email send tells super admins, but a failed system alert or a tes
 });
 
 test("each audience's email button deep-links into its own portal and case", async (t) => {
-  const { created } = setup(t, { custom: "all" });
+  const { created } = setup(t);
   process.env.ATTORNEY_PORTAL_URL = "https://attorney.example.com";
   process.env.ADMIN_PORTAL_URL = "https://admin.example.com";
   const caseId = freshCase();
