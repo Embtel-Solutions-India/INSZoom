@@ -225,12 +225,20 @@ questionSchema.pre("validate", function syncEnterpriseFields(next) {
       lt: "less_than",
       lte: "less_than",
       missing: "not_exists",
+      not_empty: "exists",
+      empty: "not_exists",
     };
-    this.showIf = {
-      field: firstRule.questionKey,
-      operator: operatorMap[firstRule.operator] || firstRule.operator,
-      value: firstRule.value,
-    };
+    // showIf is only a legacy mirror of conditionalLogic (conditionalLogic stays authoritative), and
+    // its operator enum is narrower. A rule with no legacy equivalent (in, not_in, not_contains ...)
+    // must not fail the whole question's validation - it simply has no mirror.
+    const legacyOperator = operatorMap[firstRule.operator] || firstRule.operator;
+    if (["equals", "not_equals", "contains", "greater_than", "less_than", "exists", "not_exists"].includes(legacyOperator)) {
+      this.showIf = {
+        field: firstRule.questionKey,
+        operator: legacyOperator,
+        value: firstRule.value,
+      };
+    }
   }
 
   if (this.uscisMappings?.length && !this.mapping?.uscisFieldPath) {

@@ -52,6 +52,13 @@ const AUTOFILL_DOCUMENT_TYPES = [
   "credential_evaluation_report",
   "employee_drivers_license_or_state_id",
 
+  // --- PERM employee checklist slots (questionnaires/permChecklists.js PERM_DOCUMENTS) ---
+  "perm_resume",
+  "perm_degree_documents",
+  "perm_transcripts",
+  "perm_experience_letters",
+  "perm_degree_evaluation",
+
   // --- L-1A (employment-workflow/questionnaires/l1a.js) ---
   "us_articles_of_incorporation",
   "ein_assignment_letter",

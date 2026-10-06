@@ -379,7 +379,30 @@ class CanonicalBuilderService {
         targetPath = scopeFamilyPath(targetPath, partyOf(answer.participantRole, answer.questionnaireKey, answer.questionKey));
       }
       if (!targetPath) return;
-      pushCandidate(candidates, targetPath, answer.normalizedValue !== undefined ? answer.normalizedValue : answer.value, {
+      const answerValue = answer.normalizedValue !== undefined ? answer.normalizedValue : answer.value;
+      const provenance = {
+        sourceType: "questionnaire",
+        source: "Questionnaire",
+        sourceId: answer._id,
+        sourceField: answer.questionKey,
+        confidence: answer.status === "approved" ? 95 : answer.status === "submitted" ? 85 : 75,
+        status: answer.status,
+        verifiedBy: answer.approvedBy || answer.reviewedBy,
+        verificationStatus: answer.status === "approved" ? "case_manager_verified" : undefined,
+        verificationDate: answer.approvedAt || answer.reviewedAt,
+        collectedAt: answer.updatedAt,
+      };
+      // An "address"-type answer is an object; fan it out into one candidate per part (each with its own
+      // provenance) so company.address.line1 / .city / .state / .zip resolve like any other scalar path.
+      if (targetPath === "company.address" && answerValue && typeof answerValue === "object" && !Array.isArray(answerValue)) {
+        const { ADDRESS_PART_KEYS } = require("../config/permCanonicalPaths");
+        Object.entries(answerValue).forEach(([key, partValue]) => {
+          const part = ADDRESS_PART_KEYS[key];
+          if (part) pushCandidate(candidates, `company.address.${part}`, partValue, provenance);
+        });
+        return;
+      }
+      pushCandidate(candidates, targetPath, answerValue, {
         sourceType: "questionnaire",
         source: "Questionnaire",
         sourceId: answer._id,

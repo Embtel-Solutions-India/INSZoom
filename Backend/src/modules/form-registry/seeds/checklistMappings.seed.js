@@ -222,6 +222,39 @@ set("K-3", "I-131", [cm("k3_beneficiary_checklist", COND, { role: "beneficiary" 
 // ---- Green Card Renewal (spec §9) ---------------------------------------
 set("Green Card Renewal", "I-90", [cm("green_card_renewal_checklist", AUTO)]);
 
+// ---- PERM (standalone Department of Labor matter) -----------------------
+// The two PERM checklists are default-assigned by checklistRole at case creation
+// (permChecklists.js); both DOL filings draw on the employer AND employee answers.
+for (const formNumber of ["ETA-9141", "ETA-9089"]) {
+  set("PERM", formNumber, [
+    cm("perm_employer_information", AUTO, { role: "employer" }),
+    cm("perm_employee_information", AUTO, { role: "employee" }),
+  ]);
+}
+
+// The USCIS forms a PERM matter reaches later (see config/permStages.js) draw on the SAME two checklists:
+// I-140 on both employer and employee data; the adjustment-stage forms on the employee's.
+set("PERM", "I-140", [
+  cm("perm_employer_information", AUTO, { role: "employer" }),
+  cm("perm_employee_information", AUTO, { role: "employee" }),
+]);
+for (const formNumber of ["I-485", "I-765", "I-131"]) {
+  set("PERM", formNumber, [cm("perm_employee_information", AUTO, { role: "employee" })]);
+}
+
+// ---- Premium Processing (Form I-907) ------------------------------------
+// One dedicated checklist (premiumProcessingChecklist.js). On the standalone "Premium
+// Processing" case it is the case's AUTO checklist. For every other visa type's I-907
+// row (a Case-Manager-decision CONDITIONAL form) it is APPENDED to whatever the spec
+// already lists there - the Case Manager's "Upgrade to Premium Processing" button
+// assigns it, and the I-907 mapping graph reads its answers.
+const I907_CHECKLIST = "i907_premium_processing_profile";
+set("Premium Processing", "I-907", [cm(I907_CHECKLIST, AUTO)]);
+for (const entry of ENTRIES) {
+  if (entry.formNumber !== "I-907" || entry.visaType === "Premium Processing") continue;
+  entry.checklistMappings.push(cm(I907_CHECKLIST, EXPLICIT_CM, { notes: "Premium Processing upgrade checklist - never auto-assigned; added by the Case Manager upgrade button" }));
+}
+
 // ---- I-131 standalone/add-on (spec §10) ---------------------------------
 // EXPLICIT_CM everywhere it's a genuinely optional add-on (not already
 // covered by a visa-specific AUTO/CONDITIONAL entry above, e.g. EB-1A/

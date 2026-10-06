@@ -26,7 +26,7 @@ function DocumentTypeIcon({ className = "h-4 w-4" }) {
 // text, and a status chip on the right — then the actual control underneath.
 // Reused by both the reusable-document items and the questionnaire's field +
 // conditional-document items on the Documents page's single-page Checklist.
-export default function ChecklistItemRow({ id, type = "field", label, required = false, help, status = STATUS.NOT_STARTED, statusReason, savingLabel, children }) {
+export default function ChecklistItemRow({ id, type = "field", label, required = false, help, status = STATUS.NOT_STARTED, statusReason, savingLabel, wide = false, children }) {
   const meta = STATUS_META[status] || STATUS_META[STATUS.NOT_STARTED];
   const StatusIcon = meta.icon;
   const tag = TYPE_TAG[type] || TYPE_TAG.field;
@@ -34,7 +34,7 @@ export default function ChecklistItemRow({ id, type = "field", label, required =
   const controlId = id ? `${id}-control` : undefined;
 
   return (
-    <div id={id} className="scroll-mt-28 rounded-lg border border-card-border bg-card p-4 sm:p-5 shadow-sm">
+    <div id={id} className={`scroll-mt-28 rounded-lg border border-card-border bg-card p-4 sm:p-5 shadow-sm ${wide ? "md:col-span-2" : ""}`}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <span className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg ${type === "document" ? "bg-accent text-accent-foreground" : "bg-secondary text-secondary-foreground"}`}>

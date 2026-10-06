@@ -71,6 +71,8 @@ router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), auth
 
 router.put("/:id/stage", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updateCaseStage);
 router.post("/:id/n400-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN400Process);
+router.put("/:id/perm-workflow", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updatePermWorkflow);
+router.post("/:id/premium-processing/upgrade", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.upgradeToPremiumProcessing);
 router.post("/:id/n600-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN600Process);
 router.post("/:id/change-of-address/add", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.addChangeOfAddress);
 router.post("/:id/change-of-address/:componentId/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveChangeOfAddress);

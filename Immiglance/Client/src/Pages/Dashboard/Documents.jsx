@@ -32,6 +32,7 @@ import {
   sectionKey,
   titleFromKey,
   matchingAutofillSources,
+  isWideQuestion,
 } from "../../utils/questionnaireEngine";
 import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from "../../utils/checklistStatus";
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
@@ -157,8 +158,11 @@ export default function Documents() {
   const refetchActiveCase = useEmployerCaseResolution ? employerMeQuery.refetch : refetchMyCase;
 
   const allowedRoles = resolveApplicableChecklistRoles(activeCase, user);
-  const { checklists: assignedChecklists, refetch: refetchChecklists } = useCaseChecklists(activeCaseId);
-  const visibleChecklists = allowedRoles ? assignedChecklists.filter((item) => allowedRoles.includes(item.targetRole)) : assignedChecklists;
+  const { checklists: assignedChecklists, loading: checklistsLoading, refetch: refetchChecklists } = useCaseChecklists(activeCaseId);
+  // The Premium Processing (Form I-907) add-on checklist has its own section below the checklists
+  // (StaffRequestedItems -> PremiumProcessingChecklist), so it never becomes a tab/role here.
+  const pageChecklists = assignedChecklists.filter((item) => !(item.staffRequest && item.key === "i907_premium_processing_profile"));
+  const visibleChecklists = allowedRoles ? pageChecklists.filter((item) => allowedRoles.includes(item.targetRole)) : pageChecklists;
 
   // The new simultaneous multi-role page (handoff junction, rail grouping)
   // only ever applies to the employer/employee-invite case shape. A K-1/K-3
@@ -691,6 +695,17 @@ export default function Documents() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  // A new case's checklists stay drafts until the case manager approves them (the server hides them from the client
+  // portal until then) - say so, instead of showing an empty or failed checklist.
+  if (activeCase?.checklistApproval?.required && !checklistsLoading && assignedChecklists.length === 0) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center" data-testid="checklist-awaiting-approval">
+        <h1 className="text-xl font-bold text-foreground">We're preparing your checklist</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Your case manager is reviewing the checklist for your case. You'll get a notification and an email as soon as it's ready for you to complete.</p>
+      </div>
+    );
+  }
+
   // locked defaults to the legacy/family/individual single-role `submitted`
   // flag; the new-architecture path passes employerRoleSubmitted/
   // employeeRoleSubmitted explicitly per section group instead (Bug C) so
@@ -734,6 +749,7 @@ export default function Documents() {
               status={status}
               statusReason={reason}
               savingLabel={src.savingKey === key ? "Saving…" : undefined}
+              wide={isWideQuestion(question)}
             >
               <QuestionInput
                 question={question}

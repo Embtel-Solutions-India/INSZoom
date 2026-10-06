@@ -147,6 +147,27 @@ exports.listCaseChecklists = async (req, res, next) => {
   }
 };
 
+// Case manager: release draft checklists to the client (one, several, or all on the case and its employee cases).
+exports.approveCaseChecklists = async (req, res, next) => {
+  try {
+    const { checklistIds, all } = req.body || {};
+    const result = await require("./case-checklist.service").approveChecklists(req.params.caseId, { checklistIds: Array.isArray(checklistIds) ? checklistIds : [], all: Boolean(all) }, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Case manager: edit / add / remove a question on ONE case's copy of a checklist. Never changes the template.
+exports.editCaseChecklist = async (req, res, next) => {
+  try {
+    const result = await require("./case-checklist.service").editChecklist(req.params.caseId, req.body || {}, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getQuestionnaire = async (req, res, next) => {
   try {
     const questionnaire = await findQuestionnaire(req.params.id, res);

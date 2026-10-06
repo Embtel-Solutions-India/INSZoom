@@ -9,6 +9,7 @@ const Questionnaire = require("../../models/Questionnaire");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
 const { resolveWithHierarchyFallback } = require("../../config/visaHierarchy");
+const { permStageFlags } = require("../../config/permStages");
 
 // A CONDITIONAL mapping's formNumber that also has its own non-default,
 // explicit-assignment-only client checklist (see i131Checklist.js's file
@@ -40,6 +41,11 @@ function readWhitelistedField(caseData, field) {
       return String(caseData.assessmentAnswers?.newOfficePetition || caseData.questionnaireData?.masterData?.newOfficePetition || "").trim().toLowerCase() === "yes";
     case "hasJointSponsor":
       return Boolean(caseData.jointSponsorUser);
+    case "permCertified":
+    case "permAdjustmentStage":
+    case "permEmploymentAuthorization":
+    case "permAdvanceParole":
+      return permStageFlags(caseData)[field];
     case "visaType":
     case "visaCategory":
     case "caseType":

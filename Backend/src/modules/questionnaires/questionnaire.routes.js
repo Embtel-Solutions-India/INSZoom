@@ -28,6 +28,8 @@ router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizeP
 router.post("/defaults/seed", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.ensureDefaultTemplates);
 router.get("/case/:caseId", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
 router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);
+router.post("/case/:caseId/checklists/approve", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.approveCaseChecklists);
+router.post("/case/:caseId/checklists/edit", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.editCaseChecklist);
 router.post("/import", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.importQuestionnaire);
 router.post("/ai-generate", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.generateQuestionnaire);
 

@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import useCaseChecklists from "../../hooks/useCaseChecklists";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import QuestionInput from "./QuestionInput";
-import { questionKey, isEmptyValue } from "../../utils/questionnaireEngine";
+import PremiumProcessingChecklist, { PREMIUM_PROCESSING_CHECKLIST_KEY } from "./PremiumProcessingChecklist";
+import { questionKey, isEmptyValue, isWideQuestion } from "../../utils/questionnaireEngine";
 
 // One "Additional Requested Information" checklist (created when a case
 // manager requests a document/answer from this user, see Backend
@@ -34,7 +35,7 @@ function RequestedChecklist({ caseId, checklist }) {
           const key = questionKey(question);
           const value = qa.answers[key] ?? question.defaultValue ?? "";
           return (
-            <div key={key} className="rounded-xl border border-border bg-background p-3">
+            <div key={key} className={`rounded-xl border border-border bg-background p-3 ${isWideQuestion(question) ? "md:col-span-2" : ""}`}>
               <p className="text-sm font-semibold text-foreground">
                 {question.label}
                 <span className="ml-1 text-red-500" aria-hidden="true">*</span>
@@ -72,10 +73,15 @@ function RequestedChecklist({ caseId, checklist }) {
 
 export default function StaffRequestedItems({ caseId, user }) {
   const { checklists } = useCaseChecklists(caseId);
-  const mine = checklists.filter((checklist) => checklist.staffRequest && (!checklist.assignedTo || String(checklist.assignedTo) === String(user?._id || user?.id)));
-  if (!caseId || !mine.length) return null;
+  const all = checklists.filter((checklist) => checklist.staffRequest && (!checklist.assignedTo || String(checklist.assignedTo) === String(user?._id || user?.id)));
+  // The Premium Processing (Form I-907) checklist a case manager attaches is also a staff-added
+  // checklist, but it is a full form section of its own - not an "additional item" request.
+  const premium = all.filter((checklist) => checklist.key === PREMIUM_PROCESSING_CHECKLIST_KEY);
+  const mine = all.filter((checklist) => checklist.key !== PREMIUM_PROCESSING_CHECKLIST_KEY);
+  if (!caseId || (!mine.length && !premium.length)) return null;
   return (
     <div className="mt-6 space-y-4">
+      {premium.map((checklist) => <PremiumProcessingChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
       {mine.map((checklist) => <RequestedChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
     </div>
   );

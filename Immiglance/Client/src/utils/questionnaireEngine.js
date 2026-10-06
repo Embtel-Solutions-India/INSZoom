@@ -18,6 +18,18 @@ export function questionKey(question) {
   return question?.key || question?.questionKey || question?._id;
 }
 
+// A question that needs the whole row: a long sentence (squeezed into half a row it wraps into a tall, narrow
+// column), or a control that is itself a block (address, repeating group, long text). Short questions keep
+// sharing a row two to a line.
+const WIDE_TYPES = new Set(["address", "repeating_group", "textarea", "rich_text"]);
+export function isWideQuestion(question) {
+  if (!question) return false;
+  const type = String(question.type || "").toLowerCase();
+  if (WIDE_TYPES.has(type)) return true;
+  if (String(question.label || "").length > 58) return true;
+  return String(question.description || question.helpText || "").length > 150;
+}
+
 export function titleFromKey(key) {
   return String(key || "General")
     .replace(/[_-]+/g, " ")
@@ -177,8 +189,10 @@ export function isEmptyValue(value) {
 
 export function compareValue(actual, operator, expected) {
   const normalizedOperator = operator || "equals";
-  if (normalizedOperator === "exists") return !isEmptyValue(actual);
-  if (normalizedOperator === "missing" || normalizedOperator === "not_exists") return isEmptyValue(actual);
+  // "not_empty" / "empty" are the server condition evaluator's own names for exists / missing (Backend condition-evaluator.js);
+  // without them a rule using them never matched here, silently hiding a question the server still requires.
+  if (normalizedOperator === "exists" || normalizedOperator === "not_empty") return !isEmptyValue(actual);
+  if (normalizedOperator === "missing" || normalizedOperator === "not_exists" || normalizedOperator === "empty") return isEmptyValue(actual);
   if (normalizedOperator === "contains") {
     if (Array.isArray(actual)) return actual.includes(expected);
     return String(actual ?? "").toLowerCase().includes(String(expected ?? "").toLowerCase());

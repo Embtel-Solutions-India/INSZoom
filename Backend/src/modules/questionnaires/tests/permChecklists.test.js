@@ -191,7 +191,7 @@ test("employment history is a repeating group, required (at least one job), with
   assert.equal(history.repeatableConfig.labelTemplate, "Job {n}");
   assert.equal(history.metadata.addLabel, "+ Add Employment");
   assert.equal(history.metadata.itemLabel, "Job");
-  assert.equal(history.mapping.canonicalPath, "employment.history");
+  assert.equal(history.mapping.canonicalPath, "perm.employmentHistory");
 });
 
 test("employment history carries the two source instructions verbatim", () => {
@@ -326,9 +326,15 @@ test("existing canonical fields are reused (no duplicate canonical fields invent
   assert.equal(emp("employer.company_name"), "company.name");
   assert.equal(emp("employer.ein"), "company.ein");
   assert.equal(emp("employer.contact_person_email"), "company.contact.email");
-  // PERM-specific questions stay checklist-only
-  assert.equal(q(employer, "employer.union_status").mapping, undefined);
-  assert.equal(q(employee, "employee.employer_paid_education_training").mapping, undefined);
+  // PERM-only facts have no profile home, so they live under the dedicated perm.* canonical namespace
+  // (employer-side facts under company.*, education extras under education.0.*) - never a USCIS-form field.
+  assert.equal(q(employer, "employer.union_status").mapping.canonicalPath, "company.unionStatus");
+  assert.equal(q(employer, "employer.address").mapping.canonicalPath, "company.address");
+  assert.equal(q(employee, "employee.employer_paid_education_training").mapping.canonicalPath, "perm.employerPaidEducationTraining");
+  assert.equal(q(employee, "employee.qualifying_experience_with_petitioner").mapping.canonicalPath, "perm.qualifyingExperienceWithPetitioner");
+  assert.equal(q(employee, "employee.qualifying_experience_years").mapping.canonicalPath, "perm.qualifyingExperienceYears");
+  assert.equal(q(employee, "employee.currently_employed_by_petitioner").mapping.canonicalPath, "perm.currentlyEmployedByPetitioner");
+  assert.equal(q(employee, "employee.education_institution_zip").mapping.canonicalPath, "education.0.institutionZip");
 });
 
 test("employer and employee data stay separate: employer questions never use employee.* keys and vice versa", () => {

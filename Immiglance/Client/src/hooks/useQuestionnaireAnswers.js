@@ -48,7 +48,7 @@ function normalizeAutofillPrefill(prefill) {
 }
 
 export default function useQuestionnaireAnswers(caseId, targetRole, { disabled = false, referenceId } = {}) {
-  const { questionnaire, documentQuestions, fieldQuestions, answers: rawAnswers, responseId, progress: hookProgress, loading, initialLoading, refreshing, error, refetch } =
+  const { questionnaire, documentQuestions, fieldQuestions, hiddenQuestions = [], answers: rawAnswers, responseId, progress: hookProgress, loading, initialLoading, refreshing, error, refetch } =
     useCaseQuestionnaire(caseId, targetRole, referenceId);
 
   const [answers, setAnswers] = useState({});
@@ -123,10 +123,10 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
   );
 
   const visibleQuestions = useMemo(
-    () => [...fieldQuestions, ...documentQuestions]
+    () => [...fieldQuestions, ...documentQuestions, ...hiddenQuestions]
       .filter((question) => isQuestionVisible(question, answers))
       .sort((a, b) => (a.order || 0) - (b.order || 0)),
-    [fieldQuestions, documentQuestions, answers]
+    [fieldQuestions, documentQuestions, hiddenQuestions, answers]
   );
   const visibleFieldQuestions = useMemo(() => visibleQuestions.filter((question) => !isFileQuestion(question)), [visibleQuestions]);
   const visibleDocumentQuestions = useMemo(() => visibleQuestions.filter(isFileQuestion), [visibleQuestions]);
