@@ -200,6 +200,9 @@ function EmployeeCard({ child, dataEntryMode, targetRole, onOpen, onInviteSent, 
   );
 }
 
+// PERM has exactly one employee - no "+ Add Employee" (the server refuses it too).
+export const isSingleEmployeeMatter = (children = []) => children.some((child) => child?.singleEmployee || child?.visaType === "PERM");
+
 function AddEmployeeGhostCard({ onClick }) {
   return (
     <button
@@ -269,7 +272,7 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
             onWithdraw={handleWithdraw}
           />
         ))}
-        <AddEmployeeGhostCard onClick={handleAddEmployee} />
+        {!isSingleEmployeeMatter(children) && <AddEmployeeGhostCard onClick={handleAddEmployee} />}
         {children.length === 0 && <p className="text-sm text-slate-400 col-span-full">No employees on this case yet.</p>}
       </div>
     </div>

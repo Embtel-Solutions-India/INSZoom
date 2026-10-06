@@ -32,7 +32,7 @@ const { generateOpaqueToken, hashToken } = require("../auth/password.service");
 const workflowSlaService = require("../settings/workflowSla.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
-const { getCaseStructure } = require("../../config/visaCategories");
+const { getCaseStructure, isSingleEmployeeType } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
@@ -128,9 +128,10 @@ function resolveCreationSource(input, userRole) {
   return normalizeRole(userRole) === "team_lead" ? "team_lead_direct" : "admin_direct";
 }
 
-function resolveChildCaseCount(caseStructure, input) {
+function resolveChildCaseCount(caseStructure, input, singleEmployee = false) {
   if (caseStructure === "single") return 0;
   if (caseStructure === "family") return 1;
+  if (singleEmployee) return 1; // PERM: the one employee the labor certification is filed for
   const parsed = Number.parseInt(input, 10);
   return Math.max(1, Number.isFinite(parsed) ? parsed : 1);
 }
@@ -156,6 +157,7 @@ function publicCaseSummary(caseData) {
     caseRole: caseData.caseRole,
     childIndex: caseData.childIndex,
     visaType: caseData.visaType,
+    singleEmployee: isSingleEmployeeType(caseData.visaType),
   };
 }
 
@@ -834,8 +836,12 @@ exports.getRecentActivity = async (req, res, next) => {
 // role-agnostic items (targetRole "" - shared/reusable docs with no
 // audience-specific questionnaire) on every case.
 function filterChecklistForRole(checklist, role) {
-  if (!role) return checklist;
-  return checklist.filter((item) => !item.targetRole || item.targetRole === role);
+  // questionnaireOnly items (e.g. PERM's conditional Degree Evaluation) live inside
+  // the questionnaire, which shows and requires them only when they apply - they
+  // must never appear as an unconditional case-level document.
+  const applicable = checklist.filter((item) => !item.questionnaireOnly);
+  if (!role) return applicable;
+  return applicable.filter((item) => !item.targetRole || item.targetRole === role);
 }
 
 exports.createCase = async (req, res, next) => {
@@ -929,7 +935,7 @@ exports.createCase = async (req, res, next) => {
       });
     }
 
-    const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
+    const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount, isSingleEmployeeType(trimmedVisaType));
     const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
     const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;
     const normalizedPackage = packageInput ? normalizePackageName(packageInput) : "";
@@ -2298,6 +2304,9 @@ exports.addEmployeeSlot = async (req, res, next) => {
     if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
     if (principal.caseStructure !== "employer_employee" || principal.caseRole !== "principal") {
       return res.status(400).json({ success: false, code: "NOT_EMPLOYER_MATTER", message: "This case is not an employer/employee matter" });
+    }
+    if (isSingleEmployeeType(principal.visaType)) {
+      return res.status(409).json({ success: false, code: "SINGLE_EMPLOYEE_MATTER", message: `${principal.visaType} cases have exactly one employee - the person the labor certification is filed for. Another employee cannot be added.` });
     }
 
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);

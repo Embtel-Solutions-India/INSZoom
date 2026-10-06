@@ -1786,7 +1786,7 @@ const CRMCaseDetail = () => {
                     Show withdrawn ({removedCount})
                   </label>
                 )}
-                {isEmployerMatter && (
+                {isEmployerMatter && !caseData.singleEmployee && caseData.visaType !== 'PERM' && (
                   <button
                     type="button"
                     onClick={handleAddEmployee}
@@ -2727,7 +2727,7 @@ const CRMCaseDetail = () => {
       </KeepTab>
 
       <KeepTab name="forms" active={activeTab === 'forms'} visited={visitedTabs}>
-        selectedCaseForm ? (
+        {selectedCaseForm ? (
           <FormRendererErrorBoundary resetKey={selectedCaseForm._id} onBack={() => setSelectedCaseForm(null)}>
             <Suspense fallback={renderSkeleton()}>
               <USCISFormRenderer
@@ -3051,7 +3051,7 @@ const CRMCaseDetail = () => {
               </div>
             )}
           </div>
-        )
+        )}
       </KeepTab>
 
       <KeepTab name="petition" active={activeTab === 'petition'} visited={visitedTabs}>

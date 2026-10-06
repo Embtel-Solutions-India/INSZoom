@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import EntryFileList from "../checklist/EntryFileList";
 import { documentIntelligenceApi } from "../../services/api";
+import { isColumnHidden, isColumnRequired, validateRepeatingGroupRows } from "../../utils/repeatingGroup";
 import { IconSparkles } from "../../utils/iconComponents";
 import {
   normalizeType,
@@ -51,6 +52,52 @@ export function AutofillButton({ documentType, caseId, disabled, onUploaded }) {
   );
 }
 
+function RepeatableColumnInput({ question, column, fieldKey, rowIndex, row, disabled, hasError, onChange, onBlur }) {
+  const id = `${question.key}-${rowIndex}-${fieldKey}`;
+  const name = `${question.key}.${rowIndex}.${fieldKey}`;
+  const value = row?.[fieldKey];
+  const className = `${INPUT_CLASS} ${hasError ? "border-rose-400 focus:border-rose-400 focus:ring-rose-400/20" : ""}`;
+  const options = normalizeOptions(column.options);
+
+  if (column.type === "checkbox") {
+    return (
+      <input id={id} name={name} type="checkbox" className="h-4 w-4 rounded border-slate-300 text-emerald-600" checked={value === true || value === "true"} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+    );
+  }
+  if (column.type === "textarea") {
+    return <textarea id={id} name={name} className={`${className} min-h-24 resize-y`} value={value || ""} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)} />;
+  }
+  if (column.type === "select") {
+    return (
+      <select id={id} name={name} className={className} value={value || ""} disabled={disabled} onBlur={onBlur} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Select...</option>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    );
+  }
+  // combo: pick from the list or type your own (e.g. a non-US state/province)
+  const listId = column.type === "combo" ? `${id}-list` : undefined;
+  return (
+    <>
+      <input
+        id={id}
+        name={name}
+        list={listId}
+        className={className}
+        type={column.type === "date" ? "date" : column.type === "number" ? "number" : column.type === "phone" ? "tel" : "text"}
+        step={column.type === "number" ? column.step || "any" : undefined}
+        min={column.type === "number" ? column.min : undefined}
+        max={column.type === "number" ? column.max : undefined}
+        value={value ?? ""}
+        disabled={disabled}
+        onBlur={onBlur}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {listId && <datalist id={listId}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</datalist>}
+    </>
+  );
+}
+
 function RepeatableGroupInput({ question, value, disabled, onChange }) {
   const columns =
     question?.metadata?.columns ||
@@ -60,6 +107,10 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
     [];
   const rows = Array.isArray(value) ? value : [];
   const maxRows = Number(question?.repeatableConfig?.max || question?.metadata?.maxRows || 0);
+  const itemLabel = question?.metadata?.itemLabel;
+  const instructions = question?.metadata?.instructions || [];
+  const [touched, setTouched] = useState({});
+  const validation = validateRepeatingGroupRows(question, rows);
 
   const updateRow = (rowIndex, fieldKey, fieldValue) => {
     onChange(rows.map((row, index) => (index === rowIndex ? { ...row, [fieldKey]: fieldValue } : row)));
@@ -71,7 +122,10 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
   };
 
   const removeRow = (rowIndex) => {
+    const message = question?.metadata?.confirmRemove || "Remove this entry? This cannot be undone.";
+    if (typeof window !== "undefined" && !window.confirm(message)) return;
     onChange(rows.filter((_, index) => index !== rowIndex));
+    setTouched({});
   };
 
   if (!columns.length) {
@@ -87,39 +141,65 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
     );
   }
 
+  const summaryFields = question?.metadata?.summaryFields || [];
   return (
     <div className="space-y-3">
-      {rows.map((row, rowIndex) => (
-        <div key={`row-${rowIndex}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {columns.map((column) => {
-              const fieldKey = column.key || column.field || column.name;
-              return (
-                <label key={fieldKey} className="space-y-1 text-xs font-bold text-slate-500">
-                  {column.label || titleFromKey(fieldKey)}
-                  <input
-                    id={`${question.key}-${rowIndex}-${fieldKey}`}
-                    name={`${question.key}.${rowIndex}.${fieldKey}`}
-                    className={INPUT_CLASS}
-                    type={column.type === "date" ? "date" : column.type === "number" ? "number" : "text"}
-                    value={row?.[fieldKey] || ""}
-                    disabled={disabled}
-                    onChange={(event) => updateRow(rowIndex, fieldKey, event.target.value)}
-                  />
-                </label>
-              );
-            })}
-          </div>
-          {!disabled && (
-            <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-bold text-rose-600">
-              Remove entry
-            </button>
-          )}
+      {instructions.length > 0 && (
+        <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3.5 py-2.5 text-xs text-slate-600">
+          {instructions.map((line) => <p key={line}>{line}</p>)}
         </div>
-      ))}
+      )}
+      {rows.map((row, rowIndex) => {
+        const summary = summaryFields.map((key) => row?.[key]).filter(Boolean).join(" - ");
+        return (
+          <div key={`row-${rowIndex}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            {itemLabel && (
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-bold text-slate-700">{itemLabel} {rowIndex + 1}{summary ? <span className="font-medium text-slate-500"> - {summary}</span> : null}</p>
+                {!disabled && (
+                  <button type="button" onClick={() => removeRow(rowIndex)} className="text-xs font-bold text-rose-600">Delete</button>
+                )}
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {columns.map((column) => {
+                const fieldKey = column.key || column.field || column.name;
+                if (isColumnHidden(column, row)) return null;
+                const message = touched[`${rowIndex}.${fieldKey}`] ? validation.rowErrors[rowIndex]?.[fieldKey] : null;
+                const wide = column.type === "textarea";
+                const labelNode = <span>{column.label || titleFromKey(fieldKey)}{isColumnRequired(column, row) ? <span className="text-rose-500"> *</span> : null}</span>;
+                return (
+                  <label key={fieldKey} className={`space-y-1 text-xs font-bold text-slate-500 ${wide ? "md:col-span-2" : ""} ${column.type === "checkbox" ? "flex items-center gap-2 space-y-0 md:col-span-2" : ""}`}>
+                    {column.type !== "checkbox" && labelNode}
+                    <RepeatableColumnInput
+                      question={question}
+                      column={column}
+                      fieldKey={fieldKey}
+                      rowIndex={rowIndex}
+                      row={row}
+                      disabled={disabled}
+                      hasError={Boolean(message)}
+                      onBlur={() => setTouched((current) => ({ ...current, [`${rowIndex}.${fieldKey}`]: true }))}
+                      onChange={(next) => updateRow(rowIndex, fieldKey, next)}
+                    />
+                    {column.type === "checkbox" && labelNode}
+                    {message && <span className="block text-[11px] font-semibold text-rose-600">{message}</span>}
+                  </label>
+                );
+              })}
+            </div>
+            {!disabled && !itemLabel && (
+              <button type="button" onClick={() => removeRow(rowIndex)} className="mt-3 text-xs font-bold text-rose-600">
+                Remove entry
+              </button>
+            )}
+          </div>
+        );
+      })}
+      {validation.warnings.map((warning) => <p key={warning} className="text-xs font-semibold text-amber-600">{warning}</p>)}
       {!disabled && (
         <button type="button" onClick={addRow} className="rounded-xl border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50">
-          Add entry
+          {question?.metadata?.addLabel || "Add entry"}
         </button>
       )}
     </div>

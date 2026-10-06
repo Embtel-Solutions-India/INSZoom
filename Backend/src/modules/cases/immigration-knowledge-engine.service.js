@@ -289,6 +289,7 @@ class ImmigrationKnowledgeEngineService {
     const existing = [...(caseData.documentChecklist || caseData.checklistItems || [])];
     const byKey = new Map(existing.map((item) => [normalize(item.documentType || item.name), item]));
     requirements.forEach((requirement) => {
+      if (requirement.questionnaireOnly) return; // lives inside the questionnaire (conditional)
       const key = normalize(requirement.documentType || requirement.name);
       if (!key) return;
       const already = byKey.get(key);

@@ -162,14 +162,14 @@ export default function InvitePanel({ principalCaseId, children, onChanged }) {
             Send each employee their own secure link to complete their own questionnaire.
           </p>
         </div>
-        <button
+        {!children?.some((child) => child?.singleEmployee || child?.visaType === "PERM") && <button
           type="button"
           onClick={handleAddEmployee}
           disabled={addingSlot}
           className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
         >
           {addingSlot ? "Adding…" : "+ Add Employee"}
-        </button>
+        </button>}
       </div>
       {addError && <p className="text-xs text-red-600">{addError}</p>}
       <div className="space-y-3">

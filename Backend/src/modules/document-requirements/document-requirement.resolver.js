@@ -18,6 +18,9 @@ function fileQuestionToRequirement(question, questionnaire) {
     category: question.metadata?.category || question.evidenceCategory || "questionnaire",
     targetRole: questionnaire?.checklistRole || "",
     condition: question.conditionalLogic || undefined,
+    // Shown / required only inside the questionnaire (when its condition holds);
+    // never copied onto the case as an unconditional checklist item.
+    questionnaireOnly: Boolean(question.metadata?.questionnaireOnly),
     source: `questionnaire:${questionnaire?.key || question.questionnaire}`,
   };
 }
@@ -116,6 +119,7 @@ async function resolveDocumentRequirementTypes(profile = {}) {
   const requirements = await resolveDocumentRequirements(profile, { format: "documentTypes" });
   const expectedRole = expectedDocumentRoleForCase(profile.case || {});
   const scoped = requirements
+    .filter((item) => typeof item === "string" || !item.questionnaireOnly) // conditional docs are judged inside the questionnaire
     .filter((item) => typeof item === "string" || !item.targetRole || item.targetRole === expectedRole || !expectedRole)
     // F-4 fix: every item's own `required` flag (question.required !== false,
     // set by fileQuestionToRequirement) was being discarded by the final
