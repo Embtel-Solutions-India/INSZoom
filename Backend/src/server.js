@@ -173,9 +173,8 @@ function startEodReportMaintenance() {
 
 connectDB()
   .then(() => {
-    // Sync the built-in checklist templates now, in the background, so the first client request after a restart does not pay
-    // for it (it is ~400 database round trips). A request that arrives meanwhile simply waits on this same in-flight sync.
-    questionnaireService.ensureDefaultVisaTemplates().catch((error) => logger.error("questionnaire_template_warmup_failed", { error }));
+    // Start-up never loads questionnaire/Question data. Built-in checklist templates are reconciled lazily, per template/visa,
+    // when a case or template page actually needs them (questionnaire.service ensureTemplate / ensureTemplatesForVisa).
     if (process.env.SEED_QUESTIONNAIRE_TEMPLATES_ON_STARTUP === "true") {
       questionnaireService.ensureDefaultVisaTemplates(undefined, undefined, { force: true })
         .catch((error) => logger.error("questionnaire_template_initialization_failed", { error }));

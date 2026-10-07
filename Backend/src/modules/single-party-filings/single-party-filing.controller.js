@@ -77,7 +77,7 @@ exports.createFiling = async (req, res, next) => {
     // provisions the scaffold template on first use (idempotent, non-
     // destructive — same shared provisioning path every other visa/filing
     // checklist in this codebase uses).
-    await questionnaireService.ensureDefaultVisaTemplates();
+    await questionnaireService.ensureTemplate(filingType.questionnaireKey);
     const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
     let assignment = null;
     if (questionnaire) {
@@ -161,7 +161,7 @@ exports.changeFilingType = async (req, res, next) => {
     );
     await caseData.save();
 
-    await questionnaireService.ensureDefaultVisaTemplates();
+    await questionnaireService.ensureTemplate(filingType.questionnaireKey);
     const questionnaire = await Questionnaire.findOne({ key: filingType.questionnaireKey, latestVersion: true });
     let assignment = null;
     if (questionnaire) {

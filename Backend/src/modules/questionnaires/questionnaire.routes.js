@@ -24,7 +24,7 @@ router.get("/question-library/:itemId", authenticate, authorizeRoles(...reviewer
 router.post("/question-library/custom", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.createCustomLibraryQuestion);
 router.post("/question-library/synchronize", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("questionnaires:create"), ctrl.synchronizeQuestionLibrary);
 router.get("/visa-options", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getVisaOptions);
-router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.ensureDefaultTemplates);
+router.get("/defaults", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.listDefaultTemplates);
 router.post("/defaults/seed", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.ensureDefaultTemplates);
 router.get("/case/:caseId", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.getCaseQuestionnaire);
 router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);

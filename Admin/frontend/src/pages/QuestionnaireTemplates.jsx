@@ -234,7 +234,6 @@ export default function QuestionnaireTemplates() {
   const loadTemplates = async () => {
     setLoading(true)
     try {
-      await questionnairesApi.defaults()
       // latestVersion + the API's max page size: every checklist (one row per
       // checklist, not per historical version) must fit on the page.
       const response = await questionnairesApi.list({ isTemplate: true, latestVersion: true, limit: 200 })
