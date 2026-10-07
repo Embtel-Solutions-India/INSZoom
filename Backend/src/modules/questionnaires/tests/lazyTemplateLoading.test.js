@@ -53,9 +53,11 @@ test("GET /questionnaires/defaults lists template metadata only: no Question que
 });
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
-const stubPresence = (stub, calls, presentKeys = []) => stub(Questionnaire, "find", () => {
+const stubPresence = (stub, calls, present = []) => stub(Questionnaire, "find", (query) => {
   calls.questionnaireFind += 1;
-  const chain = { select() { return chain; }, lean: async () => presentKeys.map((key) => ({ key })) };
+  // present === "all": every template that was asked about is already stored
+  const keys = present === "all" ? (query?.key?.$in || []) : present;
+  const chain = { select() { return chain; }, lean: async () => keys.map((key) => ({ key })) };
   return chain;
 });
 
@@ -85,8 +87,7 @@ test("a normal page load adds NO database round trip and never waits for a recon
 
 test("a template already stored is never waited on, even with wait:true", async (t) => {
   const { calls, stub } = stubModels(t);
-  const defs = ["l1a_questionnaire"];
-  stubPresence(stub, calls, defs);
+  stubPresence(stub, calls, "all");
   let release; const gate = new Promise((resolve) => { release = resolve; });
   stub(Question, "find", (query) => { calls.questionFind.push(query); return gate.then(() => []); });
   await service.ensureTemplatesForVisa("L1A", undefined, undefined, { wait: true }); // returns although reconcile is blocked
