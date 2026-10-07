@@ -206,6 +206,9 @@ exports.getFormCatalog = async (req, res, next) => {
     // form's existence in this list.
     for (const code of templateByCode.keys()) {
       if (grouped.has(code)) continue;
+      // A retired edition that no registry row points at is a superseded duplicate (e.g. an old auto-fetch stored
+      // under a name the registry cannot resolve) - not a form operators need to see or fetch.
+      if (templateByCode.get(code)?.status === "retired") continue;
       grouped.set(code, { formCode: code, formNumber: code, agency: "USCIS", associations: [] });
     }
 
@@ -350,6 +353,13 @@ exports.fetchFormFromUSCIS = async (req, res, next) => {
       },
     });
   } catch (error) {
+    // Anything without an HTTP status here is an upstream/infrastructure failure (uscis.gov unreachable or blocking the
+    // server, qpdf missing, storage unavailable...). Say so, with the real reason, instead of an opaque 500 - and log it
+    // so the cause is findable in the server log.
+    if (!error.status && !error.statusCode) {
+      require("../../utils/logger").error("uscis_catalog_fetch_failed", { formCode: req.params.formCode, error: error.message, code: error.code });
+      error = Object.assign(new Error(`Could not fetch ${String(req.params.formCode || "").toUpperCase()} from uscis.gov: ${error.message}`), { status: 502, code: error.code || "USCIS_FETCH_FAILED" });
+    }
     handleError(error, next);
   }
 };

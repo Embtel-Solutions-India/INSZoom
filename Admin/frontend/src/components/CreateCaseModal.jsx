@@ -136,7 +136,6 @@ const initialForm = {
   assignedCaseManager: '',
   employerName: '',
   employerEmail: '',
-  employerCompletionMode: '',
   caseDetails: '',
   relationship: '',
   filingPath: '',
@@ -318,7 +317,6 @@ const CreateCaseModal = ({
       if (showEmployerFields) {
         if (form.employerName.trim()) payload.employerName = form.employerName.trim()
         if (form.employerEmail.trim()) payload.employerEmail = form.employerEmail.trim()
-        if (form.employerCompletionMode) payload.employerCompletionMode = form.employerCompletionMode
       }
 
       const res = await casesApi.create(payload)
@@ -585,19 +583,6 @@ const CreateCaseModal = ({
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="hr@example.com"
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer Workflow</label>
-                <select
-                  value={form.employerCompletionMode}
-                  onChange={handleChange('employerCompletionMode')}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="">Decide later</option>
-                  <option value="employer_completes">Fill company information themselves</option>
-                  <option value="invite_employees">Invite employees</option>
-                </select>
               </div>
             </div>
           )}

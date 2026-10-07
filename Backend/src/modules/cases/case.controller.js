@@ -139,7 +139,35 @@ function resolveChildCaseCount(caseStructure, input) {
 function resolveDataEntryMode(caseStructure, input) {
   if (caseStructure === "single") return "not_required";
   if (["fill_self", "invite", "not_set"].includes(input)) return input;
+  // Employer matters decide fill-myself vs invite PER EMPLOYEE (when each employee is added, changeable later), so
+  // there is no case-wide choice to wait for: the employer fills in until an employee is invited.
+  if (caseStructure === "employer_employee") return "fill_self";
   return "not_set";
+}
+
+// Per-employee visa (an employer on H-1B can have an L-1A and an L-1B employee on the same matter). Returns the
+// validated { visaType, petitionSubType } for a new employee, defaulting to the matter's own visa.
+function resolveEmployeeVisa(principal, body = {}) {
+  const requested = cleanString(body.visaType) || principal.visaType;
+  if (!getCaseStructure(requested) || getCaseStructure(requested) !== "employer_employee") {
+    const error = new Error(`${requested} cannot be added to an employer matter. Choose an employment-based visa.`);
+    error.status = 400;
+    error.code = "INVALID_EMPLOYEE_VISA";
+    throw error;
+  }
+  const allowedSubTypes = getSubTypes(requested);
+  const requestedSubType = cleanString(body.petitionSubType) || cleanString(body.extension);
+  if (allowedSubTypes.length && !allowedSubTypes.includes(requestedSubType)) {
+    const error = new Error(`${requested} requires a type: ${allowedSubTypes.join(", ")}`);
+    error.status = 400;
+    error.code = "INVALID_VISA_SUBTYPE";
+    throw error;
+  }
+  const sameAsMatter = requested === principal.visaType;
+  return {
+    visaType: requested,
+    petitionSubType: allowedSubTypes.length ? requestedSubType : (requestedSubType || (sameAsMatter ? principal.petitionSubType : undefined)),
+  };
 }
 
 function centsFromPrice(input) {
@@ -788,6 +816,21 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
     }));
     const registryTypes = await VisaFormMapping.distinct("visaType", { active: true }).catch(() => []);
     res.json({ success: true, data, unmapped: registryTypes.filter((visaType) => !VISA_CATEGORIES[visaType]).sort() });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// GET /api/cases/employee-visa-options - the visas an employer matter can add an employee on (employment-based visas
+// with their required filing types), for the "Add employee" form in both portals. Open to any signed-in user: it is a
+// static, non-sensitive list and employers (clients) are the ones who add employees from the client portal.
+exports.listEmployeeVisaOptions = async (req, res, next) => {
+  try {
+    const { VISA_CATEGORIES } = require("../../config/visaCategories");
+    const data = Object.entries(VISA_CATEGORIES)
+      .filter(([, category]) => category.caseStructure === "employer_employee")
+      .map(([visaType, category]) => ({ visaType, label: category.label || visaType, subTypes: category.subTypes || [], noForms: Boolean(category.noForms) }));
+    res.json({ success: true, data });
   } catch (error) {
     handleError(error, next);
   }
@@ -2045,12 +2088,36 @@ exports.getAssignmentHistory = async (req, res, next) => {
 // older employerUser/employeeUser/employment-workflow architecture that
 // Documents.jsx historically used.
 
+// An employee's answers live under ONE questionnaire response. With no stored reference the response id is derived
+// from the case's current owner, so handing the file to another account (employer fills <-> employee invited) would
+// silently start a blank response and the entered data would appear to vanish. Pin the id the file is using right now,
+// BEFORE the hand-over, so every later read/save - employer, employee, Admin portal - lands on the same response.
+async function pinChildResponseIds(childCase) {
+  try {
+    const questionnaireService = require("../questionnaires/questionnaire.service");
+    const role = childCase.caseRole;
+    const asOwner = { _id: childCase.user, role: "admin" }; // service-level read of what the current owner sees
+    const state = await questionnaireService.getQuestionnaireForCase(childCase._id, asOwner, role);
+    if (!state?.questionnaire || !state.responseId) return;
+    const hasStoredReference = (childCase.questionnaireReferences || []).some(
+      (reference) => reference.active !== false && reference.targetRole === role && reference.responseId
+    );
+    if (hasStoredReference) return; // already stable
+    const key = `${role}:${state.questionnaire._id}`;
+    childCase.pinnedResponseIds = { ...(childCase.pinnedResponseIds || {}), [key]: state.responseId };
+    childCase.markModified("pinnedResponseIds");
+  } catch (error) {
+    require("../../utils/logger").error("pin_child_response_failed", { childCaseId: String(childCase?._id), error: error.message });
+  }
+}
+
 const PHASE9_STAFF_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 
 /**
  * PATCH /api/cases/:principalId/data-entry-mode
- * INVARIANT 3: the client may set this exactly once (not_set -> fill_self|
- * invite). Only staff may reset it back to not_set afterward.
+ * The client chooses fill_self|invite and may change it again at any time (it is the case-wide default;
+ * each employee can also be switched individually - see setEmployeeDataEntryMode). Only staff may reset it
+ * back to not_set.
  */
 exports.setDataEntryMode = async (req, res, next) => {
   try {
@@ -2082,15 +2149,8 @@ exports.setDataEntryMode = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Not authorized to set data entry mode for this case" });
     }
 
-    if (caseDoc.dataEntryMode !== "not_set") {
-      return res.status(409).json({
-        success: false,
-        code: "DATA_ENTRY_MODE_ALREADY_SET",
-        message: `Data entry mode is already set to '${caseDoc.dataEntryMode}'. Contact your case manager to change this.`,
-        currentMode: caseDoc.dataEntryMode,
-      });
-    }
-
+    // The owner may change the case-wide default later (fill_self <-> invite): employees that already have their own
+    // per-employee mode keep it, the rest follow the new default. Staff can still reset it back to not_set.
     if (!["fill_self", "invite"].includes(mode)) {
       return res.status(400).json({ success: false, code: "INVALID_MODE", message: "mode must be 'fill_self' or 'invite'" });
     }
@@ -2142,11 +2202,13 @@ exports.inviteEmployee = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "This case is not a child (employee/beneficiary) case" });
     }
 
-    if (principal.dataEntryMode !== "invite") {
+    // An employee can be invited when the employer has chosen either way: "invite" for everyone, or "fill_self" as
+    // the default while inviting this particular employee (per-employee workflow).
+    if (!["invite", "fill_self"].includes(principal.dataEntryMode) && principal.caseStructure !== "employer_employee") {
       return res.status(409).json({
         success: false,
         code: "WRONG_DATA_ENTRY_MODE",
-        message: `Cannot send invite — data entry mode is '${principal.dataEntryMode}'. Must be 'invite'.`,
+        message: `Cannot send invite — data entry mode is '${principal.dataEntryMode}'. Choose how to enter employee information first.`,
       });
     }
 
@@ -2167,21 +2229,44 @@ exports.inviteEmployee = async (req, res, next) => {
     }
     const setupToken = generateOpaqueToken();
 
-    const [employeeUser] = await User.create([{
-      email: normalizedEmail,
-      name: trimmedName,
-      displayName: trimmedName,
-      role: childCase.caseRole, // 'employee' | 'beneficiary'
-      isActive: false,
-      isEmailVerified: false,
-      mustSetPassword: true,
-      inviteTokenHash: hashToken(setupToken),
-      inviteTokenExpiresAt: new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS),
-      primaryCaseId: childCase._id,
-      caseIds: [childCase._id],
-      caseRole: childCase.caseRole,
-      principalCaseId: principal._id,
-    }]);
+    // Re-inviting an employee that was switched to "employer fills" (invitation revoked) must reuse their existing
+    // employee account instead of failing on the unique email - never create a second account for the same person.
+    let employeeUser = await User.findOne({ email: normalizedEmail }).select("+password");
+    if (employeeUser && employeeUser.role !== childCase.caseRole) {
+      return res.status(409).json({ success: false, code: "EMAIL_IN_USE", message: "That email already belongs to another account type. Use a different email for this employee." });
+    }
+    if (employeeUser) {
+      const alreadyAccepted = Boolean(employeeUser.password);
+      employeeUser.name = employeeUser.name || trimmedName;
+      employeeUser.displayName = employeeUser.displayName || trimmedName;
+      employeeUser.primaryCaseId = employeeUser.primaryCaseId || childCase._id;
+      employeeUser.principalCaseId = principal._id;
+      employeeUser.caseRole = childCase.caseRole;
+      if (!alreadyAccepted) {
+        employeeUser.isActive = false;
+        employeeUser.mustSetPassword = true;
+        employeeUser.inviteTokenHash = hashToken(setupToken);
+        employeeUser.inviteTokenExpiresAt = new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS);
+      }
+      await employeeUser.save();
+      await User.updateOne({ _id: employeeUser._id }, { $addToSet: { caseIds: childCase._id } });
+    } else {
+      [employeeUser] = await User.create([{
+        email: normalizedEmail,
+        name: trimmedName,
+        displayName: trimmedName,
+        role: childCase.caseRole, // 'employee' | 'beneficiary'
+        isActive: false,
+        isEmailVerified: false,
+        mustSetPassword: true,
+        inviteTokenHash: hashToken(setupToken),
+        inviteTokenExpiresAt: new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS),
+        primaryCaseId: childCase._id,
+        caseIds: [childCase._id],
+        caseRole: childCase.caseRole,
+        principalCaseId: principal._id,
+      }]);
+    }
 
     // Transfer the child case off the employer's account onto the new
     // employee account. From this point the employer has no access path
@@ -2189,9 +2274,13 @@ exports.inviteEmployee = async (req, res, next) => {
     // employee-profile.service.js checks the requester's own caseIds,
     // which no longer includes this case.
     const previousOwnerId = childCase.user;
+    await pinChildResponseIds(childCase);
     childCase.user = employeeUser._id;
     childCase.clientName = trimmedName;
     childCase.clientEmail = normalizedEmail;
+    childCase.employeeDataEntryMode = "invite";
+    childCase.employeeDataEntryModeChangedAt = new Date();
+    childCase.employeeDataEntryModeChangedBy = req.user._id;
     await childCase.save();
     if (previousOwnerId) {
       await User.updateOne({ _id: previousOwnerId }, { $pull: { caseIds: childCase._id } });
@@ -2346,6 +2435,116 @@ exports.restoreEmployee = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/cases/:principalId/employees/:childCaseId/data-entry-mode
+ * Per-employee workflow switch, usable any time by the employer (case owner) or staff:
+ *   { mode: "invite", employeeName, employeeEmail }  fill_self -> invite: sends the normal invitation (inviteEmployee)
+ *   { mode: "fill_self" }                            invite -> fill_self: revokes the invitation and hands the
+ *                                                    employee's file back to the employer
+ * Nothing already entered is lost either way - the EmployeeProfile / answers belong to the child case, not to the
+ * account currently working on it. Every switch is audited and visible in both portals (same Case document).
+ */
+exports.setEmployeeDataEntryMode = async (req, res, next) => {
+  try {
+    const { principalId, childCaseId } = req.params;
+    const { mode } = req.body || {};
+    if (!["fill_self", "invite"].includes(mode)) {
+      return res.status(400).json({ success: false, code: "INVALID_MODE", message: "mode must be 'fill_self' or 'invite'" });
+    }
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role) || req.user.role === "case_manager";
+    const isOwner = String(principal.user) === String(req.user._id);
+    if (!isOwner && !(isStaff && caseService.canAccessCase(req.user, principal))) {
+      return res.status(403).json({ success: false, message: "Not authorized to change the workflow for this employee" });
+    }
+    if (!["invite", "fill_self"].includes(principal.dataEntryMode) && principal.caseStructure !== "employer_employee") {
+      return res.status(409).json({ success: false, code: "WRONG_DATA_ENTRY_MODE", message: "Choose how to enter employee information first." });
+    }
+    const childCase = await Case.findOne({ _id: childCaseId, parentCase: principal._id });
+    if (!childCase) return res.status(404).json({ success: false, message: "Child case not found or does not belong to this principal case" });
+    if (!["employee", "beneficiary"].includes(childCase.caseRole)) {
+      return res.status(400).json({ success: false, message: "This case is not a child (employee/beneficiary) case" });
+    }
+    if (childCase.status === "removed") {
+      return res.status(409).json({ success: false, code: "EMPLOYEE_REMOVED", message: "Restore this employee before changing their workflow." });
+    }
+
+    const currentlyInvited = Boolean(childCase.user) && String(childCase.user) !== String(principal.user);
+
+    if (mode === "invite") {
+      if (currentlyInvited) {
+        return res.status(409).json({ success: false, code: "ALREADY_INVITED", message: "This employee has already been invited." });
+      }
+      const employeeEmail = String(req.body.employeeEmail || "").trim();
+      const employeeName = String(req.body.employeeName || childCase.clientName || "").trim();
+      if (!employeeEmail || !employeeName) {
+        return res.status(400).json({ success: false, message: "employeeName and employeeEmail are required to invite this employee" });
+      }
+      req.params = { principalId };
+      req.body = { childCaseId, employeeEmail, employeeName };
+      return exports.inviteEmployee(req, res, next);
+    }
+
+    // mode === "fill_self"
+    if (!currentlyInvited) {
+      // Already the employer's own file - just record the explicit choice (idempotent).
+      childCase.employeeDataEntryMode = "fill_self";
+      childCase.employeeDataEntryModeChangedAt = new Date();
+      childCase.employeeDataEntryModeChangedBy = req.user._id;
+      await childCase.save();
+      return res.status(200).json({ success: true, message: "This employee is already being filled in by the employer.", childCaseId: childCase._id, mode: "fill_self", previousMode: "fill_self" });
+    }
+
+    const employeeUserId = childCase.user;
+    const employeeUser = await User.findById(employeeUserId).select("+password +inviteTokenHash");
+    const neverAccepted = Boolean(employeeUser) && !employeeUser.password;
+
+    // Hand the file back to the employer and cut the employee's access to it.
+    await pinChildResponseIds(childCase);
+    childCase.user = principal.user;
+    childCase.employeeDataEntryMode = "fill_self";
+    childCase.employeeDataEntryModeChangedAt = new Date();
+    childCase.employeeDataEntryModeChangedBy = req.user._id;
+    await childCase.save();
+    if (principal.user) await User.updateOne({ _id: principal.user }, { $addToSet: { caseIds: childCase._id } });
+    if (employeeUser) {
+      const update = { $pull: { caseIds: childCase._id } };
+      const set = {};
+      if (String(employeeUser.primaryCaseId) === String(childCase._id)) set.primaryCaseId = null;
+      if (neverAccepted) {
+        // The invitation link must stop working immediately.
+        set.isActive = false;
+        set.inviteTokenHash = null;
+        set.inviteTokenExpiresAt = null;
+      }
+      if (Object.keys(set).length) update.$set = set;
+      await User.updateOne({ _id: employeeUser._id }, update);
+    }
+    caseService.addTimelineEvent(childCase, "employee", "Workflow changed", "Employer is now filling this employee's information (invitation revoked).", req.user, { from: "invite", to: "fill_self" });
+    await childCase.save();
+    await caseService.writeAuditLog("employee_data_entry_mode_changed", childCase, req.user, { from: "invite", to: "fill_self", revokedEmployeeUserId: employeeUserId, neverAccepted }, req);
+
+    if (employeeUser) {
+      await notificationService.createNotification({
+        userId: employeeUser._id,
+        type: "case_created",
+        category: "case",
+        title: "Your employer will complete your information",
+        message: `${childCase.caseNumber} - your employer is now entering your information. No action is needed from you.`,
+        caseId: childCase._id,
+        link: "/dashboard",
+        priority: "low",
+        source: "shared",
+      }, req.user, req).catch(() => null);
+    }
+
+    return res.status(200).json({ success: true, message: "Invitation revoked - you can now fill in this employee's information yourself.", childCaseId: childCase._id, mode: "fill_self", previousMode: "invite" });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
  * POST /api/cases/:principalId/resend-employee-invite
  * Reissues a fresh invite token + re-sends the employee-case-invitation
  * email for a child case that was already invited (childCase.user already
@@ -2451,10 +2650,13 @@ exports.addEmployeeSlot = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Not authorized to add an employee to this case" });
     }
 
+    // Every employee gets their OWN visa (and filing type, e.g. H-1B Extension); forms and checklists are
+    // provisioned from it below, exactly as for any case of that visa. Defaults to the matter's visa if omitted.
+    const employeeVisa = resolveEmployeeVisa(principal, req.body || {});
     const nextIndex = Math.max(principal.childCaseCount || 0, (principal.childCases || []).length);
     const childIndex = CaseNumberService.indexToSuffix(nextIndex);
     const childCaseNumber = CaseNumberService.childCaseNumber(principal.caseNumber, nextIndex);
-    const checklist = await resolveDocumentRequirements(principal.visaType);
+    const checklist = await resolveDocumentRequirements(employeeVisa.visaType);
     const childChecklist = filterChecklistForRole(checklist, "employee");
 
     const [childCase] = await Case.create([{
@@ -2466,10 +2668,11 @@ exports.addEmployeeSlot = async (req, res, next) => {
       clientPortalId: childCaseNumber,
       clientEmail: "",
       clientName: "",
-      visaType: principal.visaType,
-      visaCategory: principal.visaCategory,
+      visaType: employeeVisa.visaType,
+      visaCategory: employeeVisa.visaType,
       caseType: principal.caseType,
-      petitionType: principal.petitionType,
+      petitionType: employeeVisa.visaType,
+      petitionSubType: employeeVisa.petitionSubType,
       checklistItems: childChecklist,
       documentChecklist: childChecklist,
       status: "pending_assignment",
@@ -2501,7 +2704,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     principal.childCases = [...(principal.childCases || []), childCase._id];
     principal.childCaseCount = Math.max(principal.childCaseCount || 0, nextIndex + 1);
     await principal.save();
-    await caseService.writeAuditLog("add_employee_slot", principal, req.user, { childCaseId: childCase._id, childCaseNumber }, req);
+    await caseService.writeAuditLog("add_employee_slot", principal, req.user, { childCaseId: childCase._id, childCaseNumber, visaType: employeeVisa.visaType, petitionSubType: employeeVisa.petitionSubType }, req);
 
     // BUG (fixed): this endpoint only ever created the Case + EmployeeProfile
     // documents — it never assigned any questionnaire/checklist to the new
@@ -2526,6 +2729,8 @@ exports.addEmployeeSlot = async (req, res, next) => {
       message: `Employee slot ${childCaseNumber} added.`,
       childCaseId: childCase._id,
       childCaseNumber,
+      visaType: employeeVisa.visaType,
+      petitionSubType: employeeVisa.petitionSubType || null,
     });
   } catch (err) {
     handleError(err, next);

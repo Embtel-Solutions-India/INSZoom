@@ -1,6 +1,7 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef, Component } from 'react'
+import { Fragment, Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef, Component } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
+import AddEmployeeModal from '../components/AddEmployeeModal'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
@@ -572,6 +573,8 @@ const CRMCaseDetail = () => {
   const [showRemovedEmployees, setShowRemovedEmployees] = useState(false)
   const [employeeActionBusy, setEmployeeActionBusy] = useState('')
   const [employeeActionMessage, setEmployeeActionMessage] = useState('')
+  const [inviteDraft, setInviteDraft] = useState(null) // { childId, name, email }
+  const [showAddEmployee, setShowAddEmployee] = useState(false)
 
   // Tab-specific data and loading states
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
@@ -828,6 +831,16 @@ const CRMCaseDetail = () => {
     }
   }
 
+  // Keep the Employees panel in sync with what the employer does in the client portal (invite / fill-it-myself
+  // switches, submissions) without a manual reload.
+  const refetchChildCasesRef = useRef(refetchChildCases)
+  refetchChildCasesRef.current = refetchChildCases
+  useEffect(() => {
+    if (caseData?.caseStructure !== 'employer_employee') return undefined
+    const timer = setInterval(() => { refetchChildCasesRef.current() }, 30000)
+    return () => clearInterval(timer)
+  }, [caseData?.caseStructure])
+
   const runEmployeeAction = async (actionKey, fn, successMessage) => {
     setEmployeeActionBusy(actionKey)
     setEmployeeActionMessage('')
@@ -842,8 +855,22 @@ const CRMCaseDetail = () => {
     }
   }
 
-  const handleAddEmployee = () => runEmployeeAction('add', () => casesApi.addEmployeeSlot(id), 'Employee slot added')
+  const handleAddEmployee = () => setShowAddEmployee(true)
   const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
+  const handleEmployerFillsInstead = (child) => {
+    const who = child.clientName || 'this employee'
+    if (!window.confirm(`Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`)) return
+    runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in')
+  }
+  const handleSendInviteFromDraft = async () => {
+    if (!inviteDraft?.name?.trim() || !inviteDraft?.email?.trim()) {
+      setEmployeeActionMessage('Name and email are required to invite this employee')
+      return
+    }
+    const draft = inviteDraft
+    await runEmployeeAction(`mode:${draft.childId}`, () => casesApi.setEmployeeDataEntryMode(id, draft.childId, { mode: 'invite', employeeName: draft.name.trim(), employeeEmail: draft.email.trim() }), 'Invitation sent')
+    setInviteDraft(null)
+  }
   const handleRestoreEmployee = (childCaseId) => runEmployeeAction(`restore:${childCaseId}`, () => casesApi.restoreEmployee(childCaseId), 'Employee restored')
   const handleRemoveEmployee = (childCaseId) => {
     if (!window.confirm('Remove this employee from the matter? Their data is kept and this can be undone.')) return
@@ -1859,7 +1886,9 @@ const CRMCaseDetail = () => {
                     <tr>
                       <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
                       <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
                       <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
                       <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
                       <th className="px-5 py-2"></th>
                     </tr>
@@ -1869,12 +1898,27 @@ const CRMCaseDetail = () => {
                       const pill = childStatusPill(child)
                       const isRemoved = child.status === 'removed'
                       const isInvitedPending = pill.label === 'Invited'
+                      const childIsInvited = Boolean(child.user) && String(child.user?._id || child.user) !== String(caseData.user?._id || caseData.user)
+                      const childMode = child.employeeDataEntryMode || (childIsInvited ? 'invite' : caseData.dataEntryMode)
+                      const employeeFills = childMode === 'invite'
                       return (
-                        <tr key={child._id} className={isRemoved ? 'opacity-60' : ''}>
+                        <Fragment key={child._id}>
+                        <tr className={isRemoved ? 'opacity-60' : ''}>
                           <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
                           <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">{child.clientName || 'Employee Slot'}</td>
+                          <td className="px-5 py-3 whitespace-nowrap text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
                           <td className="px-5 py-3 whitespace-nowrap">
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
+                          </td>
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            {isEmployerMatter && (
+                              <span
+                                className={`px-2 py-1 text-xs font-medium rounded-full ${employeeFills ? 'bg-primary/10 text-primary' : 'bg-secondary text-foreground'}`}
+                                title={employeeFills ? 'The invited employee fills in their own information' : 'The employer fills in this employee\'s information'}
+                              >
+                                {employeeFills ? 'Employee fills (invited)' : 'Employer fills'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">
                             {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
@@ -1906,6 +1950,25 @@ const CRMCaseDetail = () => {
                                     {employeeActionBusy === `resend:${child._id}` ? 'Resending…' : 'Resend Invite'}
                                   </button>
                                 )}
+                                {isEmployerMatter && childIsInvited && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEmployerFillsInstead(child)}
+                                    disabled={employeeActionBusy === `mode:${child._id}`}
+                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                                  >
+                                    {employeeActionBusy === `mode:${child._id}` ? 'Switching…' : 'Employer fills instead'}
+                                  </button>
+                                )}
+                                {isEmployerMatter && !childIsInvited && ['invite', 'fill_self'].includes(caseData.dataEntryMode) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInviteDraft({ childId: child._id, name: child.clientName || '', email: child.clientEmail || '' })}
+                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+                                  >
+                                    Invite employee
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => navigate(`/crm-cases/${child._id}`)}
                                   className="text-sm font-semibold text-primary-600 hover:text-primary-700"
@@ -1924,6 +1987,21 @@ const CRMCaseDetail = () => {
                             )}
                           </td>
                         </tr>
+                        {inviteDraft?.childId === child._id && (
+                          <tr className="bg-muted/40">
+                            <td colSpan={7} className="px-5 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input className="input-field text-sm max-w-[14rem]" placeholder="Employee full name" value={inviteDraft.name} onChange={(e) => setInviteDraft({ ...inviteDraft, name: e.target.value })} />
+                                <input type="email" className="input-field text-sm max-w-[16rem]" placeholder="Employee email" value={inviteDraft.email} onChange={(e) => setInviteDraft({ ...inviteDraft, email: e.target.value })} />
+                                <button type="button" onClick={handleSendInviteFromDraft} disabled={employeeActionBusy === `mode:${child._id}`} className="btn-primary text-sm disabled:opacity-50">
+                                  {employeeActionBusy === `mode:${child._id}` ? 'Sending…' : 'Send invite'}
+                                </button>
+                                <button type="button" onClick={() => setInviteDraft(null)} className="btn-secondary text-sm">Cancel</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       )
                     })}
                   </tbody>
@@ -1933,6 +2011,15 @@ const CRMCaseDetail = () => {
           </div>
         )
       })()}
+
+      {showAddEmployee && (
+        <AddEmployeeModal
+          principalId={id}
+          defaultVisaType={caseData?.visaType}
+          onClose={() => setShowAddEmployee(false)}
+          onAdded={async (message) => { setShowAddEmployee(false); setEmployeeActionMessage(message); await refetchChildCases() }}
+        />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border overflow-x-auto">

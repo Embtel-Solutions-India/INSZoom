@@ -104,7 +104,7 @@ export function buildCaseCategories(checklist = []) {
     key: item.documentType || item.name,
     name: item.name || item.documentType,
     description: item.description || item.notes,
-    required: item.required !== false,
+    required: false, // nothing is mandatory to save
     category: item.category || "general",
     status: item.status,
   }));

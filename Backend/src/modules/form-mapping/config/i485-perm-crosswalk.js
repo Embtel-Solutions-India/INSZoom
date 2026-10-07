@@ -113,6 +113,34 @@ A_NUMBER_HEADERS.forEach(([subform, page], index) => {
   }));
 });
 
+// EDITION 2026-09-18 renamed every A-Number widget to Pt1Line4_AlienNumber[n] (the old AlienNumber[n] header repeats
+// and the page-2 Pt1Line4_AlienNumber[0] no longer exist). The new edition's page-2 "Enter 9 digit number" widget
+// (index 2) is the real Item 4 input; every other index is a page-header repeat that "pre-populates from page 1" in
+// the XFA form and, in a flattened fill, must be written explicitly. [index, subform, page].
+const A_NUMBER_NEW_EDITION = [
+  [0, 0, 1], [1, 1, 2], [2, 1, 2], [3, 2, 3], [4, 3, 4], [5, 4, 5], [6, 5, 6], [7, 6, 7], [8, 7, 8], [9, 8, 9], [10, 9, 10],
+  [11, 10, 11], [12, 11, 12], [13, 12, 13], [14, 13, 14], [15, 14, 15], [16, 15, 16], [17, 16, 17], [18, 17, 18],
+  [19, 18, 19], [20, 20, 20], [21, 21, 21], [22, 22, 22], [23, 23, 23], [24, 24, 24],
+];
+A_NUMBER_NEW_EDITION.forEach(([index, subform, page]) => {
+  const isItem4 = index === 2;
+  MAPPED_EDGES.push(edge({
+    fieldName: `${P(subform)}Pt1Line4_AlienNumber[${index}]`,
+    source: "person.alienNumber",
+    checklistField: "employee_alien_registration_number",
+    formSection: isItem4 ? "Part 1" : `Page ${page} header`,
+    formItem: isItem4 ? "Item 4 A-Number" : "A-Number (page header, repeat of Part 1 Item 4)",
+    formPage: page,
+    dataType: "alienNumber",
+    required: false,
+    confidenceLevel: "HIGH",
+    ...DIGITS,
+    note: isItem4
+      ? "Part 1 Item 4, A-Number (edition 09/18/26). Pre-printed 'A-', so digits only."
+      : "Page header A-Number (edition 09/18/26); digits only, 'A-' is pre-printed.",
+  }));
+});
+
 // Fields a case manager must enter by hand and that the canonical profile / PERM checklist cannot supply. Listed
 // individually in graph.unmappedTargets (matched on the widget name without its #subform prefix).
 const INDIVIDUAL_UNMAPPED = [

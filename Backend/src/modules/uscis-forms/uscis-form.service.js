@@ -1197,9 +1197,12 @@ async function compareCaseForm(caseId, caseFormId, user) {
 }
 
 async function markCaseFormsStale(caseId, reason = "master_case_data_changed", changedFields = []) {
+  // On an employer / family matter the real forms live on the CHILD cases while the shared party's checklist (the
+  // employer's / petitioner's) is answered on the principal - so a change there makes every child's forms stale too.
+  const childIds = await Case.find({ parentCase: caseId }).distinct("_id").catch(() => []);
   await CaseForm.updateMany(
     {
-      caseId,
+      caseId: childIds.length ? { $in: [caseId, ...childIds] } : caseId,
       status: { $nin: ["finalized", "filed", "archived"] },
     },
     {
@@ -1385,32 +1388,22 @@ async function createCaseForm(caseId, payload, user, req) {
 
 async function saveCaseForm(caseId, caseFormId, payload, user, req, action = "save_draft") {
   await getAccessibleCase(caseId, user);
-  const caseForm = await CaseForm.findOne({ _id: caseFormId, caseId }).populate({ path: "formTemplateId", select: TEMPLATE_RENDER_EXCLUDE });
-  if (!caseForm) {
+  const exists = await CaseForm.exists({ _id: caseFormId, caseId });
+  if (!exists) {
     const error = new Error("Case form not found");
     error.statusCode = 404;
     throw error;
   }
-  if (caseForm.isLocked) {
-    const error = new Error("Case form is locked");
-    error.statusCode = 409;
-    throw error;
-  }
-  const incomingValues = expandFlatValues(payload.fieldValues || payload.filledData || {});
-  const values = deepMerge(caseForm.fieldValues || {}, incomingValues);
-  const progress = calculateCompletion(caseForm.formTemplateId, values, await resolveComponentFieldIds(caseForm));
-  caseForm.fieldValues = values;
-  caseForm.filledData = values;
-  caseForm.completion = progress.completion;
-  caseForm.sectionProgress = progress.sectionProgress;
-  caseForm.validationErrors = progress.validationErrors;
-  caseForm.status = payload.status || (action === "auto_save" ? "draft" : "draft");
-  caseForm.lastModifiedBy = user?._id;
-  caseForm.lastModifiedAt = new Date();
-  addAuditEntry(caseForm, action === "save_section" ? "section_saved" : action, user, { sectionKey: payload.sectionKey, fields: Object.keys(payload.fieldValues || payload.filledData || {}) }, req);
-  await caseForm.save();
-  await writeAuditLog(action === "save_section" ? "section_saved" : action, caseForm, user, { sectionKey: payload.sectionKey }, req);
-  return caseForm;
+  // One write path for every way a form gets saved (field, section, draft, autosave): the interactive service's, which
+  // keeps filledData (what the PDF reads), fieldValues, attribution and manual-override protection consistent.
+  const InteractiveFormReviewService = require("./interactive-form-review.service");
+  const auditAction = action === "save_section" ? "SECTION_SAVED" : action === "auto_save" ? "AUTO_SAVED" : "DRAFT_SAVED";
+  return InteractiveFormReviewService.saveFieldValues(caseId, caseFormId, payload.fieldValues || payload.filledData || {}, user, req, {
+    status: payload.status || "draft",
+    sectionKey: payload.sectionKey,
+    reason: action === "auto_save" ? "Autosave" : "Form saved",
+    action: auditAction,
+  });
 }
 
 async function reviewCaseForm(caseId, caseFormId, payload, user, req) {

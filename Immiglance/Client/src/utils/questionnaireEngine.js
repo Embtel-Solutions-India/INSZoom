@@ -240,10 +240,10 @@ export function isQuestionVisible(question, answers) {
   return evaluateCondition(question?.conditionalLogic, answers) && evaluateCondition(question?.showIf, answers);
 }
 
-export function isQuestionRequired(question, answers) {
-  const requiredByRule = (question?.validationRules || []).some((rule) => rule.type === "required");
-  const requireWhen = question?.metadata?.requireWhen || question?.requiredWhen;
-  return Boolean(question?.required || requiredByRule || (requireWhen && evaluateCondition(requireWhen, answers)));
+// Nothing a client fills in is mandatory: any partial answer can always be saved ("Save progress"). Completeness is a
+// separate rule - Submit needs every visible item answered (see missingRequiredCount in useQuestionnaireAnswers).
+export function isQuestionRequired() {
+  return false;
 }
 
 // The role set that makes a case "employer-shaped" for the unified

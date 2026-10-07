@@ -81,43 +81,19 @@ async function notifyRecipients({ recipients, caseDoc, author, feedback, isReply
   // directly, with no reload/re-fetch needed to see a new message land.
   recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "feedback:new", feedback));
 
-  await Promise.all(
-    recipients.map((userId) =>
-      notificationService
-        .createNotification(
-          {
-            userId,
-            type: "attorney_feedback",
-            category: "general",
-            title: isReply ? `New reply on ${caseLabel}` : `New feedback on ${caseLabel}`,
-            message: `${authorLabel}: ${previewOf(feedback.message, feedback.attachments?.length)}`,
-            caseId: caseDoc._id,
-            // Deep link target, resolved per-origin (relative) — the
-            // RECIPIENT's app, which is always the opposite side from
-            // whoever authored this message (attorney writes -> the case
-            // manager reads it in Admin; staff writes -> the attorney
-            // reads it in the Attorney Portal). Admin has no dedicated
-            // route for this — it surfaces via the "Attorney Messages"
-            // panel already on the case detail page, so the link is that
-            // page itself (/crm-cases/:id); the attorney portal's own
-            // /messages/:caseId is a real dedicated route.
-            link: isAttorneyRole(author.role) ? `/crm-cases/${caseDoc._id}` : `/messages/${caseDoc._id}`,
-            channels: ["in_app", "socket", "push"],
-            metadata: { feedbackId: feedback._id, caseId: caseDoc._id },
-            source: "shared",
-          },
-          author
-        )
-        .catch((error) => logger.error("attorney_feedback_notification_failed", { error, userId: String(userId) }))
-    )
-  );
-
-  // Customizable email for the same moment (the in-app + push alert above is the existing one).
-  const fromAttorney = isAttorneyRole(author.role);
-  require("../notifications/triggerEvents.service").emitInBackground("attorney.feedback", {
-    caseId: caseDoc._id, actor: author, data: { attorneyName: authorLabel, details: previewOf(feedback.message, feedback.attachments?.length) },
-    recipients: { case_manager: fromAttorney ? recipients : [], attorney: fromAttorney ? [] : recipients },
-    covered: { case_manager: { notified: true, emailed: false }, attorney: { notified: true, emailed: false } },
+  // Push (author's name on top, then the message), the in-app alert, and an email if the recipient is offline.
+  await require("../notifications/messageAlert.service").notifyNewMessage({
+    recipientIds: recipients,
+    sender: author,
+    caseId: caseDoc._id,
+    caseNumber: caseLabel,
+    text: feedback.message,
+    attachmentCount: feedback.attachments?.length || 0,
+    // Deep link into the RECIPIENT's app (opposite side of whoever wrote it).
+    link: isAttorneyRole(author.role) ? `/crm-cases/${caseDoc._id}` : `/messages/${caseDoc._id}`,
+    kind: "feedback",
+    conversationId: caseDoc._id,
+    messageId: feedback._id,
   });
 }
 

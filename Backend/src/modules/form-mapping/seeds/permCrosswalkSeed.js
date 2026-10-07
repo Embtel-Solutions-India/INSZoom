@@ -123,8 +123,10 @@ function createPermCrosswalkSeed({ formCode, crosswalk, missingSource }) {
     return graph;
   }
 
-  async function seed({ user } = {}) {
-    const template = await USCISFormTemplate.findOne({ formCode, status: "active" }).sort({ createdAt: -1 });
+  // `template` (optional): seed a specific edition - e.g. a newly imported draft that is not active yet - instead of
+  // the currently active one. Used by the edition-replacement flow so a new edition is fully mapped BEFORE it goes live.
+  async function seed({ user, template: explicitTemplate } = {}) {
+    const template = explicitTemplate || await USCISFormTemplate.findOne({ formCode, status: "active" }).sort({ createdAt: -1 });
     if (!template) {
       const error = new Error(`No active USCISFormTemplate found for ${formCode}.`);
       error.code = `${formCode.replace("-", "")}_TEMPLATE_NOT_FOUND`;
@@ -133,8 +135,12 @@ function createPermCrosswalkSeed({ formCode, crosswalk, missingSource }) {
     const actor = user || (await resolveSystemActor());
     const graph = buildGraph(template);
     const checksum = contentChecksum(graph);
-    if (graph.summary.mappedFields !== MAPPED_EDGES.length) {
-      console.warn(`WARNING: ${MAPPED_EDGES.length} crosswalk edges authored but only ${graph.summary.mappedFields} matched the active ${formCode} template (edition drift?).`);
+    // A crosswalk may carry edges for more than one edition (renamed widgets); only edges whose field exists in THIS
+    // template can match, so compare against those.
+    const templateFieldNames = new Set(MappingGraphService.getTemplateFields(template).map((field) => field.targetPdfField));
+    const applicableEdges = MAPPED_EDGES.filter((edgeSpec) => templateFieldNames.has(edgeSpec.fieldName)).length;
+    if (graph.summary.mappedFields + (graph.lowConfidenceTargets || []).length !== applicableEdges) {
+      console.warn(`WARNING: ${applicableEdges} crosswalk edges apply to this ${formCode} edition but ${graph.summary.mappedFields} (+${(graph.lowConfidenceTargets || []).length} low-confidence) were mapped.`);
     }
     const existingVersions = await USCISMappingVersion.find({ template: template._id }).sort({ mappingVersion: -1 }).lean();
     const existingWithChecksum = existingVersions.find((version) => contentChecksum(version.graph) === checksum);

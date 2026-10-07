@@ -398,8 +398,8 @@ function isQuestionVisible(question, answerMap = {}, user) {
 function validateQuestionValue(question, value) {
   const errors = [];
   const warnings = [];
-  const rules = [...(question.validationRules || [])];
-  if (question.required && !rules.some((rule) => rule.type === "required")) rules.push({ type: "required" });
+  // Nothing is mandatory to SAVE: only format/range rules judge an answer that was actually given.
+  const rules = (question.validationRules || []).filter((rule) => rule.type !== "required");
   const isUnanswered = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
   for (const rule of rules) {
     const bucket = rule.severity === "warning" ? warnings : errors;
@@ -881,7 +881,9 @@ async function buildResponseState(responseId) {
 async function calculateCompletion(questionnaire, answerMap, user) {
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
-  const required = visibleQuestions.filter((question) => question.required);
+  // "required" in the returned shape now means "needed for a complete submission": every visible question. Nothing is
+  // mandatory to save, but Submit needs 100%.
+  const required = visibleQuestions;
   const answeredRequired = required.filter((question) => {
     const value = getAnswerValue(answerMap, question.key);
     return value !== undefined && value !== null && value !== "";
@@ -969,7 +971,8 @@ async function resolveVisibleQuestions(questionnaire, answerMap, user) {
 async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
   const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
-  const required = visibleQuestions.filter((question) => question.required);
+  // Every visible question is needed for a complete submission (nothing is mandatory to save).
+  const required = visibleQuestions;
   const answeredRequiredKeys = new Set(
     required.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key))).map((question) => question.key)
   );
@@ -1319,7 +1322,10 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     : null;
   const participantId = participant?._id || staffTarget?._id || payload.participantId;
   const responseOwner = participantId || payload.assignedTo || user?._id;
-  const responseId = payload.responseId || responseIdFor(questionnaire._id, effectiveCaseId, responseOwner);
+  // A pinned response (see Case.pinnedResponseIds) wins over the owner-derived id, so a save made after an employee's
+  // workflow switch still lands on the same response the earlier answers live under.
+  const pinnedResponseId = caseData?.pinnedResponseIds?.[`${targetRole || questionnaire.checklistRole || ""}:${questionnaire._id}`];
+  const responseId = payload.responseId || pinnedResponseId || responseIdFor(questionnaire._id, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -1820,11 +1826,35 @@ async function syncFileAnswerFromDocument(caseData, document, user, req) {
   return synced;
 }
 
+// Submit is for COMPLETE information only. Checked against what is already saved plus what this request carries,
+// BEFORE anything is flagged as submitted, so an incomplete attempt leaves the saved progress exactly as it was.
+async function assertSubmittable(payload, user) {
+  if (!payload.responseId || !payload.questionnaireId) return; // callers without a response id are still gated after the save below
+  const questions = await Question.find({ questionnaire: payload.questionnaireId, active: true });
+  const stored = await Answer.find({ responseId: payload.responseId }).lean();
+  const answerMap = getAnswerMapFromAnswers(stored);
+  (payload.answers || []).forEach((item) => {
+    answerMap[item.questionKey] = { ...(answerMap[item.questionKey] || {}), questionKey: item.questionKey, value: item.value };
+  });
+  const missing = questions
+    .filter((question) => isQuestionVisible(question, answerMap, user))
+    .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
+  if (missing.length) {
+    const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
+    error.status = 422;
+    error.code = "CHECKLIST_INCOMPLETE";
+    error.details = { missing: missing.slice(0, 50).map((question) => ({ questionKey: question.key, label: question.label })), missingCount: missing.length };
+    throw error;
+  }
+}
+
 async function submitResponse(payload, user, req) {
+  await assertSubmittable(payload, user);
   const result = await saveAnswers(payload, user, req, "submitted");
   if (result.completion.answeredRequired < result.completion.totalRequired) {
-    const error = new Error("Required questionnaire fields are incomplete");
-    error.status = 400;
+    const error = new Error("Complete every item before submitting - use Save progress to keep what you have filled in so far.");
+    error.status = 422;
+    error.code = "CHECKLIST_INCOMPLETE";
     throw error;
   }
   const now = new Date();
@@ -2733,7 +2763,10 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.code = "CHECKLIST_NOT_APPROVED";
     throw error;
   }
-  const responseId = activeReference?.responseId || responseIdFor(questionnaire._id, referenceCase._id, requestedParticipant?._id || referenceCase.user || user?._id);
+  const pinnedKey = `${targetRole || questionnaire.checklistRole || ""}:${questionnaire._id}`;
+  const responseId = activeReference?.responseId
+    || referenceCase.pinnedResponseIds?.[pinnedKey]
+    || responseIdFor(questionnaire._id, referenceCase._id, requestedParticipant?._id || referenceCase.user || user?._id);
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
   const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();

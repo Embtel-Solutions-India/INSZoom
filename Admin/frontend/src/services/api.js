@@ -250,7 +250,10 @@ export const casesApi = {
   // act on their own principal's children (enforced server-side).
   restoreEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/restore-employee`),
   resendEmployeeInvite: (principalId, childCaseId) => api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }),
-  addEmployeeSlot: (principalId) => api.post(`/cases/${principalId}/add-employee-slot`),
+  // Per-employee workflow: { mode: 'fill_self' } revokes an invitation, { mode: 'invite', employeeName, employeeEmail } invites.
+  setEmployeeDataEntryMode: (principalId, childCaseId, payload) => api.patch(`/cases/${principalId}/employees/${childCaseId}/data-entry-mode`, payload),
+  addEmployeeSlot: (principalId, payload = {}) => api.post(`/cases/${principalId}/add-employee-slot`, payload),
+  employeeVisaOptions: () => api.get('/cases/employee-visa-options'),
   removeEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/remove-employee`),
   getTeamLeadDashboard: (params = {}) => api.get('/cases/dashboard/team-lead', { params }),
   addDocumentReference: (id, documentId) =>

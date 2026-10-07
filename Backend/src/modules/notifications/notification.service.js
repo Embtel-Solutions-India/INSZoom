@@ -351,6 +351,7 @@ async function dispatchPushChannel(notification, payload, actor) {
     title: notification.title,
     body: notification.message,
     link: notification.link,
+    tag: payload?.data?.tag,
     data: { notificationId: notification._id?.toString(), type: notification.type, caseId: idOf(notification.caseId) },
   }).catch((error) => ({ successCount: 0, failureCount: 0, error: error.message }));
 

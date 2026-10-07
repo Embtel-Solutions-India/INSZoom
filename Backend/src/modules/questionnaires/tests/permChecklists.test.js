@@ -268,10 +268,10 @@ test("jobs are listed most-recent first: out-of-order is only a warning, never b
   assert.equal(wrongOrder.warnings.length, 1);
 });
 
-test("validateQuestionValue runs the row checks for the repeating group, and an empty history is 'required'", () => {
+test("validateQuestionValue runs the row checks for the repeating group; an empty history is no longer an error (nothing is mandatory to save)", () => {
   const withBadRow = service.validateQuestionValue(history, [completeJob({ company_name: "" })]);
   assert.ok(withBadRow.errors.some((message) => /Job 1: Company's Name/.test(message)));
-  assert.ok(service.validateQuestionValue(history, []).errors.length >= 1);
+  assert.deepEqual(service.validateQuestionValue(history, []).errors, []);
   assert.deepEqual(service.validateQuestionValue(history, [completeJob()]).errors, []);
 });
 

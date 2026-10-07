@@ -39,8 +39,8 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // pattern for this same hook.
   const employeeQa = useQuestionnaireAnswers(activeChildId, employeeTargetRole, { disabled: !activeChildId });
 
-  const fetchChildren = async () => {
-    setLoadingChildren(true);
+  const fetchChildren = async (silent = false) => {
+    if (!silent) setLoadingChildren(true);
     try {
       const relatedRes = await casesApi.getRelated(principalId);
       // Invariant 5: a removed child's data is preserved server-side, but it
@@ -56,6 +56,9 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
 
   useEffect(() => {
     fetchChildren();
+    // Stay in sync with what staff do in the Admin portal (invites, workflow switches, submissions).
+    const timer = setInterval(() => fetchChildren(true), 30000);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principalId]);
 
@@ -101,6 +104,7 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           principalId={principalId}
           children={children}
           dataEntryMode={dataEntryMode}
+          defaultVisaType={activeCase.visaType}
           targetRole={employeeTargetRole}
           onOpen={setActiveChildId}
           onChanged={fetchChildren}

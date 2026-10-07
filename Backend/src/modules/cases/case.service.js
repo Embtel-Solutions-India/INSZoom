@@ -797,7 +797,7 @@ async function getRelatedRecords(caseData) {
     // can tell "not yet invited" from "invited" (clientEmail is set by
     // inviteEmployee) without a second round-trip.
     Case.find({ parentCase: caseId })
-      .select("caseNumber clientName clientEmail visaType status stage caseRole childIndex dataEntryMode assignedCaseManager assignmentOverridden")
+      .select("caseNumber clientName clientEmail user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);

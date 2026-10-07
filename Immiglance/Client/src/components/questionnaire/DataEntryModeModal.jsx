@@ -3,7 +3,7 @@ import { casesApi } from "../../services/api";
 
 // INVARIANT 6: only rendered by the caller when caseStructure is
 // employer_employee/family AND dataEntryMode === 'not_set' — see
-// Documents.jsx. The choice is permanent from the client's side; only staff
+// Documents.jsx. You can change the choice later (per employee, from each employee card); staff
 // can reset it (PATCH .../data-entry-mode with { reset: true }).
 export default function DataEntryModeModal({ principalCaseId, isFamily, onModeSelected }) {
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export default function DataEntryModeModal({ principalCaseId, isFamily, onModeSe
           How would you like to provide {participantLabel} information?
         </h2>
         <p className="text-sm text-slate-500 mb-6">
-          This choice cannot be changed after you select it. Contact your case manager if you need to switch later.
+          You can change this at any time, and you can choose differently for each employee from their card.
         </p>
 
         <div className="space-y-3">

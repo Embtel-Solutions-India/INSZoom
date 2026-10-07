@@ -60,6 +60,7 @@ router.post(
 );
 // Declared before "/:id" so "visa-types" is never read as a case id.
 router.get("/visa-types", authenticate, authorizePermissions("cases:create"), ctrl.listCreatableVisaTypes);
+router.get("/employee-visa-options", authenticate, ctrl.listEmployeeVisaOptions);
 router.get("/:id/addons", authenticate, authorizePermissions("cases:read"), ctrl.getAvailableAddons);
 router.post(
   "/:id/addons/:addonKey/purchase",
@@ -75,6 +76,8 @@ router.delete("/:id/permanent", authenticate, authorizeRoles("super_admin", "adm
 
 router.put("/:id/stage", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.updateCaseStage);
 router.post("/:id/n400-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN400Process);
+// "Upgrade to Premium Processing" (Admin Documents tab): assigns the Form I-907 checklist to the client and provisions Form I-907.
+router.post("/:id/premium-processing/upgrade", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.upgradeToPremiumProcessing);
 router.post("/:id/n600-process/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveN600Process);
 router.post("/:id/change-of-address/add", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.addChangeOfAddress);
 router.post("/:id/change-of-address/:componentId/approve", authenticate, authorizeRoles(...managerRoles), authorizePermissions("cases:update"), ctrl.approveChangeOfAddress);
@@ -120,6 +123,7 @@ router.get("/:id/assignment-history", authenticate, authorizeRoles(...staffRoles
 // above rather than the staff-only authorizeRoles/authorizePermissions gates.
 router.patch("/:principalId/data-entry-mode", authenticate, ctrl.setDataEntryMode);
 router.post("/:principalId/invite-employee", authenticate, ctrl.inviteEmployee);
+router.patch("/:principalId/employees/:childCaseId/data-entry-mode", authenticate, ctrl.setEmployeeDataEntryMode);
 router.patch("/:caseId/remove-employee", authenticate, ctrl.removeEmployee);
 router.patch("/:caseId/restore-employee", authenticate, ctrl.restoreEmployee);
 router.post("/:principalId/resend-employee-invite", authenticate, ctrl.resendEmployeeInvite);

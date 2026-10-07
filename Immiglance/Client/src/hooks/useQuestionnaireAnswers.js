@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { questionnairesApi } from "../services/api";
+import { STATUS, fieldItemStatus } from "../utils/checklistStatus";
 import useCaseQuestionnaire from "./useCaseQuestionnaire";
 import {
   clampPercent,
@@ -161,7 +162,12 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
       message,
     }))
   ), [answers, visibleQuestions]);
-  const missingRequiredCount = allValidationErrors.filter((validationError) => validationError.message === "This field is required.").length;
+  // Items still blank. Nothing is mandatory to SAVE, but Submit needs every visible item filled, so this is the count that
+  // gates the Submit button (name kept for existing callers). Computed locally so unsaved edits count immediately.
+  const missingRequiredCount = useMemo(() => visibleQuestions.filter((question) => {
+    const key = questionKey(question);
+    return fieldItemStatus(answerByKey.get(key), answers[key]).status === STATUS.NOT_STARTED;
+  }).length, [visibleQuestions, answers, answerByKey]);
 
   const progress = localProgress || hookProgress || {};
   const overallCompletion = clampPercent(progress.completionPercentage ?? progress.percent ?? progress.overall ?? 0);

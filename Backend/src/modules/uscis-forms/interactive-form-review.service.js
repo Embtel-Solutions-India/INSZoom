@@ -695,6 +695,63 @@ class InteractiveFormReviewService {
     return caseForm;
   }
 
+  // The single, correct way to persist a batch of field values typed into a form: used by the draft / autosave /
+  // section endpoints (uscis-form.service.js saveCaseForm) exactly as saveSection uses it. Values are stored under the
+  // normalized fieldId in BOTH fieldValues (flat) and filledData (nested - what the PDF filler reads), and recorded as
+  // manual overrides so a later autofill/sync never wipes what the case manager typed. Accepts keys as raw AcroForm
+  // names or fieldIds, flat or nested. (The old saveCaseForm replaced filledData with the flat fieldValues map, which
+  // left the typed values unreachable by the PDF filler: the form looked saved but downloaded blank.)
+  static async saveFieldValues(caseId, caseFormId, input, user, req, { status = "draft", sectionKey, reason = "Form saved", action = "FORM_SAVED" } = {}) {
+    const { caseForm, template } = await this.load(caseId, caseFormId, user);
+    this.assertEditable(caseForm, user);
+    const flat = {};
+    const collect = (bag, prefix = "") => {
+      Object.entries(bag || {}).forEach(([key, value]) => {
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (this.fieldDefinition(template, path)) flat[path] = value;
+        else if (value && typeof value === "object" && !Array.isArray(value)) collect(value, path);
+        else flat[path] = value; // unknown scalar - reported under "ignored" below
+      });
+    };
+    collect(input || {});
+    const changed = [];
+    const ignored = [];
+    caseForm.fieldValues = caseForm.fieldValues || {};
+    caseForm.filledData = caseForm.filledData || {};
+    caseForm.sourceAttribution = caseForm.sourceAttribution || {};
+    caseForm.manualOverrides = caseForm.manualOverrides || {};
+    for (const [rawFieldName, value] of Object.entries(flat)) {
+      if (value === undefined) continue;
+      const definition = this.fieldDefinition(template, rawFieldName);
+      if (!definition) { ignored.push(rawFieldName); continue; }
+      const fieldName = definition.fieldId || rawFieldName;
+      const previousValue = AutoFillService.getFieldValue(caseForm.fieldValues, fieldName)
+        ?? AutoFillService.getFieldValue(caseForm.fieldValues, rawFieldName)
+        ?? MappingResolver.resolvePath(caseForm.filledData, fieldName);
+      if (valuesEqual(previousValue, value)) continue;
+      changed.push({ fieldName, previousValue, value });
+      caseForm.fieldValues[fieldName] = value;
+      MappingResolver.setPath(caseForm.filledData, fieldName, value);
+      caseForm.sourceAttribution[fieldName] = {
+        value, source: "ManualOverride", sourceField: fieldName, confidence: 100, verificationStatus: "manual_override", populatedAt: new Date(),
+      };
+      caseForm.manualOverrides[fieldName] = { previousValue, value, reason, overriddenBy: this.userId(user), overriddenAt: new Date() };
+      this.pushFieldHistory(caseForm, { fieldName, sectionKey, action: "manual_override", previousValue, newValue: value, reason, source: caseForm.formCode }, user);
+    }
+    caseForm.markModified("fieldValues");
+    caseForm.markModified("filledData");
+    caseForm.markModified("sourceAttribution");
+    caseForm.markModified("manualOverrides");
+    caseForm.status = status;
+    caseForm.lastModifiedBy = this.userId(user);
+    caseForm.lastModifiedAt = new Date();
+    await this.updateProgress(caseForm, template);
+    this.addAudit(caseForm, action, user, req, { sectionKey, fields: changed.map((item) => item.fieldName), ignored });
+    await caseForm.save();
+    await this.audit(action, caseForm, user, req, { sectionKey, fields: changed.map((item) => item.fieldName) });
+    return caseForm;
+  }
+
   static async reviewField(caseId, caseFormId, payload, user, req) {
     const { caseForm, template } = await this.load(caseId, caseFormId, user);
     if (!this.permissions(user).canReview) throw error("Not authorized to review fields", 403);
