@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Save, RotateCcw } from 'lucide-react'
+import { loadBranding } from '../../utils/branding'
 import api from '../../services/api'
 import SettingField from './SettingField'
 
@@ -50,6 +51,7 @@ export default function CategoryPage({ category, title, description, children })
       const changes = Object.entries(dirty).map(([key, value]) => ({ key, scope: 'system', value }))
       await api.patch('/settings-v2', { changes })
       setToast({ type: 'success', message: 'Settings saved.' })
+      loadBranding()
       setDirty({})
       setFieldErrors({})
       await load()

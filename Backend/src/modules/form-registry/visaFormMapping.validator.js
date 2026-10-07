@@ -26,7 +26,7 @@ const REQUIRED_VISA_TYPES = [
   "F-1 OPT", "F-1 STEM OPT",
   "EB-1A", "EB-1B", "EB-1C", "EB-2 PERM", "EB-2 NIW", "EB-3 Skilled Worker", "EB-3 Professional", "EB-3 Other Worker", "EB-4", "EB-5 Regional Center", "EB-5 Standalone",
   "IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4",
-  "Adjustment of Status", "GC-NVC", "Conditional Green Card Removal", "Green Card Renewal", "Re-entry Permit",
+  "Adjustment of Status", "Conditional Green Card Removal", "Green Card Renewal", "Re-entry Permit",
   "Naturalization", "Certificate of Citizenship", "Replacement Citizenship Certificate",
   "Premium Processing",
 ];

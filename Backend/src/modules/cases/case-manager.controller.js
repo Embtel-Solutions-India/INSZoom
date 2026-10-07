@@ -53,33 +53,105 @@ function objectId(value) {
   return mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : value;
 }
 
+const LIST_SORT_FIELDS = ["name", "activeCasesCount", "completedCasesCount", "totalRevenue", "currentWorkload", "performanceRating", "status"];
+const NOT_ACTIVE_CASE_STATUSES = ["closed", "archived", "approved", "denied", "completed"];
+const PENDING_CASE_STATUSES = ["pending_assignment", "assigned", "pending_approval"];
+
+// Per-manager case, task and payment figures in three grouped queries (no N+1).
+async function buildManagerMetrics() {
+  const [caseRows, taskRows, paymentRows] = await Promise.all([
+    Case.aggregate([
+      { $match: { assignedCaseManager: { $ne: null } } },
+      { $group: { _id: { manager: "$assignedCaseManager", status: "$status" }, count: { $sum: 1 } } },
+    ]),
+    Task.aggregate([
+      { $match: { status: { $nin: ["completed", "cancelled"] }, assignedTo: { $ne: null } } },
+      { $group: { _id: "$assignedTo", open: { $sum: 1 }, overdue: { $sum: { $cond: [{ $lt: ["$dueDate", new Date()] }, 1, 0] } } } },
+    ]),
+    Payment.aggregate([
+      { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
+      { $unwind: "$caseData" },
+      { $match: { "caseData.assignedCaseManager": { $ne: null } } },
+      { $group: { _id: "$caseData.assignedCaseManager", total: { $sum: { $ifNull: ["$amountPaid", 0] } } } },
+    ]),
+  ]);
+  const metrics = new Map();
+  const entry = (id) => {
+    const key = String(id);
+    if (!metrics.has(key)) metrics.set(key, { active: 0, completed: 0, pending: 0, totalCases: 0, openTasks: 0, overdueTasks: 0, revenue: 0 });
+    return metrics.get(key);
+  };
+  caseRows.forEach(({ _id, count }) => {
+    const m = entry(_id.manager);
+    m.totalCases += count;
+    if (CLOSED_CASE_STATUSES.includes(_id.status)) m.completed += count;
+    if (!NOT_ACTIVE_CASE_STATUSES.includes(_id.status)) m.active += count;
+    if (PENDING_CASE_STATUSES.includes(_id.status)) m.pending += count;
+  });
+  taskRows.forEach((row) => { const m = entry(row._id); m.openTasks = row.open; m.overdueTasks = row.overdue; });
+  paymentRows.forEach((row) => { entry(row._id).revenue = money(row.total) / 100; });
+  return metrics;
+}
+
 async function getCaseManagers(req, res, next) {
   try {
-    const caseManagers = await User.find({ role: "case_manager", status: { $ne: "archived" } }).select("-password").sort({ name: 1 });
-    const data = await Promise.all(caseManagers.map(async (manager) => {
-      const caseFilter = { assignedCaseManager: manager._id };
-      const [activeCasesCount, completedCasesCount, overdueTasksCount, totalPayments] = await Promise.all([
-        Case.countDocuments({ ...caseFilter, status: { $nin: ["closed", "archived", "approved", "denied"] } }),
-        Case.countDocuments({ ...caseFilter, status: { $in: ["completed", "closed", "approved"] } }),
-        Task.countDocuments({ assignedTo: manager._id, status: { $nin: ["completed", "cancelled"] }, dueDate: { $lt: new Date() } }),
-        Payment.aggregate([
-          { $match: { paymentStatus: "paid" } },
-          { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
-          { $unwind: "$caseData" },
-          { $match: { "caseData.assignedCaseManager": manager._id } },
-          { $group: { _id: null, total: { $sum: "$amountPaid" } } },
-        ]),
-      ]);
+    const { search = "", status = "", sortBy = "name", sortOrder = "asc" } = req.query;
+    const paginate = req.query.page !== undefined || req.query.limit !== undefined;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+
+    const [managers, metrics] = await Promise.all([
+      User.find({ role: "case_manager", status: { $ne: "archived" } }).select("-password").lean(),
+      buildManagerMetrics(),
+    ]);
+
+    const all = managers.map((manager) => {
+      const m = metrics.get(String(manager._id)) || { active: 0, completed: 0, pending: 0, totalCases: 0, openTasks: 0, overdueTasks: 0, revenue: 0 };
       return {
-        ...manager.toObject(),
-        activeCasesCount,
-        assignedClientsCount: activeCasesCount,
-        completedCasesCount,
-        overdueTasksCount,
-        totalPayments: totalPayments[0]?.total || 0,
+        ...manager,
+        status: manager.isActive === false ? "Inactive" : "Active",
+        activeCasesCount: m.active,
+        assignedClientsCount: m.active,
+        completedCasesCount: m.completed,
+        pendingCasesCount: m.pending,
+        overdueTasksCount: m.overdueTasks,
+        currentWorkload: m.active + m.openTasks,
+        totalRevenue: m.revenue,
+        totalPayments: m.revenue,
+        performanceRating: m.totalCases ? (m.completed / m.totalCases) * 100 : 0,
       };
-    }));
-    res.json({ success: true, count: data.length, data, caseManagers: data });
+    });
+
+    const stats = {
+      totalCaseManagers: all.length,
+      activeCaseManagers: all.filter((cm) => cm.status === "Active").length,
+      totalActiveCases: all.reduce((sum, cm) => sum + cm.activeCasesCount, 0),
+      totalCompletedCases: all.reduce((sum, cm) => sum + cm.completedCasesCount, 0),
+      totalRevenueManaged: all.reduce((sum, cm) => sum + cm.totalRevenue, 0),
+    };
+
+    const term = String(search).trim().toLowerCase();
+    let rows = all.filter((cm) => {
+      if (status && cm.status.toLowerCase() !== String(status).toLowerCase()) return false;
+      if (!term) return true;
+      return [cm.name, cm.displayName, cm.email].some((v) => String(v || "").toLowerCase().includes(term));
+    });
+
+    const field = LIST_SORT_FIELDS.includes(sortBy) ? sortBy : "name";
+    const dir = sortOrder === "desc" ? -1 : 1;
+    rows.sort((a, b) => {
+      const x = a[field];
+      const y = b[field];
+      const cmp = typeof x === "string" || typeof y === "string"
+        ? String(x || "").localeCompare(String(y || ""), undefined, { sensitivity: "base" })
+        : (x || 0) - (y || 0);
+      return (cmp || String(a.name || "").localeCompare(String(b.name || ""))) * dir;
+    });
+
+    const totalCount = rows.length;
+    if (paginate) rows = rows.slice((page - 1) * limit, page * limit);
+    const pagination = { page, limit: paginate ? limit : totalCount, totalCount, totalPages: Math.max(Math.ceil(totalCount / limit), 1) };
+    res.json({ success: true, count: rows.length, data: rows, caseManagers: rows, stats, pagination });
   } catch (error) {
     next(error);
   }

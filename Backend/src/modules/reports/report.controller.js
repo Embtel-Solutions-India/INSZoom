@@ -148,6 +148,15 @@ async function createEod(req, res, next) {
   }
 }
 
+async function generateEod(req, res, next) {
+  try {
+    const report = await reportService.generateOwnEodReport(req.user, req);
+    res.status(201).json({ success: true, data: report });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function updateEod(req, res, next) {
   try {
     const report = await reportService.updateEodReport(req.params.id, req.body, req);
@@ -173,6 +182,7 @@ module.exports = {
   cases,
   companies,
   createEod,
+  generateEod,
   createTemplate,
   exportReport,
   financial,

@@ -14,5 +14,6 @@ router.get("/visa/:visaType", authenticate, ctrl.getMappingsForVisa);
 // creates/updates a real USCISFormTemplate record.
 router.get("/catalog", authenticate, authorizePermissions("forms:read"), ctrl.getFormCatalog);
 router.post("/catalog/:formCode/fetch", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:approve"), ctrl.fetchFormFromUSCIS);
+router.delete("/catalog/:formCode", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:delete"), ctrl.deleteFormFromCatalog);
 
 module.exports = router;

@@ -141,7 +141,7 @@ async function caseAnalytics(query = {}, user) {
     // on uscisDecision: "rfe" before grouping), so it had no totalCases to
     // divide by and no rfeRate/visaType fields at all. That left the
     // Overview tab's RFE Rate stat card computing NaN (it sums
-    // item.totalCases, which never existed) and the RFE & AI tab's trends
+    // item.totalCases, which never existed) and the RFE & AE tab's trends
     // table rendering blank Visa Type / 0% columns.
     Case.aggregate([
       { $match: match },

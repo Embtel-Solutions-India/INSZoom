@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Lock, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import BrandMark from '../components/BrandMark'
+import { useBranding } from '../utils/branding'
 
 // Edge/IE inject their own native reveal-password icon on type="password"
 // inputs (the ::-ms-reveal pseudo-element) - it renders next to our own
@@ -16,6 +17,7 @@ const HIDE_NATIVE_REVEAL_CSS = `
 `
 
 const Login = () => {
+  const branding = useBranding()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -69,7 +71,7 @@ const Login = () => {
       <div className="flex items-center gap-3 mb-6">
         <BrandMark size="w-10 h-10" />
         <div>
-          <h1 className="text-lg font-bold text-foreground font-serif">Immiglance</h1>
+          <h1 className="text-lg font-bold text-foreground font-serif">{branding.displayName}</h1>
           <p className="text-sm text-muted-foreground">Internal CRM</p>
         </div>
       </div>
@@ -77,7 +79,7 @@ const Login = () => {
       <div className="w-full max-w-md card">
         <div className="mb-6">
           <h2 className="text-lg font-bold text-foreground font-serif">Login</h2>
-          <p className="text-sm text-muted-foreground">For Immiglance team members</p>
+          <p className="text-sm text-muted-foreground">For {branding.displayName} team members</p>
         </div>
 
         {error && (

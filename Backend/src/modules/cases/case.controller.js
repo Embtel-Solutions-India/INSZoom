@@ -32,7 +32,7 @@ const { generateOpaqueToken, hashToken } = require("../auth/password.service");
 const workflowSlaService = require("../settings/workflowSla.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
-const { getCaseStructure } = require("../../config/visaCategories");
+const { getCaseStructure, getSubTypes } = require("../../config/visaCategories");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
@@ -770,6 +770,29 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
   }
 };
 
+// GET /cases/visa-types - every case type that can be created, straight from the registry that createCase itself validates
+// against (config/visaCategories.js). The Admin "Create case" dropdown reads this, so a case type added to the registry is
+// selectable without touching the frontend. `unmapped` lists types that have form-registry rows but no creatable case-type entry
+// (they would be rejected at creation), so a gap is visible instead of silent.
+exports.listCreatableVisaTypes = async (req, res, next) => {
+  try {
+    const { VISA_CATEGORIES } = require("../../config/visaCategories");
+    const VisaFormMapping = require("../../models/VisaFormMapping");
+    const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
+      visaType,
+      label: category.label || visaType,
+      caseStructure: category.caseStructure,
+      noForms: Boolean(category.noForms),
+      formCount: (category.forms || []).length,
+      subTypes: category.subTypes || [],
+    }));
+    const registryTypes = await VisaFormMapping.distinct("visaType", { active: true }).catch(() => []);
+    res.json({ success: true, data, unmapped: registryTypes.filter((visaType) => !VISA_CATEGORIES[visaType]).sort() });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
 exports.getCases = async (req, res, next) => {
   const timer = createPerfTimer("cases_list_performance", {
     requestId: req.requestId,
@@ -1036,6 +1059,17 @@ exports.createCase = async (req, res, next) => {
       });
     }
 
+    // Visas with a required filing type (H-1B -> New/Extension/Transfer/Amendment/Concurrent).
+    const allowedSubTypes = getSubTypes(trimmedVisaType);
+    const requestedSubType = cleanString(req.body.petitionSubType);
+    if (allowedSubTypes.length && !allowedSubTypes.includes(requestedSubType)) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_VISA_SUBTYPE",
+        message: `${trimmedVisaType} requires a type: ${allowedSubTypes.join(", ")}`,
+      });
+    }
+
     const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
     const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
     const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;
@@ -1116,7 +1150,7 @@ exports.createCase = async (req, res, next) => {
         visaCategory: trimmedVisaType,
         caseType: "immigration",
         petitionType: trimmedVisaType,
-        petitionSubType: extension ? cleanString(extension) : undefined,
+        petitionSubType: allowedSubTypes.length ? requestedSubType : (extension ? cleanString(extension) : undefined),
         // SB-1 (Returning Resident Visa) is inherently a consular process -
         // there is no adjustment-of-status path for someone applying from
         // abroad for returning-resident status - so this is SB-1's own

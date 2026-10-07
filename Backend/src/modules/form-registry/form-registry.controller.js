@@ -5,6 +5,8 @@ const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
 const visaFormMappingService = require("./visaFormMapping.service");
+const USCISMappingVersion = require("../../models/USCISMappingVersion");
+const { recordAuditEvent } = require("../audit/audit.service");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
 
 function handleError(error, next) {
@@ -509,6 +511,51 @@ exports.acquireCaseForm = async (req, res, next) => {
     }
     const result = await OnDemandFormAcquisitionService.acquireForCase(caseData._id, formNumber, req.user, req);
     res.json({ success: true, data: result });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// DELETE /api/form-registry/catalog/:formCode - hard-deletes a form from the
+// Form Governance catalog together with everything that only exists for it:
+// its USCISFormTemplate edition(s), their field-mapping versions, supplement
+// component definitions and the VisaFormMapping (visa -> form) rows. Refused
+// while any case still holds a generated copy of the form, so no live case
+// is ever left pointing at a missing template.
+exports.deleteFormFromCatalog = async (req, res, next) => {
+  try {
+    const formCode = String(req.params.formCode || "").trim();
+    if (!formCode) throw Object.assign(new Error("Form code is required"), { status: 400 });
+    const escaped = formCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const templates = await USCISFormTemplate.find({ formCode: new RegExp(`^${escaped}$`, "i") }).select("_id").lean();
+    const templateIds = templates.map((t) => t._id);
+    const caseFormCount = templateIds.length ? await CaseForm.countDocuments({ formTemplateId: { $in: templateIds } }) : 0;
+    if (caseFormCount > 0) {
+      throw Object.assign(new Error(`${formCode.toUpperCase()} is used by ${caseFormCount} case form${caseFormCount === 1 ? "" : "s"} and can't be deleted until those are removed.`), { status: 409, code: "FORM_IN_USE" });
+    }
+    const mappingFilter = { formTemplateFormCode: formCode.toLowerCase() };
+    const [mappingCount, templateCount] = await Promise.all([
+      VisaFormMapping.countDocuments(mappingFilter),
+      Promise.resolve(templateIds.length),
+    ]);
+    if (!mappingCount && !templateCount) throw Object.assign(new Error(`Form "${formCode}" was not found`), { status: 404 });
+    const [mappingResult, versionResult, componentResult, templateResult] = await Promise.all([
+      VisaFormMapping.deleteMany(mappingFilter),
+      templateIds.length ? USCISMappingVersion.deleteMany({ template: { $in: templateIds } }) : { deletedCount: 0 },
+      templateIds.length ? USCISFormComponentDefinition.deleteMany({ parentTemplateId: { $in: templateIds } }) : { deletedCount: 0 },
+      templateIds.length ? USCISFormTemplate.deleteMany({ _id: { $in: templateIds } }) : { deletedCount: 0 },
+    ]);
+    await recordAuditEvent({ req, action: "form_registry.form_deleted", entityType: "form_template", entityId: templateIds[0], details: `Deleted form ${formCode.toUpperCase()} and its mappings` }).catch(() => {});
+    res.json({
+      success: true,
+      data: {
+        formCode: formCode.toUpperCase(),
+        deletedTemplates: templateResult.deletedCount,
+        deletedFieldMappingVersions: versionResult.deletedCount,
+        deletedComponents: componentResult.deletedCount,
+        deletedVisaMappings: mappingResult.deletedCount,
+      },
+    });
   } catch (error) {
     handleError(error, next);
   }

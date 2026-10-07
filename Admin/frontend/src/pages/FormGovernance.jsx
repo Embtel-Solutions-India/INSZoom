@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
 import UploadFormModal from '../components/UploadFormModal'
-import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload } from 'lucide-react'
+import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2 } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
   const message = error?.response?.data?.message
@@ -18,7 +18,7 @@ const Badge = ({ tone = 'gray', children }) => {
     amber: 'bg-amber-100 text-amber-800',
     red: 'bg-red-100 text-red-800',
     gray: 'bg-gray-100 text-gray-700',
-    blue: 'bg-blue-100 text-blue-800',
+    blue: 'bg-primary/10 text-primary',
   }
   return <span className={`px-2 py-0.5 text-xs font-medium rounded-full whitespace-nowrap ${tones[tone] || tones.gray}`}>{children}</span>
 }
@@ -70,6 +70,7 @@ const FormGovernance = () => {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [fetchingCode, setFetchingCode] = useState(null)
+  const [deletingCode, setDeletingCode] = useState(null)
   const [fetchResult, setFetchResult] = useState(null)
   const [showUpload, setShowUpload] = useState(false)
   const [coverage, setCoverage] = useState(null)
@@ -194,6 +195,24 @@ const FormGovernance = () => {
     }
   }
 
+  const deleteForm = async (form) => {
+    const ok = window.confirm(`Permanently delete ${form.formCode} and all of its mappings (template, field mappings and visa-type associations)? This cannot be undone.`)
+    if (!ok) return
+    setDeletingCode(form.formCode)
+    setFetchResult(null)
+    try {
+      await formGovernanceApi.deleteForm(form.formCode)
+      setFetchResult({ tone: 'green', message: `${form.formCode} and its mappings were deleted.` })
+      setCoverage(null)
+      setHealth(null)
+      await load()
+    } catch (err) {
+      setFetchResult({ tone: 'red', message: readErrorMessage(err, `Could not delete ${form.formCode}.`) })
+    } finally {
+      setDeletingCode(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -253,7 +272,7 @@ const FormGovernance = () => {
                         {row.error ? (
                           <span>{row.formCode || row.title}</span>
                         ) : (
-                          <button className="text-blue-600 hover:underline" onClick={() => navigate(`/form-governance/${row.formCode}`)}>
+                          <button className="text-primary hover:underline" onClick={() => navigate(`/form-governance/${row.formCode}`)}>
                             {row.formCode} — {row.title}
                           </button>
                         )}
@@ -296,7 +315,7 @@ const FormGovernance = () => {
               <button
                 key={f.key}
                 onClick={() => setHealthFilter(f.key)}
-                className={`px-3 py-1.5 text-sm rounded-lg border ${healthFilter === f.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-muted-foreground border-gray-200 hover:bg-muted'}`}
+                className={`px-3 py-1.5 text-sm rounded-lg border ${healthFilter === f.key ? 'bg-primary text-white border-primary' : 'bg-white text-muted-foreground border-gray-200 hover:bg-muted'}`}
               >
                 {f.label}
               </button>
@@ -401,7 +420,7 @@ const FormGovernance = () => {
                 placeholder="Search by form code or title..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
               />
             </div>
           </div>
@@ -410,7 +429,7 @@ const FormGovernance = () => {
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
-                className={`px-3 py-1.5 text-sm rounded-lg border ${filter === f.key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-muted-foreground border-gray-200 hover:bg-muted'}`}
+                className={`px-3 py-1.5 text-sm rounded-lg border ${filter === f.key ? 'bg-primary text-white border-primary' : 'bg-white text-muted-foreground border-gray-200 hover:bg-muted'}`}
               >
                 {f.label}
               </button>
@@ -428,16 +447,16 @@ const FormGovernance = () => {
         </div>
       ) : (
         <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
+          <div>
+            <table className="w-full text-sm">
               <thead>
                 <tr className="bg-muted">
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Form</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Fetched?</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Template</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Mapping / Autofill</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Used by</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Form</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Fetched?</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Template</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Mapping / Autofill</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Used by</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -448,40 +467,40 @@ const FormGovernance = () => {
                   const remaining = form.associations.length - visibleAssociations.length
                   return (
                     <tr key={form.formCode} className="border-b hover:bg-muted">
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-2">
                         <div className="font-medium text-foreground flex items-center gap-2">
                           {form.formCode}
                           {form.isSupplement && <Badge tone="blue">Supplement</Badge>}
                         </div>
-                        <div className="text-sm text-muted-foreground max-w-xs truncate">{form.title}</div>
+                        <div className="text-xs text-muted-foreground max-w-[14rem] truncate">{form.title}</div>
                         {form.pendingTemplateId && (
                           <div className="text-xs text-amber-700 mt-0.5">A newer edition is awaiting review</div>
                         )}
                       </td>
-                      <td className="px-6 py-4"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-2"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
+                      <td className="px-3 py-2">
                         {form.templateStatus ? <Badge tone={TEMPLATE_STATUS_TONES[form.templateStatus] || 'gray'}>{form.templateStatus}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
                       </td>
-                      <td className="px-6 py-4"><Badge tone={mappingInfo.tone}>{mappingInfo.label}</Badge></td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
+                      <td className="px-3 py-2"><Badge tone={mappingInfo.tone}>{mappingInfo.label}</Badge></td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
                           {visibleAssociations.map((assoc, index) => (
-                            <span key={`${assoc.visaType}-${index}`} className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700 whitespace-nowrap">
+                            <span key={`${assoc.visaType}-${index}`} className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">
                               {assoc.visaType} · {associationLabel(assoc)}
                             </span>
                           ))}
                           {remaining > 0 && <span className="text-xs text-muted-foreground">+{remaining} more</span>}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {form.fetchStatus === 'fetched' && (
-                            <button onClick={() => openPdf(form)} className="btn-secondary text-xs flex items-center gap-1">
+                            <button onClick={() => openPdf(form)} className="btn-secondary !px-2 !py-1 text-xs flex items-center gap-1">
                               <ExternalLink className="w-3.5 h-3.5" /> Open
                             </button>
                           )}
                           {form.templateId && (
-                            <button onClick={() => navigate(`/form-governance/${form.isSupplement ? form.parentFormCode : form.formCode}`)} className="btn-secondary text-xs flex items-center gap-1">
+                            <button onClick={() => navigate(`/form-governance/${form.isSupplement ? form.parentFormCode : form.formCode}`)} className="btn-secondary !px-2 !py-1 text-xs flex items-center gap-1">
                               Review mapping
                             </button>
                           )}
@@ -492,10 +511,20 @@ const FormGovernance = () => {
                             <button
                               onClick={() => fetchFromUscis(form.formCode)}
                               disabled={fetchingCode === form.formCode}
-                              className="btn-primary text-xs flex items-center gap-1 disabled:opacity-50"
+                              className="btn-primary !px-2 !py-1 text-xs flex items-center gap-1 disabled:opacity-50"
                             >
                               {fetchingCode === form.formCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                               Fetch from USCIS.gov
+                            </button>
+                          )}
+                          {isAdmin && !form.isSupplement && (
+                            <button
+                              onClick={() => deleteForm(form)}
+                              disabled={deletingCode === form.formCode}
+                              className="!px-2 !py-1 text-xs flex items-center gap-1 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {deletingCode === form.formCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                              Delete
                             </button>
                           )}
                           {form.isSupplement && form.fetchStatus !== 'fetched' && (

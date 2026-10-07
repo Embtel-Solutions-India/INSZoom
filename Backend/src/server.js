@@ -147,13 +147,15 @@ function startEodReportMaintenance() {
   const intervalMs = Number(process.env.EOD_REPORT_CHECK_INTERVAL_MS || 5 * 60 * 1000);
   const initialDelayMs = Number(process.env.EOD_REPORT_INITIAL_DELAY_MS || 45 * 1000);
   const generationHour = Math.min(Math.max(Number(process.env.EOD_REPORT_GENERATION_HOUR_IST || 6), 0), 23);
+  const generationMinute = Math.min(Math.max(Number(process.env.EOD_REPORT_GENERATION_MINUTE_IST || 15), 0), 59);
   const backfillDays = Math.min(Math.max(Number(process.env.EOD_REPORT_BACKFILL_DAYS || 7), 1), 31);
   let lastSuccessfulRun = "";
   const run = () =>
     withJobLock("eod-report-maintenance", intervalMs * 3, async () => {
       const now = new Date();
       const istNow = new Date(now.getTime() + 330 * 60 * 1000);
-      if (istNow.getUTCHours() < generationHour) return;
+      if (reportService.isIstWeekend(now)) return;
+      if (istNow.getUTCHours() * 60 + istNow.getUTCMinutes() < generationHour * 60 + generationMinute) return;
       const runKey = istNow.toISOString().slice(0, 10);
       if (lastSuccessfulRun === runKey) return;
       try {

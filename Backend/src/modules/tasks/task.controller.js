@@ -96,10 +96,22 @@ const base = createCrudController(Task, {
   beforeUpdate: protectAssignmentChanges,
 });
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Week-over-week % change; null when there is nothing to compare against.
+function pctChange(current, previous) {
+  if (!previous) return current ? 100 : null;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
 async function stats(req, res, next) {
   try {
     const scope = taskScope(req.user);
-    const [total, byStatus, byPriority, overdueCount, upcomingCount] = await Promise.all([
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * DAY_MS);
+    const weekAhead = new Date(now.getTime() + 7 * DAY_MS);
+    const open = { $nin: ["completed", "cancelled"] };
+    const [total, byStatus, byPriority, overdueCount, upcomingCount, totalLastWeek, overdueLastWeek, upcomingPrevWindow, completedThisWeek, completedPrevWeek] = await Promise.all([
       Task.countDocuments(scope),
       Task.aggregate([{ $match: scope }, { $group: { _id: "$status", count: { $sum: 1 } } }]),
       Task.aggregate([{ $match: scope }, { $group: { _id: "$priority", count: { $sum: 1 } } }]),
@@ -109,6 +121,11 @@ async function stats(req, res, next) {
         status: { $nin: ["completed", "cancelled"] },
         dueDate: { $gte: new Date(), $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
       }),
+      Task.countDocuments({ ...scope, createdAt: { $lt: weekAgo } }),
+      Task.countDocuments({ ...scope, status: open, createdAt: { $lt: weekAgo }, dueDate: { $lt: weekAgo } }),
+      Task.countDocuments({ ...scope, status: open, dueDate: { $gte: weekAgo, $lt: now } }),
+      Task.countDocuments({ ...scope, status: "completed", updatedAt: { $gte: weekAgo } }),
+      Task.countDocuments({ ...scope, status: "completed", updatedAt: { $gte: new Date(weekAgo.getTime() - 7 * DAY_MS), $lt: weekAgo } }),
     ]);
     const statusCounts = ["pending", "assigned", "in_progress", "waiting", "blocked", "completed", "cancelled"]
       .reduce((acc, status) => ({ ...acc, [status]: 0 }), {});
@@ -132,6 +149,12 @@ async function stats(req, res, next) {
         byPriority,
         overdue: overdueCount,
         dueToday: upcomingCount,
+        trends: {
+          total: pctChange(total, totalLastWeek),
+          overdue: pctChange(overdueCount, overdueLastWeek),
+          upcoming: pctChange(upcomingCount, upcomingPrevWindow),
+          completed: pctChange(completedThisWeek, completedPrevWeek),
+        },
       },
     });
   } catch (error) {

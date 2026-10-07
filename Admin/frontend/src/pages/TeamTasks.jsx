@@ -84,7 +84,7 @@ const TeamTasks = () => {
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-secondary text-foreground',
-      assigned: 'bg-blue-100 text-blue-800',
+      assigned: 'bg-primary/10 text-primary',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
@@ -96,7 +96,7 @@ const TeamTasks = () => {
   const getPriorityColor = (priority) => {
     const colors = {
       low: 'bg-secondary text-foreground',
-      medium: 'bg-blue-100 text-blue-800',
+      medium: 'bg-primary/10 text-primary',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
@@ -107,7 +107,7 @@ const TeamTasks = () => {
     switch (priority) {
       case 'urgent': return <AlertTriangle className="w-4 h-4 text-red-600" />
       case 'high': return <AlertTriangle className="w-4 h-4 text-orange-600" />
-      case 'medium': return <Clock className="w-4 h-4 text-blue-600" />
+      case 'medium': return <Clock className="w-4 h-4 text-primary" />
       default: return <CheckCircle className="w-4 h-4 text-muted-foreground" />
     }
   }
@@ -140,7 +140,7 @@ const TeamTasks = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     )
   }
@@ -165,7 +165,7 @@ const TeamTasks = () => {
         </div>
         <button
           onClick={() => navigate('/tasks/create')}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
         >
           <Plus className="w-5 h-5" />
           Create Task
@@ -188,14 +188,14 @@ const TeamTasks = () => {
               placeholder="Search team tasks..."
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
 
           <select
             value={filters.assignedTo}
             onChange={(e) => handleFilterChange('assignedTo', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">All Team Members</option>
             {(tasks || [])
@@ -210,7 +210,7 @@ const TeamTasks = () => {
           <select
             value={filters.status}
             onChange={(e) => handleFilterChange('status', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">All Status</option>
             <option value="pending">Pending</option>
@@ -223,7 +223,7 @@ const TeamTasks = () => {
           <select
             value={filters.priority}
             onChange={(e) => handleFilterChange('priority', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">All Priority</option>
             <option value="urgent">Urgent</option>
@@ -235,7 +235,7 @@ const TeamTasks = () => {
           <select
             value={filters.category}
             onChange={(e) => handleFilterChange('category', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">All Categories</option>
             <option value="case_preparation">Case Preparation</option>
@@ -327,7 +327,7 @@ const TeamTasks = () => {
                         <span className="font-medium">Progress:</span>
                         <div className="w-24 bg-muted rounded-full h-2">
                           <div
-                            className="bg-blue-600 h-2 rounded-full"
+                            className="bg-primary h-2 rounded-full"
                             style={{ width: `${Math.min(Math.max(Number(task.progress) || 0, 0), 100)}%` }}
                           />
                         </div>

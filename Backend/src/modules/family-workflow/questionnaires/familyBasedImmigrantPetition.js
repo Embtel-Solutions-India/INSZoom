@@ -822,4 +822,6 @@ const i864 = {
   REPEATABLE_FIELDS: I864_REPEATABLE_FIELDS,
 };
 
-module.exports = { key, matches, i130, greenCard, i864, gcNvc };
+// GC_NVC_SECURITY_QUESTIONS / gcNvcDocuments are also read by the standalone GC-NVC case checklist (questionnaires/gcNvcChecklist.js)
+// so the verbatim Part 11 wording and the six document requirements live in exactly one place.
+module.exports = { key, matches, i130, greenCard, i864, gcNvc, GC_NVC_SECURITY_QUESTIONS, gcNvcDocuments };

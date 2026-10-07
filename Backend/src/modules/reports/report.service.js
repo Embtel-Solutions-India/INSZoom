@@ -15,7 +15,8 @@ const { recordAuditEvent } = require("../audit/audit.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 
 const IST_OFFSET_MS = 330 * 60 * 1000;
-const EOD_STAFF_ROLES = ["team_lead", "sales_manager", "case_manager", "attorney", "professor", "finance", "paralegal", "reviewer", "hr"];
+// Only roles EODReport.role can store: other roles used to make the whole generation job throw on validation.
+const EOD_STAFF_ROLES = ["team_lead", "case_manager"];
 const EOD_MANAGER_ROLES = ["super_admin", "admin", "team_lead"];
 
 function serviceError(message, status = 400) {
@@ -32,6 +33,12 @@ function startOfIstDay(value = new Date(), dayOffset = 0) {
     shifted.getUTCDate() + dayOffset
   );
   return new Date(utcMidnight - IST_OFFSET_MS);
+}
+
+// 0 = Sunday, 6 = Saturday, evaluated on the IST calendar day.
+function isIstWeekend(value = new Date()) {
+  const day = new Date(new Date(value).getTime() + IST_OFFSET_MS).getUTCDay();
+  return day === 0 || day === 6;
 }
 
 function istDayRange(value = new Date(), dayOffset = 0) {
@@ -69,12 +76,14 @@ function numericMetric(value, field) {
 function manualReportPayload(payload = {}, user) {
   const role = normalizeRole(user?.role);
   if (!EOD_STAFF_ROLES.includes(role)) throw serviceError("This role does not submit EOD reports", 403);
+  const date = startOfIstDay(payload.date || new Date());
+  if (isIstWeekend(date)) throw serviceError("EOD reports are not generated for Saturday or Sunday");
   return {
     staff: user._id,
     role,
     teamId: user.teamId || undefined,
     department: user.department || undefined,
-    date: startOfIstDay(payload.date || new Date()),
+    date,
     casesWorked: numericMetric(payload.casesWorked, "Cases worked"),
     casesClosed: numericMetric(payload.casesClosed, "Cases closed"),
     documentsReviewed: numericMetric(payload.documentsReviewed, "Documents reviewed"),
@@ -95,15 +104,12 @@ async function eodVisibilityFilter(query = {}, user) {
     if (query.staff) filter.staff = query.staff;
     if (query.role) filter.role = query.role;
   } else if (role === "team_lead") {
-    const staffIds = await User.find({
-      isActive: { $ne: false },
-      $or: [
-        ...(user.teamId ? [{ teamId: user.teamId }] : []),
-        { _id: user._id },
-      ],
-    }).distinct("_id");
-    filter.staff = { $in: staffIds };
-    if (query.role) filter.role = query.role;
+    // A team lead sees every case manager's reports plus their own.
+    const own = { staff: user._id };
+    const managers = { role: "case_manager" };
+    if (query.role === "team_lead") Object.assign(filter, own);
+    else if (query.role === "case_manager") Object.assign(filter, managers);
+    else filter.$or = [own, managers];
   } else {
     filter.staff = user._id;
   }
@@ -414,8 +420,40 @@ async function automaticMetrics(staff, reportDate) {
   return { casesWorked, casesClosed, documentsReviewed, messagesReplied, pendingTasks };
 }
 
+// Builds today's (IST) report for the signed-in case manager / team lead from live activity.
+async function generateOwnEodReport(user, req) {
+  const role = normalizeRole(user?.role);
+  if (!EOD_STAFF_ROLES.includes(role)) throw serviceError("Only case managers and team leads generate EOD reports", 403);
+  const reportDate = startOfIstDay(new Date());
+  if (isIstWeekend(reportDate)) throw serviceError("EOD reports are not generated for Saturday or Sunday");
+  const { start, end } = istDayRange(reportDate);
+  if (await EODReport.exists({ staff: user._id, date: { $gte: start, $lt: end } })) {
+    throw serviceError("An EOD report already exists for today", 409);
+  }
+  const metrics = await automaticMetrics(user, reportDate);
+  let report;
+  try {
+    report = await EODReport.create({
+      staff: user._id,
+      role,
+      teamId: user.teamId || undefined,
+      department: user.department || undefined,
+      date: reportDate,
+      ...metrics,
+      source: "automatic",
+      generatedAt: new Date(),
+    });
+  } catch (error) {
+    if (error?.code === 11000) throw serviceError("An EOD report already exists for today", 409);
+    throw error;
+  }
+  if (req) await recordAuditEvent({ req, action: "eod_report.generated", entityType: "eod_report", entityId: report._id, details: "EOD report generated on demand" });
+  return report;
+}
+
 async function generateAutomaticEodReports(options = {}) {
   const reportDate = startOfIstDay(options.reportDate || new Date(), options.reportDate ? 0 : -1);
+  if (isIstWeekend(reportDate)) return { created: 0, skipped: 0, reportDate, staffCount: 0, weekend: true };
   const staff = await User.find({
     isActive: { $ne: false },
     role: { $in: EOD_STAFF_ROLES },
@@ -514,6 +552,8 @@ module.exports = {
   getUserReport,
   getWorkflowReport,
   generateAutomaticEodReports,
+  generateOwnEodReport,
+  isIstWeekend,
   listEodReports,
   listExecutions,
   listTemplates,

@@ -18,6 +18,7 @@ router.use("/ai", require("../modules/ai/ai.routes"));
 router.use("/audit-logs", require("../modules/audit/audit.routes"));
 router.use("/search", require("../modules/search/search.routes"));
 router.use("/settings", require("../modules/settings/settings.routes"));
+router.use("/branding", require("../modules/settings/branding.routes"));
 router.use("/settings-v2", require("../modules/settings/settingsEngine.routes"));
 router.use("/email-templates", require("../modules/settings/emailTemplates.routes"));
 router.use("/saved-charges", require("../modules/settings/savedCharges.routes"));

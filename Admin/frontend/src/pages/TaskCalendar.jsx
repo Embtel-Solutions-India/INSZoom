@@ -89,7 +89,7 @@ const TaskCalendar = () => {
   const getPriorityColor = (priority) => {
     const colors = {
       low: 'border-border bg-muted',
-      medium: 'border-blue-300 bg-blue-50',
+      medium: 'border-primary bg-primary/10',
       high: 'border-orange-300 bg-orange-50',
       urgent: 'border-red-300 bg-red-50'
     }
@@ -100,7 +100,7 @@ const TaskCalendar = () => {
     switch (priority) {
       case 'urgent': return <AlertTriangle className="w-3 h-3 text-red-600" />
       case 'high': return <AlertTriangle className="w-3 h-3 text-orange-600" />
-      case 'medium': return <Clock className="w-3 h-3 text-blue-600" />
+      case 'medium': return <Clock className="w-3 h-3 text-primary" />
       default: return <Clock className="w-3 h-3 text-muted-foreground" />
     }
   }
@@ -150,7 +150,7 @@ const TaskCalendar = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     )
   }
@@ -176,7 +176,7 @@ const TaskCalendar = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate('/tasks/create')}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-5 h-5" />
             Create Task
@@ -211,7 +211,7 @@ const TaskCalendar = () => {
             </button>
             <button
               onClick={goToToday}
-              className="px-3 py-1 text-sm text-blue-600 hover:text-blue-700 border border-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+              className="px-3 py-1 text-sm text-primary hover:text-primary/80 border border-primary rounded-lg hover:bg-primary/10 transition-colors"
             >
               Today
             </button>
@@ -222,7 +222,7 @@ const TaskCalendar = () => {
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">All Status</option>
               <option value="pending">Pending</option>
@@ -232,7 +232,7 @@ const TaskCalendar = () => {
             <select
               value={filters.priority}
               onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-1 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">All Priority</option>
               <option value="urgent">Urgent</option>
@@ -266,17 +266,17 @@ const TaskCalendar = () => {
                   min-h-24 p-2 border rounded-lg transition-colors
                   ${day 
                     ? isCurrentDay 
-                      ? 'border-blue-500 bg-blue-50' 
+                      ? 'border-primary bg-primary/10' 
                       : isPast 
                         ? 'border-border bg-muted' 
-                        : 'border-border hover:border-blue-300 hover:bg-blue-50 cursor-pointer'
+                        : 'border-border hover:border-primary hover:bg-primary/10 cursor-pointer'
                     : 'border-transparent bg-transparent'
                   }
                 `}
               >
                 {day && (
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-medium ${isCurrentDay ? 'text-blue-600' : 'text-foreground'}`}>
+                    <span className={`text-sm font-medium ${isCurrentDay ? 'text-primary' : 'text-foreground'}`}>
                       {day}
                     </span>
                   </div>
@@ -378,7 +378,7 @@ const TaskCalendar = () => {
             <span className="text-sm text-muted-foreground">High</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+            <div className="w-3 h-3 rounded-full bg-primary/100"></div>
             <span className="text-sm text-muted-foreground">Medium</span>
           </div>
           <div className="flex items-center gap-2">
