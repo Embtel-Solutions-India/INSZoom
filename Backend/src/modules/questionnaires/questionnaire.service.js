@@ -1321,7 +1321,8 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     ? participantService.activeParticipants(caseData, targetRole)[0]
     : null;
   const participantId = participant?._id || staffTarget?._id || payload.participantId;
-  const responseOwner = participantId || payload.assignedTo || user?._id;
+  // A delegate employer saves into the SAME response as the primary employer (one employer data set), never a second one.
+  const responseOwner = participantId || payload.assignedTo || (caseData && String(caseData.delegateEmployerUser || "") === String(user?._id || "x") ? caseData.user : user?._id);
   // A pinned response (see Case.pinnedResponseIds) wins over the owner-derived id, so a save made after an employee's
   // workflow switch still lands on the same response the earlier answers live under.
   const pinnedResponseId = caseData?.pinnedResponseIds?.[`${targetRole || questionnaire.checklistRole || ""}:${questionnaire._id}`];

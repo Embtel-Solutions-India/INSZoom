@@ -132,9 +132,14 @@ export const AUTOFILL_LABELS = {
   employee_drivers_license_or_state_id: "driver's license or state ID",
 };
 
+// Autofill-from-document sources that exist on the server but are NOT offered to clients in the portal (the case team
+// uses them from the Admin portal). "Autofill with LCA" is one: it is hidden for every visa and case.
+const CLIENT_HIDDEN_AUTOFILL_SOURCES = new Set(["certified_lca_eta9035"]);
+
 export function matchingAutofillSources(questions = []) {
   const keys = new Set(questions.map((question) => questionKey(question)));
   return Object.entries(AUTOFILL_SOURCES)
+    .filter(([documentType]) => !CLIENT_HIDDEN_AUTOFILL_SOURCES.has(documentType))
     .filter(([, fieldKeys]) => fieldKeys.some((key) => keys.has(key)))
     .map(([documentType]) => documentType);
 }

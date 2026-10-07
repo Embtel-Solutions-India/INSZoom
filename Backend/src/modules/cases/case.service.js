@@ -150,6 +150,8 @@ function canAccessCase(user, caseData) {
   if (sameId(caseData.user, user._id)) return true;
   if (sameId(caseData.employeeUser, user._id)) return true;
   if (sameId(caseData.employerUser, user._id)) return true;
+  // Delegate employer: a second login for the same employer (see Case.delegateEmployerUser).
+  if (sameId(caseData.delegateEmployerUser, user._id)) return true;
   if (participantService.canAccessAnyParticipant(user, caseData)) return true;
   if (sameId(caseData.clientProfile, user._id)) return true;
   if (sameId(caseData.clientProfile?.user, user._id)) return true;
@@ -201,7 +203,7 @@ function applyCaseRoleFilter(filter, user) {
     return filter;
   }
   if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
-  else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
+  else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { delegateEmployerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
   else if (role === "employee") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
   // employer/employee branches immediately above under separate field names.
@@ -234,7 +236,7 @@ function applyCaseRoleFilter(filter, user) {
     }];
   }
   else {
-    filter.$and = [...(filter.$and || []), { $or: [{ user: user._id }, { clientProfile: user._id }, { petitionerUser: user._id }, { beneficiaryUser: user._id }] }];
+    filter.$and = [...(filter.$and || []), { $or: [{ user: user._id }, { clientProfile: user._id }, { petitionerUser: user._id }, { beneficiaryUser: user._id }, { delegateEmployerUser: user._id }] }];
   }
   return filter;
 }
@@ -586,8 +588,12 @@ function serializeCaseForUser(caseData, user) {
 
 async function writeAuditLog(action, caseData, user, changes, req) {
   if (!user || !caseData) return;
+  // Who acted, and in what capacity: the delegate employer is a second login for the SAME employer, so the audit trail
+  // names the person (userId) and labels the capacity, while the data they touch stays the one employer record.
+  const isDelegate = Boolean(caseData.delegateEmployerUser) && sameId(caseData.delegateEmployerUser, user._id);
   await AuditLog.create({
     userId: user._id,
+    ...(isDelegate ? { userRole: "delegate_employer" } : {}),
     action,
     entityType: "case",
     entityId: caseData._id?.toString(),

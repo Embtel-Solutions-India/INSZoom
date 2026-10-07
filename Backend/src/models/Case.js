@@ -1201,6 +1201,21 @@ const caseSchema = new mongoose.Schema(
     },
     employeeDataEntryModeChangedAt: { type: Date, default: null },
     employeeDataEntryModeChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
+    /**
+     * Delegate employer: a SECOND login for the SAME employer on the SAME case. It is not a second employer and carries
+     * no company data of its own - all employer / petitioner information stays in the one existing employer record.
+     * `delegateEmployerUser` is what grants access (set on the principal case and on every child case the employer-side
+     * currently holds); `delegateEmployer` is only the contact used to invite the person.
+     */
+    delegateEmployerUser: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    delegateEmployer: {
+      name: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+      phone: { type: String, trim: true },
+      invitedAt: { type: Date },
+      invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
     /**
      * Pins the questionnaire response a checklist's answers live under, keyed "<targetRole>:<questionnaireId>".
      * Without a stored reference, the response id is derived from the case's CURRENT owner - so when an employee's

@@ -49,13 +49,15 @@ describe("AUTOFILL_SOURCES / matchingAutofillSources (Phase H2b)", () => {
     expect(sources).toContain("credential_evaluation_report");
   });
 
-  it("matches the LCA document type on the employer position section", () => {
+  it("never offers the LCA autofill to clients, even on the employer position section (staff-only source)", () => {
     const questions = [
       question("employer_position_socCode"),
       question("employer_position_jobTitle"),
       question("employer_position_wageLevel"),
     ];
-    expect(matchingAutofillSources(questions)).toEqual(["certified_lca_eta9035"]);
+    expect(matchingAutofillSources(questions)).toEqual([]);
+    // the server-side mapping itself is unchanged - only the client portal button is hidden
+    expect(AUTOFILL_SOURCES.certified_lca_eta9035).toBeTruthy();
   });
 
   it("matches the driver's license / state ID document type on the current US address questions", () => {
@@ -66,8 +68,8 @@ describe("AUTOFILL_SOURCES / matchingAutofillSources (Phase H2b)", () => {
     expect(matchingAutofillSources(questions)).toContain("employee_drivers_license_or_state_id");
   });
 
-  it("matches the LCA document type on employer company and workforce fields", () => {
+  it("never offers the LCA autofill to clients on employer company and workforce fields either", () => {
     const questions = [question("employer_company_naicsCode"), question("employer_workforce_totalUsEmployees")];
-    expect(matchingAutofillSources(questions)).toEqual(["certified_lca_eta9035"]);
+    expect(matchingAutofillSources(questions)).toEqual([]);
   });
 });
