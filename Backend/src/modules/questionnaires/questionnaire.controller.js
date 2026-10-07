@@ -172,6 +172,17 @@ exports.approveCaseChecklists = async (req, res, next) => {
   }
 };
 
+// Client side: the user just clicked Save progress - tell the case's assigned case manager (email only, throttled).
+exports.notifyProgressSaved = async (req, res, next) => {
+  try {
+    const { checklistName, completionPercentage } = req.body || {};
+    const result = await require("./progress-alert.service").notifyProgressSaved({ caseId: req.params.caseId, checklistName, completionPercentage }, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Case manager: reject / delete one checklist for this case only (never sent to the client).
 exports.removeCaseChecklist = async (req, res, next) => {
   try {

@@ -4,7 +4,7 @@ import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
 import { isEmployeeAccount } from "../../utils/auth";
-import { profileApi, casesApi, employmentWorkflowApi, familyWorkflowApi } from "../../services/api";
+import { profileApi, casesApi, employmentWorkflowApi, familyWorkflowApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import useDocumentChecklist from "../../hooks/useDocumentChecklist";
 import useCaseDocumentChecklist from "../../hooks/useCaseDocumentChecklist";
@@ -567,6 +567,16 @@ export default function Documents() {
     try {
       await commitAll();
       setSaveProgressState("saved");
+      // Tell the case manager (email) that this checklist was filled in. Fire-and-forget: the save already succeeded.
+      if (activeCaseId) {
+        try {
+          const filled = activeQAs.filter((qa) => qa.questionnaire?.title);
+          Promise.resolve(questionnairesApi.notifyProgressSaved?.(activeCaseId, {
+            checklistName: filled.map((qa) => qa.questionnaire.title).join(", ") || undefined,
+            completionPercentage: Math.max(0, ...activeQAs.map((qa) => Number(qa.overallCompletion) || 0)),
+          })).catch(() => {});
+        } catch { /* the alert must never affect the save */ }
+      }
     } catch (error) {
       setSubmitError(error.message || "Unable to save your progress. Please try again.");
       setSaveProgressState("error");

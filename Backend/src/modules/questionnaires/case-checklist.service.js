@@ -149,9 +149,14 @@ async function removeChecklist(caseId, { checklistId: wantedId } = {}, user, req
 async function forkChecklist(caseId, wantedId, user, req) {
   const caseData = await loadCase(caseId, user);
   const entry = await findEntry(caseId, wantedId);
-  if (isCaseCopyKey(entry.questionnaire.key)) return { questionnaire: entry.questionnaire, entry, forked: false };
+  // already THIS case's own copy: edit it in place. (An employee case that is only being served its principal's copy gets a copy
+  // of its own on first edit, so editing one employee never changes the others.)
+  if (isCaseCopyKey(entry.questionnaire.key) && String(entry.questionnaire.key).endsWith(`__case_${caseData._id}`)) return { questionnaire: entry.questionnaire, entry, forked: false };
 
   const original = entry.questionnaire;
+  const originalTemplateId = isCaseCopyKey(original.key)
+    ? ((await Questionnaire.findOne({ key: baseKey(original.key), latestVersion: true }).select("_id").lean())?._id || original._id)
+    : original._id;
   const copyKey = caseCopyKey(original.key, caseData._id);
   let copy = await Questionnaire.findOne({ key: copyKey, latestVersion: true });
   if (!copy) {
@@ -182,12 +187,12 @@ async function forkChecklist(caseId, wantedId, user, req) {
   const fresh = await Case.findById(caseId);
   const reference = entry.referenceId ? fresh.questionnaireReferences.id(entry.referenceId) : null;
   if (reference) {
-    reference.questionnaireTemplateId = reference.questionnaireTemplateId || original._id;
+    reference.questionnaireTemplateId = reference.questionnaireTemplateId || originalTemplateId;
     reference.questionnaireId = copy._id;
   } else {
     fresh.questionnaireReferences.push({
       questionnaireId: copy._id,
-      questionnaireTemplateId: original._id,
+      questionnaireTemplateId: originalTemplateId,
       responseId: entry.responseId, // keeps every answer already given attached to this checklist
       title: original.title,
       targetRole: entry.targetRole || original.checklistRole,
@@ -282,7 +287,9 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
 
 async function broadcastEdited(caseId, user) {
   const principal = await Case.findById(caseId).select("user delegateEmployerUser assignedCaseManager").lean();
-  broadcastChecklistsChanged(principal, "edited", user);
+  // the employee cases under a principal are served its customised checklists too, so their sessions refresh as well
+  const children = await Case.find({ parentCase: caseId }).select("user delegateEmployerUser assignedCaseManager").lean();
+  broadcastChecklistsChanged([principal, ...children], "edited", user);
 }
 
 module.exports = { approveChecklists, removeChecklist, forkChecklist, editChecklist, baseKey };

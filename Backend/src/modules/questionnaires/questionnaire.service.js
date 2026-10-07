@@ -24,7 +24,7 @@ const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
 const { GC_NVC_DEFINITIONS } = require("./gcNvcChecklist");
-const { isGated, isApproved, isClientSideUser, checklistId: gateChecklistId } = require("./checklist-gate");
+const { isGated, isApproved, isClientSideUser, checklistId: gateChecklistId, isCaseCopyKey, caseCopyKey, baseKey } = require("./checklist-gate");
 const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
 const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
@@ -1325,8 +1325,9 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   const responseOwner = participantId || payload.assignedTo || (caseData && String(caseData.delegateEmployerUser || "") === String(user?._id || "x") ? caseData.user : user?._id);
   // A pinned response (see Case.pinnedResponseIds) wins over the owner-derived id, so a save made after an employee's
   // workflow switch still lands on the same response the earlier answers live under.
-  const pinnedResponseId = caseData?.pinnedResponseIds?.[`${targetRole || questionnaire.checklistRole || ""}:${questionnaire._id}`];
-  const responseId = payload.responseId || pinnedResponseId || responseIdFor(questionnaire._id, effectiveCaseId, responseOwner);
+  const identityQuestionnaireId = await answerIdentityQuestionnaireId(questionnaire, requestedCaseData);
+  const pinnedResponseId = caseData?.pinnedResponseIds?.[`${targetRole || questionnaire.checklistRole || ""}:${identityQuestionnaireId}`];
+  const responseId = payload.responseId || pinnedResponseId || responseIdFor(identityQuestionnaireId, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -2768,6 +2769,8 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const responseId = activeReference?.responseId
     || referenceCase.pinnedResponseIds?.[pinnedKey]
     || responseIdFor(questionnaire._id, referenceCase._id, requestedParticipant?._id || referenceCase.user || user?._id);
+  // the response id is fixed above from the original template; now serve the principal's customised employee checklist, if any
+  questionnaire = await parentChecklistCopy(caseData, questionnaire);
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 }).lean();
   timer.mark("question_lookup", { count: questions.length });
   const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();
@@ -2845,6 +2848,26 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
 // just whatever generic questionnaire happened to get auto-assigned first.
 // Each entry's responseId matches exactly what getQuestionnaireForCase would
 // compute/read for that questionnaire, so answers written here show up there.
+// An employee case follows the checklist customisation made on its principal (employer) case: when a case manager edits
+// the EMPLOYEE checklist there, the per-case copy (key "<template>__case_<principalId>") is what every employee case under it
+// - invited, filled in by the employer, existing or added later - must read, so the Documents tab, the required documents and
+// the client portal all show the edited checklist. Only the questionnaire that is SERVED changes: response ids are always
+// derived from the original template, so no answer is ever detached. An employee case with a copy of its own keeps it.
+async function parentChecklistCopy(caseData, questionnaire) {
+  if (!caseData?.parentCase || !questionnaire || isCaseCopyKey(questionnaire.key)) return questionnaire;
+  if (String(questionnaire.checklistRole || "") !== "employee") return questionnaire;
+  const copy = await Questionnaire.findOne({ key: caseCopyKey(questionnaire.key, caseData.parentCase), latestVersion: true, status: { $ne: "archived" } });
+  return copy || questionnaire;
+}
+
+// The id answers are keyed by: the ORIGINAL template's id when a parent's copy is being served for an employee case.
+async function answerIdentityQuestionnaireId(questionnaire, caseData) {
+  if (!caseData?.parentCase || !questionnaire || !isCaseCopyKey(questionnaire.key)) return questionnaire?._id;
+  if (!String(questionnaire.key).endsWith(`__case_${caseData.parentCase}`)) return questionnaire._id;
+  const template = await Questionnaire.findOne({ key: baseKey(questionnaire.key), latestVersion: true }).select("_id").lean();
+  return template?._id || questionnaire._id;
+}
+
 async function resolveCaseQuestionnaires(caseId) {
   const timer = createStageTimer();
   const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants parentCase caseStructure caseRole checklistApproval.removed").lean();
@@ -2963,19 +2986,21 @@ async function resolveCaseQuestionnaires(caseId) {
   const questionnaires = await Questionnaire.find({ _id: { $in: [...resolved.values()].map((entry) => entry.questionnaireId) }, status: { $ne: "archived" } });
   timer.mark("resolved_questionnaire_lookup", { count: questionnaires.length });
   const questionnaireById = new Map(questionnaires.map((questionnaire) => [String(questionnaire._id), questionnaire]));
-  const result = [...resolved.values()]
+  const result = (await Promise.all([...resolved.values()]
     .sort((left, right) => Number(Boolean(left.staffRequest)) - Number(Boolean(right.staffRequest)))
-    .map((entry) => {
-      const questionnaire = questionnaireById.get(String(entry.questionnaireId));
-      if (!questionnaire) return null;
+    .map(async (entry) => {
+      const baseQuestionnaire = questionnaireById.get(String(entry.questionnaireId));
+      if (!baseQuestionnaire) return null;
+      // response id from the ORIGINAL questionnaire, then serve the principal's customised copy (if any) for employee cases
+      const responseIdOfOriginal = entry.responseId || responseIdFor(baseQuestionnaire._id, caseData._id, entry.assignedTo || caseData.user);
+      const questionnaire = await parentChecklistCopy(caseData, baseQuestionnaire);
       // The auto-generated "<Visa> Filing Intake" composite (USCIS form fields turned into a checklist) is never a
       // checklist: the forms read their own fields, so it is not shown to staff and never sent to a client.
       if (questionnaire.generation?.source === "uscis_question_library") return null;
       // rejected / deleted for this case by a case manager
       if (!entry.staffRequest && (caseData.checklistApproval?.removed || []).some((item) => item.checklistId === `${String(questionnaire.key || "").split("__case_")[0]}|${entry.targetRole || questionnaire.checklistRole || ""}`)) return null;
-      return { ...entry, questionnaire, responseId: entry.responseId || responseIdFor(questionnaire._id, caseData._id, entry.assignedTo || caseData.user) };
-    })
-    .filter(Boolean);
+      return { ...entry, questionnaire, responseId: responseIdOfOriginal };
+    }))).filter(Boolean);
   logger.info("questionnaire_resolution_completed", {
     caseId,
     count: result.length,
