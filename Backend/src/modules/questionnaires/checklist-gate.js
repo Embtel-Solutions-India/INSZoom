@@ -30,6 +30,8 @@ const checklistId = ({ key, targetRole }) => `${baseKey(key)}|${targetRole || ""
 
 const approvalFor = (caseData, entry) => (caseData?.checklistApproval?.approvals || []).find((approval) => approval.checklistId === checklistId(entry)) || null;
 
+const isRemoved = (caseData, entry) => (caseData?.checklistApproval?.removed || []).some((item) => item.checklistId === checklistId(entry));
+
 // Staff-requested checklists (Additional Requested Information, the Premium Processing add-on) were explicitly
 // added by a case manager - they are not part of the automatic assignment and are never gated.
 function isApproved(caseData, entry) {
@@ -39,5 +41,5 @@ function isApproved(caseData, entry) {
 }
 
 module.exports = {
-  CASE_COPY_SEPARATOR, baseKey, isCaseCopyKey, caseCopyKey, isClientSideUser, isGated, checklistId, approvalFor, isApproved,
+  CASE_COPY_SEPARATOR, baseKey, isCaseCopyKey, caseCopyKey, isClientSideUser, isGated, checklistId, approvalFor, isApproved, isRemoved,
 };

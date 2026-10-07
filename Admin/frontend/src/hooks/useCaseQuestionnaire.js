@@ -31,7 +31,8 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
       setState((prev) => ({ ...prev, loading: false }))
       return
     }
-    setState((prev) => ({ ...prev, loading: true, error: null }))
+    // a refresh of an already-loaded checklist keeps it on screen (no collapse / scroll jump); only the first load shows loading
+    setState((prev) => ({ ...prev, loading: prev.questionnaire ? false : true, error: null }))
     try {
       const params = targetRole ? { targetRole } : {}
       if (referenceId) params.referenceId = referenceId

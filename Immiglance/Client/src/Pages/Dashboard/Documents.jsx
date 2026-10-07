@@ -1,3 +1,4 @@
+import AdditionalDocuments, { ADDITIONAL_DOCUMENT_TYPE } from "../../components/checklist/AdditionalDocuments";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -1172,6 +1173,14 @@ export default function Documents() {
               employee viewing only their own section. */}
           {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} caseData={activeCase} />}
           <StaffRequestedItems caseId={activeCaseId} user={user} section="requested" />
+
+          {activeCaseId && (
+            <AdditionalDocuments
+              documents={(files[ADDITIONAL_DOCUMENT_TYPE] || []).filter((doc) => doc && !doc.deletedAt && (!doc.caseId || String(doc.caseId) === String(activeCaseId)))}
+              onUpload={handleUpload}
+              onRemove={handleRemove}
+            />
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
             <div>

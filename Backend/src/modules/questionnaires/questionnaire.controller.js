@@ -172,6 +172,16 @@ exports.approveCaseChecklists = async (req, res, next) => {
   }
 };
 
+// Case manager: reject / delete one checklist for this case only (never sent to the client).
+exports.removeCaseChecklist = async (req, res, next) => {
+  try {
+    const result = await require("./case-checklist.service").removeChecklist(req.params.caseId, { checklistId: req.body?.checklistId }, req.user, req);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Case manager: edit / add / remove a question on ONE case's copy of a checklist. Never changes the template.
 exports.editCaseChecklist = async (req, res, next) => {
   try {

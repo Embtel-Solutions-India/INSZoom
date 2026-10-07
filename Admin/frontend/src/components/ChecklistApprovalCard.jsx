@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle, Pencil, Send, FileEdit } from 'lucide-react'
+import { CheckCircle, Pencil, Send, FileEdit, Trash2 } from 'lucide-react'
 import { questionnairesApi, invalidateCachedGet } from '../services/api'
 import ConfirmModal from './ConfirmModal'
 import ChecklistEditorModal from './ChecklistEditorModal'
@@ -14,6 +14,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
+  const [removing, setRemoving] = useState(null)
 
   const items = checklists.filter((item) => !item.staffRequest)
   if (!items.length) return null
@@ -33,6 +34,20 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
       await refresh()
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not approve. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runRemove = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await questionnairesApi.removeCaseChecklist(caseId, { checklistId: removing.checklistId })
+      setRemoving(null)
+      await refresh()
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Could not delete this checklist. Please try again.')
     } finally {
       setBusy(false)
     }
@@ -73,6 +88,9 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
               <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs" data-testid={`edit-checklist-${item.checklistId}`} onClick={() => setEditing(item)}>
                 <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit
               </button>
+              <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs text-rose-700" data-testid={`delete-checklist-${item.checklistId}`} onClick={() => { setError(''); setRemoving(item) }}>
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {item.clientApproval === 'draft' ? 'Reject' : 'Delete'}
+              </button>
               {item.clientApproval === 'draft' && (
                 <button type="button" className="btn-primary text-xs" data-testid={`approve-checklist-${item.checklistId}`} onClick={() => { setError(''); setConfirm({ all: false, checklist: item }) }}>
                   Approve
@@ -95,6 +113,18 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
           error={error}
           onConfirm={runApproval}
           onCancel={() => setConfirm(null)}
+        />
+      )}
+      {removing && (
+        <ConfirmModal
+          title={removing.clientApproval === 'draft' ? 'Reject this checklist?' : 'Delete this checklist?'}
+          message={`"${removing.title}" will be removed from this case only${removing.targetRole === 'employee' ? ' (and from every employee case under it)' : ''}. It will not be sent to the client${removing.clientApproval === 'draft' ? '' : ' and the client will no longer see it'}. Answers already given are kept on record. Other cases and the shared template are not affected.`}
+          confirmLabel={removing.clientApproval === 'draft' ? 'Yes, reject' : 'Yes, delete'}
+          cancelLabel="No"
+          busy={busy}
+          error={error}
+          onConfirm={runRemove}
+          onCancel={() => setRemoving(null)}
         />
       )}
       {editing && (
