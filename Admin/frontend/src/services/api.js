@@ -426,13 +426,50 @@ export const documentsApi = {
   // createDocumentFromFile for the matching caseService.addAuditEntry hook
   // that makes this show up live on the Attorney side.
   listPetitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
-  uploadPetition: (caseId, file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('caseId', caseId)
-    formData.append('documentType', 'petition_manual_upload')
-    formData.append('category', 'legal')
-    return api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  // Petitions can be very large (up to 200 MB): anything over one chunk goes
+  // through the resumable chunked-session API (5 MB chunks, 3 retries each,
+  // reassembled and stored to S3 server-side) instead of one long request.
+  uploadPetition: async (caseId, file, onProgress) => {
+    const chunkSize = 5 * 1024 * 1024
+    const context = { caseId, documentType: 'petition_manual_upload', category: 'legal', legacySource: 'Admin' }
+    if (file.size <= chunkSize) {
+      const formData = new FormData()
+      formData.append('file', file)
+      Object.entries(context).forEach(([key, value]) => formData.append(key, value))
+      const response = await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 0 })
+      onProgress?.(100)
+      return response
+    }
+    const created = await api.post('/documents/uploads/sessions', {
+      originalName: file.name,
+      mimeType: file.type || 'application/pdf',
+      expectedSize: file.size,
+      chunkSize,
+      ...context,
+    })
+    const session = created.data.session
+    for (let index = 0; index < session.totalChunks; index += 1) {
+      const start = index * session.chunkSize
+      const chunk = file.slice(start, Math.min(start + session.chunkSize, file.size), file.type)
+      let lastError
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const formData = new FormData()
+          formData.append('chunk', chunk, file.name)
+          await api.put(`/documents/uploads/sessions/${session.uploadId}/chunks/${index}`, formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300_000 })
+          lastError = null
+          break
+        } catch (error) {
+          lastError = error
+          if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 700))
+        }
+      }
+      if (lastError) throw lastError
+      onProgress?.(Math.round(((index + 1) / session.totalChunks) * 95))
+    }
+    const done = await api.post(`/documents/uploads/sessions/${session.uploadId}/complete`, {}, { timeout: 600_000 })
+    onProgress?.(100)
+    return done
   },
   download: (documentId) => api.get(`/documents/${documentId}/download`, { responseType: 'blob' }),
   // In-place editing (plain-text documents only) - case manager view/edit/save,
@@ -583,6 +620,7 @@ export const formGenerationApi = {
 }
 
 export const petitionApi = {
+  requestAttorneyReview: (caseId, note) => api.post(`/petition/cases/${caseId}/request-attorney-review`, { note }),
   assemble: (caseId, payload = {}) => api.post(`/petition/cases/${caseId}/assemble`, payload),
   listPackages: (caseId) => api.get(`/petition/cases/${caseId}/packages`),
   getPackage: (packageId) => api.get(`/petition/packages/${packageId}`),

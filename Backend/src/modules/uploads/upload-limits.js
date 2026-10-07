@@ -6,6 +6,14 @@ const path = require("path");
 
 const MAX_FILES_PER_ROW = 10;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
+// A case manager's uploaded petition is a large scanned/compiled PDF - it gets
+// its own, higher ceiling (200 MB) instead of the 50 MB checklist-row cap.
+const PETITION_DOCUMENT_TYPE = "petition_manual_upload";
+const PETITION_MAX_FILE_BYTES = 200 * 1024 * 1024;
+
+function maxFileBytesFor(documentType) {
+  return documentType === PETITION_DOCUMENT_TYPE ? PETITION_MAX_FILE_BYTES : MAX_FILE_BYTES;
+}
 
 // Safety posture: any file type is accepted EXCEPT things that execute or
 // script on a victim machine. Deliberately an extension blocklist (the old
@@ -43,10 +51,11 @@ function assertFileNameAllowed(name = "") {
   }
 }
 
-function assertFileSize(file) {
+function assertFileSize(file, documentType) {
   const size = file?.size ?? file?.buffer?.length ?? 0;
-  if (size > MAX_FILE_BYTES) {
-    throw limitError(`"${file?.originalname || "File"}" is larger than the ${formatBytes(MAX_FILE_BYTES)} limit per file.`, 413, "FILE_TOO_LARGE");
+  const cap = maxFileBytesFor(documentType);
+  if (size > cap) {
+    throw limitError(`"${file?.originalname || "File"}" is larger than the ${formatBytes(cap)} limit per file.`, 413, "FILE_TOO_LARGE");
   }
 }
 
@@ -67,6 +76,8 @@ function assertRowCapacity(existingCount, incomingCount) {
 module.exports = {
   MAX_FILES_PER_ROW,
   MAX_FILE_BYTES,
+  PETITION_MAX_FILE_BYTES,
+  maxFileBytesFor,
   BLOCKED_EXTENSIONS,
   assertFileNameAllowed,
   assertFileSize,

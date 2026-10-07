@@ -5,6 +5,7 @@ const Case = require("../../models/Case");
 const storageService = require("../uploads/storage.service");
 const caseService = require("../cases/case.service");
 const PetitionAssemblyService = require("./services/PetitionAssemblyService");
+const feedbackService = require("../feedback/feedback.service");
 const CoverLetterService = require("../form-generation/services/CoverLetterService");
 
 function handle(res, error) {
@@ -127,6 +128,35 @@ exports.reorderExhibits = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     handle(res, error);
+  }
+};
+
+// POST /petition/cases/:caseId/request-attorney-review - the case manager's
+// "Review by Attorney" button. Posts a message into the case's staff<->attorney
+// Feedback thread (the same channel the attorney already answers in), which
+// notifies every attorney with active access in-app, by browser push and by
+// email. The uploaded petition itself is already readable by them in the
+// Attorney Portal's Petition tab (it is the shared S3-backed Document).
+exports.requestAttorneyReview = async (req, res) => {
+  try {
+    const caseData = await loadAuthorizedCase(req.params.caseId, req.user);
+    const attorneys = (caseData.attorneyAccess || []).filter((grant) => grant.status === "active");
+    if (!attorneys.length) {
+      return res.status(409).json({ success: false, message: "No attorney has access to this case yet. Grant an attorney access first, then request the review." });
+    }
+    const uploadedPetitions = await Document.countDocuments({ caseId: caseData._id, documentType: "petition_manual_upload", deletedAt: { $exists: false } });
+    if (!uploadedPetitions) {
+      return res.status(409).json({ success: false, message: "Upload the petition first, then request the attorney review." });
+    }
+    const caseLabel = caseData.caseNumber || String(caseData._id);
+    const note = String(req.body?.note || "").trim();
+    const message = `The case manager has uploaded the petition for case ${caseLabel}. Please review it and give your feedback.${note ? `
+
+Note: ${note}` : ""}`;
+    const feedback = await feedbackService.createFeedback({ caseId: caseData._id, author: req.user, message });
+    res.status(201).json({ success: true, data: { feedbackId: feedback._id, attorneysNotified: attorneys.length } });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, message: error.message || "Unable to request attorney review" });
   }
 };
 

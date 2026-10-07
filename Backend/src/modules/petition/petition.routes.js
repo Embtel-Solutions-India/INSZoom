@@ -21,6 +21,7 @@ router.get("/packages/:id/preview", authorizePermissions("forms:read"), controll
 router.get("/packages/:id/download", authorizePermissions("forms:read"), controller.download);
 router.patch("/packages/:id/letters/:sectionKey", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.saveLetter);
 router.patch("/packages/:id/exhibits/order", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.reorderExhibits);
+router.post("/cases/:caseId/request-attorney-review", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.requestAttorneyReview);
 router.post("/packages/:id/pages", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.insertPage);
 router.delete("/packages/:id/pages/:sectionKey", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.removePage);
 router.post("/packages/:id/finalize", authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("forms:approve"), controller.finalize);

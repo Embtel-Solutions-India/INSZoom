@@ -35,7 +35,7 @@ function EvidenceUpload({ caseId, item, onUploaded }) {
         formData.append('caseId', caseId)
         formData.append('documentType', item.documentType)
         formData.append('category', 'evidence')
-        formData.append('legacySource', 'INSZoom')
+        formData.append('legacySource', 'Admin')
         await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       }
       onUploaded?.()

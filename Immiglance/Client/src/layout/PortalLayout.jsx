@@ -6,6 +6,7 @@ import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
 import { resolveDisplayVisa } from "../utils/visaDisplay";
 import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
+import EnablePushButton from "../components/EnablePushButton";
 import { useBranding } from "../utils/branding";
 
 const NAV_ITEMS = [
@@ -142,6 +143,7 @@ export default function PortalLayout() {
           <Outlet />
         </main>
       </div>
+      <EnablePushButton />
     </div>
   );
 }

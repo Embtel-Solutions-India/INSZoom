@@ -1311,7 +1311,13 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     ? (participantService.findParticipant(caseData, { role: targetRole, participantId: payload.participantId, userId: payload.assignedTo || user?._id, email: payload.assignedEmail || user?.email }) ||
       (payload.participantId ? null : participantService.participantForUser(caseData, user, targetRole)))
     : null;
-  const participantId = participant?._id || payload.participantId;
+  // Staff filling in on the client's behalf (no responseId yet - the client
+  // hasn't started) land on the case's own participant for this role, i.e. the
+  // exact response the client portal will read - never a staff-owned orphan.
+  const staffTarget = !participant && !payload.participantId && !payload.responseId && caseData && ["super_admin", "admin", "team_lead", "case_manager"].includes(normalizeRole(user?.role))
+    ? participantService.activeParticipants(caseData, targetRole)[0]
+    : null;
+  const participantId = participant?._id || staffTarget?._id || payload.participantId;
   const responseOwner = participantId || payload.assignedTo || user?._id;
   const responseId = payload.responseId || responseIdFor(questionnaire._id, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {

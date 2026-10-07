@@ -111,7 +111,7 @@ exports.uploadDocument = async (req, res, next) => {
       ...req.body,
       caseId,
       user: targetUserId,
-      legacySource: req.body.legacySource || (req.params.userId || req.path.includes("/me") ? "Immiglance" : "shared"),
+      legacySource: (req.body.legacySource === "INSZoom" ? "Admin" : req.body.legacySource) || (req.params.userId || req.path.includes("/me") ? "Immiglance" : "shared"),
     };
     const document = await documentService.createDocumentFromFile({ file: req.file, body, user: req.user, req });
     if (document.$locals.wasDuplicate) {
