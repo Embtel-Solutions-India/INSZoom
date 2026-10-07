@@ -5,7 +5,12 @@
 // case.questionnaireData.masterData.visaVariant automatically the moment its
 // question is answered, so every case object already returned by the API
 // carries it — no extra fetch needed.
+export const H1B_SUBTYPES = ['New H-1B', 'H-1B Extension', 'H-1B Transfer', 'H-1B Amendment', 'H-1B Concurrent']
+
 export function resolveDisplayVisa(caseItem) {
   const variant = caseItem?.questionnaireData?.masterData?.visaVariant
-  return variant || caseItem?.visaType || ''
+  if (variant) return variant
+  // H-1B's staff-chosen filing type (Case.petitionSubType) IS the visa it displays as; visaType stays "H-1B" for routing.
+  if (caseItem?.visaType === 'H-1B' && H1B_SUBTYPES.includes(caseItem?.petitionSubType)) return caseItem.petitionSubType
+  return caseItem?.visaType || ''
 }

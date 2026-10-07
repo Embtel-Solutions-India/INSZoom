@@ -5,6 +5,7 @@ const EODReport = require("../../models/EODReport");
 const {
   eodVisibilityFilter,
   manualReportPayload,
+  isIstWeekend,
   startOfIstDay,
 } = require("./report.service");
 
@@ -23,13 +24,13 @@ test("manual EOD reports always use the authenticated staff identity and role", 
     pendingTasks: 3,
   }, {
     _id: staffId,
-    role: "attorney",
+    role: "team_lead",
     teamId,
     department: "legal",
   });
 
   assert.equal(payload.staff, staffId);
-  assert.equal(payload.role, "attorney");
+  assert.equal(payload.role, "team_lead");
   assert.equal(payload.teamId, teamId);
   assert.equal(payload.casesWorked, 4);
   assert.equal(payload.casesClosed, 0);
@@ -38,7 +39,7 @@ test("manual EOD reports always use the authenticated staff identity and role", 
 
 test("staff EOD visibility is restricted to the authenticated employee", async () => {
   const staffId = id();
-  const filter = await eodVisibilityFilter({ staff: id(), role: "attorney" }, {
+  const filter = await eodVisibilityFilter({ staff: id(), role: "team_lead" }, {
     _id: staffId,
     role: "case_manager",
   });
@@ -48,12 +49,12 @@ test("staff EOD visibility is restricted to the authenticated employee", async (
 
 test("administrators may filter all staff EOD reports", async () => {
   const staffId = id();
-  const filter = await eodVisibilityFilter({ staff: staffId, role: "attorney" }, {
+  const filter = await eodVisibilityFilter({ staff: staffId, role: "case_manager" }, {
     _id: id(),
     role: "admin",
   });
   assert.equal(filter.staff, staffId);
-  assert.equal(filter.role, "attorney");
+  assert.equal(filter.role, "case_manager");
 });
 
 test("EOD dates normalize to midnight in India Standard Time", () => {
@@ -69,4 +70,17 @@ test("EOD schema prevents duplicate daily staff reports and tracks generation so
   );
   assert.ok(uniqueDailyIndex);
   assert.deepEqual(EODReport.schema.path("source").enumValues, ["manual", "automatic"]);
+});
+
+test("team leads see every case manager's reports plus their own", async () => {
+  const leadId = id();
+  const filter = await eodVisibilityFilter({}, { _id: leadId, role: "team_lead" });
+  assert.deepEqual(filter.$or, [{ staff: leadId }, { role: "case_manager" }]);
+});
+
+test("Saturday and Sunday are weekends on the IST calendar", () => {
+  assert.equal(isIstWeekend("2026-10-09T18:30:00.000Z"), true); // Sat 00:00 IST
+  assert.equal(isIstWeekend("2026-10-10T18:30:00.000Z"), true); // Sun 00:00 IST
+  assert.equal(isIstWeekend("2026-10-11T18:30:00.000Z"), false); // Mon 00:00 IST
+  assert.equal(isIstWeekend("2026-10-09T18:00:00.000Z"), false); // Fri 23:30 IST
 });

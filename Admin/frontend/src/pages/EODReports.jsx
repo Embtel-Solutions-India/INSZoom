@@ -14,6 +14,9 @@ const EODReports = () => {
   const [selectedReport, setSelectedReport] = useState(null)
   const [reviewComment, setReviewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 })
 
   const [newReport, setNewReport] = useState({
     casesWorked: 0,
@@ -24,12 +27,19 @@ const EODReports = () => {
     notes: ''
   })
 
+  // Filters restart from page 1; the list also re-syncs from the database every 30s.
+  useEffect(() => { setPage(1) }, [period, role])
+
   useEffect(() => {
     fetchReports()
-  }, [period, role])
+    const timer = setInterval(fetchReports, 30000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, role, page])
 
   const isManager = ['super_admin', 'admin', 'team_lead'].includes(user?.role)
-  const canCreate = ['team_lead', 'sales_manager', 'case_manager', 'finance', 'paralegal', 'reviewer', 'hr'].includes(user?.role)
+  const canCreate = ['team_lead', 'case_manager'].includes(user?.role)
+  const isWeekend = [0, 6].includes(new Date(Date.now() + 330 * 60 * 1000).getUTCDay())
   const updateMetric = (field, value) => {
     const parsed = value === '' ? 0 : Number(value)
     setNewReport((current) => ({
@@ -45,12 +55,16 @@ const EODReports = () => {
   const fetchReports = async () => {
     try {
       if (!hasLoadedOnce.current) setLoading(true)
-      const params = {}
+      const params = { page, limit: 25 }
       if (period) params.period = period
       if (role) params.role = role
 
       const response = await api.get('/reports/eod', { params })
       setReports(response.data.reports || response.data.items || response.data.data || [])
+      if (response.data.pagination) {
+        setPagination(response.data.pagination)
+        if (response.data.pagination.page > response.data.pagination.pages) setPage(response.data.pagination.pages)
+      }
       setError(null)
     } catch (error) {
       console.error('Error fetching EOD reports:', error)
@@ -59,6 +73,19 @@ const EODReports = () => {
     } finally {
       hasLoadedOnce.current = true
       setLoading(false)
+    }
+  }
+
+  const handleGenerateReport = async () => {
+    try {
+      setGenerating(true)
+      setError(null)
+      await api.post('/reports/eod/generate')
+      fetchReports()
+    } catch (error) {
+      setError(error.response?.data?.message || error.message || 'Failed to generate EOD report')
+    } finally {
+      setGenerating(false)
     }
   }
 
@@ -125,16 +152,28 @@ const EODReports = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">EOD Reports</h1>
-          <p className="text-muted-foreground mt-1">Daily, weekly, and monthly staff reports</p>
+          <p className="text-muted-foreground mt-1">Auto-generated at 6:15 AM IST on weekdays, or generate manually</p>
         </div>
         {canCreate && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Create My Report
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleGenerateReport}
+              disabled={generating || isWeekend}
+              title={isWeekend ? 'EOD reports are not generated on Saturday or Sunday' : undefined}
+              className="btn-primary flex items-center gap-2 disabled:opacity-60"
+            >
+              <FileText className="w-4 h-4" />
+              {generating ? 'Generating...' : "Generate Today's Report"}
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              disabled={isWeekend}
+              className="btn-secondary flex items-center gap-2 disabled:opacity-60"
+            >
+              <Plus className="w-4 h-4" />
+              Create My Report
+            </button>
+          </div>
         )}
       </div>
 
@@ -149,7 +188,7 @@ const EODReports = () => {
             <select
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
-              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
             >
               <option value="">All Time</option>
               <option value="today">Today</option>
@@ -162,14 +201,10 @@ const EODReports = () => {
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
-                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring focus:border-ring"
               >
                 <option value="">All Roles</option>
                 <option value="case_manager">Case Manager</option>
-                <option value="finance">Finance</option>
-                <option value="paralegal">Paralegal</option>
-                <option value="reviewer">Reviewer</option>
-                <option value="hr">HR</option>
                 <option value="team_lead">Team Lead</option>
               </select>
             </div>
@@ -231,7 +266,7 @@ const EODReports = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          report.source === 'automatic' ? 'bg-blue-100 text-blue-800' : 'bg-secondary text-muted-foreground'
+                          report.source === 'automatic' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
                         }`}>
                           {report.source === 'automatic' ? 'Auto-generated' : 'Manual'}
                         </span>
@@ -239,14 +274,14 @@ const EODReports = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
                           onClick={() => setSelectedReport(report)}
-                          className="text-blue-600 hover:text-blue-900 mr-2"
+                          className="text-primary hover:text-primary/80 mr-2"
                         >
                           View
                         </button>
                         {isManager && !report.reviewed && (
                           <button
                             onClick={() => setSelectedReport(report)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-primary hover:text-primary/80"
                           >
                             Review
                           </button>
@@ -267,6 +302,16 @@ const EODReports = () => {
         )}
       </div>
 
+      {pagination.pages > 1 && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>Page {pagination.page} of {pagination.pages} · {pagination.total} reports</span>
+          <div className="flex gap-2">
+            <button className="btn-secondary disabled:opacity-50" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Previous</button>
+            <button className="btn-secondary disabled:opacity-50" disabled={page >= pagination.pages} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
+        </div>
+      )}
+
       {/* Create Report Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -279,7 +324,7 @@ const EODReports = () => {
                   type="number"
                   value={newReport.casesWorked}
                   onChange={(e) => updateMetric('casesWorked', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   min="0"
                 />
               </div>
@@ -289,7 +334,7 @@ const EODReports = () => {
                   type="number"
                   value={newReport.casesClosed}
                   onChange={(e) => updateMetric('casesClosed', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   min="0"
                 />
               </div>
@@ -299,7 +344,7 @@ const EODReports = () => {
                   type="number"
                   value={newReport.documentsReviewed}
                   onChange={(e) => updateMetric('documentsReviewed', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   min="0"
                 />
               </div>
@@ -309,7 +354,7 @@ const EODReports = () => {
                   type="number"
                   value={newReport.messagesReplied}
                   onChange={(e) => updateMetric('messagesReplied', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   min="0"
                 />
               </div>
@@ -319,7 +364,7 @@ const EODReports = () => {
                   type="number"
                   value={newReport.pendingTasks}
                   onChange={(e) => updateMetric('pendingTasks', e.target.value)}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   min="0"
                 />
               </div>
@@ -328,7 +373,7 @@ const EODReports = () => {
                 <textarea
                   value={newReport.notes}
                   onChange={(e) => setNewReport({ ...newReport, notes: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                   rows="3"
                 />
               </div>
@@ -371,17 +416,17 @@ const EODReports = () => {
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t">
-                <div className="p-3 bg-blue-50 rounded-lg">
+                <div className="p-3 bg-primary/10 rounded-lg">
                   <p className="text-sm text-muted-foreground">Cases Worked</p>
-                  <p className="text-xl font-bold text-blue-600">{selectedReport.casesWorked}</p>
+                  <p className="text-xl font-bold text-primary">{selectedReport.casesWorked}</p>
                 </div>
                 <div className="p-3 bg-green-50 rounded-lg">
                   <p className="text-sm text-muted-foreground">Cases Closed</p>
                   <p className="text-xl font-bold text-green-600">{selectedReport.casesClosed}</p>
                 </div>
-                <div className="p-3 bg-blue-50 rounded-lg">
+                <div className="p-3 bg-primary/10 rounded-lg">
                   <p className="text-sm text-muted-foreground">Docs Reviewed</p>
-                  <p className="text-xl font-bold text-blue-600">{selectedReport.documentsReviewed}</p>
+                  <p className="text-xl font-bold text-primary">{selectedReport.documentsReviewed}</p>
                 </div>
                 <div className="p-3 bg-purple-50 rounded-lg">
                   <p className="text-sm text-muted-foreground">Messages Replied</p>
@@ -414,7 +459,7 @@ const EODReports = () => {
                   <textarea
                     value={reviewComment}
                     onChange={(e) => setReviewComment(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-ring"
                     rows="3"
                     placeholder="Add your review comment..."
                   />

@@ -32,13 +32,23 @@ const VISA_CATEGORIES = {
   // A plain employer_employee matter: the employer (or a case manager) adds as many employees as needed, each with
   // their own checklist. A Department of Labor process, not a USCIS filing: NO USCIS forms and no USCIS mapping.
   // Its checklists (perm_employer_information / perm_employee_information) are assigned at case creation.
-  PERM: { caseStructure: "employer_employee", forms: [], noForms: true, label: "PERM (Labor Certification)" },
+  // PERM is a checklist/questionnaire-driven case type: no USCIS forms are provisioned automatically at case creation. (ETA-9089 /
+  // ETA-9141 are Department of Labor filings and are deliberately NOT in the USCIS form registry.)
+  PERM: { caseStructure: "employer_employee", forms: [], noForms: true, checklists: ["perm_employer_information", "perm_employee_information"], label: "PERM (Labor Certification)" },
+
+  // ─── GC-NVC (GREEN CARD VIA THE NATIONAL VISA CENTER) ────────────────────
+  // Checklist/questionnaire-driven like PERM: ONE client checklist (gc_nvc_checklist, questionnaires/gcNvcChecklist.js), no USCIS
+  // forms and no CaseForm rows. The checklist is provisioned at creation as a Case Manager draft and released to the client on approval.
+  "GC-NVC": { caseStructure: "single", forms: [], noForms: true, checklists: ["gc_nvc_checklist"], label: "GC-NVC (Green Card - National Visa Center)" },
 
   // ─── EMPLOYER / EMPLOYEE VISAS ───────────────────────────────────────────
   "H-1B": {
     caseStructure: "employer_employee",
     forms: ["i-129", "i-907"],
     label: "H-1B Specialty Occupation",
+    // Required filing type chosen at case creation. Stored on Case.petitionSubType and shown as the case's visa type
+    // (see utils/visaDisplay.js); Case.visaType stays "H-1B" so every form/checklist/document lookup keeps resolving.
+    subTypes: ["New H-1B", "H-1B Extension", "H-1B Transfer", "H-1B Amendment", "H-1B Concurrent"],
   },
   "H-1B1": {
     caseStructure: "employer_employee",
@@ -324,6 +334,17 @@ function hasNoForms(visaType) {
   return Boolean(VISA_CATEGORIES[visaType]?.noForms);
 }
 
+// The checklist keys a no-form case type is provisioned with (declared next to the case type; assigned through each checklist's
+// own isDefault + visaType + checklistRole, the same path every checklist-driven case uses).
+function getNoFormChecklistKeys(visaType) {
+  return hasNoForms(visaType) ? [...(VISA_CATEGORIES[visaType].checklists || [])] : [];
+}
+
+// The filing types a visa must be created with (H-1B -> New/Extension/...); empty for visas with no such choice.
+function getSubTypes(visaType) {
+  return [...(VISA_CATEGORIES[visaType]?.subTypes || [])];
+}
+
 function getFormIds(visaType) {
   return VISA_CATEGORIES[visaType]?.forms ?? [];
 }
@@ -342,7 +363,9 @@ function getVisaTypesByStructure(structure) {
 module.exports = {
   VISA_CATEGORIES,
   hasNoForms,
+  getNoFormChecklistKeys,
   getCaseStructure,
   getFormIds,
+  getSubTypes,
   getVisaTypesByStructure,
 };

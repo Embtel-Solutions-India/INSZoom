@@ -432,7 +432,7 @@ const Analytics = () => {
     )
   }
 
-  // TAB 4: RFE & AI
+  // TAB 4: RFE & AE
   const RFEAITab = () => {
     // analyticsData.evidence (dashboard.service.js's evidenceAnalytics):
     // aiExtraction groups DocumentExtraction by processingStatus (via
@@ -610,7 +610,7 @@ const Analytics = () => {
           }`}
         >
           <Brain className="w-4 h-4 inline mr-2" />
-          RFE & AI
+          RFE & AE
         </button>
       </div>
 

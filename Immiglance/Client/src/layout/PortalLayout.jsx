@@ -6,6 +6,7 @@ import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
 import { resolveDisplayVisa } from "../utils/visaDisplay";
 import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
+import { useBranding } from "../utils/branding";
 
 const NAV_ITEMS = [
   { label: "Overview",   to: "/dashboard",           icon: OverviewIcon },
@@ -16,6 +17,7 @@ const NAV_ITEMS = [
 ];
 
 export default function PortalLayout() {
+  const branding = useBranding();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
@@ -68,7 +70,7 @@ export default function PortalLayout() {
                 <polyline points="16 7 22 7 22 13" />
               </svg>
             </div>
-            <span className={`font-bold text-sidebar-foreground truncate ${slim ? "lg:hidden" : ""}`}>Immiglance</span>
+            <span className={`font-bold text-sidebar-foreground truncate ${slim ? "lg:hidden" : ""}`}>{branding.displayName}</span>
           </Link>
         </div>
 

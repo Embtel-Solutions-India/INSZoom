@@ -26,6 +26,7 @@ router.put("/templates/:id", authenticate, authorizeRoles(...adminRoles), author
 
 router.get("/eod", authenticate, authorizeRoles("super_admin", "admin", ...eodStaffRoles), authorizePermissions("reports:read"), ctrl.listEod);
 router.post("/eod", authenticate, authorizeRoles(...eodStaffRoles), authorizePermissions("reports:create"), ctrl.createEod);
+router.post("/eod/generate", authenticate, authorizeRoles("team_lead", "case_manager"), authorizePermissions("reports:create"), ctrl.generateEod);
 router.put("/eod/:id", authenticate, authorizeRoles(...eodStaffRoles), authorizePermissions("reports:update"), ctrl.updateEod);
 router.put("/eod/:id/review", authenticate, authorizeRoles(...adminRoles), authorizePermissions("reports:review"), ctrl.reviewEod);
 

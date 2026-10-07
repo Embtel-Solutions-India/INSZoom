@@ -261,7 +261,7 @@ const TaskDetails = () => {
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-secondary text-foreground',
-      assigned: 'bg-blue-100 text-blue-800',
+      assigned: 'bg-primary/10 text-primary',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
@@ -273,7 +273,7 @@ const TaskDetails = () => {
   const getPriorityColor = (priority) => {
     const colors = {
       low: 'bg-secondary text-foreground',
-      medium: 'bg-blue-100 text-blue-800',
+      medium: 'bg-primary/10 text-primary',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
@@ -304,7 +304,7 @@ const TaskDetails = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     )
   }
@@ -315,7 +315,7 @@ const TaskDetails = () => {
         <h2 className="text-xl font-semibold text-foreground mb-2">Task Not Found</h2>
         <button
           onClick={() => navigate('/tasks')}
-          className="text-blue-600 hover:text-blue-700"
+          className="text-primary hover:text-primary/80"
         >
           Back to Tasks
         </button>
@@ -347,7 +347,7 @@ const TaskDetails = () => {
               {is(['super_admin', 'admin', 'team_lead', 'case_manager']) && (
                 <button
                   onClick={() => setEditing(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   <Edit className="w-4 h-4" />
                   Edit
@@ -384,7 +384,7 @@ const TaskDetails = () => {
                       <select
                         value={editData.caseId || ''}
                         onChange={(event) => setEditData({ ...editData, caseId: event.target.value })}
-                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                       >
                         <option value="">General task (no case)</option>
                         {cases.map((caseItem) => (
@@ -399,7 +399,7 @@ const TaskDetails = () => {
                       <select
                         value={editData.assignedTo || ''}
                         onChange={(event) => setEditData({ ...editData, assignedTo: event.target.value })}
-                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                       >
                         <option value="">Select employee</option>
                         {assigneeOptions.map((member) => (
@@ -417,7 +417,7 @@ const TaskDetails = () => {
                     type="text"
                     value={editData.title}
                     onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
                 <div>
@@ -425,7 +425,7 @@ const TaskDetails = () => {
                   <textarea
                     value={editData.description}
                     onChange={(e) => setEditData({ ...editData, description: e.target.value })}
-                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     rows={4}
                   />
                 </div>
@@ -435,7 +435,7 @@ const TaskDetails = () => {
                     <select
                       value={editData.department || ''}
                       onChange={(event) => setEditData({ ...editData, department: event.target.value })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       {DEPARTMENTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
@@ -445,14 +445,14 @@ const TaskDetails = () => {
                     <select
                       value={editData.category || 'case_preparation'}
                       onChange={(event) => setEditData({ ...editData, category: event.target.value })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       {TASK_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                   </div>
                 </div>
                 {showDocumentationFields && (
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-4">
+                  <div className="rounded-xl border border-primary bg-primary/10 p-4 space-y-4">
                     <div>
                       <h3 className="font-semibold text-foreground">Documentation Work Details</h3>
                       <p className="text-sm text-muted-foreground">Define the document operation and evidence review required.</p>
@@ -466,7 +466,7 @@ const TaskDetails = () => {
                             ...editData,
                             documentation: { ...editData.documentation, workType: event.target.value },
                           })}
-                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
                         >
                           {DOCUMENT_WORK_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                         </select>
@@ -479,7 +479,7 @@ const TaskDetails = () => {
                             ...editData,
                             documentation: { ...editData.documentation, evidenceCategory: event.target.value },
                           })}
-                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
                         >
                           {EVIDENCE_CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                         </select>
@@ -495,7 +495,7 @@ const TaskDetails = () => {
                           documentation: { ...editData.documentation, documentType: event.target.value },
                         })}
                         placeholder="e.g. Passport, Degree, I-797 Notice, Employment Letter"
-                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                     </div>
                     <div>
@@ -508,7 +508,7 @@ const TaskDetails = () => {
                         })}
                         rows={3}
                         placeholder="Required checks, naming standards, USCIS relevance, and delivery expectations"
-                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-2 border border-border rounded-lg bg-card focus:outline-none focus:ring-2 focus:ring-ring"
                       />
                     </div>
                     <label className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -519,7 +519,7 @@ const TaskDetails = () => {
                           ...editData,
                           documentation: { ...editData.documentation, reviewRequired: event.target.checked },
                         })}
-                        className="rounded border-border text-blue-600 focus:ring-blue-500"
+                        className="rounded border-border text-primary focus:ring-ring"
                       />
                       Require case manager review
                     </label>
@@ -531,7 +531,7 @@ const TaskDetails = () => {
                     <select
                       value={editData.status}
                       onChange={(e) => setEditData({ ...editData, status: e.target.value })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="pending">Pending</option>
                       <option value="assigned">Assigned</option>
@@ -546,7 +546,7 @@ const TaskDetails = () => {
                     <select
                       value={editData.priority}
                       onChange={(e) => setEditData({ ...editData, priority: e.target.value })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>
@@ -562,7 +562,7 @@ const TaskDetails = () => {
                       type="datetime-local"
                       value={editData.dueDate}
                       onChange={(e) => setEditData({ ...editData, dueDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
                   <div>
@@ -573,7 +573,7 @@ const TaskDetails = () => {
                       max="100"
                       value={editData.progress}
                       onChange={(e) => setEditData({ ...editData, progress: parseInt(e.target.value) })}
-                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
                 </div>
@@ -585,14 +585,14 @@ const TaskDetails = () => {
                     step="0.25"
                     value={editData.estimatedHours || 0}
                     onChange={(event) => setEditData({ ...editData, estimatedHours: Number(event.target.value) })}
-                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleSaveEdit}
                     disabled={submitting}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
                     {submitting ? 'Saving...' : isCreating ? 'Create Task' : 'Save Changes'}
@@ -624,7 +624,7 @@ const TaskDetails = () => {
                 )}
 
                 {task.documentation?.workType && (
-                  <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                  <div className="mb-4 rounded-lg border border-primary bg-primary/10 p-4">
                     <p className="font-semibold text-foreground">Documentation Work</p>
                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                       <span>Work type: {formatStatus(task.documentation.workType)}</span>
@@ -663,7 +663,7 @@ const TaskDetails = () => {
                   </div>
                   <div className="w-full bg-muted rounded-full h-2">
                     <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      className="bg-primary h-2 rounded-full transition-all"
                       style={{ width: `${Math.min(Math.max(Number(task.progress) || 0, 0), 100)}%` }}
                     />
                   </div>
@@ -684,7 +684,7 @@ const TaskDetails = () => {
                   </div>
                   <button
                     onClick={() => navigate(`/crm-cases/${task.caseId._id}`)}
-                    className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    className="text-primary hover:text-primary/80 text-sm font-medium"
                   >
                     View Case
                   </button>
@@ -721,13 +721,13 @@ const TaskDetails = () => {
                 value={newComment}
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Add a comment..."
-                className="flex-1 px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                 onKeyPress={(e) => e.key === 'Enter' && handleAddComment()}
               />
               <button
                 onClick={handleAddComment}
                 disabled={submitting || !newComment.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 <Send className="w-4 h-4" />
                 {submitting ? 'Sending...' : 'Send'}
@@ -756,7 +756,7 @@ const TaskDetails = () => {
                 <button
                   onClick={() => handleStatusChange('in_progress')}
                   disabled={submitting}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   <Play className="w-4 h-4" />
                   Start Progress

@@ -420,8 +420,13 @@ test("K-1 beneficiary checklist: real content matches the authoritative source c
 // family path touches any of these. The guardrail's intent is unchanged:
 // the family work must not add to, remove from, or otherwise disturb the
 // employer/employee template set.
-test("employer/employee templates are unaffected in count (15 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2)", () => {
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 15);
+test("employer/employee templates are unaffected (the original 15 — H1B x2, L1A x3, P x2, O1 x2, EB1B x2, I-140 x2, TN x2 — are all still defined)", () => {
+  // The list has since grown (L-1B, E-2, E-3, O-2, PERM ...), so this guards what the family work must not disturb rather than a total.
+  const keys = new Set(EMPLOYMENT_CHECKLIST_DEFINITIONS.map((definition) => definition.key));
+  for (const key of ["h1b_employer_checklist", "h1b_employee_checklist", "l1a_employer_checklist", "l1a_employee_checklist", "l1a_business_plan_checklist", "p_employer_checklist", "p_employee_checklist",
+    "o1_employer_checklist", "o1_employee_checklist", "eb1b_employer_checklist", "eb1b_employee_checklist", "i140_petitioner_checklist", "i140_beneficiary_checklist", "tn_employer_checklist", "tn_employee_checklist"]) {
+    assert.ok(keys.has(key), `${key} is still defined`);
+  }
 });
 
 // ── Single-shared-case guardrail: K-1/K-3 (and every other family-structured

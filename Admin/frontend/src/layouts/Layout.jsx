@@ -6,6 +6,7 @@ import { useNotifications } from '../contexts/NotificationContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { requestPermissionAndGetToken } from '../services/notificationService'
 import BrandMark from '../components/BrandMark'
+import { useBranding } from '../utils/branding'
 import useScrollRestoration from '../hooks/useScrollRestoration'
 import {
   LayoutDashboard,
@@ -40,6 +41,7 @@ import {
 } from 'lucide-react'
 
 const Layout = () => {
+  const branding = useBranding()
   const { user, logout, hasRole, getSidebarMenuItems } = useAuth()
   const { notifications, unreadCount, unreadMessageCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications()
   const { isDark, toggleTheme } = useTheme()
@@ -163,7 +165,7 @@ const Layout = () => {
           <div className="flex items-center gap-3 min-w-0">
             <BrandMark size="w-9 h-9" />
             <div className="min-w-0">
-              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">Immiglance</h1>
+              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">{branding.displayName}</h1>
               <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Internal CRM</p>
             </div>
           </div>

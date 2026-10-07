@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
+import { H1B_SUBTYPES } from '../utils/visaDisplay'
 
 const VISA_TYPE_OPTIONS = [
   { value: 'h1b', label: 'H-1B' },
@@ -53,6 +54,8 @@ const VISA_TYPE_OPTIONS = [
   { value: 'eb3', label: 'EB-3' },
   // DOL labor certification: an ordinary employer + employees matter (see PERM_STRUCTURE below).
   { value: 'perm', label: 'PERM (Labor Certification)', canonicalLabel: 'PERM' },
+  // GC-NVC: one client checklist (DS-260 information), no USCIS forms - see visaCategories.js.
+  { value: 'gcnvc', label: 'GC-NVC (Green Card - National Visa Center)', canonicalLabel: 'GC-NVC' },
   // Premium Processing as its own case: single party, Form I-907 only (see visaCategories.js).
   { value: 'premiumprocessing', label: 'Premium Processing (Form I-907)', canonicalLabel: 'Premium Processing' },
   // Standalone single-party filing types (Backend/src/config/filingTypes.js) -
@@ -128,6 +131,7 @@ const initialForm = {
   clientEmail: '',
   clientPhone: '',
   visaType: '',
+  petitionSubType: '',
   packageName: '',
   assignedCaseManager: '',
   employerName: '',
@@ -141,12 +145,32 @@ const initialForm = {
   beneficiaryPhone: '',
 }
 
-const normalizeInitialVisaType = (value) => {
+// The dropdown = the curated options above (they carry special routing/labels) + EVERY other case type the registry can create
+// (GET /cases/visa-types, i.e. config/visaCategories.js - the list createCase validates against). A case type added to the registry
+// therefore shows up here with no frontend change. Family-structure types are skipped: they only exist through the family workflow.
+const optionKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+const mergeRegistryOptions = (registryTypes) => {
+  const known = new Set(VISA_TYPE_OPTIONS.flatMap((opt) => [optionKey(opt.value), optionKey(opt.label), optionKey(opt.canonicalLabel)]))
+  const extra = (registryTypes || [])
+    .filter((entry) => entry.caseStructure !== 'family' && !known.has(optionKey(entry.visaType)))
+    .map((entry) => ({
+      value: optionKey(entry.visaType),
+      label: entry.label && entry.label !== entry.visaType ? `${entry.visaType} - ${entry.label}` : entry.visaType,
+      canonicalLabel: entry.visaType,
+      caseStructure: entry.caseStructure,
+      fromRegistry: true,
+    }))
+    .sort((a, b) => a.canonicalLabel.localeCompare(b.canonicalLabel, undefined, { numeric: true }))
+  return [...VISA_TYPE_OPTIONS, ...extra]
+}
+
+const normalizeInitialVisaType = (value, options = VISA_TYPE_OPTIONS) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (!normalized) return ''
-  const match = VISA_TYPE_OPTIONS.find((opt) => (
+  const match = options.find((opt) => (
     opt.value.toLowerCase() === normalized ||
-    opt.label.toLowerCase() === normalized
+    opt.label.toLowerCase() === normalized ||
+    (opt.canonicalLabel || '').toLowerCase() === normalized
   ))
   return match?.value || ''
 }
@@ -172,10 +196,27 @@ const CreateCaseModal = ({
   const [caseManagers, setCaseManagers] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType)
+  const [registryTypes, setRegistryTypes] = useState([])
+  const visaOptions = useMemo(() => mergeRegistryOptions(registryTypes), [registryTypes])
+  const selectedRegistryOption = visaOptions.find((opt) => opt.value === form.visaType && opt.fromRegistry)
+  const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee'
+  const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
   const showFilingPathFields = showFamilyPackageFields
   const showFamilyFields = showFamilyPackageFields || FAMILY_SINGLE_CASE_VISA_TYPES.has(form.visaType)
+
+  useEffect(() => {
+    casesApi.visaTypes()
+      .then((res) => setRegistryTypes(res.data?.data || []))
+      .catch((err) => console.error('Error fetching case types:', err)) // the curated list above still works
+  }, [])
+
+  // a lead's visa type may be a registry-only type that only resolves once the registry list has loaded
+  useEffect(() => {
+    if (form.visaType || !initialData?.visaType || !registryTypes.length) return
+    const match = normalizeInitialVisaType(initialData.visaType, visaOptions)
+    if (match) setForm((prev) => (prev.visaType ? prev : { ...prev, visaType: match }))
+  }, [registryTypes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     usersApi.caseManagers()
@@ -184,7 +225,9 @@ const CreateCaseModal = ({
   }, [])
 
   const handleChange = (field) => (e) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }))
+    const { value } = e.target
+    // the H-1B type only applies to H-1B - never carry it over to another visa
+    setForm((prev) => ({ ...prev, [field]: value, ...(field === 'visaType' ? { petitionSubType: '' } : {}) }))
   }
 
   const handleSubmit = async (e) => {
@@ -209,7 +252,7 @@ const CreateCaseModal = ({
       // actually need; `visaTypeLabel` (the bracketed display label) is
       // fine as-is for the other, non-family visa types below, which never
       // had this suffix.
-      const selectedVisaOption = VISA_TYPE_OPTIONS.find((opt) => opt.value === form.visaType)
+      const selectedVisaOption = visaOptions.find((opt) => opt.value === form.visaType)
       const visaTypeLabel = selectedVisaOption?.canonicalLabel || selectedVisaOption?.label || form.visaType
 
       const filingTypeKey = SINGLE_PARTY_FILING_TYPE_KEYS[form.visaType]
@@ -261,6 +304,7 @@ const CreateCaseModal = ({
         clientName: form.clientName.trim(),
         clientEmail: form.clientEmail.trim(),
         visaType: visaTypeLabel,
+        ...(needsH1bType ? { petitionSubType: form.petitionSubType } : {}),
         childCaseCount: showEmployerFields ? Number(initialData?.childCaseCount || 1) : 0,
         creationSource,
       }
@@ -361,11 +405,28 @@ const CreateCaseModal = ({
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="" disabled>Select visa type</option>
-              {VISA_TYPE_OPTIONS.map((opt) => (
+              {visaOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
+
+          {needsH1bType && (
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">H-1B Type *</label>
+              <select
+                required
+                value={form.petitionSubType}
+                onChange={handleChange('petitionSubType')}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="" disabled>Select H-1B type</option>
+                {H1B_SUBTYPES.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {showFamilyFields && (
             <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
@@ -477,6 +538,17 @@ const CreateCaseModal = ({
                   <li key={item.title}><span className="font-medium">{item.title}</span> - {item.detail}</li>
                 ))}
                 <li>No USCIS forms - PERM is a Department of Labor process. Add as many employees as the matter needs once the case exists.</li>
+              </ul>
+            </div>
+          )}
+
+          {form.visaType === 'gcnvc' && (
+            <div className="rounded-lg border border-border bg-muted p-3 text-sm">
+              <p className="font-medium text-muted-foreground mb-1">This GC-NVC case is created with</p>
+              <ul className="list-disc pl-5 space-y-0.5 text-muted-foreground">
+                <li><span className="font-medium">GC-NVC Information Checklist</span> - reviewed and approved by the case manager, then completed by the client in the client portal</li>
+                <li><span className="font-medium">Required documents</span> - photo, passport page, birth and marriage records, police verification letter</li>
+                <li>No USCIS forms are created for this case type.</li>
               </ul>
             </div>
           )}

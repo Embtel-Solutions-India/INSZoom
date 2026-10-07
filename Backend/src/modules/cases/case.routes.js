@@ -58,6 +58,8 @@ router.post(
   validate,
   ctrl.createCaseWithClient
 );
+// Declared before "/:id" so "visa-types" is never read as a case id.
+router.get("/visa-types", authenticate, authorizePermissions("cases:create"), ctrl.listCreatableVisaTypes);
 router.get("/:id/addons", authenticate, authorizePermissions("cases:read"), ctrl.getAvailableAddons);
 router.post(
   "/:id/addons/:addonKey/purchase",

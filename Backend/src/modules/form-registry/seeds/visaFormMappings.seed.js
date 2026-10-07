@@ -651,14 +651,9 @@ function familyBased(visaType, opts = {}) {
 }
 ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"].forEach((v) => familyBased(v, v === "IR-1" || v === "CR-1" ? { spouseTrigger: { field: "caseType", operator: "equals", value: "immigration" } } : {}));
 
-// ===================== GC-NVC (consular immigrant workflow) =====================
-add(
-  ds260("GC-NVC", { provisioningType: AUTO, initialCaseCreation: true, processingPaths: [], notes: "AUTO_CREATE when a case enters immigrant consular processing." }),
-  m("GC-NVC", "DS-261", "Choice of Address and Agent", "DOS", COND, ONLINE, { immigrationNature: IMMIGRANT, notes: "NVC workflow/applicability dependent." }),
-  m("GC-NVC", "I-864", "Affidavit of Support Under Section 213A of the INA", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864", immigrationNature: IMMIGRANT }),
-  m("GC-NVC", "I-864A", "Contract Between Sponsor and Household Member", "USCIS", COND, SUPPLEMENT, { parentForm: "I-864", immigrationNature: IMMIGRANT }),
-  m("GC-NVC", "I-864EZ", "Affidavit of Support Under Section 213A of the INA (EZ)", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-864ez", immigrationNature: IMMIGRANT })
-);
+// ===================== GC-NVC (checklist-driven, NO forms) =====================
+// Deliberately no rows: a GC-NVC case is a checklist/questionnaire-driven case type like PERM (config/visaCategories.js noForms).
+// Its only provisioning is the gc_nvc_checklist (questionnaires/gcNvcChecklist.js); no USCIS/DOS form is ever auto-created for it.
 
 // ===================== GREEN CARD WORKFLOWS =====================
 add(

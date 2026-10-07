@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import BrandMark from "./BrandMark";
+import { useBranding } from "../utils/branding";
 import { getSessionId } from "../utils/eligibilitySession";
 
 // Login/Signup now live entirely in the Client app (a different origin) —
@@ -40,6 +41,7 @@ const XIcon = () => (
 // Start Free Evaluation + the theme toggle, never a profile/logout dropdown
 // pointing at routes that don't exist here anymore.
 export default function Navbar() {
+  const branding = useBranding();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -64,7 +66,7 @@ export default function Navbar() {
         {/* ── Logo ── */}
         <Link to="/" className="flex items-center gap-2 shrink-0 group no-underline min-w-0">
           <BrandMark size="w-8 h-8" />
-          <span className="text-base sm:text-lg font-sans font-extrabold tracking-tight text-foreground">Immiglance</span>
+          <span className="text-base sm:text-lg font-sans font-extrabold tracking-tight text-foreground">{branding.displayName}</span>
         </Link>
 
         {/* ── Always the same: Client Login + Start Free Evaluation + theme

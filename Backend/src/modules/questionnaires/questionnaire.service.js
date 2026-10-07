@@ -23,6 +23,7 @@ const { FAMILY_CHECKLIST_DEFINITIONS } = require("./familyChecklists");
 const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
+const { GC_NVC_DEFINITIONS } = require("./gcNvcChecklist");
 const { isGated, isApproved, isClientSideUser, checklistId: gateChecklistId } = require("./checklist-gate");
 const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
@@ -2094,6 +2095,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // Form I-907 Information Checklist - the standalone "Premium Processing" case type AND the
   // add-on a Case Manager attaches to any other case (see premiumProcessingChecklist.js).
   ...PREMIUM_PROCESSING_DEFINITIONS,
+  // GC-NVC (standalone, no USCIS forms): gc_nvc_checklist, auto-provisioned at case creation, released to the client on CM approval.
+  ...GC_NVC_DEFINITIONS,
   // I-131 — deliberately NOT isDefault and scoped to a pseudo visaType that
   // never matches a real case (see i131Checklist.js's own banner). Still
   // provisioned through this same ensureDefaultVisaTemplates() reconciler

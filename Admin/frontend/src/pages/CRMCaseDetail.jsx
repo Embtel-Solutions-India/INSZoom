@@ -49,7 +49,7 @@ import {
 } from 'lucide-react'
 
 // Case types that never have forms (mirrors Backend config/visaCategories.js `noForms`).
-const NO_FORM_VISA_TYPES = new Set(['PERM'])
+const NO_FORM_VISA_TYPES = new Set(['PERM', 'GC-NVC'])
 
 const USCISFormRenderer = lazy(() => import('../components/uscis/USCISFormRenderer'))
 const PetitionTab = lazy(() => import('./petition/PetitionTab'))
@@ -2819,7 +2819,7 @@ const CRMCaseDetail = () => {
             <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
             <h3 className="text-lg font-semibold text-foreground">No forms are associated with the {caseData.visaType} case type</h3>
             <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-              {caseData.visaType} is a Department of Labor process. Only its checklists are sent to the client, and the client's answers and documents are synced to the Documents tab - there are no USCIS forms and no form mapping for this case.
+              {caseData.visaType} is a checklist-driven case type. Only its checklists are sent to the client, and the client's answers and documents are synced to the Documents tab - there are no USCIS forms and no form mapping for this case.
             </p>
           </div>
         ) : selectedCaseForm ? (

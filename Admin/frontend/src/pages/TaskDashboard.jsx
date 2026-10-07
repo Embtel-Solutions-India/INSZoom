@@ -7,6 +7,7 @@ import {
   Clock,
   AlertTriangle,
   TrendingUp,
+  TrendingDown,
   Calendar,
   Users,
   FileText,
@@ -50,6 +51,11 @@ const TaskDashboard = () => {
   useEffect(() => {
     fetchTaskStats()
     fetchRecentTasks()
+    const timer = setInterval(() => {
+      fetchTaskStats()
+      fetchRecentTasks()
+    }, 30000)
+    return () => clearInterval(timer)
   }, [user?.role])
 
   const fetchTaskStats = async () => {
@@ -85,7 +91,7 @@ const TaskDashboard = () => {
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-secondary text-foreground',
-      assigned: 'bg-blue-100 text-blue-800',
+      assigned: 'bg-primary/10 text-primary',
       in_progress: 'bg-yellow-100 text-yellow-800',
       waiting: 'bg-orange-100 text-orange-800',
       completed: 'bg-green-100 text-green-800',
@@ -97,7 +103,7 @@ const TaskDashboard = () => {
   const getPriorityColor = (priority) => {
     const colors = {
       low: 'bg-secondary text-foreground',
-      medium: 'bg-blue-100 text-blue-800',
+      medium: 'bg-primary/10 text-primary',
       high: 'bg-orange-100 text-orange-800',
       urgent: 'bg-red-100 text-red-800'
     }
@@ -108,15 +114,17 @@ const TaskDashboard = () => {
     return String(status || '').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
   }
 
-  const StatCard = ({ title, value, icon: Icon, color, trend }) => (
+  const StatCard = ({ title, value, icon: Icon, color, trend, higherIsBad = false }) => (
     <div className="bg-card rounded-xl shadow-sm p-6 border border-border">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
-          {trend && (
-            <div className={`flex items-center text-sm mt-2 ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-              <TrendingUp className="w-4 h-4 mr-1" />
+          {trend != null && (
+            <div className={`flex items-center text-sm mt-2 ${
+              trend === 0 ? 'text-muted-foreground' : (trend > 0) !== higherIsBad ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {trend < 0 ? <TrendingDown className="w-4 h-4 mr-1" /> : <TrendingUp className="w-4 h-4 mr-1" />}
               {Math.abs(trend)}% from last week
             </div>
           )}
@@ -131,7 +139,7 @@ const TaskDashboard = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     )
   }
@@ -147,7 +155,7 @@ const TaskDashboard = () => {
         {is(['super_admin', 'admin', 'team_lead', 'case_manager']) && (
           <button
             onClick={() => navigate('/tasks/create')}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
           >
             <Plus className="w-5 h-5" />
             Create Task
@@ -169,29 +177,30 @@ const TaskDashboard = () => {
               title="Total Tasks"
               value={stats.total}
               icon={FileText}
-              color="bg-blue-100 text-blue-600"
-              trend={5}
+              color="bg-primary/10 text-primary"
+              trend={stats.trends?.total}
             />
             <StatCard
               title="Overdue Tasks"
               value={stats.overdueCount}
               icon={AlertTriangle}
               color="bg-red-100 text-red-600"
-              trend={-2}
+              trend={stats.trends?.overdue}
+              higherIsBad
             />
             <StatCard
               title="Upcoming Tasks"
               value={stats.upcomingCount}
               icon={Calendar}
-              color="bg-blue-100 text-blue-600"
-              trend={8}
+              color="bg-primary/10 text-primary"
+              trend={stats.trends?.upcoming}
             />
             <StatCard
               title="Completed Tasks"
               value={stats.statusCounts?.completed || 0}
               icon={CheckCircle}
               color="bg-green-100 text-green-600"
-              trend={12}
+              trend={stats.trends?.completed}
             />
           </div>
 
@@ -236,9 +245,9 @@ const TaskDashboard = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <button
           onClick={() => navigate('/tasks/my-tasks')}
-          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-primary transition-colors text-left"
         >
-          <Users className="w-6 h-6 text-blue-600 mb-2" />
+          <Users className="w-6 h-6 text-primary mb-2" />
           <h3 className="font-semibold text-foreground">My Tasks</h3>
           <p className="text-sm text-muted-foreground">View assigned tasks</p>
         </button>
@@ -246,9 +255,9 @@ const TaskDashboard = () => {
         {is(['super_admin', 'admin', 'team_lead']) && (
           <button
             onClick={() => navigate('/tasks/team-tasks')}
-            className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
+            className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-primary transition-colors text-left"
           >
-            <Users className="w-6 h-6 text-blue-600 mb-2" />
+            <Users className="w-6 h-6 text-primary mb-2" />
             <h3 className="font-semibold text-foreground">Team Tasks</h3>
             <p className="text-sm text-muted-foreground">View team tasks</p>
           </button>
@@ -256,7 +265,7 @@ const TaskDashboard = () => {
 
         <button
           onClick={() => navigate('/tasks/calendar')}
-          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-primary transition-colors text-left"
         >
           <Calendar className="w-6 h-6 text-purple-600 mb-2" />
           <h3 className="font-semibold text-foreground">Task Calendar</h3>
@@ -265,7 +274,7 @@ const TaskDashboard = () => {
 
         <button
           onClick={() => navigate('/tasks/all')}
-          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-blue-500 transition-colors text-left"
+          className="bg-card rounded-xl shadow-sm p-4 border border-border hover:border-primary transition-colors text-left"
         >
           <FileText className="w-6 h-6 text-orange-600 mb-2" />
           <h3 className="font-semibold text-foreground">All Tasks</h3>
@@ -280,7 +289,7 @@ const TaskDashboard = () => {
             <h3 className="text-lg font-semibold text-foreground">Recent Tasks</h3>
             <button
               onClick={() => navigate('/tasks/all')}
-              className="text-blue-600 hover:text-blue-700 flex items-center gap-1 text-sm font-medium"
+              className="text-primary hover:text-primary/80 flex items-center gap-1 text-sm font-medium"
             >
               View All <ArrowUpRight className="w-4 h-4" />
             </button>

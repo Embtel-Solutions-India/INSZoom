@@ -2,6 +2,10 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
+import { API_BASE_URL } from "./services/api";
+import { startBranding } from "./utils/branding";
+
+startBranding(API_BASE_URL);
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";

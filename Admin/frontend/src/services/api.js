@@ -209,6 +209,8 @@ export const documentIntelligenceApi = {
 export const casesApi = {
   dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
   list: (params = {}) => api.get('/cases', { params }),
+  // Every creatable case type from the registry (drives the Create Case dropdown).
+  visaTypes: () => api.get('/cases/visa-types'),
   get: (id) => api.get(`/cases/${id}`),
   workflow: (id) => api.get(`/cases/${id}/workflow`),
   // Case Manager upgrade: assigns the Form I-907 checklist to the client and adds Form I-907 to the case.
@@ -520,6 +522,7 @@ export const uscisFormsApi = {
 export const formGovernanceApi = {
   catalog: () => api.get('/form-registry/catalog'),
   fetchFromUSCIS: (formCode) => api.post(`/form-registry/catalog/${encodeURIComponent(formCode)}/fetch`),
+  deleteForm: (formCode) => api.delete(`/form-registry/catalog/${encodeURIComponent(formCode)}`),
   templateUrl: (templateId) => api.get(`/uscis-forms/${templateId}/url`),
   approveTemplate: (templateId) => api.put(`/uscis-forms/${templateId}/approve`),
   activateTemplate: (templateId) => api.put(`/uscis-forms/${templateId}/activate`),
