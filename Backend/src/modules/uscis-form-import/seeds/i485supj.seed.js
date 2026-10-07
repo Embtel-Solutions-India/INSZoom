@@ -1,0 +1,124 @@
+// node src/modules/uscis-form-import/seeds/i485supj.seed.js
+// (or: npm run seed:i485supj, from Backend/)
+//
+// Imports (if not already present) and activates the bundled I-485 Supplement J
+// (Confirmation of Bona Fide Job Offer or Request for Job Portability Under INA
+// Section 204(j); edition 2026-09-18 - the dev-assets filename is yyyy-dd-mm).
+// A genuine, independently-fileable USCIS supplement with its own PDF, so it is
+// a normal USCISFormTemplate (like I-539A), keyed by the registry's
+// formTemplateFormCode "i-485j" (see form-registry/seeds/visaFormMappings.seed.js
+// i485SupplementJ()). Which cases get it is decided ONLY by those registry rows
+// (job-offer-based EB categories + F4), never by this file.
+// Idempotent and non-destructive, except that it retires the earlier, wrongly
+// named auto-fetched "I-485 SUPPLEMENT J" record that no registry row could resolve.
+
+const path = require("path");
+const mongoose = require("mongoose");
+const { PDFDocument } = require("pdf-lib");
+const env = require("../../../config/env");
+const USCISFormTemplate = require("../../../models/USCISFormTemplate");
+const storageService = require("../../uploads/storage.service");
+const importLocalForm = require("../scripts/importLocalForm");
+const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
+
+const FORM_CODE = "I-485J";
+const STRAY_FORM_CODE = "I-485 SUPPLEMENT J";
+const VERSION = "2026-09-18";
+const EDITION_DATE = new Date("2026-09-18T00:00:00.000Z");
+const TITLE = "Supplement J to Form I-485 - Confirmation of Bona Fide Job Offer or Request for Job Portability Under INA Section 204(j)";
+const DEFAULT_FILE = path.resolve(__dirname, "../../../../dev-assets/uscis/i-485supj_2026-18-09.pdf");
+const MIN_FIELD_COUNT = 10;
+
+async function verifyFillable(pdfStorageKey) {
+  const buffer = await storageService.readBuffer(pdfStorageKey);
+  const pdf = await PDFDocument.load(buffer, { ignoreEncryption: true, updateMetadata: false });
+  const fieldCount = pdf.getForm().getFields().length;
+  if (fieldCount < MIN_FIELD_COUNT) {
+    const error = new Error(
+      `Stored ${FORM_CODE} template PDF at "${pdfStorageKey}" only exposes ${fieldCount} fillable fields ` +
+      `(expected >= ${MIN_FIELD_COUNT}). Stopping rather than activating an unfillable template.`
+    );
+    error.code = `${FORM_CODE.replace("-", "")}_TEMPLATE_NOT_FILLABLE`;
+    throw error;
+  }
+  return fieldCount;
+}
+
+function storedFieldCount(template) {
+  return Array.isArray(template?.formFields) ? template.formFields.length : 0;
+}
+
+function canTrustStoredFieldCount(template) {
+  return template?.status === "active"
+    && template?.activeFlag === true
+    && template?.officialStatus === "current"
+    && storedFieldCount(template) >= MIN_FIELD_COUNT;
+}
+
+async function seedI485SupJTemplate({ file } = {}) {
+  const existing = await USCISFormTemplate.find({ formCode: FORM_CODE, version: VERSION });
+  if (existing.length > 1) {
+    const error = new Error(
+      `Found ${existing.length} USCISFormTemplate records for ${FORM_CODE} ${VERSION} - expected at most 1. ` +
+      `Refusing to guess; resolve manually before re-running.`
+    );
+    error.code = `${FORM_CODE.replace("-", "")}_TEMPLATE_AMBIGUOUS`;
+    throw error;
+  }
+
+  let template = existing[0];
+  if (!template) {
+    const result = await importLocalForm({ file: file || DEFAULT_FILE, formCode: FORM_CODE, version: VERSION });
+    template = await USCISFormTemplate.findById(result.template._id);
+  }
+
+  const fieldCount = canTrustStoredFieldCount(template)
+    ? storedFieldCount(template)
+    : await verifyFillable(template.pdfStorageKey);
+
+  template.status = "active";
+  template.activeFlag = true;
+  template.officialStatus = "current";
+  template.editionDate = template.editionDate || EDITION_DATE;
+  template.title = TITLE;
+  // visaTypes come from the registry (deriveVisaTypesFromRegistry.js), so the
+  // template can never drift from the VisaFormMapping rows that govern it.
+  const registryVisaTypes = await deriveVisaTypesFromRegistry(FORM_CODE);
+  template.visaTypes = Array.from(new Set([...(template.visaTypes || []), ...registryVisaTypes]));
+  await template.save();
+
+  // The earlier on-demand fetch stored this same form under a name no registry
+  // row resolves ("I-485 SUPPLEMENT J"); leaving it active-capable would show a
+  // duplicate in Form Governance. Retire (never delete) it.
+  await USCISFormTemplate.updateMany(
+    { formCode: STRAY_FORM_CODE, status: { $ne: "retired" } },
+    { $set: { status: "retired", activeFlag: false, officialStatus: "deprecated" } }
+  );
+
+  return { template, fieldCount };
+}
+
+module.exports = seedI485SupJTemplate;
+
+if (require.main === module) {
+  mongoose
+    .connect(env.mongoUri)
+    .then(() => seedI485SupJTemplate({}))
+    .then(({ template, fieldCount }) => {
+      console.log(`${FORM_CODE} template seeded and activated.`);
+      console.log("  templateId:", String(template._id));
+      console.log("  status:", template.status, "| activeFlag:", template.activeFlag);
+      console.log("  visaTypes:", template.visaTypes);
+      console.log("  editionDate:", template.editionDate);
+      console.log("  fieldCount:", fieldCount);
+      console.log("  pdfStorageKey:", template.pdfStorageKey);
+    })
+    .then(() => mongoose.disconnect())
+    .then(() => process.exit(0))
+    .catch(async (error) => {
+      console.error(`Failed to seed ${FORM_CODE} template:`, error.message);
+      if (error.code) console.error("  code:", error.code);
+      await mongoose.disconnect().catch(() => {});
+      process.exit(1);
+    });
+}

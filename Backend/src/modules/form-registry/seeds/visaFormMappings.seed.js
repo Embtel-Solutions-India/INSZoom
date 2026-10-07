@@ -167,12 +167,12 @@ function i485(visaType, opts = {}) {
 function i485SupplementA(visaType, opts = {}) {
   return m(visaType, "I-485 Supplement A", "Supplement A to Form I-485", "USCIS", COND, SUPPLEMENT, { parentForm: "I-485", formTemplateFormCode: "i-485a", processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "Section 245(i) eligibility only - never universal to every I-485.", ...opts });
 }
-// I-485 Supplement J: conditional ONLY for an employment-based I-485 whose
-// underlying I-140 classification is tied to a specific job offer (EB-1B,
-// EB-1C, EB-2 PERM, EB-3). Deliberately NEVER added for EB-1A (extraordinary
-// ability - no job offer), EB-2 NIW (job-offer requirement waived), or EB-5
-// (investor, not an employment classification at all) - USCIS's own I-485
-// instructions draw this exact line (see master mapping spec §14/§27).
+// I-485 Supplement J: conditional ONLY for an I-485 whose basis is a specific
+// job offer - EB-1B, EB-1C, EB-2 PERM, EB-3 (all subtypes) - plus F4, which the
+// business owner explicitly asked to carry it. Deliberately NEVER added for
+// EB-1A (extraordinary ability - no job offer), EB-2 NIW (job-offer requirement
+// waived), EB-4/EB-5, or any other family category (F1/F2A/F2B/F3, IR/CR) -
+// see master mapping spec 14/27 and docs/I485_SUPPLEMENT_J_REPORT.md.
 function i485SupplementJ(visaType, opts = {}) {
   return m(visaType, "I-485 Supplement J", "Supplement J to Form I-485", "USCIS", COND, SUPPLEMENT, { parentForm: "I-485", formTemplateFormCode: "i-485j", processingPaths: ["ADJUSTMENT_OF_STATUS"], immigrationNature: IMMIGRANT, notes: "Job-offer-based EB classification confirming/portability only - never EB-1A, EB-2 NIW, or EB-5.", ...opts });
 }
@@ -650,6 +650,9 @@ function familyBased(visaType, opts = {}) {
   );
 }
 ["IR-1", "CR-1", "IR-2", "CR-2", "IR-3", "IR-4", "IR-5", "F1", "F2A", "F2B", "F3", "F4"].forEach((v) => familyBased(v, v === "IR-1" || v === "CR-1" ? { spouseTrigger: { field: "caseType", operator: "equals", value: "immigration" } } : {}));
+// F4 (sibling of a U.S. citizen) additionally carries I-485 Supplement J, at the
+// business owner's explicit request. No other family category does.
+add(i485SupplementJ("F4", { provisioningType: LATER, stage: "adjustment_of_status" }));
 
 // ===================== GC-NVC (checklist-driven, NO forms) =====================
 // Deliberately no rows: a GC-NVC case is a checklist/questionnaire-driven case type like PERM (config/visaCategories.js noForms).

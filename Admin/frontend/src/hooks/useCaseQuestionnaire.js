@@ -77,12 +77,11 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
 
   const saveAnswer = useCallback(async (questionKey, value) => {
     if (!state.questionnaire?._id) throw new Error('Questionnaire not loaded')
-    if (!responseId) throw new Error('No existing response to edit — the client has not answered this questionnaire yet')
     await questionnairesApi.saveAnswer(state.questionnaire._id, {
       caseId,
       targetRole,
       referenceId,
-      responseId,
+      ...(responseId ? { responseId } : {}),
       answers: [{ questionKey, value }],
     })
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
@@ -91,13 +90,12 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
 
   const saveFileAnswer = useCallback(async (questionKey, file) => {
     if (!state.questionnaire?._id) throw new Error('Questionnaire not loaded')
-    if (!responseId) throw new Error('No existing response to edit — the client has not answered this questionnaire yet')
     const formData = new FormData()
     formData.append('files', file)
     formData.append('caseId', caseId)
     if (targetRole) formData.append('targetRole', targetRole)
     if (referenceId) formData.append('referenceId', referenceId)
-    formData.append('responseId', responseId)
+    if (responseId) formData.append('responseId', responseId)
     formData.append('questionKey', questionKey)
     await questionnairesApi.saveFileAnswer(state.questionnaire._id, formData)
     invalidateCachedGet(`/questionnaires/case/${caseId}`)

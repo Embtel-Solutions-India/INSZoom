@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Upload, Loader2, FileText, Download, Eye, X, AlertCircle } from 'lucide-react'
-import { documentsApi } from '../../services/api'
+import { Upload, Loader2, FileText, Download, Eye, X, AlertCircle, Send, CheckCircle } from 'lucide-react'
+import { documentsApi, petitionApi } from '../../services/api'
 
 // Manual petition upload - separate from the auto-assembled
 // PetitionPackage pipeline (PetitionVersionList/PetitionViewer above this on
@@ -15,33 +15,62 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [previewDoc, setPreviewDoc] = useState(null)
+  const [progress, setProgress] = useState(0)
+  const [requesting, setRequesting] = useState(false)
+  const [notice, setNotice] = useState('')
+  const hasLoadedOnce = useRef(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedOnce.current) setLoading(true)
     try {
       const res = await documentsApi.listPetitionUploads(caseId)
       setUploads(res.data.documents || res.data.data || [])
     } catch (e) {
       setError(e.response?.data?.message || 'Failed to load uploaded petitions')
     } finally {
+      hasLoadedOnce.current = true
       setLoading(false)
     }
   }, [caseId])
 
   useEffect(() => { load() }, [load, refreshSignal])
 
+  const MAX_PETITION_BYTES = 200 * 1024 * 1024
+
   const handleFile = async (file) => {
     if (!file) return
+    if (file.size > MAX_PETITION_BYTES) {
+      setError(`"${file.name}" is larger than the 200 MB limit.`)
+      if (inputRef.current) inputRef.current.value = ''
+      return
+    }
     setUploading(true)
+    setProgress(0)
     setError('')
+    setNotice('')
     try {
-      await documentsApi.uploadPetition(caseId, file)
+      await documentsApi.uploadPetition(caseId, file, setProgress)
       if (inputRef.current) inputRef.current.value = ''
       await load()
     } catch (e) {
-      setError(e.response?.data?.message || 'Unable to upload the petition.')
+      setError(e.response?.data?.message || 'Unable to upload the petition. Please try again.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const requestReview = async () => {
+    setRequesting(true)
+    setError('')
+    setNotice('')
+    try {
+      const res = await petitionApi.requestAttorneyReview(caseId)
+      const count = res.data?.data?.attorneysNotified || 1
+      setNotice(`Attorney review requested - ${count} attorney${count > 1 ? 's were' : ' was'} notified.`)
+    } catch (e) {
+      setError(e.response?.data?.message || 'Unable to request the attorney review.')
+    } finally {
+      setRequesting(false)
     }
   }
 
@@ -52,18 +81,36 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-bold text-foreground">Uploaded Petition</h3>
-          <p className="text-xs text-muted-foreground">A petition document you attach directly (separate from an assembled version above).</p>
+          <p className="text-xs text-muted-foreground">A petition document you attach directly (up to 200 MB, stored in S3 and visible to the attorney).</p>
         </div>
         {canUpload && (
           <>
             <input ref={inputRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
             <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="btn-secondary inline-flex items-center gap-2 !py-1.5 !px-3 text-xs">
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Upload Petition
+              {uploading ? `Uploading ${progress}%` : 'Upload Petition'}
             </button>
+            {uploads.length > 0 && (
+              <button type="button" onClick={requestReview} disabled={requesting || uploading} className="btn-primary inline-flex items-center gap-2 !py-1.5 !px-3 text-xs disabled:opacity-60">
+                {requesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Review by Attorney
+              </button>
+            )}
           </>
         )}
       </div>
+
+      {uploading && (
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      )}
+
+      {notice && (
+        <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+          <CheckCircle className="h-4 w-4 shrink-0" /> {notice}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">

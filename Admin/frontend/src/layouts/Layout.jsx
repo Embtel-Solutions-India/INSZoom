@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useNotifications } from '../contexts/NotificationContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { requestPermissionAndGetToken } from '../services/notificationService'
+import EnablePushButton from '../components/EnablePushButton'
 import BrandMark from '../components/BrandMark'
 import { useBranding } from '../utils/branding'
 import useScrollRestoration from '../hooks/useScrollRestoration'
@@ -61,25 +61,7 @@ const Layout = () => {
   }
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
-  const [pushPermission, setPushPermission] = useState(
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported'
-  )
-  const [enablingPush, setEnablingPush] = useState(false)
   const notificationRef = useRef(null)
-
-  // User-driven only — this button click is the ONLY place the browser's
-  // permission prompt fires from; nothing here runs automatically on
-  // mount/login (see notificationService.js's initializeNotifications,
-  // which only silently re-registers an already-granted permission).
-  const enablePush = async () => {
-    setEnablingPush(true)
-    try {
-      await requestPermissionAndGetToken()
-    } finally {
-      setPushPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
-      setEnablingPush(false)
-    }
-  }
 
   const snapshotDate = new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -313,19 +295,6 @@ const Layout = () => {
                       )}
                     </div>
 
-                    {pushPermission === 'default' && (
-                      <div className="px-4 py-2.5 border-b border-border bg-accent flex items-center justify-between gap-3">
-                        <p className="text-xs text-accent-foreground leading-snug">Get notified instantly, even when this tab isn't open.</p>
-                        <button
-                          onClick={enablePush}
-                          disabled={enablingPush}
-                          className="shrink-0 text-xs font-semibold text-primary-foreground bg-primary px-2.5 py-1 rounded-md disabled:opacity-60"
-                        >
-                          {enablingPush ? 'Enabling…' : 'Enable'}
-                        </button>
-                      </div>
-                    )}
-
                     {/* Notification list */}
                     {notifications.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8">
@@ -403,6 +372,7 @@ const Layout = () => {
           <KeepAliveOutlet />
         </main>
       </div>
+      <EnablePushButton />
     </div>
   )
 }

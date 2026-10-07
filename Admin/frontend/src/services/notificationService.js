@@ -119,3 +119,16 @@ export async function unregisterCurrentDevice() {
   const { notificationsApi } = await import("./api");
   await notificationsApi.unregisterDevice(token).catch(() => {});
 }
+
+// Drives the sticky "Enable notifications" button. 'enabled' (permission
+// granted AND this browser's token registered for the signed-in account) is
+// the only state that hides it; it comes back by itself if the user later
+// blocks/resets notifications in the browser or the token is lost.
+export async function getPushStatus() {
+  if (typeof Notification === "undefined" || !("serviceWorker" in navigator) || !firebaseConfigured()) return "unsupported";
+  if (!(await getMessagingInstance())) return "unsupported";
+  if (Notification.permission === "denied") return "denied";
+  if (Notification.permission !== "granted") return "default";
+  const token = await initializeNotifications().catch(() => null);
+  return token ? "enabled" : "default";
+}

@@ -1,13 +1,15 @@
 const multer = require("multer");
-const { MAX_FILE_BYTES, MAX_FILES_PER_ROW, isBlockedFileName, limitError, formatBytes } = require("./upload-limits");
+const { MAX_FILE_BYTES, PETITION_MAX_FILE_BYTES, MAX_FILES_PER_ROW, isBlockedFileName, limitError, formatBytes } = require("./upload-limits");
 
 // Any file type is accepted (photos incl. HEIC/WebP, text, Office, PDF, ...)
 // except executables/scripts - see upload-limits.js. file-security.service
 // additionally sniffs content for the Document pipeline.
+// Transport ceiling = the largest per-type cap (a petition, 200 MB); the
+// stricter per-documentType caps are enforced afterwards in upload-limits.
 const MAX_FILE_SIZE = Number(
   process.env.MAX_UPLOAD_SIZE_BYTES ||
   process.env.MAX_FILE_SIZE ||
-  MAX_FILE_BYTES
+  Math.max(MAX_FILE_BYTES, PETITION_MAX_FILE_BYTES)
 );
 
 const upload = multer({

@@ -275,7 +275,7 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
         formData.append('caseId', caseId)
         formData.append('documentType', documentType)
         formData.append('category', category)
-        formData.append('legacySource', 'INSZoom')
+        formData.append('legacySource', 'Admin')
         await api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       }
       setSelectedFiles([])

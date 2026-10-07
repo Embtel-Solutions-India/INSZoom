@@ -251,6 +251,14 @@ function uploadedByLabel(user) {
   return "system";
 }
 
+// "INSZoom" was renamed "Admin" - older/cached Admin builds still send it, and
+// it is no longer a valid Document.legacySource enum value (upload -> 500).
+const LEGACY_SOURCE_VALUES = ["Immiglance", "BAIS", "Admin", "shared", ""];
+function normalizeLegacySource(value, fallback = "shared") {
+  if (value === "INSZoom") return "Admin";
+  return LEGACY_SOURCE_VALUES.includes(value) ? value : fallback;
+}
+
 function resolvedDocumentOwnerId(body, context, user) {
   if (canModifyDocument(user)) return body.user || body.userId || context.user || user._id;
   return context.user || user._id;
@@ -390,7 +398,7 @@ async function createDocumentFromFile({ file, body, user, req }) {
   // upload APPENDS another Document to the row (cap: MAX_FILES_PER_ROW, checked
   // against what is already stored) instead of silently versioning/replacing
   // the first one. Only SINGLE_SLOT_DOCUMENT_TYPES keep the versioning behaviour.
-  if (body.documentType) uploadLimits.assertFileSize(file);
+  if (body.documentType) uploadLimits.assertFileSize(file, body.documentType);
   if (slotFilter) {
     if (SINGLE_SLOT_DOCUMENT_TYPES.has(body.documentType)) {
       const existingSlotDocument = await Document.findOne(slotFilter);
@@ -475,7 +483,7 @@ async function createDocumentFromFile({ file, body, user, req }) {
       },
       intelligenceStatus: "uploaded",
       versions: [version],
-      legacySource: body.legacySource || "shared",
+      legacySource: normalizeLegacySource(body.legacySource, "shared"),
     });
   } catch (error) {
     await storageService.deleteObject(stored.key).catch(() => false);
@@ -531,7 +539,7 @@ async function createDocumentMetadata({ body = {}, user, req }) {
     tags: normalizeTags(body.tags),
     uploadedByUser: user._id,
     uploadedBy: body.uploadedBy || uploadedByLabel(user),
-    legacySource: body.legacySource || "Admin",
+    legacySource: normalizeLegacySource(body.legacySource, "Admin"),
     metadata: normalizeMetadata(body.metadata),
   });
   addAuditEntry(document, "create_metadata", user, body, req);
@@ -573,8 +581,8 @@ async function createUploadSession(payload, user) {
     }
   }
   const expectedSize = Number(payload.expectedSize || payload.fileSize);
-  // Checklist-row uploads (documentType given) are capped at 50 MB per file.
-  const sizeCap = payload.documentType ? Math.min(MAX_UPLOAD_SIZE, uploadLimits.MAX_FILE_BYTES) : MAX_UPLOAD_SIZE;
+  // Checklist-row uploads (documentType given) are capped at 50 MB per file (200 MB for an uploaded petition).
+  const sizeCap = payload.documentType ? Math.min(MAX_UPLOAD_SIZE, uploadLimits.maxFileBytesFor(payload.documentType)) : MAX_UPLOAD_SIZE;
   if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > sizeCap) {
     const error = new Error(`File size must be between 1 byte and ${uploadLimits.formatBytes(sizeCap)}`);
     error.statusCode = 413;
@@ -607,7 +615,7 @@ async function createUploadSession(payload, user) {
       documentType: payload.documentType,
       description: payload.description,
       tags: payload.tags,
-      legacySource: payload.legacySource || "Immiglance",
+      legacySource: normalizeLegacySource(payload.legacySource, "Immiglance"),
     },
     expiresAt: new Date(Date.now() + UPLOAD_SESSION_TTL_MS),
   });
@@ -1038,7 +1046,7 @@ async function requestDocument(payload, user, req) {
     missingReason: payload.missingReason,
     uploadedBy: "system",
     uploadedByUser: user?._id,
-    legacySource: payload.legacySource || "shared",
+    legacySource: normalizeLegacySource(payload.legacySource, "shared"),
   });
   addAuditEntry(document, "request", user, payload, req);
   await document.save();
