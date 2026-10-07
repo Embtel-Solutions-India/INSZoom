@@ -603,18 +603,22 @@ async function notifyRecipients(conversation, message, sender, internal, req) {
   if (internal) return;
   const recipients = participantIds(conversation).filter((id) => id !== sender._id.toString());
   if (message.receiverId && !recipients.includes(message.receiverId.toString())) recipients.push(message.receiverId.toString());
-  await Promise.all(recipients.map((recipientId) =>
-    notificationService.createNotification({
-      userId: recipientId,
-      type: "message_received",
-      title: "New Message",
-      message: `New message from ${userDisplayName(sender)}`,
-      caseId: conversation.caseId,
-      link: `/messages/${conversation._id}`,
-      priority: "medium",
-      metadata: { conversationId: conversation._id, messageId: message._id },
-    }, sender, req)
-  ));
+  let caseNumber;
+  if (conversation.caseId) caseNumber = (await Case.findById(conversation.caseId).select("caseNumber").lean().catch(() => null))?.caseNumber;
+  // Push (sender's name on top, then the message), the in-app alert, and an email if the recipient is offline.
+  await require("../notifications/messageAlert.service").notifyNewMessage({
+    recipientIds: recipients,
+    sender,
+    caseId: conversation.caseId,
+    caseNumber,
+    text: message.messageBody,
+    attachmentCount: (message.attachments || []).length,
+    link: `/messages/${conversation._id}`,
+    kind: "message",
+    conversationId: conversation._id,
+    messageId: message._id,
+    req,
+  });
 }
 
 function emitRealtime(conversation, message, sender) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../context/AuthContext";
@@ -38,6 +38,9 @@ import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from 
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
 
 const ROLE_GROUP_LABEL = { employer: "Employer", business_plan: "Business plan", employee: "Employee" };
+// Heading shown above each role's sections in the main page, so two checklists for the same party (e.g. an L-1A
+// employer's "Employer Checklist" and "Business Plan") read as clearly separate parts, one after another.
+const ROLE_GROUP_TITLE = { employer: "Employer Checklist", business_plan: "Business Plan Checklist", employee: "Employee Checklist" };
 
 // Builds this role's slice of the page — its reusable-document baseline plus
 // its questionnaire sections — tagged with roleGroup (for the rail heading)
@@ -56,7 +59,7 @@ function buildRoleSections(qa, reusableCategories, roleGroup) {
       type: "document",
       label: doc.label,
       help: doc.description,
-      required: doc.required,
+      required: false, // nothing is mandatory to save
       docId: doc.id,
       category: cat.id,
     })),
@@ -436,8 +439,8 @@ export default function Documents() {
   };
 
   const itemIsDone = (item) => itemStatus(item).status !== STATUS.NOT_STARTED;
+  // Nothing is mandatory to SAVE; Submit needs every item filled (so every unfilled item counts here).
   const itemIsMissingRequired = (item) => {
-    if (!item.required) return false;
     if (item.type === "document" && item.docId) return !(files[item.docId] || []).length;
     if (item.question) {
       const src = item.qaSource || legacyQA;
@@ -711,8 +714,12 @@ export default function Documents() {
   // employeeRoleSubmitted explicitly per section group instead (Bug C) so
   // submitting the employer side never locks a still-pending employee
   // section.
-  const renderSections = (list, locked = submitted) => list.map((section) => (
-    <section key={section.id} id={section.id} ref={(el) => { sectionRefs.current[section.id] = el; }} className="scroll-mt-40" aria-labelledby={`${section.id}-heading`}>
+  const renderSections = (list, locked = submitted) => list.map((section, sectionIndex) => (
+    <Fragment key={section.id}>
+    {section.roleGroup && ROLE_GROUP_TITLE[section.roleGroup] && (sectionIndex === 0 || list[sectionIndex - 1].roleGroup !== section.roleGroup) && list.some((other) => other.roleGroup && other.roleGroup !== section.roleGroup) && (
+      <h2 className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary">{ROLE_GROUP_TITLE[section.roleGroup]}</h2>
+    )}
+    <section id={section.id} ref={(el) => { sectionRefs.current[section.id] = el; }} className="scroll-mt-40" aria-labelledby={`${section.id}-heading`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 id={`${section.id}-heading`} className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{section.label}</h2>
         <span className="text-xs font-semibold text-muted-foreground">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
@@ -771,6 +778,7 @@ export default function Documents() {
         })}
       </div>
     </section>
+    </Fragment>
   ));
 
   const employerBusinessPlanSections = sections.filter((section) => section.roleGroup === "employer" || section.roleGroup === "business_plan");
@@ -1063,6 +1071,9 @@ export default function Documents() {
         <main id="checklist-main" className="mt-4 space-y-8 lg:mt-0">
           <StatusLegend />
 
+          {/* Premium Processing (Form I-907) - its own, clearly named section ABOVE the case's regular checklists */}
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="premium" />
+
           {isEmployeeLoginView && activeCase && (
             <div className="rounded-xl border border-accent-foreground/20 bg-accent px-4 py-3 text-sm text-accent-foreground">
               Your employer has started a {visaType || "your"} case for you. Complete the sections below, then click Save progress or Submit case.
@@ -1160,12 +1171,12 @@ export default function Documents() {
               components/checklist/CaseIntakeExtras.jsx) — not shown to an
               employee viewing only their own section. */}
           {!isEmployeeLoginView && activeCaseId && <CaseIntakeExtras caseId={activeCaseId} caseData={activeCase} />}
-          <StaffRequestedItems caseId={activeCaseId} user={user} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="requested" />
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4">
             <div>
               <p className="text-sm font-semibold text-foreground">
-                {missingRequiredItemsForSubmit.length > 0 ? `${missingRequiredItemsForSubmit.length} required item${missingRequiredItemsForSubmit.length === 1 ? "" : "s"} still needed` : "All required items complete"}
+                {missingRequiredItemsForSubmit.length > 0 ? `${missingRequiredItemsForSubmit.length} item${missingRequiredItemsForSubmit.length === 1 ? "" : "s"} still to fill before you can submit` : "All required items complete"}
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {allRolesSubmitted ? "This checklist is read-only after submission." : uploadsInFlightCount > 0 ? `Waiting on ${uploadsInFlightCount} upload${uploadsInFlightCount === 1 ? "" : "s"} to finish before you can save or submit.` : useNewArchitecture && showEmployer ? "Submitting locks the employer side for your case team's review. Save progress any time without submitting." : "Submitting locks this checklist for your case team's review. Save progress any time without submitting."}

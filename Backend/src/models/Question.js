@@ -178,7 +178,10 @@ const questionSchema = new mongoose.Schema(
     evidenceCategory: { type: String, index: true },
     localization: { type: mongoose.Schema.Types.Mixed, default: {} },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-    required: { type: Boolean, default: false, index: true },
+    // Nothing a client fills in is ever mandatory: an answer can always be saved partially (Save progress). Completeness is
+    // a separate rule - Submit needs every visible question answered (see questionnaire.service.js submitResponse). The flag
+    // is kept for schema compatibility but is always stored false, whatever a seed/template/editor writes.
+    required: { type: Boolean, default: false, index: true, set: () => false },
     active: { type: Boolean, default: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

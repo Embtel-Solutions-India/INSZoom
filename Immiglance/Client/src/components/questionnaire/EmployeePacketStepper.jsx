@@ -62,7 +62,6 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     const missing = [];
     sectionsWithItems.forEach((section) => {
       section.questions.forEach((question) => {
-        if (!question.required) return;
         const { status } = questionStatus(question);
         if (status === STATUS.NOT_STARTED) missing.push({ section: section.title, question, isDocument: isFileQuestion(question) });
       });
@@ -71,7 +70,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionsWithItems, answers, answerByKey]);
 
-  const canSubmit = missingRequiredCount === 0 && missingItems.length === 0;
+  const canSubmit = missingItems.length === 0;
 
   const renderQuestionRow = (question) => {
     const key = questionKey(question);
@@ -108,6 +107,23 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         )}
       </ChecklistItemRow>
     );
+  };
+
+  const [savingProgress, setSavingProgress] = useState(false);
+  const [progressNote, setProgressNote] = useState("");
+  // Save progress: persist what is filled so far (any amount) without submitting.
+  const handleSaveProgress = async () => {
+    setSavingProgress(true);
+    setSubmitError("");
+    setProgressNote("");
+    try {
+      await commitAll();
+      setProgressNote("Progress saved. You can come back and finish later.");
+    } catch (err) {
+      setSubmitError(err.response?.message || err.message || "Unable to save - please try again.");
+    } finally {
+      setSavingProgress(false);
+    }
   };
 
   const handleSaveAndReturn = async () => {
@@ -299,6 +315,17 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         >
           Back
         </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleSaveProgress}
+            disabled={savingProgress || submitting}
+            className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+            title="Saves everything you have filled in so far"
+          >
+            {savingProgress ? "Saving…" : "Save progress"}
+          </button>
+        )}
         {stepIndex < STEPS.length - 1 ? (
           <button
             type="button"
@@ -313,9 +340,9 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             onClick={handleSaveAndReturn}
             disabled={!canSubmit || submitting}
             className="rounded-lg bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-            title={!canSubmit ? "Complete every required item first" : undefined}
+            title={!canSubmit ? `${missingItems.length} item${missingItems.length === 1 ? "" : "s"} still blank - fill everything to submit, or use Save progress` : "Submit your completed information"}
           >
-            {submitting ? "Saving…" : "Save & Return"}
+            {submitting ? "Submitting…" : "Submit"}
           </button>
         ) : (
           <span className="text-xs text-muted-foreground">Read-only view</span>

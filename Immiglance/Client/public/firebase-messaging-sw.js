@@ -24,9 +24,13 @@ const messaging = firebase.messaging();
 // by NotificationBell.jsx — so the same notification is never shown twice).
 messaging.onBackgroundMessage((payload) => {
   const link = payload.data?.link || payload.fcmOptions?.link || "/";
-  self.registration.showNotification(payload.notification?.title || "New notification", {
-    body: payload.notification?.body,
+  const tag = payload.data?.tag;
+  self.registration.showNotification(payload.notification?.title || payload.data?.title || "New notification", {
+    body: payload.notification?.body || payload.data?.body,
     icon: "/favicon.svg",
+    // Same tag as the one the server sets: the browser shows ONE notification per conversation (and re-alerts on a new
+    // message) instead of two copies or a growing pile.
+    ...(tag ? { tag, renotify: true } : {}),
     data: { link },
   });
 });

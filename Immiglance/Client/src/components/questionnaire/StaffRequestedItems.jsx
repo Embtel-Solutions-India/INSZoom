@@ -71,17 +71,20 @@ function RequestedChecklist({ caseId, checklist }) {
   );
 }
 
-export default function StaffRequestedItems({ caseId, user }) {
+// section: "premium" -> only the Premium Processing checklist; "requested" -> only the additional-item requests;
+// omitted -> both (premium first), the original behaviour.
+export default function StaffRequestedItems({ caseId, user, section }) {
   const { checklists } = useCaseChecklists(caseId);
   const all = checklists.filter((checklist) => checklist.staffRequest && (!checklist.assignedTo || String(checklist.assignedTo) === String(user?._id || user?.id)));
   // The Premium Processing (Form I-907) checklist a case manager attaches is also a staff-added
   // checklist, but it is a full form section of its own - not an "additional item" request.
   const premium = all.filter((checklist) => checklist.key === PREMIUM_PROCESSING_CHECKLIST_KEY);
-  const mine = all.filter((checklist) => checklist.key !== PREMIUM_PROCESSING_CHECKLIST_KEY);
-  if (!caseId || (!mine.length && !premium.length)) return null;
+  const mine = section === "premium" ? [] : all.filter((checklist) => checklist.key !== PREMIUM_PROCESSING_CHECKLIST_KEY);
+  const premiumShown = section === "requested" ? [] : premium;
+  if (!caseId || (!mine.length && !premiumShown.length)) return null;
   return (
-    <div className="mt-6 space-y-4">
-      {premium.map((checklist) => <PremiumProcessingChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
+    <div className={section === "premium" ? "space-y-4" : "mt-6 space-y-4"}>
+      {premiumShown.map((checklist) => <PremiumProcessingChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
       {mine.map((checklist) => <RequestedChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
     </div>
   );

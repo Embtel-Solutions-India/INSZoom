@@ -1187,6 +1187,29 @@ const caseSchema = new mongoose.Schema(
     },
 
     /**
+     * Child (employee/beneficiary) cases only: how THIS employee's information is entered, chosen
+     * per employee and changeable at any time by the employer or staff.
+     * ''           = no individual choice yet - follows the principal's dataEntryMode (legacy behaviour)
+     * 'fill_self'  = the employer fills this employee's information
+     * 'invite'     = this employee was invited to fill their own information
+     * The principal's dataEntryMode stays the case-wide default for employees without their own choice.
+     */
+    employeeDataEntryMode: {
+      type: String,
+      enum: ["", "fill_self", "invite"],
+      default: "",
+    },
+    employeeDataEntryModeChangedAt: { type: Date, default: null },
+    employeeDataEntryModeChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    /**
+     * Pins the questionnaire response a checklist's answers live under, keyed "<targetRole>:<questionnaireId>".
+     * Without a stored reference, the response id is derived from the case's CURRENT owner - so when an employee's
+     * file changes hands (employer fills <-> employee invited) it would silently start a blank response. Pinning
+     * the id once, before the hand-over, keeps one response for the whole life of the file.
+     */
+    pinnedResponseIds: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+    /**
      * For child cases only: true when this child case has been individually
      * reassigned to a different case manager than the principal case's default.
      * False means this child inherits the principal's assignment.

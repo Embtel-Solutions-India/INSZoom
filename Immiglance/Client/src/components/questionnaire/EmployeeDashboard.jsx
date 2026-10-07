@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { casesApi, questionnairesApi } from "../../services/api";
+import AddEmployeeModal from "./AddEmployeeModal";
 
 function initials(name) {
   if (!name) return "?";
@@ -86,7 +87,9 @@ function statusPillFor(child, dataEntryMode, progress) {
   return "Not Started";
 }
 
-function EmployeeCard({ child, dataEntryMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw }) {
+function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw }) {
+  // Each employee has their own workflow; an employee without an individual choice follows the case-wide default.
+  const dataEntryMode = child.employeeDataEntryMode || caseDefaultMode;
   const identified = Boolean(child.clientName) || dataEntryMode === "fill_self";
   const invited = dataEntryMode === "invite" && Boolean(child.clientEmail);
   // Once an employee is invited, ownership of their checklist/answers
@@ -102,15 +105,32 @@ function EmployeeCard({ child, dataEntryMode, targetRole, onOpen, onInviteSent, 
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   const pillLabel = statusPillFor(child, dataEntryMode, progress);
+
+  const handleSwitchToFillSelf = async () => {
+    const who = child.clientName || "this employee";
+    if (!window.confirm(`Fill in ${who}'s information yourself? Their invitation will be cancelled and they will lose access to this case. Anything already entered is kept.`)) return;
+    setSwitching(true);
+    setError("");
+    try {
+      const res = await casesApi.setEmployeeDataEntryMode(child.principalId, child._id, { mode: "fill_self" });
+      if (res?.success) onInviteSent();
+      else setError(res?.message || "Could not change this employee's workflow");
+    } catch (err) {
+      setError(err.message || "Could not change this employee's workflow");
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   const handleSendInvite = async () => {
     if (!name.trim() || !email.trim()) { setError("Name and email are required."); return; }
     setInviting(true);
     setError("");
     try {
-      const res = await casesApi.inviteEmployee(child.principalId, { childCaseId: child._id, employeeName: name.trim(), employeeEmail: email.trim() });
+      const res = await casesApi.setEmployeeDataEntryMode(child.principalId, child._id, { mode: "invite", employeeName: name.trim(), employeeEmail: email.trim() });
       if (res?.success) onInviteSent();
       else setError(res?.message || "Failed to send invite");
     } catch (err) {
@@ -138,16 +158,35 @@ function EmployeeCard({ child, dataEntryMode, targetRole, onOpen, onInviteSent, 
               {child.clientName || "Employee Slot"}
             </p>
             <p className="text-xs text-slate-400 font-mono mt-0.5">{child.caseNumber}</p>
+            <span className="mt-1.5 mr-1.5 inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
+              {child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}
+            </span>
+            <span
+              className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                dataEntryMode === "invite" ? "bg-sky-50 text-sky-700" : "bg-slate-100 text-slate-600"
+              }`}
+              title={dataEntryMode === "invite" ? "This employee fills in their own information" : "You fill in this employee's information"}
+            >
+              {dataEntryMode === "invite" ? "Employee fills (invited)" : "Employer fills"}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <StatusPill label={pillLabel} />
-          {invited && (
+          {pillLabel !== "Withdrawn" && (
             <div className="relative">
-              <button type="button" onClick={() => setMenuOpen((v) => !v)} className="text-slate-400 hover:text-slate-600 px-1 leading-none">⋯</button>
+              <button type="button" onClick={() => setMenuOpen((v) => !v)} className="text-slate-400 hover:text-slate-600 px-1 leading-none" aria-label="Employee workflow options">⋯</button>
               {menuOpen && (
-                <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
-                  <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Resend invite</button>
+                <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
+                  {invited && (
+                    <>
+                      <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Resend invite</button>
+                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); handleSwitchToFillSelf(); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
+                    </>
+                  )}
+                  {!invited && (
+                    <button type="button" onClick={() => { setMenuOpen(false); setShowInviteForm(true); setError(""); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Invite this employee to fill it in</button>
+                  )}
                   <button type="button" onClick={() => { setMenuOpen(false); onWithdraw(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">Withdraw</button>
                 </div>
               )}
@@ -163,30 +202,30 @@ function EmployeeCard({ child, dataEntryMode, targetRole, onOpen, onInviteSent, 
         </div>
       )}
 
-      {dataEntryMode === "invite" && !invited ? (
-        showInviteForm ? (
-          <div className="space-y-2 animate-in fade-in duration-150">
-            <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} disabled={inviting} />
-            <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={inviting} />
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            <div className="flex gap-2">
-              <button type="button" onClick={handleSendInvite} disabled={inviting} className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-40">
-                {inviting ? "Sending…" : "Send Invite"}
-              </button>
-              <button type="button" onClick={() => setShowInviteForm(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
-            </div>
+      {error && !showInviteForm && <p className="text-xs text-red-600">{error}</p>}
+
+      {showInviteForm ? (
+        <div className="space-y-2 animate-in fade-in duration-150">
+          <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} disabled={inviting} />
+          <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={inviting} />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={handleSendInvite} disabled={inviting} className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-40">
+              {inviting ? "Sending…" : "Send Invite"}
+            </button>
+            <button type="button" onClick={() => { setShowInviteForm(false); setError(""); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
           </div>
-        ) : (
-          <button type="button" onClick={() => setShowInviteForm(true)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors">
-            Fill Information
-          </button>
-        )
+        </div>
       ) : invited ? (
         <p className="text-center text-xs text-slate-400 py-1.5">
           {pillLabel === "Ready for Review" || pillLabel === "Completed"
             ? `${child.clientName} has submitted their information.`
             : `Waiting for ${child.clientName} to complete their information.`}
         </p>
+      ) : dataEntryMode === "invite" ? (
+        <button type="button" onClick={() => setShowInviteForm(true)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+          Invite Employee
+        </button>
       ) : (
         <button
           type="button"
@@ -216,18 +255,11 @@ function AddEmployeeGhostCard({ onClick }) {
 // old plain tab bar with one card per employee slot, matching the Admin
 // CRM's own Employees panel (status pills, resend/withdraw) so both portals
 // present the same matter consistently.
-export default function EmployeeDashboard({ principalId, children, dataEntryMode, targetRole, onOpen, onChanged }) {
+export default function EmployeeDashboard({ principalId, children, dataEntryMode, targetRole, defaultVisaType, onOpen, onChanged }) {
   const [actionError, setActionError] = useState("");
+  const [showAddEmployee, setShowAddEmployee] = useState(false);
 
-  const handleAddEmployee = async () => {
-    try {
-      const res = await casesApi.addEmployeeSlot(principalId);
-      if (res?.success) onChanged();
-      else setActionError(res?.message || "Failed to add employee slot");
-    } catch (err) {
-      setActionError(err.message || "Failed to add employee slot");
-    }
-  };
+  const handleAddEmployee = () => setShowAddEmployee(true);
 
   const handleResend = async (childId) => {
     try {
@@ -255,6 +287,14 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
       </div>
       {actionError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{actionError}</div>
+      )}
+      {showAddEmployee && (
+        <AddEmployeeModal
+          principalId={principalId}
+          defaultVisaType={defaultVisaType}
+          onClose={() => setShowAddEmployee(false)}
+          onAdded={(message) => { setShowAddEmployee(false); if (message) setActionError(message); onChanged(); }}
+        />
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {children.map((child) => (

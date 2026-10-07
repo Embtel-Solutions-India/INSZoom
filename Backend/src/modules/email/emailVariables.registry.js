@@ -57,6 +57,9 @@ const VARIABLES = [
   v("company.email", "Company", "Company contact email", "hr@acme-tech.com", { path: "company.email", fallback: "", email: true }),
   v("petitioner.name", "Company", "Petitioner name", "Jane Roberts", { dataKeys: ["petitionerName"], fallback: "the petitioner" }),
 
+  v("message.sender_name", "System", "Message sender", "Sarah Johnson", { dataKeys: ["senderName"], fallback: "your case team" }),
+  v("message.preview", "System", "Message preview", "Please upload your passport copy when you can.", { dataKeys: ["messagePreview"], fallback: "" }),
+
   v("document.name", "Document", "Document name", "Passport copy", { dataKeys: ["documentName", "itemName", "questionnaireName"], fallback: "the requested document" }),
   v("document.list", "Document", "Document list", "Passport copy, Birth certificate", { dataKeys: ["documentList"], fallback: "N/A" }),
   v("document.count", "Document", "Document count", "3", { dataKeys: ["documentCount"], fallback: "0" }),

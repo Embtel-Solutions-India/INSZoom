@@ -438,10 +438,16 @@ class ImmigrationKnowledgeEngineService {
   }
 
   static async autoFill(caseData, canonicalState, user, req) {
-    const forms = await CaseForm.find({ caseId: caseData._id });
+    // Forms of an employer / family matter belong to the child cases, but the shared party's checklist is answered on
+    // the principal: refresh the children's forms too, so a checklist change reaches every form it feeds.
+    const childIds = caseData.childCases?.length ? caseData.childCases : [];
+    const forms = await CaseForm.find({ caseId: { $in: [caseData._id, ...childIds] } });
     const results = [];
     for (const form of forms) {
-      const canonicalVersion = Number(canonicalState?.version || 0);
+      const isChildForm = String(form.caseId) !== String(caseData._id);
+      // A child form is judged by its own staleness flag (set whenever the principal's answers change), because the
+      // principal's canonical version says nothing about the child's own profile.
+      const canonicalVersion = isChildForm ? 0 : Number(canonicalState?.version || 0);
       const syncedVersion = Number(form.syncState?.canonicalVersion || 0);
       if (PROTECTED_FORM_STATUSES.has(form.status) || form.isLocked) {
         if (canonicalVersion > syncedVersion) {
@@ -461,7 +467,7 @@ class ImmigrationKnowledgeEngineService {
         continue;
       }
       try {
-        const generated = await AutoFillService.generate(caseData._id, form.formCode, user, req, {
+        const generated = await AutoFillService.generate(form.caseId, form.formCode, user, req, {
           regenerate: form.versionNumber > 0,
           overwriteReviewed: false,
         });

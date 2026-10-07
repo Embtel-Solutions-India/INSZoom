@@ -46,6 +46,7 @@ const TEMPLATE_AUDIENCE = {
   "case-manager-reassigned": "team_member",
   "case-closed": "client",
   "additional-info-requested": "client",
+  "new-message-received": "client",
 };
 
 // recipientRole (an actual User.role, when the caller has it handy) always
@@ -96,6 +97,7 @@ const TEMPLATES = {
   "case-manager-reassigned": require("./templates/case-manager-reassigned"),
   "case-closed": require("./templates/case-closed"),
   "additional-info-requested": require("./templates/additional-info-requested"),
+  "new-message-received": require("./templates/new-message-received"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully

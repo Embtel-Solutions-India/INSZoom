@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { questionnairesApi } from "../../services/api";
+import { useMemo, useState } from "react";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
@@ -29,8 +30,27 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   const {
     questionnaire, initialLoading, refreshing, error, sections, questionsBySection, answers, answerByKey,
     prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult,
-    overallCompletion, missingRequiredCount, dirty, saveState, lastSavedAt, statusMessage,
+    overallCompletion, missingRequiredCount, dirty, saveState, lastSavedAt, statusMessage, responseId,
   } = qa;
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [justSubmitted, setJustSubmitted] = useState(false);
+
+  // Save progress = persist whatever is filled so far (partial is fine). Submit = only when everything is filled.
+  const handleSubmit = async () => {
+    if (!questionnaire?._id || missingRequiredCount > 0) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await commitAll();
+      await questionnairesApi.submit(questionnaire._id, { caseId, responseId });
+      setJustSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.response?.message || err.message || "Unable to submit - please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const sectionsWithItems = useMemo(() => sections.map((section) => {
     const key = sectionKey(section);
@@ -57,7 +77,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
             <p className="text-sm font-bold text-slate-900">{questionnaire.title}</p>
             <p className="text-xs text-slate-500 mt-0.5">
               {overallCompletion}% complete
-              {missingRequiredCount > 0 && ` · ${missingRequiredCount} required item${missingRequiredCount === 1 ? "" : "s"} remaining`}
+              {missingRequiredCount > 0 ? ` · ${missingRequiredCount} item${missingRequiredCount === 1 ? "" : "s"} left before you can submit` : " · everything is filled in - ready to submit"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -67,12 +87,23 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
             <button
               type="button"
               onClick={commitAll}
-              disabled={!dirty || saveState === "saving"}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!dirty || saveState === "saving" || submitting}
+              className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Saves everything you have filled in so far - you can come back and finish later"
             >
               Save progress
             </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={missingRequiredCount > 0 || saveState === "saving" || submitting}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={missingRequiredCount > 0 ? "Fill in every item to submit - use Save progress to keep what you have so far" : "Submit the completed information"}
+            >
+              {submitting ? "Submitting…" : justSubmitted ? "Submitted ✓" : "Submit"}
+            </button>
           </div>
+          {submitError && <p role="alert" className="w-full text-xs font-semibold text-red-600">{submitError}</p>}
           {statusMessage && <p className="w-full text-xs text-slate-500">{statusMessage}</p>}
         </div>
       )}

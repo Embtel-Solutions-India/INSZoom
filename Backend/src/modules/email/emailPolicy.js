@@ -66,11 +66,11 @@ const EVENT_EMAIL_POLICY = {
   "uscis.decision:attorney": { auto: true },
   "case.filed:attorney": { auto: true },
   "case.reopened:attorney": { auto: true },
-  "attorney.feedback:attorney": { auto: true, cooldownMin: 30 },
+  "attorney.feedback:attorney": { auto: false, cooldownMin: 30 }, // superseded by "new-message-received"
   // case manager
   "case.tl_assigned:case_manager": { auto: true },
   "case.reopened:case_manager": { auto: true },
-  "attorney.feedback:case_manager": { auto: true, cooldownMin: 30 },
+  "attorney.feedback:case_manager": { auto: false, cooldownMin: 30 }, // superseded by "new-message-received"
   // team lead
   "rfe.received:team_lead": { auto: true },
   "uscis.decision:team_lead": { auto: true },
@@ -108,6 +108,7 @@ const SEND_RULES = {
   "client-intake-submitted-case-manager": { when: "A client submits their intake - sent to the assigned case manager.", unless: "No case manager is assigned yet." },
   "attorney-assignment": { when: "An attorney is given access to a case - sent to that attorney.", unless: "The attorney already had active access." },
   "additional-info-requested": { when: "Staff request more information from a client or participant.", unless: "—" },
+  "new-message-received": { when: "Someone sends a message and the recipient (client, attorney, case manager or team lead) is not signed in. Never administrators.", unless: "The recipient already got this email for the same case in the last 10 minutes, or is online." },
   "document-requested": { when: "Staff request documents from a client.", unless: "—" },
   "filing-submitted": { when: "The USCIS tracking status changes to 'filed' - sent to the client.", unless: "The status did not change." },
   "receipt-received": { when: "A USCIS receipt notice is recorded - sent to the client.", unless: "The status did not change." },

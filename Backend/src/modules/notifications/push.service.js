@@ -5,6 +5,7 @@
 // for the "push" channel (see dispatchPushChannel there — the one call site
 // into this module).
 const firebaseAdmin = require("../../config/firebase-admin");
+const logger = require("../../utils/logger");
 const deviceTokenService = require("./device-token.service");
 
 const PUSH_NOT_CONFIGURED = "Push notifications are temporarily unavailable (delivery provider not configured)";
@@ -22,16 +23,26 @@ function stringifyDataValues(data = {}) {
 }
 
 function buildMessage(payload = {}) {
+  const tag = payload.tag || payload.data?.tag;
+  const link = payload.link;
   return {
     notification: { title: payload.title, body: payload.body },
-    // `link` goes into `data` (not just webpush.fcmOptions below) because
-    // the foreground handler (onMessage, consumed by NotificationBell.jsx's
-    // onForegroundMessage) and the service worker's onBackgroundMessage both
-    // read payload.data.link to reconstruct/route the notification —
-    // fcmOptions.link is only the browser's native default-click target for
-    // when no notificationclick handler runs.
-    data: stringifyDataValues({ ...payload.data, link: payload.link }),
-    ...(payload.link ? { webpush: { fcmOptions: { link: payload.link } } } : {}),
+    // `link` goes into `data` (not just webpush.fcmOptions below) because the foreground handler (onMessage) and the
+    // service worker's onBackgroundMessage both read payload.data.link to route the click. title/body are repeated in
+    // `data` so a service worker can always render the notification itself.
+    data: stringifyDataValues({ ...payload.data, link, title: payload.title, body: payload.body, tag }),
+    webpush: {
+      // High urgency + a day of retention: delivered immediately to a sleeping browser, like a chat app.
+      headers: { Urgency: "high", TTL: "86400" },
+      notification: {
+        title: payload.title,
+        body: payload.body,
+        icon: "/favicon.svg",
+        // Same tag = the thread's notification is replaced (and re-alerts) instead of piling up.
+        ...(tag ? { tag, renotify: true } : {}),
+      },
+      ...(link ? { fcmOptions: { link } } : {}),
+    },
   };
 }
 
@@ -67,16 +78,26 @@ async function sendMulticast(tokens, payload = {}) {
       validTokens,
       response.responses.map((entry) => (entry.success ? null : entry.error?.code))
     );
+    if (response.failureCount) {
+      const codes = {};
+      response.responses.forEach((entry) => { if (!entry.success) codes[entry.error?.code || "unknown"] = (codes[entry.error?.code || "unknown"] || 0) + 1; });
+      logger.warn("push_delivery_failures", { sent: response.successCount, failed: response.failureCount, codes });
+    }
     return { successCount: response.successCount, failureCount: response.failureCount, responses: response.responses };
   } catch (error) {
+    logger.error("push_send_error", { error: error.message, code: error.code });
     return { successCount: 0, failureCount: validTokens.length, error: error.message };
   }
 }
 
 async function sendToUser(userId, payload = {}) {
   if (!userId) return { successCount: 0, failureCount: 0, skipped: "No userId" };
-  if (!firebaseAdmin.isConfigured()) return { successCount: 0, failureCount: 0, skipped: PUSH_NOT_CONFIGURED };
+  if (!firebaseAdmin.isConfigured()) {
+    logger.warn("push_not_configured", { hint: "Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY on the server" });
+    return { successCount: 0, failureCount: 0, skipped: PUSH_NOT_CONFIGURED };
+  }
   const tokens = await deviceTokenService.tokensForUser(userId);
+  if (!tokens.length) logger.info("push_no_devices", { userId: String(userId) });
   return sendMulticast(tokens.map((entry) => entry.token), payload);
 }
 

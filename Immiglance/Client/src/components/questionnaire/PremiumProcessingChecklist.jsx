@@ -1,11 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import QuestionInput from "./QuestionInput";
-import { questionKey, sectionKey, isQuestionRequired, isEmptyValue, isWideQuestion } from "../../utils/questionnaireEngine";
+import { questionnairesApi } from "../../services/api";
+import { questionKey, sectionKey, isEmptyValue, isWideQuestion } from "../../utils/questionnaireEngine";
 
 // The "Form I-907 Information Checklist" a case manager attaches when upgrading a case to
 // Premium Processing. It is an ordinary questionnaire (same answers/save pipeline as every other
-// checklist, and the same answers the Admin portal shows), rendered here as its own section BELOW
+// checklist, and the same answers the Admin portal shows), rendered here as its own, clearly named section ABOVE
 // the case's regular checklists - never as one of them. A standalone "Premium Processing" case does
 // not use this: there the checklist is the case's own and renders on the main checklist page.
 export const PREMIUM_PROCESSING_CHECKLIST_KEY = "i907_premium_processing_profile";
@@ -18,11 +19,25 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
       .filter((entry) => entry.questions.length > 0),
     [qa.sections, qa.questionsBySection]
   );
-  const required = useMemo(
-    () => (qa.visibleQuestions || []).filter((question) => isQuestionRequired(question, qa.answers)),
-    [qa.visibleQuestions, qa.answers]
-  );
-  const missing = required.filter((question) => isEmptyValue(qa.answers[questionKey(question)])).length;
+  // Nothing is mandatory to save; Submit needs every item filled in.
+  const missing = (qa.visibleQuestions || []).filter((question) => isEmptyValue(qa.answers[questionKey(question)])).length;
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const handleSubmit = async () => {
+    if (missing > 0 || !qa.questionnaire?._id) return;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await qa.commitAll();
+      await questionnairesApi.submit(qa.questionnaire._id, { caseId, responseId: qa.responseId });
+      setSubmitted(true);
+    } catch (err) {
+      setSubmitError(err.response?.message || err.message || "Unable to submit - please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (qa.loading && !sections.length) return null;
   if (!sections.length) return null;
@@ -35,7 +50,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
           <p className="text-xs text-muted-foreground">Your case manager upgraded this case to Premium Processing. Please complete the information below - it is used to prepare Form I-907.</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${missing ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
-          {missing ? `${missing} required to complete` : "All required items complete"}
+          {missing ? `${missing} item${missing === 1 ? "" : "s"} left` : "Everything filled in"}
         </span>
       </div>
 
@@ -47,12 +62,10 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
               {questions.map((question) => {
                 const key = questionKey(question);
                 const value = qa.answers[key] ?? question.defaultValue ?? "";
-                const isRequired = isQuestionRequired(question, qa.answers);
                 return (
                   <div key={key} className={`rounded-xl border border-border bg-background p-3 ${isWideQuestion(question) ? "md:col-span-2" : ""}`}>
                     <p className="text-sm font-semibold text-foreground">
                       {question.label}
-                      {isRequired && <span className="ml-1 text-red-500" aria-hidden="true">*</span>}
                     </p>
                     {(question.description || question.helpText) && <p className="mb-2 mt-0.5 text-xs text-muted-foreground">{question.description || question.helpText}</p>}
                     <QuestionInput
@@ -76,14 +89,27 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
         <p className="text-xs text-muted-foreground" role="status">
           {qa.saveState === "saving" ? "Saving..." : qa.saveState === "saved" ? `Saved${qa.lastSavedAt ? ` at ${qa.lastSavedAt}` : ""}` : qa.saveState === "error" ? qa.statusMessage : qa.uploadsInFlight ? "Waiting for uploads to finish..." : ""}
         </p>
-        <button
-          type="button"
-          onClick={() => qa.commitAll().catch(() => null)}
-          disabled={qa.saveState === "saving" || qa.uploadsInFlight > 0}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {qa.saveState === "saving" ? "Saving..." : "Save"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => qa.commitAll().catch(() => null)}
+            disabled={qa.saveState === "saving" || qa.uploadsInFlight > 0 || submitting}
+            className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Saves everything you have filled in so far"
+          >
+            {qa.saveState === "saving" ? "Saving..." : "Save progress"}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={missing > 0 || submitting || qa.saveState === "saving" || qa.uploadsInFlight > 0}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            title={missing > 0 ? "Fill in every item to submit - use Save progress to keep what you have so far" : "Submit the completed information"}
+          >
+            {submitting ? "Submitting..." : submitted ? "Submitted" : "Submit"}
+          </button>
+        </div>
+        {submitError && <p role="alert" className="w-full text-xs font-semibold text-red-600">{submitError}</p>}
       </div>
     </section>
   );

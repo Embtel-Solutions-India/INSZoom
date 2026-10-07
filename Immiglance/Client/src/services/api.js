@@ -530,13 +530,17 @@ export const casesApi = {
   getRelated: (id) => api.get(`/cases/${id}/related`),
   setDataEntryMode: (principalId, mode) =>
     api.patch(`/cases/${principalId}/data-entry-mode`, { mode }),
+  // Per-employee workflow: { mode: "fill_self" } revokes an invitation, { mode: "invite", employeeName, employeeEmail } invites.
+  setEmployeeDataEntryMode: (principalId, childCaseId, payload) =>
+    api.patch(`/cases/${principalId}/employees/${childCaseId}/data-entry-mode`, payload),
   inviteEmployee: (principalId, data) =>
     api.post(`/cases/${principalId}/invite-employee`, data),
   removeEmployee: (caseId) => api.patch(`/cases/${caseId}/remove-employee`),
   resendEmployeeInvite: (principalId, childCaseId) =>
     api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }),
-  addEmployeeSlot: (principalId) =>
-    api.post(`/cases/${principalId}/add-employee-slot`),
+  addEmployeeSlot: (principalId, payload = {}) =>
+    api.post(`/cases/${principalId}/add-employee-slot`, payload),
+  employeeVisaOptions: () => api.get("/cases/employee-visa-options"),
 };
 
 // ── Employer / Employee canonical profiles (Phase 9) ───────────────────
