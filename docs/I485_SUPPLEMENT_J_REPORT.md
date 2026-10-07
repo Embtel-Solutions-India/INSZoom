@@ -43,3 +43,38 @@ Verified live on the existing F4 case: workspace opens, autofill wrote 37 values
 ## Not done / follow-ups
 - Edition note: the stored base I-485 template is edition 2026-04-09 while uscis.gov lists 09/18/26; re-import I-485 when ready (see `FormEditionComparisonService`).
 - Checklist mappings for I-485J (which client checklist feeds it) were not added; fields come from the canonical profile.
+
+---
+
+# Addendum — I-485 edition 09/18/26 replaces the 04/09/26 edition
+
+USCIS published a revised I-485 (Public Charge rule) with **no grace period**: the earlier edition is rejected from 09/18/26.
+
+## What was done
+- Imported `dev-assets/uscis/i-485_2026-18-09.pdf` as `I-485` v2026-09-18 (730 fields). Field diff vs. the old edition: 28 added, 16 removed, 45 renamed, 13 modified. The only change that touched existing mappings: **every A-Number widget was renamed** (`AlienNumber[n]` -> `Pt1Line4_AlienNumber[n]`), which broke 25 of the 41 reviewed edges.
+- `form-mapping/config/i485-perm-crosswalk.js`: added the new-edition A-Number edges (Item 4 input on page 2 + the 24 header repeats); the old edition's names stay mapped. New mapping version v3 activated on the new edition: 40 edges (parity with the old edition's 40).
+- `scripts/replaceFormEdition.js` (`npm run replace:form-edition -- --formCode I-485 --toVersion 2026-09-18 [--apply --acknowledgeEditionChanges]`): maps the new edition first, then swaps the active template (visaTypes carried over + registry-derived), retires the old one (kept, never deleted), and moves every open CaseForm onto the new template — values carried by field name, re-autofilled, and recorded in `formVersionLock.migratedFrom/At/By`. Finalized/filed/approved forms stay on the edition they were filed on. The edition-change gate acknowledgement is audited.
+- `permCrosswalkSeed.js` can now seed a specific, not-yet-active template (so a new edition is mapped before going live).
+- Fresh environments: `i485.seed.js` and `bulkImportPhase1Forms.js` now import the 09/18/26 edition.
+
+## Verified live (existing F4 case)
+The I-485 CaseForm is on edition 2026-09-18 / mapping v3. Open: OK. Autofill: 430 values. Edit by a case manager: saved and persisted. Download (`/forms/:id/download-form`): a 4.7 MB PDF whose field read back the edited value. The test edit was removed afterwards (history/audit entries of that test edit remain in the form's audit trail).
+
+## Tests
+`i485-edition-2026-09-18.test.js` (5) + `i485SupplementJ.test.js` (18) + `visaFormMapping`, `ensureCurrentUSCISForm`, `RichTextFieldGuard` — all pass.
+
+# Other forms: do they need a revised edition?
+Checked each active form against its uscis.gov page (Edition Date), 2026-10-08:
+
+| Form | Ours | uscis.gov | Verdict |
+|---|---|---|---|
+| **I-129** | 02/27/26 | **09/09/26** | **NEW EDITION REQUIRED** — published 09/09/26 (9-11 Response & Biometric Entry-Exit Fee rule, H-1B/L-1). The 02/27/26 edition is accepted only until **11/08/26** and rejected from 11/09/26. Not in `dev-assets` yet — add `i-129_2026-09-09.pdf` and run the same replace flow (needs an I-129 mapping hook; the I-129 graphs are the largest, review the field diff first). |
+| I-485 | 09/18/26 | 09/18/26 | current (just replaced) |
+| I-129F, I-129S, I-131, I-134, I-360, I-526, I-526E, I-693, I-829, I-90, N-400, N-600 | 01/20/25 | 01/20/25 | current |
+| I-130, I-907 | 04/01/24 | 04/01/24 | current |
+| I-539 | 08/28/24 | 08/28/24 | current |
+| I-765 | 08/21/25 | 08/21/25 | current |
+| I-864, I-864EZ | 08/24/26 | 08/24/26 | current |
+| N-565 | 02/27/25 | 02/27/25 | current |
+| I-140, I-612, I-751, I-824 | see note | same edition | current — **stored `editionDate` is wrong** (day/month swapped from the `yyyy-dd-mm` filenames, e.g. I-140 stored 2024-07-06, real 06/07/24). Edition is right; only the date label is off. |
+| I-485J, I-539A | | no standalone uscis.gov page (supplements) | verify on the parent form's page; I-485J imported from the official 09/18/26 asset. |

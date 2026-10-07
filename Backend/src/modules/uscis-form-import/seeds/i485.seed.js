@@ -2,7 +2,8 @@
 // (or: npm run seed:i485, from Backend/)
 //
 // Imports (if not already present) and activates the bundled I-485
-// (edition 2026-04-09) so registry-driven provisioning
+// (edition 2026-09-18, the Public Charge revision USCIS requires from 09/18/26; the earlier 2026-04-09
+// edition is retired by scripts/replaceFormEdition.js) so registry-driven provisioning
 // (VisaFormMapping's formTemplateFormCode: "i-485") can attach it wherever
 // a case's processingPath is ADJUSTMENT_OF_STATUS — every EB category, most
 // family-based categories, K-1/K-3 post-marriage, and the humanitarian
@@ -18,10 +19,10 @@ const importLocalForm = require("../scripts/importLocalForm");
 const { deriveVisaTypesFromRegistry } = require("./deriveVisaTypesFromRegistry");
 
 const FORM_CODE = "I-485";
-const VERSION = "2026-04-09";
-const EDITION_DATE = new Date("2026-04-09T00:00:00.000Z");
+const VERSION = "2026-09-18";
+const EDITION_DATE = new Date("2026-09-18T00:00:00.000Z");
 const TITLE = "Application to Register Permanent Residence or Adjust Status (I-485)";
-const DEFAULT_FILE = path.resolve(__dirname, "../../../../dev-assets/uscis/i-485_2026_04_09.pdf");
+const DEFAULT_FILE = path.resolve(__dirname, "../../../../dev-assets/uscis/i-485_2026-18-09.pdf");
 const MIN_FIELD_COUNT = 10;
 // Representative set — I-485 applies broadly across every immigrant
 // (green-card) pathway once processingPath=ADJUSTMENT_OF_STATUS; the
