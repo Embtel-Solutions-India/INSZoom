@@ -1,10 +1,34 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { X, Plus, Trash2, Loader2, Info } from 'lucide-react'
 import { questionnairesApi, invalidateCachedGet } from '../services/api'
 
+// How a question's answer is collected, in plain words (what the client actually sees).
+const TYPE_LABELS = {
+  text: 'Short answer', textarea: 'Long answer', number: 'Number', currency: 'Amount', percent: 'Percentage', date: 'Date', datetime: 'Date & time',
+  radio: 'Yes / No (choice)', select: 'Dropdown', multiselect: 'Multiple choice', multi_select: 'Multiple choice', checkbox: 'Checkbox', boolean: 'Yes / No',
+  file: 'Document upload', email: 'Email', phone: 'Phone number', address: 'Address', person: 'Person details', employment: 'Employment details',
+}
+const typeLabel = (type) => TYPE_LABELS[type] || String(type || 'text').replace(/_/g, ' ')
+
+// The order the CLIENT sees: sections in the questionnaire's own section order, the questions of each section by their
+// order number, and every document-upload question in a final "Documents" step (mirrors the client portal's checklist).
+function arrangeLikeClient(questions, sections) {
+  const byOrder = (a, b) => (a.order || 0) - (b.order || 0)
+  const orderedSections = [...(sections || [])].sort(byOrder)
+  const known = new Set(orderedSections.map((section) => section.key))
+  const isFile = (question) => question.type === 'file' || question.type === 'file-multiple'
+  const fields = questions.filter((question) => !isFile(question))
+  const groups = orderedSections.map((section) => ({ key: section.key, title: section.title, items: fields.filter((question) => (question.sectionKey || 'general') === section.key).sort(byOrder) }))
+  const strays = fields.filter((question) => !known.has(question.sectionKey || 'general'))
+  if (strays.length) groups.push({ key: 'general', title: 'Other', items: strays.sort(byOrder) })
+  const documents = questions.filter(isFile).sort(byOrder)
+  if (documents.length) groups.push({ key: '__documents', title: 'Documents', items: documents })
+  return groups.filter((group) => group.items.length)
+}
+
 const NEW_TYPES = [
-  { value: 'text', label: 'Short text' },
-  { value: 'textarea', label: 'Long text' },
+  { value: 'text', label: 'Short answer' },
+  { value: 'textarea', label: 'Long answer' },
   { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' },
   { value: 'radio', label: 'Yes / No' },
@@ -17,14 +41,17 @@ const NEW_TYPES = [
 // attached when a question is edited or removed.)
 export default function ChecklistEditorModal({ caseId, checklist, onClose, onSaved }) {
   const [questions, setQuestions] = useState([])
+  const [sections, setSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyKey, setBusyKey] = useState('')
   const [drafts, setDrafts] = useState({})
-  const [adding, setAdding] = useState({ label: '', type: 'text', required: false })
+  const [adding, setAdding] = useState({ label: '', type: 'text' })
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // `quiet` re-reads the list after a change WITHOUT swapping it for the loading state, so the list (and the scroll
+  // position inside it) stays exactly where the user was.
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     setError('')
     try {
       invalidateCachedGet(`/questionnaires/case/${caseId}`)
@@ -35,24 +62,27 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       const all = [...(data.questions || []), ...(data.hiddenQuestions || [])]
       const unique = [...new Map(all.map((question) => [question.key, question])).values()]
         .filter((question) => question.active !== false && question.type !== 'page_break' && question.type !== 'section_break')
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
       setQuestions(unique)
-      setDrafts({})
+      setSections(data.questionnaire?.sections || [])
+      if (!quiet) setDrafts({})
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not load this checklist.')
     } finally {
-      setLoading(false)
+      if (!quiet) setLoading(false)
     }
   }, [caseId, checklist.targetRole, checklist.referenceId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(false) }, [load])
 
   const send = async (key, body) => {
     setBusyKey(key)
     setError('')
     try {
       await questionnairesApi.editCaseChecklist(caseId, { checklistId: checklist.checklistId, ...body })
-      await load()
+      // a removed question leaves the list immediately, in place; nothing else moves
+      if (body.op === 'remove') setQuestions((current) => current.filter((question) => question.key !== body.questionKey))
+      if (body.questionKey) setDrafts((current) => { const next = { ...current }; delete next[body.questionKey]; return next })
+      await load(true)
       await onSaved?.()
       return true
     } catch (err) {
@@ -63,11 +93,13 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
     }
   }
 
+  const groups = useMemo(() => arrangeLikeClient(questions, sections), [questions, sections])
+
   const draftOf = (question) => drafts[question.key] || {}
   const setDraft = (question, patch) => setDrafts((current) => ({ ...current, [question.key]: { ...current[question.key], ...patch } }))
   const isDirty = (question) => {
     const draft = draftOf(question)
-    return (draft.label !== undefined && draft.label !== question.label) || (draft.required !== undefined && Boolean(draft.required) !== Boolean(question.required))
+    return draft.label !== undefined && draft.label !== question.label
   }
 
   return (
@@ -90,10 +122,12 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Loading questions…</p>
           ) : (
             <ul className="space-y-3">
-              {questions.map((question) => {
+              {groups.map((group) => (
+                <Fragment key={group.key}>
+                  <li className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground" aria-hidden="true">{group.title}</li>
+                  {group.items.map((question) => {
                 const draft = draftOf(question)
                 const label = draft.label !== undefined ? draft.label : question.label
-                const required = draft.required !== undefined ? draft.required : Boolean(question.required)
                 return (
                   <li key={question.key} className="rounded-xl border border-border p-3">
                     <label className="block text-xs font-medium text-muted-foreground">
@@ -101,13 +135,18 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                       <textarea rows={2} value={label} onChange={(event) => setDraft(question, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground" />
                     </label>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <label className="flex items-center gap-2 text-sm text-foreground">
-                        <input type="checkbox" checked={required} onChange={(event) => setDraft(question, { required: event.target.checked })} /> Required
-                        <span className="text-xs text-muted-foreground">({question.type})</span>
-                      </label>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                        <span className="text-muted-foreground">Answer type</span>
+                        <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-foreground" data-testid={`answer-type-${question.key}`}>{typeLabel(question.type)}</span>
+                        {['radio', 'select', 'multiselect', 'multi_select'].includes(question.type) && (question.options || []).length > 0 && (
+                          <span className="min-w-0 truncate text-muted-foreground" title={(question.options || []).map((option) => option.label ?? option).join(', ')}>
+                            Options: {(question.options || []).map((option) => option.label ?? option).join(', ')}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         <button type="button" className="btn-primary text-xs disabled:opacity-50" disabled={!isDirty(question) || busyKey === question.key}
-                          onClick={() => send(question.key, { op: 'update', questionKey: question.key, patch: { label, required } })}>
+                          onClick={() => send(question.key, { op: 'update', questionKey: question.key, patch: { label } })}>
                           {busyKey === question.key ? 'Saving…' : 'Save'}
                         </button>
                         <button type="button" className="btn-secondary inline-flex items-center gap-1 text-xs text-rose-700" disabled={busyKey === question.key}
@@ -119,6 +158,8 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                   </li>
                 )
               })}
+                </Fragment>
+              ))}
               {!questions.length && <li className="text-sm text-muted-foreground">This checklist has no questions.</li>}
             </ul>
           )}
@@ -132,9 +173,9 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
               </select>
             </div>
             <div className="mt-2 flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={adding.required} onChange={(event) => setAdding((current) => ({ ...current, required: event.target.checked }))} /> Required</label>
+              <span className="text-xs text-muted-foreground">Answer type: <b className="text-foreground">{typeLabel(adding.type)}</b></span>
               <button type="button" className="btn-primary inline-flex items-center gap-1.5 text-xs disabled:opacity-50" disabled={!adding.label.trim() || busyKey === '__add'}
-                onClick={async () => { if (await send('__add', { op: 'add', patch: adding })) setAdding({ label: '', type: 'text', required: false }) }}>
+                onClick={async () => { if (await send('__add', { op: 'add', patch: adding })) setAdding({ label: '', type: 'text' }) }}>
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {busyKey === '__add' ? 'Adding…' : 'Add question'}
               </button>
             </div>

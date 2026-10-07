@@ -154,6 +154,12 @@ function makeServer() {
         },
         remove: async (docId) => { documents = documents.filter((d) => d._id !== docId); },
       },
+      // Smart Scan (SmartScanStep / QuestionInput): a case with nothing to scan skips straight to the checklist.
+      documentIntelligenceApi: {
+        caseScanOptions: async () => ({ data: { items: [] } }),
+        autofillFromDocument: async () => ({ data: { prefill: [] } }),
+        casePrefillSummary: async () => ({ data: { items: [] } }),
+      },
     },
   };
 }
@@ -165,6 +171,7 @@ vi.mock("../../services/api", () => ({
   get familyWorkflowApi() { return server.api.familyWorkflowApi; },
   get questionnairesApi() { return server.api.questionnairesApi; },
   get documentsApi() { return server.api.documentsApi; },
+  get documentIntelligenceApi() { return server.api.documentIntelligenceApi; },
 }));
 
 const { default: Documents } = await import("./Documents");
@@ -204,6 +211,18 @@ function setFieldByKey(prefix, questionKey, value) {
   const input = findFieldByKey(prefix, questionKey);
   fireEvent.change(input, { target: { value } });
   return input;
+}
+
+// Nothing is "required" to SAVE any more; SUBMIT needs every visible question answered. This fills the whole
+// single-role employee checklist so a test can reach an enabled Submit button.
+function fillEveryField() {
+  const values = {
+    employee_personal_firstName: "Ada", employee_personal_lastName: "Lovelace", employee_personal_dateOfBirth: "1990-12-10",
+    employee_personal_countryOfBirth: "United Kingdom", employee_education_highestLevel: "Masters", employee_education_majorFieldOfStudy: "Mathematics",
+    employee_education_usInstitutionName: "MIT", employee_immigrationStatus_i94Number: "123456789A1", employee_immigrationStatus_currentVisaStatus: "F-1",
+    employee_personal_currentUsAddress_street: "1 Main St",
+  };
+  Object.entries(values).forEach(([key, value]) => setFieldByKey("x", key, value));
 }
 
 beforeEach(() => {
@@ -311,8 +330,7 @@ describe("Documents.jsx — role-aware navigation, no premature redirect (Bug C,
   it("submitting an individual (non-employer-shaped) case navigates to /dashboard", async () => {
     renderDocuments();
     await screen.findByText(/first name/i);
-    setFieldByKey("x", "employee_personal_firstName", "Ada");
-    setFieldByKey("x", "employee_personal_lastName", "Lovelace");
+    fillEveryField();
 
     const submitButton = screen.getAllByRole("button", { name: /submit case/i })[0];
     await waitFor(() => expect(submitButton.disabled).toBe(false));
@@ -327,8 +345,7 @@ describe("Documents.jsx — Save progress addendum (AC-S3, AC-S5, AC-S6)", () =>
     // Save progress run.
     renderDocuments();
     await screen.findByText(/first name/i);
-    setFieldByKey("x", "employee_personal_firstName", "Ada");
-    setFieldByKey("x", "employee_personal_lastName", "Lovelace");
+    fillEveryField();
     fireEvent.click(screen.getAllByRole("button", { name: /save progress/i })[0]);
     await waitFor(() => expect(server.saveAnswerCalls.length).toBe(1));
     const saveProgressPayload = server.saveAnswerCalls[0].answers.slice().sort((a, b) => a.questionKey.localeCompare(b.questionKey));
@@ -337,8 +354,7 @@ describe("Documents.jsx — Save progress addendum (AC-S3, AC-S5, AC-S6)", () =>
     server = makeServer();
     renderDocuments();
     await screen.findByText(/first name/i);
-    setFieldByKey("x", "employee_personal_firstName", "Ada");
-    setFieldByKey("x", "employee_personal_lastName", "Lovelace");
+    fillEveryField();
     const submitButton = screen.getAllByRole("button", { name: /submit case/i })[0];
     await waitFor(() => expect(submitButton.disabled).toBe(false));
     fireEvent.click(submitButton);

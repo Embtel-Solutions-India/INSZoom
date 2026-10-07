@@ -10,6 +10,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard from '../components/ChecklistApprovalCard'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
+import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
 import InformationRequestPanel from '../components/InformationRequestPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
@@ -291,8 +292,8 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
   }
 
   const documentTypeOptions = checklistItems.length
-    ? checklistItems.map((item) => [item.documentType || item.type || item.name, item.name || item.title || item.documentType]).filter(([value]) => value)
-    : [['supporting_evidence', 'Supporting Evidence'], ['passport', 'Passport'], ['i94', 'I-94'], ['resume', 'Resume / CV'], ['other', 'Other']]
+    ? [...checklistItems.map((item) => [item.documentType || item.type || item.name, item.name || item.title || item.documentType]).filter(([value]) => value), ['additional_document', 'Additional Document']]
+    : [['additional_document', 'Additional Document'], ['supporting_evidence', 'Supporting Evidence'], ['passport', 'Passport'], ['i94', 'I-94'], ['resume', 'Resume / CV'], ['other', 'Other']]
 
   return (
     <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
@@ -519,13 +520,39 @@ const CRMCaseDetail = () => {
     }
   }
   // After a checklist is approved or edited for this case: refresh the checklist list and every open answers panel.
+  const [checklistRefreshToken, setChecklistRefreshToken] = useState(0)
   const reloadCaseChecklists = async () => {
     if (!caseData?._id) return
     invalidateCachedGet(`/questionnaires/case/${caseData._id}`)
+    setChecklistRefreshToken((value) => value + 1)
     await fetchChecklistsProgress(caseData._id)
     ;[employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire, jointSponsorQuestionnaire, greenCardRenewalQuestionnaire, premiumProcessingQuestionnaire]
       .forEach((panel) => panel?.refetch?.())
   }
+  // Live: an approval or a customisation made by anyone (another case manager, this user's other tab) re-reads every
+  // checklist panel here without a manual refresh.
+  const reloadChecklistsRef = useRef(reloadCaseChecklists)
+  reloadChecklistsRef.current = reloadCaseChecklists
+  useEffect(() => {
+    if (!connected) return undefined
+    return subscribe('case:checklists_changed', (payload) => {
+      if (String(payload?.caseId) !== String(id)) return
+      reloadChecklistsRef.current?.()
+    })
+  }, [connected, id, subscribe])
+  // Approved checklists the fixed role panels below do not already show (matched by the questionnaire each panel resolved).
+  const shownQuestionnaireIds = new Set([
+    employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire,
+    jointSponsorQuestionnaire, greenCardRenewalQuestionnaire, premiumProcessingQuestionnaire, premiumAddonQuestionnaire, gcNvcQuestionnaire,
+  ].map((panel) => String(panel?.questionnaire?._id || '')).filter(Boolean))
+  const fixedPanelsLoading = [employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire, jointSponsorQuestionnaire, greenCardRenewalQuestionnaire]
+    .some((panel) => panel?.loading)
+  const extraApprovedChecklists = fixedPanelsLoading ? [] : checklistsProgress.filter((item) => (
+    !item.staffRequest
+    && item.clientApproval === 'approved'
+    && !shownQuestionnaireIds.has(String(item.questionnaireId))
+    && !(isPrincipalContainer && item.targetRole === 'employee')
+  ))
   const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId, supportingDocumentsQuestionnaire.responseId].filter(Boolean)
   const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
   // Scoped to upload (file-type) questions only — c.progress mixes in
@@ -2600,6 +2627,14 @@ const CRMCaseDetail = () => {
           onRemoveFile={businessPlanQuestionnaire.removeFileAnswer}
           onAutofill={businessPlanQuestionnaire.autofillFromDocument}
         />
+        {extraApprovedChecklists.map((item) => (
+          <ApprovedChecklistPanel
+            key={`${item.questionnaireId}-${item.referenceId || ''}`}
+            caseId={caseData?._id}
+            checklist={item}
+            refreshToken={checklistRefreshToken}
+          />
+        ))}
         <QuestionnaireAnswersPanel
           title="E-2 Supporting Documents"
           questionnaire={supportingDocumentsQuestionnaire.questionnaire}

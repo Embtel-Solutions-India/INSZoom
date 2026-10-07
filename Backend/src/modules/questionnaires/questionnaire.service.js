@@ -2847,7 +2847,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
 // compute/read for that questionnaire, so answers written here show up there.
 async function resolveCaseQuestionnaires(caseId) {
   const timer = createStageTimer();
-  const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants parentCase caseStructure caseRole").lean();
+  const caseData = await Case.findById(caseId).select("questionnaireReferences visaType user participants parentCase caseStructure caseRole checklistApproval.removed").lean();
   timer.mark("case_lookup");
   if (!caseData) return [];
   await ensureTemplatesForVisa(caseData.visaType);
@@ -2941,6 +2941,7 @@ async function resolveCaseQuestionnaires(caseId) {
         status: { $ne: "archived" },
         isActive: { $ne: false },
         latestVersion: true,
+        "generation.source": { $ne: "uscis_question_library" },
         $or: [{ visaType: new RegExp(`^${visaType}$`, "i") }, { visaTypes: new RegExp(`^${visaType}$`, "i") }, { key: new RegExp(`^${visaType}_questionnaire$`, "i") }],
       }).sort({ version: -1 }).lean();
       timer.mark("legacy_template_lookup", { foundLegacy: Boolean(legacy), visaType });
@@ -2967,6 +2968,11 @@ async function resolveCaseQuestionnaires(caseId) {
     .map((entry) => {
       const questionnaire = questionnaireById.get(String(entry.questionnaireId));
       if (!questionnaire) return null;
+      // The auto-generated "<Visa> Filing Intake" composite (USCIS form fields turned into a checklist) is never a
+      // checklist: the forms read their own fields, so it is not shown to staff and never sent to a client.
+      if (questionnaire.generation?.source === "uscis_question_library") return null;
+      // rejected / deleted for this case by a case manager
+      if (!entry.staffRequest && (caseData.checklistApproval?.removed || []).some((item) => item.checklistId === `${String(questionnaire.key || "").split("__case_")[0]}|${entry.targetRole || questionnaire.checklistRole || ""}`)) return null;
       return { ...entry, questionnaire, responseId: entry.responseId || responseIdFor(questionnaire._id, caseData._id, entry.assignedTo || caseData.user) };
     })
     .filter(Boolean);

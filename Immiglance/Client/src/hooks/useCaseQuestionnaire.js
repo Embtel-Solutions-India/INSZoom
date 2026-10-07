@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { questionnairesApi } from "../services/api";
+import { useSocket } from "../context/SocketContext";
 
 // Resolves the assigned-or-default Questionnaire template for a case + role
 // (e.g. targetRole="employer"|"employee"|"business_plan"), and exposes a
@@ -81,6 +82,20 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The case manager approved or customised this case's checklist: re-read it now so the client sees the current
+  // questions without reloading the page.
+  const socket = useSocket();
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    if (!socket?.on || !caseId) return undefined;
+    const onChanged = (payload) => {
+      if (String(payload?.caseId) === String(caseId)) loadRef.current();
+    };
+    socket.on("case:checklists_changed", onChanged);
+    return () => socket.off("case:checklists_changed", onChanged);
+  }, [socket, caseId]);
 
   const saveAnswer = useCallback((questionKey, value) => {
     if (!state.questionnaire?._id) return;

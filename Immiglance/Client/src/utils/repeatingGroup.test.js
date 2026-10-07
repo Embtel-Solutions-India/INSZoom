@@ -38,8 +38,9 @@ describe("repeating group rows", () => {
     expect(r.errors).toEqual([]);
     expect(r.warnings.length).toBe(1);
   });
-  it("validateQuestion surfaces row errors and treats no jobs as missing", () => {
+  it("validateQuestion surfaces row errors and does not flag an empty list as an error", () => {
     expect(validateQuestion(question, [job({ job_title: "" })], {}).some((m) => /Job 1/.test(m))).toBe(true);
-    expect(validateQuestion(question, [], {})).toContain("This field is required.");
+    // nothing is mandatory to save any more: an empty list is not an error here (Submit is gated by completeness instead)
+    expect(validateQuestion(question, [], {})).not.toContain("This field is required.");
   });
 });

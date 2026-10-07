@@ -837,6 +837,16 @@ const caseSchema = new mongoose.Schema(
           _id: false,
         },
       ],
+      // Checklists a case manager rejected / deleted FOR THIS CASE: never shown to anyone on this case, never sent to
+      // the client, and never re-added by automatic assignment. Answers already given stay on record.
+      removed: [
+        {
+          checklistId: { type: String, required: true }, // baseKey|targetRole
+          removedAt: { type: Date, default: Date.now },
+          removedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          _id: false,
+        },
+      ],
     },
     questionnaireData: {
       masterData: { type: mongoose.Schema.Types.Mixed, default: {} },

@@ -26,6 +26,24 @@ function httpError(status, message, code) {
 }
 
 const service = () => require("./questionnaire.service");
+
+// Tells every open session on this case (employer, delegate, assigned case manager, the editing staff member's other
+// tabs) that its checklists changed, so the answer panels re-read the approved / customised checklist immediately
+// instead of waiting for a manual refresh. Never throws - a missed live update must not fail the change itself.
+function broadcastChecklistsChanged(caseDocs, reason, actor) {
+  try {
+    const realtimeGateway = require("../realtime/realtime.gateway");
+    for (const caseDoc of [].concat(caseDocs).filter(Boolean)) {
+      const recipients = new Set([caseDoc.user, caseDoc.delegateEmployerUser, caseDoc.assignedCaseManager, actor?._id].filter(Boolean).map(String));
+      const payload = { caseId: String(caseDoc._id), reason, at: new Date().toISOString() };
+      recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "case:checklists_changed", payload));
+      realtimeGateway.emitToRole?.("admin", "case:checklists_changed", payload);
+      realtimeGateway.emitToRole?.("super_admin", "case:checklists_changed", payload);
+    }
+  } catch (error) {
+    require("../../utils/logger").error("checklist_broadcast_failed", { error: error.message });
+  }
+}
 const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
 
 async function loadCase(caseId, user) {
@@ -79,6 +97,7 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
       caseService.addAuditEntry(fresh, "approve_checklist", "Checklist approved for the client", user, { checklistId: gateChecklistId(gate) }, req);
     }
     await fresh.save();
+    broadcastChecklistsChanged(fresh, "approved", user);
 
     for (const entry of pending) {
       try {
@@ -96,6 +115,34 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
     }
   }
   return { approved };
+}
+
+// ── reject / delete a checklist for this case ──────────────────────────
+// The checklist is taken off THIS case completely: staff no longer see it, the client is never sent it (or loses it, if it
+// was already sent), and automatic assignment cannot bring it back. The shared template and other cases are untouched,
+// and answers already given stay on record. Removing an EMPLOYEE checklist from the principal removes it from every
+// employee case under it too, mirroring how approving it cascades.
+async function removeChecklist(caseId, { checklistId: wantedId } = {}, user, req) {
+  const principal = await loadCase(caseId, user);
+  await findEntry(caseId, wantedId); // 404 when it is not a checklist of this case
+  const targets = [principal];
+  if (String(wantedId).endsWith("|employee") && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
+
+  const removedFrom = [];
+  for (const target of targets) {
+    const fresh = await Case.findById(target._id);
+    if (!fresh.checklistApproval) fresh.checklistApproval = {};
+    if ((fresh.checklistApproval.removed || []).some((item) => item.checklistId === wantedId)) continue;
+    fresh.checklistApproval.removed = [...(fresh.checklistApproval.removed || []), { checklistId: wantedId, removedAt: new Date(), removedBy: user._id }];
+    // no reference is touched: the resolver skips every checklist listed in checklistApproval.removed, so it is hidden
+    // everywhere (staff, client, progress, forms) and nothing re-assigns it.
+    caseService.addTimelineEvent(fresh, "questionnaire", "Checklist Removed", "A checklist was removed from this case and will not be sent to the client.", user, { checklistId: wantedId });
+    caseService.addAuditEntry(fresh, "remove_checklist", "Checklist removed for this case", user, { checklistId: wantedId }, req);
+    await fresh.save();
+    removedFrom.push(String(fresh._id));
+    broadcastChecklistsChanged(fresh, "removed", user);
+  }
+  return { removed: removedFrom, checklistId: wantedId };
 }
 
 // ── per-case copy ───────────────────────────────────────────────────────
@@ -157,6 +204,7 @@ async function forkChecklist(caseId, wantedId, user, req) {
   caseService.addTimelineEvent(fresh, "questionnaire", "Checklist Customised For This Case", `${original.title} now has its own copy for this case. Other cases are not affected.`, user, { checklistId: wantedId });
   caseService.addAuditEntry(fresh, "customize_checklist", "Checklist forked for this case only", user, { checklistId: wantedId, from: String(original._id), to: String(copy._id) }, req);
   await fresh.save();
+  broadcastChecklistsChanged(fresh, "customised", user);
   return { questionnaire: copy, entry, forked: true };
 }
 
@@ -202,6 +250,7 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
       questionnaireKey: copy.key,
       questionnaireVersion: copy.version,
     });
+    await broadcastEdited(caseId, user);
     return { questionnaireId: copy._id, question: created };
   }
 
@@ -212,6 +261,7 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
     question.active = false;
     question.isActive = false;
     await question.save();
+    await broadcastEdited(caseId, user);
     return { questionnaireId: copy._id, question };
   }
   if (patch.label !== undefined) {
@@ -226,7 +276,13 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
   if (patch.required !== undefined) question.required = Boolean(patch.required);
   if (patch.options !== undefined && ["radio", "select"].includes(question.type)) question.options = cleanOptions(patch.options);
   await question.save();
+  await broadcastEdited(caseId, user);
   return { questionnaireId: copy._id, question };
 }
 
-module.exports = { approveChecklists, forkChecklist, editChecklist, baseKey };
+async function broadcastEdited(caseId, user) {
+  const principal = await Case.findById(caseId).select("user delegateEmployerUser assignedCaseManager").lean();
+  broadcastChecklistsChanged(principal, "edited", user);
+}
+
+module.exports = { approveChecklists, removeChecklist, forkChecklist, editChecklist, baseKey };

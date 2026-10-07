@@ -377,6 +377,7 @@ class ImmigrationKnowledgeEngineService {
     const assigned = [];
     for (const questionnaire of questionnaires) {
       if (existing.has(idOf(questionnaire._id))) continue;
+      if (questionnaire.generation?.source === "uscis_question_library") continue;
       if (questionnaire.generation?.source === "uscis_question_library") {
         const lineage = idOf(questionnaire.rootQuestionnaire) || idOf(questionnaire._id);
         const priorReference = priorReferenceByLineage.get(lineage);
@@ -519,7 +520,10 @@ class ImmigrationKnowledgeEngineService {
     // mergeChecklist/assignQuestionnaires/autoFill never actually persist -
     // this was silently no-op'ing the entire orchestration on every case.
     caseData = await Case.findById(caseData._id);
-    const generatedQuestionnaire = await IntelligentQuestionnaireService.ensureGeneratedForCase(caseData, templates, user, req);
+    // The generated "<Visa> Filing Intake" composite (every USCIS form field as a checklist question) is intentionally
+    // no longer created or assigned: it is not a checklist for the client - the forms carry their own fields and read the
+    // answers of the real checklists. (ensureGeneratedForCase stays available but is not part of orchestration.)
+    const generatedQuestionnaire = null;
     const questionnaires = uniqueBy([
       ...configuredQuestionnaires,
       ...(generatedQuestionnaire ? [generatedQuestionnaire] : []),

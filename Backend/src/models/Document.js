@@ -50,6 +50,8 @@ const DOCUMENT_TYPES = [
   "support_letter",
   "photo",
   "photograph",
+  // a document the client wants to add that fits no checklist question; never counted against a checklist row
+  "additional_document",
   "other",
 ];
 

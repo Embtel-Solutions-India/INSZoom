@@ -30,6 +30,7 @@ router.get("/case/:caseId", authenticate, authorizeRoles(...caseReaderRoles), au
 router.get("/case/:caseId/checklists", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.listCaseChecklists);
 router.post("/case/:caseId/checklists/approve", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.approveCaseChecklists);
 router.post("/case/:caseId/checklists/edit", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.editCaseChecklist);
+router.post("/case/:caseId/checklists/remove", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.removeCaseChecklist);
 router.post("/import", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.importQuestionnaire);
 router.post("/ai-generate", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:create"), ctrl.generateQuestionnaire);
 
