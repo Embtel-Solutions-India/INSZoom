@@ -66,6 +66,7 @@ const EVENT_EMAIL_POLICY = {
   "uscis.decision:attorney": { auto: true },
   "case.filed:attorney": { auto: true },
   "case.reopened:attorney": { auto: true },
+  "questionnaire-progress-saved": { auto: true, cooldownMin: 30 }, // one email per case per 30 minutes while the client keeps saving
   "attorney.feedback:attorney": { auto: false, cooldownMin: 30 }, // superseded by "new-message-received"
   // case manager
   "case.tl_assigned:case_manager": { auto: true },
@@ -109,6 +110,7 @@ const SEND_RULES = {
   "attorney-assignment": { when: "An attorney is given access to a case - sent to that attorney.", unless: "The attorney already had active access." },
   "additional-info-requested": { when: "Staff request more information from a client or participant.", unless: "—" },
   "new-message-received": { when: "Someone sends a message and the recipient (client, attorney, case manager or team lead) is not signed in. Never administrators.", unless: "The recipient already got this email for the same case in the last 10 minutes, or is online." },
+  "questionnaire-progress-saved": { when: "A client, employer or employee clicks Save progress on a checklist - sent to the case's assigned case manager only (never administrators).", unless: "No case manager is assigned, or they were already told about this case in the last 30 minutes." },
   "document-requested": { when: "Staff request documents from a client.", unless: "—" },
   "filing-submitted": { when: "The USCIS tracking status changes to 'filed' - sent to the client.", unless: "The status did not change." },
   "receipt-received": { when: "A USCIS receipt notice is recorded - sent to the client.", unless: "The status did not change." },

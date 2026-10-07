@@ -22,6 +22,7 @@ const TEMPLATE_AUDIENCE = {
   "case-created-team-lead": "team_member",
   "case-assigned-case-manager": "team_member",
   "client-intake-submitted-case-manager": "team_member",
+  "questionnaire-progress-saved": "team_member",
   "employee-case-invitation": "client",
   "staff-credentials": "team_member",
   "attorney-assignment": "attorney",
@@ -98,6 +99,7 @@ const TEMPLATES = {
   "case-closed": require("./templates/case-closed"),
   "additional-info-requested": require("./templates/additional-info-requested"),
   "new-message-received": require("./templates/new-message-received"),
+  "questionnaire-progress-saved": require("./templates/questionnaire-progress-saved"),
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully

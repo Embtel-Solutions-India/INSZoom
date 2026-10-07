@@ -57,6 +57,8 @@ const VARIABLES = [
   v("company.email", "Company", "Company contact email", "hr@acme-tech.com", { path: "company.email", fallback: "", email: true }),
   v("petitioner.name", "Company", "Petitioner name", "Jane Roberts", { dataKeys: ["petitionerName"], fallback: "the petitioner" }),
 
+  v("questionnaire.filled_by", "System", "Who filled the checklist in", "Employer", { dataKeys: ["filledBy"], fallback: "The client" }),
+  v("questionnaire.name", "System", "Checklist name", "Employer Information Checklist", { dataKeys: ["checklistName"], fallback: "their checklist" }),
   v("message.sender_name", "System", "Message sender", "Sarah Johnson", { dataKeys: ["senderName"], fallback: "your case team" }),
   v("message.preview", "System", "Message preview", "Please upload your passport copy when you can.", { dataKeys: ["messagePreview"], fallback: "" }),
 

@@ -655,6 +655,8 @@ export const usersApi = {
 
 // ── Payments ───────────────────────────────────────
 export const questionnairesApi = {
+  // after Save progress: tells the case's case manager (email, throttled server-side). Never blocks or fails a save.
+  notifyProgressSaved: (caseId, body = {}) => api.post(`/questionnaires/case/${caseId}/progress-saved`, body),
   getForCase: (caseId, params = {}) => {
     const q = new URLSearchParams(params).toString();
     return api.get(`/questionnaires/case/${caseId}${q ? "?" + q : ""}`);

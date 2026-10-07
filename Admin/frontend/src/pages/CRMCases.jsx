@@ -29,8 +29,8 @@ const BOARD_COLUMNS = [
 
 // Phase 5 case creation is restricted to admins and team leads.
 const CAN_CREATE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
-// Permanent case deletion (database removal) is open to the internal roles that manage cases.
-const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager']
+// Permanent case deletion (database removal) is for team leads and administrators only - never a case manager.
+const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
 // Phase 7 — who sees the Pending Assignment queue panel. Matches the roles
 // GET /cases/dashboard/team-lead itself scopes to (team leads see their own
 // team's queue; admins see every team's).

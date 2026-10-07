@@ -44,6 +44,7 @@ const TRIGGERS = [
   t("attorney-assignment", "Attorney Assigned", "Attorney", "attorney", "An attorney is granted access to a case.", { groups: ["Client", "Case", "Case Manager", "Attorney"] }),
 
   t("new-message-received", "New Message Received (while offline)", "Case", "client", "A client, attorney, case manager or team lead is sent a message while they are not signed in. Never sent to administrators.", { groups: ["Client", "Case", "Case Manager", "Team Lead", "Attorney", "System"] }),
+  t("questionnaire-progress-saved", "Questionnaire Progress Saved (Case Manager)", "Questionnaire", "team_member", "A client, employer or employee clicks Save progress on their checklist - only the case's assigned case manager is told, with a link to review it in Admin.", { groups: ["Client", "Case", "Case Manager", "Company"] }),
   t("additional-info-requested", "Additional Information Requested", "Questionnaire", "client", "The team asks the client for more information.", { groups: ["Client", "Case", "Case Manager", "Document"] }),
 
   t("document-requested", "Document Requested", "Documents", "client", "A client is asked to upload a document.", { groups: ["Client", "Case", "Document"] }),
@@ -64,6 +65,7 @@ const BUILT_IN_AUDIENCE = {
   "consultation-host-notify": "admin", "quiz-lead-internal": "admin", "staff-credentials": "admin",
   "case-assigned-case-manager": "case_manager", "client-intake-submitted-case-manager": "case_manager",
   "case-manager-assigned": "client", "case-manager-reassigned": "client",
+  "questionnaire-progress-saved": "case_manager",
 };
 const RECIPIENT_AUDIENCE = { client: "client", attorney: "attorney", team_member: "case_manager" };
 TRIGGERS.forEach((trigger) => {

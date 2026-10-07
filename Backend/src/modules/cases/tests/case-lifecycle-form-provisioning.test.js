@@ -81,7 +81,9 @@ test("Phase 13 - CaseForms are provisioned immediately, with no client/questionn
   beneficiaryId = beneficiary._id;
   const company = await Company.create({ name: BASE.petitioner.legalName, ein: BASE.petitioner.fein });
   companyId = company._id;
-  const caseDoc = await Case.create({ caseNumber: "H1B-2025-PHASE13-PROV", visaType: BASE.visaType, user: user._id, beneficiary: beneficiary._id, companyId: company._id, status: "active" });
+  const caseDoc = await Case.create({ caseNumber: "H1B-2025-PHASE13-PROV", visaType: BASE.visaType, user: user._id, beneficiary: beneficiary._id, companyId: company._id, status: "active",
+    // checklists already released to the client (new cases hold them as drafts until a case manager approves)
+    checklistApproval: { required: false } });
   caseId = caseDoc._id;
 
   // --- Criterion 1: no client/questionnaire/documents exist at all yet ---

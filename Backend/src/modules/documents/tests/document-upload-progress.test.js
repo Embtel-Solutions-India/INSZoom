@@ -54,12 +54,14 @@ function stubCaseAndDocumentModel(t, { existingCount = 0, singleSlotExisting = n
   stubSecurityAndStorage(t);
   t.mock.method(RequestManagementService, "completeByDocument", () => null);
   t.mock.method(questionnaireService, "syncFileAnswerFromDocument", async () => undefined);
-  t.mock.method(Document, "findOne", async (query) => {
-    if (query.checksum) return null; // no byte-identical duplicate anywhere in this case
-    if (query.documentType) return singleSlotExisting;
-    return null;
+  // the service chains .exec() on its queries, so each stub is a thenable query-like object (still awaitable directly)
+  const queryOf = (value) => ({ exec: async () => value, then: (resolve, reject) => Promise.resolve(value).then(resolve, reject) });
+  t.mock.method(Document, "findOne", (query) => {
+    if (query.checksum) return queryOf(null); // no byte-identical duplicate anywhere in this case
+    if (query.documentType) return queryOf(singleSlotExisting);
+    return queryOf(null);
   });
-  t.mock.method(Document, "countDocuments", async () => existingCount);
+  t.mock.method(Document, "countDocuments", () => queryOf(existingCount));
   const created = [];
   t.mock.method(Document, "create", async (doc) => {
     const row = { ...doc, _id: `doc-${created.length + 1}`, auditHistory: [], $locals: {}, save: async function save() { return this; } };
