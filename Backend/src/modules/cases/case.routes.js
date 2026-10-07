@@ -36,6 +36,9 @@ router.post(
   body("packageName").optional({ checkFalsy: true }).isIn(PACKAGE_NAMES).withMessage(`Package must be one of: ${PACKAGE_NAMES.join(", ")}`),
   body("assignedCaseManager").optional({ checkFalsy: true }).isMongoId().withMessage("assignedCaseManager must be a valid ID"),
   body("employerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid employer email is required"),
+  body("delegateEmployerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid delegate employer email is required"),
+  body("delegateEmployerName").optional({ checkFalsy: true }).isString().trim(),
+  body("delegateEmployerPhone").optional({ checkFalsy: true }).isString().trim(),
   body("dataEntryMode").optional({ checkFalsy: true }).isIn(["not_required", "not_set", "fill_self", "invite"]).withMessage("Invalid dataEntryMode"),
   validate,
   ctrl.createCase

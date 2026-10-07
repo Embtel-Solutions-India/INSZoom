@@ -33,6 +33,7 @@ const workflowSlaService = require("../settings/workflowSla.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const CaseNumberService = require("../../services/CaseNumberService");
 const { getCaseStructure, getSubTypes } = require("../../config/visaCategories");
+const delegateEmployerService = require("./delegate-employer.service");
 const { PACKAGE_NAMES, normalizePackageName } = require("../../config/packages");
 const eb1aChecklistService = require("./eb1aChecklist.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
@@ -1142,6 +1143,18 @@ exports.createCase = async (req, res, next) => {
       CaseNumberService.childCaseNumber(principalCaseNumber, index)
     ));
 
+    // Optional delegate employer (second login for the SAME employer). Validated before anything is created, so a bad
+    // delegate never leaves a half-made case behind.
+    const delegateInput = delegateEmployerService.parseDelegateInput(req.body, email);
+    if (delegateInput) {
+      if (caseStructure !== "employer_employee") {
+        return res.status(400).json({ success: false, code: "DELEGATE_NOT_APPLICABLE", message: "A delegate employer can only be added to an employer case." });
+      }
+      await delegateEmployerService.assertDelegateEmailUsable(delegateInput.email);
+    }
+    let delegateUser = null;
+    let delegateSetupToken = null;
+
     const created = {
       caseIds: [],
       employerProfileIds: [],
@@ -1163,13 +1176,14 @@ exports.createCase = async (req, res, next) => {
       const amount = centsFromPrice(price);
       const trimmedCaseDetails = cleanString(caseDetails);
       const trimmedEmployerName = cleanString(employerName);
-      const trimmedEmployerEmail = cleanEmail(employerEmail);
+      // The petitioner (client) email IS the employer contact on an employer matter; employerEmail only overrides it.
+      const trimmedEmployerEmail = cleanEmail(employerEmail) || (caseStructure === "employer_employee" ? email : "");
       const assignmentMode = employerCompletionMode === "invite_employees"
         ? "invite_employees"
         : employerCompletionMode === "employer_completes"
           ? "employer_completes"
           : "";
-      if (caseStructure === "employer_employee" && trimmedEmployerEmail && trimmedEmployerEmail === email) {
+      if (caseStructure === "employer_employee" && cleanEmail(employerEmail) && cleanEmail(employerEmail) === email) {
         warnings.push({
           code: "EMPLOYER_EMPLOYEE_EMAIL_MATCH",
           message: "Employer contact email matches the client/employee email. Keep the employer principal account and employee invite/self-service account separate for H-1B matters.",
@@ -1427,6 +1441,12 @@ exports.createCase = async (req, res, next) => {
       clientUser.caseIds = [principalCase._id, ...childCases.map((childCase) => childCase._id)];
       await clientUser.save();
       await principalCase.save();
+      if (delegateInput) {
+        const attached = await delegateEmployerService.attachDelegateEmployer(principalCase, childCases, delegateInput, req.user);
+        delegateUser = attached.user;
+        delegateSetupToken = attached.setupToken;
+        if (attached.created) created.userIds.push(delegateUser._id);
+      }
     } catch (createError) {
       await cleanupPhase5Create(created);
       throw createError;
@@ -1469,6 +1489,8 @@ exports.createCase = async (req, res, next) => {
       } catch (err) {
         require("../../utils/logger").error("create_case_background_orchestration_failed", { caseId: principalCase._id, error: err.message });
       }
+      // The delegate employer gets the SAME email the employer gets (set-your-password invitation / case-created login email).
+      if (delegateUser) await delegateEmployerService.sendDelegateInvitation(principalCase, delegateUser, delegateSetupToken, req.user, req);
       // Clients who already have a password get the separate "Case Created" email (case-created-client, login link) from the lifecycle orchestrator.
       if (setupToken) {
         await notificationService.createNotification({
@@ -1503,6 +1525,7 @@ exports.createCase = async (req, res, next) => {
         email: clientUser.email,
         mustSetPassword: clientUser.mustSetPassword,
       },
+      ...(delegateUser ? { delegateEmployer: { _id: delegateUser._id, email: delegateUser.email, name: delegateUser.name, mustSetPassword: delegateUser.mustSetPassword } } : {}),
       case: principalCase,
       caseSummary: caseService.summarizeCase(principalCase),
       warnings,
@@ -2145,7 +2168,7 @@ exports.setDataEntryMode = async (req, res, next) => {
       return res.status(200).json({ success: true, message: "Data entry mode reset to not_set", dataEntryMode: "not_set" });
     }
 
-    if (!isStaff && String(caseDoc.user) !== String(req.user._id)) {
+    if (!isStaff && !delegateEmployerService.isEmployerSide(caseDoc, req.user)) {
       return res.status(403).json({ success: false, message: "Not authorized to set data entry mode for this case" });
     }
 
@@ -2189,7 +2212,7 @@ exports.inviteEmployee = async (req, res, next) => {
     if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
 
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
-    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+    if (!isStaff && !delegateEmployerService.isEmployerSide(principal, req.user)) {
       return res.status(403).json({ success: false, message: "Not authorized to invite employees for this case" });
     }
 
@@ -2275,6 +2298,8 @@ exports.inviteEmployee = async (req, res, next) => {
     // which no longer includes this case.
     const previousOwnerId = childCase.user;
     await pinChildResponseIds(childCase);
+    // The delegate employer follows the employer: while an invited employee holds the file, neither employer login can read it.
+    await delegateEmployerService.followEmployerHolding(principal, childCase, false);
     childCase.user = employeeUser._id;
     childCase.clientName = trimmedName;
     childCase.clientEmail = normalizedEmail;
@@ -2372,7 +2397,7 @@ exports.removeEmployee = async (req, res, next) => {
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
     if (!isStaff) {
       const principal = childCase.parentCase ? await Case.findById(childCase.parentCase).select("user") : null;
-      if (!principal || String(principal.user) !== String(req.user._id)) {
+      if (!principal || !delegateEmployerService.isEmployerSide(principal, req.user)) {
         return res.status(403).json({ success: false, message: "Not authorized to remove this employee" });
       }
     }
@@ -2453,7 +2478,7 @@ exports.setEmployeeDataEntryMode = async (req, res, next) => {
     const principal = await Case.findById(principalId);
     if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role) || req.user.role === "case_manager";
-    const isOwner = String(principal.user) === String(req.user._id);
+    const isOwner = delegateEmployerService.isEmployerSide(principal, req.user);
     if (!isOwner && !(isStaff && caseService.canAccessCase(req.user, principal))) {
       return res.status(403).json({ success: false, message: "Not authorized to change the workflow for this employee" });
     }
@@ -2502,6 +2527,7 @@ exports.setEmployeeDataEntryMode = async (req, res, next) => {
     // Hand the file back to the employer and cut the employee's access to it.
     await pinChildResponseIds(childCase);
     childCase.user = principal.user;
+    await delegateEmployerService.followEmployerHolding(principal, childCase, true);
     childCase.employeeDataEntryMode = "fill_self";
     childCase.employeeDataEntryModeChangedAt = new Date();
     childCase.employeeDataEntryModeChangedBy = req.user._id;
@@ -2564,7 +2590,7 @@ exports.resendEmployeeInvite = async (req, res, next) => {
     if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
 
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
-    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+    if (!isStaff && !delegateEmployerService.isEmployerSide(principal, req.user)) {
       return res.status(403).json({ success: false, message: "Not authorized to resend invitations for this case" });
     }
 
@@ -2646,7 +2672,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
   
 
     const isStaff = PHASE9_STAFF_ROLES.has(req.user.role);
-    if (!isStaff && String(principal.user) !== String(req.user._id)) {
+    if (!isStaff && !delegateEmployerService.isEmployerSide(principal, req.user)) {
       return res.status(403).json({ success: false, message: "Not authorized to add an employee to this case" });
     }
 
@@ -2680,6 +2706,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
       teamId: principal.teamId,
       assignedCaseManager: principal.assignedCaseManager,
       user: principal.user,
+      delegateEmployerUser: principal.delegateEmployerUser || null,
       parentCase: principal._id,
       caseStructure: "employer_employee",
       caseRole: "employee",
@@ -2701,6 +2728,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     childCase.personProfileId = personProfile._id;
     await childCase.save();
 
+    if (principal.delegateEmployerUser) await User.updateOne({ _id: principal.delegateEmployerUser }, { $addToSet: { caseIds: childCase._id } });
     principal.childCases = [...(principal.childCases || []), childCase._id];
     principal.childCaseCount = Math.max(principal.childCaseCount || 0, nextIndex + 1);
     await principal.save();

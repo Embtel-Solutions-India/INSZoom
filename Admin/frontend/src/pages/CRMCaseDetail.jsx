@@ -2109,10 +2109,22 @@ const CRMCaseDetail = () => {
                   </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' && (
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">Company</p>
+                      <p className="font-medium break-words">{caseData.petitionerName || caseData.clientName}</p>
+                    </div>
+                  )}
                   <div className="min-w-0">
-                    <p className="text-sm text-muted-foreground">Client Email</p>
+                    <p className="text-sm text-muted-foreground">{caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' ? 'Petitioner (Employer) Email' : 'Client Email'}</p>
                     <p className="font-medium break-words">{caseData.clientEmail}</p>
                   </div>
+                  {caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' && caseData.delegateEmployer?.email && (
+                    <div className="min-w-0">
+                      <p className="text-sm text-muted-foreground">Delegate Employer</p>
+                      <p className="font-medium break-words">{caseData.delegateEmployer.name ? `${caseData.delegateEmployer.name} · ` : ''}{caseData.delegateEmployer.email}</p>
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <p className="text-sm text-muted-foreground">Visa Type</p>
                     <p className="font-medium break-words">{resolveDisplayVisa(caseData)}</p>

@@ -136,6 +136,9 @@ const initialForm = {
   assignedCaseManager: '',
   employerName: '',
   employerEmail: '',
+  delegateName: '',
+  delegateEmail: '',
+  delegatePhone: '',
   caseDetails: '',
   relationship: '',
   filingPath: '',
@@ -203,6 +206,9 @@ const CreateCaseModal = ({
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
   const showFilingPathFields = showFamilyPackageFields
   const showFamilyFields = showFamilyPackageFields || FAMILY_SINGLE_CASE_VISA_TYPES.has(form.visaType)
+  // An employer matter (L-1A/L-1B/O-1/H-1B...) is opened for the COMPANY: its name and petitioner email are the case's
+  // client details. Employees (beneficiaries) are added later, each with their own visa - never at case creation.
+  const isEmployerCase = showEmployerFields && !showFamilyFields
 
   useEffect(() => {
     casesApi.visaTypes()
@@ -315,8 +321,14 @@ const CreateCaseModal = ({
       if (form.assignedCaseManager) payload.assignedCaseManager = form.assignedCaseManager
       if (form.caseDetails.trim()) payload.caseDetails = form.caseDetails.trim()
       if (showEmployerFields) {
-        if (form.employerName.trim()) payload.employerName = form.employerName.trim()
-        if (form.employerEmail.trim()) payload.employerEmail = form.employerEmail.trim()
+        // Company name = the case's client name; the petitioner email above is the employer contact.
+        payload.employerName = form.clientName.trim()
+      }
+      if (isEmployerCase && (form.delegateName.trim() || form.delegateEmail.trim() || form.delegatePhone.trim())) {
+        // Optional second employer-side login for the SAME employer: own credentials, same case and same employer data.
+        payload.delegateEmployerName = form.delegateName.trim()
+        payload.delegateEmployerEmail = form.delegateEmail.trim()
+        if (form.delegatePhone.trim()) payload.delegateEmployerPhone = form.delegatePhone.trim()
       }
 
       const res = await casesApi.create(payload)
@@ -355,7 +367,7 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyFields ? 'Petitioner Name *' : 'Client Name *'}
+              {showFamilyFields ? 'Petitioner Name *' : isEmployerCase ? 'Company / Employer Name *' : 'Client Name *'}
             </label>
             <input
               type="text"
@@ -363,13 +375,13 @@ const CreateCaseModal = ({
               value={form.clientName}
               onChange={handleChange('clientName')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Jane Doe"
+              placeholder={isEmployerCase ? 'Acme Technologies Inc.' : 'Jane Doe'}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyFields ? 'Petitioner Email *' : 'Client Email *'}
+              {showFamilyFields ? 'Petitioner Email *' : isEmployerCase ? 'Petitioner (Employer) Email *' : 'Client Email *'}
             </label>
             <input
               type="email"
@@ -377,13 +389,13 @@ const CreateCaseModal = ({
               value={form.clientEmail}
               onChange={handleChange('clientEmail')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="jane@example.com"
+              placeholder={isEmployerCase ? 'hr@acme.com' : 'jane@example.com'}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
-              {showFamilyFields ? 'Petitioner Phone' : 'Client Phone'}
+              {showFamilyFields ? 'Petitioner Phone' : isEmployerCase ? 'Employer Phone' : 'Client Phone'}
             </label>
             <input
               type="tel"
@@ -393,6 +405,39 @@ const CreateCaseModal = ({
               placeholder="(555) 555-5555"
             />
           </div>
+
+          {isEmployerCase && (
+            <div className="rounded-lg border border-dashed p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Delegate Employer <span className="text-muted-foreground font-normal">(optional)</span></p>
+                <p className="text-xs text-muted-foreground">
+                  A second person who acts for the same employer on this case. They get the same invitation email and their own login,
+                  and see and edit the same employer information.
+                </p>
+              </div>
+              <input
+                type="text"
+                value={form.delegateName}
+                onChange={handleChange('delegateName')}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Delegate name"
+              />
+              <input
+                type="email"
+                value={form.delegateEmail}
+                onChange={handleChange('delegateEmail')}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Delegate email (must differ from the employer email)"
+              />
+              <input
+                type="tel"
+                value={form.delegatePhone}
+                onChange={handleChange('delegatePhone')}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Delegate phone (optional)"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">Visa Type *</label>
@@ -558,32 +603,6 @@ const CreateCaseModal = ({
                 <li><span className="font-medium">Form I-907 Information Checklist</span> - completed by the client in the client portal</li>
                 <li><span className="font-medium">Form I-907</span> - the only form on the case, filled automatically from the checklist</li>
               </ul>
-            </div>
-          )}
-
-          {showEmployerFields && (
-            <div className="space-y-4 rounded-lg border border-border bg-muted p-3">
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer</label>
-                <input
-                  type="text"
-                  value={form.employerName}
-                  onChange={handleChange('employerName')}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Company or organization name"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Employer Email</label>
-                <input
-                  type="email"
-                  value={form.employerEmail}
-                  onChange={handleChange('employerEmail')}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="hr@example.com"
-                />
-              </div>
             </div>
           )}
 

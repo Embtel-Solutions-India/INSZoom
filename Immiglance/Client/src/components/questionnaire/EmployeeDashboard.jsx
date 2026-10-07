@@ -108,6 +108,9 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const [switching, setSwitching] = useState(false);
 
   const pillLabel = statusPillFor(child, dataEntryMode, progress);
+  // A slot nobody has decided for yet (no explicit choice, no employee named, nothing entered) asks the employer who
+  // fills it in, instead of silently assuming "employer fills".
+  const undecided = !child.employeeDataEntryMode && !child.clientName && caseDefaultMode !== "invite" && !(progress?.progress?.percent > 0) && pillLabel !== "Withdrawn";
 
   const handleSwitchToFillSelf = async () => {
     const who = child.clientName || "this employee";
@@ -120,6 +123,20 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
       else setError(res?.message || "Could not change this employee's workflow");
     } catch (err) {
       setError(err.message || "Could not change this employee's workflow");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const handleChooseFillSelf = async () => {
+    setSwitching(true);
+    setError("");
+    try {
+      const res = await casesApi.setEmployeeDataEntryMode(child.principalId, child._id, { mode: "fill_self" });
+      if (res?.success) onInviteSent();
+      else setError(res?.message || "Could not save your choice");
+    } catch (err) {
+      setError(err.message || "Could not save your choice");
     } finally {
       setSwitching(false);
     }
@@ -163,11 +180,11 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
             </span>
             <span
               className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                dataEntryMode === "invite" ? "bg-sky-50 text-sky-700" : "bg-slate-100 text-slate-600"
+                undecided ? "bg-amber-50 text-amber-700" : dataEntryMode === "invite" ? "bg-sky-50 text-sky-700" : "bg-slate-100 text-slate-600"
               }`}
               title={dataEntryMode === "invite" ? "This employee fills in their own information" : "You fill in this employee's information"}
             >
-              {dataEntryMode === "invite" ? "Employee fills (invited)" : "Employer fills"}
+              {undecided ? "Choose who fills" : dataEntryMode === "invite" ? "Employee fills (invited)" : "Employer fills"}
             </span>
           </div>
         </div>
@@ -216,12 +233,30 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
             <button type="button" onClick={() => { setShowInviteForm(false); setError(""); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
           </div>
         </div>
+      ) : undecided ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-600">Who will fill in this employee's information?</p>
+          <div className="flex gap-2">
+            <button type="button" disabled={switching} onClick={handleChooseFillSelf} className="flex-1 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+              {switching ? "Saving…" : "I'll fill it myself"}
+            </button>
+            <button type="button" disabled={switching} onClick={() => { setShowInviteForm(true); setError(""); }} className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+              Invite employee
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">You can change this later from this card.</p>
+        </div>
       ) : invited ? (
-        <p className="text-center text-xs text-slate-400 py-1.5">
-          {pillLabel === "Ready for Review" || pillLabel === "Completed"
-            ? `${child.clientName} has submitted their information.`
-            : `Waiting for ${child.clientName} to complete their information.`}
-        </p>
+        <div className="space-y-2">
+          <p className="text-center text-xs text-slate-400 py-1.5">
+            {pillLabel === "Ready for Review" || pillLabel === "Completed"
+              ? `${child.clientName} has submitted their information.`
+              : `Waiting for ${child.clientName} to complete their information.`}
+          </p>
+          <button type="button" disabled={switching} onClick={handleSwitchToFillSelf} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+            I'll fill this myself instead
+          </button>
+        </div>
       ) : dataEntryMode === "invite" ? (
         <button type="button" onClick={() => setShowInviteForm(true)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors">
           Invite Employee
@@ -233,6 +268,11 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
           className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 transition-colors"
         >
           {pillLabel === "Not Started" ? "Fill Information" : pillLabel === "Ready for Review" || pillLabel === "Completed" ? "Review" : "Continue"}
+        </button>
+      )}
+      {!showInviteForm && !undecided && !invited && dataEntryMode !== "invite" && pillLabel !== "Withdrawn" && (
+        <button type="button" onClick={() => { setShowInviteForm(true); setError(""); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+          Invite employee to fill it instead
         </button>
       )}
     </div>
