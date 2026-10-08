@@ -6,6 +6,7 @@ const pipelineService = require("./ghlPipelineService");
 const { fetchAllOpportunities } = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
 const { createCaseFromOpportunity } = require("./ghlCaseFactory");
+const visaService = require("./ghlVisaService");
 
 const isEnabled = () => env.ghl.enabled && Boolean(env.ghl.token) && Boolean(env.ghl.locationId);
 
@@ -102,6 +103,8 @@ async function initialSync({ client, user } = {}) {
             continue;
           }
           const contact = await resolveContact(opportunity, client);
+          // Search results already carry the custom fields, so this costs no extra API call.
+          const visaResolution = await visaService.resolveForOpportunity({ opportunity, config, client, pipelineCategory: pipeline.category });
           const outcome = await createCaseFromOpportunity({
             opportunity,
             contact,
@@ -110,12 +113,14 @@ async function initialSync({ client, user } = {}) {
             origin: "initial_sync",
             sendNotifications: env.ghl.importSendsEmails,
             locationId: config.locationId,
+            visaResolution,
           });
           if (outcome.created) {
             result.created += 1;
             if (outcome.needsAttention?.length) result.needsAttention += 1;
           } else {
             result.existing += 1;
+            if (outcome.case.visaSelectionStatus === "pending") await visaService.applyToExistingCase(outcome.case, visaResolution);
             await Case.updateOne({ _id: outcome.case._id }, {
               $set: { "integrations.ghl.opportunityStatus": opportunity.status, "integrations.ghl.lastSyncedAt": new Date() },
             });

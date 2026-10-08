@@ -1148,6 +1148,20 @@ const caseSchema = new mongoose.Schema(
         // "immigrant" | "non_immigrant", taken from the source pipeline.
         category: { type: String, enum: ["immigrant", "non_immigrant"] },
         opportunityStatus: { type: String },
+        // What GHL's Service Type said about the visa, and what we did with it.
+        // status: applied | mapped | structure_unsupported | incomplete | unmapped | ambiguous | none | unavailable
+        visaResolution: {
+          status: { type: String },
+          reason: { type: String },
+          visaType: { type: String },
+          petitionSubType: { type: String },
+          structure: { type: String },
+          category: { type: String },
+          field: { type: String },
+          value: { type: String },
+          categoryMismatch: { type: Boolean },
+          resolvedAt: { type: Date },
+        },
         origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation"] },
         flags: {
           deletedInGhl: { type: Boolean, default: false },

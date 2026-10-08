@@ -12,6 +12,8 @@ const boardStaff = [authenticate, authorizeRoles("super_admin", "admin", "team_l
 router.get("/status", boardStaff, ctrl.status);
 router.get("/board", boardStaff, ctrl.board);
 router.get("/setup", adminOnly, ctrl.setupPreview);
+router.get("/visa-mapping", adminOnly, ctrl.visaMapping);
+router.put("/visa-mapping", adminOnly, ctrl.saveVisaMapping);
 router.post("/setup/confirm", adminOnly, ctrl.confirmMappings);
 router.post("/sync", adminOnly, ctrl.syncNow);
 

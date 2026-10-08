@@ -12,6 +12,7 @@ const realtimeGateway = require("../../modules/realtime/realtime.gateway");
 const workflowSlaService = require("../../modules/settings/workflowSla.service");
 const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
 const { generateOpaqueToken, hashToken } = require("../../modules/auth/password.service");
+const visaService = require("./ghlVisaService");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 
 const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,13 +58,14 @@ async function planClientUser(email) {
  * Creates a CRM case from a GHL opportunity. Idempotent on locationId +
  * opportunityId: an existing case is returned untouched (`created: false`).
  *
- * Deliberately does NOT call createCase or lifecycleOrchestrator.initializeCase:
- * the visa is unknown, so nothing visa-driven (checklists, forms,
- * questionnaires) is provisioned until the team lead selects one
- * (see ghlVisaSelection.service.js). Only the pieces that do not depend on a
- * visa run here.
+ * Deliberately does NOT call createCase or lifecycleOrchestrator.initializeCase.
+ * If GHL's Service Type resolves to a SINGLE-party visa, the visa is set at
+ * creation and the visa-driven setup runs afterwards in the background
+ * (throttled, see ghlVisaService.js). Otherwise the visa stays pending and
+ * nothing visa-driven runs until a team lead selects one
+ * (see ghlVisaSelection.service.js).
  */
-async function createCaseFromOpportunity({ opportunity, contact, category, mapping, origin = "webhook", sendNotifications = false, locationId = env.ghl.locationId }) {
+async function createCaseFromOpportunity({ opportunity, contact, category, mapping, origin = "webhook", sendNotifications = false, locationId = env.ghl.locationId, visaResolution = null }) {
   const existing = await findCaseByOpportunity(locationId, opportunity.id);
   if (existing) return { case: existing, created: false };
 
@@ -81,7 +83,7 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
   }
 
   try {
-    return await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId });
+    return await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution });
   } catch (error) {
     await GHLCaseLink.deleteOne({ locationId, opportunityId: opportunity.id, caseId: caseObjectId }).catch(() => {});
     await Case.deleteOne({ _id: caseObjectId }).catch(() => {});
@@ -89,12 +91,14 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
   }
 }
 
-async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId }) {
+async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution }) {
+  const visaPlan = visaService.planFromResolution(visaResolution);
   const email = contact.email || "";
   const clientName = contact.name || opportunity.name || "GHL Client";
   const clientPlan = await planClientUser(email);
   const needsAttentionReasons = [];
   if (clientPlan.action === "none") needsAttentionReasons.push(clientPlan.reason);
+  needsAttentionReasons.push(...visaPlan.attention);
 
   const teamLead = await caseService.resolveTeamLeadForCase({});
   const slaDueDates = await workflowSlaService.computeInitialSlaDueDates().catch(() => undefined);
@@ -111,8 +115,9 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
         clientName,
         clientEmail: email,
         caseType: "immigration",
-        // No visa yet. visaType stays unset; the model allows that only while pending.
+        // Pending unless GHL's Service Type resolved to a single-party visa (then visaPlan.fields overrides this).
         visaSelectionStatus: "pending",
+        ...visaPlan.fields,
         caseStructure: "single",
         caseRole: "single",
         childCaseCount: 0,
@@ -136,6 +141,7 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
             unifiedStageKey: mapping?.unifiedStageKey,
             category,
             opportunityStatus: opportunity.status,
+            ...(visaPlan.record ? { visaResolution: visaPlan.record } : {}),
             origin,
             flags: { deletedInGhl: false, needsAttention: needsAttentionReasons.length > 0 },
             lastSyncedAt: now,
@@ -202,7 +208,7 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
     newCase.integrations.ghl.flags.needsAttention = true;
   }
 
-  // Same bookkeeping every created case gets, minus anything visa-driven.
+  // Same bookkeeping every created case gets. Visa-driven setup happens afterwards, and only if GHL gave us a single-party visa.
   caseService.setStage(newCase, "intake", null, "Case created from GHL");
   await workflowService.caseCreated(newCase, null).catch((error) => logger.error("ghl_case_workflow_failed", { caseId: newCase._id, error: error.message }));
   const originLabel = `Created from GHL — ${ORIGIN_LABEL[origin] || origin}`;
@@ -212,8 +218,16 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
     ghlPipelineId: opportunity.pipelineId,
     needsAttention: needsAttentionReasons,
   });
+  if (visaPlan.applied) {
+    caseService.addTimelineEvent(newCase, "case", "Visa set from GHL", `Service Type mapped to ${visaPlan.fields.visaType}`, null, {
+      source: "ghl",
+      field: visaResolution.field,
+      value: visaResolution.value,
+    });
+  }
   caseService.addAuditEntry(newCase, "create", originLabel, null, { origin, ghlOpportunityId: opportunity.id, caseNumber });
   await newCase.save();
+  if (visaPlan.applied) visaService.scheduleProvisioning(newCase._id); // background, throttled
 
   if (sendNotifications) {
     await notifyGhlCaseCreated(newCase, { clientUser, setupToken }).catch((error) =>
@@ -267,7 +281,7 @@ async function notifyGhlCaseCreated(caseData, { clientUser, setupToken }) {
           type: "team_case_created",
           category: "case",
           title: "New Case Awaiting Assignment",
-          message: `${caseNumber} · ${caseData.clientName || "Client"} · Visa selection required`,
+          message: `${caseNumber} · ${caseData.clientName || "Client"} · ${caseData.visaType || "Visa selection required"}`,
           caseId: caseData._id,
           link: `/crm-cases/${caseData._id}?assign=case_manager`,
           priority: "high",

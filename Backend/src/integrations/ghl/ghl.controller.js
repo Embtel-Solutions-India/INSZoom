@@ -2,6 +2,7 @@ const env = require("../../config/env");
 const sync = require("./ghlSyncService");
 const webhookService = require("./ghlWebhookService");
 const outbound = require("./ghlOutboundService");
+const visaService = require("./ghlVisaService");
 const boardService = require("./ghlBoardService");
 const mongoose = require("mongoose");
 
@@ -81,6 +82,19 @@ exports.moveStage = guard(async (req, res) => {
 exports.retryJob = guard(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid job id" });
   res.json({ success: true, ...(await outbound.retryJob(req.params.id)) });
+});
+
+exports.visaMapping = guard(async (req, res) => {
+  res.json({ success: true, ...(await visaService.getMappingView()) });
+});
+
+exports.saveVisaMapping = guard(async (req, res) => {
+  try {
+    res.json({ success: true, ...(await visaService.saveMapping(req.body?.entries)) });
+  } catch (error) {
+    if (error.code === "INVALID_MAPPING") return res.status(400).json({ success: false, message: error.message, errors: error.errors });
+    throw error;
+  }
 });
 
 exports.setupPreview = guard(async (req, res) => {

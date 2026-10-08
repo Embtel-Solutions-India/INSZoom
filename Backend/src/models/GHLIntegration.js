@@ -43,10 +43,30 @@ const ghlIntegrationSchema = new mongoose.Schema(
     // Set once an admin confirms the mapping; drift detection compares against it.
     mappingsConfirmedAt: Date,
     mappingsConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    // Optional, filled in once a visa custom field exists in GHL.
-    visaFieldMapping: {
-      ghlCustomFieldId: String,
-      valueMap: { type: Map, of: String },
+    // GHL Service Type / visa detail fields -> Immiglance visa. Editable by admins.
+    visaMapping: {
+      // GHL custom field ids, looked up by stable fieldKey and cached.
+      fieldIds: {
+        service_type: String,
+        work_visa: String,
+        study_visa: String,
+        green_card: String,
+        business__investment: String,
+      },
+      fieldIdsRefreshedAt: Date,
+      seededAt: Date,
+      entries: [
+        new mongoose.Schema(
+          {
+            field: { type: String, required: true },
+            value: { type: String, required: true },
+            visaType: { type: String, required: true },
+            petitionSubType: { type: String, default: "" },
+            category: { type: String, enum: ["immigrant", "non_immigrant"], default: "non_immigrant" },
+          },
+          { _id: false }
+        ),
+      ],
     },
     // Phase 1: GHL owns contact basics. Per-field so it can change later.
     contactFieldOwnership: {

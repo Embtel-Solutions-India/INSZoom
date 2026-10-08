@@ -13,6 +13,10 @@ const { resolveUnifiedStage } = require("./ghlPipelineService");
 const { getOpportunity } = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
 const { createCaseFromOpportunity, findCaseByOpportunity } = require("./ghlCaseFactory");
+const visaService = require("./ghlVisaService");
+
+// A pending case re-checks its visa on updates, but at most once a minute so a burst of events costs nothing.
+const VISA_RECHECK_MS = 60 * 1000;
 
 const OPPORTUNITY_EVENTS = new Set(["OpportunityCreate", "OpportunityUpdate", "OpportunityStageUpdate", "OpportunityStatusUpdate"]);
 const CONTACT_EVENTS = new Set(["ContactCreate", "ContactUpdate"]);
@@ -174,6 +178,7 @@ function opportunityFromPayload(p) {
     status: p.status,
     lastStageChangeAt: pick(p, "lastStageChangeAt", "dateUpdated", "updatedAt"),
     contact: p.contact,
+    customFields: Array.isArray(p.customFields) ? p.customFields : undefined,
   };
 }
 
@@ -204,6 +209,7 @@ async function handleOpportunityEvent(event, config) {
   if (!existing) {
     // OpportunityCreate, or an update that arrived before its create (out of order): same path.
     const contact = await resolveContact(opportunity);
+    const visaResolution = await visaService.resolveForOpportunity({ opportunity, config, pipelineCategory: pipeline.category });
     const outcome = await createCaseFromOpportunity({
       opportunity,
       contact,
@@ -212,12 +218,27 @@ async function handleOpportunityEvent(event, config) {
       origin: "webhook",
       sendNotifications: true,
       locationId: event.locationId,
+      visaResolution,
     });
     if (outcome.created) emitPipelineUpdate(outcome.case, "created");
     return { outcome: "processed" };
   }
 
+  await recheckPendingVisa(existing, opportunity, config, pipeline);
   return applyStageChange(event, existing, opportunity, pipeline, mapping);
+}
+
+// A case still waiting on a visa picks it up if GHL now has one. Best-effort: it never blocks or fails the event.
+async function recheckPendingVisa(caseDoc, opportunity, config, pipeline) {
+  try {
+    if (caseDoc.visaSelectionStatus !== "pending") return;
+    const last = caseDoc.integrations?.ghl?.visaResolution?.resolvedAt;
+    if (last && Date.now() - new Date(last).getTime() < VISA_RECHECK_MS) return;
+    const resolution = await visaService.resolveForOpportunity({ opportunity, config, pipelineCategory: pipeline.category });
+    await visaService.applyToExistingCase(caseDoc, resolution);
+  } catch (error) {
+    logger.warn("ghl_visa_recheck_failed", { caseId: String(caseDoc._id), error: error.message });
+  }
 }
 
 async function applyStageChange(event, caseDoc, opportunity, pipeline, mapping) {
