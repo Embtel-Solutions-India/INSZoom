@@ -189,6 +189,30 @@ const env = {
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
+  // GoHighLevel integration (integrations/ghl). Off unless GHL_ENABLED=true,
+  // so a missing/placeholder token can never affect boot or any other feature.
+  ghl: {
+    enabled: process.env.GHL_ENABLED === "true",
+    token: process.env.GHL_PRIVATE_INTEGRATION_TOKEN || "",
+    locationId: process.env.GHL_LOCATION_ID || "",
+    baseUrl: process.env.GHL_API_BASE_URL || "https://services.leadconnectorhq.com",
+    apiVersion: process.env.GHL_API_VERSION || "2021-07-28",
+    // Exact GHL pipeline names that make up the unified board.
+    // Pipelines are matched by ID when set, otherwise by exact name.
+    immigrantPipelineId: (process.env.GHL_IMMIGRANT_PIPELINE_ID || "").trim(),
+    nonImmigrantPipelineId: (process.env.GHL_NON_IMMIGRANT_PIPELINE_ID || "").trim(),
+    immigrantPipelineName: process.env.GHL_IMMIGRANT_PIPELINE_NAME || "Immigrant Documentation pipeline",
+    nonImmigrantPipelineName: process.env.GHL_NON_IMMIGRANT_PIPELINE_NAME || "Non-Immigrant Documentation pipeline",
+    // GHL's OFFICIAL Ed25519 public key (PEM or bare base64 SPKI) used to verify
+    // X-GHL-Signature. Never an Immiglance-generated key.
+    webhookPublicKey: process.env.GHL_WEBHOOK_PUBLIC_KEY || "",
+    // Informational: the URL configured in GHL (shown on the setup/health views).
+    webhookPublicUrl: process.env.GHL_WEBHOOK_PUBLIC_URL || "",
+    webhookToleranceSeconds: Number(process.env.GHL_WEBHOOK_TOLERANCE_SECONDS || 86400),
+    // Historical opportunities imported by "Sync now" never send emails unless
+    // this is explicitly turned on.
+    importSendsEmails: process.env.GHL_IMPORT_SENDS_EMAILS === "true",
+  },
   redisUrl: process.env.REDIS_URL || null,
   qpdfPath: process.env.QPDF_PATH || "qpdf",
   adobe: {

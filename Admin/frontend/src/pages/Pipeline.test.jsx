@@ -1,0 +1,137 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+
+let mockUser = { role: 'admin' }
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }))
+
+const hookState = { columns: [], status: { loading: false, error: null, disabled: false, configured: true }, notice: null }
+vi.mock('../hooks/usePipelineBoard', () => ({
+  default: () => ({ ...hookState, dismissNotice: vi.fn(), moveCard: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), setDragging: vi.fn(), connected: true }),
+}))
+vi.mock('../components/pipeline/GhlStatusPanel', () => ({ default: () => <div>STATUS PANEL</div> }))
+
+const casesApi = { visaTypes: vi.fn(), update: vi.fn() }
+vi.mock('../services/api', () => ({ casesApi: { visaTypes: (...a) => casesApi.visaTypes(...a), update: (...a) => casesApi.update(...a) }, ghlApi: {} }))
+
+import Pipeline from './Pipeline'
+import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
+
+const column = (key, cards = []) => ({ key, name: key.toUpperCase(), total: cards.length, hasMore: false, cards })
+const cardOf = (id, extra = {}) => ({ _id: id, clientName: `Client ${id}`, caseNumber: `N-${id}`, clientEmail: `${id}@x.com`, unifiedStageKey: 'a', syncStatus: 'SYNCED', priority: 'medium', ...extra })
+const renderPage = () => render(<MemoryRouter><Pipeline /></MemoryRouter>)
+
+beforeEach(() => {
+  mockUser = { role: 'admin' }
+  hookState.status = { loading: false, error: null, disabled: false, configured: true }
+  hookState.columns = [column('a', [cardOf('1', { visaSelectionRequired: true })]), column('b')]
+  hookState.notice = null
+})
+
+describe('Pipeline page', () => {
+  it('shows admins "Pipeline" with the Integration control', () => {
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeTruthy()
+    expect(screen.getByText('Integration')).toBeTruthy()
+    expect(screen.getByText('Client 1')).toBeTruthy()
+    expect(screen.getByText('Visa required')).toBeTruthy()
+  })
+
+  it('shows a case manager "My Pipeline" with NO integration/admin controls', () => {
+    mockUser = { role: 'case_manager' }
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'My Pipeline' })).toBeTruthy()
+    expect(screen.queryByText('Integration')).toBeNull()
+    expect(screen.getByText(/Only the cases assigned to you/)).toBeTruthy()
+  })
+
+  it('team leads get the full pipeline but not the admin integration panel', () => {
+    mockUser = { role: 'team_lead' }
+    renderPage()
+    expect(screen.getByRole('heading', { name: 'Pipeline' })).toBeTruthy()
+    expect(screen.queryByText('Integration')).toBeNull()
+  })
+
+  it('opens the admin status panel on demand', () => {
+    renderPage()
+    expect(screen.queryByText('STATUS PANEL')).toBeNull()
+    fireEvent.click(screen.getByText('Integration'))
+    expect(screen.getByText('STATUS PANEL')).toBeTruthy()
+  })
+
+  it('only admins ever see the "Failed to sync" marker', () => {
+    hookState.columns = [column('a', [cardOf('1', { syncStatus: 'FAILED' })])]
+    renderPage()
+    expect(screen.getByText('Failed to sync')).toBeTruthy()
+  })
+
+  it('filters loaded cards client-side', () => {
+    hookState.columns = [column('a', [cardOf('1'), cardOf('2', { clientName: 'Zed Person' })])]
+    renderPage()
+    fireEvent.change(screen.getByLabelText('Filter loaded cases'), { target: { value: 'zed' } })
+    expect(screen.queryByText('Client 1')).toBeNull()
+    expect(screen.getByText('Zed Person')).toBeTruthy()
+  })
+
+  it('explains the disabled and not-yet-configured states', () => {
+    hookState.status = { loading: false, error: null, disabled: true, configured: false }
+    const { unmount } = renderPage()
+    expect(screen.getByText(/isn’t enabled yet/)).toBeTruthy()
+    unmount()
+    hookState.status = { loading: false, error: null, disabled: false, configured: false }
+    mockUser = { role: 'case_manager' }
+    renderPage()
+    expect(screen.getByText(/still being set up/)).toBeTruthy()
+  })
+})
+
+describe('GhlVisaSelectBanner', () => {
+  const caseData = { _id: 'case1', visaSelectionStatus: 'pending' }
+  const types = { data: { data: [
+    { visaType: 'F-1', label: 'F-1 Student', caseStructure: 'single' },
+    { visaType: 'H-1B', label: 'H-1B', caseStructure: 'employer_employee' },
+    { visaType: 'K-1', label: 'K-1', caseStructure: 'family' },
+    { visaType: 'B-1', label: 'B-1', caseStructure: 'single' },
+  ] } }
+
+  beforeEach(() => { casesApi.visaTypes.mockReset().mockResolvedValue(types); casesApi.update.mockReset() })
+
+  it('renders nothing for any case that is not waiting on a visa', () => {
+    const { container } = render(<GhlVisaSelectBanner caseData={{ _id: 'c', visaType: 'H-1B' }} />)
+    expect(container.innerHTML).toBe('')
+    expect(casesApi.visaTypes).not.toHaveBeenCalled()
+  })
+
+  it('offers only single-party visas to a team lead and saves the choice', async () => {
+    mockUser = { role: 'team_lead' }
+    const onUpdated = vi.fn()
+    casesApi.update.mockResolvedValue({ data: { case: { _id: 'case1', visaType: 'F-1' } } })
+    render(<GhlVisaSelectBanner caseData={caseData} onUpdated={onUpdated} />)
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBe(3)) // placeholder + F-1 + B-1
+    expect(screen.queryByText(/H-1B —/)).toBeNull()
+    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'F-1' } })
+    fireEvent.click(screen.getByText('Set visa type'))
+    await waitFor(() => expect(casesApi.update).toHaveBeenCalledWith('case1', { visaType: 'F-1' }))
+    await waitFor(() => expect(onUpdated).toHaveBeenCalled())
+    expect(screen.getByText(/Visa type saved/)).toBeTruthy()
+  })
+
+  it('shows the server message if the visa is rejected, and stays editable', async () => {
+    mockUser = { role: 'admin' }
+    casesApi.update.mockRejectedValue({ response: { data: { message: 'needs an employer/employee case structure' } } })
+    render(<GhlVisaSelectBanner caseData={caseData} />)
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBe(3))
+    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'B-1' } })
+    fireEvent.click(screen.getByText('Set visa type'))
+    await waitFor(() => expect(screen.getByText(/employer\/employee case structure/)).toBeTruthy())
+    expect(screen.getByLabelText('Visa type')).toBeTruthy()
+  })
+
+  it('tells a case manager their team lead selects the visa, with no select and no fetch', () => {
+    mockUser = { role: 'case_manager' }
+    render(<GhlVisaSelectBanner caseData={caseData} />)
+    expect(screen.getByText(/Your team lead selects the visa type/)).toBeTruthy()
+    expect(screen.queryByLabelText('Visa type')).toBeNull()
+    expect(casesApi.visaTypes).not.toHaveBeenCalled()
+  })
+})

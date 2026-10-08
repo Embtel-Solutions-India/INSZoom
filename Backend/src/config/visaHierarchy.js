@@ -47,6 +47,32 @@ const VISA_HIERARCHY = {
   "B-2": { children: ["COSB2"] },
 };
 
+// Visa types that are filed EXACTLY like another visa: the same USCIS forms and the same client checklists, with no forms or
+// checklists of their own. H-1B1 (the Chile / Singapore free-trade H-1B) - plain "H-1B1" and both country variants - is an
+// H-1B for filing purposes. Case.visaType itself is never changed (the case still says H-1B1); only the form/checklist lookup
+// is pointed at the visa it mirrors.
+// An H-1B filing type (New / Extension / Transfer / Amendment / Concurrent) is likewise still an H-1B: a case that carries one of those
+// labels as its visaType (older or imported data) gets the H-1B forms and checklists too.
+const FILED_LIKE = {
+  "H-1B1": "H-1B",
+  "H-1B1 Chile": "H-1B",
+  "H-1B1 Singapore": "H-1B",
+  "New H-1B": "H-1B",
+  "H-1B Extension": "H-1B",
+  "H-1B Transfer": "H-1B",
+  "H-1B Amendment": "H-1B",
+  "H-1B Concurrent": "H-1B",
+  "New H1B": "H-1B",
+  "H1B Extension": "H-1B",
+  "H1B Transfer": "H-1B",
+  "H1B Amendment": "H-1B",
+  "H1B Concurrent": "H-1B",
+};
+
+function filedLikeVisa(visaType) {
+  return FILED_LIKE[String(visaType || "").trim()] || visaType;
+}
+
 const PARENT_BY_CHILD = Object.entries(VISA_HIERARCHY).reduce((map, [parent, { children }]) => {
   children.forEach((child) => { map[child] = parent; });
   return map;
@@ -81,4 +107,4 @@ async function resolveWithHierarchyFallback(visaType, lookupFn, isEmpty) {
   return { result, resolvedVisaType: current, chain, usedFallback: current !== visaType, unresolved: false };
 }
 
-module.exports = { VISA_HIERARCHY, getParentVisa, resolveWithHierarchyFallback };
+module.exports = { VISA_HIERARCHY, FILED_LIKE, filedLikeVisa, getParentVisa, resolveWithHierarchyFallback };

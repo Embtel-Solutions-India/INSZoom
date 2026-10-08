@@ -544,7 +544,18 @@ const caseSchema = new mongoose.Schema(
     },
 
     visaCategory: { type: String, default: "" },
-    visaType: { type: String, required: true, trim: true },
+    // Required for every case EXCEPT a GoHighLevel-created case still waiting
+    // for the team lead to pick a visa (visaSelectionStatus === "pending").
+    // Anything that doesn't set that status keeps the original required rule.
+    visaType: {
+      type: String,
+      required: function visaTypeRequired() {
+        return this.visaSelectionStatus !== "pending";
+      },
+      trim: true,
+    },
+    // Only ever written by the GHL integration. Absent on every other case.
+    visaSelectionStatus: { type: String, enum: ["pending", "selected"] },
     caseType: { type: String, default: "immigration", index: true },
     petitionType: { type: String, trim: true, index: true },
     petitionSubType: { type: String, trim: true },
@@ -1108,11 +1119,53 @@ const caseSchema = new mongoose.Schema(
      * 'lead_conversion'   = created from an approved Lead via the admin Leads page
      * 'admin_direct'      = created directly by an Admin without a prior Lead
      * 'team_lead_direct'  = created directly by a Team Lead without a prior Lead
+     * 'ghl'               = created from a GoHighLevel opportunity (integrations/ghl)
      */
     creationSource: {
       type: String,
-      enum: ["lead_conversion", "admin_direct", "team_lead_direct"],
+      enum: ["lead_conversion", "admin_direct", "team_lead_direct", "ghl"],
       default: null,
+    },
+
+    /**
+     * External-system links. Only `ghl` exists today and it is absent on every
+     * case that did not come from (or get linked to) GoHighLevel.
+     * `integrations.ghl.unifiedStageKey` is the CRM *pipeline* column and is
+     * deliberately separate from `stage` (the immigration workflow stage):
+     * moving a pipeline card must never touch `stage`.
+     */
+    integrations: {
+      ghl: {
+        locationId: { type: String },
+        opportunityId: { type: String },
+        contactId: { type: String },
+        // Current position in GHL, plus where the opportunity first entered.
+        pipelineId: { type: String },
+        pipelineStageId: { type: String },
+        sourcePipelineId: { type: String },
+        sourceStageId: { type: String },
+        unifiedStageKey: { type: String },
+        // "immigrant" | "non_immigrant", taken from the source pipeline.
+        category: { type: String, enum: ["immigrant", "non_immigrant"] },
+        opportunityStatus: { type: String },
+        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation"] },
+        flags: {
+          deletedInGhl: { type: Boolean, default: false },
+          needsAttention: { type: Boolean, default: false },
+        },
+        lastSyncedAt: { type: Date },
+        sync: {
+          state: { type: String, enum: ["synced", "pending", "failed"] },
+          // Bumped on every accepted stage change, from either side.
+          version: { type: Number, default: 0 },
+          source: { type: String, enum: ["ghl", "immiglance"] },
+          changedAt: { type: Date },
+          operationId: { type: String },
+          lastSyncedStageId: { type: String },
+          lastError: { type: String },
+          attempts: { type: Number, default: 0 },
+        },
+      },
     },
 
     /**
@@ -1378,6 +1431,9 @@ caseSchema.index({ caseRole: 1, status: 1 });
 caseSchema.index({ employerProfileId: 1 });
 caseSchema.index({ personProfileId: 1 });
 caseSchema.index({ creationSource: 1, createdAt: -1 });
+// NOTE: no GHL indexes here on purpose. This collection is already at MongoDB's
+// 64-index limit, so none could be built. GHL identity uniqueness and
+// opportunity -> case lookups live in the GHLCaseLink collection instead.
 caseSchema.index({ dataEntryMode: 1, status: 1 });
 
 caseSchema.statics.stageNames = STAGE_NAMES;

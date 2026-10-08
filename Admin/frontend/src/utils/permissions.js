@@ -6,6 +6,7 @@ import {
   FileText,
   Inbox,
   LayoutDashboard,
+  LayoutGrid,
   Mail,
   MessageSquare,
   Scale,
@@ -130,6 +131,9 @@ export const getSidebarMenuItems = (user) => {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ADMIN_PORTAL_ROLES },
     { path: '/leads', icon: Inbox, label: 'Leads', roles: LEADS_ROLES },
     { path: '/crm-cases', icon: Briefcase, label: 'Cases', roles: ADMIN_PORTAL_ROLES },
+    // Same page for everyone; a case manager gets their own private board ("My Pipeline"), enforced server-side.
+    { path: '/pipeline', icon: LayoutGrid, label: 'Pipeline', roles: ['super_admin', 'admin', 'team_lead'] },
+    { path: '/pipeline', icon: LayoutGrid, label: 'My Pipeline', roles: ['case_manager'] },
     { path: '/tasks', icon: CheckCircle, label: 'Tasks', roles: ADMIN_PORTAL_ROLES },
     { path: '/teams', icon: Users, label: 'Teams', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/case-managers', icon: Users, label: 'Case Managers', roles: ['super_admin', 'admin'] },

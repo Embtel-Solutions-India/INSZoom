@@ -74,5 +74,7 @@ router.use("/entity-config", require("../modules/entity-config/entityConfig.rout
 router.use("/data-rights", require("../modules/data-rights/dataRights.routes"));
 router.use("/telemetry", require("../modules/telemetry/telemetry.routes"));
 router.use("/attorney", require("../modules/attorney/attorney.routes"));
+// GoHighLevel integration — every handler 503s unless GHL_ENABLED=true.
+router.use("/integrations/ghl", require("../integrations/ghl/ghl.routes"));
 
 module.exports = router;

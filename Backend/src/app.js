@@ -79,6 +79,8 @@ app.use(morgan(env.nodeEnv === "production" ? ":method :safe-url :status :res[co
   stream: { write: (message) => logger.info("http_access", { message: message.trim() }) },
 }));
 app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.handleStripeWebhook);
+// GoHighLevel webhooks: raw body (any content type) so the Ed25519 signature is verified over the exact bytes, before any JSON parsing.
+app.post("/api/integrations/ghl/webhooks", express.raw({ type: () => true, limit: "2mb" }), require("./integrations/ghl/ghl.controller").webhook);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());

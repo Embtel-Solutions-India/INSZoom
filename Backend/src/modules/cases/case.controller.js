@@ -15,6 +15,7 @@ const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
+const ghlVisaSelection = require("../../integrations/ghl/ghlVisaSelection.service");
 const { evaluateStageGate } = require("./case-gating.config");
 const { createPerfTimer } = require("../../utils/perfTimer");
 const questionnaireService = require("../questionnaires/questionnaire.service");
@@ -1617,6 +1618,9 @@ exports.updateCase = async (req, res, next) => {
       caseData.organization = req.body.organizationId;
     }
     caseData.lastModifiedBy = req.user._id;
+    // GHL-created case still waiting for a visa: the team lead just chose one.
+    // No-op (returns false) for every other case.
+    const ghlVisaJustSelected = ghlVisaSelection.markVisaSelected(caseData, req.body.visaType);
 
     if (req.body.workflow) {
       Object.assign(caseData.workflow, req.body.workflow);
@@ -1655,6 +1659,7 @@ exports.updateCase = async (req, res, next) => {
       await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
     }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
+    if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
 
     res.json({ success: true, message: "Case updated", case: lifecycle.case, caseSummary: caseService.summarizeCase(lifecycle.case), workflow: lifecycle });
   } catch (error) {

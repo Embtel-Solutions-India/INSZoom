@@ -2,6 +2,7 @@ import { Fragment, Suspense, lazy, useState, useEffect, useCallback, useMemo, us
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import AddEmployeeModal from '../components/AddEmployeeModal'
+import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
@@ -1703,6 +1704,14 @@ const CRMCaseDetail = () => {
 
   return (
     <div className="space-y-6">
+      {/* GHL-created case waiting for its visa type; renders nothing for every other case. */}
+      <GhlVisaSelectBanner
+        caseData={caseData}
+        onUpdated={(updated) => {
+          if (updated) setCaseData(updated)
+          setTimeout(() => fetchCaseDetail(true), 6000) // provisioning finishes in the background
+        }}
+      />
       {viewingDocument && (
         <CaseDocumentViewer document={viewingDocument} onClose={() => setViewingDocument(null)} />
       )}
