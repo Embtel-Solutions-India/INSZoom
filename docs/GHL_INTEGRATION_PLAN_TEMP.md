@@ -1,509 +1,364 @@
-# GoHighLevel (GHL) Integration: Implementation Plan (TEMP), Revision 2
+# GoHighLevel (GHL) Integration: Implementation Plan (TEMP), Revision 3.1
 
-Status: **DRAFT, awaiting approval. No code has been written.**
-Scope: Backend, Admin frontend. Landing, Client portal and Attorney portal are not touched.
+Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards) is DONE and verified. Next: R3-2. Work proceeds one phase at a time, with a report after each.**
+Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attorney portals are not touched.
 
-### What changed from Revision 1
+### What changed in Revision 3
 
 | # | Change |
 |---|---|
-| 1 | **No fake visa type.** GHL cases are created with `visaType = null` and `visaSelectionStatus = "pending"`. Visa-driven provisioning (checklists, forms, questionnaires) runs only after the team lead selects a visa. A GHL custom field for visa type is the preferred source, after we inspect GHL (§6.2, §6.6). |
-| 2 | **Conflict resolution rewritten.** The "pending job exists, otherwise GHL wins" rule is gone. It is replaced by version and timestamp metadata with a deterministic rule (§6.5). |
-| 3 | **Hard worker invariant:** a job re-checks its own status and version immediately before it calls GHL (§6.4). |
-| 4 | **Two mandatory duplicate guards:** `webhookId` dedupe **and** a unique compound index on `locationId + opportunityId` (§5.2, §7). |
-| 5 | **Atomic job claim with lease** for multi-instance safety, made an explicit requirement (§6.4). |
-| 6 | **Contact sync is GHL → CRM only in Phase 1.** Field-level ownership is declared in config so bidirectional sync can be added later (§10). |
-| 7 | **Sync status** is `SYNCED / PENDING / FAILED`, and only admins and super admins ever see `FAILED`. Internals are stripped from responses for everyone else (§8, §9). |
-| 8 | **Webhook event state machine** with attempt counters (§5.3). |
-| 9 | **Integration health panel** specified (§9.3). |
-| 10 | **Origin recorded** per case: `initial_sync`, `webhook` or `reconciliation`, shown in the timeline and audit (§6.1, §6.2). |
-| 11 | **Stage rename and config drift detection.** Mappings stay keyed by stage ID, but a renamed or missing GHL stage puts the integration into `config_mismatch` and alerts an admin (§5.1, §6.7). |
-| 12 | **Six extra tests** added (§12). |
-| 13 | **MCP is explicitly out of the production sync path** (§3). |
-| 14 | `createCase` is **not** refactored. This is now a firm decision, not an option (§6.2). |
+| 1 | **Two separate boards.** The Immigrant and Non-Immigrant GHL pipelines are no longer merged into one. Each has its own board (tabs), tied to its own GHL pipeline (§5.1). |
+| 2 | **Stage mapping is per pipeline.** The rule "both pipelines must have identical stages" is dropped. Drift detection stays, per pipeline. |
+| 3 | **One opportunity = one individual case card.** For two-party visas, the GHL name and email are the **employer / petitioner**, and each opportunity is **one employee / beneficiary** (§3, §5.3, §5.5). |
+| 4 | **Service Type drives the visa** through an editable mapping table (§5.2). It replaces the earlier "single-party visas only" restriction. |
+| 5 | **Employer model reused, not rebuilt.** Many opportunities with the same employer email attach to **one shared employer** (one `EmployerProfile`), even when the employees have different visas and sit in different pipelines (§5.3, §5.4). |
+| 6 | **Outbound grows:** adding an employee in Immiglance **creates a GHL opportunity**; removing one marks it abandoned, restoring reopens it (§5.6). |
+| 7 | **Codebase findings added** (§2), including eight gaps that shape the phases. |
+| 8 | **Phases re-planned** as R3-1 to R3-7 (§9). |
+| 9 | Carried over from Revision 2 and still true: no fake visa, conflict rule, webhook security, queue invariants, field ownership, safety rules. |
+
+### What changed in Revision 3.1 (after review)
+
+| # | Change |
+|---|---|
+| A | **Employer matching is a strategy, not an identity.** Email is the first matching signal only. The match order is: existing GHL-linked employer, then exact normalised email, then anything ambiguous goes to **Needs Attention**. Nothing is ever silently attached to an uncertain employer (§5.3, decision 1). |
+| B | **The employer is a shared party, not a visa case.** Creating an employer from GHL must not start the normal visa-driven employer workflow from the first employee's visa alone. Visa-specific employer questions belong to the individual employee case (§5.3, §5.4, R3-6). |
+| C | **R3-6 is a release gate.** H-1B-only (single-visa) employers can go live after R3-3 and R3-4. **Mixed-visa employers are not declared production-ready until R3-6 passes** (§9). |
+| D | **GHL contact = primary contact for the opportunity,** interpreted by the case structure as client (single-party), employer (employment) or petitioner (family), not hard-coded as "employer/petitioner" (§3, §4). |
+| E | **Parent relationship rule:** a two-party employee / beneficiary card cannot exist without its employer / petitioner. Single-party visas stay independent (§3). |
+| F | **GHL stage and Immiglance workflow stage stay independent in both directions.** Moving the GHL card never starts a workflow step, and a workflow change never moves the GHL card unless explicitly decided later (§1). |
+| G | **Employee name** is written to GHL only as a **display name** once the employee is identified ("ABC Technologies, John Smith"). The initial name is the employer's. Identity is always `locationId + opportunityId` (§5.6). |
+| H | **Family scope is stated honestly:** R3-5 delivers petitioner matching, beneficiary case creation, GHL linking and stage sync. It does **not** solve repeated petitioner questions; that is R3-6 (§5.5, §9). |
+| I | **New tests:** shared employer update, parent-relationship rule, contact interpretation, mixed-visa gate (§11). |
+| J | **Decisions** now carry proposed answers for you to confirm (§12). |
 
 ---
 
 ## 1. Goal
 
-Add GHL as a **third source of cases**, next to Lead conversion and the "Create Case" button.
+Add GHL as a **third source of cases**, next to Lead conversion and the "Create Case" button, **without disturbing any existing feature**.
 
-- Two GHL pipelines, **Immigrant Documentation Pipeline** and **Non-Immigrant Documentation Pipeline**, share the same stages. Both are shown in Admin as **one unified Kanban board**.
-- A new GHL opportunity automatically creates a case in the CRM. The client and the team lead get emails, and the case lands in the team lead's queue. The team lead assigns it to a case manager, selects the visa, and the normal workflow continues.
-- Dragging a card to another stage in Admin moves it **instantly** in the UI. The backend updates GHL in the background, with retries. The UI never waits on GHL.
-- A stage change made in GHL flows back into the CRM through webhooks.
-- Moving a card only ever changes **that opportunity** in **its own source pipeline**. The other pipeline and its data stay untouched.
+- GHL has two pipelines: **Immigrant Documentation pipeline** and **Non-Immigrant Documentation pipeline**. Immiglance shows them as **two separate boards**, each synchronised with its own GHL pipeline.
+- A new GHL opportunity creates a case automatically. The right people are notified and the case lands in the team lead's queue, who assigns a case manager, and the normal workflow continues.
+- Dragging a card to another stage moves it instantly in the UI. The backend updates GHL in the background with retries. The UI never waits on GHL.
+- A stage change made in GHL flows back through webhooks.
+- A move only ever changes **that one opportunity** in **its own pipeline**.
 
 ### Hard guarantee: do not break anything existing
 
-- Every change is **additive**: new module, new collections, one optional sub-document on Case, new routes, new page.
-- A master switch, `GHL_ENABLED`, guards everything. When it is off or GHL is down, the rest of the app behaves exactly as today.
-- Existing `createCase`, lead conversion, assignment, notifications and emails are **reused, not modified**. `createCase` is not refactored.
-- GHL failures are logged and retried in the background. They never throw into an existing request path.
-- **Two concepts stay separate:** `Case.stage` is the internal immigration workflow stage (`intake`, `forms`, ...). `Case.integrations.ghl.unifiedStageKey` is the CRM pipeline position. Dragging a card or receiving a GHL stage event **never touches `Case.stage`** and never triggers the workflow engine, form provisioning or checklists.
+- Everything is **additive**: new module, new collections, one optional sub-document on `Case`, new routes, new page.
+- `GHL_ENABLED` is a master switch. When off, or when GHL is down, the rest of the app behaves exactly as today.
+- Existing `createCase`, `addEmployeeSlot`, `removeEmployee`, `inviteEmployee`, lead conversion, assignment, notifications and emails are **reused, never modified**. Only small, guarded, non-blocking hooks are appended, and they do nothing unless GHL is on and the record is GHL-linked.
+- Employers and cases that were not created through GHL behave exactly as they do now.
+- GHL failures are logged and retried in the background. They never throw into an existing request.
+- **Two concepts stay separate, in both directions:** `Case.stage` is the immigration workflow stage (`intake`, `forms`, ...). `Case.integrations.ghl.unifiedStageKey` is the pipeline column. Moving a card or receiving a GHL stage event **never touches `Case.stage`**, never starts a workflow, never provisions forms or checklists. Equally, a change in the Immiglance workflow stage **never moves the GHL card**, unless that behaviour is explicitly designed and approved later.
+- Nothing is ever deleted automatically: employees are soft-removed, GHL opportunities are marked, not deleted.
+- Ambiguity never auto-resolves. A wrong-account email, a pipeline/visa mismatch or an unmapped Service Type is flagged for a team lead.
 
 ---
 
-## 2. Findings from the codebase analysis
+## 2. Findings from the codebase (investigated, not assumed)
 
-| Area | What exists | How we use it |
+### 2.1 What already exists and will be reused
+
+| Need | Exists? | Evidence |
 |---|---|---|
-| GHL code | None. `Backend/.env` already has `GHL_PRIVATE_INTEGRATION_TOKEN`, `GHL_LOCATION_ID`, `GHL_PIPELINE_ID` (values not read). | Greenfield. Add `GHL_*` vars to `.env.example`. |
-| App wiring | `app.js` mounts `/api` routes. Stripe webhook is registered with `express.raw` **before** `express.json`. | GHL webhook copies this raw-body pattern. |
-| Module layout | `modules/<name>/{routes,controller,service}.js` plus `tests/`. | New code goes in `Backend/src/integrations/ghl/` (as requested), exposed through a thin route module. |
-| Case model | `Backend/src/models/Case.js`: `visaType` (**currently required**), `stage` (`CRM_STAGES`), `status`, `assignedCaseManager`, `assignedTeamLead`, `creationSource`, `stageHistory`, `timeline`. | Add `integrations.ghl`, `visaSelectionStatus`, `category`, and `ghl` in `creationSource`. Make `visaType` conditionally required (see §6.2). |
-| Case creation | `createCase` in `case.controller.js` (~1015–1530): case number, client user, audit, `setStage("intake")`, then in `setImmediate` `lifecycleOrchestrator.initializeCase` sends the client and team emails and notifications. | `ghlCaseFactory` calls the same lower-level services. `createCase` stays untouched. |
-| RBAC | `authenticate`, `authorizeRoles`, `authorizePermissions`. `applyCaseRoleFilter` limits a `case_manager` to assigned, primary or secondary cases. | Reuse `applyCaseRoleFilter` for the board. |
-| Realtime | `realtime.gateway.js` has `emitToUser`, `emitToRole`. | Emit `ghl:pipeline:updated` for live board refresh. |
-| Jobs | `setInterval` loops in `server.js` via `scheduleInitialRun`. `bullmq` and `ioredis` are installed but unused. | Reuse `setInterval`, but all work is claimed atomically from Mongo so several instances are safe. No Redis dependency. |
-| HTTP | No axios in Backend. Node 22 global `fetch` is available. | `fetch` with a retry wrapper. |
-| Frontend | `@dnd-kit/*` installed. `@tanstack/react-query` barely used. `SocketContext` exposes `subscribe`. `api.js` is an axios instance with `casesApi`-style objects. | Board with `@dnd-kit`, local state for optimistic moves, add a `ghlApi` object. |
-| Existing "pipeline" | UI-only section in `Leads.jsx`. No Kanban, no backend model. | New Pipeline page. Leads is untouched. |
-| Settings | No Integrations tab. The `integrations.registry.js` was deleted earlier. | Small standalone "GoHighLevel" admin panel. |
+| One employer with many employee cases | **Yes.** An employer matter is a *principal* case with one *child* case per employee. | `Case.parentCase`, `childCases`, `caseRole: principal / employee` |
+| Employer data entered once, reused by every employee | **Yes.** One `EmployerProfile` per principal, shared by all children; every child's canonical profile and forms read it. | `CanonicalBuilderService.loadSources` |
+| Each employee has their own visa | **Yes.** A child stores its own `visaType` and sub-type. A green-card type (EB-2, EB-3, PERM) under an H-1B employer already works. EB-1A and EB-4 are single-party and cannot be children. | `addEmployeeSlot`, `resolveEmployeeVisa` |
+| Add an employee at any time (no fixed count) | **Yes.** `POST /cases/:principalId/add-employee-slot` creates the child, profile, checklist and forms. | `case.controller.js` ~2669 |
+| Employer chooses "I fill it" or "invite the employee", per employee | **Yes.** | `employeeDataEntryMode`, `setEmployeeDataEntryMode` |
+| Remove an employee without losing data | **Yes.** Soft remove (`status: "removed"`), restorable. | `removeEmployee`, `restoreEmployee` |
+| Unnamed employee cards | **Yes.** Admin shows "Not Identified". | `CRMCaseDetail.jsx` |
+| Assignment flows from employer to employees | **Yes.** | `cascadeAssignmentToChildren` |
+| Admin and Client portal show the same data | **Yes.** Same `Case` documents. | `GET /cases/:id/related` |
+| Family: several cases per petitioner | **Yes.** Each beneficiary is its own family case. | `createFamilyCase` |
+| GHL fields on Case | **Built** (Phases 1 to 5) | `creationSource: "ghl"`, `integrations.ghl.*`, `visaSelectionStatus` |
 
-### Must read before coding (Phase 1 audit)
+### 2.2 Gaps that shape the plan
 
-The visa decision (§6.2) depends on what these existing pieces do with `visaType`, so I will read them first and report back:
-- `lifecycleOrchestrator.initializeCase` and `workflowService.caseCreated`
-- `case.service.setStage` and whatever currently provisions checklists, forms and questionnaires after a case is created or its visa changes
-- The `case_created` email templates (do they require a visa value?)
-- The visa/case-type update path used by the team lead today (the hook point for deferred provisioning)
+1. **One principal per employer login.** `createCase` returns `CLIENT_ALREADY_HAS_CASE` for an employer who already has a case. The GHL path must **not** use `createCase`; it finds the employer's existing matter and adds a child (the `addEmployeeSlot` behaviour).
+2. **Employer questions follow only the principal's visa.** If the principal is H-1B and a child is PERM/I-140, that child's *employer-side* questions (LCA, prevailing wage, I-140 facts) are never asked. Existing limitation; mixed-visa employers will expose it.
+3. **No petitioner profile is shared across a petitioner's family cases.** Petitioner answers are stored per case, so a petitioner with two beneficiaries is asked twice today.
+4. **No employer snapshot at submission.** Forms read the live employer profile, so a later edit can alter an old case. Real, but existing and outside this integration; recommended as a separate task.
+5. **Removed employees are not excluded** from some provisioning loops (`provisionRequiredForms`, ...). Needs a guard once children are created and removed automatically.
+6. **Family cases are not tagged `caseStructure: "family"`;** they are recognised by `petitionerUser`. Anything built must detect them the same way.
+7. **The `cases` collection is at MongoDB's 64-index limit.** No new index can be built on it. (Already handled: GHL identity uniqueness lives in its own `GHLCaseLink` collection.)
+8. **`canAccessCase` lets any staff role open almost any case.** Board visibility and moves use the Cases-list scope (`buildCaseFilter`) instead. (Already handled.)
+
+### 2.3 Live GHL data (read-only check)
+
+- 19 opportunities across the two documentation pipelines, all status `open`, none with `assignedTo`, none with a phone number, one without an email.
+- Custom fields exist for Service Type and the visa details: `opportunity.service_type` (Work Visa / Study Visa / Green Card / Business/Investment / Other), `opportunity.work_visa`, `opportunity.study_visa`, `opportunity.green_card`, `opportunity.business__investment`, `opportunity.documentation_onboarding_type` (Immigrant / Non-Immigrant), `opportunity.opportunity_id` (text, used by our idempotency key in §5.6).
+- Only 1 of 19 opportunities has a visa filled in today.
 
 ---
 
-## 3. Architecture
+## 3. Target model
 
 ```
-GHL (2 pipelines)
-   │  webhooks (Ed25519 signed)              ▲ PUT /opportunities/{id}
-   ▼                                         │ (background worker, retried)
-POST /api/integrations/ghl/webhooks     GHLSyncJob queue
-   │ verify → dedupe → persist → 200        ▲
-   ▼ async worker                           │
-ghlWebhookService ──► ghlSyncService ──► Case (Mongo)  ◄── PATCH /api/cases/:id/pipeline-stage
-                                         │                          ▲
-                                         ▼ socket event             │ optimistic drag
-                                   Admin Kanban (unified board) ────┘
+GHL (2 pipelines)                                   Immiglance
+
+Immigrant pipeline  ---------------------------->   Immigrant board
+Non-Immigrant pipeline ------------------------->   Non-Immigrant board
+
+One GHL opportunity  =  one case card:
+
+  individual client (single-party visa)  ->  one single case
+  employer + employee visa               ->  one EMPLOYEE (child) case under the employer
+  petitioner + beneficiary visa          ->  one FAMILY case (petitioner = shared contact)
+
+Employer (principal case + one EmployerProfile)
+  |- Employee child A  <- GHL opportunity 101   (H-1B,  Non-Immigrant board)
+  |- Employee child B  <- GHL opportunity 102   (EB-2,   Immigrant board)
+  |- Employee child C  <- GHL opportunity 103   (H-1B,   Non-Immigrant board)
+  Employer details: entered once, used by A, B and C.
 ```
 
 Principles:
 1. **The frontend only talks to our backend.** It never calls GHL.
-2. **Identity is `locationId + opportunityId`, never email.** One person can have several opportunities.
-3. **Field-level source of truth** (§10).
-4. **Config is stored in the database**, not hard-coded. No `if (pipelineId === "abc")` anywhere.
-5. **Stages are mapped by IDs.** Names are only used to build the unified columns, once (§5.1).
-6. **MCP is not part of production sync.** Production is: Private Integration token → GHL REST API, plus GHL webhooks → our backend. MCP can come later for operator questions ("show failed GHL syncs", "why didn't this opportunity create a case?"), never in the transactional path.
+2. **Identity is `locationId + opportunityId`,** held in `GHLCaseLink` (unique). Employer name/email is never a key for an opportunity: one employer legitimately has many opportunities with the same name and email.
+2a. **The GHL contact is the opportunity's primary contact.** The case structure decides what that contact *is*: the **client** for a single-party visa, the **employer** for an employment visa, the **petitioner** for a family visa. Nothing is hard-coded as "GHL name = employer".
+2b. **Parent relationship rule.** A two-party employee or beneficiary card cannot exist without its employer or petitioner. Single-party visas (for example EB-1A, individual O-1) remain independent cases, exactly as the existing visa rules classify them. An opportunity that would create a structurally invalid case is held for a team lead instead.
+3. **The board shows employee cards, not the employer container.** The employer is a label on each card plus a filter; it has no stage of its own.
+4. **Each employee card moves independently;** moving it changes only that employee's opportunity.
+5. **Pipeline = where GHL put the opportunity.** Service Type maps to the *visa*; the visa's category is cross-checked against the pipeline and any disagreement is flagged for a human.
+6. **Config is stored in the database,** never hard-coded. Stages are mapped by `(pipelineId, stageId)`, never by name.
+7. **MCP is not part of production sync.** Production is the Private Integration token to the GHL REST API plus GHL webhooks to our backend.
 
----
+## 4. Data ownership
 
-## 4. Files
-
-### To add
-
-```
-Backend/src/integrations/ghl/
-├── ghl.config.js              # env parsing, GHL_ENABLED, base URL, API version
-├── ghlClient.js               # fetch wrapper: Bearer token, Version header, retry/backoff, 429 + Retry-After
-├── ghlPipelineService.js      # list/get pipelines, build/refresh stage mappings, drift detection
-├── ghlOpportunityService.js   # paginated search, get, update stage/status
-├── ghlContactService.js       # get contact, normalise name/email/phone
-├── ghlWebhookService.js       # signature verify, dedupe, event state machine, routing
-├── ghlSyncService.js          # inbound upsert, outbound queue + worker, initial sync, reconciliation
-├── ghlCaseFactory.js          # opportunity + contact → CRM case, via existing lower-level services
-├── ghlHealthService.js        # status / health summary
-├── ghl.routes.js
-├── ghl.controller.js
-└── tests/
-
-Backend/src/models/
-├── GHLIntegration.js          # config + stage mappings (one per location)
-├── GHLWebhookEvent.js         # idempotency log + processing state machine
-├── GHLSyncJob.js              # outbound queue
-└── GHLLock.js                 # (or a field on GHLIntegration) reconciliation lock
-
-Admin/frontend/src/
-├── pages/Pipeline.jsx
-├── components/pipeline/{Board,Column,Card,GhlStatusPanel}.jsx
-├── hooks/usePipelineBoard.js
-└── api.js gets `ghlApi`; App.jsx gets a route; Layout sidebar gets an entry
-
-docs/GHL_INTEGRATION.md          # final reference (replaces this temp file)
-docs/PHASE_N_COMPLETION_REPORT.md  # per project convention
-```
-
-### Existing files to modify (minimal)
-
-| File | Change |
+| Data | Source of truth |
 |---|---|
-| `Backend/src/models/Case.js` | Add optional `integrations.ghl`, `visaSelectionStatus`, `category`; add `ghl` to `creationSource`; make `visaType` required **unless** `visaSelectionStatus === "pending"`; add the unique compound partial index (§5.2). |
-| `Backend/src/app.js` | Register the GHL webhook with `express.raw` next to Stripe. |
-| `Backend/src/routes/index.js` | One mount line for `/integrations/ghl`, plus the pipeline-stage route. |
-| `Backend/src/server.js` | Start the outbound worker, webhook-event worker and reconciliation job, only if `GHL_ENABLED`. |
-| `Backend/.env.example` | Add `GHL_*` variable names (no values). |
-| The visa-update path (identified in the Phase 1 audit) | One small hook: when a GHL case's visa is set, flip `visaSelectionStatus` to `selected` and run the deferred provisioning. A no-op for all other cases. |
-| `Admin/frontend/src/{App.jsx, layouts/Layout.jsx, services/api.js}` | Route, sidebar entry, API object. |
-
-The `visaType` change is the only model constraint that loosens. The condition only matches GHL cases, so for every existing creation path the field stays required exactly as today.
-
----
-
-## 5. Data model
-
-### 5.1 `GHLIntegration` (one per location)
-
-```js
-{
-  locationId, enabled,
-  status: "healthy" | "config_mismatch" | "degraded" | "disabled",
-  pipelines: [{ ghlPipelineId, ghlPipelineName, category: "immigrant"|"non_immigrant", enabled,
-                lastFetchOkAt, lastFetchError }],
-  unifiedStages: [{ key, name, order }],
-  stageMappings: [{
-    ghlPipelineId, ghlStageId, ghlStageName,       // name as last seen in GHL
-    unifiedStageKey, unifiedStageName
-  }],
-  visaFieldMapping: { ghlCustomFieldId, valueMap: { "<ghl value>": "<visaType>" } },  // §6.6, optional
-  contactFieldOwnership: { name: "ghl", email: "ghl", phone: "ghl" },                  // §10
-  lastInitialSyncAt, lastReconcileAt, lastWebhookAt, lastApiOkAt,
-  createdAt, updatedAt
-}
-```
-
-**Stage mapping rule.** On setup we fetch both pipelines and build the unified columns from the stage lists. Names and order are used **only at this moment** to pair up the two stage sets. After that every runtime operation uses `(ghlPipelineId, ghlStageId)` from `stageMappings`.
-
-**Stop on mismatch.** If the two pipelines do not have identical stages, setup **stops and reports the difference**. It never builds a union and never guesses. We resolve it together, then continue.
-
-**Drift detection (§6.7).** If a mapped GHL stage is renamed, deleted, or a new stage appears, the integration moves to `config_mismatch` and an admin is alerted. Nothing is silently re-mapped.
-
-### 5.2 `Case.integrations.ghl` and related fields
-
-```js
-visaType: null | "<existing visa value>",
-visaSelectionStatus: "pending" | "selected",       // only "pending" for GHL cases without a known visa
-category: "immigrant" | "non_immigrant" | null,    // from the source pipeline
-
-integrations: { ghl: {
-  locationId, opportunityId, contactId,
-  pipelineId, pipelineStageId,                     // current GHL position
-  sourcePipelineId, sourceStageId,                 // where it entered
-  unifiedStageKey,                                 // current board column (NOT Case.stage)
-  opportunityStatus,                               // open / won / lost / abandoned
-  origin: "initial_sync" | "webhook" | "reconciliation",
-  flags: { deletedInGhl: false, needsAttention: false },
-  lastSyncedAt,
-  sync: {
-    state: "synced" | "pending" | "failed",
-    version,            // integer, incremented on every accepted stage change
-    source,             // "immiglance" | "ghl"
-    changedAt,          // timestamp of the last accepted stage change
-    operationId,        // UUID of the last accepted change
-    lastSyncedStageId,  // last stage ID known to be in agreement with GHL
-    lastError, attempts
-  }
-}}
-```
-
-**Two mandatory duplicate guards, both required, neither optional:**
-1. `GHLWebhookEvent.webhookId` unique, which catches the same delivery repeated.
-2. **A unique compound partial index** on `integrations.ghl.locationId + integrations.ghl.opportunityId` (partial, so cases without GHL data are not affected). This catches a *different* webhook ID for the same opportunity, for example when our response was lost and GHL re-sent with a new ID. Case creation must also handle the duplicate-key error by loading the existing case instead of failing.
-
-### 5.3 `GHLWebhookEvent` (processing state machine)
-
-```js
-{
-  webhookId (unique), eventType, eventVersion, locationId, opportunityId, contactId,
-  payload, receivedAt, eventTimestamp,
-  status: "received" | "processing" | "processed" | "ignored" | "failed" | "dead",
-  processingAttempts, lastAttemptAt, nextAttemptAt, lastError, processedAt,
-  lockedUntil     // lease for atomic claim
-}
-```
-
-- `received → processing → processed`, or `→ ignored` (unconfigured pipeline, unmapped stage, our own echo), or `→ failed` (retry with backoff) `→ dead` after max attempts, which an admin can requeue.
-- TTL index of about 30 days on `receivedAt`, except for `failed` and `dead` records.
-
-### 5.4 `GHLSyncJob` (outbound queue)
-
-```js
-{
-  caseId, opportunityId, pipelineId, pipelineStageId,
-  caseSyncVersion,         // the case's sync.version this job was created for
-  operationId,
-  status: "pending" | "processing" | "done" | "failed" | "superseded",
-  attempts, nextAttemptAt, lockedUntil, lastError, createdAt, completedAt
-}
-```
+| GHL pipeline, opportunity, stage | GHL (stage is two-way) |
+| Primary contact name and email (client / employer / petitioner, by structure), first seen | GHL, copied once; Immiglance owns it afterwards |
+| Service Type to visa | GHL value, translated by an Immiglance mapping table |
+| Employer profile (company, FEIN, address, signatory, ...) | Immiglance (employer enters once) |
+| Employee / beneficiary details, documents, checklists, forms, OCR, questionnaires, workflow | Immiglance |
+| Case manager / team lead assignment | Immiglance |
+| Employee name | Immiglance (see decision 2 on writing it to GHL) |
+| Visa type | Seeded once from GHL's Service Type mapping, then Immiglance |
+| Contact name, email, phone (existing contacts) | GHL to Immiglance only, per-field config (`contactFieldOwnership`) |
 
 ---
 
-## 6. Flows
+## 5. Design
 
-### 6.1 Setup and initial import (admin "Sync now")
+### 5.1 Separate boards (replaces the merged board)
 
-1. `GET /opportunities/pipelines?locationId=…`, select the two pipelines (configured IDs, falling back to a name match).
-2. Build and store `unifiedStages` and `stageMappings`. **Stop and report if the stage sets differ.**
-3. **Inspect the opportunity and contact custom-field structure** and report whether a visa type field exists (§6.6).
-4. For each pipeline: `GET /opportunities/search` with `pipeline_id` and `location_id`, **fully paginated** until no records remain. Each pipeline is processed in isolation (see §6.7).
-5. For each opportunity: `GET /contacts/{contactId}`.
-6. Upsert by `locationId + opportunityId`.
-   - **New:** create via `ghlCaseFactory` with `origin: "initial_sync"` and **no client or team lead emails** (default off; confirm). The timeline and audit entry reads **"Created from GHL — Initial Sync"**.
-   - **Existing:** update only GHL-owned fields (§10).
-7. Idempotent and resumable. Running it twice creates no duplicates.
+- **Stage mapping per pipeline:** each pipeline's own stages are mapped independently by `(pipelineId, stageId)`. The two pipelines may now diverge. Drift detection (renamed, removed or added stage), `config_mismatch` status and admin confirmation stay, per pipeline.
+- **Backend:** the board endpoint takes `category=immigrant|non_immigrant` and returns that pipeline's columns and cards. Scoping is unchanged (case manager sees only assigned cards).
+- **Frontend:** the Pipeline page gets two tabs, **Immigrant** and **Non-Immigrant**. A case manager sees the same two tabs ("My Pipeline"), only with their own cards. Moves, optimistic updates, live updates and the admin Integration panel stay as built.
+- **No data migration:** the integration has never been enabled or synced against real data, and all test records were deleted.
 
-### 6.2 GHL → CRM: new opportunity (`OpportunityCreate`)
+### 5.2 Service Type to visa mapping (editable, not hard-coded)
 
-```
-verify signature → check locationId → dedupe webhookId → persist event → return 200
-  → (worker) claim event atomically
-  → pipeline configured? no → ignored
-  → find case by locationId+opportunityId → exists? update fields, stop
-  → fetch contact
-  → ghlCaseFactory creates the case (below)
-  → map stage by (pipelineId, stageId) → save integrations.ghl (origin: "webhook")
-  → timeline + audit: "Created from GHL — OpportunityCreate webhook"
-  → emails/notifications through the existing lifecycleOrchestrator path
-  → case sits in the team lead queue (pending_assignment, no case manager)
-  → socket event → board refreshes
-```
+- A mapping table in the integration config: `GHL value -> { visaType, petitionSubType, expected category }`.
+- **Today:** use a detailed `Service Type` if it maps; otherwise combine `Service Type` with the matching detail field (`work_visa`, `study_visa`, `green_card`, `business__investment`).
+- **Later:** when Service Type holds detailed values ("H-1B New", "H-1B Extension", "L-1A New", ...), only rows are added. No code change.
+- **Unmapped or incomplete** (for example only "Work Visa", or "H-1B" where a sub-type is required) leaves the case with **visa selection pending**, exactly as built, for a team lead to complete. Nothing is guessed. No visa-driven checklists, forms or questionnaires run while pending.
+- The mapping decides the **structure**: single-party visa to an individual case, employer visa to the employer model, family visa to the family model.
+- The earlier "single-party visas only" restriction on the visa select is **removed** and replaced by structure-aware handling.
 
-**`ghlCaseFactory`:** calls `CaseNumberService`, the client-user find-or-create logic, `case.service` and `lifecycleOrchestrator` directly, **without** calling or editing `createCase`. We accept a little duplicated glue code to get zero regression risk on the existing path.
+### 5.3 Employer-based visas (inbound, GHL to Immiglance)
 
-**Visa type: no placeholder, no fake value.**
-- The factory sets `visaType = null`, `visaSelectionStatus = "pending"`, and `category` from the source pipeline (immigrant or non-immigrant).
-- If a visa value is found in a GHL custom field and it maps through `visaFieldMapping.valueMap`, use it and set `visaSelectionStatus = "selected"` (§6.6).
-- **No visa-driven provisioning runs while the status is `pending`.** That means no checklists, no forms, no questionnaires, no conditional forms and no document requirements. The team lead sees a clear **"Visa selection required"** state on the case.
-- When the team lead selects the visa, the small hook in the visa-update path sets `selected` and runs the same provisioning the existing flow runs for any other case.
-- The exact gating points come from the Phase 1 audit. If any existing hook would provision on case creation regardless of visa, the factory bypasses it for pending cases and the audit tells us how.
+When an opportunity arrives whose mapped visa is employer-based:
 
-**Missing email:** the case is still created and flagged `needsAttention`. It is never dropped. The client user is created later when an email appears.
+1. **Find the employer with a matching strategy (not an identity).** In this order:
+   1. **An existing GHL-linked employer:** the GHL contact id is already stored on an employer matter.
+   2. **Exact normalised email match** against employer matters (created from GHL or manually).
+   3. **Otherwise** create the employer matter (principal + `EmployerProfile`) seeded with name and email, an inactive employer login with the usual setup invitation, and the usual team-lead notification.
+   - **Ambiguity goes to Needs Attention, never to a guess.** This covers: more than one possible employer matter; an email that belongs to a non-employer account (for example an individual client with a case); a shared mailbox that could belong to several employers; and the same email arriving with a clearly different company name. Nothing is attached or created until a team lead decides.
+   - **Email is only the first matching signal.** The employer's identity in Immiglance is the employer matter / `EmployerProfile` id. If HR changes email, or a company has several HR contacts, the stored GHL contact link still matches the same employer. Later releases can add more signals (company name, FEIN) without changing the model.
+2. **The employer is a shared party, not a visa case.** An employer matter created from GHL must not, by itself, start the normal visa-driven employer workflow on the strength of one employee's visa. Today's model requires a principal to carry a visa and assigns the employer checklist from it, so the plan is explicit about the trade-off:
+   - **R3-3 (single-visa employers):** the employer matter takes the first employee's visa as a **provisional container visa**, flagged as provisional, only so today's employer checklist works for an employer whose employees share one visa. Nothing else visa-driven is started on the employer matter.
+   - **Mixed-visa employers:** when an employee arrives whose visa differs from the container's, the card is still created, but the employer matter and card get a **"mixed-visa employer" attention flag**, and the system does **not** claim the employer-side questions for that visa are covered.
+   - **R3-6 changes the rule properly:** *employer profile data is shared; visa-specific employer questions belong to the individual employee case.* See §5.4. Mixed-visa employers are not declared production-ready until that passes.
+3. **Create one employee child** for this opportunity (it always belongs to an employer matter; an employee card never exists without its employer), mirroring `addEmployeeSlot` (child case number, `EmployeeProfile`, role-filtered checklist, forms) with the opportunity's visa and sub-type. The child is "Not Identified" until the employer names the employee.
+4. **Link** the child to the GHL opportunity (`GHLCaseLink`, `integrations.ghl` on the child). The principal keeps only the GHL *contact* id for reference.
+5. **Assignment:** an already-assigned employer matter gives the child its case manager at once; otherwise the employer matter appears in the team lead's queue as usual.
+6. **Emails:** new employer gets the existing invitation. An additional opportunity for a known employer sends no new invitation; the employer sees the new employee card in the portal, and the team lead is notified only if assignment is still needed.
+7. **Visa pending:** the child is created in a pending state and provisions nothing visa-driven until completed.
 
-### 6.3 GHL → CRM: stage change (`OpportunityStageUpdate` / `OpportunityUpdate`)
+This is built **inside the GHL module, reusing existing services** (`CaseNumberService`, profile creation, checklist resolution, orchestrator). `createCase` and `addEmployeeSlot` are not edited.
 
-1. Find the case by opportunity ID. Not found? Treat as a create (events can arrive out of order).
-2. Map `(pipelineId, pipelineStageId)` through `stageMappings`. Unmapped → `ignored`, logged, and flagged as drift (§6.7).
-3. Apply the conflict rule in §6.5. This includes recognising the echo of our own write (`operationId` / `lastSyncedStageId` match), which updates `lastSyncedAt` only and **never writes back to GHL**.
-4. If accepted: update `pipelineId`, `pipelineStageId`, `unifiedStageKey`, bump `sync.version`, set `source = "ghl"`, `changedAt`, add a timeline entry, emit a socket event. **`Case.stage` is not modified.**
+### 5.4 Employer data reuse
 
-`ContactCreate` / `ContactUpdate` update only name, email and phone on linked cases, GHL → CRM only (§10).
+- Handled by the existing shared `EmployerProfile`: the employer is asked once, every employee's forms read the same data, employee data stays per employee.
+- GHL seeds only **name and email**, with a provenance that does **not** staff-lock the fields (to verify, because the current creation path locks them against employer edits).
+- **The rule that makes mixed visas correct:** the shared profile prevents repeated data entry (company, FEIN, address, signatory), while the **visa-specific employer questions belong to each employee's case**. John's H-1B employer questions live on John's case, Sarah's EB-2 / PERM / I-140 employer questions live on Sarah's case, and neither reuses the other's. This is **R3-6** and it is a **release gate** for mixed-visa employers (gap 2). It is additive: it assigns the missing employer-side questions per employee case, is idempotent, and never edits an existing checklist.
+- **Shared employer updates:** changing a shared employer fact (for example the address) is visible to every employee's employer data. Forms already generated or submitted are **not** snapshotted today (gap 4); the new shared-update test documents the exact current behaviour so the risk is explicit and a separate task can fix it.
 
-### 6.4 CRM → GHL: drag and drop
+### 5.5 Family / two-party visas
 
-`PATCH /api/cases/:caseId/pipeline-stage` with `{ unifiedStageKey, moveId }`.
+- The GHL contact is interpreted as the **petitioner**, Service Type = visa, **each opportunity = one beneficiary's family case**, created through the existing family-case logic with the petitioner matched by the same strategy as employers (§5.3: linked contact, then exact email, ambiguity to Needs Attention). A beneficiary case cannot exist without its petitioner (parent relationship rule).
+- **What R3-5 delivers, and what it does not:** petitioner matching, beneficiary case creation, GHL linking, pipeline and stage synchronisation. It does **not** stop a petitioner being asked the same questions again for a second beneficiary.
+- **Gap 3:** petitioner answers are not shared across cases today. A shared petitioner profile or prefill copy is new work in **R3-6**, with the same gating as mixed-visa employers.
 
-1. Authorize: admin, super_admin and team_lead for any GHL case; case_manager only for their own (`applyCaseRoleFilter`).
-2. Resolve the target GHL stage from the case's **own** `integrations.ghl.pipelineId` and `stageMappings`. Case A in Pipeline A gets A's stage ID, case B in Pipeline B gets B's, even when both go to the same column. The unified stage ID is **never** sent to GHL.
-3. In one atomic update on the case: new `unifiedStageKey`, `pipelineStageId`, `sync.version + 1`, `source = "immiglance"`, `changedAt = now`, new `operationId`, `state = "pending"`. Then create a `GHLSyncJob` carrying that `caseSyncVersion`, and mark any older `pending` jobs for this case `superseded`.
-4. **Return 200 immediately** with the updated card.
-5. **Worker** (outbound):
-   - **Atomic claim, mandatory:**
-     `findOneAndUpdate({status:"pending", nextAttemptAt:{$lte: now}}, {status:"processing", lockedUntil: now+lease})`.
-     A claimed job whose lease expires (crashed instance) is released back to `pending`. Two instances can never process the same job.
-   - **Hard invariant: stale-job check immediately before the GHL call.** The worker reloads the job and the case and sends **only if** the job is still `processing` (not `superseded`) **and** `job.caseSyncVersion === case.sync.version`. Otherwise it marks the job `superseded` and sends nothing. We do not rely on the frontend serialising moves.
-   - Example: user drags A→B, A→C, A→D. Jobs 1 and 2 are `superseded`, and only D ever reaches GHL.
-   - **Success:** job `done`. The case is `synced` only if the version still matches, otherwise it stays `pending` for the newer job.
-   - **Retryable failure** (network, 5xx, 429): exponential backoff (10s, 30s, 2m, 10m, 30m, up to about 8 attempts, honouring `Retry-After`).
-   - **Permanent failure** (404, other 4xx): `sync.state = "failed"`, `flags.needsAttention`, admin alert. Reconciliation can still repair it.
-6. A column the case's pipeline cannot map is refused with a clear 4xx **before** any local change is made.
+### 5.6 Outbound: Immiglance to GHL
 
-The frontend never sees any of step 5, apart from the admin-only `FAILED` indicator (§9).
+| Action in Immiglance | GHL effect |
+|---|---|
+| Staff or employer **adds an employee** under a GHL-linked employer | **Create a new opportunity** (employer name and contact, pipeline from the visa's category, first stage, Service Type from the mapping) |
+| Employee **identified** (named by the employer or staff) | Update the opportunity's **display name** from the employer's name ("ABC Technologies") to "ABC Technologies, John Smith". Display only: identity stays `locationId + opportunityId`. The initial opportunity always carries the employer's name only |
+| Employee card **moved** | Update that opportunity's stage (already built) |
+| Employee **removed** | Mark the opportunity **abandoned** (reversible), not deleted (decision 3) |
+| Employee **restored** | Set it back to **open** |
+| Employee's visa changes to another category | **Flag for a human**; no automatic pipeline switch in the first release (decision 7) |
 
-### 6.5 Conflict resolution (rewritten)
+- Reuses the queue already built: atomic claim with lease, retries with backoff, per-record serialisation, stale-job re-check, admin alert on permanent failure.
+- **Idempotency for "create opportunity":** our child case number is stored in GHL's existing `Opportunity id` custom field on the new opportunity. The inbound webhook for it recognises that value and links it instead of creating a second card, so a retry after a lost response never produces duplicates.
+- **Hooks:** one small guarded, non-blocking call after success in `addEmployeeSlot`, `removeEmployee` and `restoreEmployee`. It does nothing unless GHL is enabled **and** the employer matter is GHL-linked. A hook failure is logged and retried in the background and never affects the user's request.
+- GHL writes need opportunity-write scope on the token. **Testing stays on mocks** until you approve a real write.
 
-No rule based on "whether an outbound job happens to exist". Every stage change on a case, from either side, is recorded as `{ source, changedAt, operationId, version }`.
+### 5.7 Client portal and Admin stay in sync
 
-**Rule:**
+- Both read the same cases. New employee cards from GHL show in the employer's portal through the existing refresh (30 seconds today); a socket event will be added so Admin and Client update at once.
+- Visibility is unchanged: the employer sees their employees, an invited employee sees only their own case, a case manager sees only assigned cards.
 
-> The most recent accepted stage change wins, **unless there is an unresolved outbound operation for the same opportunity**, in which case our pending change wins until that operation resolves.
+### 5.8 Card and board
 
-In detail:
-1. **Echo of our own write:** an inbound event whose resulting stage equals the stage of our most recent operation (`operationId`, `lastSyncedStageId`) is recorded, never applied again, and never written back.
-2. **Unresolved outbound operation** (a `pending` or `processing` job for the same case at the current version): the inbound event is stored as `deferred`. When our job completes, the worker compares GHL's final state with ours:
-   - GHL already holds our target → done.
-   - GHL moved elsewhere **after** our `changedAt` (per GHL's own event timestamp) → GHL's change is newer and is applied.
-   - Otherwise our change is sent (it is the newer one).
-3. **No unresolved operation:** compare the inbound event's GHL timestamp with `sync.changedAt`. Newer wins; older is ignored (a late or reordered delivery).
-4. **Reconciliation** uses exactly the same comparison, with GHL's `dateUpdated` against `sync.changedAt`. It never uses "GHL wins" or "ours wins" as a blanket default.
-5. Ties on timestamps are broken by `source`: the side whose operation is currently unresolved wins, otherwise GHL.
-
-All decisions are logged on the timeline (`stage accepted from GHL`, `stage change from GHL ignored: older than the local change`, and so on).
-
-### 6.6 Visa type source (use GHL custom field if it exists)
-
-1. During setup (§6.1 step 3) we **inspect the real GHL opportunity and contact custom fields**. We do not invent a field.
-2. If a suitable field exists (for example `immigration_visa_type`), store its ID and a value map in `GHLIntegration.visaFieldMapping`. The factory then sets `visaType` directly and no team lead action is needed for those cases.
-3. If it does not exist, or a value does not map, the case stays `visaSelectionStatus = "pending"` for the team lead.
-4. Recommendation to you: if you control the GHL account, adding that custom field makes the whole flow hands-free.
-
-### 6.7 Reconciliation, isolation and drift (every 15–30 min)
-
-- Runs per pipeline, **independently**. If Pipeline A's fetch fails, Pipeline B still reconciles and Pipeline A is marked `degraded` with `lastFetchError`. One failing pipeline never blocks the other.
-- Compares GHL opportunities with linked cases using the §6.5 rule. Missing cases are created with `origin: "reconciliation"`.
-- **Deleted in GHL:** the case is **never deleted**. It gets `flags.deletedInGhl = true` and sync status flagged, and an admin is alerted. Per your standing rule, removal only ever happens by an explicit permanent-delete action.
-- **Config drift:** each run (and "Refresh stages") re-reads stage definitions and compares them with `stageMappings` by **stage ID**.
-  - A stage renamed ("Documents" → "Document Collection"), removed, or newly added → integration `status = "config_mismatch"`, admin alert, and affected inbound events are held, not silently mapped.
-  - The admin reviews and confirms the mapping from the panel.
-- Uses a lock with a lease so two instances never run it at once.
-- Throttled to stay inside GHL rate limits.
+- A card shows **employee name** (or "Employee, not identified yet"), **employer name**, visa, stage, case manager, and the existing "Visa required" and sync markers.
+- Filter and "group by employer". Clicking the employer opens the existing employer matter, whose "Employees" table keeps Add, Remove and Restore.
 
 ---
 
-## 7. Webhook security and reliability
+## 6. Mechanisms carried over unchanged from earlier revisions
 
-- Route: `POST /api/integrations/ghl/webhooks`, **public**, raw body so the signature is verified byte-for-byte.
-- Verify `X-GHL-Signature` (Ed25519, Node `crypto`). Fall back to `X-WH-Signature` only while GHL still sends it. 401 on failure.
-- Reject stale timestamps (replay protection), a wrong `locationId` and unknown event types.
-- **Both duplicate guards apply** (§5.2): `webhookId` dedupe on arrival, and the unique `locationId + opportunityId` index during case creation. A repeated `OpportunityCreate` with a new webhook ID is handled as an update of the existing case.
-- Persist, return **200 fast**, process asynchronously through the event state machine (§5.3). Non-2xx is reserved for signature and validation failures, so our own bugs don't trigger GHL's retry storm.
-- Dedicated rate limit, structured logs with no tokens or payload secrets.
-- Handled events: `OpportunityCreate`, `OpportunityUpdate`, `OpportunityStageUpdate`, `OpportunityStatusUpdate`, `ContactCreate`, `ContactUpdate`.
+### 6.1 Webhooks (built)
+`POST /api/integrations/ghl/webhooks`, public, raw body. The Ed25519 `X-GHL-Signature` is verified against the raw bytes with GHL's official public key (`GHL_WEBHOOK_PUBLIC_KEY`) **before** any JSON parsing. No Immiglance private key exists. Duplicates are blocked by `webhookId` (with a content-hash fallback) and again by the unique `GHLCaseLink` identity. The event is persisted, 200 returned fast, and processing runs through an atomic-claim state machine (`received, processing, processed, ignored, deferred, failed, dead`) with backoff. Handled events: `OpportunityCreate`, `OpportunityUpdate`, `OpportunityStageUpdate`, `OpportunityStatusUpdate`, `ContactCreate`, `ContactUpdate`. Legacy `X-WH-Signature` was deprecated by GHL on 2026-09-01 and is not accepted.
+
+### 6.2 Conflict rule (built)
+The most recent accepted stage change wins, unless there is an unresolved outbound change for the same opportunity, in which case ours wins until it resolves. Echoes of our own write are recognised and never written back. Late or reordered events are ignored by timestamp. Every decision is logged on the timeline.
+
+### 6.3 Outbound queue (built)
+Drag saves locally (compare-and-set on a sync version) and returns at once; a job is queued; newer jobs supersede older pending ones; the worker claims atomically, re-checks the version immediately before calling GHL, serialises writes per case, retries retryable errors with backoff (up to 8), and on a permanent error flags the case and alerts admins. The UI sees only SYNCED / PENDING / FAILED, and only admins see FAILED.
+
+### 6.4 Reconciliation, isolation and drift (R3-7)
+Every 15 to 30 minutes, per pipeline and independently (one failing pipeline never blocks the other, it is marked `degraded`). Missing cases are created with origin `reconciliation`; differences are resolved by the §6.2 rule; opportunities deleted in GHL are flagged `deletedInGhl`, never deleted; stage drift puts the integration in `config_mismatch` for admin review. Uses the existing `withJobLock` so two instances never run it at once.
+
+### 6.5 Import
+"Sync now" (admin) imports every opportunity from both pipelines with full pagination, idempotently, with **no emails**, and records the origin ("Created from GHL, Initial Sync" versus "OpportunityCreate webhook") on the timeline.
 
 ---
 
-## 8. API surface (new)
+## 7. Data model (as built, plus Revision 3 additions)
 
-| Method + path | Auth | Purpose |
+- **`GHLIntegration`** (one per location): status, pipelines (with category), stage mappings `(pipelineId, stageId) to stage key`, mapping confirmation, contact field ownership, timestamps. *Revision 3 adds:* per-pipeline stage lists, and the Service Type mapping table.
+- **`GHLCaseLink`**: unique `(locationId, opportunityId)` to `caseId` (plus contact lookups). Holds the external identity because `cases` has no free index slots.
+- **`GHLWebhookEvent`**: idempotency log and state machine with attempt counters and leases.
+- **`GHLSyncJob`**: outbound queue. *Revision 3 adds* job types `create_opportunity`, `set_status`.
+- **`Case.integrations.ghl`**: locationId, opportunityId, contactId, pipelineId, pipelineStageId, source ids, `unifiedStageKey`, `category`, status, origin, flags, sync `{state, version, source, changedAt, operationId, lastSyncedStageId, attempts, lastError}`. *Revision 3:* lives on the employee / individual case; the employer principal stores only the GHL contact id.
+- **`Case.visaSelectionStatus`**: `pending` / `selected`. `visaType` is required unless pending.
+
+---
+
+## 8. Built so far (Phases 1 to 5, all inert unless `GHL_ENABLED=true`)
+
+| Phase | Delivered | Verified |
 |---|---|---|
-| `POST /api/integrations/ghl/webhooks` | signature | Inbound events |
-| `GET /api/integrations/ghl/board` | admin, super_admin, team_lead, case_manager (scoped) | Unified board: columns plus cards |
-| `PATCH /api/cases/:caseId/pipeline-stage` | same, scoped | Move a card |
-| `GET /api/integrations/ghl/status` | admin, super_admin | Health summary (§9.3) |
-| `POST /api/integrations/ghl/sync` | admin, super_admin | Initial sync / "Sync now" |
-| `POST /api/integrations/ghl/refresh-stages` | admin, super_admin | Re-pull stage config, run drift check |
-| `POST /api/integrations/ghl/mappings/confirm` | admin, super_admin | Confirm mappings after drift |
-| `POST /api/integrations/ghl/jobs/:id/retry` | admin, super_admin | Manual retry of a failed job |
-| `POST /api/integrations/ghl/events/:id/requeue` | admin, super_admin | Requeue a `dead` webhook event |
+| 1 Foundation | env, client, models, Case fields, stage plan, drift detection | unit tests, live read-only check |
+| 2 Import | paginated fetch, contact fallback, case factory (pending visa, no emails), "Sync now", visa-selection hook | unit + DB tests |
+| 3 Inbound webhooks | signature, dedupe, event state machine, create/stage/status/contact handling, conflict rule | unit + route + DB tests |
+| 4 Outbound | move endpoint, queue, worker, retries, stale-job check, per-case serialisation, admin retry | DB tests with mocked GHL |
+| 5 Frontend | optimistic board, live updates, admin panel, visa banner, board and status APIs | 23 frontend tests, build |
 
-Every endpoint enforces roles. Each write adds an audit log entry, and each case change adds a timeline entry.
-
-**Response shaping:** card payloads carry a simplified `syncStatus` of `SYNCED | PENDING | FAILED`. For roles other than admin and super_admin, `FAILED` is reported as `SYNCED`/`PENDING` and **no** operation IDs, retry counts, HTTP codes, GHL response bodies or error strings are included.
-
-The board is one request: columns plus cards (name, email, visa type or "Visa selection required", case number, assignee, priority, internal source pipeline), paginated per column (for example 50 per column with "load more").
+Test status: 40 GHL backend tests and all Admin frontend tests pass; the existing case suite is unchanged (97 of 98, one failure that predates this work). Revision 3 modifies parts of Phases 1 and 5 as listed in §10.
 
 ---
 
-## 9. Frontend (Admin)
+## 9. Phases (Revision 3)
 
-### 9.1 Kanban board
+| Phase | Content | Risk |
+|---|---|---|
+| **R3-1** | Two separate boards (backend `category` param, tabs); per-pipeline stage mapping | Low, contained to the GHL module and Pipeline page |
+| **R3-2** | Service Type mapping table; visa routing for **individual (single-party)** GHL cases; replace the single-only guard | Low |
+| **R3-3** | **Employer model, inbound:** matching strategy (linked contact, exact email, ambiguity to Needs Attention), find or create the employer matter, one employee child per opportunity, link, assignment, notifications, "mixed-visa employer" flag | Medium (reuses existing employer services; heaviest testing) |
+| **R3-4** | **Outbound:** create opportunity on Add Employee; display-name update when an employee is identified; abandon/reopen on Remove/Restore; the guarded hooks; idempotency; mocks only | Medium |
+| **R3-5** | **Family inbound:** petitioner matching, beneficiary case per opportunity, GHL linking, stage sync. Does **not** remove repeated petitioner questions | Medium |
+| **R3-6** | **Release gate.** Visa-specific employer questions per employee case (additive, idempotent) for mixed-visa employers, plus the shared petitioner profile / prefill for family | Medium-high: touches existing provisioning; only after its own approval |
+| **R3-7** | Reconciliation job, drift refresh, admin retry on failed cards, rate limits, `docs/GHL_INTEGRATION.md`, completion report | Low |
 
-- New **Pipeline** page and sidebar entry for admin, super_admin, team_lead and case_manager.
-- **Visibility is enforced server-side:** admin, super_admin and team_lead see all GHL cases. A case manager sees only cases assigned to them.
-- `@dnd-kit` with pointer, touch and keyboard sensors and a drag overlay.
-- **Optimistic update:** the card moves in local state on drop. The API call runs in the background. No spinner blocks the board.
-  - Failure of the call to **our** backend: roll back with a small toast.
-  - A GHL failure after our backend accepted the move is **never** shown as a rollback. The backend retries it.
-- Rapid moves of one card are serialised on the client and the last drop wins, but this is only a UX nicety. Correctness comes from the backend version checks in §6.4.
-- Socket events patch the board without a reload and without disturbing an in-progress drag. Echoes of our own moves are ignored via `moveId`.
-- Memoised cards and per-column "load more" to avoid lag on large boards.
-- Card: client name, email, visa type (or a **"Visa required"** chip), case number, assignee, priority. Clicking opens the existing case detail. The source pipeline is kept as internal metadata, a tooltip rather than prominent text.
+**Release gates.** Employers whose employees all share one visa (for example H-1B only) can be tested and go live after **R3-3 and R3-4**. **Mixed-visa employers, and repeat-petitioner family cases, are not declared production-ready until R3-6 passes.** Until then the system flags them rather than pretending they are fully supported.
 
-### 9.2 Sync status visibility
+Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
 
-- Normal users see nothing about syncing.
-- Admin and super_admin see a small **"Failed to sync"** marker on a failed card, with a retry action. They don't see raw HTTP codes or response bodies on cards. Technical detail is only in the status panel.
+## 10. What happens to what is already built
 
-### 9.3 Integration health panel (admin, super_admin)
-
-```
-GoHighLevel Integration
-────────────────────────────────
-Connection               ✓ Connected
-Location                 <locationId>
-Immigrant pipeline       ✓
-Non-Immigrant pipeline   ✓
-Stage mapping            ✓  (or ⚠ config mismatch: review)
-
-Last webhook             2 min ago
-Last reconciliation      11 min ago
-Last API check           Healthy
-
-Pending jobs             3
-Failed jobs              0
-Dead webhook events      0
-
-[Sync now]  [Refresh stages]  [Review mappings]
-```
-
----
-
-## 10. Source of truth per field
-
-| Data | Owner |
+| Built piece | Fate |
 |---|---|
-| Opportunity ID, pipeline ID, stage ID, opportunity status | GHL (stage is bidirectional) |
-| Board column (`unifiedStageKey`) | Bidirectional, resolved by §6.5 |
-| Name, email, phone | **Phase 1: GHL → CRM only.** CRM edits are not pushed back. |
-| Case ID, case number, **visa type**, forms, checklists, questionnaires, documents, OCR, USCIS workflow, assignments, `Case.stage` | CRM only (visa may be *seeded* once from a GHL custom field, then CRM owns it) |
+| GHL client, models, `GHLCaseLink`, webhook signature, event state machine, outbound queue and worker, conflict rule, presenter, sync-status rules | **Kept** |
+| Stage plan "both pipelines must be identical" | **Changed:** per pipeline, no equality requirement |
+| Merged board API and page | **Changed:** per-pipeline tabs |
+| `ghlCaseFactory` (single-party cases only) | **Extended:** routes to individual / employer child / family |
+| Visa select "single-party visas only" guard | **Replaced** by structure-aware handling |
+| `Case.integrations.ghl` | **Kept,** now on the employee / individual case |
+| Everything outside `integrations/ghl` | **Untouched,** except the visa-update hook already added and three new guarded hooks (add / remove / restore employee) |
 
-Contact ownership is stored as explicit per-field config (`contactFieldOwnership`). If bidirectional contact sync is wanted later, it is enabled **per field** with its own conflict rule. We will not build a generic "sync everything both ways" mechanism.
+## 11. Testing
 
----
+- **Unit:** signature, stage mapping per pipeline, drift, conflict rule, retries, supersede, claim and lease, pagination, Service Type mapping, employer matching.
+- **Integration (DB, GHL mocked, cleanup after):**
+  - Same employer email, three opportunities: **one** employer, three employee cards, one `EmployerProfile`.
+  - Same employer, two visas: two pipelines, one employer, and the employer matter carries the "mixed-visa employer" flag until R3-6.
+  - **Shared employer update:** employer ABC has John (H-1B) and Sarah (EB-2); change the employer address once. Both employees' employer data show the new address. The test also records what happens to forms already generated, so that behaviour (gap 4) is explicit and not assumed.
+  - **Matching strategy:** an opportunity whose contact is already linked matches that employer; exact email matches; two possible employers, a shared mailbox, an individual client's email, or the same email with a different company name all go to Needs Attention and attach nothing.
+  - **Parent relationship rule:** an employee or beneficiary card is never created without its employer or petitioner; a single-party visa creates an independent case.
+  - **Contact interpretation:** the same GHL contact is a client for a single-party visa, an employer for an employment visa and a petitioner for a family visa.
+  - **GHL stage and workflow stage:** moving the GHL card changes no workflow step, and changing the workflow step does not move the GHL card.
+  - **Employee identified:** the GHL opportunity display name becomes "Employer, Employee"; identity and links are unchanged; a retry never creates a second opportunity.
+  - Duplicate webhook, or the same opportunity re-sent under a new webhook id: no second card.
+  - Immiglance-created opportunity echoed by the webhook: linked, **not** duplicated.
+  - Retry after a lost "create opportunity" response: still one opportunity.
+  - Employee removed: soft-removed, GHL abandoned; restored: reopened; no data lost.
+  - An individual client's email used as an employer: flagged, nothing attached.
+  - Service Type unmapped or incomplete: pending, nothing provisioned.
+  - Pipeline and visa category disagree: flagged, not moved.
+  - Moving John's card never changes Sarah's opportunity.
+  - Case manager sees only their employees' cards on both boards.
+  - Employer data entered once appears in every employee's form data (existing behaviour, regression-asserted).
+  - Non-GHL employer: add / remove employee never touches GHL.
+  - Same email, two opportunities for **individual** clients: two cases (identity is the opportunity).
+  - Same stage name in two pipelines: each card gets its own pipeline's stage id.
+  - GHL stage renamed: `config_mismatch`, nothing silently re-mapped.
+  - One pipeline unavailable: the other keeps working.
+  - GHL opportunity deleted: the case remains, flagged.
+- **Regression:** existing case, lead, assignment, notification and email suites; Admin and Client builds and tests. With `GHL_ENABLED=false` the app behaves exactly as today.
+- **Live checks:** read-only against the real GHL location. Any test record in the shared DB is deleted afterwards. **No GHL write without your explicit approval.**
 
-## 11. Phases
+## 12. Decisions (proposed answers, awaiting your confirmation)
 
-1. **Foundation + audit:** config, `ghlClient`, models, indexes, Case fields, env docs. Read the visa/provisioning code (§2 audit). **Read-only** GHL calls: list both pipelines, **compare stages**, inspect custom fields. *Checkpoint: I report the stage comparison, the custom-field findings and the audit results before going further.*
-2. **Import:** pipeline service, mappings and drift detection, paginated fetch, "Sync now" without emails, origin tagging.
-3. **Inbound webhooks:** signature, both duplicate guards, event state machine, case creation with emails, deferred visa handling, stage updates and the conflict rule.
-4. **Outbound sync:** the pipeline-stage endpoint, job queue, atomic claim, version re-check, retry and supersede logic.
-5. **Frontend:** Kanban page, optimistic hook, socket updates, health panel.
-6. **Reconciliation, hardening, docs:** per-pipeline isolation, locks, alerts, rate limiting, `docs/GHL_INTEGRATION.md`, completion report.
+| # | Question | Proposed decision |
+|---|---|---|
+| 1 | Employer matching | **Email is the initial matching signal, never the immutable employer identity.** Order: existing GHL-linked employer, then exact normalised email, then anything ambiguous goes to **Needs Attention** for a team lead. Never silently attach to an uncertain employer. A manually created employer matter with that email counts as a match. |
+| 2 | Opportunity name | **Yes.** The initial opportunity carries the employer's name. Once the employee is identified, update the **display name** to "Employer, Employee". Identity stays `locationId + opportunityId`. |
+| 3 | Removing an employee | **Remove marks the GHL opportunity abandoned; restore sets it open.** The Immiglance case is soft-removed and nothing is deleted. |
+| 4 | Create opportunities from Add Employee | **Yes.** Needs opportunity-write permission on the token. Mocks only until you approve a real test. |
+| 5 | Service Type | **Editable mapping table; never guess an unmapped value** (it stays pending). Please send the planned detailed values and the Immiglance visa and sub-type each means. Until then today's detail fields are mapped (for example "H-1B - Specialty Occupation") and sub-type-dependent ones stay pending. |
+| 6 | Mixed-visa employers | **Build R3-3 first, but do not claim mixed-visa support until R3-6 passes.** Single-visa employers (for example H-1B only) can go live after R3-3 and R3-4. Until R3-6, the first employee's visa is only a **provisional container visa** on the employer matter and mixed-visa employers are flagged. |
+| 7 | Visa or category change | **Flag for human review** (Needs Attention). No automatic pipeline switch in the first release. |
+| 8 | Family | **After the employer flow.** R3-5 is matching, case creation, linking and sync only; the shared petitioner profile / prefill is R3-6. |
+| 9 | Employer snapshot at submission | **Separate task.** The risk is documented here and made explicit by the shared-update test. |
+| 10 | Board layout | **Yes:** employee cards with employer label, filter and group-by-employer; the employer container is not a card. |
+| 11 | Contact interpretation | **Yes:** the GHL contact is the primary contact; the case structure decides whether it is the client, employer or petitioner. |
+| 12 | Parent relationship rule | **Yes:** a two-party employee or beneficiary card cannot exist without its employer or petitioner; single-party visas stay independent. |
 
-Each phase is a separate commit and is switchable with `GHL_ENABLED=false`.
+One point I want you to explicitly confirm, because it is a trade-off, not a free choice: the existing model requires an employer matter to carry a visa, so in R3-3 the **provisional container visa** (first employee's visa) is how single-visa employers get today's employer checklist. R3-6 then moves visa-specific employer questions onto each employee's case, which removes the dependence on the container visa.
 
----
-
-## 12. Testing
-
-### Unit
-Signature verification (valid, tampered, stale), mapping resolution per pipeline, echo/loop guard, conflict rule (every branch of §6.5), retry and backoff, supersede logic, atomic claim and lease expiry, pagination, webhook state-machine transitions.
-
-### Integration (Mongo, GHL mocked)
-Webhook create → exactly one case even when delivered twice. Same opportunity re-sent with a **different** `webhookId` → still one case (unique-index guard). Out-of-order stage-before-create. Drag sends the correct per-pipeline stage ID. GHL down → the move still succeeds locally and the job retries. Case manager scoping. Stale job is not sent after a newer drag.
-
-### The six additional tests
-1. **Same email, two opportunities:** two opportunities with `john@gmail.com` create **two** cases.
-2. **Same stage name, different stage IDs:** Pipeline A "Documents" = `A123`, Pipeline B "Documents" = `B456`. Move both to Documents → A gets `A123`, B gets `B456`.
-3. **GHL stage renamed:** "Documents" becomes "Document Collection" → integration goes to `config_mismatch`, an alert is raised, nothing is silently re-mapped.
-4. **One pipeline unavailable:** Pipeline A's sync fails, Pipeline B keeps working. A is `degraded`.
-5. **GHL opportunity deleted:** the CRM case remains and is flagged `deletedInGhl`, with sync status flagged.
-6. **No visa on a GHL case:** the case is created, `visaType` is null, `visaSelectionStatus = "pending"`, and **no visa-driven checklist, form or questionnaire is provisioned**. After the team lead selects a visa, provisioning runs as it does for any other case.
-
-### Regression
-Existing case-creation tests, lead conversion, assignment, notification and email suites still pass. All four apps still build with `npm run build`. With `GHL_ENABLED=false` the app is byte-for-byte behaviourally unchanged.
-
-### Live checks
-Read-only calls against the real GHL location to confirm pipelines, stages and custom fields. Any test case, user or company I create in the shared DB is **deleted afterwards**. Any write to GHL needs your explicit OK first, since it is your real CRM.
-
----
-
-## 13. Decisions still needed from you
-
-Resolved by your review and now built into this plan: no fake visa, GHL → CRM only for contacts in Phase 1, stop on stage mismatch, no emails on historical import, `createCase` untouched.
-
-1. **Second pipeline ID.** `.env` only has one `GHL_PIPELINE_ID`. May I list the location's pipelines and match by name ("Immigrant Documentation Pipeline", "Non-Immigrant Documentation Pipeline"), or will you give me both IDs?
-2. **Webhook URL.** What public HTTPS URL will GHL call? For local testing I'd use a tunnel. May I hard-code GHL's published Ed25519 public key, or should it be an env var?
-3. **Visa custom field.** I'll inspect GHL for one. If none exists, are you able to add one (`immigration_visa_type` or similar), or should every GHL case start in "Visa selection required"?
-4. **Opportunity status** (won / lost / abandoned). Show it read-only on the card, or also sync it from the board?
-5. **Real GHL writes during testing.** May I move a real or test opportunity in GHL to verify the outbound path, or mocks only?
-6. **Emails for live GHL cases.** The plan sends the existing `case_created` client email and team lead email for live webhook-created cases. If the client template mentions a visa or portal invitation, I'll check that it reads sensibly with no visa yet, and show you the result before enabling.
-
----
-
-## 14. Risks and mitigations
+## 13. Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Breaking existing case creation | `createCase` untouched, separate factory, feature flag, regression suites |
-| Wrong visa-driven provisioning | `visaType = null` + `pending` status, no provisioning until selected, test 6 |
-| Duplicate cases | Unique `webhookId` **and** unique partial index on `locationId + opportunityId` |
-| Infinite sync loop | `operationId` / `lastSyncedStageId` echo guard; echoes are never written back |
-| Ambiguous conflicts | Version + timestamp rule (§6.5), no blanket "who wins" |
-| Stale or replayed stage pushes | Hard version re-check immediately before every GHL mutation |
-| Multi-instance double-processing | Atomic `findOneAndUpdate` claims with leases, reconciliation lock |
-| GHL outage | UI unaffected; local state saved; jobs queue and retry; reconciliation repairs drift |
-| Rate limits (429) | Backoff, `Retry-After`, throttled bulk jobs |
-| One pipeline failing | Per-pipeline isolation and `degraded` status |
-| GHL stage renamed or changed | Mapping by stage ID, drift detection, `config_mismatch`, no silent re-map |
-| Email flood on import | Emails suppressed during initial sync |
-| Leaking sync internals | Response shaping; only admins see `FAILED` |
-| Token leakage | Token only in env, never logged, never sent to the frontend |
-| Webhook spoofing | Ed25519 verification, timestamp and location checks |
+| Breaking existing employer/employee flows | No edits to existing functions; only guarded, non-blocking hooks; GHL-linked records only; full regression suites each phase |
+| Duplicate cards or opportunities | Unique `GHLCaseLink` identity, `webhookId` dedupe, idempotency key on created opportunities, recognise our own echoes |
+| Wrong employer match | Email is only a matching signal (linked contact first, then exact email); any ambiguity goes to Needs Attention; never auto-attached to a non-employer account or an uncertain employer |
+| Wrong visa provisioning | Unmapped or incomplete Service Type stays pending; nothing visa-driven runs until resolved |
+| Infinite sync loops | Operation ids, last-synced stage, echo recognition, no write-back of inbound changes |
+| Stale or reordered updates | Version compare-and-set, stale-job check before every GHL write, timestamp rule |
+| GHL outage or rate limits | Local state saved first, queue with retries and backoff, per-pipeline isolation, reconciliation |
+| Mixed-visa employers missing employer-side questions | Flagged "mixed-visa employer" and **not declared production-ready until R3-6 passes** (release gate); R3-6 is additive and idempotent, and needs its own approval |
+| First employee's visa wrongly defining the whole employer | The container visa is provisional and flagged; the employer is a shared party; visa-specific employer questions move to each employee case in R3-6 |
+| Repeat petitioners asked the same questions again | Family intake (R3-5) is stated not to solve this; shared petitioner profile / prefill is R3-6 |
+| Shared employer edit altering already-generated forms | No snapshot exists today (gap 4); the shared-update test makes the behaviour explicit; fixing it is a separate task |
+| Removed employees in provisioning loops | Guard added with the automatic add/remove hooks |
+| Secrets | Token and keys only in `.env` (git-ignored); only GHL's public key is used for webhooks; no private key is generated by us |

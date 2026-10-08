@@ -20,9 +20,14 @@ const newMoveId = () =>
 const errorMessage = (error) =>
   error?.response?.data?.message || error?.userMessage || error?.message || 'Something went wrong'
 
-export default function usePipelineBoard() {
+// `category` picks which GHL pipeline's board to show ('immigrant' | 'non_immigrant').
+// The two pipelines are separate boards and are never merged.
+export default function usePipelineBoard(category = 'immigrant') {
   const { subscribe, connected } = useSocket()
   const [columns, setColumns] = useState([])
+  const [pipelines, setPipelines] = useState([]) // tab summary: [{ category, name, total }]
+  const [activeCategory, setActiveCategory] = useState(category)
+  const categoryRef = useRef(category)
   const [status, setStatus] = useState({ loading: true, error: null, disabled: false, configured: true })
   const [notice, setNotice] = useState(null)
 
@@ -61,12 +66,16 @@ export default function usePipelineBoard() {
     const seq = ++fetchSeq.current
     if (!silent) setStatus((s) => ({ ...s, loading: true, error: null }))
     try {
-      const res = await ghlApi.board()
-      if (!mounted.current || seq !== fetchSeq.current) return
+      const requested = categoryRef.current
+      const res = await ghlApi.board({ category: requested })
+      // Ignore the answer if a newer request started, or the user switched boards meanwhile.
+      if (!mounted.current || seq !== fetchSeq.current || requested !== categoryRef.current) return
       const data = res.data || {}
       const cols = data.columns || []
       rememberConfirmed(cols)
       commit(cols)
+      setPipelines(data.pipelines || [])
+      setActiveCategory(data.activeCategory || requested)
       setStatus({ loading: false, error: null, disabled: false, configured: data.configured !== false })
     } catch (error) {
       if (!mounted.current || seq !== fetchSeq.current) return
@@ -165,7 +174,9 @@ export default function usePipelineBoard() {
     const col = columnsRef.current.find((c) => c.key === columnKey)
     if (!col || !col.hasMore) return
     try {
-      const res = await ghlApi.board({ column: columnKey, skip: col.cards.length })
+      const requested = categoryRef.current
+      const res = await ghlApi.board({ column: columnKey, skip: col.cards.length, category: requested })
+      if (requested !== categoryRef.current) return // switched boards while loading
       const incoming = res.data?.columns?.[0]
       if (!incoming) return
       const have = new Set(columnsRef.current.flatMap((c) => c.cards.map((card) => card._id)))
@@ -176,6 +187,21 @@ export default function usePipelineBoard() {
       notify('error', `Couldn't load more cases: ${errorMessage(error)}`)
     }
   }, [commit, notify])
+
+  // Switching boards: clear the old board at once (so a card of the other
+  // pipeline can never be dragged by mistake) and load the new one. Moves already
+  // sent from the previous board keep going in the background untouched.
+  const firstCategoryRun = useRef(true)
+  useEffect(() => {
+    categoryRef.current = category
+    if (firstCategoryRun.current) {
+      firstCategoryRun.current = false
+      return
+    }
+    setActiveCategory(category) // the tab highlights instantly; only a real server fallback overrides this later
+    commit([])
+    refresh()
+  }, [category, commit, refresh])
 
   // Initial load, plus a slow safety refresh that heals any missed event.
   useEffect(() => {
@@ -215,5 +241,5 @@ export default function usePipelineBoard() {
     wasConnected.current = connected
   }, [connected, requestRefresh])
 
-  return { columns, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, refresh, setDragging, connected }
+  return { columns, pipelines, activeCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, refresh, setDragging, connected }
 }

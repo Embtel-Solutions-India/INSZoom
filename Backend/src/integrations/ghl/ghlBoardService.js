@@ -45,27 +45,51 @@ async function loadColumn(scope, column, user, { limit, skip }) {
   return { key: column.key, name: column.name, total, cards, hasMore: skip + cards.length < total };
 }
 
+const PIPELINE_ORDER = ["immigrant", "non_immigrant"];
+
+// A pipeline's cards are those currently sitting in THAT GHL pipeline, scoped to
+// what this user may see. (A card that GHL moves to the other pipeline changes
+// board with it.)
+const pipelineScope = (scope, pipeline) => ({ $and: [scope, { "integrations.ghl.pipelineId": pipeline.ghlPipelineId }] });
+
 /**
- * The unified board: one column per unified stage, cards from BOTH pipelines
- * merged. `column` (+ `skip`) loads more cards for a single column.
+ * One board per GHL pipeline: Immigrant and Non-Immigrant are never merged.
+ * `category` picks the pipeline (default: the first available). `column`
+ * (+ `skip`) loads more cards for a single column. The response also carries a
+ * small summary of every pipeline the user can see, for the tabs.
  */
-async function getBoard(user, { perColumn, column, skip } = {}) {
+async function getBoard(user, { perColumn, column, skip, category } = {}) {
   const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).lean();
-  if (!config?.mappingsConfirmedAt || !config.unifiedStages?.length) {
-    return { configured: false, columns: [], integrationStatus: config?.status || "unconfigured" };
-  }
+  const configured = Boolean(config?.mappingsConfirmedAt) && (config?.pipelines || []).some((p) => p.enabled && p.stages?.length);
+  if (!configured) return { configured: false, pipelines: [], columns: [], integrationStatus: config?.status || "unconfigured" };
+
   const limit = Math.min(Math.max(parseInt(perColumn, 10) || DEFAULT_PER_COLUMN, 1), MAX_PER_COLUMN);
   const offset = Math.max(parseInt(skip, 10) || 0, 0);
   const scope = boardScope(user);
-  const stages = [...config.unifiedStages].sort((a, b) => a.order - b.order);
+  const pipelines = config.pipelines
+    .filter((p) => p.enabled && p.stages?.length)
+    .sort((a, b) => PIPELINE_ORDER.indexOf(a.category) - PIPELINE_ORDER.indexOf(b.category));
 
+  const active = pipelines.find((p) => p.category === category) || pipelines[0];
+  const summary = await Promise.all(
+    pipelines.map(async (p) => ({
+      category: p.category,
+      name: p.ghlPipelineName,
+      id: p.ghlPipelineId,
+      total: await Case.countDocuments(pipelineScope(scope, p)),
+    }))
+  );
+  const base = { configured: true, pipelines: summary, activeCategory: active.category, integrationStatus: config.status };
+
+  const stages = [...active.stages].sort((a, b) => a.order - b.order);
+  const activeScope = pipelineScope(scope, active);
   if (column) {
     const stage = stages.find((s) => s.key === column);
-    if (!stage) return { configured: true, columns: [], integrationStatus: config.status };
-    return { configured: true, columns: [await loadColumn(scope, stage, user, { limit, skip: offset })], integrationStatus: config.status };
+    if (!stage) return { ...base, columns: [] };
+    return { ...base, columns: [await loadColumn(activeScope, stage, user, { limit, skip: offset })] };
   }
-  const columns = await Promise.all(stages.map((stage) => loadColumn(scope, stage, user, { limit, skip: 0 })));
-  return { configured: true, columns, integrationStatus: config.status };
+  const columns = await Promise.all(stages.map((stage) => loadColumn(activeScope, stage, user, { limit, skip: 0 })));
+  return { ...base, columns };
 }
 
 /**

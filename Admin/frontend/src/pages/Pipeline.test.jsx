@@ -5,9 +5,10 @@ import { MemoryRouter } from 'react-router-dom'
 let mockUser = { role: 'admin' }
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }))
 
-const hookState = { columns: [], status: { loading: false, error: null, disabled: false, configured: true }, notice: null }
+let lastCategory = null
+const hookState = { columns: [], pipelines: [], forceActive: null, status: { loading: false, error: null, disabled: false, configured: true }, notice: null }
 vi.mock('../hooks/usePipelineBoard', () => ({
-  default: () => ({ ...hookState, dismissNotice: vi.fn(), moveCard: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), setDragging: vi.fn(), connected: true }),
+  default: (category) => ({ ...(lastCategory = category, hookState), activeCategory: hookState.forceActive || category, dismissNotice: vi.fn(), moveCard: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), setDragging: vi.fn(), connected: true }),
 }))
 vi.mock('../components/pipeline/GhlStatusPanel', () => ({ default: () => <div>STATUS PANEL</div> }))
 
@@ -23,6 +24,10 @@ const renderPage = () => render(<MemoryRouter><Pipeline /></MemoryRouter>)
 
 beforeEach(() => {
   mockUser = { role: 'admin' }
+  lastCategory = null
+  hookState.pipelines = [{ category: 'immigrant', name: 'Immigrant Documentation pipeline', total: 3 }, { category: 'non_immigrant', name: 'Non-Immigrant Documentation pipeline', total: 7 }]
+  hookState.forceActive = null
+  try { sessionStorage.clear() } catch { /* ignore */ }
   hookState.status = { loading: false, error: null, disabled: false, configured: true }
   hookState.columns = [column('a', [cardOf('1', { visaSelectionRequired: true })]), column('b')]
   hookState.notice = null
@@ -71,6 +76,49 @@ describe('Pipeline page', () => {
     fireEvent.change(screen.getByLabelText('Filter loaded cases'), { target: { value: 'zed' } })
     expect(screen.queryByText('Client 1')).toBeNull()
     expect(screen.getByText('Zed Person')).toBeTruthy()
+  })
+
+  it('shows one tab per GHL pipeline with its own count, never a merged board', () => {
+    renderPage()
+    const tabs = screen.getAllByRole('tab')
+    expect(tabs.map((t) => t.textContent)).toEqual(['Immigrant3', 'Non-Immigrant7'])
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true')
+    expect(tabs[1].getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('switching tabs asks for the other pipeline and remembers the choice', () => {
+    renderPage()
+    expect(lastCategory).toBe('immigrant')
+    fireEvent.click(screen.getByRole('tab', { name: /Non-Immigrant/ }))
+    expect(lastCategory).toBe('non_immigrant')
+    expect(sessionStorage.getItem('ghl-pipeline-category')).toBe('non_immigrant')
+  })
+
+  it('starts on the remembered pipeline', () => {
+    sessionStorage.setItem('ghl-pipeline-category', 'non_immigrant')
+    renderPage()
+    expect(lastCategory).toBe('non_immigrant')
+  })
+
+  it('a case manager gets the same two tabs on their private board', () => {
+    mockUser = { role: 'case_manager' }
+    renderPage()
+    expect(screen.getAllByRole('tab').length).toBe(2)
+    expect(screen.getByRole('heading', { name: 'My Pipeline' })).toBeTruthy()
+  })
+
+  it('follows the server when the remembered pipeline is not available', () => {
+    sessionStorage.setItem('ghl-pipeline-category', 'non_immigrant')
+    hookState.pipelines = [{ category: 'immigrant', name: 'Immigrant Documentation pipeline', total: 1 }]
+    hookState.forceActive = 'immigrant' // the server served the Immigrant board even though Non-Immigrant was requested
+    renderPage()
+    expect(lastCategory).toBe('immigrant')
+  })
+
+  it('shows no tabs before the pipelines are known', () => {
+    hookState.pipelines = []
+    renderPage()
+    expect(screen.queryAllByRole('tab').length).toBe(0)
   })
 
   it('explains the disabled and not-yet-configured states', () => {

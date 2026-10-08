@@ -47,10 +47,11 @@ async function moveCaseStage({ caseId, unifiedStageKey, moveId, user }) {
   const config = await GHLIntegration.findOne({ locationId: caseDoc.integrations.ghl.locationId });
   if (!config?.mappingsConfirmedAt) throw httpError(409, "GHL stage mapping has not been confirmed", "MAPPING_UNCONFIRMED");
   if (config.status === "config_mismatch") throw httpError(409, "GHL stage configuration needs admin review", "CONFIG_MISMATCH");
-  if (!config.unifiedStages.some((s) => s.key === unifiedStageKey)) throw httpError(400, "Unknown pipeline stage", "UNKNOWN_STAGE");
-
-  // The case's OWN pipeline decides the GHL stage ID; the unified key is never sent to GHL.
+  // The case's OWN pipeline decides which stages exist for it; the key is never sent to GHL.
   const ghl = caseDoc.integrations.ghl;
+  const pipeline = config.pipelines.find((p) => p.enabled && p.ghlPipelineId === ghl.pipelineId);
+  if (!pipeline) throw httpError(409, "This case's GHL pipeline is not configured", "PIPELINE_NOT_CONFIGURED");
+  if (!pipeline.stages.some((s) => s.key === unifiedStageKey)) throw httpError(400, "Unknown pipeline stage", "UNKNOWN_STAGE");
   const target = resolveGhlStage(config.stageMappings, ghl.pipelineId, unifiedStageKey);
   if (!target) throw httpError(400, "This stage does not exist in the case's GHL pipeline", "STAGE_NOT_IN_PIPELINE");
 

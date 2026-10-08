@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createClient, GHLApiError } = require("../ghlClient");
-const { selectPipelines, buildStagePlan, detectDrift, resolveGhlStage, resolveUnifiedStage } = require("../ghlPipelineService");
+const { selectPipelines, buildPipelinePlans, detectDrift, resolveGhlStage, resolveUnifiedStage } = require("../ghlPipelineService");
 const Case = require("../../../models/Case");
 
 const stages = (names, prefix) => names.map((name, i) => ({ id: `${prefix}${i}`, name, position: i }));
@@ -11,34 +11,49 @@ const pipelineA = { id: "pA", name: "Immigrant Documentation pipeline", stages: 
 const pipelineB = { id: "pB", name: "Non-Immigrant Documentation pipeline", stages: stages(NAMES, "B") };
 const cfg = { immigrantPipelineName: pipelineA.name, nonImmigrantPipelineName: pipelineB.name };
 
-// ---- stage plan ----------------------------------------------------------
+// ---- stage plan (each pipeline is its own board) ---------------------------
 
-test("identical stages build unified columns and per-pipeline mappings by ID", () => {
+test("each pipeline gets its OWN stage list; mappings are keyed by pipeline + stage id", () => {
   const { selected, errors } = selectPipelines([pipelineA, pipelineB], cfg);
   assert.deepEqual(errors, []);
-  const plan = buildStagePlan(selected);
+  const plan = buildPipelinePlans(selected);
   assert.equal(plan.ok, true);
-  assert.equal(plan.unifiedStages.length, 4);
+  assert.equal(plan.pipelines.length, 2);
+  assert.deepEqual(plan.pipelines.map((p) => p.category), ["immigrant", "non_immigrant"]);
+  assert.equal(plan.pipelines[0].stages.length, 4);
   assert.equal(plan.stageMappings.length, 8);
-  // Same column, different GHL stage IDs per pipeline.
+  // Same stage name in both pipelines, different GHL stage ids: each resolves to its own.
   assert.equal(resolveGhlStage(plan.stageMappings, "pA", "docs_received").ghlStageId, "A2");
   assert.equal(resolveGhlStage(plan.stageMappings, "pB", "docs_received").ghlStageId, "B2");
   assert.equal(resolveUnifiedStage(plan.stageMappings, "pB", "B2").unifiedStageKey, "docs_received");
+  // A stage key from one pipeline never resolves in the other.
+  assert.equal(resolveGhlStage(plan.stageMappings, "pA", "nope"), null);
 });
 
-test("a stage name difference stops the plan and reports it (no union, no guessing)", () => {
+test("pipelines may DIFFER (different names and counts) and still plan fine", () => {
   const typo = { ...pipelineB, stages: stages(["Case Onboarded", "Docs checklist", "Docs recieved", "Draft ready"], "B") };
-  const plan = buildStagePlan(selectPipelines([pipelineA, typo], cfg).selected);
-  assert.equal(plan.ok, false);
-  assert.match(plan.problems[0], /Stage 3 differs/);
-  assert.deepEqual(plan.stageMappings, []);
+  const shorter = { ...pipelineB, stages: stages(["Intake", "Review", "Done"], "B") };
+  const withTypo = buildPipelinePlans(selectPipelines([pipelineA, typo], cfg).selected);
+  assert.equal(withTypo.ok, true);
+  assert.equal(withTypo.pipelines[1].stages[2].key, "docs_recieved");
+  const different = buildPipelinePlans(selectPipelines([pipelineA, shorter], cfg).selected);
+  assert.equal(different.ok, true);
+  assert.deepEqual(different.pipelines.map((p) => p.stages.length), [4, 3]);
+  assert.equal(different.stageMappings.length, 7);
+  assert.equal(resolveGhlStage(different.stageMappings, "pB", "review").ghlStageId, "B1");
+  assert.equal(resolveGhlStage(different.stageMappings, "pA", "review"), null);
 });
 
-test("different stage counts stop the plan", () => {
-  const shorter = { ...pipelineB, stages: stages(NAMES.slice(0, 3), "B") };
-  const plan = buildStagePlan(selectPipelines([pipelineA, shorter], cfg).selected);
-  assert.equal(plan.ok, false);
-  assert.ok(plan.problems.some((p) => /count differs/.test(p)));
+test("a pipeline with no stages, or colliding stage names, is rejected and reported", () => {
+  const empty = { ...pipelineB, stages: [] };
+  const empty_plan = buildPipelinePlans(selectPipelines([pipelineA, empty], cfg).selected);
+  assert.equal(empty_plan.ok, false);
+  assert.match(empty_plan.problems[0], /no stages/);
+  const dup = { ...pipelineB, stages: stages(["Docs", "docs", "Done"], "B") };
+  const dup_plan = buildPipelinePlans(selectPipelines([pipelineA, dup], cfg).selected);
+  assert.equal(dup_plan.ok, false);
+  assert.match(dup_plan.problems[0], /not unique/);
+  assert.deepEqual(dup_plan.stageMappings, []);
 });
 
 test("missing or ambiguous pipelines are reported", () => {
@@ -46,12 +61,23 @@ test("missing or ambiguous pipelines are reported", () => {
   assert.equal(selectPipelines([pipelineA, pipelineA, pipelineB], cfg).errors.length, 1);
 });
 
-test("renamed / removed / added stages are detected as drift by stage ID", () => {
-  const plan = buildStagePlan(selectPipelines([pipelineA, pipelineB], cfg).selected);
+test("a configured pipeline ID wins over the name, and must exist", () => {
+  const byId = selectPipelines([pipelineA, pipelineB], { ...cfg, immigrantPipelineId: "pA", nonImmigrantPipelineId: "pB", immigrantPipelineName: "x", nonImmigrantPipelineName: "y" });
+  assert.deepEqual(byId.errors, []);
+  assert.deepEqual(byId.selected.map((s) => s.pipeline.id), ["pA", "pB"]);
+  const missing = selectPipelines([pipelineA, pipelineB], { ...cfg, immigrantPipelineId: "ghost" });
+  assert.match(missing.errors[0], /not found in GHL/);
+  const same = selectPipelines([pipelineA, pipelineB], { ...cfg, immigrantPipelineId: "pA", nonImmigrantPipelineId: "pA" });
+  assert.ok(same.errors.some((e) => /same GHL pipeline/.test(e)));
+});
+
+test("renamed / removed / added stages are detected as drift by stage ID, per pipeline", () => {
+  const plan = buildPipelinePlans(selectPipelines([pipelineA, pipelineB], cfg).selected);
   const renamed = { ...pipelineA, stages: pipelineA.stages.map((s) => (s.id === "A2" ? { ...s, name: "Document Collection" } : s)) };
   const drift = detectDrift(plan.stageMappings, [renamed, pipelineB]);
   assert.equal(drift.length, 1);
   assert.equal(drift[0].type, "stage_renamed");
+  assert.equal(drift[0].ghlPipelineId, "pA"); // only the affected pipeline reports drift
 
   const removedAndAdded = { ...pipelineB, stages: [...pipelineB.stages.slice(0, 3), { id: "Bnew", name: "Extra", position: 9 }] };
   const types = detectDrift(plan.stageMappings, [pipelineA, removedAndAdded]).map((d) => d.type).sort();

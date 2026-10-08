@@ -17,7 +17,9 @@ async function loadOrBuildConfig({ client } = {}) {
   const pipelines = await pipelineService.listPipelines(locationId, client);
   let config = await GHLIntegration.findOne({ locationId });
 
-  if (config?.mappingsConfirmedAt && config.stageMappings.length) {
+  // A config confirmed before pipelines carried their own stage lists has to be rebuilt (and re-confirmed once).
+  const hasPipelineStages = config?.pipelines?.length > 0 && config.pipelines.every((p) => p.stages?.length);
+  if (config?.mappingsConfirmedAt && config.stageMappings.length && hasPipelineStages) {
     const drift = pipelineService.detectDrift(config.stageMappings, pipelines);
     if (drift.length) {
       config.status = "config_mismatch";
@@ -30,17 +32,11 @@ async function loadOrBuildConfig({ client } = {}) {
 
   const { selected, errors } = pipelineService.selectPipelines(pipelines);
   if (errors.length) return { ok: false, config, drift: [], problems: errors };
-  const plan = pipelineService.buildStagePlan(selected);
+  const plan = pipelineService.buildPipelinePlans(selected);
   if (!plan.ok) return { ok: false, config, drift: [], problems: plan.problems };
 
   if (!config) config = new GHLIntegration({ locationId });
-  config.pipelines = selected.map(({ category, pipeline }) => ({
-    ghlPipelineId: pipeline.id,
-    ghlPipelineName: pipeline.name,
-    category,
-    enabled: true,
-  }));
-  config.unifiedStages = plan.unifiedStages;
+  config.pipelines = plan.pipelines.map((p) => ({ ...p, enabled: true }));
   config.stageMappings = plan.stageMappings;
   config.mappingsConfirmedAt = undefined;
   config.status = "unconfigured";
@@ -58,8 +54,12 @@ async function previewSetup(options) {
     problems: result.problems || [],
     drift: result.drift || [],
     confirmed: Boolean(result.config?.mappingsConfirmedAt),
-    pipelines: (result.config?.pipelines || []).map((p) => ({ id: p.ghlPipelineId, name: p.ghlPipelineName, category: p.category })),
-    columns: (result.config?.unifiedStages || []).map((s) => ({ key: s.key, name: s.name })),
+    pipelines: (result.config?.pipelines || []).map((p) => ({
+      id: p.ghlPipelineId,
+      name: p.ghlPipelineName,
+      category: p.category,
+      stages: (p.stages || []).map((s) => ({ key: s.key, name: s.name })),
+    })),
   };
 }
 

@@ -46,57 +46,47 @@ function selectPipelines(pipelines, config = env.ghl) {
   return { selected, errors };
 }
 
-// Pure. Compares the selected pipelines' stages and, only if they are
-// identical (same count, same names in the same order), builds the unified
-// columns + per-pipeline mappings. Any difference => ok:false with a report;
-// we never build a union and never guess.
-function buildStagePlan(selected) {
+// Pure. Builds each pipeline's OWN stage list and its stage mappings. Pipelines
+// are independent: they may have different stages, different counts, different
+// names. (Immiglance shows one board per pipeline, so there is no merging and
+// no requirement that the two pipelines match.) A pipeline whose stage names
+// collide after slugging is rejected, because the column key must be unique
+// inside its board.
+function buildPipelinePlans(selected) {
   const problems = [];
-  if (selected.length < 2) return { ok: false, problems: ["Two pipelines are required"], unifiedStages: [], stageMappings: [] };
+  if (!selected.length) return { ok: false, problems: ["No pipelines selected"], pipelines: [], stageMappings: [] };
 
-  const [first, ...rest] = selected;
-  const baseStages = sortStages(first.pipeline.stages);
-  const normalise = (name) => String(name).trim().toLowerCase();
-
-  for (const other of rest) {
-    const stages = sortStages(other.pipeline.stages);
-    if (stages.length !== baseStages.length) {
-      problems.push(
-        `Stage count differs: "${first.pipeline.name}" has ${baseStages.length}, "${other.pipeline.name}" has ${stages.length}`
-      );
-    }
-    const max = Math.max(stages.length, baseStages.length);
-    for (let i = 0; i < max; i += 1) {
-      const a = baseStages[i];
-      const b = stages[i];
-      if (!a || !b || normalise(a.name) !== normalise(b.name)) {
-        problems.push(
-          `Stage ${i + 1} differs: "${first.pipeline.name}" = ${a ? `"${a.name}"` : "(none)"}, "${other.pipeline.name}" = ${b ? `"${b.name}"` : "(none)"}`
-        );
-      }
-    }
-  }
-  if (problems.length) return { ok: false, problems, unifiedStages: [], stageMappings: [] };
-
-  const unifiedStages = baseStages.map((stage, index) => ({ key: slug(stage.name), name: stage.name, order: index }));
-  const keys = new Set(unifiedStages.map((s) => s.key));
-  if (keys.size !== unifiedStages.length) {
-    return { ok: false, problems: ["Stage names are not unique within a pipeline"], unifiedStages: [], stageMappings: [] };
-  }
-
+  const pipelines = [];
   const stageMappings = [];
-  for (const { pipeline } of selected) {
-    sortStages(pipeline.stages).forEach((stage, index) => {
+  for (const { category, pipeline } of selected) {
+    const stages = sortStages(pipeline.stages);
+    if (!stages.length) {
+      problems.push(`Pipeline "${pipeline.name}" has no stages`);
+      continue;
+    }
+    const planned = stages.map((stage, index) => ({ key: slug(stage.name), name: stage.name, order: index, ghlStageId: stage.id }));
+    if (new Set(planned.map((s) => s.key)).size !== planned.length) {
+      problems.push(`Pipeline "${pipeline.name}" has stage names that are not unique`);
+      continue;
+    }
+    pipelines.push({
+      ghlPipelineId: pipeline.id,
+      ghlPipelineName: pipeline.name,
+      category,
+      stages: planned.map(({ key, name, order }) => ({ key, name, order })),
+    });
+    planned.forEach((stage) =>
       stageMappings.push({
         ghlPipelineId: pipeline.id,
-        ghlStageId: stage.id,
+        ghlStageId: stage.ghlStageId,
         ghlStageName: stage.name,
-        unifiedStageKey: unifiedStages[index].key,
-        unifiedStageName: unifiedStages[index].name,
-      });
-    });
+        unifiedStageKey: stage.key,
+        unifiedStageName: stage.name,
+      })
+    );
   }
-  return { ok: true, problems: [], unifiedStages, stageMappings };
+  if (problems.length) return { ok: false, problems, pipelines: [], stageMappings: [] };
+  return { ok: true, problems: [], pipelines, stageMappings };
 }
 
 // Pure. Compares stored mappings with the stages GHL reports now, by stage ID.
@@ -135,4 +125,4 @@ function resolveGhlStage(stageMappings, ghlPipelineId, unifiedStageKey) {
   return stageMappings.find((m) => m.ghlPipelineId === ghlPipelineId && m.unifiedStageKey === unifiedStageKey) || null;
 }
 
-module.exports = { listPipelines, selectPipelines, buildStagePlan, detectDrift, resolveUnifiedStage, resolveGhlStage, slug };
+module.exports = { listPipelines, selectPipelines, buildPipelinePlans, detectDrift, resolveUnifiedStage, resolveGhlStage, slug };

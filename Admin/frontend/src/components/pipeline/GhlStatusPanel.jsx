@@ -106,8 +106,10 @@ export default function GhlStatusPanel({ onChanged }) {
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
           {preview.ok ? (
             <>
-              <p className="mb-1 font-medium text-foreground">Both pipelines have the same {preview.columns.length} stages:</p>
-              <p className="text-muted-foreground">{preview.columns.map((c) => c.name).join(' → ')}</p>
+              <p className="mb-1 font-medium text-foreground">Each pipeline gets its own board:</p>
+              {(preview.pipelines || []).map((p) => (
+                <p key={p.id} className="text-muted-foreground"><span className="font-medium text-foreground">{p.name}</span> ({p.stages.length} stages): {p.stages.map((c) => c.name).join(' → ')}</p>
+              ))}
               {!preview.confirmed ? (
                 <button type="button" className="btn-primary mt-2" disabled={Boolean(busy)} onClick={() => run('confirm', async () => { await ghlApi.confirmMapping(); setPreview(null) })}>
                   Confirm mapping

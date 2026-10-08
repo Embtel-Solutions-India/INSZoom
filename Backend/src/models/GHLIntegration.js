@@ -9,6 +9,8 @@ const pipelineSchema = new mongoose.Schema(
     ghlPipelineName: { type: String, required: true },
     category: { type: String, enum: ["immigrant", "non_immigrant"], required: true },
     enabled: { type: Boolean, default: true },
+    // This pipeline's own board columns, in order. Pipelines are independent and may differ.
+    stages: [new mongoose.Schema({ key: String, name: String, order: Number }, { _id: false })],
     lastFetchOkAt: Date,
     lastFetchError: String,
   },
@@ -37,12 +39,6 @@ const ghlIntegrationSchema = new mongoose.Schema(
     },
     statusDetail: String,
     pipelines: [pipelineSchema],
-    unifiedStages: [
-      new mongoose.Schema(
-        { key: String, name: String, order: Number },
-        { _id: false }
-      ),
-    ],
     stageMappings: [stageMappingSchema],
     // Set once an admin confirms the mapping; drift detection compares against it.
     mappingsConfirmedAt: Date,

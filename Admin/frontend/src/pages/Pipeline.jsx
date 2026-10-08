@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, Search, Settings2, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -7,6 +7,13 @@ import Board from '../components/pipeline/Board'
 import GhlStatusPanel from '../components/pipeline/GhlStatusPanel'
 
 const ADMIN_ROLES = ['super_admin', 'admin']
+const CATEGORY_KEY = 'ghl-pipeline-category'
+const CATEGORY_LABEL = { immigrant: 'Immigrant', non_immigrant: 'Non-Immigrant' }
+
+// Remember which pipeline the person was looking at (per browser tab). Storage can be blocked, so it is optional.
+const readStoredCategory = () => {
+  try { return sessionStorage.getItem(CATEGORY_KEY) === 'non_immigrant' ? 'non_immigrant' : 'immigrant' } catch { return 'immigrant' }
+}
 
 // One page, two audiences. Admin / super admin / team lead get every GHL case;
 // a case manager gets "My Pipeline" with only the cases assigned to them. The
@@ -17,15 +24,26 @@ export default function Pipeline() {
   const navigate = useNavigate()
   const isCaseManager = user?.role === 'case_manager'
   const isAdmin = ADMIN_ROLES.includes(user?.role)
-  const { columns, status, notice, dismissNotice, moveCard, loadMore, refresh, setDragging, connected } = usePipelineBoard()
+  const [category, setCategory] = useState(readStoredCategory)
+  const { columns, pipelines, activeCategory, status, notice, dismissNotice, moveCard, loadMore, refresh, setDragging, connected } = usePipelineBoard(category)
   const [filter, setFilter] = useState('')
   const [showPanel, setShowPanel] = useState(false)
   const openCase = useCallback((id) => navigate(`/crm-cases/${id}`), [navigate])
 
+  const selectCategory = useCallback((next) => {
+    setCategory(next)
+    try { sessionStorage.setItem(CATEGORY_KEY, next) } catch { /* optional */ }
+  }, [])
+
+  // If the remembered pipeline isn't available (the server fell back to another), follow the server.
+  useEffect(() => {
+    if (activeCategory && activeCategory !== category && pipelines.some((p) => p.category === activeCategory)) selectCategory(activeCategory)
+  }, [activeCategory, category, pipelines, selectCategory])
+
   const title = isCaseManager ? 'My Pipeline' : 'Pipeline'
   const subtitle = isCaseManager
-    ? 'Only the cases assigned to you. Moving a card here updates your team lead’s board and GoHighLevel automatically.'
-    : 'Every GoHighLevel case from both pipelines on one board. Drag a card to move it; GoHighLevel is updated in the background.'
+    ? 'Only the cases assigned to you, one board per GoHighLevel pipeline. Moving a card here updates your team lead’s board and GoHighLevel automatically.'
+    : 'One board per GoHighLevel pipeline. Drag a card to move it; GoHighLevel is updated in the background.'
 
   let body
   if (status.loading && !columns.length) {
@@ -82,6 +100,28 @@ export default function Pipeline() {
           ) : null}
         </div>
       </div>
+
+      {pipelines.length > 0 ? (
+        <div role="tablist" aria-label="Pipelines" className="flex gap-1 border-b border-border">
+          {pipelines.map((p) => {
+            const selected = p.category === activeCategory
+            return (
+              <button
+                key={p.category}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => selectCategory(p.category)}
+                title={p.name}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${selected ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+              >
+                {CATEGORY_LABEL[p.category] || p.name}
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{p.total}</span>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       {notice ? (
         <div role="alert" className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${notice.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-border bg-card text-foreground'}`}>

@@ -48,8 +48,16 @@ exports.status = async (req, res, next) => {
 };
 
 exports.board = guard(async (req, res) => {
-  const { perColumn, column, skip } = req.query;
-  res.json({ success: true, ...(await boardService.getBoard(req.user, { perColumn, column: typeof column === "string" ? column : undefined, skip })) });
+  const { perColumn, column, skip, category } = req.query;
+  res.json({
+    success: true,
+    ...(await boardService.getBoard(req.user, {
+      perColumn,
+      column: typeof column === "string" ? column : undefined,
+      skip,
+      category: typeof category === "string" ? category : undefined,
+    })),
+  });
 });
 
 // Drag-and-drop move. Saves locally and queues the GHL write, then answers
