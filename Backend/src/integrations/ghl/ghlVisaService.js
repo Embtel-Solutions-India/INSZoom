@@ -63,13 +63,15 @@ async function resolveForOpportunity({ opportunity, config, client, pipelineCate
 }
 
 // What to do with a resolution: the case fields to set, the stored record, and why a human may be needed.
-function planFromResolution(resolution) {
+// `allowEmployer` is true only on the employer-intake path, where an employer visa becomes an employee card under
+// an employer matter. For an existing individual card it stays false: an individual case is never converted.
+function planFromResolution(resolution, { allowEmployer = false } = {}) {
   if (!resolution) return { applied: false, fields: {}, record: null, attention: [] };
-  const mappedSingle = resolution.status === "mapped" && resolution.structure === "single";
+  const mappedSingle = resolution.status === "mapped" && (resolution.structure === "single" || (allowEmployer && resolution.structure === "employer_employee"));
   const status = mappedSingle ? "applied" : resolution.status === "mapped" ? SUGGESTION_ONLY : resolution.status;
   const attention = [];
   if (resolution.status === "mapped" && !mappedSingle) {
-    attention.push(`GHL says ${resolution.visaType}, an ${String(resolution.structure).replace("_", "/")} visa. Intake for these is added in a later phase; a team lead sets this case up.`);
+    attention.push(`GHL says ${resolution.visaType}, an ${String(resolution.structure).replace("_", "/")} visa, but this card is an individual case. A team lead sets it up (individual cards are never converted automatically).`);
   }
   if (resolution.status === "ambiguous") attention.push(`GHL visa fields conflict: ${resolution.reason}`);
   if (resolution.categoryMismatch) attention.push(`The GHL pipeline and the visa (${resolution.visaType}) disagree on Immigrant vs Non-Immigrant.`);
@@ -138,9 +140,39 @@ async function provisionVisaCase(caseId) {
   await step("recalculate", () => lifecycle.recalculate(caseId, null, null, "ghl_visa_applied"));
 }
 
-function scheduleProvisioning(caseId) {
-  waiting.push(() => provisionVisaCase(caseId));
+function enqueue(task) {
+  waiting.push(task);
   setImmediate(pump);
+}
+
+function scheduleProvisioning(caseId) {
+  enqueue(() => module.exports.provisionVisaCase(caseId));
+}
+
+// Employer matter + employee card. Same steps the existing flows run (createCase's initialisation for the matter,
+// addEmployeeSlot for each employee), each isolated so one failure never blocks the rest, and no notifications
+// (intake already sent them).
+async function provisionEmployerMatter({ principalId, childId, newPrincipal }) {
+  const lifecycle = require("../../modules/cases/case-lifecycle-orchestrator.service");
+  const step = async (name, run) => {
+    try {
+      await run();
+    } catch (error) {
+      logger.error("ghl_employer_provision_step_failed", { principalId: String(principalId), step: name, error: error.message });
+    }
+  };
+  if (newPrincipal) await step("orchestrate employer", () => lifecycle.orchestrateOne(principalId, null, null));
+  await step("orchestrate employee", () => lifecycle.orchestrateOne(childId, null, null));
+  const principal = await Case.findById(principalId);
+  if (!principal) return;
+  await step("forms", () => lifecycle.provisionRequiredForms(principal, null, null));
+  if (newPrincipal) await step("petition draft", () => lifecycle.provisionPetitionDraft(principal, null, null));
+  await step("checklists", () => lifecycle.provisionChecklistAssignments(principal, null, null));
+  await step("recalculate", () => lifecycle.recalculate(principalId, null, null, "ghl_employee_added"));
+}
+
+function scheduleEmployerProvisioning(args) {
+  enqueue(() => module.exports.provisionEmployerMatter(args));
 }
 
 /**
@@ -211,6 +243,8 @@ module.exports = {
   planFromResolution,
   applyToExistingCase,
   scheduleProvisioning,
+  scheduleEmployerProvisioning,
+  provisionEmployerMatter,
   provisionVisaCase,
   SUGGESTION_ONLY,
   MAX_CONCURRENT,

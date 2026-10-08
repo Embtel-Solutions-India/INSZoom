@@ -3,6 +3,7 @@ const env = require("../../config/env");
 const logger = require("../../utils/logger");
 const Case = require("../../models/Case");
 const GHLCaseLink = require("../../models/GHLCaseLink");
+const GHLEmployerLink = require("../../models/GHLEmployerLink");
 const GHLIntegration = require("../../models/GHLIntegration");
 const GHLWebhookEvent = require("../../models/GHLWebhookEvent");
 const caseService = require("../../modules/cases/case.service");
@@ -304,17 +305,25 @@ async function handleContactEvent(event) {
   const p = event.payload;
   const contactId = pick(p, "id", "contactId");
   if (!contactId) return { outcome: "ignored", note: "no contact id" };
-  const links = await GHLCaseLink.find({ locationId: event.locationId, contactId }).lean();
-  if (!links.length) return { outcome: "ignored", note: "no linked cases" };
+  // Individual cards linked to this contact, plus the employer matter(s) this contact stands for.
+  const [links, employerLinks] = await Promise.all([
+    GHLCaseLink.find({ locationId: event.locationId, contactId }).lean(),
+    GHLEmployerLink.find({ locationId: event.locationId, contactId }).lean(),
+  ]);
+  const caseIds = [...new Set([...links.map((l) => String(l.caseId)), ...employerLinks.map((l) => String(l.principalCaseId))])];
+  if (!caseIds.length) return { outcome: "ignored", note: "no linked cases" };
 
   const first = String(p.firstName || "").trim();
   const last = String(p.lastName || "").trim();
   const name = String(p.name || p.fullName || [first, last].filter(Boolean).join(" ")).trim();
   const email = String(p.email || "").trim().toLowerCase();
 
-  for (const link of links) {
-    const caseDoc = await Case.findById(link.caseId);
+  for (const caseId of caseIds) {
+    const caseDoc = await Case.findById(caseId);
     if (!caseDoc) continue;
+    // An EMPLOYEE card shares its employer's GHL contact but is a different person: the contact's name and
+    // email belong to the employer matter, never to the employee.
+    if (caseDoc.caseRole === "employee") continue;
     const set = {};
     if (name && name !== caseDoc.clientName) set.clientName = name;
     if (email && email !== caseDoc.clientEmail) {

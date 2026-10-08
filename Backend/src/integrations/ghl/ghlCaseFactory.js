@@ -13,6 +13,8 @@ const workflowSlaService = require("../../modules/settings/workflowSla.service")
 const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
 const { generateOpaqueToken, hashToken } = require("../../modules/auth/password.service");
 const visaService = require("./ghlVisaService");
+const employerService = require("./ghlEmployerService");
+const { findEmployerMatch } = require("./ghlEmployerMatching");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 
 const CLIENT_SETUP_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
@@ -83,7 +85,12 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
   }
 
   try {
-    return await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution });
+    const routing = await chooseRoute({ opportunity, contact, visaResolution, locationId });
+    if (routing.route === "employer") {
+      // Employer visa: one employee card under a shared employer matter (see ghlEmployerService.js).
+      return await employerService.intakeEmployerOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
+    }
+    return await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, extraAttention: routing.attention || [] });
   } catch (error) {
     await GHLCaseLink.deleteOne({ locationId, opportunityId: opportunity.id, caseId: caseObjectId }).catch(() => {});
     await Case.deleteOne({ _id: caseObjectId }).catch(() => {});
@@ -91,14 +98,34 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
   }
 }
 
-async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution }) {
+// Individual card, or employer employee card? Only a COMPLETE mapping to an employer visa goes the employer way,
+// and only when the employer can be matched without doubt. Anything uncertain falls back to an individual card
+// that is flagged for a team lead, so nothing is attached to a guess and nothing is lost.
+async function chooseRoute({ opportunity, contact, visaResolution, locationId }) {
+  if (!(visaResolution?.status === "mapped" && visaResolution.structure === "employer_employee")) return { route: "individual" };
+  if (!contact.email) {
+    return { route: "individual", attention: ["Employer visa, but the GHL contact has no email, so the employer account cannot be set up."] };
+  }
+  const match = await findEmployerMatch({
+    locationId,
+    contactId: opportunity.contactId || contact.id,
+    email: contact.email,
+    names: [opportunity.name || contact.name], // the COMPANY name GHL carries; see ghlEmployerMatching
+  });
+  if (match.status === "ambiguous") {
+    return { route: "individual", attention: [`Employer could not be matched safely (${match.reason}). Nothing was attached.`] };
+  }
+  return { route: "employer", match };
+}
+
+async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, extraAttention = [] }) {
   const visaPlan = visaService.planFromResolution(visaResolution);
   const email = contact.email || "";
   const clientName = contact.name || opportunity.name || "GHL Client";
   const clientPlan = await planClientUser(email);
   const needsAttentionReasons = [];
   if (clientPlan.action === "none") needsAttentionReasons.push(clientPlan.reason);
-  needsAttentionReasons.push(...visaPlan.attention);
+  needsAttentionReasons.push(...visaPlan.attention, ...extraAttention);
 
   const teamLead = await caseService.resolveTeamLeadForCase({});
   const slaDueDates = await workflowSlaService.computeInitialSlaDueDates().catch(() => undefined);
@@ -141,6 +168,7 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
             unifiedStageKey: mapping?.unifiedStageKey,
             category,
             opportunityStatus: opportunity.status,
+            role: "individual",
             ...(visaPlan.record ? { visaResolution: visaPlan.record } : {}),
             origin,
             flags: { deletedInGhl: false, needsAttention: needsAttentionReasons.length > 0 },

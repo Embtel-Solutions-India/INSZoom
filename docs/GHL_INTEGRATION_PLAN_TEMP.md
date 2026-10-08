@@ -1,6 +1,6 @@
 # GoHighLevel (GHL) Integration: Implementation Plan (TEMP), Revision 3.1
 
-Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards) and R3-2 (Service Type to visa mapping, single-party routing) are DONE and verified. Next: R3-3 (employer model, inbound). Work proceeds one phase at a time, with a report after each.**
+Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards), R3-2 (Service Type to visa mapping, single-party routing) and R3-3 (employer model, inbound) are DONE and verified. Next: R3-4 (outbound: create opportunity on Add Employee, abandon/reopen, display name; mocks only). Work proceeds one phase at a time, with a report after each.**
 Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attorney portals are not touched.
 
 ### What changed in Revision 3

@@ -186,7 +186,7 @@ const visaFormMappingSchema = new mongoose.Schema(
     // USCISFormComponentDefinition rather than a whole USCISFormTemplate -
     // only meaningful for a SUPPLEMENT/FORM_COMPONENT row whose "form" is
     // really a page-range section of its parent's own PDF (e.g. I-129's
-    // classification supplements), never for one with its own separate
+    // classif ication supplements), never for one with its own separate
     // template (that case uses formTemplateFormCode exactly like a
     // STANDALONE_FORM does - see I-539A, which already works this way).
     // Resolved live against the parent's CURRENT active template version at

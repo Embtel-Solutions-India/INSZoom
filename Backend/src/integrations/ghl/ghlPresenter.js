@@ -26,6 +26,10 @@ function presentCard(caseDoc, user) {
     priority: caseDoc.priority,
     status: caseDoc.status,
     assignedCaseManager: caseDoc.assignedCaseManager || null,
+    // individual | employee. An employee card has the employer's name on it and is "not identified" until named.
+    caseRole: caseDoc.caseRole || null,
+    employeeIdentified: caseDoc.caseRole !== "employee" || Boolean(caseDoc.clientName),
+    employerName: null, // filled in by the board service from the employer matter
     unifiedStageKey: ghl.unifiedStageKey || null,
     category: ghl.category || null,
     // Internal metadata: which GHL pipeline the card belongs to.

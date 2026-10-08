@@ -12,6 +12,9 @@ const PRIORITY_DOT = {
 // What a card looks like. Shared by the in-column card and the drag overlay so
 // the card under the pointer is pixel-identical to the one it came from.
 export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
+  const isEmployee = card.caseRole === 'employee'
+  // An employee card is not a named person until the employer identifies them.
+  const title = card.employeeIdentified === false ? 'Employee, not identified yet' : (card.clientName || 'Unnamed client')
   const sourceLabel = card.category === 'non_immigrant' ? 'Non-Immigrant pipeline' : card.category === 'immigrant' ? 'Immigrant pipeline' : ''
   return (
     <div
@@ -23,10 +26,11 @@ export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[card.priority] || PRIORITY_DOT.medium}`} title={`Priority: ${card.priority || 'medium'}`} />
-            <p className="truncate text-sm font-semibold text-foreground">{card.clientName || 'Unnamed client'}</p>
+            <p className={`truncate text-sm font-semibold ${card.employeeIdentified === false ? 'italic text-muted-foreground' : 'text-foreground'}`}>{title}</p>
           </div>
+          {card.employerName ? <p className="mt-0.5 truncate text-xs font-medium text-foreground/80" title="Employer">{card.employerName}</p> : null}
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{card.caseNumber}</p>
-          {card.clientEmail ? <p className="truncate text-xs text-muted-foreground">{card.clientEmail}</p> : <p className="text-xs italic text-muted-foreground">No email</p>}
+          {card.clientEmail ? <p className="truncate text-xs text-muted-foreground">{card.clientEmail}</p> : isEmployee ? null : <p className="text-xs italic text-muted-foreground">No email</p>}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {card.visaSelectionRequired ? (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800">Visa required</span>

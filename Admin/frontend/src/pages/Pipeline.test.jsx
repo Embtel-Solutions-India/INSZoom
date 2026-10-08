@@ -70,6 +70,23 @@ describe('Pipeline page', () => {
     expect(screen.getByText('Failed to sync')).toBeTruthy()
   })
 
+  it('an employee card shows its employer and "not identified yet" until the employer names them', () => {
+    hookState.columns = [column('a', [cardOf('1', { caseRole: 'employee', employeeIdentified: false, clientName: '', clientEmail: '', employerName: 'ABC Technologies' }), cardOf('2', { caseRole: 'employee', employeeIdentified: true, clientName: 'John Smith', employerName: 'ABC Technologies' })])]
+    renderPage()
+    expect(screen.getByText('Employee, not identified yet')).toBeTruthy()
+    expect(screen.getByText('John Smith')).toBeTruthy()
+    expect(screen.getAllByText('ABC Technologies').length).toBe(2)
+    expect(screen.queryByText('No email')).toBeNull() // an employee has no email of their own yet; that is not a problem to show
+  })
+
+  it('the filter also finds cards by employer name', () => {
+    hookState.columns = [column('a', [cardOf('1', { employerName: 'ABC Technologies' }), cardOf('2', { employerName: 'Zed Corp' })])]
+    renderPage()
+    fireEvent.change(screen.getByLabelText('Filter loaded cases'), { target: { value: 'zed' } })
+    expect(screen.queryByText('Client 1')).toBeNull()
+    expect(screen.getByText('Client 2')).toBeTruthy()
+  })
+
   it('filters loaded cards client-side', () => {
     hookState.columns = [column('a', [cardOf('1'), cardOf('2', { clientName: 'Zed Person' })])]
     renderPage()

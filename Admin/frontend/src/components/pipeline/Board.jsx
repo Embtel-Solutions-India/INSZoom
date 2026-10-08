@@ -10,7 +10,7 @@ const collisionDetection = (args) => {
 }
 
 const matches = (card, query) =>
-  [card.clientName, card.caseNumber, card.clientEmail, card.visaType].some((value) => String(value || '').toLowerCase().includes(query))
+  [card.clientName, card.employerName, card.caseNumber, card.clientEmail, card.visaType].some((value) => String(value || '').toLowerCase().includes(query))
 
 export default function Board({ columns, onMove, onOpen, onLoadMore, onDragStateChange, filter = '' }) {
   const [activeId, setActiveId] = useState(null)

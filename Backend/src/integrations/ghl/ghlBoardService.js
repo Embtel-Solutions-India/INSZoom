@@ -12,7 +12,7 @@ const DEFAULT_PER_COLUMN = 50;
 const MAX_PER_COLUMN = 100;
 
 const CARD_FIELDS =
-  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager integrations.ghl createdAt updatedAt";
+  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase integrations.ghl createdAt updatedAt";
 
 // Same visibility as the Cases list (admin / super_admin / team_lead see all
 // cases; a case manager only those assigned to them), narrowed to GHL cases.
@@ -28,17 +28,26 @@ async function loadAssignees(cards) {
   return new Map(users.map((u) => [String(u._id), u.displayName || u.name || ""]));
 }
 
+// One batched lookup for the employer names of the employee cards in a column.
+async function loadEmployers(cards) {
+  const ids = [...new Set(cards.map((c) => c.parentCase && String(c.parentCase)).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const matters = await Case.find({ _id: { $in: ids } }).select("petitionerName clientName").lean();
+  return new Map(matters.map((m) => [String(m._id), m.petitionerName || m.clientName || ""]));
+}
+
 async function loadColumn(scope, column, user, { limit, skip }) {
   const filter = { $and: [scope, { "integrations.ghl.unifiedStageKey": column.key }] };
   const [total, docs] = await Promise.all([
     Case.countDocuments(filter),
     Case.find(filter).select(CARD_FIELDS).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(limit).lean(),
   ]);
-  const assignees = await loadAssignees(docs);
+  const [assignees, employers] = await Promise.all([loadAssignees(docs), loadEmployers(docs)]);
   const isAdmin = ADMIN_ROLES.has(normalizeRole(user.role));
   const cards = docs.map((doc) => {
     const card = presentCard(doc, user);
     card.assigneeName = doc.assignedCaseManager ? assignees.get(String(doc.assignedCaseManager)) || null : null;
+    card.employerName = doc.parentCase ? employers.get(String(doc.parentCase)) || null : null;
     if (isAdmin) card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention);
     return card;
   });
