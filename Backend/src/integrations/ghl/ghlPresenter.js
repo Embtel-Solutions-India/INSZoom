@@ -12,6 +12,19 @@ function publicSyncStatus(ghl, user) {
   return state === "pending" ? "PENDING" : "SYNCED";
 }
 
+// Who the beneficiary is, if anyone knows yet. Read-only: the invite (name the petitioner typed) first, then what
+// the canonical profile has recorded from the beneficiary checklist (so it appears when the petitioner fills it in
+// themselves). Never written anywhere.
+function beneficiaryIdentity(caseDoc) {
+  const invite = caseDoc.beneficiaryInvite || {};
+  const canon = caseDoc.canonicalProfile?.profile?.beneficiary || {};
+  const val = (v) => (v && typeof v === "object" && "value" in v ? v.value : v);
+  const first = String(val(canon.firstName) || "").trim();
+  const last = String(val(canon.lastName) || "").trim();
+  const full = String(val(canon.fullName) || "").trim() || [first, last].filter(Boolean).join(" ");
+  return { name: String(invite.name || "").trim() || full, email: String(invite.email || val(canon.email) || "").trim() };
+}
+
 // The few fields a board card / move response needs, in one place so the
 // board endpoint (later phase) and the move endpoint can never disagree.
 function presentCard(caseDoc, user) {
@@ -19,8 +32,11 @@ function presentCard(caseDoc, user) {
   return {
     _id: caseDoc._id,
     caseNumber: caseDoc.caseNumber,
-    clientName: caseDoc.clientName,
-    clientEmail: caseDoc.clientEmail,
+    // On a FAMILY card the title is the petitioner (the GHL contact); clientName/clientEmail on the case are the beneficiary's.
+    clientName: ghl.role === "family" ? caseDoc.petitionerName || "" : caseDoc.clientName,
+    clientEmail: ghl.role === "family" ? null : caseDoc.clientEmail,
+    isFamily: ghl.role === "family",
+    ...(ghl.role === "family" ? { beneficiaryName: beneficiaryIdentity(caseDoc).name, beneficiaryIdentified: Boolean(beneficiaryIdentity(caseDoc).name) } : {}),
     visaType: caseDoc.visaType || null,
     visaSelectionRequired: caseDoc.visaSelectionStatus === "pending",
     priority: caseDoc.priority,

@@ -13,6 +13,7 @@ const PRIORITY_DOT = {
 // the card under the pointer is pixel-identical to the one it came from.
 export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
   const isEmployee = card.caseRole === 'employee'
+  const isFamily = Boolean(card.isFamily)
   // An employee card is not a named person until the employer identifies them.
   const title = card.employeeIdentified === false ? 'Employee, not identified yet' : (card.clientName || 'Unnamed client')
   const sourceLabel = card.category === 'non_immigrant' ? 'Non-Immigrant pipeline' : card.category === 'immigrant' ? 'Immigrant pipeline' : ''
@@ -30,7 +31,11 @@ export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
           </div>
           {card.employerName ? <p className="mt-0.5 truncate text-xs font-medium text-foreground/80" title="Employer">{card.employerName}</p> : null}
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{card.caseNumber}</p>
-          {card.clientEmail ? <p className="truncate text-xs text-muted-foreground">{card.clientEmail}</p> : isEmployee ? null : <p className="text-xs italic text-muted-foreground">No email</p>}
+          {isFamily ? (
+            <p className={`truncate text-xs ${card.beneficiaryIdentified ? 'text-foreground/80' : 'italic text-muted-foreground'}`} title="Beneficiary">
+              {card.beneficiaryIdentified ? `Beneficiary: ${card.beneficiaryName}` : 'Beneficiary: not identified yet'}
+            </p>
+          ) : card.clientEmail ? <p className="truncate text-xs text-muted-foreground">{card.clientEmail}</p> : isEmployee ? null : <p className="text-xs italic text-muted-foreground">No email</p>}
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {card.visaSelectionRequired ? (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.7rem] font-medium text-amber-800">Visa required</span>

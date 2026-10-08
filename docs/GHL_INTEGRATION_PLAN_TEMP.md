@@ -1,6 +1,6 @@
 # GoHighLevel (GHL) Integration: Implementation Plan (TEMP), Revision 3.1
 
-Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards), R3-2 (Service Type to visa mapping, single-party routing) and R3-3 (employer model, inbound) are DONE and verified. Next: R3-4 (outbound: create opportunity on Add Employee, abandon/reopen, display name; mocks only). Work proceeds one phase at a time, with a report after each.**
+Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards), R3-2 (Service Type to visa mapping, single-party routing) and R3-3 (employer model, inbound) and R3-5 (family, single case; brought forward) are DONE and verified. Next: R3-4 (outbound: create opportunity on Add Employee, abandon/reopen, display name; mocks only). Work proceeds one phase at a time, with a report after each.**
 Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attorney portals are not touched.
 
 ### What changed in Revision 3
@@ -28,7 +28,7 @@ Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attor
 | E | **Parent relationship rule:** a two-party employee / beneficiary card cannot exist without its employer / petitioner. Single-party visas stay independent (§3). |
 | F | **GHL stage and Immiglance workflow stage stay independent in both directions.** Moving the GHL card never starts a workflow step, and a workflow change never moves the GHL card unless explicitly decided later (§1). |
 | G | **Employee name** is written to GHL only as a **display name** once the employee is identified ("ABC Technologies, John Smith"). The initial name is the employer's. Identity is always `locationId + opportunityId` (§5.6). |
-| H | **Family scope is stated honestly:** R3-5 delivers petitioner matching, beneficiary case creation, GHL linking and stage sync. It does **not** solve repeated petitioner questions; that is R3-6 (§5.5, §9). |
+| H | **Family is ONE case, ONE opportunity, ONE card, no child cases.** The GHL contact is the petitioner; the beneficiary is identified later through the existing invite / fill-it-myself flow; both checklists live on the one case. It does **not** solve repeated petitioner questions across cases; that is R3-6 (§5.5, §9). |
 | I | **New tests:** shared employer update, parent-relationship rule, contact interpretation, mixed-visa gate (§11). |
 | J | **Decisions** now carry proposed answers for you to confirm (§12). |
 
@@ -189,11 +189,26 @@ This is built **inside the GHL module, reusing existing services** (`CaseNumberS
 - **The rule that makes mixed visas correct:** the shared profile prevents repeated data entry (company, FEIN, address, signatory), while the **visa-specific employer questions belong to each employee's case**. John's H-1B employer questions live on John's case, Sarah's EB-2 / PERM / I-140 employer questions live on Sarah's case, and neither reuses the other's. This is **R3-6** and it is a **release gate** for mixed-visa employers (gap 2). It is additive: it assigns the missing employer-side questions per employee case, is idempotent, and never edits an existing checklist.
 - **Shared employer updates:** changing a shared employer fact (for example the address) is visible to every employee's employer data. Forms already generated or submitted are **not** snapshotted today (gap 4); the new shared-update test documents the exact current behaviour so the risk is explicit and a separate task can fix it.
 
-### 5.5 Family / two-party visas
+### 5.5 Family / two-party visas (single case, built)
 
-- The GHL contact is interpreted as the **petitioner**, Service Type = visa, **each opportunity = one beneficiary's family case**, created through the existing family-case logic with the petitioner matched by the same strategy as employers (§5.3: linked contact, then exact email, ambiguity to Needs Attention). A beneficiary case cannot exist without its petitioner (parent relationship rule).
-- **What R3-5 delivers, and what it does not:** petitioner matching, beneficiary case creation, GHL linking, pipeline and stage synchronisation. It does **not** stop a petitioner being asked the same questions again for a second beneficiary.
-- **Gap 3:** petitioner answers are not shared across cases today. A shared petitioner profile or prefill copy is new work in **R3-6**, with the same gating as mixed-visa employers.
+**One family visa opportunity = ONE case = ONE GHL opportunity = ONE board card. There are no child cases.** This is different from the employer model (many employees under one employer) on purpose, and it follows how the existing family flow already works.
+
+```text
+GHL contact  = the PETITIONER          Immiglance Family Case (one)
+GHL opportunity (Service Type = visa)   |- Petitioner   <- the GHL contact; receives the invitation
+                                        |- Beneficiary  <- not identified yet (no account needed)
+                                        |- Petitioner checklist   both assigned on the same case
+                                        '- Beneficiary checklist /  (existing family checklist step)
+```
+
+- **Petitioner:** the GHL contact. Matched by email to an ordinary client account, or a new inactive account is created and invited. A staff account, an employer or employee account, or a contact with no email is never reused: the opportunity becomes a flagged individual card instead.
+- **Beneficiary:** unidentified at first. The petitioner then uses the **existing** choices on their own dashboard: fill the beneficiary section themselves, or invite the beneficiary. Both flows are reused unchanged; the beneficiary's name and email are recorded by them. The board card reads that name (invitation first, otherwise what the canonical profile recorded) and shows "Beneficiary: not identified yet" until then.
+- **Checklists:** the existing family checklist step assigns both the petitioner and beneficiary checklists to the one case; the beneficiary checklist exists even though the beneficiary has no account (it falls back to the petitioner until they do). No generic questionnaire assignment is used for family, exactly as the existing family code requires.
+- **Forms and data ownership:** untouched. The canonical layer already routes each answer by who gave it (`person.*` / `contact.*` = petitioner, `beneficiary.*` = beneficiary), so petitioner data never fills beneficiary fields. Both parties' answers feed one case and one set of forms.
+- **GHL:** the contact stays the petitioner. A GHL contact update changes only the petitioner's display name (never the beneficiary's fields); an email change is flagged, never applied to a login. Stage moves in either direction affect only this one card.
+- **Several family cases for one petitioner** are allowed (as today): each opportunity is its own case on the same petitioner account, with no second invitation.
+- **Still open (R3-6):** a petitioner is asked their own questions again on a second family case, because petitioner answers are stored per case. A shared petitioner profile / prefill is the R3-6 task, gated like mixed-visa employers.
+- **Dormant until mapped:** no family visa is in today's seeded mapping (the one GHL option, "I-130 - Family Green Card Petition", does not say which family category). Family intake switches on the moment a Service Type value is mapped to a family visa such as K-1 or IR-1.
 
 ### 5.6 Outbound: Immiglance to GHL
 
@@ -275,7 +290,7 @@ Test status: 40 GHL backend tests and all Admin frontend tests pass; the existin
 | **R3-2** | Service Type mapping table; visa routing for **individual (single-party)** GHL cases; replace the single-only guard | Low |
 | **R3-3** | **Employer model, inbound:** matching strategy (linked contact, exact email, ambiguity to Needs Attention), find or create the employer matter, one employee child per opportunity, link, assignment, notifications, "mixed-visa employer" flag | Medium (reuses existing employer services; heaviest testing) |
 | **R3-4** | **Outbound:** create opportunity on Add Employee; display-name update when an employee is identified; abandon/reopen on Remove/Restore; the guarded hooks; idempotency; mocks only | Medium |
-| **R3-5** | **Family inbound:** petitioner matching, beneficiary case per opportunity, GHL linking, stage sync. Does **not** remove repeated petitioner questions | Medium |
+| **R3-5** | **Family inbound (DONE, brought forward):** ONE family case per opportunity, petitioner = GHL contact, beneficiary unidentified, both checklists on the one case via the existing family step, GHL linking, stage sync. Does **not** remove repeated petitioner questions | Medium |
 | **R3-6** | **Release gate.** Visa-specific employer questions per employee case (additive, idempotent) for mixed-visa employers, plus the shared petitioner profile / prefill for family | Medium-high: touches existing provisioning; only after its own approval |
 | **R3-7** | Reconciliation job, drift refresh, admin retry on failed cards, rate limits, `docs/GHL_INTEGRATION.md`, completion report | Low |
 
@@ -337,7 +352,7 @@ Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
 | 5 | Service Type | **Editable mapping table; never guess an unmapped value** (it stays pending). Please send the planned detailed values and the Immiglance visa and sub-type each means. Until then today's detail fields are mapped (for example "H-1B - Specialty Occupation") and sub-type-dependent ones stay pending. |
 | 6 | Mixed-visa employers | **Build R3-3 first, but do not claim mixed-visa support until R3-6 passes.** Single-visa employers (for example H-1B only) can go live after R3-3 and R3-4. Until R3-6, the first employee's visa is only a **provisional container visa** on the employer matter and mixed-visa employers are flagged. |
 | 7 | Visa or category change | **Flag for human review** (Needs Attention). No automatic pipeline switch in the first release. |
-| 8 | Family | **After the employer flow.** R3-5 is matching, case creation, linking and sync only; the shared petitioner profile / prefill is R3-6. |
+| 8 | Family | **One case, one opportunity, one card, no child cases.** Built (R3-5). The shared petitioner profile / prefill across a petitioner's cases is R3-6. |
 | 9 | Employer snapshot at submission | **Separate task.** The risk is documented here and made explicit by the shared-update test. |
 | 10 | Board layout | **Yes:** employee cards with employer label, filter and group-by-employer; the employer container is not a card. |
 | 11 | Contact interpretation | **Yes:** the GHL contact is the primary contact; the case structure decides whether it is the client, employer or petitioner. |

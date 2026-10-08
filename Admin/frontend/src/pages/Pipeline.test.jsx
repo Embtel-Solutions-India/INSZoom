@@ -79,6 +79,22 @@ describe('Pipeline page', () => {
     expect(screen.queryByText('No email')).toBeNull() // an employee has no email of their own yet; that is not a problem to show
   })
 
+  it('a family card is ONE card: petitioner as the title, beneficiary underneath', () => {
+    hookState.columns = [column('a', [
+      cardOf('1', { isFamily: true, clientName: 'John Smith', clientEmail: null, beneficiaryIdentified: false, beneficiaryName: '' }),
+      cardOf('2', { isFamily: true, clientName: 'Ana Lopez', clientEmail: null, beneficiaryIdentified: true, beneficiaryName: 'Maria Lopez' }),
+    ])]
+    renderPage()
+    expect(screen.getByText('John Smith')).toBeTruthy()
+    expect(screen.getByText('Beneficiary: not identified yet')).toBeTruthy()
+    expect(screen.getByText('Beneficiary: Maria Lopez')).toBeTruthy()
+    expect(screen.queryByText('No email')).toBeNull()
+    expect(screen.getAllByText(/Beneficiary:/).length).toBe(2) // two family cards, two lines, never a separate beneficiary card
+    fireEvent.change(screen.getByLabelText('Filter loaded cases'), { target: { value: 'maria' } })
+    expect(screen.queryByText('John Smith')).toBeNull()
+    expect(screen.getByText('Ana Lopez')).toBeTruthy()
+  })
+
   it('the filter also finds cards by employer name', () => {
     hookState.columns = [column('a', [cardOf('1', { employerName: 'ABC Technologies' }), cardOf('2', { employerName: 'Zed Corp' })])]
     renderPage()

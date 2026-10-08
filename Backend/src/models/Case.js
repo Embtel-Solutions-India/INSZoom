@@ -1172,7 +1172,8 @@ const caseSchema = new mongoose.Schema(
         },
         // individual = one client; employer = the shared employer matter (no opportunity of its own,
         // only the GHL contact); employee = one employee card under an employer (owns the opportunity).
-        role: { type: String, enum: ["individual", "employer", "employee"] },
+        // family = ONE case holding both the petitioner (the GHL contact) and the beneficiary; no child cases.
+        role: { type: String, enum: ["individual", "employer", "employee", "family"] },
         // On an employer matter: its visa is only the first employee's visa, used so today's employer
         // checklist works for single-visa employers. Not a statement about the employer.
         containerVisaProvisional: { type: Boolean },

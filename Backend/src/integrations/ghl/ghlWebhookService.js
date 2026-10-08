@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const env = require("../../config/env");
 const logger = require("../../utils/logger");
 const Case = require("../../models/Case");
+const User = require("../../models/User");
 const GHLCaseLink = require("../../models/GHLCaseLink");
 const GHLEmployerLink = require("../../models/GHLEmployerLink");
 const GHLIntegration = require("../../models/GHLIntegration");
@@ -324,6 +325,18 @@ async function handleContactEvent(event) {
     // An EMPLOYEE card shares its employer's GHL contact but is a different person: the contact's name and
     // email belong to the employer matter, never to the employee.
     if (caseDoc.caseRole === "employee") continue;
+    // A FAMILY case: the GHL contact is the PETITIONER. clientName / clientEmail on that case belong to the
+    // beneficiary, so they are never touched; only the petitioner's display name follows GHL.
+    if (caseDoc.integrations?.ghl?.role === "family") {
+      const familySet = {};
+      if (name && name !== caseDoc.petitionerName) familySet.petitionerName = name;
+      if (email && caseDoc.petitionerUser) {
+        const petitioner = await User.findById(caseDoc.petitionerUser).select("email").lean();
+        if (petitioner && petitioner.email !== email) familySet["integrations.ghl.flags.needsAttention"] = true; // login is tied to the original email
+      }
+      if (Object.keys(familySet).length) await Case.updateOne({ _id: caseDoc._id }, { $set: familySet });
+      continue;
+    }
     const set = {};
     if (name && name !== caseDoc.clientName) set.clientName = name;
     if (email && email !== caseDoc.clientEmail) {

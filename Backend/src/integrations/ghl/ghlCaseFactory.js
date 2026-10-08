@@ -14,6 +14,7 @@ const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
 const { generateOpaqueToken, hashToken } = require("../../modules/auth/password.service");
 const visaService = require("./ghlVisaService");
 const employerService = require("./ghlEmployerService");
+const familyService = require("./ghlFamilyService");
 const { findEmployerMatch } = require("./ghlEmployerMatching");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 
@@ -86,6 +87,10 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
 
   try {
     const routing = await chooseRoute({ opportunity, contact, visaResolution, locationId });
+    if (routing.route === "family") {
+      // Family visa: ONE family case (petitioner = the GHL contact), no child cases (see ghlFamilyService.js).
+      return await familyService.intakeFamilyOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
+    }
     if (routing.route === "employer") {
       // Employer visa: one employee card under a shared employer matter (see ghlEmployerService.js).
       return await employerService.intakeEmployerOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
@@ -102,6 +107,13 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
 // and only when the employer can be matched without doubt. Anything uncertain falls back to an individual card
 // that is flagged for a team lead, so nothing is attached to a guess and nothing is lost.
 async function chooseRoute({ opportunity, contact, visaResolution, locationId }) {
+  if (visaResolution?.status === "mapped" && visaResolution.structure === "family") {
+    const match = await familyService.findPetitionerMatch(contact.email);
+    if (match.status === "ambiguous") {
+      return { route: "individual", attention: [`Family visa, but the petitioner could not be set up safely (${match.reason}). Nothing was attached.`] };
+    }
+    return { route: "family", match };
+  }
   if (!(visaResolution?.status === "mapped" && visaResolution.structure === "employer_employee")) return { route: "individual" };
   if (!contact.email) {
     return { route: "individual", attention: ["Employer visa, but the GHL contact has no email, so the employer account cannot be set up."] };
@@ -267,9 +279,13 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
 
 // Same client + team-lead messages a normally created case sends, worded for a
 // case whose visa is not chosen yet (so the text never says "null").
-async function notifyGhlCaseCreated(caseData, { clientUser, setupToken }) {
+async function notifyGhlCaseCreated(caseData, { clientUser, setupToken, email, name }) {
   const caseNumber = caseData.caseNumber;
-  if (clientUser && caseData.clientEmail) {
+  // A family case's clientName / clientEmail are the BENEFICIARY's (empty at first), so the caller names the
+  // person to write to. Everyone else falls back to the case's own client.
+  const toEmail = email || caseData.clientEmail;
+  const toName = name || caseData.clientName;
+  if (clientUser && toEmail) {
     await notificationService
       .createNotification(
         {
@@ -285,13 +301,13 @@ async function notifyGhlCaseCreated(caseData, { clientUser, setupToken }) {
           ...(setupToken
             ? {
                 emailTemplate: "client-portal-invitation",
-                emailTo: caseData.clientEmail,
-                emailData: { clientName: caseData.clientName, caseNumber, token: setupToken },
+                emailTo: toEmail,
+                emailData: { clientName: toName, caseNumber, token: setupToken },
               }
             : {
                 emailTemplate: "case-created-client",
-                emailTo: caseData.clientEmail,
-                emailData: { clientName: caseData.clientName, caseNumber, loginLink: `${env.clientUrl}/login` },
+                emailTo: toEmail,
+                emailData: { clientName: toName, caseNumber, loginLink: `${env.clientUrl}/login` },
               }),
         },
         null,
@@ -309,14 +325,14 @@ async function notifyGhlCaseCreated(caseData, { clientUser, setupToken }) {
           type: "team_case_created",
           category: "case",
           title: "New Case Awaiting Assignment",
-          message: `${caseNumber} · ${caseData.clientName || "Client"} · ${caseData.visaType || "Visa selection required"}`,
+          message: `${caseNumber} · ${toName || "Client"} · ${caseData.visaType || "Visa selection required"}`,
           caseId: caseData._id,
           link: `/crm-cases/${caseData._id}?assign=case_manager`,
           priority: "high",
           source: "shared",
           emailTemplate: "case-created-team-lead",
           emailTo: teamLead?.email,
-          emailData: { teamLeadName: teamLead?.name || teamLead?.displayName, caseNumber, clientName: caseData.clientName },
+          emailData: { teamLeadName: teamLead?.name || teamLead?.displayName, caseNumber, clientName: toName },
         },
         null,
         null

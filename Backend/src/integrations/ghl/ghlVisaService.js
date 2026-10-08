@@ -7,6 +7,7 @@ const { ensureFieldIds } = require("./ghlCustomFieldService");
 const env = require("../../config/env");
 const { resolveVisa, defaultEntries, validateEntries, FIELD_KEYS, FIELD_NAMES } = require("./ghlVisaMapping");
 const { provisionAfterVisaSelection } = require("./ghlVisaSelection.service");
+const { ghlSystemActor } = require("./ghlSystemActor");
 
 // Glue between "what GHL says the visa is" and a case. Rules:
 //  - Only a SINGLE-party visa is applied automatically in this phase. Employer and
@@ -63,11 +64,12 @@ async function resolveForOpportunity({ opportunity, config, client, pipelineCate
 }
 
 // What to do with a resolution: the case fields to set, the stored record, and why a human may be needed.
-// `allowEmployer` is true only on the employer-intake path, where an employer visa becomes an employee card under
-// an employer matter. For an existing individual card it stays false: an individual case is never converted.
-function planFromResolution(resolution, { allowEmployer = false } = {}) {
+// `allowEmployer` / `allowFamily` are true only on their own intake paths (an employer visa becomes an employee card
+// under an employer matter; a family visa becomes ONE family case). For an existing individual card both stay false:
+// an individual case is never converted.
+function planFromResolution(resolution, { allowEmployer = false, allowFamily = false } = {}) {
   if (!resolution) return { applied: false, fields: {}, record: null, attention: [] };
-  const mappedSingle = resolution.status === "mapped" && (resolution.structure === "single" || (allowEmployer && resolution.structure === "employer_employee"));
+  const mappedSingle = resolution.status === "mapped" && (resolution.structure === "single" || (allowEmployer && resolution.structure === "employer_employee") || (allowFamily && resolution.structure === "family"));
   const status = mappedSingle ? "applied" : resolution.status === "mapped" ? SUGGESTION_ONLY : resolution.status;
   const attention = [];
   if (resolution.status === "mapped" && !mappedSingle) {
@@ -125,6 +127,7 @@ function pump() {
 async function provisionVisaCase(caseId) {
   const caseDoc = await Case.findById(caseId);
   if (!caseDoc || caseDoc.visaSelectionStatus !== "selected") return;
+  const actor = ghlSystemActor(); // the case code needs an acting user; see ghlSystemActor.js
   const lifecycle = require("../../modules/cases/case-lifecycle-orchestrator.service");
   const step = async (name, run) => {
     try {
@@ -134,10 +137,10 @@ async function provisionVisaCase(caseId) {
     }
   };
   // Same steps the existing "visa selected later" path runs, in the same order.
-  await step("orchestrate", () => require("../../modules/cases/immigration-knowledge-engine.service").orchestrate(caseId, null, null, { reason: "case_initialized" }));
+  await step("orchestrate", () => require("../../modules/cases/immigration-knowledge-engine.service").orchestrate(caseId, actor, null, { reason: "case_initialized" }));
   const fresh = await Case.findById(caseId);
-  if (fresh) await provisionAfterVisaSelection(fresh, null, null);
-  await step("recalculate", () => lifecycle.recalculate(caseId, null, null, "ghl_visa_applied"));
+  if (fresh) await provisionAfterVisaSelection(fresh, actor, null);
+  await step("recalculate", () => lifecycle.recalculate(caseId, actor, null, "ghl_visa_applied"));
 }
 
 function enqueue(task) {
@@ -154,6 +157,7 @@ function scheduleProvisioning(caseId) {
 // (intake already sent them).
 async function provisionEmployerMatter({ principalId, childId, newPrincipal }) {
   const lifecycle = require("../../modules/cases/case-lifecycle-orchestrator.service");
+  const actor = ghlSystemActor();
   const step = async (name, run) => {
     try {
       await run();
@@ -161,14 +165,39 @@ async function provisionEmployerMatter({ principalId, childId, newPrincipal }) {
       logger.error("ghl_employer_provision_step_failed", { principalId: String(principalId), step: name, error: error.message });
     }
   };
-  if (newPrincipal) await step("orchestrate employer", () => lifecycle.orchestrateOne(principalId, null, null));
-  await step("orchestrate employee", () => lifecycle.orchestrateOne(childId, null, null));
+  if (newPrincipal) await step("orchestrate employer", () => lifecycle.orchestrateOne(principalId, actor, null));
+  await step("orchestrate employee", () => lifecycle.orchestrateOne(childId, actor, null));
   const principal = await Case.findById(principalId);
   if (!principal) return;
-  await step("forms", () => lifecycle.provisionRequiredForms(principal, null, null));
-  if (newPrincipal) await step("petition draft", () => lifecycle.provisionPetitionDraft(principal, null, null));
-  await step("checklists", () => lifecycle.provisionChecklistAssignments(principal, null, null));
-  await step("recalculate", () => lifecycle.recalculate(principalId, null, null, "ghl_employee_added"));
+  await step("forms", () => lifecycle.provisionRequiredForms(principal, actor, null));
+  if (newPrincipal) await step("petition draft", () => lifecycle.provisionPetitionDraft(principal, actor, null));
+  await step("checklists", () => lifecycle.provisionChecklistAssignments(principal, actor, null));
+  await step("recalculate", () => lifecycle.recalculate(principalId, actor, null, "ghl_employee_added"));
+}
+
+// Family case: EXACTLY what createFamilyCase does after creating the case, and nothing more. Its own comments are
+// explicit that ensureFamilyChecklistReferences must be the ONLY thing that ever assigns a checklist to a family case
+// (the petitioner/beneficiary split), so the generic orchestrate / provisionChecklistAssignments steps are deliberately NOT run.
+async function provisionFamilyCase(caseId) {
+  const actor = ghlSystemActor();
+  const lifecycle = require("../../modules/cases/case-lifecycle-orchestrator.service");
+  const family = require("../../modules/family-workflow/family-workflow.controller");
+  const step = async (name, run) => {
+    try {
+      await run();
+    } catch (error) {
+      logger.error("ghl_family_provision_step_failed", { caseId: String(caseId), step: name, error: error.message });
+    }
+  };
+  const caseDoc = await Case.findById(caseId);
+  if (!caseDoc) return;
+  await step("checklists", () => family.ensureFamilyChecklistReferences(caseDoc, actor, null));
+  await step("forms", async () => lifecycle.provisionRequiredForms(await Case.findById(caseId), actor, null));
+  await step("petition draft", async () => lifecycle.provisionPetitionDraft(await Case.findById(caseId), actor, null));
+}
+
+function scheduleFamilyProvisioning(caseId) {
+  enqueue(() => module.exports.provisionFamilyCase(caseId));
 }
 
 function scheduleEmployerProvisioning(args) {
@@ -245,6 +274,8 @@ module.exports = {
   scheduleProvisioning,
   scheduleEmployerProvisioning,
   provisionEmployerMatter,
+  scheduleFamilyProvisioning,
+  provisionFamilyCase,
   provisionVisaCase,
   SUGGESTION_ONLY,
   MAX_CONCURRENT,
