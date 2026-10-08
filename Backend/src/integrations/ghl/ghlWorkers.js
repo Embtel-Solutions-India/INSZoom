@@ -31,9 +31,25 @@ function startGhlWorkers() {
     }
   };
 
+  // Safety net for the employee sync: finds employees whose hook never fired (for example one the employer named
+  // through their own data entry). Cheap when nothing changed; one instance at a time via the shared job lock.
+  const { withJobLock } = require("../../utils/jobLock");
+  const sweepMs = Number(process.env.GHL_EMPLOYEE_SWEEP_MS || 5 * 60 * 1000);
+  const sweep = () =>
+    withJobLock("ghl-employee-sweep", sweepMs * 2, async () => {
+      await require("./ghlAuxOutbound").sweep();
+    }).catch((error) => logger.error("ghl_employee_sweep_failed", { error: error.message }));
+  // The sweep rides on the same interval (one handle for server.js to clear): at most once per sweepMs, first run after a delay.
+  let lastSweep = Date.now() - sweepMs + Number(process.env.GHL_SWEEP_INITIAL_DELAY_MS || 60000);
   setTimeout(tick, Number(process.env.GHL_WORKER_INITIAL_DELAY_MS || 10000));
-  logger.info("ghl_workers_started", { intervalMs });
-  return setInterval(tick, intervalMs);
+  logger.info("ghl_workers_started", { intervalMs, sweepMs });
+  return setInterval(() => {
+    tick();
+    if (Date.now() - lastSweep >= sweepMs) {
+      lastSweep = Date.now();
+      sweep();
+    }
+  }, intervalMs);
 }
 
 module.exports = { startGhlWorkers };

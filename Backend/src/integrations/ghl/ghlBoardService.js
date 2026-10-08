@@ -12,7 +12,7 @@ const DEFAULT_PER_COLUMN = 50;
 const MAX_PER_COLUMN = 100;
 
 const CARD_FIELDS =
-  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
+  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
 
 // Same visibility as the Cases list (admin / super_admin / team_lead see all
 // cases; a case manager only those assigned to them), narrowed to GHL cases.
@@ -32,8 +32,8 @@ async function loadAssignees(cards) {
 async function loadEmployers(cards) {
   const ids = [...new Set(cards.map((c) => c.parentCase && String(c.parentCase)).filter(Boolean))];
   if (!ids.length) return new Map();
-  const matters = await Case.find({ _id: { $in: ids } }).select("petitionerName clientName").lean();
-  return new Map(matters.map((m) => [String(m._id), m.petitionerName || m.clientName || ""]));
+  const matters = await Case.find({ _id: { $in: ids } }).select("petitionerName clientName user").lean();
+  return new Map(matters.map((m) => [String(m._id), { name: m.petitionerName || m.clientName || "", user: m.user }]));
 }
 
 async function loadColumn(scope, column, user, { limit, skip }) {
@@ -45,9 +45,10 @@ async function loadColumn(scope, column, user, { limit, skip }) {
   const [assignees, employers] = await Promise.all([loadAssignees(docs), loadEmployers(docs)]);
   const isAdmin = ADMIN_ROLES.has(normalizeRole(user.role));
   const cards = docs.map((doc) => {
-    const card = presentCard(doc, user);
+    const employer = doc.parentCase ? employers.get(String(doc.parentCase)) : null;
+    const card = presentCard(doc, user, { employerUserId: employer?.user, employerContactName: employer?.name });
     card.assigneeName = doc.assignedCaseManager ? assignees.get(String(doc.assignedCaseManager)) || null : null;
-    card.employerName = doc.parentCase ? employers.get(String(doc.parentCase)) || null : null;
+    card.employerName = employer?.name || null;
     if (isAdmin) card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention);
     return card;
   });

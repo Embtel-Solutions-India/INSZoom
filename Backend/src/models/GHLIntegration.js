@@ -52,6 +52,9 @@ const ghlIntegrationSchema = new mongoose.Schema(
         study_visa: String,
         green_card: String,
         business__investment: String,
+        // Optional: a custom field an admin can add in GHL ("Immiglance Case Number"). If present it carries our marker
+        // instead of the opportunity Source.
+        immiglance_case_number: String,
       },
       fieldIdsRefreshedAt: Date,
       seededAt: Date,

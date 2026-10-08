@@ -166,6 +166,9 @@ async function processJob(job, { client } = {}) {
   const sibling = await GHLSyncJob.exists({ caseId: job.caseId, status: "processing", _id: { $ne: job._id }, lockedUntil: { $gt: new Date() } });
   if (sibling) return release(job, 2000);
 
+  // Employee-sync jobs (create opportunity / status / rename) have their own runner. Stage moves continue below, unchanged.
+  if (job.type && job.type !== "stage") return processAuxJob(job, { client });
+
   const caseDoc = await Case.findById(job.caseId).lean();
   const ghl = caseDoc?.integrations?.ghl;
   if (!ghl) return supersede(job, "case no longer linked to GHL");
@@ -191,6 +194,44 @@ async function processJob(job, { client } = {}) {
     "integrations.ghl.lastSyncedAt": new Date(),
   });
   return { status: "done" };
+}
+
+// ---- employee-sync jobs (see ghlAuxOutbound.js) ----
+
+async function processAuxJob(job, { client } = {}) {
+  let outcome;
+  try {
+    outcome = await require("./ghlAuxOutbound").runAuxJob(job, { client: client || getWorkerClient() });
+  } catch (error) {
+    return handleAuxFailure(job, error);
+  }
+  if (outcome === "skipped") {
+    await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "superseded", completedAt: new Date(), lockedUntil: null, lastError: "nothing to do (state already matches or no longer applies)" } });
+    return { status: "skipped" };
+  }
+  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "done", completedAt: new Date(), lockedUntil: null, lastError: null } });
+  return { status: "done" };
+}
+
+// Same retry policy as a stage move: transient errors back off and retry; anything else (or too many tries) is flagged
+// on the card, shown to admins as FAILED, and an admin is alerted. Nothing the user did is ever rolled back.
+async function handleAuxFailure(job, error) {
+  const message = String(error.message || error).slice(0, 300);
+  const retryable = error instanceof GHLApiError ? error.retryable : true;
+  if (retryable && job.attempts < MAX_ATTEMPTS) {
+    const delay = error.retryAfterMs ?? backoffMs(job.attempts);
+    await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
+    logger.warn("ghl_employee_sync_retry_scheduled", { jobId: String(job._id), type: job.type, attempt: job.attempts, status: error.status, delayMs: delay });
+    return { status: "retry" };
+  }
+  await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "failed", completedAt: new Date(), lockedUntil: null, lastError: message } });
+  await Case.updateOne(
+    { _id: job.caseId },
+    { $set: { "integrations.ghl.flags.needsAttention": true, "integrations.ghl.sync.state": "failed", "integrations.ghl.sync.lastError": message, ...(error.status === 404 ? { "integrations.ghl.flags.deletedInGhl": true } : {}) } }
+  );
+  logger.error("ghl_employee_sync_failed", { jobId: String(job._id), caseId: String(job.caseId), type: job.type, status: error.status, error: message });
+  await alertAdmins(job, message);
+  return { status: "failed" };
 }
 
 async function handleSendFailure(job, error) {
@@ -281,6 +322,13 @@ async function retryJob(jobId) {
   const job = await GHLSyncJob.findById(jobId);
   if (!job) throw httpError(404, "Job not found");
   if (job.status !== "failed") throw httpError(409, "Only failed jobs can be retried");
+  if (job.type && job.type !== "stage") {
+    // Employee-sync jobs recompute what to do when they run, so a retry needs no version check.
+    await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", attempts: 0, nextAttemptAt: new Date(), lastError: null, completedAt: null } });
+    await Case.updateOne({ _id: job.caseId }, { $set: { "integrations.ghl.sync.state": "synced", "integrations.ghl.sync.lastError": null } });
+    processJobSoon(job._id);
+    return { status: "queued" };
+  }
   const caseDoc = await Case.findById(job.caseId).select("integrations.ghl.sync.version").lean();
   if ((caseDoc?.integrations?.ghl?.sync?.version || 0) !== job.caseSyncVersion) {
     await supersede(job, "superseded by a newer change");

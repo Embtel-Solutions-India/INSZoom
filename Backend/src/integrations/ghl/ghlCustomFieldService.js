@@ -4,6 +4,9 @@ const GHLIntegration = require("../../models/GHLIntegration");
 const { getClient } = require("./ghlClient");
 const { FIELD_KEYS, FIELD_NAMES } = require("./ghlVisaMapping");
 
+// Optional field an admin may add in GHL; when it exists it carries our case-number marker (see ghlAuxOutbound.js).
+const MARKER_FIELD = { name: "immiglance_case_number", key: "opportunity.immiglance_case_number" };
+
 const CACHE_MS = 6 * 60 * 60 * 1000; // field ids almost never change
 const FAILURE_MS = 60 * 1000;
 
@@ -20,6 +23,7 @@ async function fetchFieldIds({ client = getClient(), locationId = env.ghl.locati
       const id = byKey.get(FIELD_KEYS[name]);
       if (id) ids[name] = id;
     }
+    if (byKey.get(MARKER_FIELD.key)) ids[MARKER_FIELD.name] = byKey.get(MARKER_FIELD.key);
     return { ids: Object.keys(ids).length ? ids : null, missing: FIELD_NAMES.filter((name) => !ids[name]) };
   } catch (error) {
     logger.warn("ghl_custom_fields_unavailable", { status: error.status, error: error.message });
@@ -29,7 +33,7 @@ async function fetchFieldIds({ client = getClient(), locationId = env.ghl.locati
 
 const plainIds = (stored) => {
   const ids = {};
-  for (const name of FIELD_NAMES) if (stored?.[name]) ids[name] = stored[name];
+  for (const name of [...FIELD_NAMES, MARKER_FIELD.name]) if (stored?.[name]) ids[name] = stored[name];
   return ids;
 };
 
@@ -68,4 +72,4 @@ async function ensureFieldIds(config, { client } = {}) {
   return Object.keys(cached).length ? cached : null;
 }
 
-module.exports = { fetchFieldIds, ensureFieldIds, CACHE_MS };
+module.exports = { fetchFieldIds, ensureFieldIds, CACHE_MS, MARKER_FIELD };

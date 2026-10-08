@@ -16,6 +16,7 @@ const { getOpportunity } = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
 const { createCaseFromOpportunity, findCaseByOpportunity } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
+const auxOutbound = require("./ghlAuxOutbound");
 
 // A pending case re-checks its visa on updates, but at most once a minute so a burst of events costs nothing.
 const VISA_RECHECK_MS = 60 * 1000;
@@ -180,6 +181,7 @@ function opportunityFromPayload(p) {
     status: p.status,
     lastStageChangeAt: pick(p, "lastStageChangeAt", "dateUpdated", "updatedAt"),
     contact: p.contact,
+    source: p.source,
     customFields: Array.isArray(p.customFields) ? p.customFields : undefined,
   };
 }
@@ -209,6 +211,11 @@ async function handleOpportunityEvent(event, config) {
   if (!mapping) return { outcome: "ignored", note: "stage not mapped (possible GHL config drift)" };
 
   if (!existing) {
+    // GHL echoing back an opportunity WE created (an employee added in Immiglance) carries our marker: link it to that
+    // employee card instead of making a second card. Anything else carries on as a brand-new opportunity.
+    const adoption = await auxOutbound.adoptOwnOpportunity({ opportunity, config, pipeline, mapping });
+    if (adoption) return adoption.adopted ? { outcome: "processed" } : { outcome: "ignored", note: adoption.note };
+
     // OpportunityCreate, or an update that arrived before its create (out of order): same path.
     const contact = await resolveContact(opportunity);
     const visaResolution = await visaService.resolveForOpportunity({ opportunity, config, pipelineCategory: pipeline.category });

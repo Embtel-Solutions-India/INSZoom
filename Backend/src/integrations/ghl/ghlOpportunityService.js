@@ -6,7 +6,7 @@ const MAX_PAGES = 500; // hard stop against a runaway cursor loop.
 
 // Every opportunity in a pipeline, following GHL's startAfter/startAfterId
 // cursor until a short or empty page. Never stops at the first page.
-async function fetchAllOpportunities(pipelineId, { locationId = env.ghl.locationId, client = getClient(), status } = {}) {
+async function fetchAllOpportunities(pipelineId, { locationId = env.ghl.locationId, client = getClient(), status, contactId } = {}) {
   const all = [];
   const seen = new Set();
   let cursor = {};
@@ -16,6 +16,7 @@ async function fetchAllOpportunities(pipelineId, { locationId = env.ghl.location
       pipeline_id: pipelineId,
       limit: PAGE_SIZE,
       ...(status ? { status } : {}),
+      ...(contactId ? { contact_id: contactId } : {}),
       ...cursor,
     });
     const batch = data?.opportunities || [];
@@ -45,4 +46,22 @@ async function updateOpportunityStage(opportunityId, { pipelineId, pipelineStage
   return client.put(`/opportunities/${opportunityId}`, { pipelineId, pipelineStageId });
 }
 
-module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, PAGE_SIZE };
+// ---- writes used by the employee sync (ghlAuxOutbound.js). Kept here so the whole GHL write surface is in one place. ----
+
+// POST /opportunities/ : a new opportunity for an employee card. Returns the created opportunity.
+async function createOpportunity(body, client = getClient()) {
+  const data = await client.post("/opportunities/", body);
+  return data?.opportunity || data || null;
+}
+
+// PUT /opportunities/{id}/status : open | won | lost | abandoned
+async function updateOpportunityStatus(opportunityId, status, client = getClient()) {
+  return client.put(`/opportunities/${opportunityId}/status`, { status });
+}
+
+// PUT /opportunities/{id} : the display name only (nothing else is touched)
+async function updateOpportunityName(opportunityId, name, client = getClient()) {
+  return client.put(`/opportunities/${opportunityId}`, { name });
+}
+
+module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };

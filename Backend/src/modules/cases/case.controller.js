@@ -2312,6 +2312,7 @@ exports.inviteEmployee = async (req, res, next) => {
     childCase.employeeDataEntryModeChangedAt = new Date();
     childCase.employeeDataEntryModeChangedBy = req.user._id;
     await childCase.save();
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: the employee is now named; no-op unless enabled
     if (previousOwnerId) {
       await User.updateOne({ _id: previousOwnerId }, { $pull: { caseIds: childCase._id } });
     }
@@ -2411,6 +2412,7 @@ exports.removeEmployee = async (req, res, next) => {
     childCase.status = "removed";
     await childCase.save();
     await caseService.writeAuditLog("remove_employee", childCase, req.user, {}, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
     return res.status(200).json({
       success: true,
@@ -2452,6 +2454,7 @@ exports.restoreEmployee = async (req, res, next) => {
     childCase.previousStatus = undefined;
     await childCase.save();
     await caseService.writeAuditLog("restore_employee", childCase, req.user, {}, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
     return res.status(200).json({
       success: true,
@@ -2756,6 +2759,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     await orchestrator.orchestrateOne(childCase._id, req.user, req);
     await orchestrator.provisionRequiredForms(principal, req.user, req);
     await orchestrator.provisionChecklistAssignments(principal, req.user, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
     return res.status(201).json({
       success: true,

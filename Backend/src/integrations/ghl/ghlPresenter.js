@@ -1,4 +1,5 @@
 const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
+const { employeeName } = require("./ghlEmployeeIdentity");
 
 const ADMIN_ROLES = new Set(["super_admin", "admin"]);
 
@@ -27,14 +28,17 @@ function beneficiaryIdentity(caseDoc) {
 
 // The few fields a board card / move response needs, in one place so the
 // board endpoint (later phase) and the move endpoint can never disagree.
-function presentCard(caseDoc, user) {
+function presentCard(caseDoc, user, ctx = {}) {
   const ghl = caseDoc.integrations?.ghl || {};
+  const isEmployee = caseDoc.caseRole === "employee";
+  // An employee's own name (never the employer contact's name the existing flows copy onto an unidentified card).
+  const employee = isEmployee ? employeeName(caseDoc, ctx.employerUserId, ctx.employerContactName) : "";
   return {
     _id: caseDoc._id,
     caseNumber: caseDoc.caseNumber,
     // On a FAMILY card the title is the petitioner (the GHL contact); clientName/clientEmail on the case are the beneficiary's.
-    clientName: ghl.role === "family" ? caseDoc.petitionerName || "" : caseDoc.clientName,
-    clientEmail: ghl.role === "family" ? null : caseDoc.clientEmail,
+    clientName: ghl.role === "family" ? caseDoc.petitionerName || "" : isEmployee ? employee : caseDoc.clientName,
+    clientEmail: ghl.role === "family" || isEmployee ? null : caseDoc.clientEmail,
     isFamily: ghl.role === "family",
     ...(ghl.role === "family" ? { beneficiaryName: beneficiaryIdentity(caseDoc).name, beneficiaryIdentified: Boolean(beneficiaryIdentity(caseDoc).name) } : {}),
     visaType: caseDoc.visaType || null,
@@ -44,7 +48,7 @@ function presentCard(caseDoc, user) {
     assignedCaseManager: caseDoc.assignedCaseManager || null,
     // individual | employee. An employee card has the employer's name on it and is "not identified" until named.
     caseRole: caseDoc.caseRole || null,
-    employeeIdentified: caseDoc.caseRole !== "employee" || Boolean(caseDoc.clientName),
+    employeeIdentified: !isEmployee || Boolean(employee),
     employerName: null, // filled in by the board service from the employer matter
     unifiedStageKey: ghl.unifiedStageKey || null,
     category: ghl.category || null,

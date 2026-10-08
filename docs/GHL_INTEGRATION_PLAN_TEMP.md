@@ -1,6 +1,6 @@
 # GoHighLevel (GHL) Integration: Implementation Plan (TEMP), Revision 3.1
 
-Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards), R3-2 (Service Type to visa mapping, single-party routing) and R3-3 (employer model, inbound) and R3-5 (family, single case; brought forward) are DONE and verified. Next: R3-4 (outbound: create opportunity on Add Employee, abandon/reopen, display name; mocks only). Work proceeds one phase at a time, with a report after each.**
+Status: **Phases 1 to 5 are built and tested. Revision 3.1 is approved. R3-1 (two separate pipeline boards), R3-2 (Service Type to visa mapping, single-party routing) and R3-3 (employer model, inbound) R3-4 (outbound employee sync: create opportunity on Add Employee, abandon/reopen on Remove/Restore, "Employer, Employee" display name; mocks only) and R3-5 (family, single case; brought forward) are DONE and verified. Next: R3-6A (mixed-visa employer checklists; plan revised, awaiting your approval), then R3-6B (repeat-petitioner prefill), then R3-7. Work proceeds one phase at a time, with a report after each.**
 Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attorney portals are not touched.
 
 ### What changed in Revision 3
@@ -23,12 +23,12 @@ Scope: Backend, Admin frontend, Client portal (employer view). Landing and Attor
 |---|---|
 | A | **Employer matching is a strategy, not an identity.** Email is the first matching signal only. The match order is: existing GHL-linked employer, then exact normalised email, then anything ambiguous goes to **Needs Attention**. Nothing is ever silently attached to an uncertain employer (§5.3, decision 1). |
 | B | **The employer is a shared party, not a visa case.** Creating an employer from GHL must not start the normal visa-driven employer workflow from the first employee's visa alone. Visa-specific employer questions belong to the individual employee case (§5.3, §5.4, R3-6). |
-| C | **R3-6 is a release gate.** H-1B-only (single-visa) employers can go live after R3-3 and R3-4. **Mixed-visa employers are not declared production-ready until R3-6 passes** (§9). |
+| C | **R3-6A and R3-6B are release gates (mixed-visa employers; repeat family petitioners).** H-1B-only (single-visa) employers can go live after R3-3 and R3-4. **Mixed-visa employers are not declared production-ready until R3-6A passes** (§9). |
 | D | **GHL contact = primary contact for the opportunity,** interpreted by the case structure as client (single-party), employer (employment) or petitioner (family), not hard-coded as "employer/petitioner" (§3, §4). |
 | E | **Parent relationship rule:** a two-party employee / beneficiary card cannot exist without its employer / petitioner. Single-party visas stay independent (§3). |
 | F | **GHL stage and Immiglance workflow stage stay independent in both directions.** Moving the GHL card never starts a workflow step, and a workflow change never moves the GHL card unless explicitly decided later (§1). |
 | G | **Employee name** is written to GHL only as a **display name** once the employee is identified ("ABC Technologies, John Smith"). The initial name is the employer's. Identity is always `locationId + opportunityId` (§5.6). |
-| H | **Family is ONE case, ONE opportunity, ONE card, no child cases.** The GHL contact is the petitioner; the beneficiary is identified later through the existing invite / fill-it-myself flow; both checklists live on the one case. It does **not** solve repeated petitioner questions across cases; that is R3-6 (§5.5, §9). |
+| H | **Family is ONE case, ONE opportunity, ONE card, no child cases.** The GHL contact is the petitioner; the beneficiary is identified later through the existing invite / fill-it-myself flow; both checklists live on the one case. It does **not** solve repeated petitioner questions across cases; that is R3-6B (§5.5, §9). |
 | I | **New tests:** shared employer update, parent-relationship rule, contact interpretation, mixed-visa gate (§11). |
 | J | **Decisions** now carry proposed answers for you to confirm (§12). |
 
@@ -173,7 +173,7 @@ When an opportunity arrives whose mapped visa is employer-based:
 2. **The employer is a shared party, not a visa case.** An employer matter created from GHL must not, by itself, start the normal visa-driven employer workflow on the strength of one employee's visa. Today's model requires a principal to carry a visa and assigns the employer checklist from it, so the plan is explicit about the trade-off:
    - **R3-3 (single-visa employers):** the employer matter takes the first employee's visa as a **provisional container visa**, flagged as provisional, only so today's employer checklist works for an employer whose employees share one visa. Nothing else visa-driven is started on the employer matter.
    - **Mixed-visa employers:** when an employee arrives whose visa differs from the container's, the card is still created, but the employer matter and card get a **"mixed-visa employer" attention flag**, and the system does **not** claim the employer-side questions for that visa are covered.
-   - **R3-6 changes the rule properly:** *employer profile data is shared; visa-specific employer questions belong to the individual employee case.* See §5.4. Mixed-visa employers are not declared production-ready until that passes.
+   - **R3-6A changes the rule properly (revised twice after review):** *employer profile data is shared; each additional visa adds its OWN employer checklist to the employer matter, for the case manager to review, edit and approve.* See §5.4. Mixed-visa employers are not declared production-ready until that passes.
 3. **Create one employee child** for this opportunity (it always belongs to an employer matter; an employee card never exists without its employer), mirroring `addEmployeeSlot` (child case number, `EmployeeProfile`, role-filtered checklist, forms) with the opportunity's visa and sub-type. The child is "Not Identified" until the employer names the employee.
 4. **Link** the child to the GHL opportunity (`GHLCaseLink`, `integrations.ghl` on the child). The principal keeps only the GHL *contact* id for reference.
 5. **Assignment:** an already-assigned employer matter gives the child its case manager at once; otherwise the employer matter appears in the team lead's queue as usual.
@@ -186,8 +186,83 @@ This is built **inside the GHL module, reusing existing services** (`CaseNumberS
 
 - Handled by the existing shared `EmployerProfile`: the employer is asked once, every employee's forms read the same data, employee data stays per employee.
 - GHL seeds only **name and email**, with a provenance that does **not** staff-lock the fields (to verify, because the current creation path locks them against employer edits).
-- **The rule that makes mixed visas correct:** the shared profile prevents repeated data entry (company, FEIN, address, signatory), while the **visa-specific employer questions belong to each employee's case**. John's H-1B employer questions live on John's case, Sarah's EB-2 / PERM / I-140 employer questions live on Sarah's case, and neither reuses the other's. This is **R3-6** and it is a **release gate** for mixed-visa employers (gap 2). It is additive: it assigns the missing employer-side questions per employee case, is idempotent, and never edits an existing checklist.
+- **The rule that makes mixed visas correct (revised):** the shared profile prevents repeated data entry (company, FEIN, address, signatory), while **each visa the employer files for has its own employer checklist, and that checklist is assigned to the employer matter in addition to the existing one.** This is **R3-6** and a **release gate** for mixed-visa employers (gap 2). Full behaviour in §5.4.1 (R3-6A).
 - **Shared employer updates:** changing a shared employer fact (for example the address) is visible to every employee's employer data. Forms already generated or submitted are **not** snapshotted today (gap 4); the new shared-update test documents the exact current behaviour so the risk is explicit and a separate task can fix it.
+
+### 5.4.1 Mixed-visa employers: one more employer checklist for each new visa (R3-6A, revised twice)
+
+**Generic for every visa.** H-1B, EB-1, EB-2 and the rest of this section are examples only. Nothing in R3-6A or R3-6B is written for a particular visa: the core service takes whatever visa and sub-type the employee has, looks up that visa's employer-role checklist through the same template resolution every case already uses, and adds it if there is one (a visa with no employer checklist adds nothing and is not an error). The same applies to the visa-aware lookup, dispositions, panels and tests, which run over a representative set of visas rather than two hard-coded ones.
+
+R3-6 is now **two independent workstreams with separate release gates**: **R3-6A** (this section: mixed-visa employers) and **R3-6B** (repeat-petitioner prefill, §5.5). A bug in one never holds the other back.
+
+**What the case manager and the employer experience**
+
+1. The employer matter already has its first employer checklist (for the first employee's visa, for example H-1B).
+2. A second employee arrives with a different visa (for example EB-2). The employer matter is **given that visa's employer checklist as well**. The first checklist is not touched, replaced or re-assigned.
+3. The new checklist starts as a **draft**, exactly like every other auto-assigned checklist today: the employer does not see it and is not notified yet.
+4. The **case manager reviews it** in the existing Checklist Approval card on the Documents tab, **edits it for this employer** (remove questions that are not needed, add or change others; the shared template is never changed), and **approves** it. Approval sends it to the employer. The case manager can instead **waive** it (see "Dispositions").
+5. The employer then sees **only the questions the case manager approved** for the new visa, next to the first visa's checklist. Company, FEIN, address and signatory are the shared profile and are not asked again.
+6. A third visa repeats the same steps. The same visa again (a second H-1B) adds nothing.
+
+**Where everything lives (one consistent model; this replaces any earlier wording that moved employer checklists onto employee cases)**
+
+| What | Where |
+|---|---|
+| Employer-side visa checklists (one per visa) and their approved question sets | **Employer matter (principal)** |
+| Shared company and signatory facts | **`EmployerProfile`** (one per employer) |
+| Employee answers, employee checklist, employee forms | **Each employee's own case.** The employee's forms are **filled with the employer data as well** (company, signatory and the approved employer-checklist answers for that employee's visa), read from the employer matter; the employer is asked once, every employee form uses it |
+| Which employer checklist an employee needs | **Decided by that employee's visa**; this is a lookup, not a storage location |
+
+**Core service, independent of GHL**
+
+- **There is no such thing as a "GHL employer" or a "GHL client".** An employer is an employer and a client is a client, whichever route created them (the portal, a lead, a case manager or GHL). The GHL contact/opportunity id is only an optional **external reference** stored on the record. Nothing in R3-6A branches on how the employer was created. (Where the GHL module needs that reference, for example to create an opportunity for a new employee, that is a technical precondition for talking to GHL, not a different kind of employer.)
+
+- Mixed-visa checklist assignment is an Immiglance immigration rule, not a GHL feature. It is built as a **core service** in the questionnaires / employer area (`ensureEmployerChecklistForVisa(principal, visaType, subType)`). GHL intake calls it, and so does the manual Add Employee / invite path. **`GHL_ENABLED=false` does not disable it.**
+- **Existing gap, found while analysing the code:** today an employer matter that adds an employee with a different visa (the existing "different visa per employee" feature) gives that employee their own visa and employee checklist, but **never assigns the new visa's employer checklist**, for every employer, whichever route created it. R3-6A fixes it for both.
+- One guarded, non-blocking call in the existing Add Employee and invite paths (same pattern as the four GHL hooks); a failure is logged and retried and never affects the request. It is idempotent: it only adds when that visa's employer checklist is absent and has no recorded disposition.
+- **Step 0 (before any code):** a characterisation test that records exactly what the existing flows do today for a mixed-visa employer, including **where a second employer checklist's answers are stored and whether they reach the employee's forms**, so the change is measured, not assumed.
+- **The employer data grows with each visa:** the answers to each approved employer checklist add to the shared employer data and feed the forms of the employees they apply to. Release test: after the employer answers the EB-2 checklist, those answers appear in the EB-2 employee's forms, and the H-1B employee's already-generated forms are not changed.
+
+**Dispositions: a durable, explicit record per employer and per visa**
+
+Each employer visa checklist is in exactly one state, recorded on the employer matter:
+
+| State | Meaning | Employer sees | Counts as covered? |
+|---|---|---|---|
+| **Pending** (draft / awaiting review) | assigned, not yet approved | nothing | **No** |
+| **Approved** | case manager approved the (edited) question set | the approved questions | **Yes** |
+| **Waived** | case manager decided it is not required **and recorded a reason** | nothing | **Yes, shown as "Waived", never as "Approved"** |
+| **Removed** (no reason) | taken off the case | nothing | **No**: the flag stays until a decision is recorded |
+
+- Stored by extending the **existing** `checklistApproval.removed[]` record with optional `reason` and `disposition` fields (additive; existing rows unaffected), which is already what stops automatic re-adding. The core service reads it, so it can tell "never assigned" from "deliberately removed or waived", and it **never re-adds** a removed or waived checklist.
+- **`mixedVisa` / `needsAttention` clear only when every visa on the employer is Approved or Waived-with-reason.** The Checklist Approval card and the employer matter show the difference (Approved versus Waived, with the reason and who decided).
+
+**Edits after approval, and answers: what the code does today, and the decision it needs**
+
+- **Today (verified in the code):** editing a checklist after it was approved changes the case's private copy and **goes live immediately** to the employer (with the live refresh); the approval is not withdrawn. Removing a question **retires** it (answers and uploads stay on record, never deleted). Edits fork a per-case copy; the shared template is never touched.
+- The review recommends a **revision model** (a material edit after approval needs re-approval before the employer sees it). That would change the behaviour of **every** case, not only employers, so it is **not folded into R3-6A**. Proposed: R3-6A keeps today's semantics, **adds an audit entry for every post-approval edit** and keeps the answers-preserved guarantee under test; re-approval on material edit is offered as a **separate task** (decision 13, your call).
+- **Decided (decision 13): edits to an approved checklist go live immediately,** as today, with an audit entry for each edit.
+- Drafts never expose questions to the employer; approval publishes the approved question set.
+
+**Visa-aware resolution (a real gap the analysis found)**
+
+- A child (employee) case asking for the shared role "employer" is redirected to the principal, and the principal's lookup returns **one** checklist per role. With two employer checklists on the principal, an EB-2 employee's employer-role reads could resolve to the **H-1B** one.
+- R3-6A makes that selection **visa-aware**: an employee's employer-role lookup resolves to the employer checklist for **that employee's visa** (falling back to today's behaviour for single-visa employers). The H-1B container visa on the matter must never cause an EB-2 employee to receive H-1B-specific employer requirements or forms; a regression test checks the actual checklist and form assignments, not just that two cards exist.
+
+**The section below checklist approval stays in step with the approval section (the requirement)**
+
+Rule: **a checklist appears below only when it is approved above, with the questions the case manager approved, and disappears when it is removed or waived above.** Today this already holds for every approved checklist without a fixed panel (own panel, resolved from the case's edited copy, refreshes live). R3-6A:
+
+- **Verifies it end to end** for the new employer checklists, in **both** the Admin case page and the **employer portal**: draft shows nothing; approve shows the panel; edit adds or removes questions in the panel; waive or remove removes it; a removed question's existing answer is preserved.
+- **Fixes the known gap:** the fixed "Employer Questionnaire" panel shows one checklist per role (the first), so every additional visa's checklist is shown as its **own clearly titled panel** ("Employer checklist: EB-2"), never hidden behind the first. Frontend changes only if a gap is proven, and only in the checklist panels.
+
+**Release test for R3-6A (the gate; a database-reference check alone is not enough)**
+
+Create the H-1B employer matter, add an H-1B employee, add an EB-2 employee; verify both employer checklists exist as drafts and the employer sees nothing; the case manager edits and approves each; the employer portal shows exactly the approved questions per visa; a second employee on an already-covered visa adds nothing; a waived visa shows nothing and clears the flag only with a reason; repeat provisioning duplicates and re-adds nothing; run it for an employer created inside Immiglance and one whose first employee arrived from GHL (they must behave **identically**: an employer is an employer whatever route created it), and with `GHL_ENABLED=false`. Plus the cases in §11.
+
+**Not in R3-6A (unchanged)**
+
+- Employee-side questionnaires and forms, canonical data, and the shared-employer-update / generated-form snapshot behaviour (gap 4: documented by a test, not changed).
 
 ### 5.5 Family / two-party visas (single case, built)
 
@@ -207,7 +282,7 @@ GHL opportunity (Service Type = visa)   |- Petitioner   <- the GHL contact; rece
 - **Forms and data ownership:** untouched. The canonical layer already routes each answer by who gave it (`person.*` / `contact.*` = petitioner, `beneficiary.*` = beneficiary), so petitioner data never fills beneficiary fields. Both parties' answers feed one case and one set of forms.
 - **GHL:** the contact stays the petitioner. A GHL contact update changes only the petitioner's display name (never the beneficiary's fields); an email change is flagged, never applied to a login. Stage moves in either direction affect only this one card.
 - **Several family cases for one petitioner** are allowed (as today): each opportunity is its own case on the same petitioner account, with no second invitation.
-- **Still open (R3-6):** a petitioner is asked their own questions again on a second family case, because petitioner answers are stored per case. A shared petitioner profile / prefill is the R3-6 task, gated like mixed-visa employers.
+- **Still open (R3-6B, separate from the employer work):** a petitioner is asked their own questions again on a second family case, because petitioner answers are stored per case. R3-6B **pre-fills** the new case from the petitioner's earlier case: it copies eligible `person.*` and `contact.*` values as **initial answers** (never shared mutable storage), **never copies `beneficiary.*`** into the petitioner, records the **source and provenance** of each prefilled answer, lets the petitioner **edit independently**, and **never changes** an older case's answers, forms or submissions. Its own tests and its own release gate (repeat-family-case readiness).
 - **Dormant until mapped:** no family visa is in today's seeded mapping (the one GHL option, "I-130 - Family Green Card Petition", does not say which family category). Family intake switches on the moment a Service Type value is mapped to a family visa such as K-1 or IR-1.
 
 ### 5.6 Outbound: Immiglance to GHL
@@ -291,10 +366,11 @@ Test status: 40 GHL backend tests and all Admin frontend tests pass; the existin
 | **R3-3** | **Employer model, inbound:** matching strategy (linked contact, exact email, ambiguity to Needs Attention), find or create the employer matter, one employee child per opportunity, link, assignment, notifications, "mixed-visa employer" flag | Medium (reuses existing employer services; heaviest testing) |
 | **R3-4** | **Outbound:** create opportunity on Add Employee; display-name update when an employee is identified; abandon/reopen on Remove/Restore; the guarded hooks; idempotency; mocks only | Medium |
 | **R3-5** | **Family inbound (DONE, brought forward):** ONE family case per opportunity, petitioner = GHL contact, beneficiary unidentified, both checklists on the one case via the existing family step, GHL linking, stage sync. Does **not** remove repeated petitioner questions | Medium |
-| **R3-6** | **Release gate.** Visa-specific employer questions per employee case (additive, idempotent) for mixed-visa employers, plus the shared petitioner profile / prefill for family | Medium-high: touches existing provisioning; only after its own approval |
+| **R3-6A** | **Release gate (mixed-visa employers).** Core service (independent of GHL) that adds each new visa's employer checklist to the employer matter as a draft; dispositions (pending / approved / waived with reason / removed); visa-aware employer-role resolution; panels below the approval card always mirror what is approved above, in Admin and the employer portal; audit of post-approval edits | Medium-high: touches existing Add Employee / invite paths with one guarded call each; only after its own approval |
+| **R3-6B** | **Release gate (repeat family petitioners).** Prefill a petitioner's later family case from their earlier case (`person.*`, `contact.*` only, with provenance); independent editing; older cases untouched | Medium; independent of R3-6A |
 | **R3-7** | Reconciliation job, drift refresh, admin retry on failed cards, rate limits, `docs/GHL_INTEGRATION.md`, completion report | Low |
 
-**Release gates.** Employers whose employees all share one visa (for example H-1B only) can be tested and go live after **R3-3 and R3-4**. **Mixed-visa employers, and repeat-petitioner family cases, are not declared production-ready until R3-6 passes.** Until then the system flags them rather than pretending they are fully supported.
+**Release gates.** Employers whose employees all share one visa (for example H-1B only) can be tested and go live after **R3-3 and R3-4**. **Mixed-visa employers are not declared production-ready until R3-6A passes, and repeat-petitioner family cases not until R3-6B passes (independent gates).** Until then the system flags them rather than pretending they are fully supported.
 
 Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
 
@@ -315,7 +391,7 @@ Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
 - **Unit:** signature, stage mapping per pipeline, drift, conflict rule, retries, supersede, claim and lease, pagination, Service Type mapping, employer matching.
 - **Integration (DB, GHL mocked, cleanup after):**
   - Same employer email, three opportunities: **one** employer, three employee cards, one `EmployerProfile`.
-  - Same employer, two visas: two pipelines, one employer, and the employer matter carries the "mixed-visa employer" flag until R3-6.
+  - Same employer, two visas: two pipelines, one employer, and the employer matter carries the "mixed-visa employer" flag until R3-6A passes.
   - **Shared employer update:** employer ABC has John (H-1B) and Sarah (EB-2); change the employer address once. Both employees' employer data show the new address. The test also records what happens to forms already generated, so that behaviour (gap 4) is explicit and not assumed.
   - **Matching strategy:** an opportunity whose contact is already linked matches that employer; exact email matches; two possible employers, a shared mailbox, an individual client's email, or the same email with a different company name all go to Needs Attention and attach nothing.
   - **Parent relationship rule:** an employee or beneficiary card is never created without its employer or petitioner; a single-party visa creates an independent case.
@@ -338,6 +414,8 @@ Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
   - GHL stage renamed: `config_mismatch`, nothing silently re-mapped.
   - One pipeline unavailable: the other keeps working.
   - GHL opportunity deleted: the case remains, flagged.
+  - **R3-6A release gate** (see §5.4.1): H-1B then EB-2 gives both employer checklists as drafts; a second H-1B adds none; draft shows the employer nothing; edit then approve shows only the approved questions (Admin and employer portal); waive with reason shows nothing and clears the flag, removal without reason keeps it; repeat provisioning adds nothing and never re-adds a removed or waived checklist; edit after approval is audited and a retired question's answer is preserved; the EB-2 checklist is not hidden behind the fixed Employer Questionnaire panel; an EB-2 employee never resolves the H-1B employer checklist or its forms; behaves identically for an employer created in Immiglance and one that arrived via GHL, and with `GHL_ENABLED=false`; a shared company address change reaches every employee's employer data with the generated-form limitation documented.
+  - **R3-6B release gate:** a repeat petitioner's second family case is prefilled from `person.*` / `contact.*` only; `beneficiary.*` is never copied; provenance recorded; the new case is editable independently; the older case's answers, forms and submissions are unchanged.
 - **Regression:** existing case, lead, assignment, notification and email suites; Admin and Client builds and tests. With `GHL_ENABLED=false` the app behaves exactly as today.
 - **Live checks:** read-only against the real GHL location. Any test record in the shared DB is deleted afterwards. **No GHL write without your explicit approval.**
 
@@ -350,15 +428,16 @@ Each phase is its own commit and can be switched off with `GHL_ENABLED=false`.
 | 3 | Removing an employee | **Remove marks the GHL opportunity abandoned; restore sets it open.** The Immiglance case is soft-removed and nothing is deleted. |
 | 4 | Create opportunities from Add Employee | **Yes.** Needs opportunity-write permission on the token. Mocks only until you approve a real test. |
 | 5 | Service Type | **Editable mapping table; never guess an unmapped value** (it stays pending). Please send the planned detailed values and the Immiglance visa and sub-type each means. Until then today's detail fields are mapped (for example "H-1B - Specialty Occupation") and sub-type-dependent ones stay pending. |
-| 6 | Mixed-visa employers | **Build R3-3 first, but do not claim mixed-visa support until R3-6 passes.** Single-visa employers (for example H-1B only) can go live after R3-3 and R3-4. Until R3-6, the first employee's visa is only a **provisional container visa** on the employer matter and mixed-visa employers are flagged. |
+| 6 | Mixed-visa employers | **Build R3-3 first, but do not claim mixed-visa support until R3-6A passes.** Single-visa employers (for example H-1B only) can go live after R3-3 and R3-4. Until R3-6A, the first employee's visa is only a **provisional container visa** on the employer matter and mixed-visa employers are flagged. **R3-6A keeps employer checklists on the employer matter (one per visa); it does not move them onto employee cases.** |
 | 7 | Visa or category change | **Flag for human review** (Needs Attention). No automatic pipeline switch in the first release. |
-| 8 | Family | **One case, one opportunity, one card, no child cases.** Built (R3-5). The shared petitioner profile / prefill across a petitioner's cases is R3-6. |
+| 8 | Family | **One case, one opportunity, one card, no child cases.** Built (R3-5). The shared petitioner profile / prefill across a petitioner's cases is R3-6B. |
 | 9 | Employer snapshot at submission | **Separate task.** The risk is documented here and made explicit by the shared-update test. |
 | 10 | Board layout | **Yes:** employee cards with employer label, filter and group-by-employer; the employer container is not a card. |
 | 11 | Contact interpretation | **Yes:** the GHL contact is the primary contact; the case structure decides whether it is the client, employer or petitioner. |
 | 12 | Parent relationship rule | **Yes:** a two-party employee or beneficiary card cannot exist without its employer or petitioner; single-party visas stay independent. |
+| 13 | Edits after a checklist is approved | **Decided: edits go live immediately** (today's behaviour: answers preserved, questions retired not deleted), with an audit entry per edit. Re-approval on edit is not built. |
 
-One point I want you to explicitly confirm, because it is a trade-off, not a free choice: the existing model requires an employer matter to carry a visa, so in R3-3 the **provisional container visa** (first employee's visa) is how single-visa employers get today's employer checklist. R3-6 then moves visa-specific employer questions onto each employee's case, which removes the dependence on the container visa.
+One point I want you to explicitly confirm, because it is a trade-off, not a free choice: the existing model requires an employer matter to carry a visa, so in R3-3 the **provisional container visa** (first employee's visa) is how single-visa employers get today's employer checklist. R3-6A does **not** remove the container visa; it makes it non-authoritative: each additional visa adds its own employer checklist to the employer matter, and each employee's employer-role lookup follows **that employee's** visa.
 
 ## 13. Risks and mitigations
 
@@ -371,9 +450,11 @@ One point I want you to explicitly confirm, because it is a trade-off, not a fre
 | Infinite sync loops | Operation ids, last-synced stage, echo recognition, no write-back of inbound changes |
 | Stale or reordered updates | Version compare-and-set, stale-job check before every GHL write, timestamp rule |
 | GHL outage or rate limits | Local state saved first, queue with retries and backoff, per-pipeline isolation, reconciliation |
-| Mixed-visa employers missing employer-side questions | Flagged "mixed-visa employer" and **not declared production-ready until R3-6 passes** (release gate); R3-6 is additive and idempotent, and needs its own approval |
-| First employee's visa wrongly defining the whole employer | The container visa is provisional and flagged; the employer is a shared party; visa-specific employer questions move to each employee case in R3-6 |
-| Repeat petitioners asked the same questions again | Family intake (R3-5) is stated not to solve this; shared petitioner profile / prefill is R3-6 |
+| Mixed-visa employers missing employer-side questions | Flagged and **not production-ready until R3-6A passes**; R3-6A adds each visa's employer checklist to the employer matter as a draft for case-manager review, via a core service independent of GHL, additive, idempotent, drafts only until approved, with durable dispositions so removed or waived checklists are never silently re-added |
+| First employee's visa wrongly defining the whole employer | The container visa is provisional and flagged; the employer is a shared party; each additional visa adds its own employer checklist (R3-6A), approved by the case manager before the employer sees it |
+| Repeat petitioners asked the same questions again | Family intake (R3-5) does not solve this; R3-6B pre-fills from the earlier case (petitioner fields only, with provenance, independently editable, older cases untouched) under its own release gate |
+| An employee shown another visa's employer checklist | R3-6A makes the employer-role lookup visa-aware and adds a regression test on actual checklist and form assignments |
+| A waived or removed checklist counted as complete | Waiver needs a recorded reason and is shown as Waived; a removal without a reason keeps the flag |
 | Shared employer edit altering already-generated forms | No snapshot exists today (gap 4); the shared-update test makes the behaviour explicit; fixing it is a separate task |
 | Removed employees in provisioning loops | Guard added with the automatic add/remove hooks |
 | Secrets | Token and keys only in `.env` (git-ignored); only GHL's public key is used for webhooks; no private key is generated by us |
