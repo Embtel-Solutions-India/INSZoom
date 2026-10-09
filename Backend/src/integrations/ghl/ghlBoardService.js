@@ -12,13 +12,14 @@ const DEFAULT_PER_COLUMN = 50;
 const MAX_PER_COLUMN = 100;
 
 const CARD_FIELDS =
-  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
+  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
 
 // Same visibility as the Cases list (admin / super_admin / team_lead see all
 // cases; a case manager only those assigned to them), narrowed to GHL cases.
 // Enforced here on the server, never only in the UI.
 function boardScope(user) {
-  return { $and: [caseService.buildCaseFilter({}, user), { creationSource: "ghl" }] };
+  // "GHL case" = has a GHL card: created from GHL, or created in the CRM and linked since (ghlCaseOutbound.js).
+  return { $and: [caseService.buildCaseFilter({}, user), { $or: [{ creationSource: "ghl" }, { "integrations.ghl.opportunityId": { $type: "string" } }] }] };
 }
 
 async function loadAssignees(cards) {

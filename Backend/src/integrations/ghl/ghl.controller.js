@@ -79,6 +79,15 @@ exports.moveStage = guard(async (req, res) => {
   res.json({ success: true, ...result });
 });
 
+exports.caseStages = guard(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
+  try {
+    res.json({ success: true, ...(await require("./ghlCaseOutbound").stagesForCase(req.params.caseId, req.user)) });
+  } catch (error) {
+    res.status(error.status || 500).json({ success: false, code: error.code, message: error.message });
+  }
+});
+
 exports.retryJob = guard(async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid job id" });
   res.json({ success: true, ...(await outbound.retryJob(req.params.id)) });

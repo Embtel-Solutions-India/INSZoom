@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ghlApi } from '../services/api'
+import { ghlApi, casesApi } from '../services/api'
 import { useSocket } from '../contexts/SocketContext'
 
 // State for the GoHighLevel pipeline board.
@@ -211,6 +211,23 @@ export default function usePipelineBoard(category = 'immigrant') {
   const goToPageRef = useRef(null)
   goToPageRef.current = goToPage
 
+  // Permanently deletes a case (the same request the Cases page uses; the backend also removes its GoHighLevel opportunity first).
+  // The card leaves the board at once; if the request is refused it is put back and the error is returned to the caller.
+  const deleteCard = useCallback(async (cardId) => {
+    const before = columnsRef.current
+    commit(before.map((col) => (col.cards.some((c) => c._id === cardId)
+      ? { ...col, total: Math.max(0, col.total - 1), cards: col.cards.filter((c) => c._id !== cardId) }
+      : col)))
+    try {
+      await casesApi.deletePermanently(cardId)
+      refresh({ silent: true })
+      return null
+    } catch (error) {
+      commit(before)
+      return errorMessage(error)
+    }
+  }, [commit, refresh])
+
   const loadMore = useCallback(async (columnKey) => {
     const col = columnsRef.current.find((c) => c.key === columnKey)
     if (!col || !col.hasMore) return
@@ -285,5 +302,5 @@ export default function usePipelineBoard(category = 'immigrant') {
     wasConnected.current = connected
   }, [connected, requestRefresh])
 
-  return { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, goToPage, pageLoading, pageOf: (key) => pagesRef.current.get(key) || 0, refresh, setDragging, connected }
+  return { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, deleteCard, loadMore, goToPage, pageLoading, pageOf: (key) => pagesRef.current.get(key) || 0, refresh, setDragging, connected }
 }

@@ -10,7 +10,7 @@ const logger = require("../../../utils/logger");
 
 class PDFGenerationService {
   static userId(user) {
-    return user?._id || user?.id || user;
+    return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
   }
 
   static async audit(action, caseForm, user, req, changes = {}) {

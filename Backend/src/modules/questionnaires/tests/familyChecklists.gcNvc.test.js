@@ -95,9 +95,27 @@ test("GC-NVC checklist visibility is beneficiary-only (never petitioner)", () =>
 test("regression: existing family checklist keys are unaffected by the GC-NVC addition", () => {
   for (const visaType of FAMILY_VISA_TYPES) {
     const slug = visaSlug(visaType);
-    ["i130_" + slug + "_petitioner_checklist", "i130_" + slug + "_beneficiary_checklist", "green_card_" + slug + "_beneficiary_checklist", "i864_" + slug + "_petitioner_checklist", "i864_" + slug + "_joint_sponsor_checklist"]
+    ["i130_" + slug + "_petitioner_checklist", "i130_" + slug + "_beneficiary_checklist", "green_card_" + slug + "_beneficiary_checklist", "i864_" + slug + "_petitioner_checklist"]
       .forEach((key) => assert.ok(FAMILY_CHECKLIST_DEFINITIONS.some((def) => def.key === key), `${key} must still exist unchanged`));
   }
-  // 12 visa types x 6 checklists (i130 x2, green_card, i864 x2, gc_nvc) + K1 x2 + K3 x2 = 76.
-  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, 76);
+  // 12 visa types x 5 checklists (i130 x2, green_card, i864 [sponsor + joint sponsor in one], gc_nvc) + K1 x2 + K3 x2 = 64.
+  assert.equal(FAMILY_CHECKLIST_DEFINITIONS.length, 64);
+});
+
+test("the I-864 checklist is ONE checklist for the client: the joint sponsor section is gated and never assigned to anyone else", () => {
+  for (const visaType of FAMILY_VISA_TYPES) {
+    const def = FAMILY_CHECKLIST_DEFINITIONS.find((d) => d.key === "i864_" + visaSlug(visaType) + "_petitioner_checklist");
+    assert.ok(def, "merged I-864 checklist exists");
+    assert.equal(def.checklistRole, "petitioner");
+    const gate = def.questions.find((q) => q.key === "jointSponsor_willProvideSupport");
+    assert.ok(gate && gate.type === "radio" && gate.required === false, "gate question is an optional radio");
+    const jointQuestions = def.questions.filter((q) => /^jointSponsor_/.test(q.key) && q.key !== gate.key);
+    assert.ok(jointQuestions.length > 0, "joint sponsor fields are in the same checklist");
+    jointQuestions.forEach((q) => {
+      assert.ok(q.visibility.roles.includes("petitioner") && !q.visibility.roles.includes("joint_sponsor"), "shown to the client, not to a joint sponsor");
+      assert.ok(q.conditionalLogic.rules.some((r) => r.questionKey === gate.key && r.value === "Yes"), `${q.key} is shown only when the gate is Yes`);
+    });
+    const docs = def.questions.filter((q) => q.type === "file" && /^joint_sponsor_/.test(q.key));
+    assert.ok(docs.length > 0 && docs.every((q) => q.conditionalLogic.rules.some((r) => r.questionKey === gate.key)), "joint sponsor documents are gated too");
+  }
 });

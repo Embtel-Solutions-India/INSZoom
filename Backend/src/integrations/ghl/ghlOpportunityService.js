@@ -1,5 +1,5 @@
 const env = require("../../config/env");
-const { getClient } = require("./ghlClient");
+const { getClient, GHLApiError } = require("./ghlClient");
 
 const PAGE_SIZE = 100; // GHL's maximum for opportunity search.
 const MAX_PAGES = 500; // hard stop against a runaway cursor loop.
@@ -50,8 +50,27 @@ async function updateOpportunityStage(opportunityId, { pipelineId, pipelineStage
 
 // POST /opportunities/ : a new opportunity for an employee card. Returns the created opportunity.
 async function createOpportunity(body, client = getClient()) {
-  const data = await client.post("/opportunities/", body);
-  return data?.opportunity || data || null;
+  try {
+    const data = await client.post("/opportunities/", body);
+    return data?.opportunity || data || null;
+  } catch (error) {
+    // GHL refuses a second opportunity for the same contact in a pipeline unless the pipeline allows duplicates. An employer with
+    // several employees (one contact) and a client with several cases both need that setting on.
+    if (error?.body?.code === "OPPORTUNITY_NO_DUPLICATE") {
+      throw new GHLApiError('GoHighLevel refused this opportunity because the contact already has one in this pipeline. In GoHighLevel open Opportunities > Pipelines > (this pipeline) > Edit and turn ON "Allow duplicate opportunities", then retry.', { status: 400, body: error.body, retryable: false });
+    }
+    throw error;
+  }
+}
+
+// DELETE /opportunities/{id} : removes the opportunity from GHL (used when a case is deleted for good, so the next sync cannot re-import it).
+// An opportunity that is already gone (404) counts as deleted.
+async function deleteOpportunity(opportunityId, client = getClient()) {
+  try {
+    await client.request("DELETE", `/opportunities/${opportunityId}`);
+  } catch (error) {
+    if (!(error instanceof GHLApiError && error.status === 404)) throw error;
+  }
 }
 
 // PUT /opportunities/{id}/status : open | won | lost | abandoned
@@ -64,4 +83,4 @@ async function updateOpportunityName(opportunityId, name, client = getClient()) 
   return client.put(`/opportunities/${opportunityId}`, { name });
 }
 
-module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };
+module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, deleteOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };

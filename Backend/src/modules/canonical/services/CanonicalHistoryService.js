@@ -6,7 +6,7 @@ class CanonicalHistoryService {
       changes,
       conflicts,
       validation,
-      changedBy: user?._id || user?.id || user,
+      changedBy: user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user),
       changedAt: new Date(),
       source,
       reason,

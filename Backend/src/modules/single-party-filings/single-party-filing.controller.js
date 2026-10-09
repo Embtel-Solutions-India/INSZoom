@@ -7,6 +7,7 @@
 // creation, but with no petitioner/beneficiary or employer/employee fields
 // at all — this is the simplest of the three patterns by design.
 const Case = require("../../models/Case");
+const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
@@ -43,6 +44,7 @@ exports.createFiling = async (req, res, next) => {
     // updated to match the renamed legacySource enum (models/*.js).
     const caseNumber = await generateCaseNumber(req.body.legacySource === "Admin" ? "INS" : "Immiglance");
     const caseData = await Case.create({
+      ...pipelineCategoryFields(req.body),
       caseNumber,
       caseId: caseNumber,
       visaType: filingType.visaType,

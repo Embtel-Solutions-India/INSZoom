@@ -406,6 +406,17 @@ add(
   g28("COSF1")
 );
 
+// ===================== F-1 REINSTATEMENT (SINGLE-PARTY FILING TYPE) =====================
+// filingTypes.js's F1_REINSTATEMENT: reinstatement of F-1 student status is an application type of Form I-539, so I-539 is the one
+// automatically-created USCIS form. I-539A (co-applicants), I-907 and G-28 stay CONDITIONAL / Case-Manager-decision-only, exactly like
+// COSF1. Deliberately NO I-765, I-20 or DS-series row: the new school-issued I-20 is a supporting document on the checklist.
+add(
+  i539AutoCreate("F1REINSTATEMENT", { notes: "F-1 Reinstatement - Form I-539 (reinstatement to student status) is the primary and only automatically-created USCIS form." }),
+  i539A("F1REINSTATEMENT"),
+  i907("F1REINSTATEMENT"),
+  g28("F1REINSTATEMENT")
+);
+
 // ===================== COS TO F-2 (SINGLE-PARTY FILING-TYPE VARIANT) =====================
 // filingTypes.js's COS_F2 is a distinct, explicitly-selected filing type
 // (not the generic "F-2" dependent-status case type above) — gets its own

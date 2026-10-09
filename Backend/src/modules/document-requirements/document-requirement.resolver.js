@@ -20,7 +20,10 @@ function fileQuestionToRequirement(question, questionnaire) {
     condition: question.conditionalLogic || undefined,
     // Shown / required only inside the questionnaire (when its condition holds);
     // never copied onto the case as an unconditional checklist item.
-    questionnaireOnly: Boolean(question.metadata?.questionnaireOnly),
+    // A document that only applies when an answer says so (e.g. I-131: the refugee / re-entry / advance-parole sections) is judged inside the
+    // questionnaire, where it appears only once its condition holds. Copying it onto the case as an unconditional item made Required Documents
+    // list every conditional document of the checklist (36 for I-131) although the client only owes the few that apply (6).
+    questionnaireOnly: Boolean(question.metadata?.questionnaireOnly) || Boolean(question.conditionalLogic?.rules?.length || question.conditionalLogic?.groups?.length),
     source: `questionnaire:${questionnaire?.key || question.questionnaire}`,
   };
 }

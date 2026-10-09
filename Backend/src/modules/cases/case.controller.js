@@ -1,4 +1,5 @@
 const path = require("path");
+const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const multer = require("multer");
 const env = require("../../config/env");
 const Case = require("../../models/Case");
@@ -812,8 +813,22 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
     // offers only those; if the lookup fails nothing is hidden (every type reads as covered).
     let coverage = {};
     try { coverage = await require("../questionnaires/checklistCoverage").loadChecklistCoverage(Object.keys(VISA_CATEGORIES)); } catch (_error) { coverage = {}; }
+    // Which GoHighLevel pipeline each case type belongs to (Immigrant / Non-Immigrant): the SAME rule GHL sync uses (the GHL visa mapping table,
+    // else the visa's classification), so the New case / Add employee dropdowns preselect it from the registry and never drift from it.
+    let pipelineEntries = [];
+    let pipelineCategoryFor = () => undefined;
+    try {
+      const aux = require("../../integrations/ghl/ghlAuxOutbound");
+      const env = require("../../config/env");
+      if (env.ghl.enabled && env.ghl.locationId) {
+        const config = await require("../../models/GHLIntegration").findOne({ locationId: env.ghl.locationId }).select("visaMapping").lean();
+        pipelineEntries = config?.visaMapping?.entries || [];
+      }
+      pipelineCategoryFor = (visaType) => aux.categoryForVisa(visaType, "", pipelineEntries);
+    } catch (_error) { /* the dropdown simply has no preselection */ }
     const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
       visaType,
+      pipelineCategory: pipelineCategoryFor(visaType),
       hasChecklist: coverage[visaType]?.hasChecklist !== false,
       label: category.label || visaType,
       caseStructure: category.caseStructure,
@@ -869,6 +884,7 @@ exports.getCases = async (req, res, next) => {
     const totalPages = Math.ceil(total / limit);
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames(cases, serializedCases);
     timer.mark("case_serialization_completed", { count: serializedCases.length });
     res.json({
       success: true,
@@ -899,6 +915,7 @@ exports.getCase = async (req, res, next) => {
   try {
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const serialized = caseService.serializeCaseForUser(caseData, req.user);
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
   } catch (error) {
     handleError(error, next);
@@ -1255,6 +1272,7 @@ exports.createCase = async (req, res, next) => {
       const principalTargetRole = caseStructure === "family" ? "petitioner" : caseStructure === "employer_employee" ? "employer" : null;
       const principalChecklist = filterChecklistForRole(checklist, principalTargetRole);
       [principalCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
         ...commonCaseData,
         caseId: principalCaseNumber,
         caseNumber: principalCaseNumber,
@@ -1402,6 +1420,7 @@ exports.createCase = async (req, res, next) => {
         const childRole = caseStructure === "family" ? "beneficiary" : "employee";
         const childChecklist = filterChecklistForRole(checklist, childRole);
         const [childCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
           ...commonCaseData,
           caseId: childCaseNumbers[index],
           caseNumber: childCaseNumbers[index],
@@ -1626,7 +1645,9 @@ exports.updateCase = async (req, res, next) => {
     caseData.lastModifiedBy = req.user._id;
     // GHL-created case still waiting for a visa: the team lead just chose one.
     // No-op (returns false) for every other case.
-    const ghlVisaJustSelected = ghlVisaSelection.markVisaSelected(caseData, req.body.visaType);
+    const ghlSelection = await ghlVisaSelection.selectVisa(caseData, req.body.visaType);
+    const ghlVisaJustSelected = Boolean(ghlSelection);
+    const ghlReshaped = Boolean(ghlSelection && ghlSelection.structure !== "single");
 
     if (req.body.workflow) {
       Object.assign(caseData.workflow, req.body.workflow);
@@ -1650,7 +1671,9 @@ exports.updateCase = async (req, res, next) => {
     await caseData.save();
     await caseService.writeAuditLog("update", caseData, req.user, changes, req);
     const orchestrationFields = new Set(["visaType", "visaCategory", "caseType", "petitionType", "petitionSubType", "employer", "organization", "companyId"]);
-    if (Object.keys(changes).some((field) => orchestrationFields.has(field))) {
+    // An employer/family card reshaped by the visa choice is provisioned by its own structure-specific flow (afterSave below), never by
+    // the generic single-party orchestration.
+    if (!ghlReshaped && Object.keys(changes).some((field) => orchestrationFields.has(field))) {
       await require("./immigration-knowledge-engine.service").orchestrate(caseData._id, req.user, req, {
         reason: "case_classification_changed",
       });
@@ -1665,7 +1688,8 @@ exports.updateCase = async (req, res, next) => {
       await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
     }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
-    if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
+    if (ghlReshaped) await ghlSelection.afterSave();
+    else if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
 
     res.json({ success: true, message: "Case updated", case: lifecycle.case, caseSummary: caseService.summarizeCase(lifecycle.case), workflow: lifecycle });
   } catch (error) {
@@ -1950,6 +1974,19 @@ exports.addExternalNote = async (req, res, next) => {
   }
 };
 
+// Assignment side effects (emails, push, realtime, audit/history rows) are network- and write-heavy: createNotification() alone
+// awaits an SMTP send and an FCM push per recipient. None of it changes what the assigner sees, so it runs AFTER the response
+// instead of in front of it, in parallel, and a failure is logged rather than failing an assignment that already committed.
+function runAfterResponse(label, tasks) {
+  setImmediate(() => {
+    Promise.allSettled(tasks.map((task) => Promise.resolve().then(task))).then((results) => {
+      results.forEach((result) => {
+        if (result.status === "rejected") console.error(`[${label}] background step failed (non-fatal):`, result.reason?.message || result.reason);
+      });
+    });
+  });
+}
+
 exports.assignCaseManager = async (req, res, next) => {
   try {
     const caseData = await getCaseOr404(req.params.id, res);
@@ -1994,13 +2031,15 @@ exports.assignCaseManager = async (req, res, next) => {
     }
 
     await caseData.save();
-    await syncCaseMessagingAssignment(caseData);
-    await recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req);
-    await caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req);
-    await notifyAssignee(assignee, caseData, "case_manager", req.user, req);
-    await notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req);
-    // Team lead + admin alerts (the case manager and client are already covered above).
-    require("../notifications/triggerEvents.service").emitInBackground("case.cm_assigned", { caseId: caseData._id, actor: req.user, req });
+    runAfterResponse("assignCaseManager", [
+      () => syncCaseMessagingAssignment(caseData),
+      () => recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req),
+      () => caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req),
+      () => notifyAssignee(assignee, caseData, "case_manager", req.user, req),
+      () => notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req),
+      // Team lead + admin alerts (the case manager and client are already covered above).
+      () => require("../notifications/triggerEvents.service").emitInBackground("case.cm_assigned", { caseId: caseData._id, actor: req.user, req }),
+    ]);
 
     // Phase 7 — cascade to non-overridden children after the principal's own
     // assignment has committed; a cascade failure must not roll back or fail
@@ -2038,12 +2077,14 @@ exports.assignTeamLead = async (req, res, next) => {
     }
 
     await caseData.save();
-    await syncCaseMessagingAssignment(caseData);
-    await recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req);
-    await caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req);
-    await notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req);
-    // The case manager is told who the team lead is (the new team lead is covered above).
-    require("../notifications/triggerEvents.service").emitInBackground("case.tl_assigned", { caseId: caseData._id, actor: req.user, req });
+    runAfterResponse("assignTeamLead", [
+      () => syncCaseMessagingAssignment(caseData),
+      () => recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req),
+      () => caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req),
+      () => notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req),
+      // The case manager is told who the team lead is (the new team lead is covered above).
+      () => require("../notifications/triggerEvents.service").emitInBackground("case.tl_assigned", { caseId: caseData._id, actor: req.user, req }),
+    ]);
 
     let childrenCascaded = 0;
     if (caseData.caseRole === "principal") {
@@ -2693,6 +2734,12 @@ exports.addEmployeeSlot = async (req, res, next) => {
     // Every employee gets their OWN visa (and filing type, e.g. H-1B Extension); forms and checklists are
     // provisioned from it below, exactly as for any case of that visa. Defaults to the matter's visa if omitted.
     const employeeVisa = resolveEmployeeVisa(principal, req.body || {});
+    // Who the employee is (typed in Add employee): written on this case and on the GHL card.
+    const employeeName = String(req.body?.employeeName || "").trim();
+    const employeeEmail = String(req.body?.employeeEmail || "").trim().toLowerCase();
+    if (employeeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeEmail)) {
+      return res.status(400).json({ success: false, code: "INVALID_EMPLOYEE_EMAIL", message: "Enter a valid employee email." });
+    }
     const nextIndex = Math.max(principal.childCaseCount || 0, (principal.childCases || []).length);
     const childIndex = CaseNumberService.indexToSuffix(nextIndex);
     const childCaseNumber = CaseNumberService.childCaseNumber(principal.caseNumber, nextIndex);
@@ -2700,14 +2747,16 @@ exports.addEmployeeSlot = async (req, res, next) => {
     const childChecklist = filterChecklistForRole(checklist, "employee");
 
     const [childCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
       isDemoData: false,
       createdBy: req.user._id,
       lastModifiedBy: req.user._id,
       caseId: childCaseNumber,
       caseNumber: childCaseNumber,
       clientPortalId: childCaseNumber,
-      clientEmail: "",
-      clientName: "",
+      clientEmail: employeeEmail,
+      clientName: employeeName,
+      employeeIdentity: { name: employeeName, email: employeeEmail },
       visaType: employeeVisa.visaType,
       visaCategory: employeeVisa.visaType,
       caseType: principal.caseType,
@@ -3505,6 +3554,13 @@ exports.deleteCasePermanently = async (req, res, next) => {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
+    // A case on the GoHighLevel pipeline (and, for an employer matter, its employees) is removed from GHL FIRST, so its opportunity cannot be
+    // re-imported as a new case by the next sync. If GHL refuses, nothing is deleted and the person is told why.
+    try {
+      await require("../../integrations/ghl/ghlCaseOutbound").deleteGhlOpportunitiesFor(caseData);
+    } catch (ghlError) {
+      return res.status(502).json({ success: false, code: "GHL_DELETE_FAILED", message: `The case was not deleted because its GoHighLevel opportunity could not be removed (${ghlError.message}). Try again in a moment.` });
+    }
     // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
     const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
     res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });
@@ -3649,6 +3705,7 @@ exports.createCaseWithClient = async (req, res, next) => {
     }
 
     const newCase = await Case.create({
+      ...pipelineCategoryFields(req.body),
       isDemoData: false,
       caseId: caseNumber,
       caseNumber,

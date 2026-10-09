@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BellRing } from 'lucide-react'
-import { getPushStatus, requestPermissionAndGetToken } from '../services/notificationService'
+import { getPushStatus, requestPermissionAndGetToken, isPushPromptDismissed, dismissPushPrompt } from '../services/notificationService'
 
 // Sticky, theme-coloured call-to-action for browser push notifications (new case-team messages arrive as push, with the
 // sender's name on top). Shown only while push is NOT working for this account in this browser; gone the moment it is
@@ -9,6 +9,7 @@ export default function EnablePushButton() {
   const [status, setStatus] = useState('checking')
   const [busy, setBusy] = useState(false)
   const [hint, setHint] = useState('')
+  const [dismissed, setDismissed] = useState(isPushPromptDismissed);
 
   const refresh = useCallback(async () => {
     try { setStatus(await getPushStatus()) } catch { setStatus('unsupported') }
@@ -27,7 +28,7 @@ export default function EnablePushButton() {
     }
   }, [refresh])
 
-  if (status === 'checking' || status === 'unsupported' || status === 'enabled') return null
+  if (status === 'checking' || status === 'unsupported' || status === 'enabled' || dismissed) return null
 
   const onClick = async () => {
     setHint('')
@@ -50,15 +51,26 @@ export default function EnablePushButton() {
   return (
     <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-40 flex flex-col items-end gap-2 pointer-events-none">
       {hint && <div className="pointer-events-auto max-w-xs rounded-lg border border-border bg-popover text-popover-foreground text-xs px-3 py-2 shadow-lg">{hint}</div>}
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
-      >
-        <BellRing className="w-4 h-4" />
-        {busy ? 'Enabling…' : 'Enable notifications'}
-      </button>
+      <div className="pointer-events-auto relative">
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
+        >
+          <BellRing className="w-4 h-4" />
+          {busy ? 'Enabling…' : 'Enable notifications'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { dismissPushPrompt(); setDismissed(true); }}
+          aria-label="Close"
+          title="Close"
+          className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground text-xs leading-none shadow hover:bg-muted"
+        >
+          ×
+        </button>
+      </div>
     </div>
   )
 }

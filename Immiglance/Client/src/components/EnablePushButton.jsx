@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getPushStatus, requestPermissionAndGetToken } from "../services/notificationService";
+import { getPushStatus, requestPermissionAndGetToken, isPushPromptDismissed, dismissPushPrompt } from "../services/notificationService";
 
 // Sticky, theme-coloured call-to-action for browser push notifications. It is
 // shown only while push is NOT working for this account in this browser, and
@@ -10,6 +10,7 @@ export default function EnablePushButton() {
   const [status, setStatus] = useState("checking");
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState("");
+  const [dismissed, setDismissed] = useState(isPushPromptDismissed);
 
   const refresh = useCallback(async () => {
     try {
@@ -35,7 +36,7 @@ export default function EnablePushButton() {
     };
   }, [refresh]);
 
-  if (status === "checking" || status === "unsupported" || status === "enabled") return null;
+  if (status === "checking" || status === "unsupported" || status === "enabled" || dismissed) return null;
 
   const onClick = async () => {
     setHint("");
@@ -62,18 +63,29 @@ export default function EnablePushButton() {
           {hint}
         </div>
       )}
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={busy}
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
-          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
-        {busy ? "Enabling…" : "Enable notifications"}
-      </button>
+      <div className="pointer-events-auto relative">
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={busy}
+          className="inline-flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold shadow-lg hover:opacity-90 transition-opacity disabled:opacity-60"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true">
+            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+          </svg>
+          {busy ? "Enabling…" : "Enable notifications"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { dismissPushPrompt(); setDismissed(true); }}
+          aria-label="Close"
+          title="Close"
+          className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-popover text-popover-foreground text-xs leading-none shadow hover:bg-muted"
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }

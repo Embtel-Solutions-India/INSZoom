@@ -12,7 +12,7 @@ const collisionDetection = (args) => {
 const matches = (card, query) =>
   [card.clientName, card.employerName, card.beneficiaryName, card.caseNumber, card.clientEmail, card.visaType].some((value) => String(value || '').toLowerCase().includes(query))
 
-export default function Board({ columns, onMove, onOpen, onPageChange, pageLoading = {}, pageOf = () => 0, onDragStateChange, filter = '' }) {
+export default function Board({ columns, onMove, onOpen, onDelete, onPageChange, pageLoading = {}, pageOf = () => 0, onDragStateChange, filter = '' }) {
   const [activeId, setActiveId] = useState(null)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), // a plain click still opens the case
@@ -52,6 +52,7 @@ export default function Board({ columns, onMove, onOpen, onPageChange, pageLoadi
             stages={stages}
             onOpen={onOpen}
             onMoveTo={onMove}
+            onDelete={onDelete}
             page={pageOf(column.key)}
             pageLoading={Boolean(pageLoading[column.key])}
             onPageChange={onPageChange}

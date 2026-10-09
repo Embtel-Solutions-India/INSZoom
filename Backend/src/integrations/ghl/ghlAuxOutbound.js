@@ -68,7 +68,7 @@ function categoryForVisa(visaType, petitionSubType, entries) {
   const exact = rows.find((e) => (e.petitionSubType || "") === (petitionSubType || ""));
   const hit = exact || rows[0];
   if (hit?.category) return hit.category;
-  return /^EB-|^PERM$/i.test(visaType || "") ? "immigrant" : "non_immigrant";
+  return /^(EB-|PERM$|IR-[0-9]$|CR-[0-9]$|F[1-4][AB]?$|GC)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
 }
 
 const DETAIL_TO_SERVICE_TYPE = { work_visa: "Work Visa", study_visa: "Study Visa", green_card: "Green Card", business__investment: "Business/Investment" };
@@ -90,13 +90,15 @@ function serviceTypeFor(visaType, petitionSubType, entries) {
 async function queueJob(caseId, type) {
   // One waiting/running job of a type per card is enough: it recomputes what to do when it runs.
   if (await GHLSyncJob.exists({ caseId, type, status: { $in: ["pending", "processing"] } })) return null;
+  // A job that just failed for good is not retried by every sweep (that only hammers GHL and re-alerts admins); try again after an hour.
+  if (await GHLSyncJob.exists({ caseId, type, status: "failed", updatedAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) } })) return null;
   return GHLSyncJob.create({ type, caseId, operationId: crypto.randomUUID(), status: "pending", nextAttemptAt: new Date() });
 }
 
 /** Decide and queue for one employee card. Never throws. Returns the job types queued. */
 async function enqueueForChild(childId) {
   try {
-    const child = await Case.findById(childId).select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName").lean();
+    const child = await Case.findById(childId).select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name").lean();
     if (!child || child.caseRole !== "employee" || !child.parentCase) return [];
     const [link, principal] = await Promise.all([
       GHLEmployerLink.findOne({ principalCaseId: child.parentCase }).lean(),
@@ -132,7 +134,7 @@ async function sweep({ limit = 500 } = {}) {
   if (!childIds.length) return { checked: 0, queued: 0 };
 
   const children = await Case.find({ _id: { $in: childIds } })
-    .select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName")
+    .select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name")
     .lean();
   let queued = 0;
   for (const child of children) {
@@ -151,7 +153,7 @@ const transient = (message) => new GHLApiError(message, { status: 0, retryable: 
 
 // Writes the opportunity onto the employee card and records the identity link. Idempotent: used both when our
 // own create finishes and when GHL's "created" webhook gets there first.
-async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId, locationId }) {
+async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId, locationId, role = "employee" }) {
   const now = new Date();
   const set = {
     "integrations.ghl.locationId": locationId,
@@ -164,7 +166,7 @@ async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, c
     "integrations.ghl.unifiedStageKey": mapping?.unifiedStageKey,
     "integrations.ghl.category": pipeline.category,
     "integrations.ghl.opportunityStatus": opportunity.status || "open",
-    "integrations.ghl.role": "employee",
+    "integrations.ghl.role": role,
     "integrations.ghl.origin": "immiglance",
     "integrations.ghl.displayName": opportunity.name,
     "integrations.ghl.lastSyncedAt": now,
@@ -217,7 +219,7 @@ async function runCreate(job, client) {
   if (!config?.mappingsConfirmedAt) throw transient("GHL stage mapping is not confirmed yet");
 
   const entries = await visaService.ensureEntries(config);
-  const category = categoryForVisa(child.visaType, child.petitionSubType, entries);
+  const category = child.pipelineCategory || principal.pipelineCategory || categoryForVisa(child.visaType, child.petitionSubType, entries);
   const pipeline = config.pipelines.find((p) => p.enabled && p.category === category && p.stages?.length);
   if (!pipeline) throw permanent(`No ${category} GHL pipeline is configured`);
   const first = [...pipeline.stages].sort((a, b) => a.order - b.order)[0];
@@ -297,6 +299,9 @@ async function runAuxJob(job, { client } = {}) {
   if (job.type === "create_opportunity") return runCreate(job, client);
   if (job.type === "set_status") return runSetStatus(job, client);
   if (job.type === "rename") return runRename(job, client);
+  // Cases created in the CRM get their GHL card / employer link from ghlCaseOutbound.js
+  if (job.type === "create_case_opportunity") return require("./ghlCaseOutbound").runCreateCaseOpportunity(job, client);
+  if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }
 
@@ -327,7 +332,7 @@ async function adoptOwnOpportunity({ opportunity, config, pipeline, mapping, cli
   const linked = child.integrations?.ghl?.opportunityId;
   if (linked && linked !== opportunity.id) return { adopted: false, note: "that employee card is already linked to another opportunity" };
   if (!linked) {
-    await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: opportunity.contactId, locationId: config.locationId });
+    await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: opportunity.contactId, locationId: config.locationId, role: child.caseRole === "employee" ? "employee" : "individual" });
   }
   return { adopted: true, note: "linked to the employee card Immiglance created" };
 }
@@ -343,6 +348,7 @@ module.exports = {
   serviceTypeFor,
   queueJob,
   enqueueForChild,
+  linkCreatedOpportunity,
   sweep,
   runAuxJob,
   linkCreatedOpportunity,

@@ -139,7 +139,7 @@ class CanonicalMergeService {
         status: payload.status || "resolved",
         resolvedValue: payload.value,
         resolutionReason: payload.reason,
-        resolvedBy: user?._id || user?.id || user,
+        resolvedBy: user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user),
         resolvedAt: new Date(),
       };
     });
@@ -156,7 +156,7 @@ class CanonicalMergeService {
       ...(fieldMetadata[conflict.path] || {}),
       value: payload.value,
       status: "resolved",
-      verifiedBy: user?._id || user?.id || user,
+      verifiedBy: user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user),
       verificationDate: new Date(),
       resolutionReason: payload.reason,
       sourceType: "manual_resolution",

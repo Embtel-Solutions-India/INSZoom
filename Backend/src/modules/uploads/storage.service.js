@@ -75,6 +75,7 @@ function getS3() {
     s3Client = new S3Client({
       region,
       credentials: { accessKeyId, secretAccessKey },
+      maxAttempts: Number(process.env.S3_MAX_ATTEMPTS) || 4, // the SDK retries transient failures (throttling, dropped connections, 5xx) itself
       ...(endpoint ? { endpoint, forcePathStyle } : {}),
     });
   }
@@ -175,7 +176,20 @@ async function storeBuffer(key, buffer, contentType) {
   const encrypted = encrypt(buffer);
 
   if (STORAGE_PROVIDER === "s3") {
-    await s3PutObject(normalizedKey, encrypted, contentType);
+    // Beyond the SDK's own retries: a failed write is attempted again (short pause) before the upload is reported as failed, so one
+    // network hiccup never surfaces to the person uploading. A write that still fails throws, and the browser retries the upload too.
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await s3PutObject(normalizedKey, encrypted, contentType);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+    }
+    if (lastError) throw lastError;
     return {
       provider: "s3",
       key: normalizedKey,

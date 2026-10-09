@@ -10,7 +10,7 @@ const ScoringService = require("./ScoringService");
 
 class EligibilityEngineService {
   static userId(user) {
-    return user?._id || user?.id || user;
+    return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
   }
 
   static async audit(action, caseId, user, req, changes = {}) {

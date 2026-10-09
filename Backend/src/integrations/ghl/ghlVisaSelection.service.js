@@ -35,6 +35,26 @@ function markVisaSelected(caseData, incomingVisaType) {
   return true;
 }
 
+// The team lead chose a visa for a pending GHL card. Single-party visas are applied in place (markVisaSelected). Employer and
+// family visas reshape the card into the same structure the GHL intake gives them (see ghlStructureConversion.js), so the case
+// is connected to the registry, checklists, forms and case logic exactly like any other case of that visa.
+// Returns null when this is not a pending GHL card, else { structure, afterSave }: call afterSave() once the case is saved.
+async function selectVisa(caseData, incomingVisaType) {
+  if (!isPendingGhlCase(caseData) || !String(incomingVisaType || "").trim()) return null;
+  const visa = String(incomingVisaType).trim();
+  const structure = getCaseStructure(visa);
+  if (!structure) throw Object.assign(new Error(`Unknown visa type: ${visa}`), { status: 400, code: "UNKNOWN_VISA_TYPE" });
+  if (structure === "single") {
+    markVisaSelected(caseData, visa);
+    return { structure, afterSave: null };
+  }
+  const conversion = await require("./ghlStructureConversion").convertPendingCase(caseData, visa, structure);
+  caseData.visaSelectionStatus = "selected";
+  if (structure === "employer_employee") caseData.visaCategory = visa;
+  if (!caseData.petitionType) caseData.petitionType = visa;
+  return conversion;
+}
+
 // Runs the provisioning after the HTTP response, like createCase's own
 // post-create orchestration, so selecting a visa never makes the request slow.
 function provisionInBackground(caseData, user, req) {
@@ -64,4 +84,4 @@ async function provisionAfterVisaSelection(caseData, user, req) {
   }
 }
 
-module.exports = { isPendingGhlCase, markVisaSelected, provisionAfterVisaSelection, provisionInBackground };
+module.exports = { isPendingGhlCase, markVisaSelected, selectVisa, provisionAfterVisaSelection, provisionInBackground };

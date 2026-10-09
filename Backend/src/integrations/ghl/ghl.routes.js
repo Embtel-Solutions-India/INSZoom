@@ -18,6 +18,7 @@ router.post("/setup/confirm", adminOnly, ctrl.confirmMappings);
 router.post("/sync", adminOnly, ctrl.syncNow);
 router.post("/reconcile", adminOnly, ctrl.reconcileNow);
 
+router.get("/cases/:caseId/stages", boardStaff, ctrl.caseStages);
 router.patch("/cases/:caseId/pipeline-stage", boardStaff, ctrl.moveStage);
 router.post("/jobs/:id/retry", adminOnly, ctrl.retryJob);
 

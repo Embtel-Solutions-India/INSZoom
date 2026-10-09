@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -15,6 +15,7 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
   h4ead: 'H4_EAD',
   h4extensionead: 'H4_EXTENSION_EAD',
   cosf1: 'COS_F1',
+  f1reinstatement: 'F1_REINSTATEMENT',
   cosf2: 'COS_F2',
   cosb1: 'COS_B1',
   cosb2: 'COS_B2',
@@ -64,6 +65,7 @@ const initialForm = {
   clientEmail: '',
   clientPhone: '',
   visaType: '',
+  pipelineCategory: '',
   petitionSubType: '',
   packageName: '',
   assignedCaseManager: '',
@@ -114,6 +116,7 @@ const CreateCaseModal = ({
   const [error, setError] = useState('')
   const { options: visaOptions, registryTypes } = useVisaOptions()
   const selectedRegistryOption = visaOptions.find((opt) => opt.value === form.visaType && opt.fromRegistry)
+  const registryEntry = registryEntryFor(visaOptions.find((opt) => opt.value === form.visaType) || {}, registryTypes)
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee'
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
@@ -136,8 +139,16 @@ const CreateCaseModal = ({
       .catch((err) => console.error('Error fetching case managers:', err))
   }, [])
 
+  // The GHL pipeline is preselected from the registry for the chosen visa (same rule GHL sync uses); the person can still change it.
+  const pipelineTouched = useRef(false)
+  useEffect(() => {
+    const suggested = registryEntry?.pipelineCategory
+    if (suggested && !pipelineTouched.current) setForm((prev) => (prev.pipelineCategory === suggested ? prev : { ...prev, pipelineCategory: suggested }))
+  }, [form.visaType, registryEntry?.pipelineCategory]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChange = (field) => (e) => {
     const { value } = e.target
+    if (field === 'pipelineCategory') pipelineTouched.current = true
     // the H-1B type only applies to H-1B - never carry it over to another visa
     setForm((prev) => ({ ...prev, [field]: value, ...(field === 'visaType' ? { petitionSubType: '' } : {}) }))
   }
@@ -176,6 +187,7 @@ const CreateCaseModal = ({
         // for this path.
         const payload = {
           filingTypeKey,
+          pipelineCategory: form.pipelineCategory,
           clientName: form.clientName.trim(),
           clientEmail: form.clientEmail.trim(),
         }
@@ -197,6 +209,7 @@ const CreateCaseModal = ({
         // client User, never the staff member submitting this form.
         const payload = {
           visaType: visaTypeLabel,
+          pipelineCategory: form.pipelineCategory,
           ...(leadId ? { leadId } : {}),
           petitionerName: form.clientName.trim(),
           petitionerEmail: form.clientEmail.trim(),
@@ -216,6 +229,7 @@ const CreateCaseModal = ({
         clientName: form.clientName.trim(),
         clientEmail: form.clientEmail.trim(),
         visaType: visaTypeLabel,
+        pipelineCategory: form.pipelineCategory,
         ...(needsH1bType ? { petitionSubType: form.petitionSubType } : {}),
         childCaseCount: showEmployerFields ? Number(initialData?.childCaseCount || 1) : 0,
         creationSource,
@@ -356,6 +370,21 @@ const CreateCaseModal = ({
             >
               <option value="" disabled>Select visa type</option>
               {visaOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">GoHighLevel Pipeline *</label>
+            <select
+              required
+              value={form.pipelineCategory}
+              onChange={handleChange('pipelineCategory')}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="" disabled>Select pipeline</option>
+              {PIPELINE_CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

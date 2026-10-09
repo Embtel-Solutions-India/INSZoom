@@ -129,9 +129,12 @@ const CRMCases = () => {
     if (!connected) return
     const unsubscribeAssigned = subscribe('case:assigned', () => { fetchCases(); fetchPendingQueue() })
     const unsubscribeSubmitted = subscribe('case:client_submitted', () => fetchCases())
+    // A card moved on the Pipeline, through Update Stage, or in GoHighLevel: the Stage column follows it.
+    const unsubscribeStage = subscribe('ghl:pipeline:updated', () => fetchCases())
     return () => {
       unsubscribeAssigned()
       unsubscribeSubmitted()
+      unsubscribeStage()
     }
   }, [connected, user?._id])
 
@@ -511,7 +514,7 @@ const CRMCases = () => {
                           >
                             <div className="flex items-center justify-between gap-2 mb-1.5">
                               <span className="text-sm font-semibold text-foreground truncate">{caseItem.caseNumber}</span>
-                              <StatBadge value={caseItem.stage} kind="stage" className="shrink-0" />
+                              <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                             </div>
                             <p className="text-xs text-muted-foreground truncate">{caseItem.clientName}</p>
                             <p className="text-xs text-muted-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
@@ -564,7 +567,7 @@ const CRMCases = () => {
                         <p className="text-sm text-foreground mt-0.5 truncate">{caseItem.clientName}</p>
                         <p className="text-xs text-muted-foreground truncate">{caseItem.clientEmail}</p>
                       </div>
-                      <StatBadge value={caseItem.stage} kind="stage" className="shrink-0" />
+                      <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
@@ -686,7 +689,7 @@ const CRMCases = () => {
                         </p>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <StatBadge value={caseItem.stage} kind="stage" className="max-w-full truncate" />
+                        <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="max-w-full truncate" />
                       </td>
                       <td className="px-3 py-3 align-top">
                         <StatBadge value={caseItem.status} kind="status" className="max-w-full truncate" />

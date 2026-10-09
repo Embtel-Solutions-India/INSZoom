@@ -10,7 +10,7 @@ const ghlSyncJobSchema = new mongoose.Schema(
     //   create_opportunity  a new employee card has no GHL opportunity yet
     //   set_status          removed -> abandoned, restored -> open
     //   rename              the employee was identified: "Employer, Employee"
-    type: { type: String, enum: ["stage", "create_opportunity", "set_status", "rename"], default: "stage" },
+    type: { type: String, enum: ["stage", "create_opportunity", "set_status", "rename", "create_case_opportunity", "link_employer"], default: "stage" },
     caseId: { type: mongoose.Schema.Types.ObjectId, ref: "Case", required: true },
     // Only a stage move carries these; the other types look everything up when they run.
     opportunityId: { type: String, required: function stageOnly() { return this.type === "stage"; } },

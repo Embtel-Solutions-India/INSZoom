@@ -67,6 +67,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'h4ead', label: 'H-4 EAD' },
   { value: 'h4extensionead', label: 'H-4 Extension + EAD' },
   { value: 'cosf1', label: 'Change of Status to F-1' },
+  { value: 'f1reinstatement', label: 'F-1 Reinstatement' },
   { value: 'cosf2', label: 'Change of Status to F-2' },
   { value: 'cosb1', label: 'Change of Status to B-1' },
   { value: 'cosb2', label: 'Change of Status to B-2' },
@@ -133,3 +134,11 @@ export const registryEntryFor = (option, registryTypes) => {
   const keys = [option.value, option.canonicalLabel, option.label].map(optionKey).filter(Boolean)
   return (registryTypes || []).find((entry) => keys.includes(optionKey(entry.visaType))) || null
 }
+
+// Which GoHighLevel pipeline a case lives on. Asked wherever a case is created in the CRM (New case, leads, Add employee);
+// cases that arrive from GHL already carry it.
+export const PIPELINE_CATEGORY_OPTIONS = [
+  { value: 'immigrant', label: 'Immigrant pipeline' },
+  { value: 'non_immigrant', label: 'Non-Immigrant pipeline' },
+]
+export const pipelineCategoryLabel = (value) => PIPELINE_CATEGORY_OPTIONS.find((option) => option.value === value)?.label || ''

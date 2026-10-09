@@ -1167,7 +1167,7 @@ const caseSchema = new mongoose.Schema(
           resolvedAt: { type: Date },
         },
         // "immiglance" = the opportunity was created BY us when an employee was added in Immiglance.
-        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation", "immiglance"] },
+        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation", "immiglance", "visa_selection"] },
         // The name last written to the GHL opportunity (display only; identity is the opportunity id).
         displayName: { type: String },
         // We set this opportunity to "abandoned" because the employee was removed; only then may a restore reopen it
@@ -1291,6 +1291,13 @@ const caseSchema = new mongoose.Schema(
      * 'invite'     = this employee was invited to fill their own information
      * The principal's dataEntryMode stays the case-wide default for employees without their own choice.
      */
+    // GoHighLevel pipeline chosen when the case was created in the CRM (GHL-created cases use integrations.ghl.category).
+    pipelineCategory: { type: String, enum: ["immigrant", "non_immigrant"], default: undefined },
+    // Who an employee card is, as typed when staff add the employee (Add employee). The software case and the GHL card both read it.
+    employeeIdentity: {
+      name: { type: String, trim: true, default: "" },
+      email: { type: String, trim: true, lowercase: true, default: "" },
+    },
     employeeDataEntryMode: {
       type: String,
       enum: ["", "fill_self", "invite"],

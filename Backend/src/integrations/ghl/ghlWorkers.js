@@ -38,6 +38,7 @@ function startGhlWorkers() {
   const sweep = () =>
     withJobLock("ghl-employee-sweep", sweepMs * 2, async () => {
       await require("./ghlAuxOutbound").sweep();
+      await require("./ghlCaseOutbound").sweep();
     }).catch((error) => logger.error("ghl_employee_sweep_failed", { error: error.message }));
   // The sweep rides on the same interval (one handle for server.js to clear): at most once per sweepMs, first run after a delay.
   let lastSweep = Date.now() - sweepMs + Number(process.env.GHL_SWEEP_INITIAL_DELAY_MS || 60000);

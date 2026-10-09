@@ -34,6 +34,7 @@ const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { isPassportInformation } = require("./passportInformation");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
+const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
@@ -1449,14 +1450,16 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     questionnaire.analytics.startedCount += 1;
   }
   questionnaire.analytics.averageCompletionPercent = Math.round(((questionnaire.analytics.averageCompletionPercent || 0) + completion.percent) / 2);
-  await questionnaire.save();
+  // Analytics counters are bookkeeping: never make an upload wait for them.
+  if (payload.deferPostProcessing) questionnaire.save().catch(() => null); else await questionnaire.save();
   // Staff-requested rows: flip the matching informationRequests to submitted and notify the requester.
   if (caseData && (questionnaire.tags || []).includes("staff_request")) {
     await require("../information-requests/information-request.service")
       .markAnswered({ caseId: caseData._id, questionnaire, answerMap, user, req })
       .catch(() => null);
   }
-  await writeAuditLog(status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
+  const answerAudit = writeAuditLog(status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
+  if (payload.deferPostProcessing) answerAudit.catch(() => null); else await answerAudit;
   if (caseData) {
     // Merge onto the prior masterData rather than replacing it outright —
     // masterData also carries extension keys this rebuild doesn't know about
@@ -1516,6 +1519,10 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
         }
       }
     }
+    // A file upload answers with the stored file and the progress computed above; the case-level bookkeeping below (document requests, case
+    // progress/status, audit rows, canonical sync) is idempotent (operationId) and runs right after, in the background, so a checklist upload
+    // no longer waits for ~10 sequential database round trips. Every other save keeps the original, fully awaited order.
+    const runCaseSync = async () => {
     await addQuestionnaireDocumentRequestsAtomic(caseData._id, documentRequests, questionnaire, user, req, `${operationId}:document_requests`);
     await applyQuestionnaireCaseSyncAtomic({
       caseId: caseData._id,
@@ -1555,6 +1562,9 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     // the socket-driven refresh in Admin's case:client_submitted handler).
     require("../uscis-forms/uscis-form.service").markCaseFormsStale(caseData._id, "questionnaire_master_data_changed", Object.keys(masterCaseData.fieldMetadata || {})).catch(() => null);
     canonicalSyncService.syncCase(caseData._id, user, req, "questionnaire_answers_changed").catch(() => null);
+    };
+    if (payload.deferPostProcessing) runCaseSync().catch((error) => logger.error("questionnaire_case_sync_deferred_failed", { caseId: String(caseData._id), error: error.message }));
+    else await runCaseSync();
   }
   return { responseId, completion, progress: detailedProgress, validation: responseValidation, masterData: masterCaseData.masterData, mappingOutput, calculatedFields, answers: saved, documentRequests };
 }
@@ -1568,22 +1578,23 @@ async function storeAnswerFiles(files = [], context = {}) {
     uploadLimits.assertFileSize(file);
     await fileSecurityService.inspect(file);
   }
-  for (const file of files) {
+  const results = await Promise.all(files.map(async (file) => {
     const key = storageService.generateDocumentKey({
       caseId: context.caseId,
       userId: context.userId,
       originalName: file.originalname,
     }).replace("documents", "questionnaire-answers");
     const stored = await storageService.storeBuffer(key, file.buffer);
-    uploaded.push({
+    return {
       originalName: file.originalname,
       storageKey: stored.key,
       url: stored.url,
       size: file.size,
       mimeType: file.mimetype,
       uploadedAt: new Date(),
-    });
-  }
+    };
+  }));
+  uploaded.push(...results);
   return uploaded;
 }
 
@@ -1674,6 +1685,7 @@ async function saveFileAnswer(payload, files, user, req, { preserveStatus = fals
     try {
       return await saveAnswers({
         ...payload,
+        deferPostProcessing: true,
         answers: [{
           questionKey: payload.questionKey,
           value: storedFiles.map((file) => file.originalName),
@@ -2199,6 +2211,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // cosF2Checklist.js's own banner. Current status stays free-text/dynamic
   // (B-2/H-1B/H-4/L-1/F-2/etc. all resolve to this same checklist).
   ...COS_F1_CHECKLIST_DEFINITIONS,
+  // F-1 Reinstatement - standalone single-party case type (visaType F1REINSTATEMENT): ONE optional-answer client checklist incl. sponsor.
+  ...F1_REINSTATEMENT_CHECKLIST_DEFINITIONS,
   ...COS_F2_CHECKLIST_DEFINITIONS,
   // COS to B-1 / COS to B-2 — two INDEPENDENT real, standalone
   // case-creation visaTypes (COSB1, COSB2), each isDefault:true. F1_TO_B2
@@ -3070,6 +3084,19 @@ async function listCaseChecklists(caseId, user) {
     map.get(answer.responseId).push(answer);
     return map;
   }, new Map());
+  // every upload question of these checklists (visible or not, e.g. a conditional section the client has not opened), so a stored document
+  // can be named by the checklist question it was uploaded for: documentType (as stored) -> question label
+  const fileQuestions = resolved.length
+    ? await Question.find({ questionnaire: { $in: resolved.map((entry) => entry.questionnaire._id) }, type: { $in: ["file", "file-multiple"] } }).select("questionnaire key label metadata.documentType").lean()
+    : [];
+  const documentLabelsByQuestionnaire = new Map();
+  fileQuestions.forEach((question) => {
+    const id = String(question.questionnaire);
+    if (!documentLabelsByQuestionnaire.has(id)) documentLabelsByQuestionnaire.set(id, {});
+    const labels = documentLabelsByQuestionnaire.get(id);
+    labels[question.key] = question.label;
+    if (question.metadata?.documentType && !labels[question.metadata.documentType]) labels[question.metadata.documentType] = question.label;
+  });
   const checklists = await Promise.all(resolved.map(async (entry) => {
     const responseAnswers = answersByResponseId.get(entry.responseId) || [];
     const answerMap = getAnswerMapFromAnswers(responseAnswers);
@@ -3105,6 +3132,7 @@ async function listCaseChecklists(caseId, user) {
       resolvedDynamically: !entry.explicit,
       progress,
       documentProgress,
+      documentLabels: documentLabelsByQuestionnaire.get(String(entry.questionnaire._id)) || {},
       // every upload question this checklist currently asks for (as edited for this case), with whether it is answered:
       // the Required Documents list is built from this, so it always matches the checklist the client sees
       documentItems: visibleQuestions

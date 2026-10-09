@@ -951,15 +951,6 @@ export default function Documents() {
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-4">
-              <div aria-live="polite" className="text-xs font-medium text-muted-foreground">
-                {uploadsInFlightCount > 0
-                  ? `Uploading… (${uploadsInFlightCount} remaining)`
-                  : saveProgressState === "saving" ? "Saving…"
-                  : saveProgressState === "saved" && !hasUnsavedChanges ? `Saved${combinedStatus.lastSavedAt ? ` at ${combinedStatus.lastSavedAt}` : ""}`
-                  : saveProgressState === "error" ? "Save failed"
-                  : hasUnsavedChanges ? "Unsaved changes"
-                  : combinedStatus.lastSavedAt ? `Saved at ${combinedStatus.lastSavedAt}` : ""}
-              </div>
               <div className="flex items-center gap-2">
                 <div className="h-2 w-32 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-valuenow={overallPct} aria-valuemin={0} aria-valuemax={100}>
                   <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${overallPct}%` }} />
@@ -975,6 +966,15 @@ export default function Documents() {
                   Re-scan
                 </button>
               )}
+              <span aria-live="polite" role="status" data-testid="save-status" className={`text-xs font-semibold ${saveProgressState === "error" ? "text-destructive" : saveProgressState === "saved" && !hasUnsavedChanges ? "text-emerald-600" : "text-muted-foreground"}`}>
+                {uploadsInFlightCount > 0
+                  ? `Uploading… (${uploadsInFlightCount} remaining)`
+                  : saveProgressState === "saving" ? "Saving…"
+                  : saveProgressState === "saved" && !hasUnsavedChanges ? `Saved${combinedStatus.lastSavedAt ? ` at ${combinedStatus.lastSavedAt}` : ""}`
+                  : saveProgressState === "error" ? "Save failed"
+                  : hasUnsavedChanges ? "Unsaved changes"
+                  : combinedStatus.lastSavedAt ? `Saved at ${combinedStatus.lastSavedAt}` : ""}
+              </span>
               <button
                 type="button"
                 onClick={handleSaveProgress}

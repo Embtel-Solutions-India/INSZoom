@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
 import { ghlApi } from '../../services/api'
 import { useDraggable } from '@dnd-kit/core'
-import { AlertTriangle, GripVertical } from 'lucide-react'
+import { AlertTriangle, GripVertical, Trash2 } from 'lucide-react'
 
 const PRIORITY_DOT = {
   urgent: 'bg-red-500',
@@ -12,7 +12,7 @@ const PRIORITY_DOT = {
 
 // What a card looks like. Shared by the in-column card and the drag overlay so
 // the card under the pointer is pixel-identical to the one it came from.
-export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
+export function CardView({ card, stages, onMoveTo, onDelete, isOverlay = false }) {
   const isEmployee = card.caseRole === 'employee'
   // Admin-only: a card whose change could not reach GoHighLevel can be retried right here (the backend retries by itself too).
   const [retry, setRetry] = useState('')
@@ -30,6 +30,19 @@ export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
       className={`group relative rounded-lg border border-border bg-card p-3 shadow-sm ${isOverlay ? 'cursor-grabbing shadow-lg ring-2 ring-primary/40' : 'hover:border-primary/40'}`}
       title={sourceLabel}
     >
+      {!isOverlay && onDelete ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => { event.stopPropagation(); onDelete(card) }}
+          aria-label={`Delete case ${card.caseNumber}`}
+          title="Delete case"
+          data-testid={`delete-card-${card.caseNumber}`}
+          className="absolute right-1.5 top-1.5 z-10 rounded p-1 text-destructive opacity-70 transition-opacity hover:bg-destructive/10 hover:opacity-100 focus:opacity-100"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
       <div className="flex items-start gap-2">
         <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
         <div className="min-w-0 flex-1">
@@ -84,7 +97,7 @@ export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
   )
 }
 
-function Card({ card, stages, onOpen, onMoveTo }) {
+function Card({ card, stages, onOpen, onMoveTo, onDelete }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: card._id, data: { columnKey: card.unifiedStageKey } })
   return (
     <div
@@ -94,10 +107,10 @@ function Card({ card, stages, onOpen, onMoveTo }) {
       onClick={() => onOpen(card._id)}
       className={`touch-manipulation outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${isDragging ? 'opacity-30' : 'cursor-grab'}`}
     >
-      <CardView card={card} stages={stages} onMoveTo={onMoveTo} />
+      <CardView card={card} stages={stages} onMoveTo={onMoveTo} onDelete={onDelete} />
     </div>
   )
 }
 
 // Cards re-render only when their own data changes, so dragging one card never repaints the rest of a large board.
-export default memo(Card, (prev, next) => prev.card === next.card && prev.stages === next.stages)
+export default memo(Card, (prev, next) => prev.card === next.card && prev.stages === next.stages && prev.onDelete === next.onDelete)

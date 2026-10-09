@@ -32,7 +32,6 @@ function cm(checklistKey, assignmentType, opts = {}) {
 }
 
 const NEW_OFFICE_CONDITION = { field: "newOfficePetition", operator: "equals", value: true };
-const JOINT_SPONSOR_CONDITION = { field: "hasJointSponsor", operator: "equals", value: true };
 
 // { visaType, formNumber, checklistMappings }[]
 const ENTRIES = [];
@@ -153,6 +152,11 @@ set("H4EXTENSIONEAD", "I-765", [cm("h4_extension_ead_questionnaire", AUTO)]);
 set("COSF1", "I-539", [cm("cos_f1_questionnaire", AUTO)]);
 set("COSF1", "I-539A", [cm("cos_f1_questionnaire", COND)]);
 set("COSF1", "I-907", [cm("cos_f1_questionnaire", COND)]);
+
+// F-1 Reinstatement: Form I-539 (Reinstatement to student status) is the primary form; I-539A only when co-applicants exist
+// (case-manager decision); the new I-20 is a supporting upload, never a form.
+set("F1REINSTATEMENT", "I-539", [cm("f1_reinstatement_questionnaire", AUTO)]);
+set("F1REINSTATEMENT", "I-539A", [cm("f1_reinstatement_questionnaire", COND)]);
 set("COSF2", "I-539", [cm("cos_f2_questionnaire", AUTO)]);
 set("COSF2", "I-539A", [cm("cos_f2_questionnaire", COND)]);
 set("COSB1", "I-539", [cm("cos_b1_questionnaire", AUTO)]);
@@ -180,9 +184,8 @@ for (const visaType of FAMILY_VISA_TYPES) {
   set(visaType, "I-693", [cm(`green_card_${slug}_beneficiary_checklist`, COND, { role: "beneficiary" })]);
   set(visaType, "I-864", [
     cm(`i864_${slug}_petitioner_checklist`, AUTO, { role: "petitioner" }),
-    // Joint sponsor: CONDITIONAL, only active once a joint sponsor is
-    // actually added/approved for the case - never a default checklist.
-    cm(`i864_${slug}_joint_sponsor_checklist`, COND, { role: "joint_sponsor", condition: JOINT_SPONSOR_CONDITION }),
+    // A joint sponsor has no checklist of their own: their section is part of the petitioner's I-864 checklist above, which is the
+    // only I-864 checklist the client receives (see familyChecklists.js buildFamilySponsorChecklist).
     // NVC checklist: EXPLICIT_CM per spec - never auto-assigned solely
     // because the processing path is CONSULAR.
     cm(`gc_nvc_${slug}_beneficiary_checklist`, EXPLICIT_CM, { role: "beneficiary" }),
@@ -267,8 +270,7 @@ set("Certificate of Citizenship", "N-565", [cm("n565_checklist", AUTO)]);
 
 // Sections 15/16/17 (scaffold-only filing types, EB-5 GAP, legacy
 // standalone questionnaires) are deliberately NOT touched here:
-// - cos_generic_questionnaire / f1_reinstatement_questionnaire /
-//   ead_i765_questionnaire stay scaffold-only (§15) - no VisaFormMapping
+// - cos_generic_questionnaire / ead_i765_questionnaire stay scaffold-only (§15; f1_reinstatement_questionnaire is now real content, mapped above) - no VisaFormMapping
 //   row gets them attached by this seed.
 // - EB-5 Regional Center / EB-5 Standalone stay GAP (§16) - explicitly not
 //   reusing e2_visa_checklist/e2_business_plan_checklist.

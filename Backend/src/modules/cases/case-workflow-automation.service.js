@@ -6,7 +6,7 @@ const caseWorkbookService = require("../document-intelligence/services/case-work
 const googleDriveService = require("../integrations/google-drive.service");
 
 function userId(user) {
-  return user?._id || user?.id || user;
+  return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
 }
 
 async function loadCase(caseId) {
