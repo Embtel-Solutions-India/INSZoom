@@ -71,6 +71,8 @@ async function planClientUser(email) {
 async function createCaseFromOpportunity({ opportunity, contact, category, mapping, origin = "webhook", sendNotifications = false, locationId = env.ghl.locationId, visaResolution = null }) {
   const existing = await findCaseByOpportunity(locationId, opportunity.id);
   if (existing) return { case: existing, created: false };
+  // The case of this opportunity was deleted in the CRM and the opportunity is still being removed from GHL: never bring it back.
+  if (await require("./ghlCaseOutbound").isDeletionPending(opportunity.id)) return { case: null, created: false, skipped: "deleted" };
 
   // Claim the external identity FIRST. The unique (locationId, opportunityId)
   // index makes exactly one concurrent creator win; everyone else gets the

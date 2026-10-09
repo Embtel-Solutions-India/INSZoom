@@ -30,6 +30,7 @@ const FormGovernance = lazy(() => import('./pages/FormGovernance'))
 const FormGovernanceDetail = lazy(() => import('./pages/FormGovernanceDetail'))
 const CaseManagers = lazy(() => import('./pages/CaseManagers'))
 const CaseManagerDetails = lazy(() => import('./pages/CaseManagerDetails'))
+const MyPerformance = lazy(() => import('./pages/MyPerformance'))
 const TaskDashboard = lazy(() => import('./pages/TaskDashboard'))
 const MyTasks = lazy(() => import('./pages/MyTasks'))
 const TeamTasks = lazy(() => import('./pages/TeamTasks'))
@@ -192,6 +193,7 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="my-performance" element={<MyPerformance />} />
               <Route
                 path="case-managers/:id"
                 element={

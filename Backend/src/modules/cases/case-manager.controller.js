@@ -5,6 +5,7 @@ const Task = require("../../models/Task");
 const User = require("../../models/User");
 const caseService = require("./case.service");
 const caseManagerAnalyticsService = require("./case-manager-analytics.service");
+const ratingService = require("./case-manager-rating.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 
 const CLOSED_CASE_STATUSES = ["completed", "closed", "approved"];
@@ -100,9 +101,10 @@ async function getCaseManagers(req, res, next) {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
 
-    const [managers, metrics] = await Promise.all([
+    const [managers, metrics, ratingSummaries] = await Promise.all([
       User.find({ role: "case_manager", status: { $ne: "archived" } }).select("-password").lean(),
       buildManagerMetrics(),
+      ratingService.currentWeekSummaries(req.user),
     ]);
 
     const all = managers.map((manager) => {
@@ -118,7 +120,13 @@ async function getCaseManagers(req, res, next) {
         currentWorkload: m.active + m.openTasks,
         totalRevenue: m.revenue,
         totalPayments: m.revenue,
+        // completionRate = share of the manager's assigned cases that are completed (automatic, from the database). It is NOT a rating:
+        // the weekly star rating below is given by admins / team leads.
         performanceRating: m.totalCases ? (m.completed / m.totalCases) * 100 : 0,
+        completionRate: m.totalCases ? (m.completed / m.totalCases) * 100 : 0,
+        weeklyRating: ratingSummaries.get(String(manager._id))?.average ?? null,
+        weeklyRatingCount: ratingSummaries.get(String(manager._id))?.count || 0,
+        myWeeklyRating: ratingSummaries.get(String(manager._id))?.mine ?? null,
       };
     });
 
@@ -153,6 +161,28 @@ async function getCaseManagers(req, res, next) {
     const pagination = { page, limit: paginate ? limit : totalCount, totalCount, totalPages: Math.max(Math.ceil(totalCount / limit), 1) };
     res.json({ success: true, count: rows.length, data: rows, caseManagers: rows, stats, pagination });
   } catch (error) {
+    next(error);
+  }
+}
+
+// GET /case-managers/:id/ratings and /case-managers/me/ratings: this week's rating(s) and past weeks, as far as the viewer may see them.
+async function getCaseManagerRatings(req, res, next) {
+  try {
+    const id = req.params.id === "me" || !req.params.id ? req.user._id : req.params.id;
+    res.json({ success: true, data: await ratingService.getRatings(req.user, id) });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    next(error);
+  }
+}
+
+// PUT /case-managers/:id/ratings: rate (or re-rate) the case manager for the CURRENT week.
+async function rateCaseManager(req, res, next) {
+  try {
+    await ratingService.rateCurrentWeek(req.user, req.params.id, req.body || {});
+    res.json({ success: true, data: await ratingService.getRatings(req.user, req.params.id) });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     next(error);
   }
 }
@@ -405,6 +435,8 @@ module.exports = {
   getCaseManagerAnalytics,
   getCaseManagerAnalyticsPanel,
   getCaseManagerCases,
+  getCaseManagerRatings,
+  rateCaseManager,
   getCaseManagerDetails,
   getCaseManagerPayments,
   getCaseManagers,

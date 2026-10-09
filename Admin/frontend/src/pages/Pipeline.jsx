@@ -33,15 +33,15 @@ export default function Pipeline() {
   const canDelete = CAN_DELETE_ROLES.includes(user?.role)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleteError, setDeleteError] = useState('')
-  const [deleting, setDeleting] = useState(false)
   const askDelete = useCallback((card) => { setDeleteError(''); setDeleteTarget(card) }, [])
-  const confirmDelete = async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    const failure = await deleteCard(deleteTarget._id)
-    setDeleting(false)
-    if (failure) setDeleteError(failure)
-    else setDeleteTarget(null)
+  // The popup closes and the card leaves the board at once. The backend deletes the case (and its GoHighLevel opportunity) and retries by
+  // itself until it is done, so nothing about deleting or retrying is shown here.
+  const confirmDelete = () => {
+    const target = deleteTarget
+    if (!target) return
+    setDeleteTarget(null)
+    setDeleteError('')
+    deleteCard(target._id)
   }
   const openCase = useCallback((id) => navigate(`/crm-cases/${id}`), [navigate])
 
@@ -153,12 +153,10 @@ export default function Pipeline() {
         <ConfirmModal
           title="Are you sure?"
           message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be permanently deleted from the CRM, together with its documents, answers, forms and messages${deleteTarget.caseRole === 'principal' ? ', and all of its child cases' : ''}. Its GoHighLevel opportunity is removed too. This cannot be undone.`}
-          confirmLabel={deleting ? 'Deleting…' : 'Yes, delete'}
+          confirmLabel="Yes, delete"
           cancelLabel="No"
-          busy={deleting}
-          error={deleteError}
           onConfirm={confirmDelete}
-          onCancel={() => { if (!deleting) setDeleteTarget(null) }}
+          onCancel={() => setDeleteTarget(null)}
         />
       ) : null}
     </div>

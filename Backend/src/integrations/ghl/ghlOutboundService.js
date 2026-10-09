@@ -226,7 +226,8 @@ async function processAuxJob(job, { client } = {}) {
 async function handleAuxFailure(job, error) {
   const message = String(error.message || error).slice(0, 300);
   const retryable = error instanceof GHLApiError ? error.retryable : true;
-  if (retryable && job.attempts < MAX_ATTEMPTS) {
+  const attemptCap = job.type === "delete_opportunity" ? 200 : MAX_ATTEMPTS; // a delete is retried (about every 30 min once backed off) for days
+  if ((retryable || job.type === "delete_opportunity") && job.attempts < attemptCap) {
     const delay = error.retryAfterMs ?? backoffMs(job.attempts);
     await GHLSyncJob.updateOne({ _id: job._id }, { $set: { status: "pending", lockedUntil: null, nextAttemptAt: new Date(Date.now() + delay), lastError: message } });
     logger.warn("ghl_employee_sync_retry_scheduled", { jobId: String(job._id), type: job.type, attempt: job.attempts, status: error.status, delayMs: delay });

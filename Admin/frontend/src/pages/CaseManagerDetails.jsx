@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
+import CaseManagerPerformance from '../components/CaseManagerPerformance'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import {
   Area,
@@ -439,7 +440,8 @@ const CaseManagerDetails = () => {
               { id: 'cases', label: 'Assigned Cases', icon: Briefcase },
               { id: 'activities', label: 'Activity Log', icon: Activity },
               { id: 'payments', label: 'Payments', icon: CreditCard },
-              { id: 'analytics', label: 'Analytics', icon: BarChart3 }
+              { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+              { id: 'performance', label: 'Performance', icon: Star }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -461,6 +463,8 @@ const CaseManagerDetails = () => {
             ))}
           </nav>
         </div>
+
+        {activeTab === 'performance' && <CaseManagerPerformance managerId={id} />}
 
         {/* Overview Tab */}
         {activeTab === 'overview' && (
