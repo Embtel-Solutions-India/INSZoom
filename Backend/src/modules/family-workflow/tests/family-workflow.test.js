@@ -222,12 +222,14 @@ test("family templates: 4 K1/K3 templates registered (K1 real content x petition
 // composition, only ever assigned via approveGcNvcChecklist). The
 // guardrail's intent is unchanged: every familyBased() visaType must get
 // exactly this fixed template set, no more, no less.
-test("family templates: every familyBased() visaType gets 6 I-130/Green-Card/I-864/GC-NVC checklists (72 total)", () => {
+// Count lowered 6 -> 5: the joint sponsor no longer has a checklist of their own - their section lives in the petitioner's I-864 checklist
+// (the client is the only one sent it), so there is no separate joint_sponsor template to assign or send.
+test("family templates: every familyBased() visaType gets 5 I-130/Green-Card/I-864/GC-NVC checklists (60 total), none for a joint sponsor", () => {
   const familyBasedDefinitions = FAMILY_CHECKLIST_DEFINITIONS.filter((def) => FAMILY_VISA_TYPES.includes(def.visaType));
-  assert.equal(familyBasedDefinitions.length, FAMILY_VISA_TYPES.length * 6);
+  assert.equal(familyBasedDefinitions.length, FAMILY_VISA_TYPES.length * 5);
   for (const visaType of FAMILY_VISA_TYPES) {
     const rolesForVisa = familyBasedDefinitions.filter((def) => def.visaType === visaType).map((def) => def.checklistRole);
-    assert.deepEqual(rolesForVisa.sort(), ["beneficiary", "beneficiary", "beneficiary", "joint_sponsor", "petitioner", "petitioner"]);
+    assert.deepEqual(rolesForVisa.sort(), ["beneficiary", "beneficiary", "beneficiary", "petitioner", "petitioner"]);
   }
   // Keys must be unique across all 12 visa types x 3 source definitions
   // (i130/green_card/i864) even though each visaType shares identical
@@ -236,12 +238,7 @@ test("family templates: every familyBased() visaType gets 6 I-130/Green-Card/I-8
   // only one merged definition).
   const keys = FAMILY_CHECKLIST_DEFINITIONS.map((def) => def.key);
   assert.equal(new Set(keys).size, keys.length);
-  // The joint sponsor checklist is conditionally assigned (only when a
-  // joint sponsor is actually added to the case), never a default
-  // checklist every case gets - mirrors i131Checklist.js's convention.
-  familyBasedDefinitions.filter((def) => def.checklistRole === "joint_sponsor").forEach((def) => {
-    assert.equal(def.isDefault, false);
-  });
+  assert.ok(!FAMILY_CHECKLIST_DEFINITIONS.some((def) => def.checklistRole === "joint_sponsor"), "no standalone joint sponsor checklist");
 });
 
 // The business's explicit composition rule: Petition Only never gets the

@@ -28,6 +28,9 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
   )
 
   const selected = useMemo(() => options.find((option) => option.visaType === visaType), [options, visaType])
+  // preselect the GHL pipeline the registry assigns to this visa (still changeable)
+  const suggestedPipeline = useMemo(() => shared.registryTypes.find((entry) => entry.visaType === visaType)?.pipelineCategory, [shared.registryTypes, visaType])
+  useEffect(() => { if (suggestedPipeline) setPipelineCategory(suggestedPipeline) }, [suggestedPipeline])
   const subTypes = selected?.subTypes || []
 
   const submit = async (event) => {

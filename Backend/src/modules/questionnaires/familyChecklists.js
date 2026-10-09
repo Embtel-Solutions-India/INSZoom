@@ -165,27 +165,46 @@ function buildFamilyBeneficiaryChecklist(definition, visaTypeKey, title, docSect
   };
 }
 
-// I-864 joint sponsor - a third party distinct from the petitioner,
-// collected only when the petitioner alone doesn't meet the income
-// threshold. Its own role/checklist (not folded into "petitioner") per the
-// new "joint_sponsor" enum value on Case.js/Questionnaire.js.
-function buildFamilyJointSponsorChecklist(definition, visaTypeKey, title, docSectionTitle) {
-  const visibility = { roles: ["joint_sponsor", ...STAFF_ROLES], portals: ["client", "admin"] };
-  const fieldResult = fieldQuestionsFromCatalog(definition.fieldCatalog(), "joint_sponsor", visibility, definition.REPEATABLE_FIELDS);
-  const docs = familyDocumentQuestions(definition.jointSponsorDocuments, docSectionTitle, visibility);
+// I-864 Affidavit of Support - ONE checklist, sent to the client (the petitioner) only. A joint sponsor is a third party, but the
+// client is the one who gathers their details and documents, so there is no separate joint-sponsor checklist and nothing is
+// ever sent to the joint sponsor: their questions and document uploads are a section of this same checklist, shown only when the
+// client answers "Yes" to the gate question. Every joint-sponsor answer keeps its own `jointSponsor_*` key and namespace (never the
+// petitioner's), so the I-864 form mapping and the canonical jointSponsor data read them exactly as before.
+const JOINT_SPONSOR_GATE_KEY = "jointSponsor_willProvideSupport";
+const JOINT_SPONSOR_SECTION_TITLE = "Joint Sponsor (if any)";
+
+function buildFamilySponsorChecklist(definition, visaTypeKey, title, petitionerDocSectionTitle, jointSponsorDocSectionTitle) {
+  const visibility = { roles: ["petitioner", ...STAFF_ROLES], portals: ["client", "admin"] };
+  const petitioner = fieldQuestionsFromCatalog(definition.fieldCatalog(), "petitioner", visibility, definition.REPEATABLE_FIELDS, canonicalMapFor(definition.key, "petitioner"));
+  const joint = fieldQuestionsFromCatalog(definition.fieldCatalog(), "joint_sponsor", visibility, definition.REPEATABLE_FIELDS);
+  const gateRule = { questionKey: JOINT_SPONSOR_GATE_KEY, operator: "equals", value: "Yes" };
+  // shown only when the client says a joint sponsor is providing support; keeps any rule the question already had
+  const gated = (question) => ({
+    ...question,
+    conditionalLogic: {
+      mode: "all",
+      rules: [...(question.conditionalLogic?.rules || []), gateRule],
+      groups: question.conditionalLogic?.groups || [],
+    },
+  });
+  const gate = buildQuestion(JOINT_SPONSOR_GATE_KEY, "Will a joint sponsor also be providing an Affidavit of Support (Form I-864)?", "radio", JOINT_SPONSOR_SECTION_TITLE, 1, {
+    description: "Answer Yes if the petitioner's own income is not enough and another person will also sponsor. You can enter their details and upload their documents below.",
+    options: ["Yes", "No"],
+    metadata: { sourcePath: "jointSponsor.willProvideSupport" },
+    visibility,
+  });
+  const jointFields = joint.questions.map(gated);
+  const jointDocs = familyDocumentQuestions(definition.jointSponsorDocuments, jointSponsorDocSectionTitle, visibility).map(gated);
+  const petitionerDocs = familyDocumentQuestions(definition.petitionerDocuments, petitionerDocSectionTitle, visibility);
   return {
-    key: `${definition.key}_joint_sponsor_checklist`,
+    key: `${definition.key}_petitioner_checklist`,
     title,
     visaType: visaTypeKey,
-    checklistRole: "joint_sponsor",
-    // Not isDefault - only assigned when the petitioner's own I-864 income
-    // doesn't meet the threshold and a joint sponsor is actually added to
-    // the case, mirroring i131Checklist.js's own "never isDefault, assigned
-    // explicitly" convention for a conditionally-needed checklist.
-    isDefault: false,
+    checklistRole: "petitioner",
+    isDefault: true,
     description: "",
-    sections: [...fieldResult.sectionOrder, docSectionTitle],
-    questions: [...fieldResult.questions, ...docs],
+    sections: [...petitioner.sectionOrder, JOINT_SPONSOR_SECTION_TITLE, ...joint.sectionOrder, petitionerDocSectionTitle, jointSponsorDocSectionTitle],
+    questions: [...petitioner.questions, gate, ...jointFields, ...petitionerDocs, ...jointDocs],
   };
 }
 
@@ -273,8 +292,8 @@ const FAMILY_CHECKLIST_DEFINITIONS = [
       buildFamilyPetitionerChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Petitioner Information", "Documents required from Petitioner:"),
       buildFamilyBeneficiaryChecklist(i130Definition, visaType, "Questionnaire for Petition for Alien Relative — Beneficiary Information", "Documents required from Beneficiary:"),
       buildFamilyBeneficiaryChecklist(greenCardDefinition, visaType, "Green Card Checklist", "Documents Required:"),
-      buildFamilyPetitionerChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Sponsor/Petitioner", "List of documents from the petitioner:"),
-      buildFamilyJointSponsorChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Joint Sponsor", "Documents Required from Joint Sponsor:"),
+      // ONE I-864 checklist for the client: petitioner/sponsor + (optional) joint sponsor section.
+      buildFamilySponsorChecklist(i864Definition, visaType, "Affidavit of Support (I-864) — Sponsor/Petitioner and Joint Sponsor", "List of documents from the petitioner:", "Documents Required from Joint Sponsor:"),
       // Optional, Case-Manager-approved only - see resolveGcNvcChecklistKey
       // and family-workflow.controller.js's approveGcNvcChecklist. Not
       // returned by resolveFamilyChecklistKeys, so ensureFamilyChecklistReferences

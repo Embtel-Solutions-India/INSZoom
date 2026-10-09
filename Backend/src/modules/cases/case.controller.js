@@ -813,8 +813,22 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
     // offers only those; if the lookup fails nothing is hidden (every type reads as covered).
     let coverage = {};
     try { coverage = await require("../questionnaires/checklistCoverage").loadChecklistCoverage(Object.keys(VISA_CATEGORIES)); } catch (_error) { coverage = {}; }
+    // Which GoHighLevel pipeline each case type belongs to (Immigrant / Non-Immigrant): the SAME rule GHL sync uses (the GHL visa mapping table,
+    // else the visa's classification), so the New case / Add employee dropdowns preselect it from the registry and never drift from it.
+    let pipelineEntries = [];
+    let pipelineCategoryFor = () => undefined;
+    try {
+      const aux = require("../../integrations/ghl/ghlAuxOutbound");
+      const env = require("../../config/env");
+      if (env.ghl.enabled && env.ghl.locationId) {
+        const config = await require("../../models/GHLIntegration").findOne({ locationId: env.ghl.locationId }).select("visaMapping").lean();
+        pipelineEntries = config?.visaMapping?.entries || [];
+      }
+      pipelineCategoryFor = (visaType) => aux.categoryForVisa(visaType, "", pipelineEntries);
+    } catch (_error) { /* the dropdown simply has no preselection */ }
     const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
       visaType,
+      pipelineCategory: pipelineCategoryFor(visaType),
       hasChecklist: coverage[visaType]?.hasChecklist !== false,
       label: category.label || visaType,
       caseStructure: category.caseStructure,

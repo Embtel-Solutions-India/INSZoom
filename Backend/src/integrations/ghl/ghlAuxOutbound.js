@@ -68,7 +68,7 @@ function categoryForVisa(visaType, petitionSubType, entries) {
   const exact = rows.find((e) => (e.petitionSubType || "") === (petitionSubType || ""));
   const hit = exact || rows[0];
   if (hit?.category) return hit.category;
-  return /^(EB|PERM|IR|CR|F[1-4]|GC)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
+  return /^(EB-|PERM$|IR-[0-9]$|CR-[0-9]$|F[1-4][AB]?$|GC)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
 }
 
 const DETAIL_TO_SERVICE_TYPE = { work_visa: "Work Visa", study_visa: "Study Visa", green_card: "Green Card", business__investment: "Business/Investment" };

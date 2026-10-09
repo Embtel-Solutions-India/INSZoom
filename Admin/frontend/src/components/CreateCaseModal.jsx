@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -15,6 +15,7 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
   h4ead: 'H4_EAD',
   h4extensionead: 'H4_EXTENSION_EAD',
   cosf1: 'COS_F1',
+  f1reinstatement: 'F1_REINSTATEMENT',
   cosf2: 'COS_F2',
   cosb1: 'COS_B1',
   cosb2: 'COS_B2',
@@ -115,6 +116,7 @@ const CreateCaseModal = ({
   const [error, setError] = useState('')
   const { options: visaOptions, registryTypes } = useVisaOptions()
   const selectedRegistryOption = visaOptions.find((opt) => opt.value === form.visaType && opt.fromRegistry)
+  const registryEntry = registryEntryFor(visaOptions.find((opt) => opt.value === form.visaType) || {}, registryTypes)
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee'
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
@@ -137,8 +139,16 @@ const CreateCaseModal = ({
       .catch((err) => console.error('Error fetching case managers:', err))
   }, [])
 
+  // The GHL pipeline is preselected from the registry for the chosen visa (same rule GHL sync uses); the person can still change it.
+  const pipelineTouched = useRef(false)
+  useEffect(() => {
+    const suggested = registryEntry?.pipelineCategory
+    if (suggested && !pipelineTouched.current) setForm((prev) => (prev.pipelineCategory === suggested ? prev : { ...prev, pipelineCategory: suggested }))
+  }, [form.visaType, registryEntry?.pipelineCategory]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChange = (field) => (e) => {
     const { value } = e.target
+    if (field === 'pipelineCategory') pipelineTouched.current = true
     // the H-1B type only applies to H-1B - never carry it over to another visa
     setForm((prev) => ({ ...prev, [field]: value, ...(field === 'visaType' ? { petitionSubType: '' } : {}) }))
   }

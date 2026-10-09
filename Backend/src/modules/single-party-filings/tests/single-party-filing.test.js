@@ -140,7 +140,7 @@ test("groupedForSelection: separates transition (picker) entries from standalone
 // cosF2Checklist.js's COS_F2_CHECKLIST_DEFINITIONS, cosB1B2Checklist.js's
 // COS_B1_B2_CHECKLIST_DEFINITIONS, asserted separately below).
 test("single-party scaffold checklists: one scaffold per real-content-EXCLUDED filing type, checklistRole is the applicant only, clearly marked temporary", () => {
-  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2"];
+  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2", "F1_REINSTATEMENT"];
   const scaffoldEligible = listFilingTypes().filter((ft) => !REAL_CONTENT_KEYS.includes(ft.key));
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.length, scaffoldEligible.length, "exactly one scaffold per real-content-excluded filing type");
   const visaTypesSeen = new Set();

@@ -67,6 +67,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'h4ead', label: 'H-4 EAD' },
   { value: 'h4extensionead', label: 'H-4 Extension + EAD' },
   { value: 'cosf1', label: 'Change of Status to F-1' },
+  { value: 'f1reinstatement', label: 'F-1 Reinstatement' },
   { value: 'cosf2', label: 'Change of Status to F-2' },
   { value: 'cosb1', label: 'Change of Status to B-1' },
   { value: 'cosb2', label: 'Change of Status to B-2' },

@@ -34,6 +34,7 @@ const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { isPassportInformation } = require("./passportInformation");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
+const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
@@ -2199,6 +2200,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // cosF2Checklist.js's own banner. Current status stays free-text/dynamic
   // (B-2/H-1B/H-4/L-1/F-2/etc. all resolve to this same checklist).
   ...COS_F1_CHECKLIST_DEFINITIONS,
+  // F-1 Reinstatement - standalone single-party case type (visaType F1REINSTATEMENT): ONE optional-answer client checklist incl. sponsor.
+  ...F1_REINSTATEMENT_CHECKLIST_DEFINITIONS,
   ...COS_F2_CHECKLIST_DEFINITIONS,
   // COS to B-1 / COS to B-2 — two INDEPENDENT real, standalone
   // case-creation visaTypes (COSB1, COSB2), each isDefault:true. F1_TO_B2

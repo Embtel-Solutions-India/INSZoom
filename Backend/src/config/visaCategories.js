@@ -216,6 +216,7 @@ const VISA_CATEGORIES = {
   // entry above (used for F-2 cases created some other way, e.g. consular).
   "COSF2": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to F-2" },
   "COSF1": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to F-1" },
+  "F1REINSTATEMENT": { caseStructure: "single", forms: ["i-539"], label: "F-1 Reinstatement" },
   "COSB1": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-1" },
   "COSB2": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-2" },
   "L-2": { caseStructure: "single", forms: ["i-539"], label: "L-2 Dependent" },
