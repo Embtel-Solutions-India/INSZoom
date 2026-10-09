@@ -548,7 +548,7 @@ const CRMCases = () => {
                   <div
                     key={caseItem._id}
                     onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
-                    className={`cursor-pointer p-4 space-y-2.5 ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
+                    className={`cursor-pointer p-4 space-y-2.5 ${awaitingAssignment ? 'new-row bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -658,7 +658,7 @@ const CRMCases = () => {
                     <tr
                       key={caseItem._id}
                       onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
-                      className={`cursor-pointer border-b border-border hover:bg-muted ${awaitingAssignment ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
+                      className={`cursor-pointer border-b border-border hover:bg-muted ${awaitingAssignment ? 'new-row bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                     >
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center gap-1.5 min-w-0">

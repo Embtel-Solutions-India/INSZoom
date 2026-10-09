@@ -12,6 +12,7 @@ import { useSocket } from '../contexts/SocketContext'
 // Only a failed request to our own backend rolls a card back.
 
 const REFRESH_DEBOUNCE_MS = 250
+import { PAGE_SIZE } from '../components/pipeline/pageSize'
 const SAFETY_REFRESH_MS = 60_000 // heals any missed socket event; only runs when the board is idle
 
 const newMoveId = () =>
@@ -35,6 +36,8 @@ export default function usePipelineBoard(category = 'immigrant') {
   const [notice, setNotice] = useState(null)
 
   const columnsRef = useRef([])
+  const pagesRef = useRef(new Map()) // stage key -> 0-based page the person is on (absent = first page)
+  const [pageLoading, setPageLoading] = useState({}) // stage key -> true while that stage's page is loading
   const confirmedRef = useRef(new Map()) // cardId -> stage key the server last confirmed
   const latestRef = useRef(new Map()) // cardId -> { seq, to } — the most recent local intent
   const queueRef = useRef(new Map()) // cardId -> promise chain (one request at a time per card)
@@ -70,13 +73,19 @@ export default function usePipelineBoard(category = 'immigrant') {
     if (!silent) setStatus((s) => ({ ...s, loading: true, error: null }))
     try {
       const requested = categoryRef.current
-      const res = await ghlApi.board({ category: requested })
+      const res = await ghlApi.board({ category: requested, perColumn: PAGE_SIZE })
       // Ignore the answer if a newer request started, or the user switched boards meanwhile.
       if (!mounted.current || seq !== fetchSeq.current || requested !== categoryRef.current) return
       const data = res.data || {}
-      const cols = data.columns || []
+      const fresh = data.columns || []
+      // A stage the person has paged forward keeps showing its current page until that page is re-fetched below.
+      const cols = fresh.map((col) => {
+        const old = pagesRef.current.get(col.key) ? columnsRef.current.find((c) => c.key === col.key) : null
+        return old ? { ...col, cards: old.cards } : col
+      })
       rememberConfirmed(cols)
       commit(cols)
+      pagesRef.current.forEach((page, key) => { if (page > 0 && fresh.some((c) => c.key === key)) goToPageRef.current?.(key, page, { silent: true }) })
       setPipelines(data.pipelines || [])
       setActiveCategory(data.activeCategory || requested)
       setFallbackCategory(data.activeCategory && data.activeCategory !== requested ? data.activeCategory : null)
@@ -174,6 +183,34 @@ export default function usePipelineBoard(category = 'immigrant') {
     queueRef.current.set(cardId, task.catch(() => {}))
   }, [commit, idleCheck, notify])
 
+  // Shows one page (PAGE_SIZE cases) of a single stage, replacing what that stage currently shows.
+  const goToPage = useCallback(async (columnKey, page, { silent = false } = {}) => {
+    const col = columnsRef.current.find((c) => c.key === columnKey)
+    if (!col) return
+    const lastPage = Math.max(0, Math.ceil(col.total / PAGE_SIZE) - 1)
+    const target = Math.min(Math.max(page, 0), lastPage)
+    const requested = categoryRef.current
+    pagesRef.current.set(columnKey, target)
+    if (!silent) setPageLoading((m) => ({ ...m, [columnKey]: true }))
+    try {
+      const res = await ghlApi.board({ column: columnKey, skip: target * PAGE_SIZE, perColumn: PAGE_SIZE, category: requested })
+      if (!mounted.current || requested !== categoryRef.current || pagesRef.current.get(columnKey) !== target) return // switched boards / page meanwhile
+      const incoming = res.data?.columns?.[0]
+      if (!incoming) return
+      incoming.cards.forEach((card) => confirmedRef.current.set(card._id, columnKey))
+      commit(columnsRef.current.map((c) => (c.key === columnKey ? { ...c, cards: incoming.cards, total: incoming.total, hasMore: incoming.hasMore } : c)))
+    } catch (error) {
+      if (!silent) {
+        pagesRef.current.delete(columnKey)
+        notify('error', `Couldn't load that page: ${errorMessage(error)}`)
+      }
+    } finally {
+      if (mounted.current && pagesRef.current.get(columnKey) === target) setPageLoading((m) => ({ ...m, [columnKey]: false }))
+    }
+  }, [commit, notify])
+  const goToPageRef = useRef(null)
+  goToPageRef.current = goToPage
+
   const loadMore = useCallback(async (columnKey) => {
     const col = columnsRef.current.find((c) => c.key === columnKey)
     if (!col || !col.hasMore) return
@@ -204,6 +241,8 @@ export default function usePipelineBoard(category = 'immigrant') {
     }
     setActiveCategory(category) // the tab highlights instantly; only a real server fallback overrides this later
     setFallbackCategory(null)
+    pagesRef.current = new Map()
+    setPageLoading({})
     commit([])
     refresh()
   }, [category, commit, refresh])
@@ -246,5 +285,5 @@ export default function usePipelineBoard(category = 'immigrant') {
     wasConnected.current = connected
   }, [connected, requestRefresh])
 
-  return { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, refresh, setDragging, connected }
+  return { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, goToPage, pageLoading, pageOf: (key) => pagesRef.current.get(key) || 0, refresh, setDragging, connected }
 }

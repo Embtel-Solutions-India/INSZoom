@@ -12,7 +12,7 @@ const collisionDetection = (args) => {
 const matches = (card, query) =>
   [card.clientName, card.employerName, card.beneficiaryName, card.caseNumber, card.clientEmail, card.visaType].some((value) => String(value || '').toLowerCase().includes(query))
 
-export default function Board({ columns, onMove, onOpen, onLoadMore, onDragStateChange, filter = '' }) {
+export default function Board({ columns, onMove, onOpen, onPageChange, pageLoading = {}, pageOf = () => 0, onDragStateChange, filter = '' }) {
   const [activeId, setActiveId] = useState(null)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), // a plain click still opens the case
@@ -42,16 +42,19 @@ export default function Board({ columns, onMove, onOpen, onLoadMore, onDragState
 
   return (
     <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
-      <div className="flex gap-3 overflow-x-auto pb-3">
-        {columns.map((column) => (
+      <div className="flex min-h-[calc(100vh-13rem)] items-stretch gap-3 overflow-x-auto pb-3">
+        {columns.map((column, index) => (
           <Column
             key={column.key}
             column={column}
+            index={index}
             cards={query ? column.cards.filter((card) => matches(card, query)) : column.cards}
             stages={stages}
             onOpen={onOpen}
             onMoveTo={onMove}
-            onLoadMore={onLoadMore}
+            page={pageOf(column.key)}
+            pageLoading={Boolean(pageLoading[column.key])}
+            onPageChange={onPageChange}
             filtering={Boolean(query)}
           />
         ))}

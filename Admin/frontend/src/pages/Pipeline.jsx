@@ -25,7 +25,7 @@ export default function Pipeline() {
   const isCaseManager = user?.role === 'case_manager'
   const isAdmin = ADMIN_ROLES.includes(user?.role)
   const [category, setCategory] = useState(readStoredCategory)
-  const { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice, moveCard, loadMore, refresh, setDragging, connected } = usePipelineBoard(category)
+  const { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice, moveCard, goToPage, pageLoading, pageOf, refresh, setDragging, connected } = usePipelineBoard(category)
   const [filter, setFilter] = useState('')
   const [showPanel, setShowPanel] = useState(false)
   const openCase = useCallback((id) => navigate(`/crm-cases/${id}`), [navigate])
@@ -70,7 +70,7 @@ export default function Pipeline() {
       </div>
     )
   } else {
-    body = <Board columns={columns} onMove={moveCard} onOpen={openCase} onLoadMore={loadMore} onDragStateChange={setDragging} filter={filter} />
+    body = <Board columns={columns} onMove={moveCard} onOpen={openCase} onPageChange={goToPage} pageLoading={pageLoading} pageOf={pageOf} onDragStateChange={setDragging} filter={filter} />
   }
 
   return (

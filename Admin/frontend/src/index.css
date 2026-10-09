@@ -15,22 +15,84 @@
   --radius: 0.5rem;
   --elevate-1: rgba(0,0,0,.03); --elevate-2: rgba(0,0,0,.08);
 }
+:root {
+  --amber-50: 255 251 235;
+  --amber-100: 254 243 199;
+  --amber-200: 253 230 138;
+  --amber-300: 252 211 77;
+  --amber-400: 251 191 36;
+  --amber-500: 245 158 11;
+  --amber-600: 217 119 6;
+  --amber-700: 180 83 9;
+  --amber-800: 146 64 14;
+  --amber-900: 120 53 15;
+  --amber-950: 69 26 3;
+  --yellow-50: 254 252 232;
+  --yellow-100: 254 249 195;
+  --yellow-200: 254 240 138;
+  --yellow-300: 253 224 71;
+  --yellow-400: 250 204 21;
+  --yellow-500: 234 179 8;
+  --yellow-600: 202 138 4;
+  --yellow-700: 161 98 7;
+  --yellow-800: 133 77 14;
+  --yellow-900: 113 63 18;
+  --yellow-950: 66 32 6;
+}
 .dark {
-  --background: 222 30% 8%;       --foreground: 210 20% 92%;
-  --card: 222 26% 11%;           --card-foreground: 210 20% 92%;   --card-border: 220 20% 16%;
-  --popover: 222 26% 11%;        --popover-foreground: 210 20% 92%;
-  --primary: 210 70% 60%;        --primary-foreground: 222 40% 10%;
-  --secondary: 220 20% 16%;      --secondary-foreground: 210 20% 90%;
-  --muted: 220 18% 16%;          --muted-foreground: 215 12% 62%;
-  --accent: 174 35% 18%;         --accent-foreground: 174 55% 75%;
-  --destructive: 355 70% 55%;    --destructive-foreground: 0 0% 100%;
-  --border: 220 20% 20%;         --input: 220 18% 22%;             --ring: 210 70% 60%;
-  --sidebar: 222 30% 10%;        --sidebar-foreground: 210 20% 90%;   --sidebar-border: 220 20% 18%;
-  --sidebar-primary: 210 70% 60%;--sidebar-primary-foreground: 222 40% 10%;
-  --sidebar-accent: 220 20% 16%; --sidebar-accent-foreground: 210 20% 90%;  --sidebar-ring: 210 70% 60%;
-  --chart-1: 210 70% 65%; --chart-2: 174 50% 55%; --chart-3: 35 80% 60%; --chart-4: 260 45% 65%; --chart-5: 12 65% 62%;
+  --amber-50: 18 38 52;
+  --amber-100: 26 56 78;
+  --amber-200: 38 80 110;
+  --amber-300: 161 219 255;
+  --amber-400: 161 219 255;
+  --amber-500: 161 219 255;
+  --amber-600: 161 219 255;
+  --amber-700: 161 219 255;
+  --amber-800: 161 219 255;
+  --amber-900: 161 219 255;
+  --amber-950: 26 56 78;
+  --yellow-50: 18 38 52;
+  --yellow-100: 26 56 78;
+  --yellow-200: 38 80 110;
+  --yellow-300: 161 219 255;
+  --yellow-400: 161 219 255;
+  --yellow-500: 161 219 255;
+  --yellow-600: 161 219 255;
+  --yellow-700: 161 219 255;
+  --yellow-800: 161 219 255;
+  --yellow-900: 161 219 255;
+  --yellow-950: 26 56 78;
+  /* Pure black with sky-blue (#a1dbff) controls and a mint accent. */
+  color-scheme: dark;
+  --background: 0 0% 0%;          --foreground: 0 0% 94%;
+  --card: 0 0% 4%;               --card-foreground: 0 0% 94%;   --card-border: 0 0% 15%;
+  --popover: 0 0% 4%;            --popover-foreground: 0 0% 94%;
+  --primary: 203 100% 81%;       --primary-foreground: 0 0% 0%;
+  --secondary: 0 0% 9%;          --secondary-foreground: 0 0% 90%;
+  --muted: 0 0% 8%;              --muted-foreground: 0 0% 62%;
+  --accent: 140 35% 14%;         --accent-foreground: 140 85% 82%;
+  --destructive: 355 75% 60%;    --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 17%;            --input: 0 0% 20%;               --ring: 203 100% 81%;
+  --sidebar: 0 0% 0%;            --sidebar-foreground: 0 0% 90%;   --sidebar-border: 0 0% 14%;
+  --sidebar-primary: 203 100% 81%; --sidebar-primary-foreground: 0 0% 0%;
+  --sidebar-accent: 0 0% 9%;     --sidebar-accent-foreground: 0 0% 94%;  --sidebar-ring: 203 100% 81%;
+  --chart-1: 203 100% 81%; --chart-2: 140 85% 82%; --chart-3: 270 80% 86%; --chart-4: 20 90% 82%; --chart-5: 330 80% 84%;
   --elevate-1: rgba(255,255,255,.04); --elevate-2: rgba(255,255,255,.09);
 }
+
+/* Dark mode: every field, white panel and scrollbar goes black too. */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+.dark select,
+.dark textarea { background-color: #000; color: hsl(var(--foreground)); border-color: hsl(var(--input)); }
+.dark input::placeholder, .dark textarea::placeholder { color: hsl(var(--muted-foreground)); }
+.dark .bg-white { background-color: hsl(var(--card)); }
+.dark .bg-primary.text-white, .dark .bg-primary .text-white { color: hsl(var(--primary-foreground)); }
+.dark * { scrollbar-width: thin; scrollbar-color: #2b2b2b #000; }
+.dark ::-webkit-scrollbar { width: 10px; height: 10px; background: #000; }
+.dark ::-webkit-scrollbar-track { background: #000; }
+.dark ::-webkit-scrollbar-thumb { background: #2b2b2b; border-radius: 8px; border: 2px solid #000; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #a1dbff; }
+.dark ::-webkit-scrollbar-corner { background: #000; }
 
 @tailwind base;
 @tailwind components;
@@ -150,3 +212,215 @@
   text-decoration: none;
   pointer-events: none;
 }
+
+
+/* Dark mode: solid amber fills carry black text. */
+.dark .bg-amber-500.text-white, .dark .bg-amber-400.text-white, .dark .bg-yellow-500.text-white, .dark .bg-yellow-600.text-white { color: #000; }
+
+/* Dark mode: highlighted ("new" / awaiting assignment) list rows get a dark blue tint; text stays light. */
+.dark .new-row { background-color: #0b1721; }
+.dark .new-row:hover { background-color: #102333; }
+.dark .new-row [class*="text-amber"] { color: #a1dbff; }
+
+/* Dark mode: pastel (white-based) pills, tags and alerts become black-based: dark tint, bright text. */
+.dark .bg-green-50 { background-color: hsl(142 45% 13%); }
+.dark .bg-green-100 { background-color: hsl(142 45% 15%); }
+.dark .bg-green-200 { background-color: hsl(142 45% 18%); }
+.dark .text-green-600 { color: hsl(142 85% 72%); }
+.dark .text-green-700 { color: hsl(142 85% 72%); }
+.dark .text-green-800 { color: hsl(142 85% 72%); }
+.dark .text-green-900 { color: hsl(142 85% 72%); }
+.dark .border-green-200 { border-color: hsl(142 40% 28%); }
+.dark .border-green-300 { border-color: hsl(142 40% 28%); }
+.dark .bg-emerald-50 { background-color: hsl(160 45% 13%); }
+.dark .bg-emerald-100 { background-color: hsl(160 45% 15%); }
+.dark .bg-emerald-200 { background-color: hsl(160 45% 18%); }
+.dark .text-emerald-600 { color: hsl(160 85% 72%); }
+.dark .text-emerald-700 { color: hsl(160 85% 72%); }
+.dark .text-emerald-800 { color: hsl(160 85% 72%); }
+.dark .text-emerald-900 { color: hsl(160 85% 72%); }
+.dark .border-emerald-200 { border-color: hsl(160 40% 28%); }
+.dark .border-emerald-300 { border-color: hsl(160 40% 28%); }
+.dark .bg-teal-50 { background-color: hsl(173 45% 13%); }
+.dark .bg-teal-100 { background-color: hsl(173 45% 15%); }
+.dark .bg-teal-200 { background-color: hsl(173 45% 18%); }
+.dark .text-teal-600 { color: hsl(173 85% 72%); }
+.dark .text-teal-700 { color: hsl(173 85% 72%); }
+.dark .text-teal-800 { color: hsl(173 85% 72%); }
+.dark .text-teal-900 { color: hsl(173 85% 72%); }
+.dark .border-teal-200 { border-color: hsl(173 40% 28%); }
+.dark .border-teal-300 { border-color: hsl(173 40% 28%); }
+.dark .bg-cyan-50 { background-color: hsl(188 45% 13%); }
+.dark .bg-cyan-100 { background-color: hsl(188 45% 15%); }
+.dark .bg-cyan-200 { background-color: hsl(188 45% 18%); }
+.dark .text-cyan-600 { color: hsl(188 85% 72%); }
+.dark .text-cyan-700 { color: hsl(188 85% 72%); }
+.dark .text-cyan-800 { color: hsl(188 85% 72%); }
+.dark .text-cyan-900 { color: hsl(188 85% 72%); }
+.dark .border-cyan-200 { border-color: hsl(188 40% 28%); }
+.dark .border-cyan-300 { border-color: hsl(188 40% 28%); }
+.dark .bg-sky-50 { background-color: hsl(199 45% 13%); }
+.dark .bg-sky-100 { background-color: hsl(199 45% 15%); }
+.dark .bg-sky-200 { background-color: hsl(199 45% 18%); }
+.dark .text-sky-600 { color: hsl(199 85% 72%); }
+.dark .text-sky-700 { color: hsl(199 85% 72%); }
+.dark .text-sky-800 { color: hsl(199 85% 72%); }
+.dark .text-sky-900 { color: hsl(199 85% 72%); }
+.dark .border-sky-200 { border-color: hsl(199 40% 28%); }
+.dark .border-sky-300 { border-color: hsl(199 40% 28%); }
+.dark .bg-blue-50 { background-color: hsl(217 45% 13%); }
+.dark .bg-blue-100 { background-color: hsl(217 45% 15%); }
+.dark .bg-blue-200 { background-color: hsl(217 45% 18%); }
+.dark .text-blue-600 { color: hsl(217 85% 72%); }
+.dark .text-blue-700 { color: hsl(217 85% 72%); }
+.dark .text-blue-800 { color: hsl(217 85% 72%); }
+.dark .text-blue-900 { color: hsl(217 85% 72%); }
+.dark .border-blue-200 { border-color: hsl(217 40% 28%); }
+.dark .border-blue-300 { border-color: hsl(217 40% 28%); }
+.dark .bg-indigo-50 { background-color: hsl(239 45% 13%); }
+.dark .bg-indigo-100 { background-color: hsl(239 45% 15%); }
+.dark .bg-indigo-200 { background-color: hsl(239 45% 18%); }
+.dark .text-indigo-600 { color: hsl(239 85% 72%); }
+.dark .text-indigo-700 { color: hsl(239 85% 72%); }
+.dark .text-indigo-800 { color: hsl(239 85% 72%); }
+.dark .text-indigo-900 { color: hsl(239 85% 72%); }
+.dark .border-indigo-200 { border-color: hsl(239 40% 28%); }
+.dark .border-indigo-300 { border-color: hsl(239 40% 28%); }
+.dark .bg-violet-50 { background-color: hsl(262 45% 13%); }
+.dark .bg-violet-100 { background-color: hsl(262 45% 15%); }
+.dark .bg-violet-200 { background-color: hsl(262 45% 18%); }
+.dark .text-violet-600 { color: hsl(262 85% 72%); }
+.dark .text-violet-700 { color: hsl(262 85% 72%); }
+.dark .text-violet-800 { color: hsl(262 85% 72%); }
+.dark .text-violet-900 { color: hsl(262 85% 72%); }
+.dark .border-violet-200 { border-color: hsl(262 40% 28%); }
+.dark .border-violet-300 { border-color: hsl(262 40% 28%); }
+.dark .bg-purple-50 { background-color: hsl(272 45% 13%); }
+.dark .bg-purple-100 { background-color: hsl(272 45% 15%); }
+.dark .bg-purple-200 { background-color: hsl(272 45% 18%); }
+.dark .text-purple-600 { color: hsl(272 85% 72%); }
+.dark .text-purple-700 { color: hsl(272 85% 72%); }
+.dark .text-purple-800 { color: hsl(272 85% 72%); }
+.dark .text-purple-900 { color: hsl(272 85% 72%); }
+.dark .border-purple-200 { border-color: hsl(272 40% 28%); }
+.dark .border-purple-300 { border-color: hsl(272 40% 28%); }
+.dark .bg-fuchsia-50 { background-color: hsl(292 45% 13%); }
+.dark .bg-fuchsia-100 { background-color: hsl(292 45% 15%); }
+.dark .bg-fuchsia-200 { background-color: hsl(292 45% 18%); }
+.dark .text-fuchsia-600 { color: hsl(292 85% 72%); }
+.dark .text-fuchsia-700 { color: hsl(292 85% 72%); }
+.dark .text-fuchsia-800 { color: hsl(292 85% 72%); }
+.dark .text-fuchsia-900 { color: hsl(292 85% 72%); }
+.dark .border-fuchsia-200 { border-color: hsl(292 40% 28%); }
+.dark .border-fuchsia-300 { border-color: hsl(292 40% 28%); }
+.dark .bg-pink-50 { background-color: hsl(330 45% 13%); }
+.dark .bg-pink-100 { background-color: hsl(330 45% 15%); }
+.dark .bg-pink-200 { background-color: hsl(330 45% 18%); }
+.dark .text-pink-600 { color: hsl(330 85% 72%); }
+.dark .text-pink-700 { color: hsl(330 85% 72%); }
+.dark .text-pink-800 { color: hsl(330 85% 72%); }
+.dark .text-pink-900 { color: hsl(330 85% 72%); }
+.dark .border-pink-200 { border-color: hsl(330 40% 28%); }
+.dark .border-pink-300 { border-color: hsl(330 40% 28%); }
+.dark .bg-rose-50 { background-color: hsl(350 45% 13%); }
+.dark .bg-rose-100 { background-color: hsl(350 45% 15%); }
+.dark .bg-rose-200 { background-color: hsl(350 45% 18%); }
+.dark .text-rose-600 { color: hsl(350 85% 72%); }
+.dark .text-rose-700 { color: hsl(350 85% 72%); }
+.dark .text-rose-800 { color: hsl(350 85% 72%); }
+.dark .text-rose-900 { color: hsl(350 85% 72%); }
+.dark .border-rose-200 { border-color: hsl(350 40% 28%); }
+.dark .border-rose-300 { border-color: hsl(350 40% 28%); }
+.dark .bg-red-50 { background-color: hsl(0 45% 13%); }
+.dark .bg-red-100 { background-color: hsl(0 45% 15%); }
+.dark .bg-red-200 { background-color: hsl(0 45% 18%); }
+.dark .text-red-600 { color: hsl(0 85% 72%); }
+.dark .text-red-700 { color: hsl(0 85% 72%); }
+.dark .text-red-800 { color: hsl(0 85% 72%); }
+.dark .text-red-900 { color: hsl(0 85% 72%); }
+.dark .border-red-200 { border-color: hsl(0 40% 28%); }
+.dark .border-red-300 { border-color: hsl(0 40% 28%); }
+.dark .bg-orange-50 { background-color: hsl(24 45% 13%); }
+.dark .bg-orange-100 { background-color: hsl(24 45% 15%); }
+.dark .bg-orange-200 { background-color: hsl(24 45% 18%); }
+.dark .text-orange-600 { color: hsl(24 85% 72%); }
+.dark .text-orange-700 { color: hsl(24 85% 72%); }
+.dark .text-orange-800 { color: hsl(24 85% 72%); }
+.dark .text-orange-900 { color: hsl(24 85% 72%); }
+.dark .border-orange-200 { border-color: hsl(24 40% 28%); }
+.dark .border-orange-300 { border-color: hsl(24 40% 28%); }
+.dark .bg-lime-50 { background-color: hsl(84 45% 13%); }
+.dark .bg-lime-100 { background-color: hsl(84 45% 15%); }
+.dark .bg-lime-200 { background-color: hsl(84 45% 18%); }
+.dark .text-lime-600 { color: hsl(84 85% 72%); }
+.dark .text-lime-700 { color: hsl(84 85% 72%); }
+.dark .text-lime-800 { color: hsl(84 85% 72%); }
+.dark .text-lime-900 { color: hsl(84 85% 72%); }
+.dark .border-lime-200 { border-color: hsl(84 40% 28%); }
+.dark .border-lime-300 { border-color: hsl(84 40% 28%); }
+.dark .bg-gray-50 { background-color: hsl(0 0% 10%); }
+.dark .bg-gray-100 { background-color: hsl(0 0% 13%); }
+.dark .bg-gray-200 { background-color: hsl(0 0% 17%); }
+.dark .text-gray-600 { color: hsl(0 0% 78%); }
+.dark .text-gray-700 { color: hsl(0 0% 78%); }
+.dark .text-gray-800 { color: hsl(0 0% 78%); }
+.dark .text-gray-900 { color: hsl(0 0% 78%); }
+.dark .border-gray-200 { border-color: hsl(0 0% 22%); }
+.dark .border-gray-300 { border-color: hsl(0 0% 22%); }
+.dark .bg-slate-50 { background-color: hsl(0 0% 10%); }
+.dark .bg-slate-100 { background-color: hsl(0 0% 13%); }
+.dark .bg-slate-200 { background-color: hsl(0 0% 17%); }
+.dark .text-slate-600 { color: hsl(0 0% 78%); }
+.dark .text-slate-700 { color: hsl(0 0% 78%); }
+.dark .text-slate-800 { color: hsl(0 0% 78%); }
+.dark .text-slate-900 { color: hsl(0 0% 78%); }
+.dark .border-slate-200 { border-color: hsl(0 0% 22%); }
+.dark .border-slate-300 { border-color: hsl(0 0% 22%); }
+.dark .bg-zinc-50 { background-color: hsl(0 0% 10%); }
+.dark .bg-zinc-100 { background-color: hsl(0 0% 13%); }
+.dark .bg-zinc-200 { background-color: hsl(0 0% 17%); }
+.dark .text-zinc-600 { color: hsl(0 0% 78%); }
+.dark .text-zinc-700 { color: hsl(0 0% 78%); }
+.dark .text-zinc-800 { color: hsl(0 0% 78%); }
+.dark .text-zinc-900 { color: hsl(0 0% 78%); }
+.dark .border-zinc-200 { border-color: hsl(0 0% 22%); }
+.dark .border-zinc-300 { border-color: hsl(0 0% 22%); }
+.dark .bg-neutral-50 { background-color: hsl(0 0% 10%); }
+.dark .bg-neutral-100 { background-color: hsl(0 0% 13%); }
+.dark .bg-neutral-200 { background-color: hsl(0 0% 17%); }
+.dark .text-neutral-600 { color: hsl(0 0% 78%); }
+.dark .text-neutral-700 { color: hsl(0 0% 78%); }
+.dark .text-neutral-800 { color: hsl(0 0% 78%); }
+.dark .text-neutral-900 { color: hsl(0 0% 78%); }
+.dark .border-neutral-200 { border-color: hsl(0 0% 22%); }
+.dark .border-neutral-300 { border-color: hsl(0 0% 22%); }
+.dark .bg-stone-50 { background-color: hsl(0 0% 10%); }
+.dark .bg-stone-100 { background-color: hsl(0 0% 13%); }
+.dark .bg-stone-200 { background-color: hsl(0 0% 17%); }
+.dark .text-stone-600 { color: hsl(0 0% 78%); }
+.dark .text-stone-700 { color: hsl(0 0% 78%); }
+.dark .text-stone-800 { color: hsl(0 0% 78%); }
+.dark .text-stone-900 { color: hsl(0 0% 78%); }
+.dark .border-stone-200 { border-color: hsl(0 0% 22%); }
+.dark .border-stone-300 { border-color: hsl(0 0% 22%); }
+
+/* Dark mode: outlined red buttons (e.g. Delete) become a borderless dark-red fill with bright red text. */
+.dark button[class*="border-red-"] { border-color: transparent; background-color: rgba(185, 28, 28, 0.28); color: #ff5c5c; }
+.dark button[class*="border-red-"]:hover { background-color: rgba(185, 28, 28, 0.42); }
+
+/* Dark mode: a "selected" row/tab (bg-blue-50) is dark grey instead of near-white, and blue-700/800 text stays legible on it. */
+.dark .bg-blue-50 { background-color: hsl(0 0% 15%); }
+.dark .text-blue-700, .dark .text-blue-800 { color: #a1dbff; }
+
+/* Pipeline stage columns: pastel in light mode, black-based with a coloured edge in dark mode. */
+.stage-col { background-color: color-mix(in srgb, var(--accent) 14%, white); border-color: color-mix(in srgb, var(--accent) 45%, white); border-top: 3px solid var(--accent); color: #1f2937; transition: background-color .15s, border-color .15s; }
+.stage-col[data-over="true"] { background-color: color-mix(in srgb, var(--accent) 28%, white); border-color: color-mix(in srgb, var(--accent) 80%, white); }
+.stage-col-count { background-color: color-mix(in srgb, var(--accent) 40%, white); }
+.stage-col-foot { border-color: color-mix(in srgb, var(--accent) 45%, white); }
+.stage-col-loading { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, .5); color: #475569; }
+.dark .stage-col { background-color: color-mix(in srgb, var(--accent) 9%, #0a0a0a); border-color: color-mix(in srgb, var(--accent) 65%, #0a0a0a); border-top-color: var(--accent); color: hsl(var(--foreground)); }
+.dark .stage-col-head { background-color: color-mix(in srgb, var(--accent) 16%, transparent); }
+.dark .stage-col[data-over="true"] { background-color: color-mix(in srgb, var(--accent) 20%, #0a0a0a); border-color: var(--accent); }
+.dark .stage-col-count { background-color: color-mix(in srgb, var(--accent) 22%, #0a0a0a); color: hsl(var(--foreground)); }
+.dark .stage-col-foot { border-color: color-mix(in srgb, var(--accent) 35%, #0a0a0a); }
+.dark .stage-col-loading { background: rgba(0, 0, 0, .55); color: var(--accent); }

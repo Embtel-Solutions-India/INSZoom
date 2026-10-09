@@ -808,12 +808,18 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
   try {
     const { VISA_CATEGORIES } = require("../../config/visaCategories");
     const VisaFormMapping = require("../../models/VisaFormMapping");
+    // Which case types actually have a checklist behind them (questionnaires/checklistCoverage.js). The Create Case dropdown
+    // offers only those; if the lookup fails nothing is hidden (every type reads as covered).
+    let coverage = {};
+    try { coverage = await require("../questionnaires/checklistCoverage").loadChecklistCoverage(Object.keys(VISA_CATEGORIES)); } catch (_error) { coverage = {}; }
     const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
       visaType,
+      hasChecklist: coverage[visaType]?.hasChecklist !== false,
       label: category.label || visaType,
       caseStructure: category.caseStructure,
       noForms: Boolean(category.noForms),
       formCount: (category.forms || []).length,
+      forms: category.forms || [],
       subTypes: category.subTypes || [],
     }));
     const registryTypes = await VisaFormMapping.distinct("visaType", { active: true }).catch(() => []);

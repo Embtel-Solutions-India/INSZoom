@@ -23,9 +23,9 @@ export default function CaseListPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold text-foreground font-serif">My Cases</h1>
 
-      <div className="card !p-0 overflow-x-auto">
+      <div className="card !p-0 overflow-x-auto rounded-2xl">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-secondary text-muted-foreground text-xs uppercase tracking-wide">
+          <thead className="bg-muted text-muted-foreground text-xs uppercase tracking-wide">
             <tr>
               <th className="text-left font-semibold px-3 py-3 sm:px-5">Case</th>
               <th className="text-left font-semibold px-3 py-3 sm:px-5">Client</th>
@@ -43,7 +43,7 @@ export default function CaseListPage() {
               <tr
                 key={item._id}
                 onClick={() => navigate(`/cases/${item._id}/overview`)}
-                className="border-t border-border hover:bg-secondary transition-colors cursor-pointer"
+                className="border-t border-border hover:bg-muted transition-colors cursor-pointer"
               >
                 <td className="px-3 py-3 sm:px-5">
                   <Link
