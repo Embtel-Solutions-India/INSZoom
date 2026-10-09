@@ -244,6 +244,23 @@ export default function Documents() {
   // the underlying GET for a role that isn't active on this case/mode —
   // `disabled` alone only gates saveAnswer/saveFiles, not the initial fetch.
   const employerQA = useQuestionnaireAnswers(useNewArchitecture && showEmployer ? activeCaseId : null, "employer", { disabled: !(useNewArchitecture && showEmployer) });
+  // One more employer checklist per additional visa the employer files for (approved ones only: the server never lists a
+  // draft to the client). The matter's own visa checklist stays the primary one above; each added visa is its own section,
+  // newest first, shown ABOVE the previous checklist. A fixed number of slots because hooks cannot be called in a loop.
+  const MAX_EXTRA_EMPLOYER_CHECKLISTS = 4;
+  const extraEmployerChecklists = useNewArchitecture && showEmployer && employerQA.questionnaire?._id
+    ? visibleChecklists
+        .filter((item) => item.targetRole === "employer" && item.referenceId && item.questionnaireId && String(item.questionnaireId) !== String(employerQA.questionnaire?._id))
+        .sort((left, right) => new Date(right.sentAt || 0) - new Date(left.sentAt || 0))
+        .slice(0, MAX_EXTRA_EMPLOYER_CHECKLISTS)
+    : [];
+  const extraSlotQA = (index) => useQuestionnaireAnswers(
+    extraEmployerChecklists[index] ? activeCaseId : null,
+    "employer",
+    { disabled: !extraEmployerChecklists[index], referenceId: extraEmployerChecklists[index]?.referenceId }
+  );
+  const extraQA0 = extraSlotQA(0), extraQA1 = extraSlotQA(1), extraQA2 = extraSlotQA(2), extraQA3 = extraSlotQA(3);
+  const extraQAs = [extraQA0, extraQA1, extraQA2, extraQA3].slice(0, extraEmployerChecklists.length);
   const bizPlanQA = useQuestionnaireAnswers(useNewArchitecture && showBusinessPlan ? activeCaseId : null, "business_plan", { disabled: !(useNewArchitecture && showBusinessPlan) });
   const employeeQA = useQuestionnaireAnswers(useNewArchitecture && showEmployeeInline ? activeCaseId : null, "employee", { disabled: !(useNewArchitecture && showEmployeeInline) });
 
@@ -366,11 +383,15 @@ export default function Documents() {
       ...(showEmployer ? buildRoleSections(employerQA, employerReusableCategories, "employer") : []),
       ...(showBusinessPlan ? buildRoleSections(bizPlanQA, bizPlanReusableCategories, "business_plan") : []),
     ]);
+    const extraEmployerSections = extraQAs.flatMap((qa, index) => buildRoleSections(qa, [], `employer_extra${index}`)
+      .map((section) => ({ ...section, groupTitle: extraEmployerChecklists[index]?.title || "Employer Checklist" })));
     const employeePersonSections = showEmployeeInline ? buildRoleSections(employeeQA, employeeReusableCategories, "employee") : [];
-    return [...employerPersonSections, ...employeePersonSections];
+    return [...extraEmployerSections, ...employerPersonSections, ...employeePersonSections];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     useNewArchitecture, showEmployer, showBusinessPlan, showEmployeeInline,
+    extraQA0.sections, extraQA0.questionsBySection, extraQA0.answers, extraQA1.sections, extraQA1.questionsBySection, extraQA1.answers,
+    extraQA2.sections, extraQA2.questionsBySection, extraQA2.answers, extraQA3.sections, extraQA3.questionsBySection, extraQA3.answers, extraEmployerChecklists.length,
     employerQA.sections, employerQA.questionsBySection, employerQA.answers, employerReusableCategories,
     bizPlanQA.sections, bizPlanQA.questionsBySection, bizPlanQA.answers, bizPlanReusableCategories,
     employeeQA.sections, employeeQA.questionsBySection, employeeQA.answers, employeeReusableCategories,
@@ -378,7 +399,7 @@ export default function Documents() {
 
   const sections = useNewArchitecture ? newSections : legacySections;
   const activeQAs = useNewArchitecture
-    ? [showEmployer && employerQA, showBusinessPlan && bizPlanQA, showEmployeeInline && employeeQA].filter(Boolean)
+    ? [...extraQAs, showEmployer && employerQA, showBusinessPlan && bizPlanQA, showEmployeeInline && employeeQA].filter(Boolean)
     : [legacyQA];
   const combinedStatus = combineQaStatus(activeQAs);
   // FIX (blank/stuck-loading bug): sections.length === 0 used to render the
@@ -727,8 +748,8 @@ export default function Documents() {
   // section.
   const renderSections = (list, locked = submitted) => list.map((section, sectionIndex) => (
     <Fragment key={section.id}>
-    {section.roleGroup && ROLE_GROUP_TITLE[section.roleGroup] && (sectionIndex === 0 || list[sectionIndex - 1].roleGroup !== section.roleGroup) && list.some((other) => other.roleGroup && other.roleGroup !== section.roleGroup) && (
-      <h2 className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary">{ROLE_GROUP_TITLE[section.roleGroup]}</h2>
+    {section.roleGroup && (section.groupTitle || ROLE_GROUP_TITLE[section.roleGroup]) && (sectionIndex === 0 || list[sectionIndex - 1].roleGroup !== section.roleGroup) && list.some((other) => other.roleGroup && other.roleGroup !== section.roleGroup) && (
+      <h2 className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-2.5 text-base font-bold text-primary">{section.groupTitle || ROLE_GROUP_TITLE[section.roleGroup]}</h2>
     )}
     <section id={section.id} ref={(el) => { sectionRefs.current[section.id] = el; }} className="scroll-mt-40" aria-labelledby={`${section.id}-heading`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

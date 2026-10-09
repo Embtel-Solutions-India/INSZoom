@@ -399,4 +399,4 @@ function processEventSoon(eventId) {
   });
 }
 
-module.exports = { receiveWebhook, processEvent, processDueEvents, processEventSoon, claimNextEvent, handleEvent, HANDLED_EVENTS };
+module.exports = { applyStageChange, receiveWebhook, processEvent, processDueEvents, processEventSoon, claimNextEvent, handleEvent, HANDLED_EVENTS };

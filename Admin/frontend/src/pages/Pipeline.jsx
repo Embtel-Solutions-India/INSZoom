@@ -25,7 +25,7 @@ export default function Pipeline() {
   const isCaseManager = user?.role === 'case_manager'
   const isAdmin = ADMIN_ROLES.includes(user?.role)
   const [category, setCategory] = useState(readStoredCategory)
-  const { columns, pipelines, activeCategory, status, notice, dismissNotice, moveCard, loadMore, refresh, setDragging, connected } = usePipelineBoard(category)
+  const { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice, moveCard, loadMore, refresh, setDragging, connected } = usePipelineBoard(category)
   const [filter, setFilter] = useState('')
   const [showPanel, setShowPanel] = useState(false)
   const openCase = useCallback((id) => navigate(`/crm-cases/${id}`), [navigate])
@@ -36,9 +36,11 @@ export default function Pipeline() {
   }, [])
 
   // If the remembered pipeline isn't available (the server fell back to another), follow the server.
+  // Only when the server REPLIED with a different board than the one asked for - never on the instant highlight of a
+  // tab click (that mismatch is momentary, and reacting to it made the two boards flip each other back and forth).
   useEffect(() => {
-    if (activeCategory && activeCategory !== category && pipelines.some((p) => p.category === activeCategory)) selectCategory(activeCategory)
-  }, [activeCategory, category, pipelines, selectCategory])
+    if (fallbackCategory && fallbackCategory !== category && pipelines.some((p) => p.category === fallbackCategory)) selectCategory(fallbackCategory)
+  }, [fallbackCategory, category, pipelines, selectCategory])
 
   const title = isCaseManager ? 'My Pipeline' : 'Pipeline'
   const subtitle = isCaseManager

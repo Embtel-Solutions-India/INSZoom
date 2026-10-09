@@ -357,6 +357,7 @@ exports.createFamilyCase = async (req, res, next) => {
       await caseData.save();
     }
     await ensureFamilyChecklistReferences(caseData, req.user, req);
+    await require("./petitioner-prefill.service").prefillPetitionerFromEarlierCase(caseData._id, req.user); // repeat petitioner: pre-fill from their earlier case; never throws
     // BUG (fixed): this only ever assigned checklists (above) - it never
     // provisioned the actual USCIS forms (CaseForm records for I-130/I-485/
     // I-864/I-693/etc.), unlike case.controller.js's own createCase, which

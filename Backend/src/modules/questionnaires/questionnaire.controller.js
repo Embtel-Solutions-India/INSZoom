@@ -186,7 +186,7 @@ exports.notifyProgressSaved = async (req, res, next) => {
 // Case manager: reject / delete one checklist for this case only (never sent to the client).
 exports.removeCaseChecklist = async (req, res, next) => {
   try {
-    const result = await require("./case-checklist.service").removeChecklist(req.params.caseId, { checklistId: req.body?.checklistId }, req.user, req);
+    const result = await require("./case-checklist.service").removeChecklist(req.params.caseId, { checklistId: req.body?.checklistId, reason: req.body?.reason }, req.user, req);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

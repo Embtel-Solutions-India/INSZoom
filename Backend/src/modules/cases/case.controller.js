@@ -2760,6 +2760,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     await orchestrator.provisionRequiredForms(principal, req.user, req);
     await orchestrator.provisionChecklistAssignments(principal, req.user, req);
     require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
+    try { await require("../questionnaires/employer-visa-checklists.service").ensureEmployerChecklistForVisa(principal._id, { visaType: employeeVisa.visaType, petitionSubType: employeeVisa.petitionSubType }, req.user, req); } catch (_error) { /* a new visa gets its employer checklist (draft); never blocks Add Employee */ }
 
     return res.status(201).json({
       success: true,
@@ -3498,8 +3499,9 @@ exports.deleteCasePermanently = async (req, res, next) => {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
-    const result = await require("./case-deletion.service").deleteCasePermanently(caseData, req.user);
-    res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, ...result });
+    // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
+    const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
+    res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });
   } catch (error) {
     handleError(error, next);
   }

@@ -215,7 +215,7 @@ async function createEmployeeChild({ principal, caseObjectId, opportunity, conta
   const assigned = Boolean(principal.assignedCaseManager);
   const needsAttention = [];
   const mixedVisa = principal.visaType && principal.visaType !== visa.visaType;
-  if (mixedVisa) needsAttention.push(`Mixed-visa employer: this employee is ${visa.visaType} but the employer matter is ${principal.visaType}. Employer-side questions for ${visa.visaType} are not covered yet.`);
+  if (mixedVisa) needsAttention.push(`Mixed-visa employer: this employee is ${visa.visaType} but the employer matter is ${principal.visaType}. Its employer checklist is added as a draft for the case manager to review and approve (or waive with a reason); this flag clears when every visa is covered.`);
   if (visaRecord?.categoryMismatch) needsAttention.push(`The GHL pipeline and the visa (${visa.visaType}) disagree on Immigrant vs Non-Immigrant.`);
 
   let child;

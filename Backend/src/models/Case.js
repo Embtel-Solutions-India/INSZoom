@@ -855,6 +855,10 @@ const caseSchema = new mongoose.Schema(
           checklistId: { type: String, required: true }, // baseKey|targetRole
           removedAt: { type: Date, default: Date.now },
           removedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          // optional: why it was removed. A reason makes it an explicit WAIVER ("not required for this employer"), which
+          // counts as covered; a removal without one does not (see employer-visa-checklists.service.js).
+          reason: String,
+          disposition: { type: String, enum: ["removed", "waived"], default: "removed" },
           _id: false,
         },
       ],

@@ -106,6 +106,11 @@ exports.confirmMappings = guard(async (req, res) => {
   res.json({ success: true, status: config.status, confirmedAt: config.mappingsConfirmedAt });
 });
 
+exports.reconcileNow = guard(async (req, res) => {
+  const result = await require("./ghlReconcileService").reconcile();
+  res.status(result.ok ? 200 : 409).json({ success: result.ok, ...result });
+});
+
 exports.syncNow = guard(async (req, res) => {
   const result = await sync.initialSync({ user: req.user });
   res.status(result.ok ? 200 : 409).json({ success: result.ok, ...result, emails: env.ghl.importSendsEmails ? "enabled" : "suppressed" });

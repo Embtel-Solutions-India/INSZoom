@@ -16,6 +16,7 @@ router.get("/visa-mapping", adminOnly, ctrl.visaMapping);
 router.put("/visa-mapping", adminOnly, ctrl.saveVisaMapping);
 router.post("/setup/confirm", adminOnly, ctrl.confirmMappings);
 router.post("/sync", adminOnly, ctrl.syncNow);
+router.post("/reconcile", adminOnly, ctrl.reconcileNow);
 
 router.patch("/cases/:caseId/pipeline-stage", boardStaff, ctrl.moveStage);
 router.post("/jobs/:id/retry", adminOnly, ctrl.retryJob);

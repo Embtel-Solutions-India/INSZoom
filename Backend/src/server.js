@@ -233,6 +233,7 @@ connectDB()
     const slaSweepMaintenance = startSlaSweepMaintenance();
     // null (and nothing scheduled) unless GHL_ENABLED=true.
     const ghlWorkers = require("./integrations/ghl/ghlWorkers").startGhlWorkers();
+    const caseDeletionWorker = require("./modules/cases/case-deletion.service").startCaseDeletionWorker();
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         logger.fatal("port_in_use", { port: env.port, error });
@@ -263,6 +264,7 @@ connectDB()
       clearInterval(settingsRetentionMaintenance);
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);
+      clearInterval(caseDeletionWorker);
       server.close(() => {
         disconnectDB()
           .catch((error) => logger.error("mongodb_disconnect_failed", { error }))

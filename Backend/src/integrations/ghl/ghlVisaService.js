@@ -172,6 +172,8 @@ async function provisionEmployerMatter({ principalId, childId, newPrincipal }) {
   await step("forms", () => lifecycle.provisionRequiredForms(principal, actor, null));
   if (newPrincipal) await step("petition draft", () => lifecycle.provisionPetitionDraft(principal, actor, null));
   await step("checklists", () => lifecycle.provisionChecklistAssignments(principal, actor, null));
+  // the employee's visa may differ from the matter's: its employer checklist is added as a draft (same core service as Add Employee)
+  await step("employer visa checklist", () => require("../../modules/questionnaires/employer-visa-checklists.service").ensureForEmployeeCase(childId, actor, null));
   await step("recalculate", () => lifecycle.recalculate(principalId, actor, null, "ghl_employee_added"));
 }
 
@@ -192,6 +194,7 @@ async function provisionFamilyCase(caseId) {
   const caseDoc = await Case.findById(caseId);
   if (!caseDoc) return;
   await step("checklists", () => family.ensureFamilyChecklistReferences(caseDoc, actor, null));
+  await step("petitioner prefill", () => require("../../modules/family-workflow/petitioner-prefill.service").prefillPetitionerFromEarlierCase(caseId, actor));
   await step("forms", async () => lifecycle.provisionRequiredForms(await Case.findById(caseId), actor, null));
   await step("petition draft", async () => lifecycle.provisionPetitionDraft(await Case.findById(caseId), actor, null));
 }

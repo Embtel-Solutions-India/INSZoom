@@ -27,6 +27,9 @@ export default function usePipelineBoard(category = 'immigrant') {
   const [columns, setColumns] = useState([])
   const [pipelines, setPipelines] = useState([]) // tab summary: [{ category, name, total }]
   const [activeCategory, setActiveCategory] = useState(category)
+  // Set ONLY when the server answered a request for one board with a different one (the requested pipeline is not
+  // available). It is the single signal the page may follow; the optimistic tab highlight above never is.
+  const [fallbackCategory, setFallbackCategory] = useState(null)
   const categoryRef = useRef(category)
   const [status, setStatus] = useState({ loading: true, error: null, disabled: false, configured: true })
   const [notice, setNotice] = useState(null)
@@ -76,6 +79,7 @@ export default function usePipelineBoard(category = 'immigrant') {
       commit(cols)
       setPipelines(data.pipelines || [])
       setActiveCategory(data.activeCategory || requested)
+      setFallbackCategory(data.activeCategory && data.activeCategory !== requested ? data.activeCategory : null)
       setStatus({ loading: false, error: null, disabled: false, configured: data.configured !== false })
     } catch (error) {
       if (!mounted.current || seq !== fetchSeq.current) return
@@ -199,6 +203,7 @@ export default function usePipelineBoard(category = 'immigrant') {
       return
     }
     setActiveCategory(category) // the tab highlights instantly; only a real server fallback overrides this later
+    setFallbackCategory(null)
     commit([])
     refresh()
   }, [category, commit, refresh])
@@ -241,5 +246,5 @@ export default function usePipelineBoard(category = 'immigrant') {
     wasConnected.current = connected
   }, [connected, requestRefresh])
 
-  return { columns, pipelines, activeCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, refresh, setDragging, connected }
+  return { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice: () => setNotice(null), moveCard, loadMore, refresh, setDragging, connected }
 }

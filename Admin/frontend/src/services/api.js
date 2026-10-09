@@ -688,4 +688,6 @@ export const ghlApi = {
   setupPreview: () => api.get('/integrations/ghl/setup'),
   confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
   syncNow: () => api.post('/integrations/ghl/sync'),
+  reconcileNow: () => api.post('/integrations/ghl/reconcile'),
+  retryJob: (jobId) => api.post(`/integrations/ghl/jobs/${jobId}/retry`),
 }

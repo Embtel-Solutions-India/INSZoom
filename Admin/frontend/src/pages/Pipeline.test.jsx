@@ -8,7 +8,7 @@ vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) 
 let lastCategory = null
 const hookState = { columns: [], pipelines: [], forceActive: null, status: { loading: false, error: null, disabled: false, configured: true }, notice: null }
 vi.mock('../hooks/usePipelineBoard', () => ({
-  default: (category) => ({ ...(lastCategory = category, hookState), activeCategory: hookState.forceActive || category, dismissNotice: vi.fn(), moveCard: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), setDragging: vi.fn(), connected: true }),
+  default: (category) => ({ ...(lastCategory = category, hookState), activeCategory: hookState.forceActive || hookState.staleActive || category, fallbackCategory: hookState.forceActive && hookState.forceActive !== category ? hookState.forceActive : null, dismissNotice: vi.fn(), moveCard: vi.fn(), loadMore: vi.fn(), refresh: vi.fn(), setDragging: vi.fn(), connected: true }),
 }))
 vi.mock('../components/pipeline/GhlStatusPanel', () => ({ default: () => <div>STATUS PANEL</div> }))
 
@@ -27,6 +27,7 @@ beforeEach(() => {
   lastCategory = null
   hookState.pipelines = [{ category: 'immigrant', name: 'Immigrant Documentation pipeline', total: 3 }, { category: 'non_immigrant', name: 'Non-Immigrant Documentation pipeline', total: 7 }]
   hookState.forceActive = null
+  hookState.staleActive = null
   try { sessionStorage.clear() } catch { /* ignore */ }
   hookState.status = { loading: false, error: null, disabled: false, configured: true }
   hookState.columns = [column('a', [cardOf('1', { visaSelectionRequired: true })]), column('b')]
@@ -146,6 +147,14 @@ describe('Pipeline page', () => {
     hookState.forceActive = 'immigrant' // the server served the Immigrant board even though Non-Immigrant was requested
     renderPage()
     expect(lastCategory).toBe('immigrant')
+  })
+
+  it('does not flip back when only the instant tab highlight differs (no server fallback)', () => {
+    sessionStorage.setItem('ghl-pipeline-category', 'non_immigrant')
+    hookState.pipelines = [{ category: 'immigrant', name: 'I', total: 1 }, { category: 'non_immigrant', name: 'N', total: 1 }]
+    hookState.staleActive = 'immigrant' // momentary mismatch right after a click, before the new board answers
+    renderPage()
+    expect(lastCategory).toBe('non_immigrant')
   })
 
   it('shows no tabs before the pipelines are known', () => {

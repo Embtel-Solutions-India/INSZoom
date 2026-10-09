@@ -44,12 +44,21 @@ async function loadColumn(scope, column, user, { limit, skip }) {
   ]);
   const [assignees, employers] = await Promise.all([loadAssignees(docs), loadEmployers(docs)]);
   const isAdmin = ADMIN_ROLES.has(normalizeRole(user.role));
+  // admins can retry a failed card: attach the failed job to it (one query for the whole column)
+  const failedJobs = new Map();
+  if (isAdmin) {
+    const failedIds = docs.filter((doc) => doc.integrations?.ghl?.sync?.state === "failed").map((doc) => doc._id);
+    if (failedIds.length) {
+      const jobs = await GHLSyncJob.find({ caseId: { $in: failedIds }, status: "failed" }).sort({ updatedAt: 1 }).select("caseId").lean();
+      jobs.forEach((job) => failedJobs.set(String(job.caseId), String(job._id)));
+    }
+  }
   const cards = docs.map((doc) => {
     const employer = doc.parentCase ? employers.get(String(doc.parentCase)) : null;
     const card = presentCard(doc, user, { employerUserId: employer?.user, employerContactName: employer?.name });
     card.assigneeName = doc.assignedCaseManager ? assignees.get(String(doc.assignedCaseManager)) || null : null;
     card.employerName = employer?.name || null;
-    if (isAdmin) card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention);
+    if (isAdmin) { card.needsAttention = Boolean(doc.integrations?.ghl?.flags?.needsAttention); card.failedJobId = failedJobs.get(String(doc._id)) || null; }
     return card;
   });
   return { key: column.key, name: column.name, total, cards, hasMore: skip + cards.length < total };
