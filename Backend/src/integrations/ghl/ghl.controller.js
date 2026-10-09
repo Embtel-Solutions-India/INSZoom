@@ -107,7 +107,7 @@ exports.confirmMappings = guard(async (req, res) => {
 });
 
 exports.reconcileNow = guard(async (req, res) => {
-  const result = await require("./ghlReconcileService").reconcile();
+  const result = await require("./ghlReconcileService").reconcile({ full: true });
   res.status(result.ok ? 200 : 409).json({ success: result.ok, ...result });
 });
 

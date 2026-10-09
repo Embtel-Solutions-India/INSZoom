@@ -42,13 +42,13 @@ function startGhlWorkers() {
   // The sweep rides on the same interval (one handle for server.js to clear): at most once per sweepMs, first run after a delay.
   let lastSweep = Date.now() - sweepMs + Number(process.env.GHL_SWEEP_INITIAL_DELAY_MS || 60000);
   // Reconciliation: the safety net under the webhooks (and the only inbound sync if webhooks never arrive). Every
-  // GHL_RECONCILE_MS (default 20 min), one instance at a time; the first run shortly after start.
-  const reconcileMs = Number(process.env.GHL_RECONCILE_MS || 20 * 60 * 1000);
+  // GHL_RECONCILE_MS (default 30 s, so a stage moved in GHL shows on the board within about half a minute), one instance at a time; the first run shortly after start.
+  const reconcileMs = Number(process.env.GHL_RECONCILE_MS || 30 * 1000);
   const reconcile = () =>
-    withJobLock("ghl-reconcile", reconcileMs, async () => {
+    withJobLock("ghl-reconcile", Math.max(reconcileMs * 4, 5 * 60 * 1000), async () => {
       await require("./ghlReconcileService").reconcile();
     }).catch((error) => logger.error("ghl_reconcile_failed", { error: error.message }));
-  let lastReconcile = Date.now() - reconcileMs + Number(process.env.GHL_RECONCILE_INITIAL_DELAY_MS || 2 * 60 * 1000);
+  let lastReconcile = Date.now() - reconcileMs + Number(process.env.GHL_RECONCILE_INITIAL_DELAY_MS || 20 * 1000);
   setTimeout(tick, Number(process.env.GHL_WORKER_INITIAL_DELAY_MS || 10000));
   logger.info("ghl_workers_started", { intervalMs, sweepMs });
   return setInterval(() => {

@@ -16,7 +16,7 @@ const Case = require("../../models/Case");
 const GHLCaseLink = require("../../models/GHLCaseLink");
 const pipelineService = require("./ghlPipelineService");
 const syncService = require("./ghlSyncService");
-const { fetchAllOpportunities, getOpportunity } = require("./ghlOpportunityService");
+const opportunityService = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
 const { createCaseFromOpportunity, findCaseByOpportunity } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
@@ -24,6 +24,9 @@ const { GHLApiError } = require("./ghlClient");
 
 const MAX_MISSING_CHECKS = Number(process.env.GHL_RECONCILE_MISSING_CHECKS || 50);
 const PACE_MS = Number(process.env.GHL_RECONCILE_PACE_MS || 0); // optional pause between per-opportunity API calls (rate limits)
+// The "is it deleted in GHL?" lookups are the expensive part, so on the frequent timer they run only every Nth pass.
+const MISSING_EVERY = Number(process.env.GHL_RECONCILE_MISSING_EVERY || 10);
+let passes = 0;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function reconcilePipeline(pipeline, config, client, summary) {
@@ -32,7 +35,7 @@ async function reconcilePipeline(pipeline, config, client, summary) {
   const seen = new Set();
   let opportunities;
   try {
-    opportunities = await fetchAllOpportunities(pipeline.ghlPipelineId, { client });
+    opportunities = await opportunityService.fetchAllOpportunities(pipeline.ghlPipelineId, { client });
     pipeline.lastFetchOkAt = new Date();
     pipeline.lastFetchError = undefined;
   } catch (error) {
@@ -85,7 +88,7 @@ async function flagMissing(config, client, seenIds, summary) {
   let flagged = 0;
   for (const link of candidates) {
     try {
-      await getOpportunity(link.opportunityId, { client });
+      await opportunityService.getOpportunity(link.opportunityId, { client });
     } catch (error) {
       if (error instanceof GHLApiError && error.status === 404) {
         await Case.updateOne({ _id: link.caseId }, { $set: { "integrations.ghl.flags.deletedInGhl": true, "integrations.ghl.flags.needsAttention": true } });
@@ -98,7 +101,19 @@ async function flagMissing(config, client, seenIds, summary) {
   summary.flaggedDeleted = flagged;
 }
 
-async function reconcile({ client } = {}) {
+// Tell every open board something changed (the same event a webhook-driven change emits), so the stage appears live.
+function notifyBoards(summary) {
+  const changed = summary.pipelines.reduce((n, p) => n + p.created + p.stageUpdated, 0) + (summary.flaggedDeleted || 0);
+  if (!changed) return;
+  try {
+    const realtimeGateway = require("../../modules/realtime/realtime.gateway");
+    ["super_admin", "admin", "team_lead", "case_manager"].forEach((role) => realtimeGateway.emitToRole(role, "ghl:pipeline:updated", { kind: "reconcile", source: "ghl" }));
+  } catch (error) {
+    logger.warn("ghl_realtime_emit_failed", { error: error.message });
+  }
+}
+
+async function reconcile({ client, full = false } = {}) {
   const setup = await syncService.loadOrBuildConfig({ client });
   if (!setup.ok) return { ok: false, problems: setup.problems, drift: setup.drift };
   const { config } = setup;
@@ -111,9 +126,11 @@ async function reconcile({ client } = {}) {
     seen.forEach((id) => seenIds.add(id));
   }
   // only when EVERY pipeline was read in full can an absent opportunity mean "deleted"
-  if (summary.complete) await flagMissing(config, client, seenIds, summary).catch((error) => logger.error("ghl_reconcile_missing_failed", { error: error.message }));
+  passes += 1;
+  if (summary.complete && (full || passes % MISSING_EVERY === 1)) await flagMissing(config, client, seenIds, summary).catch((error) => logger.error("ghl_reconcile_missing_failed", { error: error.message }));
 
   summary.ok = summary.complete;
+  notifyBoards(summary);
   config.lastReconcileAt = new Date();
   if (summary.complete) config.lastApiOkAt = new Date();
   config.status = summary.complete ? "healthy" : "degraded";

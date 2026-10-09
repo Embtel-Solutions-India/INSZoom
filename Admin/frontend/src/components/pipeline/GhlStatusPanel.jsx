@@ -83,7 +83,6 @@ export default function GhlStatusPanel({ onChanged }) {
         <Row label="Queued / failed pushes to GHL">{counts.pendingJobs || 0} / <span className={counts.failedJobs ? 'text-red-700' : ''}>{counts.failedJobs || 0}</span></Row>
         <Row label="Webhook events needing attention">{(counts.failedEvents || 0) + (counts.deadEvents || 0)}</Row>
       </div>
-      {data.webhookUrl ? <p className="mt-2 break-all text-xs text-muted-foreground">Webhook URL: {data.webhookUrl}</p> : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
         {!data.mappingsConfirmed || data.status === 'config_mismatch' ? (
@@ -99,6 +98,15 @@ export default function GhlStatusPanel({ onChanged }) {
           onClick={() => run('sync', async () => { setResult((await ghlApi.syncNow()).data); onChanged?.() })}
         >
           {busy === 'sync' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Sync now'}
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={Boolean(busy) || !data.mappingsConfirmed}
+          title="Compare every opportunity with GoHighLevel now and bring this system in line (this also runs automatically every 30 seconds)"
+          onClick={() => run('reconcile', async () => { setResult((await ghlApi.reconcileNow()).data); onChanged?.() })}
+        >
+          {busy === 'reconcile' ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reconcile now'}
         </button>
       </div>
 

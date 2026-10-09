@@ -1,4 +1,5 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
+import { ghlApi } from '../../services/api'
 import { useDraggable } from '@dnd-kit/core'
 import { AlertTriangle, GripVertical } from 'lucide-react'
 
@@ -13,6 +14,13 @@ const PRIORITY_DOT = {
 // the card under the pointer is pixel-identical to the one it came from.
 export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
   const isEmployee = card.caseRole === 'employee'
+  // Admin-only: a card whose change could not reach GoHighLevel can be retried right here (the backend retries by itself too).
+  const [retry, setRetry] = useState('')
+  const retryNow = async (event) => {
+    event.stopPropagation()
+    setRetry('sending')
+    try { await ghlApi.retryJob(card.failedJobId); setRetry('queued') } catch { setRetry('error') }
+  }
   const isFamily = Boolean(card.isFamily)
   // An employee card is not a named person until the employer identifies them.
   const title = card.employeeIdentified === false ? 'Employee, not identified yet' : (card.clientName || 'Unnamed client')
@@ -47,6 +55,11 @@ export function CardView({ card, stages, onMoveTo, isOverlay = false }) {
               <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[0.7rem] font-medium text-red-700" title="This change could not be sent to GoHighLevel. It will keep being retried; an admin can review it.">
                 <AlertTriangle className="h-3 w-3" /> Failed to sync
               </span>
+            ) : null}
+            {card.syncStatus === 'FAILED' && card.failedJobId && !isOverlay ? (
+              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={retryNow} disabled={retry === 'sending' || retry === 'queued'} className="rounded-full border border-red-200 px-2 py-0.5 text-[0.7rem] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60" data-testid="retry-sync">
+                {retry === 'queued' ? 'Retry queued' : retry === 'sending' ? 'Retrying…' : retry === 'error' ? 'Retry failed — try again' : 'Retry'}
+              </button>
             ) : null}
           </div>
         </div>

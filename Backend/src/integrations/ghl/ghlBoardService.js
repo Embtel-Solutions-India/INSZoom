@@ -130,7 +130,6 @@ async function getStatus(user) {
   return {
     ...base,
     webhookKeyConfigured: Boolean(env.ghl.webhookPublicKey),
-    webhookUrl: env.ghl.webhookPublicUrl || null,
     locationId: env.ghl.locationId,
     status: config?.status || "unconfigured",
     statusDetail: config?.statusDetail || null,
