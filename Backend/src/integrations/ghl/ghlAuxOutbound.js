@@ -302,6 +302,7 @@ async function runAuxJob(job, { client } = {}) {
   // Cases created in the CRM get their GHL card / employer link from ghlCaseOutbound.js
   if (job.type === "create_case_opportunity") return require("./ghlCaseOutbound").runCreateCaseOpportunity(job, client);
   if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
+  if (job.type === "delete_opportunity") return require("./ghlCaseOutbound").runDeleteOpportunity(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }
 

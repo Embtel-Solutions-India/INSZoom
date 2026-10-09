@@ -253,6 +253,12 @@ class MappingResolver {
       // (e.g. relationship "Child" beside a listed child's name).
       case "constant":
         return transform.value;
+      // A repeating answer (array of rows) -> one text: the itemPath of each row, joined (I-131 "countries you intend to visit").
+      case "join": {
+        if (!Array.isArray(value)) return typeof value === "string" ? value : undefined;
+        const parts = value.map((row) => (transform.itemPath && row && typeof row === "object" ? row[transform.itemPath] : row)).map((part) => String(part ?? "").trim()).filter(Boolean);
+        return parts.length ? parts.join(transform.separator ?? ", ") : undefined;
+      }
       case "uppercase":
         return String(value ?? "").toUpperCase();
       case "lowercase":

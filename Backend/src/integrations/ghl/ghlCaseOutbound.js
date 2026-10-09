@@ -228,15 +228,41 @@ async function stagesForCase(caseId, user) {
   return { category: pipeline.category, currentKey: ghl.unifiedStageKey || stages[0]?.key || null, stages };
 }
 
-/** Deletes the GHL opportunities of a case and of its child cases. No-op when GHL is off or none are linked. Throws if GHL refuses. */
-async function deleteGhlOpportunitiesFor(caseDoc) {
-  if (!isEnabled()) return 0;
-  const children = await Case.find({ parentCase: caseDoc._id }).select("integrations.ghl.opportunityId").lean();
-  const ids = [caseDoc, ...children].map((c) => c.integrations?.ghl?.opportunityId).filter(Boolean);
-  if (!ids.length) return 0;
-  const { getWorkerClient } = require("./ghlOutboundService");
-  for (const id of ids) await opportunityService.deleteOpportunity(id, getWorkerClient());
-  return ids.length;
+/**
+ * A deleted case must not come back, and its GHL opportunity must go too. The opportunities are queued here as durable "delete_opportunity"
+ * jobs that the worker retries (with growing pauses, for as long as it takes) until GHL has removed them: the person deleting never waits
+ * for GHL and never sees a failure. While a job is unfinished, the opportunity is never re-imported as a new case (see isDeletionPending).
+ * Returns how many opportunities were queued. Never throws.
+ */
+async function queueGhlOpportunityDeletions(caseDoc) {
+  try {
+    if (!isEnabled()) return 0;
+    const children = await Case.find({ parentCase: caseDoc._id }).select("_id integrations.ghl.opportunityId").lean();
+    const targets = [caseDoc, ...children].map((c) => ({ caseId: c._id, opportunityId: c.integrations?.ghl?.opportunityId })).filter((t) => t.opportunityId);
+    const GHLSyncJob = require("../../models/GHLSyncJob");
+    const crypto = require("crypto");
+    for (const target of targets) {
+      const job = await GHLSyncJob.create({ type: "delete_opportunity", caseId: target.caseId, opportunityId: target.opportunityId, operationId: crypto.randomUUID(), status: "pending", nextAttemptAt: new Date() });
+      require("./ghlOutboundService").processJobSoon(job._id);
+    }
+    return targets.length;
+  } catch (error) {
+    logger.error("ghl_delete_queue_failed", { caseId: String(caseDoc?._id), error: error.message });
+    return 0;
+  }
 }
 
-module.exports = { deleteGhlOpportunitiesFor, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+async function runDeleteOpportunity(job, client) {
+  if (!job.opportunityId) return "skipped";
+  await opportunityService.deleteOpportunity(job.opportunityId, client); // already gone (404) counts as done
+  return "done";
+}
+
+/** True while an opportunity of a deleted case is still waiting to be removed from GHL: sync must not turn it back into a case. */
+async function isDeletionPending(opportunityId) {
+  if (!opportunityId) return false;
+  const GHLSyncJob = require("../../models/GHLSyncJob");
+  return Boolean(await GHLSyncJob.exists({ type: "delete_opportunity", opportunityId, status: { $in: ["pending", "processing", "failed"] } }));
+}
+
+module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };

@@ -126,17 +126,21 @@ function buildI131Questionnaire() {
   // — the exact list §27 calls out as never-duplicate).
   const infoSection = "Information about you";
   questions.push(
-    buildQuestion("i131_applicant_lastName", "Last Name", "text", infoSection, 1, { required: true, canonicalPath: "applicant.lastName" }),
-    buildQuestion("i131_applicant_firstName", "First Name", "text", infoSection, 2, { required: true, canonicalPath: "applicant.firstName" }),
-    buildQuestion("i131_applicant_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "applicant.middleName" }),
-    buildQuestion("i131_applicant_gender", "Gender", "select", infoSection, 4, { options: ["Male", "Female"], canonicalPath: "applicant.gender" }),
-    buildQuestion("i131_applicant_dateOfBirth", "Date of Birth", "date", infoSection, 5, { required: true, canonicalPath: "applicant.dateOfBirth" }),
-    buildQuestion("i131_applicant_countryOfBirth", "Country of Birth", "text", infoSection, 6, { required: true, canonicalPath: "applicant.countryOfBirth" }),
-    buildQuestion("i131_applicant_countryOfCitizenship", "Country of Citizenship", "text", infoSection, 7, { required: true, canonicalPath: "applicant.countryOfCitizenship" }),
-    buildQuestion("i131_applicant_aNumber", "A-Number", "text", infoSection, 8, { canonicalPath: "applicant.aNumber" }),
-    buildQuestion("i131_applicant_ssn", "Social Security Number", "text", infoSection, 9, { canonicalPath: "applicant.ssn" }),
-    buildQuestion("i131_applicant_classOfAdmission", "Class of Admission", "text", infoSection, 10, { canonicalPath: "applicant.classOfAdmission" }),
-    buildQuestion("i131_applicant_physicalAddress", "Physical Address", "text", infoSection, 11, { required: true, canonicalPath: "applicant.physicalAddress" })
+    buildQuestion("i131_applicant_lastName", "Last Name", "text", infoSection, 1, { required: true, canonicalPath: "person.lastName" }),
+    buildQuestion("i131_applicant_firstName", "First Name", "text", infoSection, 2, { required: true, canonicalPath: "person.firstName" }),
+    buildQuestion("i131_applicant_middleName", "Middle Name", "text", infoSection, 3, { canonicalPath: "person.middleName" }),
+    buildQuestion("i131_applicant_gender", "Gender", "select", infoSection, 4, { options: ["Male", "Female"], canonicalPath: "person.gender" }),
+    buildQuestion("i131_applicant_dateOfBirth", "Date of Birth", "date", infoSection, 5, { required: true, canonicalPath: "person.dob" }),
+    buildQuestion("i131_applicant_countryOfBirth", "Country of Birth", "text", infoSection, 6, { required: true, canonicalPath: "person.countryOfBirth" }),
+    buildQuestion("i131_applicant_countryOfCitizenship", "Country of Citizenship", "text", infoSection, 7, { required: true, canonicalPath: "person.citizenship" }),
+    buildQuestion("i131_applicant_aNumber", "A-Number", "text", infoSection, 8, { canonicalPath: "person.alienNumber" }),
+    buildQuestion("i131_applicant_ssn", "Social Security Number", "text", infoSection, 9, { metadata: { sensitive: true } }),
+    buildQuestion("i131_applicant_classOfAdmission", "Class of Admission", "text", infoSection, 10),
+    buildQuestion("i131_applicant_physicalAddress", "Physical Address - Street Number and Name", "text", infoSection, 11, { required: true, canonicalPath: "contact.address.line1" }),
+    buildQuestion("i131_applicant_physicalAddress_city", "Physical Address - City or Town", "text", infoSection, 12, { canonicalPath: "contact.address.city" }),
+    buildQuestion("i131_applicant_physicalAddress_state", "Physical Address - State", "text", infoSection, 13, { canonicalPath: "contact.address.state" }),
+    buildQuestion("i131_applicant_physicalAddress_zip", "Physical Address - ZIP Code", "text", infoSection, 14, { canonicalPath: "contact.address.zip" }),
+    buildQuestion("i131_applicant_physicalAddress_country", "Physical Address - Country", "text", infoSection, 15, { canonicalPath: "contact.address.country" })
   );
 
   // ── §12 — the single authoritative purpose driver ──────────────────────
@@ -156,7 +160,11 @@ function buildI131Questionnaire() {
     buildQuestion("i131_outsideUsa_countryOfBirth", "Country of Birth", "text", outsideUsaSection, 5, { conditionalLogic: outsideUsaGate }),
     buildQuestion("i131_outsideUsa_countryOfCitizenship", "Country of Citizenship", "text", outsideUsaSection, 6, { conditionalLogic: outsideUsaGate }),
     buildQuestion("i131_outsideUsa_daytimePhone", "Day Time Phone Number", "text", outsideUsaSection, 7, { conditionalLogic: outsideUsaGate }),
-    buildQuestion("i131_outsideUsa_physicalAddress", "Physical Address (Outside USA)", "text", outsideUsaSection, 8, { required: true, conditionalLogic: outsideUsaGate })
+    buildQuestion("i131_outsideUsa_physicalAddress", "Physical Address (Outside USA) - Street Number and Name", "text", outsideUsaSection, 8, { required: true, conditionalLogic: outsideUsaGate }),
+    buildQuestion("i131_outsideUsa_physicalAddress_city", "Physical Address (Outside USA) - City or Town", "text", outsideUsaSection, 9, { conditionalLogic: outsideUsaGate }),
+    buildQuestion("i131_outsideUsa_physicalAddress_province", "Physical Address (Outside USA) - Province", "text", outsideUsaSection, 10, { conditionalLogic: outsideUsaGate }),
+    buildQuestion("i131_outsideUsa_physicalAddress_postalCode", "Physical Address (Outside USA) - Postal Code", "text", outsideUsaSection, 11, { conditionalLogic: outsideUsaGate }),
+    buildQuestion("i131_outsideUsa_physicalAddress_country", "Physical Address (Outside USA) - Country", "text", outsideUsaSection, 12, { conditionalLogic: outsideUsaGate })
   );
 
   // ── §14 — Processing Information ───────────────────────────────────────

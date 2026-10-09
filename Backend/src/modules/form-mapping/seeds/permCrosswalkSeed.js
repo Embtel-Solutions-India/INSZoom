@@ -72,6 +72,7 @@ function createPermCrosswalkSeed({ formCode, crosswalk, missingSource }) {
         status: "active",
         transform: edge.transform || { type: "direct" },
         condition: edge.condition,
+        ...(edge.fallback ? { fallback: edge.fallback } : {}),
         note: edge.note,
         checklistField: edge.checklistField,
         sourceChecklist: edge.sourceChecklist || "perm_employee_information",
@@ -82,7 +83,7 @@ function createPermCrosswalkSeed({ formCode, crosswalk, missingSource }) {
         formPage: edge.formPage || targetField.pageNumber,
         dataType: edge.dataType,
         required: edge.required,
-        source: "PERM checklist",
+        source: edge.sourceChecklist === "i131_checklist" ? "I-131 checklist" : "PERM checklist",
         profileOwner: profileOwnerFor(edgePath(edge)),
         allowsOccurrenceOverride: false,
       });
