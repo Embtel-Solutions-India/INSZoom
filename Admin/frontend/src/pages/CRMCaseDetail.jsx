@@ -543,7 +543,8 @@ const CRMCaseDetail = () => {
       reloadChecklistsRef.current?.()
     })
   }, [connected, id, subscribe])
-  // Approved checklists the fixed role panels below do not already show (matched by the questionnaire each panel resolved).
+  // EVERY checklist on the case (the same list the Checklist Approval card shows, approved or still a draft) that the fixed role panels below
+  // do not already show (matched by the questionnaire each panel resolved), so each case type gets its detailed, editable answers panel.
   const shownQuestionnaireIds = new Set([
     employerQuestionnaire, employeeQuestionnaire, businessPlanQuestionnaire, supportingDocumentsQuestionnaire, petitionerQuestionnaire, beneficiaryQuestionnaire,
     jointSponsorQuestionnaire, greenCardRenewalQuestionnaire, premiumProcessingQuestionnaire, premiumAddonQuestionnaire, gcNvcQuestionnaire,
@@ -552,14 +553,24 @@ const CRMCaseDetail = () => {
     .some((panel) => panel?.loading)
   const extraApprovedChecklists = fixedPanelsLoading ? [] : checklistsProgress.filter((item) => (
     !item.staffRequest
-    && item.clientApproval === 'approved'
     && !shownQuestionnaireIds.has(String(item.questionnaireId))
     && !(isPrincipalContainer && item.targetRole === 'employee')
   ))
-  // Required Documents follow what is APPROVED (what the client sees): every approved checklist, as edited for this case,
-  // not just the fixed panels. A checklist that is still a draft, was rejected or deleted contributes nothing.
-  const approvedDocumentChecklists = checklistsProgress.filter((c) => c.clientApproval === 'approved' && c.documentProgress && !(isPrincipalContainer && c.targetRole === 'employee'))
+  // Required Documents are built from the SAME checklists the detailed panels above show: every checklist on the case (approved or
+  // still a draft, as edited for this case), never a separate static per-visa template. Only when the case has no checklist with
+  // document questions at all does the legacy Case.checklistItems list act as a fallback.
+  const approvedDocumentChecklists = checklistsProgress.filter((c) => !c.staffRequest && c.documentProgress && !(isPrincipalContainer && c.targetRole === 'employee'))
   const relevantChecklistProgress = approvedDocumentChecklists
+  const checklistDocumentGroups = approvedDocumentChecklists.filter((c) => c.documentItems?.length)
+  // The Type column names the checklist question a file was uploaded for. documentType is the question's stored key; the label comes from
+  // the case's checklists (all their upload questions, visible or not). Documents not tied to a checklist question show a readable type.
+  const documentLabelByType = new Map()
+  checklistsProgress.forEach((c) => Object.entries(c.documentLabels || {}).forEach(([type, label]) => { if (!documentLabelByType.has(type)) documentLabelByType.set(type, label) }))
+  const documentQuestionLabel = (type) => documentLabelByType.get(type) || String(type || '').split(/[_\-\s]+/).filter(Boolean).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+  const checklistDocumentCounts = checklistDocumentGroups.reduce((acc, c) => {
+    c.documentItems.forEach((item) => { if (item.answered) acc.sent += 1; else acc.pending += 1 })
+    return acc
+  }, { sent: 0, pending: 0 })
   // Scoped to upload (file-type) questions only — c.progress mixes in
   // questionnaire field answers, which QuestionnaireAnswersPanel already
   // renders separately, so using it here double-counted field answers as
@@ -2866,13 +2877,18 @@ const CRMCaseDetail = () => {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-foreground">Required Documents</h3>
-            <span className="text-sm text-muted-foreground">{getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending</span>
+            <span className="text-sm text-muted-foreground">
+              {checklistDocumentGroups.length ? `${checklistDocumentCounts.sent} sent · ${checklistDocumentCounts.pending} pending` : `${getUploadedChecklistCount()} sent · ${getPendingChecklistItems().length} pending`}
+            </span>
           </div>
-          {approvedDocumentChecklists.some((c) => c.documentItems?.length) ? (
+          {checklistDocumentGroups.length ? (
             <div className="space-y-5" data-testid="required-documents-by-checklist">
-              {approvedDocumentChecklists.filter((c) => c.documentItems?.length).map((c) => (
+              {checklistDocumentGroups.map((c) => (
                 <div key={`${c.checklistId}-${c.referenceId || ''}`}>
-                  <p className="mb-2 text-sm font-semibold text-foreground">{c.title}</p>
+                  <p className="mb-2 text-sm font-semibold text-foreground">
+                    {c.title}
+                    {c.clientApproval !== 'approved' ? <span className="ml-2 text-xs font-normal text-muted-foreground">Draft - not yet sent to the client</span> : null}
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {c.documentItems.map((item) => (
                       <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
@@ -2944,20 +2960,26 @@ const CRMCaseDetail = () => {
           </div>
           {showCaseDocumentUpload && (
             <div className="mb-5">
-              <CaseDocumentUploadPanel caseId={id} checklistItems={getChecklistItems()} onUploaded={() => fetchDocuments(true)} />
+              <CaseDocumentUploadPanel caseId={id} checklistItems={checklistDocumentGroups.length ? checklistDocumentGroups.flatMap((c) => c.documentItems.map((item) => ({ documentType: item.key, name: item.label }))) : getChecklistItems()} onUploaded={() => fetchDocuments(true)} />
             </div>
           )}
           {tabLoading.documents ? (
             renderSkeleton()
           ) : documents.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px]">
+              <table className="w-full table-fixed">
+                <colgroup>
+                  <col className="w-[25%]" />
+                  <col className="w-[21%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[30%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filename</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Type</th>
+                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Checklist question</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Uploaded By</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">AI Status</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Review Status</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                   </tr>
@@ -2965,34 +2987,29 @@ const CRMCaseDetail = () => {
                 <tbody>
                   {documents.map((doc) => (
                     <tr key={doc._id} className="border-b border-border">
-                      <td className="py-3 px-4">
-                        <button type="button" onClick={() => setViewingDocument(doc)} className="max-w-xs truncate text-left font-medium text-blue-700 hover:text-blue-900 hover:underline">
+                      <td className="py-2 px-4">
+                        <button type="button" onClick={() => setViewingDocument(doc)} className="block max-w-full truncate text-left font-medium text-blue-700 hover:text-blue-900 hover:underline">
                           {getDocumentName(doc)}
                         </button>
                       </td>
-                      <td className="py-3 px-4">
-                        {doc.documentType}
+                      <td className="py-2 px-4 break-words text-sm" title={doc.documentType}>
+                        {documentQuestionLabel(doc.documentType)}
                         {String(doc.caseId?._id || doc.caseId) !== String(id) && (
                           <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Employer • Shared</span>
                         )}
                       </td>
-                      <td className="py-3 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>
-                      <td className="py-3 px-4">
-                        <span className={`badge ${doc.aiExtractionStatus === 'completed' ? 'badge-success' : doc.aiExtractionStatus === 'failed' ? 'badge-danger' : 'badge-info'}`}>
-                          {doc.aiExtractionStatus || doc.intelligenceStatus || 'pending'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>
+                      <td className="py-2 px-4">
                         <span className={`badge ${getDocumentReviewColor(doc.reviewStatus)}`}>
                           {doc.reviewStatus}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <td className="py-2 px-4">
+                        <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                           <button
                             type="button"
                             onClick={() => setViewingDocument(doc)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                            className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             <Eye className="h-3.5 w-3.5" /> View
                           </button>
@@ -3000,13 +3017,13 @@ const CRMCaseDetail = () => {
                             <button
                               type="button"
                               onClick={() => openDocumentEditor(doc)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                             >
                               <Save className="h-3.5 w-3.5" /> Edit
                             </button>
                           )}
                           <select
-                            className="input-field min-w-32 text-sm py-1"
+                            className="input-field w-auto min-w-0 max-w-[6.5rem] text-xs py-1"
                             defaultValue=""
                             onChange={(e) => e.target.value && handleDocumentReview(doc._id, e.target.value, '')}
                           >
@@ -3018,7 +3035,7 @@ const CRMCaseDetail = () => {
                           <button
                             type="button"
                             onClick={() => { setDocDeleteError(''); setDocToDelete(doc) }}
-                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
                             data-testid={`delete-document-${doc._id}`}
                           >
                             <Trash2 className="h-3.5 w-3.5" /> Delete

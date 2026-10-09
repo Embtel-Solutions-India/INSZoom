@@ -316,6 +316,11 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
           Back
         </button>
         {!readOnly && (
+          <span role="status" aria-live="polite" className={`text-xs font-semibold ${saveState === "error" ? "text-destructive" : !dirty && lastSavedAt ? "text-emerald-600" : "text-muted-foreground"}`}>
+            {savingProgress || saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : dirty ? "Unsaved changes" : lastSavedAt ? `Saved at ${lastSavedAt}` : ""}
+          </span>
+        )}
+        {!readOnly && (
           <button
             type="button"
             onClick={handleSaveProgress}

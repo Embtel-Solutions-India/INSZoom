@@ -81,6 +81,7 @@ async function refreshAccessToken() {
 // never resolves. This bounds every request so a stuck backend surfaces as a
 // clear, retriable error instead of an infinite wait.
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 25000;
+const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS) || 180000;
 
 async function request(path, options = {}, retry = true) {
   const headers = { ...options.headers };
@@ -110,7 +111,9 @@ async function request(path, options = {}, retry = true) {
       ...options,
       headers,
       credentials: "include",
-      signal: options.signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      // An upload is limited by file size and connection speed, not by the short budget of an ordinary request: aborting it at 25 s
+      // showed "took too long" although the server was still saving the file.
+      signal: options.signal || AbortSignal.timeout(options.body instanceof FormData ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS),
     });
   } catch (networkError) {
     if (networkError.name === "TimeoutError" || networkError.name === "AbortError") {

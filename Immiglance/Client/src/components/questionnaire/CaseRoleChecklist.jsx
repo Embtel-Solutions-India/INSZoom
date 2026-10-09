@@ -81,7 +81,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-400">
+            <span role="status" aria-live="polite" className={`text-xs font-semibold ${saveState === "error" ? "text-red-600" : !dirty && lastSavedAt && saveState !== "saving" ? "text-emerald-600" : "text-muted-foreground"}`}>
               {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : dirty ? "Unsaved changes" : lastSavedAt ? `Saved at ${lastSavedAt}` : ""}
             </span>
             <button

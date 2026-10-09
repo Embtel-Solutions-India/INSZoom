@@ -112,7 +112,22 @@ export function onForegroundMessage(callback) {
   };
 }
 
+// The sticky button can be closed with its X. Closing only hides it for this browser session (sessionStorage), and it is cleared on
+// logout, so a person who closed it and never allowed notifications sees the button again at their next login. Once notifications ARE
+// enabled the button never shows (the browser permission + this device's push token are the saved preference).
+const DISMISS_KEY = "push_prompt_dismissed";
+export function isPushPromptDismissed() {
+  try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
+}
+export function dismissPushPrompt() {
+  try { sessionStorage.setItem(DISMISS_KEY, "1"); } catch { /* optional */ }
+}
+export function resetPushPromptDismissal() {
+  try { sessionStorage.removeItem(DISMISS_KEY); } catch { /* optional */ }
+}
+
 export async function unregisterCurrentDevice() {
+  resetPushPromptDismissal();
   const token = localStorage.getItem(LAST_REGISTERED_KEY);
   localStorage.removeItem(LAST_REGISTERED_KEY);
   if (!token) return;
@@ -127,6 +142,10 @@ export async function getPushStatus() {
   if (!(await getMessagingInstance())) return "unsupported";
   if (Notification.permission === "denied") return "denied";
   if (Notification.permission !== "granted") return "default";
-  const token = await initializeNotifications().catch(() => null);
-  return token ? "enabled" : "default";
+  const token = await getTokenIfPermissionGranted().catch(() => null);
+  if (!token) return "default";
+  // Permission granted AND this browser holds a push token: that is "enabled". Registering the token on the account is best-effort
+  // (repeated on every visit) and must never bring the button back, e.g. when the first request races the login.
+  sendTokenToBackend(token).catch(() => {});
+  return "enabled";
 }

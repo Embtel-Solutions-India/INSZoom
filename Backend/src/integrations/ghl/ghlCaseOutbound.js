@@ -228,4 +228,15 @@ async function stagesForCase(caseId, user) {
   return { category: pipeline.category, currentKey: ghl.unifiedStageKey || stages[0]?.key || null, stages };
 }
 
-module.exports = { stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+/** Deletes the GHL opportunities of a case and of its child cases. No-op when GHL is off or none are linked. Throws if GHL refuses. */
+async function deleteGhlOpportunitiesFor(caseDoc) {
+  if (!isEnabled()) return 0;
+  const children = await Case.find({ parentCase: caseDoc._id }).select("integrations.ghl.opportunityId").lean();
+  const ids = [caseDoc, ...children].map((c) => c.integrations?.ghl?.opportunityId).filter(Boolean);
+  if (!ids.length) return 0;
+  const { getWorkerClient } = require("./ghlOutboundService");
+  for (const id of ids) await opportunityService.deleteOpportunity(id, getWorkerClient());
+  return ids.length;
+}
+
+module.exports = { deleteGhlOpportunitiesFor, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };

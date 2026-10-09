@@ -63,6 +63,16 @@ async function createOpportunity(body, client = getClient()) {
   }
 }
 
+// DELETE /opportunities/{id} : removes the opportunity from GHL (used when a case is deleted for good, so the next sync cannot re-import it).
+// An opportunity that is already gone (404) counts as deleted.
+async function deleteOpportunity(opportunityId, client = getClient()) {
+  try {
+    await client.request("DELETE", `/opportunities/${opportunityId}`);
+  } catch (error) {
+    if (!(error instanceof GHLApiError && error.status === 404)) throw error;
+  }
+}
+
 // PUT /opportunities/{id}/status : open | won | lost | abandoned
 async function updateOpportunityStatus(opportunityId, status, client = getClient()) {
   return client.put(`/opportunities/${opportunityId}/status`, { status });
@@ -73,4 +83,4 @@ async function updateOpportunityName(opportunityId, name, client = getClient()) 
   return client.put(`/opportunities/${opportunityId}`, { name });
 }
 
-module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };
+module.exports = { fetchAllOpportunities, getOpportunity, updateOpportunityStage, createOpportunity, deleteOpportunity, updateOpportunityStatus, updateOpportunityName, PAGE_SIZE };

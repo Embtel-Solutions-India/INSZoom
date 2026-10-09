@@ -68,7 +68,7 @@ function buildF1ReinstatementQuestionnaire() {
     country("client_countryOfPassportIssuance", "Country of Passport Issuance", entry, 4, { canonicalPath: "person.passport.country" }),
     q("client_passportExpirationDate", "Passport Expiration Date", "date", entry, 5, { canonicalPath: "person.passport.expirationDate" }),
     q("client_currentNonimmigrantStatus", "Current Nonimmigrant Status (e.g. F-1 student, H-4 dependent, etc.)", "text", entry, 6, { canonicalPath: "immigration.currentStatus" }),
-    q("client_expirationOfCurrentStatus", "Expiration Date of Current Status (mm/dd/yyyy)", "date", entry, 7, { canonicalPath: "immigration.currentStatusExpirationDate" })
+    q("client_expirationOfCurrentStatus", "Expiration Date of Current Status (mm/dd/yyyy)", "date", entry, 7, { canonicalPath: "immigration.i94.expirationDate" })
   );
 
   const outside = "Physical Address Outside the USA";
@@ -98,25 +98,25 @@ function buildF1ReinstatementQuestionnaire() {
   const sponsor = "Information About the Sponsor";
   questions.push(
     q("client_sponsorIntro", "Provide information about the person who will be financially supporting your stay in the USA.", "section_break", sponsor, 0),
-    q("client_sponsorFamilyName", "Family Name (Last Name)", "text", sponsor, 1),
-    q("client_sponsorGivenName", "Given Name (First Name)", "text", sponsor, 2),
-    q("client_sponsorANumber", "Alien Registration Number (A-Number) if any", "text", sponsor, 3),
-    q("client_sponsorUsMailingAddress", "US Mailing Address", "textarea", sponsor, 4),
-    q("client_sponsorUsPhysicalAddress", "US Physical Address (If different from Mailing Address)", "textarea", sponsor, 5),
-    country("client_sponsorCountryOfBirth", "Country of Birth", sponsor, 6),
-    country("client_sponsorCountryOfCitizenship", "Country of Citizenship", sponsor, 7),
-    q("client_sponsorDateOfBirth", "Date of Birth", "date", sponsor, 8),
-    q("client_sponsorDaytimeTelephoneNumber", "Daytime Telephone Number", "phone", sponsor, 9),
-    q("client_sponsorEmailAddress", "Email Address", "email", sponsor, 10)
+    q("client_sponsorFamilyName", "Family Name (Last Name)", "text", sponsor, 1, { metadata: { proposedCanonicalPath: "sponsor.lastName" } }),
+    q("client_sponsorGivenName", "Given Name (First Name)", "text", sponsor, 2, { metadata: { proposedCanonicalPath: "sponsor.firstName" } }),
+    q("client_sponsorANumber", "Alien Registration Number (A-Number) if any", "text", sponsor, 3, { metadata: { proposedCanonicalPath: "sponsor.alienNumber" } }),
+    q("client_sponsorUsMailingAddress", "US Mailing Address", "textarea", sponsor, 4, { metadata: { proposedCanonicalPath: "sponsor.mailingAddress" } }),
+    q("client_sponsorUsPhysicalAddress", "US Physical Address (If different from Mailing Address)", "textarea", sponsor, 5, { metadata: { proposedCanonicalPath: "sponsor.physicalAddress" } }),
+    country("client_sponsorCountryOfBirth", "Country of Birth", sponsor, 6, { metadata: { proposedCanonicalPath: "sponsor.countryOfBirth" } }),
+    country("client_sponsorCountryOfCitizenship", "Country of Citizenship", sponsor, 7, { metadata: { proposedCanonicalPath: "sponsor.citizenship" } }),
+    q("client_sponsorDateOfBirth", "Date of Birth", "date", sponsor, 8, { metadata: { proposedCanonicalPath: "sponsor.dob" } }),
+    q("client_sponsorDaytimeTelephoneNumber", "Daytime Telephone Number", "phone", sponsor, 9, { metadata: { proposedCanonicalPath: "sponsor.phone" } }),
+    q("client_sponsorEmailAddress", "Email Address", "email", sponsor, 10, { metadata: { proposedCanonicalPath: "sponsor.email" } })
   );
 
   const money = "Employment & Financial Information (If Any)";
   questions.push(
-    q("client_sponsorEmployerName", "Present Employer Name", "text", money, 1),
-    q("client_sponsorEmployerAddress", "Present Employer Full Address", "textarea", money, 2),
-    q("client_sponsorAnnualIncome", "Current Annual Income (in USD)", "currency", money, 3),
-    q("client_sponsorBankBalance", "Bank Balance (in USD)", "currency", money, 4),
-    q("client_sponsorOtherAssetsValue", "Other Assets Value (in USD)", "currency", money, 5)
+    q("client_sponsorEmployerName", "Present Employer Name", "text", money, 1, { metadata: { proposedCanonicalPath: "sponsor.employment.employerName" } }),
+    q("client_sponsorEmployerAddress", "Present Employer Full Address", "textarea", money, 2, { metadata: { proposedCanonicalPath: "sponsor.employment.employerAddress" } }),
+    q("client_sponsorAnnualIncome", "Current Annual Income (in USD)", "currency", money, 3, { metadata: { proposedCanonicalPath: "sponsor.finances.annualIncome" } }),
+    q("client_sponsorBankBalance", "Bank Balance (in USD)", "currency", money, 4, { metadata: { proposedCanonicalPath: "sponsor.finances.bankBalance" } }),
+    q("client_sponsorOtherAssetsValue", "Other Assets Value (in USD)", "currency", money, 5, { metadata: { proposedCanonicalPath: "sponsor.finances.otherAssetsValue" } })
   );
 
   const applicantDocs = "Documents required from applicant";
@@ -142,11 +142,11 @@ function buildF1ReinstatementQuestionnaire() {
   const letter = "Reinstatement Letter Questionnaire";
   questions.push(
     q("client_reinstatementIntro", "We need to prepare a reinstatement letter. Please share the following so we can prepare your reinstatement letter.", "section_break", letter, 0),
-    q("client_reinstatementSevisTerminationReason", "Reason your SEVIS was terminated.", "textarea", letter, 1),
-    q("client_reinstatementIssueStartDate", "When the issue started.", "date", letter, 2),
+    q("client_reinstatementSevisTerminationReason", "Reason your SEVIS was terminated.", "textarea", letter, 1, { metadata: { proposedCanonicalPath: "reinstatement.sevisTerminationReason" } }),
+    q("client_reinstatementIssueStartDate", "When the issue started.", "date", letter, 2, { metadata: { proposedCanonicalPath: "reinstatement.issueStartDate" } }),
     q("client_reinstatementIssueStartNotes", "Anything to add about when the issue started (optional).", "textarea", letter, 3),
-    q("client_reinstatementWhyUnintentional", "Why it was unintentional.", "textarea", letter, 4),
-    q("client_reinstatementStepsTaken", "What steps you took after finding out.", "textarea", letter, 5)
+    q("client_reinstatementWhyUnintentional", "Why it was unintentional.", "textarea", letter, 4, { metadata: { proposedCanonicalPath: "reinstatement.unintentionalViolationExplanation" } }),
+    q("client_reinstatementStepsTaken", "What steps you took after finding out.", "textarea", letter, 5, { metadata: { proposedCanonicalPath: "reinstatement.correctiveActionsTaken" } })
   );
 
   return {

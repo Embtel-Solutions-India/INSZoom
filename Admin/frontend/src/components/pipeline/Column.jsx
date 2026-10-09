@@ -8,7 +8,7 @@ import { PAGE_SIZE } from './pageSize'
 // Soft candy accents, one per stage in board order (cycled). Applied as translucent tints so they read on light and dark themes.
 export const STAGE_ACCENTS = ['#8FB8E8', '#B8A1E3', '#7FC8C0', '#F2B38F', '#F4A6C0', '#B5D99C', '#E3A0D3', '#F0A5A0', '#9ED0E6', '#C9B6E8']
 
-function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, page = 0, pageLoading = false, onPageChange, filtering }) {
+function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, onDelete, page = 0, pageLoading = false, onPageChange, filtering }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
   const pageCount = Math.max(1, Math.ceil(column.total / PAGE_SIZE))
   const from = column.total ? page * PAGE_SIZE + 1 : 0
@@ -27,7 +27,7 @@ function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, page = 0, 
       </header>
       <div ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
         {cards.map((card) => (
-          <Card key={card._id} card={card} stages={stages} onOpen={onOpen} onMoveTo={onMoveTo} />
+          <Card key={card._id} card={card} stages={stages} onOpen={onOpen} onMoveTo={onMoveTo} onDelete={onDelete} />
         ))}
         {!cards.length ? (
           <p className="px-2 py-6 text-center text-xs opacity-60">{filtering ? 'No matching cases' : 'No cases'}</p>

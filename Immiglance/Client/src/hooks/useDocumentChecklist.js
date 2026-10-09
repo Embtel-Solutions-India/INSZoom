@@ -56,12 +56,19 @@ export default function useDocumentChecklist(context = {}) {
     const uploadPromise = documentsApi.uploadResumable(file, category, documentType, context, controls);
     pendingUploads.current.add(uploadPromise);
     try {
-      const doc = await uploadPromise;
-      setFiles((prev) => ({
-        ...prev,
-        [documentType]: [...(prev[documentType] || []), doc.document],
-      }));
-      setExtractions((prev) => ({ ...prev, [doc.document._id]: { status: doc.document.intelligenceStatus || "queued", processingStage: "queued" } }));
+      const result = await uploadPromise;
+      // uploadResumable returns the document record itself for a small file and { document } for a chunked one: accept either, and never
+      // read a property of an undefined record inside a state updater (that threw during render and blanked the whole page).
+      const record = result?.document || result;
+      if (record && record._id) {
+        setFiles((prev) => ({
+          ...prev,
+          [documentType]: [...(prev[documentType] || []).filter((existing) => existing?._id !== record._id), record],
+        }));
+        setExtractions((prev) => ({ ...prev, [record._id]: { status: record.intelligenceStatus || "queued", processingStage: "queued" } }));
+      } else {
+        load(); // the upload succeeded but the response had no record: re-read the list instead of guessing
+      }
     } finally {
       pendingUploads.current.delete(uploadPromise);
       setUploadsInFlight((count) => Math.max(0, count - 1));

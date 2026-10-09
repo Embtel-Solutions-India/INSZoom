@@ -5,8 +5,10 @@ import { useAuth } from '../contexts/AuthContext'
 import usePipelineBoard from '../hooks/usePipelineBoard'
 import Board from '../components/pipeline/Board'
 import GhlStatusPanel from '../components/pipeline/GhlStatusPanel'
+import ConfirmModal from '../components/ConfirmModal'
 
 const ADMIN_ROLES = ['super_admin', 'admin']
+const CAN_DELETE_ROLES = ['super_admin', 'admin', 'team_lead'] // same roles the Cases page allows to delete
 const CATEGORY_KEY = 'ghl-pipeline-category'
 const CATEGORY_LABEL = { immigrant: 'Immigrant', non_immigrant: 'Non-Immigrant' }
 
@@ -25,9 +27,22 @@ export default function Pipeline() {
   const isCaseManager = user?.role === 'case_manager'
   const isAdmin = ADMIN_ROLES.includes(user?.role)
   const [category, setCategory] = useState(readStoredCategory)
-  const { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice, moveCard, goToPage, pageLoading, pageOf, refresh, setDragging, connected } = usePipelineBoard(category)
+  const { columns, pipelines, activeCategory, fallbackCategory, status, notice, dismissNotice, moveCard, deleteCard, goToPage, pageLoading, pageOf, refresh, setDragging, connected } = usePipelineBoard(category)
   const [filter, setFilter] = useState('')
   const [showPanel, setShowPanel] = useState(false)
+  const canDelete = CAN_DELETE_ROLES.includes(user?.role)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const askDelete = useCallback((card) => { setDeleteError(''); setDeleteTarget(card) }, [])
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const failure = await deleteCard(deleteTarget._id)
+    setDeleting(false)
+    if (failure) setDeleteError(failure)
+    else setDeleteTarget(null)
+  }
   const openCase = useCallback((id) => navigate(`/crm-cases/${id}`), [navigate])
 
   const selectCategory = useCallback((next) => {
@@ -70,7 +85,7 @@ export default function Pipeline() {
       </div>
     )
   } else {
-    body = <Board columns={columns} onMove={moveCard} onOpen={openCase} onPageChange={goToPage} pageLoading={pageLoading} pageOf={pageOf} onDragStateChange={setDragging} filter={filter} />
+    body = <Board columns={columns} onMove={moveCard} onOpen={openCase} onDelete={canDelete ? askDelete : undefined} onPageChange={goToPage} pageLoading={pageLoading} pageOf={pageOf} onDragStateChange={setDragging} filter={filter} />
   }
 
   return (
@@ -134,6 +149,18 @@ export default function Pipeline() {
 
       {isAdmin && showPanel ? <GhlStatusPanel onChanged={() => refresh({ silent: true })} /> : null}
       {body}
+      {deleteTarget ? (
+        <ConfirmModal
+          title="Are you sure?"
+          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be permanently deleted from the CRM, together with its documents, answers, forms and messages${deleteTarget.caseRole === 'principal' ? ', and all of its child cases' : ''}. Its GoHighLevel opportunity is removed too. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Yes, delete'}
+          cancelLabel="No"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => { if (!deleting) setDeleteTarget(null) }}
+        />
+      ) : null}
     </div>
   )
 }

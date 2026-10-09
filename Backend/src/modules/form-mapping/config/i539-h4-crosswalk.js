@@ -93,8 +93,8 @@ const MAPPED_EDGES = [
   { fieldName: "form1[0].#subform[1].SupA_Line1i_DateOfArrival[0]", source: "raw.questionnaireAnswers.client_dateOfLastArrival.value", transform: { type: "date", format: "mm/dd/yyyy" }, sourceVerified: false, note: "Date of last arrival. Field name's 'SupA_' prefix suggests Supplement A authoring, but pdf-lib confirms this widget is on page 2 of the BASE form — a naming artifact, not evidence this belongs to a different classification. Question key GUESSED — no canonical immigration.dateOfLastArrival path exists in profileCanonicalMap.js." },
   { fieldName: "form1[0].#subform[1].SupA_Line1j_ArrivalDeparture[0]", source: "immigration.i94.number", sourceVerified: true, note: "I-94 Arrival-Departure Record Number." },
   { fieldName: "form1[0].#subform[1].SupA_Line1k_Passport[0]", source: "person.passport.number", sourceVerified: true, note: "Passport number." },
-  { fieldName: "form1[0].#subform[1].SupA_Line1k_Passport[1]", source: "person.passport.number", sourceVerified: true, note: "Passport number, repeated widget instance (same field name, second occurrence)." },
-  { fieldName: "form1[0].#subform[1].SupA_Line1k_Passport[2]", source: "person.passport.number", sourceVerified: true, note: "Passport number, repeated widget instance (third occurrence)." },
+  // NOTE: the widgets SupA_Line1k_Passport[1] / [2] share the passport field's NAME but the template labels them "Item 5: Enter the name of the
+  // school" and "Item 6: Enter number" (SEVIS ID), so they are deliberately NOT mapped to the passport number (an earlier edge wrote it there).
   { fieldName: "form1[0].#subform[1].SupA_Line1m_CountryOfIssuance[0]", source: "person.passport.country", sourceVerified: true, note: "Passport country of issuance." },
   { fieldName: "form1[0].#subform[1].SupA_Line1n_ExpDate[0]", source: "person.passport.expirationDate", transform: { type: "date", format: "mm/dd/yyyy" }, sourceVerified: true, note: "Passport expiration date." },
   { fieldName: "form1[0].#subform[1].SupA_Line1p_DateExpires[0]", source: "immigration.i94.expirationDate", transform: { type: "date", format: "mm/dd/yyyy" }, sourceVerified: true, note: "ASSUMED to be current-status/I-94 expiration, inferred from its position continuing the Line1(i..p) lettered sequence started by the arrival/I-94/passport fields above (i=arrival, j=I-94#, k=passport#, l=travel doc, m=country of issuance, n=passport exp, p=this field) — NOT independently confirmed against the printed form's own item text. Flagged ambiguous_requires_visual_verification-adjacent; kept mapped rather than manual because the positional inference is reasonably strong, but a human should confirm before relying on it for a real filing." },
@@ -111,6 +111,19 @@ const MAPPED_EDGES = [
   { fieldName: "form1[0].#subform[6].P1Line1a_FamilyName[1]", source: "person.lastName", sourceVerified: true, note: "Continuation sheet header, applicant family name (repeat)." },
   { fieldName: "form1[0].#subform[6].P1_Line1b_GivenName[1]", source: "person.firstName", sourceVerified: true, note: "Continuation sheet header, applicant given name (repeat)." },
   { fieldName: "form1[0].#subform[6].P1_Line1c_MiddleName[1]", source: "person.middleName", sourceVerified: true, note: "Continuation sheet header, applicant middle name (repeat)." },
+  // --- F-1 Reinstatement additions (labels VERIFIED against the active I-539 template's formFields + the PDF's own page text) ---
+  // Part 2 Item 1 "I am applying for (select only one box)": the three checkboxes, each ticked only by the client's own answer.
+  { fieldName: "form1[0].#subform[1].P2_checkbox[2]", source: "raw.questionnaireAnswers.client_applicationType.value", ...checkboxMatch("raw.questionnaireAnswers.client_applicationType.value", "Reinstatement to student status"), sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 2 Item 1, 'reinstatement of student status' (template label: 'Item 1: Check this box for reinstatement of student status')." },
+  { fieldName: "form1[0].#subform[1].P2_checkbox[0]", source: "raw.questionnaireAnswers.client_applicationType.value", ...checkboxMatch("raw.questionnaireAnswers.client_applicationType.value", "An extension of stay in my current status"), sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 2 Item 1, extension of stay." },
+  { fieldName: "form1[0].#subform[1].P2_checkbox[1]", source: "raw.questionnaireAnswers.client_applicationType.value", ...checkboxMatch("raw.questionnaireAnswers.client_applicationType.value", "Change of status"), sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 2 Item 1, change of status." },
+  // Part 1 Item 12: current nonimmigrant status (dropdown). The checklist answer is free text; a value outside the dropdown's list is left for review.
+  { fieldName: "form1[0].#subform[1].Pt1Line15a_NewStatus[0]", source: "immigration.currentStatus", sourceVerified: true, note: "Part 1 Item 12 (template label: 'Select Current Nonimmigrant Status from the list'); the field NAME says NewStatus but its label/page position is the CURRENT status." },
+  // Part 4 Item 2 "Physical Address Abroad" (page 3 text: 'Physical Address Abroad 1. 2. Street Number and Name ... Province Postal Code Country').
+  { fieldName: "form1[0].#subform[2].P2_Line10_StreetName[0]", source: "raw.questionnaireAnswers.client_foreignStreetNumberName.value", sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 4 Item 2, physical address abroad: street." },
+  { fieldName: "form1[0].#subform[2].P2_Line10_City[0]", source: "raw.questionnaireAnswers.client_foreignCityTown.value", sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 4 Item 2, physical address abroad: city or town." },
+  { fieldName: "form1[0].#subform[2].P2_Line10_Province[0]", source: "raw.questionnaireAnswers.client_foreignProvince.value", sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 4 Item 2, physical address abroad: province." },
+  { fieldName: "form1[0].#subform[2].P2_Line10_PostalCode[0]", source: "raw.questionnaireAnswers.client_foreignPostalCode.value", sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 4 Item 2, physical address abroad: postal code." },
+  { fieldName: "form1[0].#subform[2].P2_Line10_Country[0]", source: "raw.questionnaireAnswers.client_foreignCountry.value", sourceVerified: false, note: "TARGET field verified; SOURCE key (shared by the F-1/COS checklists) not yet run on a real case. Part 4 Item 2, physical address abroad: country." },
   { fieldName: "form1[0].#subform[6].P8_Line2_ANumber[0].Pt1Line2_AlienNumber[1]", source: "person.alienNumber", sourceVerified: true, note: "Continuation sheet header, A-Number (repeat) — see the Part 1 Item 2 edge's format-mismatch caveat." },
 ];
 
@@ -146,10 +159,10 @@ const MANUAL_ENTRY_FIELDS = {
   // own ambiguous_requires_visual_verification bucket.
   "ambiguous_requires_visual_verification": [
     "form1[0].#subform[0].P1_checkbox5[0]", "form1[0].#subform[0].P1_checkbox5[1]", // "is current address same as mailing" Y/N — plausible, but no confirmed item text
-    "form1[0].#subform[1].Pt1Line15a_NewStatus[0]", // "NewStatus" dropdown — requested classification, not current; could also be misnamed
+    // "NewStatus" dropdown — requested classification, not current; could also be misnamed
     "form1[0].#subform[1].P1_Checkbox12c[0]",
     "form1[0].#subform[1].P2_checkbox4[0]", "form1[0].#subform[1].P2_checkbox4[1]",
-    "form1[0].#subform[1].P2_checkbox[0]", "form1[0].#subform[1].P2_checkbox[1]", "form1[0].#subform[1].P2_checkbox[2]",
+    
     "form1[0].#subform[1].P3_checkbox2a[0]", "form1[0].#subform[1].P3_checkbox2a[1]",
     "form1[0].#subform[2].P3_checkbox1[0]", "form1[0].#subform[2].P3_checkbox1[1]", "form1[0].#subform[2].P3_checkbox1[2]",
     "form1[0].#subform[2].P3_checkbox4[0]", "form1[0].#subform[2].P3_checkbox4[1]",
@@ -161,8 +174,8 @@ const MANUAL_ENTRY_FIELDS = {
     // address, an "address abroad" question, or something else entirely.
     // Deliberately NOT mapped to contact.address.* alongside the other two
     // blocks to avoid a third, unverified duplication.
-    "form1[0].#subform[2].P2_Line10_StreetName[0]", "form1[0].#subform[2].P2_Line10_Unit[0]", "form1[0].#subform[2].P2_Line10_Unit[1]", "form1[0].#subform[2].P2_Line10_Unit[2]", "form1[0].#subform[2].P2_Line10_Number[0]",
-    "form1[0].#subform[2].P2_Line10_City[0]", "form1[0].#subform[2].P2_Line10_Province[0]", "form1[0].#subform[2].P2_Line10_PostalCode[0]", "form1[0].#subform[2].P2_Line10_Country[0]",
+    "form1[0].#subform[2].P2_Line10_Unit[0]", "form1[0].#subform[2].P2_Line10_Unit[1]", "form1[0].#subform[2].P2_Line10_Unit[2]", "form1[0].#subform[2].P2_Line10_Number[0]",
+    
     // Page 4 — dense block of unlabeled Yes/No immigration-history questions
     // (~15 pairs). Every _No/_Yes widget pair literally shares the onValue
     // "Y" (a normal PDF authoring quirk, not evidence of anything), and

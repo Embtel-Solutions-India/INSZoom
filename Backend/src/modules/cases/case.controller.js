@@ -3554,6 +3554,13 @@ exports.deleteCasePermanently = async (req, res, next) => {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
+    // A case on the GoHighLevel pipeline (and, for an employer matter, its employees) is removed from GHL FIRST, so its opportunity cannot be
+    // re-imported as a new case by the next sync. If GHL refuses, nothing is deleted and the person is told why.
+    try {
+      await require("../../integrations/ghl/ghlCaseOutbound").deleteGhlOpportunitiesFor(caseData);
+    } catch (ghlError) {
+      return res.status(502).json({ success: false, code: "GHL_DELETE_FAILED", message: `The case was not deleted because its GoHighLevel opportunity could not be removed (${ghlError.message}). Try again in a moment.` });
+    }
     // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
     const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
     res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });
