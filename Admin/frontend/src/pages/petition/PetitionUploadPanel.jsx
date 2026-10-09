@@ -53,7 +53,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
       if (inputRef.current) inputRef.current.value = ''
       await load()
     } catch (e) {
-      setError(e.response?.data?.message || 'Unable to upload the petition. Please try again.')
+      setError(e.response?.data?.message || e.message || 'Unable to upload the petition. Please try again.')
     } finally {
       setUploading(false)
     }
@@ -81,7 +81,7 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-bold text-foreground">Uploaded Petition</h3>
-          <p className="text-xs text-muted-foreground">A petition document you attach directly (up to 200 MB, stored in S3 and visible to the attorney).</p>
+          <p className="text-xs text-muted-foreground">A petition document you attach directly (up to 200 MB, visible to the attorney).</p>
         </div>
         {canUpload && (
           <>

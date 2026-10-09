@@ -431,10 +431,12 @@ export const documentsApi = {
   // that makes this show up live on the Attorney side.
   listPetitionUploads: (caseId) => api.get('/documents', { params: { caseId, documentType: 'petition_manual_upload' } }),
   // Petitions can be very large (up to 200 MB): anything over one chunk goes
-  // through the resumable chunked-session API (5 MB chunks, 3 retries each,
-  // reassembled and stored to S3 server-side) instead of one long request.
+  // through the resumable chunked-session API (3 retries per chunk, reassembled
+  // server-side) instead of one long request. Chunks stay under 1 MB so every request
+  // passes a web server / reverse proxy that caps request bodies at its 1 MB default
+  // (a larger body is refused with 413 before it ever reaches the API).
   uploadPetition: async (caseId, file, onProgress) => {
-    const chunkSize = 5 * 1024 * 1024
+    const chunkSize = 896 * 1024
     const context = { caseId, documentType: 'petition_manual_upload', category: 'legal', legacySource: 'Admin' }
     if (file.size <= chunkSize) {
       const formData = new FormData()
@@ -468,7 +470,11 @@ export const documentsApi = {
           if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 700))
         }
       }
-      if (lastError) throw lastError
+      if (lastError) {
+        // the proxy's 413 carries no CORS headers, so the browser reports it as a network error with no response
+        if (!lastError.response) lastError.message = 'The upload was interrupted by the server or network. Please try again.'
+        throw lastError
+      }
       onProgress?.(Math.round(((index + 1) / session.totalChunks) * 95))
     }
     const done = await api.post(`/documents/uploads/sessions/${session.uploadId}/complete`, {}, { timeout: 600_000 })
@@ -672,4 +678,16 @@ export const eligibilityApi = {
   recommendations: (caseId) => api.get(`/eligibility/${caseId}/recommendations`),
   recalculate: (caseId, payload = {}) => api.post(`/eligibility/${caseId}/recalculate`, payload),
   override: (caseId, payload = {}) => api.post(`/eligibility/${caseId}/override`, payload),
+}
+
+// GoHighLevel pipeline board. The browser only ever talks to our backend; the backend does all GHL syncing.
+export const ghlApi = {
+  status: () => api.get('/integrations/ghl/status'),
+  board: (params = {}) => api.get('/integrations/ghl/board', { params }),
+  moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
+  setupPreview: () => api.get('/integrations/ghl/setup'),
+  confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
+  syncNow: () => api.post('/integrations/ghl/sync'),
+  reconcileNow: () => api.post('/integrations/ghl/reconcile'),
+  retryJob: (jobId) => api.post(`/integrations/ghl/jobs/${jobId}/retry`),
 }

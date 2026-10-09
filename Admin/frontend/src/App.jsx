@@ -17,6 +17,7 @@ const EODReports = lazy(() => import('./pages/EODReports'))
 const Leads = lazy(() => import('./pages/Leads'))
 const CRMCases = lazy(() => import('./pages/CRMCases'))
 const CRMCaseDetail = lazy(() => import('./pages/CRMCaseDetail'))
+const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Messaging = lazy(() => import('./pages/Messaging'))
 const PaymentsOverview = lazy(() => import('./pages/PaymentsOverview'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -93,8 +94,16 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route 
-                path="crm-cases/:id" 
+              <Route
+                path="pipeline"
+                element={
+                  <ProtectedRoute module="cases">
+                    <Pipeline />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="crm-cases/:id"
                 element={
                   <ProtectedRoute module="cases">
                     <CRMCaseDetail />

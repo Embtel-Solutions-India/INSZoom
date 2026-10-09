@@ -60,6 +60,16 @@ async function findEntry(caseId, wantedId) {
   return entry;
 }
 
+// Clears the mixed-visa attention flag once every visa on the employer is covered. Never throws: a failure here must
+// not fail the approval or removal that triggered it.
+async function reconcileMixedVisa(principalId) {
+  try {
+    await require("./employer-visa-checklists.service").reconcileMixedVisaFlag(principalId);
+  } catch (error) {
+    require("../../utils/logger").error("mixed_visa_reconcile_failed", { caseId: String(principalId), error: error.message });
+  }
+}
+
 // ── approval ────────────────────────────────────────────────────────────
 // ids: specific checklist ids on THIS case, or all: every draft checklist on this case and its child cases.
 async function approveChecklists(caseId, { checklistIds = [], all = false } = {}, user, req) {
@@ -114,6 +124,7 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
       approved.push({ caseId: String(fresh._id), checklistId: gateChecklistId(gateEntry(entry)), title: entry.title || entry.questionnaire.title });
     }
   }
+  await reconcileMixedVisa(principal._id);
   return { approved };
 }
 
@@ -122,9 +133,12 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
 // was already sent), and automatic assignment cannot bring it back. The shared template and other cases are untouched,
 // and answers already given stay on record. Removing an EMPLOYEE checklist from the principal removes it from every
 // employee case under it too, mirroring how approving it cascades.
-async function removeChecklist(caseId, { checklistId: wantedId } = {}, user, req) {
+async function removeChecklist(caseId, { checklistId: wantedId, reason } = {}, user, req) {
+  const cleanReason = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
   const principal = await loadCase(caseId, user);
-  await findEntry(caseId, wantedId); // 404 when it is not a checklist of this case
+  // 404 when it is not a checklist of this case (an already-removed one is hidden from the resolver, so it is only re-checked
+  // against the removal record: that is how a reason can still be added to it afterwards)
+  if (!(principal.checklistApproval?.removed || []).some((item) => item.checklistId === wantedId)) await findEntry(caseId, wantedId);
   const targets = [principal];
   if (String(wantedId).endsWith("|employee") && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
 
@@ -132,8 +146,19 @@ async function removeChecklist(caseId, { checklistId: wantedId } = {}, user, req
   for (const target of targets) {
     const fresh = await Case.findById(target._id);
     if (!fresh.checklistApproval) fresh.checklistApproval = {};
-    if ((fresh.checklistApproval.removed || []).some((item) => item.checklistId === wantedId)) continue;
-    fresh.checklistApproval.removed = [...(fresh.checklistApproval.removed || []), { checklistId: wantedId, removedAt: new Date(), removedBy: user._id }];
+    const already = (fresh.checklistApproval.removed || []).find((item) => item.checklistId === wantedId);
+    if (already) {
+      // already removed: a reason given now turns it into an explicit waiver (and counts as covered)
+      if (cleanReason && !already.reason) {
+        already.reason = cleanReason;
+        already.disposition = "waived";
+        caseService.addAuditEntry(fresh, "waive_checklist", "Removed checklist recorded as waived", user, { checklistId: wantedId, reason: cleanReason }, req);
+        await fresh.save();
+        removedFrom.push(String(fresh._id));
+      }
+      continue;
+    }
+    fresh.checklistApproval.removed = [...(fresh.checklistApproval.removed || []), { checklistId: wantedId, removedAt: new Date(), removedBy: user._id, ...(cleanReason ? { reason: cleanReason, disposition: "waived" } : {}) }];
     // no reference is touched: the resolver skips every checklist listed in checklistApproval.removed, so it is hidden
     // everywhere (staff, client, progress, forms) and nothing re-assigns it.
     caseService.addTimelineEvent(fresh, "questionnaire", "Checklist Removed", "A checklist was removed from this case and will not be sent to the client.", user, { checklistId: wantedId });
@@ -142,6 +167,7 @@ async function removeChecklist(caseId, { checklistId: wantedId } = {}, user, req
     removedFrom.push(String(fresh._id));
     broadcastChecklistsChanged(fresh, "removed", user);
   }
+  await reconcileMixedVisa(principal._id);
   return { removed: removedFrom, checklistId: wantedId };
 }
 

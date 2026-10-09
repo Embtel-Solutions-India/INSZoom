@@ -544,7 +544,18 @@ const caseSchema = new mongoose.Schema(
     },
 
     visaCategory: { type: String, default: "" },
-    visaType: { type: String, required: true, trim: true },
+    // Required for every case EXCEPT a GoHighLevel-created case still waiting
+    // for the team lead to pick a visa (visaSelectionStatus === "pending").
+    // Anything that doesn't set that status keeps the original required rule.
+    visaType: {
+      type: String,
+      required: function visaTypeRequired() {
+        return this.visaSelectionStatus !== "pending";
+      },
+      trim: true,
+    },
+    // Only ever written by the GHL integration. Absent on every other case.
+    visaSelectionStatus: { type: String, enum: ["pending", "selected"] },
     caseType: { type: String, default: "immigration", index: true },
     petitionType: { type: String, trim: true, index: true },
     petitionSubType: { type: String, trim: true },
@@ -844,6 +855,10 @@ const caseSchema = new mongoose.Schema(
           checklistId: { type: String, required: true }, // baseKey|targetRole
           removedAt: { type: Date, default: Date.now },
           removedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          // optional: why it was removed. A reason makes it an explicit WAIVER ("not required for this employer"), which
+          // counts as covered; a removal without one does not (see employer-visa-checklists.service.js).
+          reason: String,
+          disposition: { type: String, enum: ["removed", "waived"], default: "removed" },
           _id: false,
         },
       ],
@@ -1108,11 +1123,83 @@ const caseSchema = new mongoose.Schema(
      * 'lead_conversion'   = created from an approved Lead via the admin Leads page
      * 'admin_direct'      = created directly by an Admin without a prior Lead
      * 'team_lead_direct'  = created directly by a Team Lead without a prior Lead
+     * 'ghl'               = created from a GoHighLevel opportunity (integrations/ghl)
      */
     creationSource: {
       type: String,
-      enum: ["lead_conversion", "admin_direct", "team_lead_direct"],
+      enum: ["lead_conversion", "admin_direct", "team_lead_direct", "ghl"],
       default: null,
+    },
+
+    /**
+     * External-system links. Only `ghl` exists today and it is absent on every
+     * case that did not come from (or get linked to) GoHighLevel.
+     * `integrations.ghl.unifiedStageKey` is the CRM *pipeline* column and is
+     * deliberately separate from `stage` (the immigration workflow stage):
+     * moving a pipeline card must never touch `stage`.
+     */
+    integrations: {
+      ghl: {
+        locationId: { type: String },
+        opportunityId: { type: String },
+        contactId: { type: String },
+        // Current position in GHL, plus where the opportunity first entered.
+        pipelineId: { type: String },
+        pipelineStageId: { type: String },
+        sourcePipelineId: { type: String },
+        sourceStageId: { type: String },
+        unifiedStageKey: { type: String },
+        // "immigrant" | "non_immigrant", taken from the source pipeline.
+        category: { type: String, enum: ["immigrant", "non_immigrant"] },
+        opportunityStatus: { type: String },
+        // What GHL's Service Type said about the visa, and what we did with it.
+        // status: applied | mapped | structure_unsupported | incomplete | unmapped | ambiguous | none | unavailable
+        visaResolution: {
+          status: { type: String },
+          reason: { type: String },
+          visaType: { type: String },
+          petitionSubType: { type: String },
+          structure: { type: String },
+          category: { type: String },
+          field: { type: String },
+          value: { type: String },
+          categoryMismatch: { type: Boolean },
+          resolvedAt: { type: Date },
+        },
+        // "immiglance" = the opportunity was created BY us when an employee was added in Immiglance.
+        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation", "immiglance"] },
+        // The name last written to the GHL opportunity (display only; identity is the opportunity id).
+        displayName: { type: String },
+        // We set this opportunity to "abandoned" because the employee was removed; only then may a restore reopen it
+        // (a GHL status such as won/lost is never touched).
+        abandonedByImmiglance: { type: Boolean },
+        flags: {
+          deletedInGhl: { type: Boolean, default: false },
+          needsAttention: { type: Boolean, default: false },
+          // Employer matter holding employees on more than one visa. Employer-side questions for the
+          // extra visas are not covered until the mixed-visa phase (R3-6).
+          mixedVisa: { type: Boolean, default: false },
+        },
+        // individual = one client; employer = the shared employer matter (no opportunity of its own,
+        // only the GHL contact); employee = one employee card under an employer (owns the opportunity).
+        // family = ONE case holding both the petitioner (the GHL contact) and the beneficiary; no child cases.
+        role: { type: String, enum: ["individual", "employer", "employee", "family"] },
+        // On an employer matter: its visa is only the first employee's visa, used so today's employer
+        // checklist works for single-visa employers. Not a statement about the employer.
+        containerVisaProvisional: { type: Boolean },
+        lastSyncedAt: { type: Date },
+        sync: {
+          state: { type: String, enum: ["synced", "pending", "failed"] },
+          // Bumped on every accepted stage change, from either side.
+          version: { type: Number, default: 0 },
+          source: { type: String, enum: ["ghl", "immiglance"] },
+          changedAt: { type: Date },
+          operationId: { type: String },
+          lastSyncedStageId: { type: String },
+          lastError: { type: String },
+          attempts: { type: Number, default: 0 },
+        },
+      },
     },
 
     /**
@@ -1378,6 +1465,9 @@ caseSchema.index({ caseRole: 1, status: 1 });
 caseSchema.index({ employerProfileId: 1 });
 caseSchema.index({ personProfileId: 1 });
 caseSchema.index({ creationSource: 1, createdAt: -1 });
+// NOTE: no GHL indexes here on purpose. This collection is already at MongoDB's
+// 64-index limit, so none could be built. GHL identity uniqueness and
+// opportunity -> case lookups live in the GHLCaseLink collection instead.
 caseSchema.index({ dataEntryMode: 1, status: 1 });
 
 caseSchema.statics.stageNames = STAGE_NAMES;

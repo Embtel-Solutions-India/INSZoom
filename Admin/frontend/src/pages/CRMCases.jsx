@@ -152,20 +152,25 @@ const CRMCases = () => {
   // Back on this (kept-alive) list after a while: refresh quietly - rows stay, no spinner.
   useRouteRevisit(() => { fetchCases() })
 
+  // Optimistic: the pop-up closes and the row disappears at once. The backend removes the case and its accounts, then
+  // finishes the heavy cleanup (files, linked records) in the background and retries it if that fails. Only if the
+  // request itself is refused do the row and the pop-up (now with the error) come back.
   const runDeleteCase = async () => {
     if (!deleteTarget) return
-    setDeleting(true)
+    const target = deleteTarget
+    const previousCases = cases
+    setDeleteTarget(null)
     setDeleteError('')
+    setCases((list) => list.filter((item) => item._id !== target._id))
     try {
-      await casesApi.deletePermanently(deleteTarget._id)
+      await casesApi.deletePermanently(target._id)
       invalidateCachedGet('/cases')
-      setDeleteTarget(null)
-      await fetchCases()
+      fetchCases()
       fetchPendingQueue()
     } catch (err) {
+      setCases(previousCases)
+      setDeleteTarget(target)
       setDeleteError(err.response?.data?.message || err.message || 'Could not delete the case. Please try again.')
-    } finally {
-      setDeleting(false)
     }
   }
 

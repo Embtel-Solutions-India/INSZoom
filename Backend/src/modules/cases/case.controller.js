@@ -15,6 +15,7 @@ const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
+const ghlVisaSelection = require("../../integrations/ghl/ghlVisaSelection.service");
 const { evaluateStageGate } = require("./case-gating.config");
 const { createPerfTimer } = require("../../utils/perfTimer");
 const questionnaireService = require("../questionnaires/questionnaire.service");
@@ -1617,6 +1618,9 @@ exports.updateCase = async (req, res, next) => {
       caseData.organization = req.body.organizationId;
     }
     caseData.lastModifiedBy = req.user._id;
+    // GHL-created case still waiting for a visa: the team lead just chose one.
+    // No-op (returns false) for every other case.
+    const ghlVisaJustSelected = ghlVisaSelection.markVisaSelected(caseData, req.body.visaType);
 
     if (req.body.workflow) {
       Object.assign(caseData.workflow, req.body.workflow);
@@ -1655,6 +1659,7 @@ exports.updateCase = async (req, res, next) => {
       await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
     }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
+    if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
 
     res.json({ success: true, message: "Case updated", case: lifecycle.case, caseSummary: caseService.summarizeCase(lifecycle.case), workflow: lifecycle });
   } catch (error) {
@@ -2307,6 +2312,7 @@ exports.inviteEmployee = async (req, res, next) => {
     childCase.employeeDataEntryModeChangedAt = new Date();
     childCase.employeeDataEntryModeChangedBy = req.user._id;
     await childCase.save();
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: the employee is now named; no-op unless enabled
     if (previousOwnerId) {
       await User.updateOne({ _id: previousOwnerId }, { $pull: { caseIds: childCase._id } });
     }
@@ -2406,6 +2412,7 @@ exports.removeEmployee = async (req, res, next) => {
     childCase.status = "removed";
     await childCase.save();
     await caseService.writeAuditLog("remove_employee", childCase, req.user, {}, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
     return res.status(200).json({
       success: true,
@@ -2447,6 +2454,7 @@ exports.restoreEmployee = async (req, res, next) => {
     childCase.previousStatus = undefined;
     await childCase.save();
     await caseService.writeAuditLog("restore_employee", childCase, req.user, {}, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
     return res.status(200).json({
       success: true,
@@ -2751,6 +2759,8 @@ exports.addEmployeeSlot = async (req, res, next) => {
     await orchestrator.orchestrateOne(childCase._id, req.user, req);
     await orchestrator.provisionRequiredForms(principal, req.user, req);
     await orchestrator.provisionChecklistAssignments(principal, req.user, req);
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
+    try { await require("../questionnaires/employer-visa-checklists.service").ensureEmployerChecklistForVisa(principal._id, { visaType: employeeVisa.visaType, petitionSubType: employeeVisa.petitionSubType }, req.user, req); } catch (_error) { /* a new visa gets its employer checklist (draft); never blocks Add Employee */ }
 
     return res.status(201).json({
       success: true,
@@ -3489,8 +3499,9 @@ exports.deleteCasePermanently = async (req, res, next) => {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
-    const result = await require("./case-deletion.service").deleteCasePermanently(caseData, req.user);
-    res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, ...result });
+    // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
+    const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
+    res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });
   } catch (error) {
     handleError(error, next);
   }

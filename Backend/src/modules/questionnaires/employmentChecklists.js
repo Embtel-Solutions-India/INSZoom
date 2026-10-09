@@ -361,6 +361,10 @@ const H1B_EMPLOYEE_CHECKLIST_INTRO = "Please complete the questionnaire with as 
 // it directly follows that question and gates the FEIN-proof document below.
 const H1B_PART1_NOTE = "IF YES, Proceed to the PART-2. If NO, please let us know. We can help with that. Separate charges will be applied. Without this step, we cannot file LCA. Please send any one of the following documents:";
 
+// One H-1B checklist set serves H-1B and every H-1B1 variant (H-1B1 is filed like H-1B: same checklists, same forms). Hyphenated and
+// hyphen-stripped spellings are both listed since the resolvers strip hyphens from the case's visaType before matching.
+const H1B_VISA_TYPES = ["H1B", "H-1B", "H1B1", "H-1B1", "H1B1CHILE", "H-1B1 Chile", "H1B1 CHILE", "H1B1SINGAPORE", "H-1B1 Singapore", "H1B1 SINGAPORE", "NEWH1B", "H1BEXTENSION", "H1BTRANSFER", "H1BAMENDMENT", "H1BCONCURRENT"];
+
 function buildH1bEmployerChecklist() {
   const visibility = { roles: ["employer", ...STAFF_ROLES], portals: ["employer", "admin"] };
   const documentSectionOrder = [];
@@ -391,6 +395,7 @@ function buildH1bEmployerChecklist() {
     key: "h1b_employer_checklist",
     title: "H-1B Employer Checklist",
     visaType: "H1B",
+    visaTypes: H1B_VISA_TYPES,
     checklistRole: "employer",
     description: H1B_EMPLOYER_CHECKLIST_INTRO,
     documentSectionOrder,
@@ -450,6 +455,7 @@ function buildH1bEmployeeChecklist() {
     key: "h1b_employee_checklist",
     title: "H-1B Employee Checklist",
     visaType: "H1B",
+    visaTypes: H1B_VISA_TYPES,
     checklistRole: "employee",
     description: H1B_EMPLOYEE_CHECKLIST_INTRO,
     documentSectionOrder,

@@ -15,6 +15,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
   const [removing, setRemoving] = useState(null)
+  const [removeReason, setRemoveReason] = useState('')
 
   const items = checklists.filter((item) => !item.staffRequest)
   if (!items.length) return null
@@ -43,8 +44,9 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
     setBusy(true)
     setError('')
     try {
-      await questionnairesApi.removeCaseChecklist(caseId, { checklistId: removing.checklistId })
+      await questionnairesApi.removeCaseChecklist(caseId, { checklistId: removing.checklistId, ...(removeReason.trim() ? { reason: removeReason.trim() } : {}) })
       setRemoving(null)
+      setRemoveReason('')
       await refresh()
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Could not delete this checklist. Please try again.')
@@ -124,8 +126,24 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
           busy={busy}
           error={error}
           onConfirm={runRemove}
-          onCancel={() => setRemoving(null)}
-        />
+          onCancel={() => { setRemoving(null); setRemoveReason('') }}
+        >
+          {removing.targetRole === 'employer' && (
+            <label className="mt-3 block text-sm text-foreground">
+              Reason (optional)
+              <textarea
+                className="input mt-1 w-full"
+                rows={2}
+                maxLength={500}
+                value={removeReason}
+                onChange={(event) => setRemoveReason(event.target.value)}
+                placeholder="Not required for this employer because..."
+                data-testid="remove-checklist-reason"
+              />
+              <span className="mt-1 block text-xs text-muted-foreground">A reason records this as "not required" for this employer. Without one the case is still flagged until a decision is recorded.</span>
+            </label>
+          )}
+        </ConfirmModal>
       )}
       {editing && (
         <ChecklistEditorModal

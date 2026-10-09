@@ -2,6 +2,7 @@ import { Fragment, Suspense, lazy, useState, useEffect, useCallback, useMemo, us
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import AddEmployeeModal from '../components/AddEmployeeModal'
+import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
@@ -17,9 +18,10 @@ import CaseFeedbackChat from '../components/CaseFeedbackChat'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
-import { 
-  ArrowLeft, 
-  User,    
+import {
+  ArrowLeft,
+  Trash2,
+  User,
   Briefcase, 
   Calendar, 
   DollarSign, 
@@ -553,8 +555,10 @@ const CRMCaseDetail = () => {
     && !shownQuestionnaireIds.has(String(item.questionnaireId))
     && !(isPrincipalContainer && item.targetRole === 'employee')
   ))
-  const relevantResponseIds = [employerQuestionnaire.responseId, employeeQuestionnaire.responseId, businessPlanQuestionnaire.responseId, supportingDocumentsQuestionnaire.responseId].filter(Boolean)
-  const relevantChecklistProgress = checklistsProgress.filter((c) => relevantResponseIds.includes(c.responseId) && c.documentProgress)
+  // Required Documents follow what is APPROVED (what the client sees): every approved checklist, as edited for this case,
+  // not just the fixed panels. A checklist that is still a draft, was rejected or deleted contributes nothing.
+  const approvedDocumentChecklists = checklistsProgress.filter((c) => c.clientApproval === 'approved' && c.documentProgress && !(isPrincipalContainer && c.targetRole === 'employee'))
+  const relevantChecklistProgress = approvedDocumentChecklists
   // Scoped to upload (file-type) questions only — c.progress mixes in
   // questionnaire field answers, which QuestionnaireAnswersPanel already
   // renders separately, so using it here double-counted field answers as
@@ -1392,6 +1396,27 @@ const CRMCaseDetail = () => {
     }
   }
 
+  // Staff delete of an uploaded document (including ones a case manager uploaded for the client). Optimistic: the row
+  // disappears at once; it comes back (with the error) only if the server refuses.
+  const [docToDelete, setDocToDelete] = useState(null)
+  const [docDeleteError, setDocDeleteError] = useState('')
+  const handleDeleteDocument = async () => {
+    const target = docToDelete
+    if (!target) return
+    const previous = documents
+    setDocToDelete(null)
+    setDocDeleteError('')
+    setDocuments((list) => list.filter((doc) => doc._id !== target._id))
+    try {
+      await api.delete(`/documents/${target._id}`)
+      fetchDocuments(true)
+    } catch (err) {
+      setDocuments(previous)
+      setDocToDelete(target)
+      setDocDeleteError(err.response?.data?.message || err.message || 'Could not delete the document. Please try again.')
+    }
+  }
+
   const handleDocumentReview = async (docId, reviewStatus, reviewNotes) => {
     try {
       await api.put(`/documents/${docId}/review`, { reviewStatus, reviewNotes })
@@ -1703,6 +1728,14 @@ const CRMCaseDetail = () => {
 
   return (
     <div className="space-y-6">
+      {/* GHL-created case waiting for its visa type; renders nothing for every other case. */}
+      <GhlVisaSelectBanner
+        caseData={caseData}
+        onUpdated={(updated) => {
+          if (updated) setCaseData(updated)
+          setTimeout(() => fetchCaseDetail(true), 6000) // provisioning finishes in the background
+        }}
+      />
       {viewingDocument && (
         <CaseDocumentViewer document={viewingDocument} onClose={() => setViewingDocument(null)} />
       )}
@@ -2804,7 +2837,25 @@ const CRMCaseDetail = () => {
             <h3 className="text-lg font-semibold text-foreground">Required Documents</h3>
             <span className="text-sm text-muted-foreground">{getUploadedChecklistCount()} sent · {getPendingChecklistItems().length} pending</span>
           </div>
-          {getChecklistItems().length > 0 ? (
+          {approvedDocumentChecklists.some((c) => c.documentItems?.length) ? (
+            <div className="space-y-5" data-testid="required-documents-by-checklist">
+              {approvedDocumentChecklists.filter((c) => c.documentItems?.length).map((c) => (
+                <div key={`${c.checklistId}-${c.referenceId || ''}`}>
+                  <p className="mb-2 text-sm font-semibold text-foreground">{c.title}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {c.documentItems.map((item) => (
+                      <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                        <p className="min-w-0 text-sm font-medium text-foreground">{item.label}</p>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${item.answered ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {item.answered ? 'Sent' : 'Pending'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : getChecklistItems().length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {getChecklistItems().map((item, index) => {
                 const status = getChecklistStatus(item)
@@ -2933,6 +2984,14 @@ const CRMCaseDetail = () => {
                             <option value="rejected">Reject</option>
                             <option value="needs_revision">Needs Revision</option>
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => { setDocDeleteError(''); setDocToDelete(doc) }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                            data-testid={`delete-document-${doc._id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -3570,6 +3629,18 @@ const CRMCaseDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {docToDelete && (
+        <ConfirmModal
+          title="Delete this document?"
+          message={`"${getDocumentName(docToDelete)}" will be removed from this case. The client will no longer see it.`}
+          confirmLabel="Yes, delete"
+          cancelLabel="No"
+          error={docDeleteError}
+          onConfirm={handleDeleteDocument}
+          onCancel={() => setDocToDelete(null)}
+        />
       )}
 
       {premiumConfirmOpen && (

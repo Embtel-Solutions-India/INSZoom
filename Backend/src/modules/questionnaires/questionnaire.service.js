@@ -1327,7 +1327,18 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   // workflow switch still lands on the same response the earlier answers live under.
   const identityQuestionnaireId = await answerIdentityQuestionnaireId(questionnaire, requestedCaseData);
   const pinnedResponseId = caseData?.pinnedResponseIds?.[`${targetRole || questionnaire.checklistRole || ""}:${identityQuestionnaireId}`];
-  const responseId = payload.responseId || pinnedResponseId || responseIdFor(identityQuestionnaireId, effectiveCaseId, responseOwner);
+  // A save that names a specific checklist reference (the Admin panels send referenceId) belongs to THAT reference's own
+  // response - the one the panel reads - not to an id re-derived from whoever happens to be saving (a case manager with
+  // no participant would otherwise land in a staff-only response the client portal and the panel never see).
+  const namedReference = payload.referenceId && !payload.responseId && caseData
+    ? (caseData.questionnaireReferences || []).find((reference) => (
+      String(reference._id) === String(payload.referenceId)
+      && reference.active !== false
+      && reference.responseId
+      && [reference.questionnaireId, reference.questionnaireTemplateId].some((id) => id && String(id) === String(questionnaire._id))
+    ))
+    : null;
+  const responseId = payload.responseId || namedReference?.responseId || pinnedResponseId || responseIdFor(identityQuestionnaireId, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -2657,6 +2668,24 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   if (options.referenceId) {
     eligibleReferences = eligibleReferences.filter((reference) => String(reference._id) === String(options.referenceId));
   }
+  // Visa-aware shared role: a child's employer-role lookup is redirected to the matter, which can now hold one
+  // employer checklist PER VISA (employer-visa-checklists.service.js). The child must get the one for ITS visa,
+  // never the most recently sent one of another visa; with none for its visa it falls through to the default below.
+  // (This also pins the matter's OWN primary employer checklist to its own visa: the checklists added for other visas are
+  // reached by referenceId, so a newer one never takes over the primary slot.)
+  if (!options.referenceId && targetRole === "employer" && caseData.caseStructure === "employer_employee" && eligibleReferences.length) {
+    try {
+      const employerVisaChecklists = require("./employer-visa-checklists.service");
+      const matches = [];
+      for (const reference of eligibleReferences) {
+        if (await employerVisaChecklists.referenceMatchesVisa(reference, caseData.visaType)) matches.push(reference);
+      }
+      eligibleReferences = matches;
+    } catch (error) {
+      // a failed visa check must never break the lookup: keep today's behaviour
+      logger.error("employer_visa_lookup_failed", { caseId: String(caseId), error: error.message });
+    }
+  }
   const activeReference = eligibleReferences
     .sort((left, right) => new Date(right.sentAt || right.submittedAt || 0) - new Date(left.sentAt || left.submittedAt || 0))[0];
   const visaType = String(caseData.visaType || "").replace(/[-\s]/g, "").toUpperCase();
@@ -3076,6 +3105,11 @@ async function listCaseChecklists(caseId, user) {
       resolvedDynamically: !entry.explicit,
       progress,
       documentProgress,
+      // every upload question this checklist currently asks for (as edited for this case), with whether it is answered:
+      // the Required Documents list is built from this, so it always matches the checklist the client sees
+      documentItems: visibleQuestions
+        .filter((question) => question.type === "file")
+        .map((question) => ({ key: question.key, label: question.label, answered: hasAnsweredValue(getAnswerValue(answerMap, question.key)) })),
     };
   }));
   timer.mark("progress_mapping", { count: checklists.length });

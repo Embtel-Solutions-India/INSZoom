@@ -8,7 +8,7 @@ const VisaFormMapping = require("../../models/VisaFormMapping");
 const Questionnaire = require("../../models/Questionnaire");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
-const { resolveWithHierarchyFallback } = require("../../config/visaHierarchy");
+const { resolveWithHierarchyFallback, filedLikeVisa } = require("../../config/visaHierarchy");
 
 // A CONDITIONAL mapping's formNumber that also has its own non-default,
 // explicit-assignment-only client checklist (see i131Checklist.js's file
@@ -210,7 +210,8 @@ async function resolveVisaFormMappings(caseData) {
   // methods.
   const plainCase = typeof caseData.toObject === "function" ? caseData.toObject() : caseData;
   const lookup = (visaType) => resolveApplicableMappings({ ...plainCase, visaType });
-  const { result, resolvedVisaType, usedFallback, unresolved } = await resolveWithHierarchyFallback(caseData.visaType, lookup, isEmptyResolution);
+  // H-1B1 (any variant) is filed like H-1B: look its forms and checklists up under H-1B (see visaHierarchy.js FILED_LIKE).
+  const { result, resolvedVisaType, usedFallback, unresolved } = await resolveWithHierarchyFallback(filedLikeVisa(caseData.visaType), lookup, isEmptyResolution);
   return { ...result, resolvedVisaType, usedParentFallback: usedFallback, unresolved };
 }
 
