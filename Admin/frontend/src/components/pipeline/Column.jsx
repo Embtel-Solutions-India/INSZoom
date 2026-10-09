@@ -1,31 +1,54 @@
 import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import Card from './Card'
 
-function Column({ column, cards, stages, onOpen, onMoveTo, onLoadMore, filtering }) {
+import { PAGE_SIZE } from './pageSize'
+
+// Soft candy accents, one per stage in board order (cycled). Applied as translucent tints so they read on light and dark themes.
+export const STAGE_ACCENTS = ['#8FB8E8', '#B8A1E3', '#7FC8C0', '#F2B38F', '#F4A6C0', '#B5D99C', '#E3A0D3', '#F0A5A0', '#9ED0E6', '#C9B6E8']
+
+function Column({ column, cards, stages, index = 0, onOpen, onMoveTo, page = 0, pageLoading = false, onPageChange, filtering }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.key })
+  const pageCount = Math.max(1, Math.ceil(column.total / PAGE_SIZE))
+  const from = column.total ? page * PAGE_SIZE + 1 : 0
+  const to = Math.min(column.total, page * PAGE_SIZE + cards.length)
+  const accent = STAGE_ACCENTS[index % STAGE_ACCENTS.length]
   return (
     <section
       aria-label={`${column.name} (${column.total})`}
-      className={`flex w-72 shrink-0 flex-col rounded-xl border bg-muted/40 transition-colors ${isOver ? 'border-primary bg-primary/5' : 'border-border'}`}
+      className="stage-col relative flex w-72 shrink-0 flex-col overflow-hidden rounded-xl border"
+      data-over={isOver ? 'true' : 'false'}
+      style={{ '--accent': accent }}
     >
-      <header className="flex items-center justify-between px-3 py-2.5">
-        <h2 className="truncate text-sm font-semibold text-foreground">{column.name}</h2>
-        <span className="ml-2 rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">{column.total}</span>
+      <header className="stage-col-head flex items-center justify-between px-3 py-2.5">
+        <h2 className="truncate text-sm font-semibold">{column.name}</h2>
+        <span className="stage-col-count ml-2 rounded-full px-2 py-0.5 text-xs font-medium">{column.total}</span>
       </header>
-      <div ref={setNodeRef} className="flex max-h-[calc(100vh-17rem)] min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
+      <div ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
         {cards.map((card) => (
           <Card key={card._id} card={card} stages={stages} onOpen={onOpen} onMoveTo={onMoveTo} />
         ))}
         {!cards.length ? (
-          <p className="px-2 py-6 text-center text-xs text-muted-foreground">{filtering ? 'No matching cases' : 'No cases'}</p>
-        ) : null}
-        {column.hasMore && !filtering ? (
-          <button type="button" onClick={() => onLoadMore(column.key)} className="rounded-md border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary">
-            Load more ({column.total - column.cards.length} more)
-          </button>
+          <p className="px-2 py-6 text-center text-xs opacity-60">{filtering ? 'No matching cases' : 'No cases'}</p>
         ) : null}
       </div>
+      {pageCount > 1 && !filtering ? (
+        <footer className="stage-col-foot flex items-center justify-between gap-1 border-t px-2 py-2 text-xs">
+          <button type="button" aria-label={`Previous page of ${column.name}`} disabled={pageLoading || page <= 0} onClick={() => onPageChange(column.key, page - 1)} className="rounded-md p-1 hover:bg-white/60 disabled:opacity-40">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span aria-live="polite">{from}–{to} of {column.total} · Page {page + 1}/{pageCount}</span>
+          <button type="button" aria-label={`Next page of ${column.name}`} disabled={pageLoading || page >= pageCount - 1} onClick={() => onPageChange(column.key, page + 1)} className="rounded-md p-1 hover:bg-white/60 disabled:opacity-40">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </footer>
+      ) : null}
+      {pageLoading ? (
+        <div role="status" aria-label="Loading page" className="absolute inset-0 z-10 flex items-center justify-center stage-col-loading backdrop-blur-[1px]">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : null}
     </section>
   )
 }

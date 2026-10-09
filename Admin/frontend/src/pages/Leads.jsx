@@ -261,7 +261,7 @@ const Leads = () => {
                     <tr
                       key={lead._id}
                       onClick={() => openLead(lead)}
-                      className={`cursor-pointer transition-colors ${unseen ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-muted'}`}
+                      className={`cursor-pointer transition-colors ${unseen ? 'new-row bg-amber-50 hover:bg-amber-100' : 'hover:bg-muted'}`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">

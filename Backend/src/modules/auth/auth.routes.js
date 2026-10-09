@@ -76,6 +76,7 @@ router.post("/refresh", auditAuth("auth.refresh"), ctrl.refresh);
 router.post("/logout", authenticate, auditAuth("auth.logout"), ctrl.logout);
 router.post("/logout-all", authenticate, auditAuth("auth.logout_all"), ctrl.logoutAll);
 router.get("/me", authenticate, ctrl.me);
+router.patch("/me/preferences", authenticate, ctrl.updatePreferences);
 // GET /api/auth/session-context
 // Returns the complete routing context for the authenticated user.
 // This is the single source of truth for frontend routing decisions

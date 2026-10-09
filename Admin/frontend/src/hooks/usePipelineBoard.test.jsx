@@ -165,9 +165,25 @@ describe('usePipelineBoard', () => {
     expect(hook.result.current.columns.find((c) => c.key === 'a').hasMore).toBe(false)
   })
 
+  it('goToPage replaces one stage with the requested page, flags loading meanwhile', async () => {
+    api.board.mockResolvedValueOnce({
+      data: { configured: true, columns: [{ key: 'a', name: 'A', total: 25, hasMore: true, cards: [card('c1', 'a')] }, { key: 'b', name: 'B', total: 0, hasMore: false, cards: [] }, { key: 'c', name: 'C', total: 0, hasMore: false, cards: [] }] },
+    })
+    const hook = await mount()
+    let resolve
+    api.board.mockReturnValueOnce(new Promise((r) => { resolve = r }))
+    act(() => { hook.result.current.goToPage('a', 1) })
+    expect(hook.result.current.pageLoading.a).toBe(true)
+    expect(api.board).toHaveBeenLastCalledWith({ column: 'a', skip: 10, perColumn: 10, category: 'immigrant' })
+    await act(async () => resolve({ data: { columns: [{ key: 'a', total: 25, hasMore: true, cards: [card('c11', 'a')] }] } }))
+    expect(hook.result.current.pageLoading.a).toBe(false)
+    expect(ids(hook, 'a')).toEqual(['c11'])
+    expect(hook.result.current.pageOf('a')).toBe(1)
+  })
+
   it('asks the server for the chosen pipeline and exposes the tab summary', async () => {
     const hook = await mount('non_immigrant')
-    expect(api.board).toHaveBeenCalledWith({ category: 'non_immigrant' })
+    expect(api.board).toHaveBeenCalledWith({ category: 'non_immigrant', perColumn: 10 })
     expect(hook.result.current.pipelines.map((p) => [p.category, p.total])).toEqual([['immigrant', 2], ['non_immigrant', 5]])
     expect(hook.result.current.activeCategory).toBe('immigrant') // whatever the server says it actually served
   })
@@ -177,10 +193,10 @@ describe('usePipelineBoard', () => {
     await waitFor(() => expect(hook.result.current.columns.length).toBe(3))
     const second = deferred()
     api.board.mockReturnValueOnce(second.promise)
-    hook.rerender({ category: 'non_immigrant' })
+    hook.rerender({ category: 'non_immigrant', perColumn: 10 })
     expect(hook.result.current.columns).toEqual([]) // no card of the other pipeline can be dragged
     expect(hook.result.current.activeCategory).toBe('non_immigrant') // the tab flips at once, not after the network answer
-    expect(api.board).toHaveBeenLastCalledWith({ category: 'non_immigrant' })
+    expect(api.board).toHaveBeenLastCalledWith({ category: 'non_immigrant', perColumn: 10 })
     await act(async () => second.resolve({ data: { configured: true, activeCategory: 'non_immigrant', pipelines: [], columns: [{ key: 'x', name: 'X', total: 1, hasMore: false, cards: [card('n1', 'x')] }] } }))
     await waitFor(() => expect(hook.result.current.columns.map((c) => c.key)).toEqual(['x']))
   })
@@ -190,7 +206,7 @@ describe('usePipelineBoard', () => {
     api.board.mockReset().mockReturnValueOnce(slow.promise)
     const hook = renderHook(({ category }) => usePipelineBoard(category), { initialProps: { category: 'immigrant' } })
     api.board.mockResolvedValueOnce({ data: { configured: true, activeCategory: 'non_immigrant', pipelines: [], columns: [{ key: 'x', name: 'X', total: 0, hasMore: false, cards: [] }] } })
-    hook.rerender({ category: 'non_immigrant' })
+    hook.rerender({ category: 'non_immigrant', perColumn: 10 })
     await waitFor(() => expect(hook.result.current.columns.map((c) => c.key)).toEqual(['x']))
     await act(async () => slow.resolve(boardData())) // the old pipeline answers late
     expect(hook.result.current.columns.map((c) => c.key)).toEqual(['x']) // and is ignored

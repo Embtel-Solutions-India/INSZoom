@@ -336,6 +336,26 @@ async function logoutAll(req, res, next) {
   }
 }
 
+// PATCH /api/auth/me/preferences - the signed-in user's own display choices (today: the light/dark theme). Saved on the
+// account so the same choice follows them across browsers, devices and logins, in every portal.
+const THEME_CHOICES = ["light", "dark", "system"];
+async function updatePreferences(req, res, next) {
+  try {
+    const { theme } = req.body || {};
+    const set = {};
+    if (theme !== undefined) {
+      if (!THEME_CHOICES.includes(theme)) return res.status(400).json({ success: false, message: `theme must be one of ${THEME_CHOICES.join(", ")}` });
+      set["preferences.theme"] = theme;
+    }
+    if (!Object.keys(set).length) return res.status(400).json({ success: false, message: "No supported preference supplied" });
+    const User = require("../../models/User");
+    const updated = await User.findByIdAndUpdate(req.user._id, { $set: set }, { new: true, runValidators: true });
+    res.json({ success: true, preferences: updated?.preferences || {} });
+  } catch (error) {
+    next(error);
+  }
+}
+
 function me(req, res) {
   res.json({
     success: true,
@@ -622,6 +642,7 @@ module.exports = {
   logout,
   logoutAll,
   me,
+  updatePreferences,
   getSessionContext,
   updateDetails,
   changePassword,

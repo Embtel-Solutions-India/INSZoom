@@ -10,6 +10,8 @@ export default {
   theme: {
     extend: {
       colors: {
+        amber: { 50: 'rgb(var(--amber-50) / <alpha-value>)', 100: 'rgb(var(--amber-100) / <alpha-value>)', 200: 'rgb(var(--amber-200) / <alpha-value>)', 300: 'rgb(var(--amber-300) / <alpha-value>)', 400: 'rgb(var(--amber-400) / <alpha-value>)', 500: 'rgb(var(--amber-500) / <alpha-value>)', 600: 'rgb(var(--amber-600) / <alpha-value>)', 700: 'rgb(var(--amber-700) / <alpha-value>)', 800: 'rgb(var(--amber-800) / <alpha-value>)', 900: 'rgb(var(--amber-900) / <alpha-value>)', 950: 'rgb(var(--amber-950) / <alpha-value>)' },
+        yellow: { 50: 'rgb(var(--yellow-50) / <alpha-value>)', 100: 'rgb(var(--yellow-100) / <alpha-value>)', 200: 'rgb(var(--yellow-200) / <alpha-value>)', 300: 'rgb(var(--yellow-300) / <alpha-value>)', 400: 'rgb(var(--yellow-400) / <alpha-value>)', 500: 'rgb(var(--yellow-500) / <alpha-value>)', 600: 'rgb(var(--yellow-600) / <alpha-value>)', 700: 'rgb(var(--yellow-700) / <alpha-value>)', 800: 'rgb(var(--yellow-800) / <alpha-value>)', 900: 'rgb(var(--yellow-900) / <alpha-value>)', 950: 'rgb(var(--yellow-950) / <alpha-value>)' },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         border: 'hsl(var(--border))',

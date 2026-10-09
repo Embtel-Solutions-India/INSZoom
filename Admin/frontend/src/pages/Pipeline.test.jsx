@@ -178,10 +178,10 @@ describe('Pipeline page', () => {
 describe('GhlVisaSelectBanner', () => {
   const caseData = { _id: 'case1', visaSelectionStatus: 'pending' }
   const types = { data: { data: [
-    { visaType: 'F-1', label: 'F-1 Student', caseStructure: 'single' },
+    { visaType: 'ZZ-1', label: 'ZZ-1 Student', caseStructure: 'single' },
     { visaType: 'H-1B', label: 'H-1B', caseStructure: 'employer_employee' },
     { visaType: 'K-1', label: 'K-1', caseStructure: 'family' },
-    { visaType: 'B-1', label: 'B-1', caseStructure: 'single' },
+    { visaType: 'ZZ-2', label: 'ZZ-2', caseStructure: 'single' },
   ] } }
 
   beforeEach(() => { casesApi.visaTypes.mockReset().mockResolvedValue(types); casesApi.update.mockReset() })
@@ -192,16 +192,17 @@ describe('GhlVisaSelectBanner', () => {
     expect(casesApi.visaTypes).not.toHaveBeenCalled()
   })
 
-  it('offers only single-party visas to a team lead and saves the choice', async () => {
+  it('offers the same list as New case; employer/family visas are listed but disabled; saves a single-party choice', async () => {
     mockUser = { role: 'team_lead' }
     const onUpdated = vi.fn()
-    casesApi.update.mockResolvedValue({ data: { case: { _id: 'case1', visaType: 'F-1' } } })
+    casesApi.update.mockResolvedValue({ data: { case: { _id: 'case1', visaType: 'ZZ-1' } } })
     render(<GhlVisaSelectBanner caseData={caseData} onUpdated={onUpdated} />)
-    await waitFor(() => expect(screen.getAllByRole('option').length).toBe(3)) // placeholder + F-1 + B-1
-    expect(screen.queryByText(/H-1B —/)).toBeNull()
-    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'F-1' } })
+    await waitFor(() => expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ })).toBeTruthy())
+    expect(screen.getByRole('option', { name: /^H-1B \(not available/ }).disabled).toBe(true) // shared curated option, employer structure
+    expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ }).disabled).toBe(false)
+    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'ZZ-1' } })
     fireEvent.click(screen.getByText('Set visa type'))
-    await waitFor(() => expect(casesApi.update).toHaveBeenCalledWith('case1', { visaType: 'F-1' }))
+    await waitFor(() => expect(casesApi.update).toHaveBeenCalledWith('case1', { visaType: 'ZZ-1' }))
     await waitFor(() => expect(onUpdated).toHaveBeenCalled())
     expect(screen.getByText(/Visa type saved/)).toBeTruthy()
   })
@@ -210,8 +211,8 @@ describe('GhlVisaSelectBanner', () => {
     mockUser = { role: 'admin' }
     casesApi.update.mockRejectedValue({ response: { data: { message: 'needs an employer/employee case structure' } } })
     render(<GhlVisaSelectBanner caseData={caseData} />)
-    await waitFor(() => expect(screen.getAllByRole('option').length).toBe(3))
-    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'B-1' } })
+    await waitFor(() => expect(screen.getByRole('option', { name: 'ZZ-2' })).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'ZZ-2' } })
     fireEvent.click(screen.getByText('Set visa type'))
     await waitFor(() => expect(screen.getByText(/employer\/employee case structure/)).toBeTruthy())
     expect(screen.getByLabelText('Visa type')).toBeTruthy()

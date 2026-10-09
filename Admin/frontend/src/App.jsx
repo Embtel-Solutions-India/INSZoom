@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import { SocketProvider } from './contexts/SocketContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import ThemeSync from './contexts/ThemeSync'
 import ErrorBoundary from './components/ErrorBoundary'
 import ProtectedRoute from './components/ProtectedRoute'
 import PageLoader from './components/PageLoader'
@@ -43,6 +44,7 @@ function App() {
     <ThemeProvider>
     <Router>
       <AuthProvider>
+        <ThemeSync />
         <SocketProvider>
         <NotificationProvider>
           <Suspense fallback={<PageLoader />}>
