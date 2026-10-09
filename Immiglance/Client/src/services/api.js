@@ -209,6 +209,7 @@ export const authApi = {
   googleToken: (idToken) => api.post("/auth/google-token", { idToken }),
   logout: () => api.post("/auth/logout", {}),
   me: () => api.get("/auth/me"),
+  savePreferences: (preferences) => api.patch("/auth/me/preferences", preferences),
   // PHASE 3: single source of truth for post-auth routing (see
   // components/AuthGate.jsx) — resolves the parsed JSON body directly, same
   // as every other api.* call (this client is a fetch wrapper, not axios).

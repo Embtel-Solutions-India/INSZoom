@@ -10,6 +10,7 @@ import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
+import ThemeSync from "./context/ThemeSync.jsx";
 
 // Identical to the pre-split Immiglance/Frontend/src/main.jsx. The provider
 // stack (and therefore the session/token/socket behaviour) is deliberately
@@ -31,6 +32,7 @@ createRoot(document.getElementById("root")).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
+          <ThemeSync />
           <SocketProvider>
             <App />
           </SocketProvider>

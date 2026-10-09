@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 const ThemeContext = createContext(null)
 
@@ -16,6 +16,7 @@ function getInitialTheme() {
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(getInitialTheme)
+  const persistRef = useRef(null) // set by ThemeSync while signed in: saves the choice on the user's account
 
   useEffect(() => {
     const root = document.documentElement
@@ -28,10 +29,17 @@ export function ThemeProvider({ children }) {
     }
   }, [theme])
 
-  const toggleTheme = () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    persistRef.current?.(next)
+  }
+  // The account's saved theme wins over this browser's: applied on sign-in, never written back.
+  const applyServerTheme = (next) => setTheme((current) => (current === next ? current : next))
+  const registerPersist = (fn) => { persistRef.current = fn }
 
   return (
-    <ThemeContext.Provider value={{ theme, isDark: theme === 'dark', toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, isDark: theme === 'dark', toggleTheme, applyServerTheme, registerPersist }}>
       {children}
     </ThemeContext.Provider>
   )

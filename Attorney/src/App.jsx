@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import { ThemeProvider } from './context/ThemeContext'
+import ThemeSync from './context/ThemeSync'
 import RequireAttorney from './auth/RequireAttorney'
 import LoginPage from './auth/LoginPage'
 import SSOHandler from './auth/SSOHandler'
@@ -53,6 +54,7 @@ export default function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+        <ThemeSync />
         <SocketProvider>
           <PushRegistrar />
           <Routes>
