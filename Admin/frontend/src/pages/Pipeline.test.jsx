@@ -192,13 +192,14 @@ describe('GhlVisaSelectBanner', () => {
     expect(casesApi.visaTypes).not.toHaveBeenCalled()
   })
 
-  it('offers the same list as New case; employer/family visas are listed but disabled; saves a single-party choice', async () => {
+  it('offers the same list as New case, every visa selectable; saves the choice', async () => {
     mockUser = { role: 'team_lead' }
     const onUpdated = vi.fn()
     casesApi.update.mockResolvedValue({ data: { case: { _id: 'case1', visaType: 'ZZ-1' } } })
     render(<GhlVisaSelectBanner caseData={caseData} onUpdated={onUpdated} />)
     await waitFor(() => expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ })).toBeTruthy())
-    expect(screen.getByRole('option', { name: /^H-1B \(not available/ }).disabled).toBe(true) // shared curated option, employer structure
+    expect(screen.getByRole('option', { name: 'H-1B' }).disabled).toBe(false) // shared curated option, employer structure: selectable too
+    expect(screen.queryByText(/not available/)).toBeNull()
     expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ }).disabled).toBe(false)
     fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'ZZ-1' } })
     fireEvent.click(screen.getByText('Set visa type'))

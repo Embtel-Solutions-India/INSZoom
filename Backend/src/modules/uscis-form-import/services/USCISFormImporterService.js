@@ -15,7 +15,7 @@ function checksum(buffer) {
 }
 
 function userId(user) {
-  return user?._id || user?.id || user;
+  return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
 }
 
 function normalizeFormCode(value = "") {

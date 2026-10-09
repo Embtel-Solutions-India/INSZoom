@@ -1626,7 +1626,9 @@ exports.updateCase = async (req, res, next) => {
     caseData.lastModifiedBy = req.user._id;
     // GHL-created case still waiting for a visa: the team lead just chose one.
     // No-op (returns false) for every other case.
-    const ghlVisaJustSelected = ghlVisaSelection.markVisaSelected(caseData, req.body.visaType);
+    const ghlSelection = await ghlVisaSelection.selectVisa(caseData, req.body.visaType);
+    const ghlVisaJustSelected = Boolean(ghlSelection);
+    const ghlReshaped = Boolean(ghlSelection && ghlSelection.structure !== "single");
 
     if (req.body.workflow) {
       Object.assign(caseData.workflow, req.body.workflow);
@@ -1650,7 +1652,9 @@ exports.updateCase = async (req, res, next) => {
     await caseData.save();
     await caseService.writeAuditLog("update", caseData, req.user, changes, req);
     const orchestrationFields = new Set(["visaType", "visaCategory", "caseType", "petitionType", "petitionSubType", "employer", "organization", "companyId"]);
-    if (Object.keys(changes).some((field) => orchestrationFields.has(field))) {
+    // An employer/family card reshaped by the visa choice is provisioned by its own structure-specific flow (afterSave below), never by
+    // the generic single-party orchestration.
+    if (!ghlReshaped && Object.keys(changes).some((field) => orchestrationFields.has(field))) {
       await require("./immigration-knowledge-engine.service").orchestrate(caseData._id, req.user, req, {
         reason: "case_classification_changed",
       });
@@ -1665,7 +1669,8 @@ exports.updateCase = async (req, res, next) => {
       await require("../family-workflow/family-workflow.controller").ensureFamilyChecklistReferences(caseData, req.user, req);
     }
     const lifecycle = await lifecycleOrchestrator.recalculate(caseData._id, req.user, req, "case_updated");
-    if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
+    if (ghlReshaped) await ghlSelection.afterSave();
+    else if (ghlVisaJustSelected) ghlVisaSelection.provisionInBackground(caseData, req.user, req);
 
     res.json({ success: true, message: "Case updated", case: lifecycle.case, caseSummary: caseService.summarizeCase(lifecycle.case), workflow: lifecycle });
   } catch (error) {
@@ -1950,6 +1955,19 @@ exports.addExternalNote = async (req, res, next) => {
   }
 };
 
+// Assignment side effects (emails, push, realtime, audit/history rows) are network- and write-heavy: createNotification() alone
+// awaits an SMTP send and an FCM push per recipient. None of it changes what the assigner sees, so it runs AFTER the response
+// instead of in front of it, in parallel, and a failure is logged rather than failing an assignment that already committed.
+function runAfterResponse(label, tasks) {
+  setImmediate(() => {
+    Promise.allSettled(tasks.map((task) => Promise.resolve().then(task))).then((results) => {
+      results.forEach((result) => {
+        if (result.status === "rejected") console.error(`[${label}] background step failed (non-fatal):`, result.reason?.message || result.reason);
+      });
+    });
+  });
+}
+
 exports.assignCaseManager = async (req, res, next) => {
   try {
     const caseData = await getCaseOr404(req.params.id, res);
@@ -1994,13 +2012,15 @@ exports.assignCaseManager = async (req, res, next) => {
     }
 
     await caseData.save();
-    await syncCaseMessagingAssignment(caseData);
-    await recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req);
-    await caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req);
-    await notifyAssignee(assignee, caseData, "case_manager", req.user, req);
-    await notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req);
-    // Team lead + admin alerts (the case manager and client are already covered above).
-    require("../notifications/triggerEvents.service").emitInBackground("case.cm_assigned", { caseId: caseData._id, actor: req.user, req });
+    runAfterResponse("assignCaseManager", [
+      () => syncCaseMessagingAssignment(caseData),
+      () => recordReassignment(caseData, "case_manager", previousCaseManagerId, assignee, req.user, req),
+      () => caseService.writeAuditLog("assign_case_manager", caseData, req.user, { caseManagerId: assignee, priority: req.body.priority, internalNote: req.body.internalNote }, req),
+      () => notifyAssignee(assignee, caseData, "case_manager", req.user, req),
+      () => notifyClientOfCaseManagerAssignment(caseData, assignee, previousCaseManagerId, req.user, req),
+      // Team lead + admin alerts (the case manager and client are already covered above).
+      () => require("../notifications/triggerEvents.service").emitInBackground("case.cm_assigned", { caseId: caseData._id, actor: req.user, req }),
+    ]);
 
     // Phase 7 — cascade to non-overridden children after the principal's own
     // assignment has committed; a cascade failure must not roll back or fail
@@ -2038,12 +2058,14 @@ exports.assignTeamLead = async (req, res, next) => {
     }
 
     await caseData.save();
-    await syncCaseMessagingAssignment(caseData);
-    await recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req);
-    await caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req);
-    await notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req);
-    // The case manager is told who the team lead is (the new team lead is covered above).
-    require("../notifications/triggerEvents.service").emitInBackground("case.tl_assigned", { caseId: caseData._id, actor: req.user, req });
+    runAfterResponse("assignTeamLead", [
+      () => syncCaseMessagingAssignment(caseData),
+      () => recordReassignment(caseData, "team_lead", previousTeamLeadId, teamLeadId, req.user, req),
+      () => caseService.writeAuditLog("assign_team_lead", caseData, req.user, { teamLeadId }, req),
+      () => notifyAssignee(teamLeadId, caseData, "team_lead", req.user, req),
+      // The case manager is told who the team lead is (the new team lead is covered above).
+      () => require("../notifications/triggerEvents.service").emitInBackground("case.tl_assigned", { caseId: caseData._id, actor: req.user, req }),
+    ]);
 
     let childrenCascaded = 0;
     if (caseData.caseRole === "principal") {

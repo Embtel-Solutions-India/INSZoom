@@ -151,7 +151,7 @@ const transient = (message) => new GHLApiError(message, { status: 0, retryable: 
 
 // Writes the opportunity onto the employee card and records the identity link. Idempotent: used both when our
 // own create finishes and when GHL's "created" webhook gets there first.
-async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId, locationId }) {
+async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId, locationId, role = "employee" }) {
   const now = new Date();
   const set = {
     "integrations.ghl.locationId": locationId,
@@ -164,7 +164,7 @@ async function linkCreatedOpportunity({ child, opportunity, pipeline, mapping, c
     "integrations.ghl.unifiedStageKey": mapping?.unifiedStageKey,
     "integrations.ghl.category": pipeline.category,
     "integrations.ghl.opportunityStatus": opportunity.status || "open",
-    "integrations.ghl.role": "employee",
+    "integrations.ghl.role": role,
     "integrations.ghl.origin": "immiglance",
     "integrations.ghl.displayName": opportunity.name,
     "integrations.ghl.lastSyncedAt": now,
@@ -297,6 +297,9 @@ async function runAuxJob(job, { client } = {}) {
   if (job.type === "create_opportunity") return runCreate(job, client);
   if (job.type === "set_status") return runSetStatus(job, client);
   if (job.type === "rename") return runRename(job, client);
+  // Cases created in the CRM get their GHL card / employer link from ghlCaseOutbound.js
+  if (job.type === "create_case_opportunity") return require("./ghlCaseOutbound").runCreateCaseOpportunity(job, client);
+  if (job.type === "link_employer") return require("./ghlCaseOutbound").runLinkEmployer(job, client);
   throw permanent(`Unknown job type ${job.type}`);
 }
 
@@ -327,7 +330,7 @@ async function adoptOwnOpportunity({ opportunity, config, pipeline, mapping, cli
   const linked = child.integrations?.ghl?.opportunityId;
   if (linked && linked !== opportunity.id) return { adopted: false, note: "that employee card is already linked to another opportunity" };
   if (!linked) {
-    await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: opportunity.contactId, locationId: config.locationId });
+    await linkCreatedOpportunity({ child, opportunity, pipeline, mapping, contactId: opportunity.contactId, locationId: config.locationId, role: child.caseRole === "employee" ? "employee" : "individual" });
   }
   return { adopted: true, note: "linked to the employee card Immiglance created" };
 }
@@ -343,6 +346,7 @@ module.exports = {
   serviceTypeFor,
   queueJob,
   enqueueForChild,
+  linkCreatedOpportunity,
   sweep,
   runAuxJob,
   linkCreatedOpportunity,

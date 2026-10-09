@@ -9,7 +9,7 @@ import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
 import ChecklistApprovalCard from '../components/ChecklistApprovalCard'
-import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings } from '../services/api'
+import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
 import InformationRequestPanel from '../components/InformationRequestPanel'
@@ -742,6 +742,11 @@ const CRMCaseDetail = () => {
   // Modal states
   const [showStageUpdateModal, setShowStageUpdateModal] = useState(false)
   const [newStage, setNewStage] = useState('')
+  // One Update Stage for every case, however it was created: it offers the GoHighLevel pipeline's stages, and a move shifts the card
+  // on the Pipeline board and is synced to GoHighLevel. If the pipeline can't be reached (GHL off, no visa yet) the CRM stage list is used.
+  const [ghlStages, setGhlStages] = useState([])
+  const useGhlStages = ghlStages.length > 0
+  const [ghlStagesError, setGhlStagesError] = useState('')
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false)
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
@@ -1385,14 +1390,33 @@ const CRMCaseDetail = () => {
     }
   }
 
+  useEffect(() => {
+    if (!showStageUpdateModal || !id) return undefined
+    let cancelled = false
+    setGhlStagesError('')
+    ghlApi.caseStages(id)
+      .then((res) => {
+        if (cancelled) return
+        setGhlStages(res.data?.stages || [])
+        setNewStage((current) => current || res.data?.currentKey || '')
+      })
+      .catch(() => { if (!cancelled) setGhlStages([]) }) // fall back to the CRM stage list
+    return () => { cancelled = true }
+  }, [showStageUpdateModal, id])
+
   const handleStageUpdate = async () => {
     try {
-      await api.put(`/cases/${id}/stage`, { stage: newStage })
+      if (useGhlStages) {
+        await ghlApi.moveStage(id, { unifiedStageKey: newStage, moveId: `${Date.now()}-${Math.random().toString(36).slice(2)}` })
+      } else {
+        await api.put(`/cases/${id}/stage`, { stage: newStage })
+      }
       setShowStageUpdateModal(false)
       setNewStage('')
       fetchCaseDetail()
     } catch (error) {
       console.error('Error updating stage:', error)
+      if (useGhlStages) setGhlStagesError(error.response?.data?.message || 'Could not move the case to that stage.')
     }
   }
 
@@ -3514,10 +3538,14 @@ const CRMCaseDetail = () => {
                   className="input-field"
                 >
                   <option value="">Select stage</option>
-                  {STAGES.map(stage => (
-                    <option key={stage} value={stage}>{stage.replace('_', ' ')}</option>
-                  ))}
+                  {useGhlStages
+                    ? ghlStages.map((stage) => <option key={stage.key} value={stage.key}>{stage.name}</option>)
+                    : STAGES.map(stage => (
+                      <option key={stage} value={stage}>{stage.replace('_', ' ')}</option>
+                    ))}
                 </select>
+                {useGhlStages && ghlStagesError ? <p className="mt-1 text-sm text-red-700">{ghlStagesError}</p> : null}
+                {useGhlStages ? <p className="mt-1 text-xs text-muted-foreground">Moves the card on the Pipeline board and updates GoHighLevel.</p> : null}
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowStageUpdateModal(false)} className="btn-secondary flex-1">

@@ -40,9 +40,17 @@ async function assertCanWorkCase(user, caseId) {
 // ---------------------------------------------------------------------------
 
 async function moveCaseStage({ caseId, unifiedStageKey, moveId, user }) {
-  const caseDoc = await Case.findById(caseId);
-  if (!caseDoc || !caseDoc.integrations?.ghl?.opportunityId) throw httpError(404, "GHL case not found", "NOT_A_GHL_CASE");
+  let caseDoc = await Case.findById(caseId);
+  if (!caseDoc) throw httpError(404, "Case not found", "NOT_A_GHL_CASE");
   await assertCanWorkCase(user, caseDoc._id);
+  // A case created in the CRM (or before the GHL link existed) gets its GHL card the first time it is staged.
+  if (!caseDoc.integrations?.ghl?.opportunityId) {
+    try {
+      caseDoc = await require("./ghlCaseOutbound").ensureLinked(caseDoc._id);
+    } catch (error) {
+      throw httpError(error.status || 409, error.message, error.code || "NOT_A_GHL_CASE");
+    }
+  }
 
   const config = await GHLIntegration.findOne({ locationId: caseDoc.integrations.ghl.locationId });
   if (!config?.mappingsConfirmedAt) throw httpError(409, "GHL stage mapping has not been confirmed", "MAPPING_UNCONFIRMED");
@@ -340,4 +348,4 @@ async function retryJob(jobId) {
   return { status: "queued" };
 }
 
-module.exports = { moveCaseStage, processDueJobs, processJob, claimJob, processJobSoon, retryJob, MAX_ATTEMPTS };
+module.exports = { getWorkerClient, assertCanWorkCase, moveCaseStage, processDueJobs, processJob, claimJob, processJobSoon, retryJob, MAX_ATTEMPTS };

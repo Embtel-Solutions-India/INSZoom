@@ -12,7 +12,7 @@ function escapeHtml(value) {
 
 class CoverLetterService {
   static userId(user) {
-    return user?._id || user?.id || user;
+    return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
   }
 
   // renderTemplate is a single flat pass (dot-path + bracket-index lookup,

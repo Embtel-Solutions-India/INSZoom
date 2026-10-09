@@ -18,7 +18,8 @@ const CARD_FIELDS =
 // cases; a case manager only those assigned to them), narrowed to GHL cases.
 // Enforced here on the server, never only in the UI.
 function boardScope(user) {
-  return { $and: [caseService.buildCaseFilter({}, user), { creationSource: "ghl" }] };
+  // "GHL case" = has a GHL card: created from GHL, or created in the CRM and linked since (ghlCaseOutbound.js).
+  return { $and: [caseService.buildCaseFilter({}, user), { $or: [{ creationSource: "ghl" }, { "integrations.ghl.opportunityId": { $type: "string" } }] }] };
 }
 
 async function loadAssignees(cards) {

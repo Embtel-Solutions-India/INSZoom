@@ -1167,7 +1167,7 @@ const caseSchema = new mongoose.Schema(
           resolvedAt: { type: Date },
         },
         // "immiglance" = the opportunity was created BY us when an employee was added in Immiglance.
-        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation", "immiglance"] },
+        origin: { type: String, enum: ["initial_sync", "webhook", "reconciliation", "immiglance", "visa_selection"] },
         // The name last written to the GHL opportunity (display only; identity is the opportunity id).
         displayName: { type: String },
         // We set this opportunity to "abandoned" because the employee was removed; only then may a restore reopen it

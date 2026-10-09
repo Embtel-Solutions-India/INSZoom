@@ -30,6 +30,8 @@ const stageMappingSchema = new mongoose.Schema(
 
 const ghlIntegrationSchema = new mongoose.Schema(
   {
+    // CRM-created cases made AFTER this moment are added to GHL automatically (see ghlCaseOutbound.js); older ones only when first staged.
+    crmCaseSyncSince: { type: Date, default: null },
     locationId: { type: String, required: true, unique: true },
     enabled: { type: Boolean, default: true },
     status: {

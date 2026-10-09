@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { casesApi } from '../services/api'
+import { useVisaOptions, registryEntryFor } from '../utils/visaOptions'
 
 // "Add employee" - the visa (and filing type, e.g. H-1B Extension) is asked FIRST: every employee of one employer can
-// be on a different visa, and their forms and checklists are provisioned from it. Then how their information is
+// be on a different visa, and their forms and checklists are provisioned from it. The visa dropdown is the SAME shared list "New case"
+// uses (utils/visaOptions.js), narrowed to the employer-based visas an employee can be on. Then how their information is
 // entered: staff/employer fills it in, or the employee is invited (changeable later from the employee's row).
 export default function AddEmployeeModal({ principalId, defaultVisaType, onClose, onAdded }) {
-  const [options, setOptions] = useState([])
   const [visaType, setVisaType] = useState(defaultVisaType || '')
   const [petitionSubType, setPetitionSubType] = useState('')
   const [mode, setMode] = useState('fill_self')
@@ -15,11 +16,15 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    casesApi.employeeVisaOptions()
-      .then((response) => setOptions(response.data?.data || []))
-      .catch(() => setError('Could not load the visa list. Please close and try again.'))
-  }, [])
+  const shared = useVisaOptions()
+  useEffect(() => { if (shared.error) setError('Could not load the visa list. Please close and try again.') }, [shared.error])
+  const options = useMemo(
+    () => shared.options
+      .map((opt) => ({ opt, entry: registryEntryFor(opt, shared.registryTypes) }))
+      .filter(({ entry }) => entry?.caseStructure === 'employer_employee')
+      .map(({ opt, entry }) => ({ visaType: entry.visaType, label: opt.label, subTypes: entry.subTypes || [] })),
+    [shared.options, shared.registryTypes]
+  )
 
   const selected = useMemo(() => options.find((option) => option.visaType === visaType), [options, visaType])
   const subTypes = selected?.subTypes || []

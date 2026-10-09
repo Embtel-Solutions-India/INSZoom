@@ -37,7 +37,10 @@ function uniqueBy(items, keyFor) {
 
 class ImmigrationKnowledgeEngineService {
   static userId(user) {
-    return user?._id || user?.id || user;
+    const id = user?._id || user?.id;
+    if (id) return id;
+    // A system actor has no _id (e.g. the GoHighLevel actor): attribute to nobody rather than casting the whole object into an ObjectId field.
+    return user && typeof user === "object" && !user._bsontype ? undefined : user;
   }
 
   static ruleMatches(values = [], target) {

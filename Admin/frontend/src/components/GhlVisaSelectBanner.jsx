@@ -9,8 +9,8 @@ import { useAuth } from '../contexts/AuthContext'
 // the "select" for that: it only renders for such a case and disappears once a visa is set.
 //
 // The dropdown is the SAME list "New case" uses (utils/visaOptions.js), so a visa added, removed or relabelled there changes
-// here too. A GHL case is created as a single-party case, so the employer/employee and family visas need a different case
-// structure that can't be added afterwards: they stay in the list but can't be chosen (the server enforces this too).
+// here too. Every visa can be chosen: the server reshapes the card to that visa's structure (single, employer/employee or family)
+// so it connects to the registry, checklists, forms and case logic like any other case of that visa.
 const CAN_SELECT = ['super_admin', 'admin', 'team_lead']
 
 export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
@@ -26,7 +26,7 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
   const options = useMemo(
     () => visa.options.map((opt) => {
       const entry = registryEntryFor(opt, visa.registryTypes)
-      return { ...opt, visaType: entry?.visaType || '', selectable: Boolean(entry) && entry.caseStructure === 'single' }
+      return { ...opt, visaType: entry?.visaType || '', selectable: Boolean(entry) }
     }),
     [visa.options, visa.registryTypes]
   )
@@ -70,7 +70,7 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
               >
                 <option value="">Select visa type…</option>
                 {options.map((opt) => (
-                  <option key={opt.value} value={opt.visaType} disabled={!opt.selectable}>{opt.label}{opt.selectable ? '' : ' (not available for GoHighLevel cases)'}</option>
+                  <option key={opt.value} value={opt.visaType} disabled={!opt.selectable}>{opt.label}</option>
                 ))}
               </select>
               <button type="button" className="btn-primary flex items-center justify-center gap-2" disabled={!selected || saving} onClick={save}>
@@ -81,7 +81,6 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
           ) : (
             <p className="mt-2 text-sm text-amber-800">Your team lead selects the visa type for this case.</p>
           )}
-          {canSelect ? <p className="mt-2 text-xs text-amber-700">Employer-based and family visa types are listed but can’t be chosen for GoHighLevel cases yet.</p> : null}
           {error || visa.error ? <p className="mt-2 text-sm text-red-700">{error || 'Could not load the visa type list.'}</p> : null}
         </div>
       </div>
