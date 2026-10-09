@@ -1,4 +1,5 @@
 const path = require("path");
+const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const multer = require("multer");
 const env = require("../../config/env");
 const Case = require("../../models/Case");
@@ -869,6 +870,7 @@ exports.getCases = async (req, res, next) => {
     const totalPages = Math.ceil(total / limit);
     const summaries = cases.map((caseData) => caseService.summarizeCase(caseData));
     const serializedCases = cases.map((caseData) => caseService.serializeCaseForUser(caseData, req.user));
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames(cases, serializedCases);
     timer.mark("case_serialization_completed", { count: serializedCases.length });
     res.json({
       success: true,
@@ -899,6 +901,7 @@ exports.getCase = async (req, res, next) => {
   try {
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const serialized = caseService.serializeCaseForUser(caseData, req.user);
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
   } catch (error) {
     handleError(error, next);
@@ -1255,6 +1258,7 @@ exports.createCase = async (req, res, next) => {
       const principalTargetRole = caseStructure === "family" ? "petitioner" : caseStructure === "employer_employee" ? "employer" : null;
       const principalChecklist = filterChecklistForRole(checklist, principalTargetRole);
       [principalCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
         ...commonCaseData,
         caseId: principalCaseNumber,
         caseNumber: principalCaseNumber,
@@ -1402,6 +1406,7 @@ exports.createCase = async (req, res, next) => {
         const childRole = caseStructure === "family" ? "beneficiary" : "employee";
         const childChecklist = filterChecklistForRole(checklist, childRole);
         const [childCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
           ...commonCaseData,
           caseId: childCaseNumbers[index],
           caseNumber: childCaseNumbers[index],
@@ -2715,6 +2720,12 @@ exports.addEmployeeSlot = async (req, res, next) => {
     // Every employee gets their OWN visa (and filing type, e.g. H-1B Extension); forms and checklists are
     // provisioned from it below, exactly as for any case of that visa. Defaults to the matter's visa if omitted.
     const employeeVisa = resolveEmployeeVisa(principal, req.body || {});
+    // Who the employee is (typed in Add employee): written on this case and on the GHL card.
+    const employeeName = String(req.body?.employeeName || "").trim();
+    const employeeEmail = String(req.body?.employeeEmail || "").trim().toLowerCase();
+    if (employeeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employeeEmail)) {
+      return res.status(400).json({ success: false, code: "INVALID_EMPLOYEE_EMAIL", message: "Enter a valid employee email." });
+    }
     const nextIndex = Math.max(principal.childCaseCount || 0, (principal.childCases || []).length);
     const childIndex = CaseNumberService.indexToSuffix(nextIndex);
     const childCaseNumber = CaseNumberService.childCaseNumber(principal.caseNumber, nextIndex);
@@ -2722,14 +2733,16 @@ exports.addEmployeeSlot = async (req, res, next) => {
     const childChecklist = filterChecklistForRole(checklist, "employee");
 
     const [childCase] = await Case.create([{
+      ...pipelineCategoryFields(req.body),
       isDemoData: false,
       createdBy: req.user._id,
       lastModifiedBy: req.user._id,
       caseId: childCaseNumber,
       caseNumber: childCaseNumber,
       clientPortalId: childCaseNumber,
-      clientEmail: "",
-      clientName: "",
+      clientEmail: employeeEmail,
+      clientName: employeeName,
+      employeeIdentity: { name: employeeName, email: employeeEmail },
       visaType: employeeVisa.visaType,
       visaCategory: employeeVisa.visaType,
       caseType: principal.caseType,
@@ -3671,6 +3684,7 @@ exports.createCaseWithClient = async (req, res, next) => {
     }
 
     const newCase = await Case.create({
+      ...pipelineCategoryFields(req.body),
       isDemoData: false,
       caseId: caseNumber,
       caseNumber,

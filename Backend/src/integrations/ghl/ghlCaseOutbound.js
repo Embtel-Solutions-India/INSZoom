@@ -72,7 +72,8 @@ async function runCreateCaseOpportunity(job, client) {
   if (!config?.mappingsConfirmedAt) throw transient("GHL stage mapping is not confirmed yet");
 
   const entries = await visaService.ensureEntries(config);
-  const category = aux.categoryForVisa(caseDoc.visaType, caseDoc.petitionSubType, entries);
+  // The pipeline chosen when the case was created (Immigrant / Non-Immigrant); otherwise what the visa mapping says.
+  const category = caseDoc.pipelineCategory || aux.categoryForVisa(caseDoc.visaType, caseDoc.petitionSubType, entries);
   const pipeline = config.pipelines.find((p) => p.enabled && p.category === category && p.stages?.length);
   if (!pipeline) throw permanent(`No ${category} GHL pipeline is configured`);
   const first = [...pipeline.stages].sort((a, b) => a.order - b.order)[0];
@@ -208,7 +209,7 @@ async function ensureLinked(caseId, { client } = {}) {
 /** The stages a case can be moved to (its GHL pipeline's own stages) - same list for every case, however it was created. */
 async function stagesForCase(caseId, user) {
   const { assertCanWorkCase } = require("./ghlOutboundService");
-  const caseDoc = await Case.findById(caseId).select("visaType petitionSubType visaSelectionStatus status caseRole caseStructure integrations.ghl").lean();
+  const caseDoc = await Case.findById(caseId).select("visaType petitionSubType pipelineCategory visaSelectionStatus status caseRole caseStructure integrations.ghl").lean();
   if (!caseDoc) throw Object.assign(new Error("Case not found"), { status: 404 });
   await assertCanWorkCase(user, caseId);
   const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId });
@@ -219,7 +220,7 @@ async function stagesForCase(caseId, user) {
     pipeline = config.pipelines.find((p) => p.enabled && p.ghlPipelineId === ghl.pipelineId);
   } else {
     if (plan(caseDoc) !== "card") throw Object.assign(new Error("This case is not on the Pipeline yet."), { status: 409, code: "NOT_STAGEABLE" });
-    const category = aux.categoryForVisa(caseDoc.visaType, caseDoc.petitionSubType, await visaService.ensureEntries(config));
+    const category = caseDoc.pipelineCategory || aux.categoryForVisa(caseDoc.visaType, caseDoc.petitionSubType, await visaService.ensureEntries(config));
     pipeline = config.pipelines.find((p) => p.enabled && p.category === category && p.stages?.length);
   }
   if (!pipeline) throw Object.assign(new Error("This case's GHL pipeline is not configured"), { status: 409, code: "PIPELINE_NOT_CONFIGURED" });

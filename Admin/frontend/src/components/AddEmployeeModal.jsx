@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { casesApi } from '../services/api'
-import { useVisaOptions, registryEntryFor } from '../utils/visaOptions'
+import { useVisaOptions, registryEntryFor, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 // "Add employee" - the visa (and filing type, e.g. H-1B Extension) is asked FIRST: every employee of one employer can
 // be on a different visa, and their forms and checklists are provisioned from it. The visa dropdown is the SAME shared list "New case"
-// uses (utils/visaOptions.js), narrowed to the employer-based visas an employee can be on. Then how their information is
-// entered: staff/employer fills it in, or the employee is invited (changeable later from the employee's row).
+// uses (utils/visaOptions.js), narrowed to the employer-based visas an employee can be on. Then the employee's name and email: they
+// are written on the software case and on the GoHighLevel card. Inviting the employee to fill in their own information stays
+// available from the employee's row.
 export default function AddEmployeeModal({ principalId, defaultVisaType, onClose, onAdded }) {
   const [visaType, setVisaType] = useState(defaultVisaType || '')
   const [petitionSubType, setPetitionSubType] = useState('')
-  const [mode, setMode] = useState('fill_self')
+  const [pipelineCategory, setPipelineCategory] = useState('')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,24 +35,15 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
     setError('')
     if (!visaType) { setError('Choose the employee\'s visa first.'); return }
     if (subTypes.length && !petitionSubType) { setError(`Choose the ${visaType} filing type.`); return }
-    if (mode === 'invite' && (!name.trim() || !email.trim())) { setError('Enter the employee\'s name and email to send the invitation.'); return }
+    if (!pipelineCategory) { setError('Choose the GoHighLevel pipeline (Immigrant or Non-Immigrant).'); return }
+    if (!name.trim()) { setError('Enter the full name of the employee.'); return }
+    if (!email.trim()) { setError('Enter the email of the employee.'); return }
     setBusy(true)
-    let childCaseId = null
     try {
-      const added = await casesApi.addEmployeeSlot(principalId, { visaType, ...(subTypes.length ? { petitionSubType } : {}) })
-      childCaseId = added.data?.childCaseId
-      await casesApi.setEmployeeDataEntryMode(principalId, childCaseId, mode === 'invite'
-        ? { mode: 'invite', employeeName: name.trim(), employeeEmail: email.trim() }
-        : { mode: 'fill_self' })
-      onAdded(mode === 'invite' ? `Employee added on ${visaType} and invited` : `Employee added on ${visaType}`)
+      await casesApi.addEmployeeSlot(principalId, { visaType, pipelineCategory, employeeName: name.trim(), employeeEmail: email.trim(), ...(subTypes.length ? { petitionSubType } : {}) })
+      onAdded(`Employee ${name.trim()} added on ${visaType}`)
     } catch (err) {
-      const message = err.response?.data?.message || 'The employee could not be added.'
-      if (childCaseId) {
-        // The slot exists; only the invitation failed - never leave the user guessing.
-        onAdded(`Employee added on ${visaType}, but the invitation was not sent: ${message} Use "Invite employee" on their row to retry.`)
-      } else {
-        setError(message)
-      }
+      setError(err.response?.data?.message || 'The employee could not be added.')
     } finally {
       setBusy(false)
     }
@@ -83,18 +75,24 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
           </div>
         )}
 
-        <fieldset className="space-y-2" disabled={busy}>
-          <legend className="mb-1 text-sm font-medium text-muted-foreground">Who fills in their information?</legend>
-          <label className="flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={mode === 'fill_self'} onChange={() => setMode('fill_self')} /> The employer / our team fills it in</label>
-          <label className="flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={mode === 'invite'} onChange={() => setMode('invite')} /> Invite the employee to fill it in</label>
-        </fieldset>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-muted-foreground">GoHighLevel pipeline *</label>
+          <select className="input-field" value={pipelineCategory} onChange={(e) => setPipelineCategory(e.target.value)} disabled={busy}>
+            <option value="" disabled>Select pipeline</option>
+            {PIPELINE_CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
 
-        {mode === 'invite' && (
-          <div className="grid grid-cols-1 gap-2">
-            <input className="input-field" placeholder="Employee full name" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-            <input type="email" className="input-field" placeholder="Employee email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+        <div className="grid grid-cols-1 gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee full name *</label>
+            <input className="input-field" placeholder="As it should appear on the case and in GoHighLevel" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
           </div>
-        )}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee email *</label>
+            <input type="email" className="input-field" placeholder="employee@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+          </div>
+        </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 

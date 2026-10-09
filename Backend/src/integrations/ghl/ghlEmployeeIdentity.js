@@ -17,6 +17,8 @@ const val = (v) => (v && typeof v === "object" && "value" in v ? v.value : v);
  */
 function employeeName(child, employerUserId, employerContactName) {
   if (!child) return "";
+  const entered = clean(child.employeeIdentity?.name); // typed by staff when adding the employee
+  if (entered) return entered;
   const ownLogin = Boolean(child.user && employerUserId && String(child.user) !== String(employerUserId));
   const typed = ownLogin ? clean(child.clientName) : "";
   if (typed) return typed;

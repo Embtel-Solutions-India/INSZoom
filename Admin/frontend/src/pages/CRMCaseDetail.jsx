@@ -1,6 +1,7 @@
 import { Fragment, Suspense, lazy, useState, useEffect, useCallback, useMemo, useRef, Component } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
+import { pipelineCategoryLabel } from '../utils/visaOptions'
 import AddEmployeeModal from '../components/AddEmployeeModal'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
@@ -1104,6 +1105,15 @@ const CRMCaseDetail = () => {
   // invalidates questionnairesApi.getForCase/listCaseChecklists' 5s
   // cachedGet TTL so the re-fetch below can't itself serve back the same
   // stale response.
+  // The case's stage follows the Pipeline: a drag on the board, Update Stage, or a change made in GoHighLevel all refresh it here.
+  useEffect(() => {
+    if (!connected) return undefined
+    return subscribe('ghl:pipeline:updated', (payload) => {
+      if (payload?.caseId && String(payload.caseId) !== String(id)) return
+      fetchCaseDetail(true)
+    })
+  }, [connected, id, subscribe]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!connected) return
     return subscribe('case:client_submitted', (payload) => {
@@ -2044,15 +2054,6 @@ const CRMCaseDetail = () => {
                                     {employeeActionBusy === `mode:${child._id}` ? 'Switching…' : 'Employer fills instead'}
                                   </button>
                                 )}
-                                {isEmployerMatter && !childIsInvited && ['invite', 'fill_self'].includes(caseData.dataEntryMode) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setInviteDraft({ childId: child._id, name: child.clientName || '', email: child.clientEmail || '' })}
-                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700"
-                                  >
-                                    Invite employee
-                                  </button>
-                                )}
                                 <button
                                   onClick={() => navigate(`/crm-cases/${child._id}`)}
                                   className="text-sm font-semibold text-primary-600 hover:text-primary-700"
@@ -2213,6 +2214,12 @@ const CRMCaseDetail = () => {
                     <p className="text-sm text-muted-foreground">Visa Type</p>
                     <p className="font-medium break-words">{resolveDisplayVisa(caseData)}</p>
                   </div>
+                  {caseData.pipelineCategory && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">GoHighLevel Pipeline</p>
+                      <p className="font-medium">{pipelineCategoryLabel(caseData.pipelineCategory)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-muted-foreground">Visa Category</p>
                     <p className="font-medium">{caseData.visaCategory}</p>
@@ -2239,7 +2246,7 @@ const CRMCaseDetail = () => {
                   <div>
                     <p className="text-sm text-muted-foreground">Stage</p>
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStageColor(caseData.stage)}`}>
-                      {caseData.stage?.replace('_', ' ')}
+                      {caseData.pipelineStage || caseData.stage?.replace('_', ' ')}
                     </span>
                   </div>
                   <div>

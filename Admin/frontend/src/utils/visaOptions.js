@@ -133,3 +133,11 @@ export const registryEntryFor = (option, registryTypes) => {
   const keys = [option.value, option.canonicalLabel, option.label].map(optionKey).filter(Boolean)
   return (registryTypes || []).find((entry) => keys.includes(optionKey(entry.visaType))) || null
 }
+
+// Which GoHighLevel pipeline a case lives on. Asked wherever a case is created in the CRM (New case, leads, Add employee);
+// cases that arrive from GHL already carry it.
+export const PIPELINE_CATEGORY_OPTIONS = [
+  { value: 'immigrant', label: 'Immigrant pipeline' },
+  { value: 'non_immigrant', label: 'Non-Immigrant pipeline' },
+]
+export const pipelineCategoryLabel = (value) => PIPELINE_CATEGORY_OPTIONS.find((option) => option.value === value)?.label || ''

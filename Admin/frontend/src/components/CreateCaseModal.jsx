@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -64,6 +64,7 @@ const initialForm = {
   clientEmail: '',
   clientPhone: '',
   visaType: '',
+  pipelineCategory: '',
   petitionSubType: '',
   packageName: '',
   assignedCaseManager: '',
@@ -176,6 +177,7 @@ const CreateCaseModal = ({
         // for this path.
         const payload = {
           filingTypeKey,
+          pipelineCategory: form.pipelineCategory,
           clientName: form.clientName.trim(),
           clientEmail: form.clientEmail.trim(),
         }
@@ -197,6 +199,7 @@ const CreateCaseModal = ({
         // client User, never the staff member submitting this form.
         const payload = {
           visaType: visaTypeLabel,
+          pipelineCategory: form.pipelineCategory,
           ...(leadId ? { leadId } : {}),
           petitionerName: form.clientName.trim(),
           petitionerEmail: form.clientEmail.trim(),
@@ -216,6 +219,7 @@ const CreateCaseModal = ({
         clientName: form.clientName.trim(),
         clientEmail: form.clientEmail.trim(),
         visaType: visaTypeLabel,
+        pipelineCategory: form.pipelineCategory,
         ...(needsH1bType ? { petitionSubType: form.petitionSubType } : {}),
         childCaseCount: showEmployerFields ? Number(initialData?.childCaseCount || 1) : 0,
         creationSource,
@@ -356,6 +360,21 @@ const CreateCaseModal = ({
             >
               <option value="" disabled>Select visa type</option>
               {visaOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">GoHighLevel Pipeline *</label>
+            <select
+              required
+              value={form.pipelineCategory}
+              onChange={handleChange('pipelineCategory')}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="" disabled>Select pipeline</option>
+              {PIPELINE_CATEGORY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

@@ -813,18 +813,33 @@ async function checkSlaBreaches(user, req) {
   // sla.breachedAt is set for a record, it stops matching, so a backlog
   // larger than one batch just finishes over subsequent ticks.
   const workflows = await Workflow.find({ dueAt: { $lte: now }, status: { $in: ["active", "waiting"] }, slaBreachedAt: { $exists: false } }).limit(200);
+  // A backlog must never turn into a flood of alerts (one per workflow, a couple of seconds apart). So:
+  //   - a workflow whose case no longer exists, or that went overdue long ago, is marked breached WITHOUT alerting anyone;
+  //   - several workflows of one case raise ONE escalation, not one each.
+  const STALE_MS = 24 * 60 * 60 * 1000;
+  const caseIds = [...new Set(workflows.map((w) => w.caseId && String(w.caseId)).filter(Boolean))];
+  const existingCases = new Set((await require("../../models/Case").find({ _id: { $in: caseIds } }).select("_id").lean()).map((c) => String(c._id)));
+  const escalatedCases = new Set();
   for (const workflow of workflows) {
     workflow.slaBreachedAt = now;
     workflow.escalatedAt = now;
     workflow.history.push({ event: "workflow.sla_breached", status: workflow.status, message: "Workflow SLA breached", performedBy: user?._id });
-    await notificationService.createForRoles(["admin", "case_manager"], {
-      type: "workflow_sla_breached",
-      title: "Workflow SLA Breached",
-      message: `${workflow.name} breached SLA.`,
-      caseId: workflow.caseId,
-      source: "workflow",
-    }, user, req).catch(() => null);
-    if (workflow.caseId) require("../notifications/triggerEvents.service").emitInBackground("case.escalated", { caseId: workflow.caseId, actor: user, req });
+    const caseId = workflow.caseId && String(workflow.caseId);
+    const stale = now - new Date(workflow.dueAt) > STALE_MS;
+    const orphaned = Boolean(caseId) && !existingCases.has(caseId);
+    if (!stale && !orphaned) {
+      await notificationService.createForRoles(["admin", "case_manager"], {
+        type: "workflow_sla_breached",
+        title: "Workflow SLA Breached",
+        message: `${workflow.name} breached SLA.`,
+        caseId: workflow.caseId,
+        source: "workflow",
+      }, user, req).catch(() => null);
+      if (caseId && !escalatedCases.has(caseId)) {
+        escalatedCases.add(caseId);
+        require("../notifications/triggerEvents.service").emitInBackground("case.escalated", { caseId: workflow.caseId, actor: user, req });
+      }
+    }
     await workflow.save();
   }
   const reminderTasks = await Task.find({

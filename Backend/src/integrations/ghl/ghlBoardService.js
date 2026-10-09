@@ -12,7 +12,7 @@ const DEFAULT_PER_COLUMN = 50;
 const MAX_PER_COLUMN = 100;
 
 const CARD_FIELDS =
-  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
+  "caseNumber clientName clientEmail visaType visaSelectionStatus priority status assignedCaseManager caseRole parentCase user canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name petitionerName beneficiaryInvite canonicalProfile.profile.beneficiary.fullName canonicalProfile.profile.beneficiary.firstName canonicalProfile.profile.beneficiary.lastName canonicalProfile.profile.beneficiary.email integrations.ghl createdAt updatedAt";
 
 // Same visibility as the Cases list (admin / super_admin / team_lead see all
 // cases; a case manager only those assigned to them), narrowed to GHL cases.

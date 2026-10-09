@@ -68,7 +68,7 @@ function categoryForVisa(visaType, petitionSubType, entries) {
   const exact = rows.find((e) => (e.petitionSubType || "") === (petitionSubType || ""));
   const hit = exact || rows[0];
   if (hit?.category) return hit.category;
-  return /^EB-|^PERM$/i.test(visaType || "") ? "immigrant" : "non_immigrant";
+  return /^(EB|PERM|IR|CR|F[1-4]|GC)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
 }
 
 const DETAIL_TO_SERVICE_TYPE = { work_visa: "Work Visa", study_visa: "Study Visa", green_card: "Green Card", business__investment: "Business/Investment" };
@@ -90,13 +90,15 @@ function serviceTypeFor(visaType, petitionSubType, entries) {
 async function queueJob(caseId, type) {
   // One waiting/running job of a type per card is enough: it recomputes what to do when it runs.
   if (await GHLSyncJob.exists({ caseId, type, status: { $in: ["pending", "processing"] } })) return null;
+  // A job that just failed for good is not retried by every sweep (that only hammers GHL and re-alerts admins); try again after an hour.
+  if (await GHLSyncJob.exists({ caseId, type, status: "failed", updatedAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) } })) return null;
   return GHLSyncJob.create({ type, caseId, operationId: crypto.randomUUID(), status: "pending", nextAttemptAt: new Date() });
 }
 
 /** Decide and queue for one employee card. Never throws. Returns the job types queued. */
 async function enqueueForChild(childId) {
   try {
-    const child = await Case.findById(childId).select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName").lean();
+    const child = await Case.findById(childId).select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name").lean();
     if (!child || child.caseRole !== "employee" || !child.parentCase) return [];
     const [link, principal] = await Promise.all([
       GHLEmployerLink.findOne({ principalCaseId: child.parentCase }).lean(),
@@ -132,7 +134,7 @@ async function sweep({ limit = 500 } = {}) {
   if (!childIds.length) return { checked: 0, queued: 0 };
 
   const children = await Case.find({ _id: { $in: childIds } })
-    .select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName")
+    .select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name")
     .lean();
   let queued = 0;
   for (const child of children) {
@@ -217,7 +219,7 @@ async function runCreate(job, client) {
   if (!config?.mappingsConfirmedAt) throw transient("GHL stage mapping is not confirmed yet");
 
   const entries = await visaService.ensureEntries(config);
-  const category = categoryForVisa(child.visaType, child.petitionSubType, entries);
+  const category = child.pipelineCategory || principal.pipelineCategory || categoryForVisa(child.visaType, child.petitionSubType, entries);
   const pipeline = config.pipelines.find((p) => p.enabled && p.category === category && p.stages?.length);
   if (!pipeline) throw permanent(`No ${category} GHL pipeline is configured`);
   const first = [...pipeline.stages].sort((a, b) => a.order - b.order)[0];

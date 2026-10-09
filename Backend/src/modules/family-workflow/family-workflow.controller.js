@@ -8,6 +8,7 @@
 // generic token helpers, generateCaseNumber) exactly as the employer/employee
 // path does.
 const Beneficiary = require("../../models/Beneficiary");
+const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const Case = require("../../models/Case");
 const User = require("../../models/User");
 const Lead = require("../../models/Lead");
@@ -313,6 +314,7 @@ exports.createFamilyCase = async (req, res, next) => {
       return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
     }
     let caseData = await Case.create({
+      ...pipelineCategoryFields(req.body),
       ...(sourceLead ? { creationSource: "lead_conversion", leadId: sourceLead._id } : {}),
       caseNumber,
       caseId: caseNumber,
