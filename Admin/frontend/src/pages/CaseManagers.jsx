@@ -136,6 +136,17 @@ const CaseManagers = () => {
     )
   }
 
+  // Performance = this week's star rating given by admins / team leads (average of the week's ratings). The share of assigned cases that are
+  // completed is automatic and shown as a small figure under it; it is not a rating.
+  const getWeeklyRating = (cm) => (
+    <div className="flex flex-col items-center leading-tight" title={`Completion rate ${Number(cm.completionRate || 0).toFixed(0)}% of assigned cases`}>
+      {cm.weeklyRating != null ? (
+        <div className="flex items-center gap-1"><Star className="w-4 h-4 text-primary fill-current" /><span className="text-sm font-semibold text-foreground">{cm.weeklyRating.toFixed(1)}</span><span className="text-xs text-muted-foreground">({cm.weeklyRatingCount})</span></div>
+      ) : <span className="text-xs text-muted-foreground">Not rated this week</span>}
+      <span className="text-[0.7rem] text-muted-foreground">{Number(cm.completionRate || 0).toFixed(0)}% completed</span>
+    </div>
+  )
+
   const getPerformanceRating = (rating) => {
     const score = rating || 0
     let color = 'text-muted-foreground'
@@ -320,7 +331,7 @@ const CaseManagers = () => {
                     <SortIcon field="currentWorkload" />
                   </div>
                 </th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Performance (this week)</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
@@ -367,7 +378,7 @@ const CaseManagers = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
-                    {getPerformanceRating(cm.performanceRating)}
+                    {getWeeklyRating(cm)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     {getStatusBadge(cm.status)}
