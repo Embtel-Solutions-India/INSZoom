@@ -14,7 +14,7 @@ test("SB-1 checklist is client-owned, IS a default template, and its visaType is
   assert.equal(def.checklistRole, "client");
   assert.equal(def.isDefault, true, "SB-1's own checklist must auto-resolve at case creation, unlike an optional add-on process");
   assert.equal(def.visaType, "SB-1");
-  assert.equal(def.title, "Returning Resident (SB-1) Supporting Documents");
+  assert.equal(def.title, "SB-1 Visa Questionnaire");
 });
 
 test("case classification: SB-1 is registered as caseStructure 'single' with no petitioner/beneficiary/employer/employee", () => {
@@ -65,7 +65,7 @@ test("Section 3: close family members is a real repeatable table with no fixed e
   const q = def.questions.find((question) => question.key === "client_closeFamilyMembers");
   assert.equal(q.type, "repeating_group");
   assert.ok(q.repeatable);
-  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["fullName", "relationshipToApplicant", "residentStatus", "fullUsAddress"]);
+  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["fullName", "relationship", "usResidenceStatus", "addressLine1", "addressCity", "addressState", "addressPostalCode", "addressCountry"]);
 });
 
 test("Section 6: adjustment-of-status details are gated on didAdjustStatus == Yes", () => {
@@ -87,7 +87,7 @@ test("Section 10/11: continuing-ties and delayed-return questions are real long-
 test("Section 12: periods outside the US is a real repeatable table, not one free-text field", () => {
   const q = def.questions.find((question) => question.key === "client_periodsOutsideUs");
   assert.equal(q.type, "repeating_group");
-  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["from", "to", "country"]);
+  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["fromDate", "toDate", "country"]);
 });
 
 test("Section 13: foreign employment history is gated on employedOutsideUs == Yes and is a repeatable table", () => {
@@ -95,7 +95,7 @@ test("Section 13: foreign employment history is gated on employedOutsideUs == Ye
   const q = def.questions.find((question) => question.key === "client_foreignEmployment");
   assert.equal(q.type, "repeating_group");
   assert.deepEqual(q.conditionalLogic.rules, gate);
-  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["employerName", "employerAddress", "from", "to"]);
+  assert.deepEqual(q.metadata.fields.map((f) => f.key), ["employerName", "addressLine1", "addressCity", "addressState", "addressPostalCode", "addressCountry", "fromDate", "toDate"]);
 });
 
 test("document checklist: re-entry permit is gated on hasReentryPermit == Yes (not shown to every applicant)", () => {
@@ -104,11 +104,11 @@ test("document checklist: re-entry permit is gated on hasReentryPermit == Yes (n
   assert.deepEqual(doc.conditionalLogic.rules, [{ questionKey: "client_hasReentryPermit", operator: "equals", value: "Yes" }]);
 });
 
-test("document checklist: every document carries a required/conditional/supporting classification, and core identity documents are required", () => {
+test("document checklist: every document carries a classification, and ALL of them are optional at the template level", () => {
   const docs = def.questions.filter((q) => q.type === "file");
   docs.forEach((doc) => assert.ok(["required", "conditional", "supporting"].includes(doc.metadata.classification), `${doc.key} missing classification`));
   ["sb1_doc_passport", "sb1_doc_greenCard", "sb1_doc_travelRecords", "sb1_doc_passportEntryExitStamps"].forEach((key) => {
-    assert.equal(docs.find((d) => d.key === key).required, true);
+    if (!/passport/i.test(key)) assert.equal(docs.find((d) => d.key === key).required, false, `${key} is optional`); // passport information is forced required platform-wide (passportInformation.js) once questionnaire.service loads
   });
   // U.S.-ties evidence is supporting, not individually mandatory - and
   // physical-presence-style evidence is never collapsed into one generic

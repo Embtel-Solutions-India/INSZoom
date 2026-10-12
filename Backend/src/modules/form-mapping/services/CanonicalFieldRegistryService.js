@@ -154,6 +154,13 @@ const BASE_FIELDS = [
   I90_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// SB-1 (Returning Resident) questionnaire paths - see canonical/config/sb1CanonicalPaths.js. Additive only.
+{
+  const { SB1_CANONICAL_FIELDS } = require("../../canonical/config/sb1CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  SB1_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 class CanonicalFieldRegistryService {
   static tokenize(value = "") {
     return String(value)

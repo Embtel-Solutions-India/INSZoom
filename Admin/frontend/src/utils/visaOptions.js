@@ -46,6 +46,8 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'f2b', label: 'F2B (I-130 / Green Card)', canonicalLabel: 'F2B' },
   { value: 'f3', label: 'F3 (I-130 / Green Card)', canonicalLabel: 'F3' },
   { value: 'f4', label: 'F4 (I-130 / Green Card)', canonicalLabel: 'F4' },
+  // SB-1 is a single-person case (no petitioner / family subcases); canonicalLabel is the visa type the case is created with.
+  { value: 'sb1', label: 'SB-1 Visa — Returning Resident', canonicalLabel: 'SB-1' },
   { value: 'i539cos', label: 'I-539-COS' },
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },

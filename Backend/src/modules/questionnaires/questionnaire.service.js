@@ -2669,6 +2669,17 @@ async function reconcileDefinition(definition, systemUser, req) {
   return questionnaire;
 }
 
+// The case document returned alongside a questionnaire. Client-side users get it without the internal, staff-facing parts (the canonical
+// profile with its provenance and history, the audit log, the knowledge plan): the client portal reads none of them, and they are not the
+// client's to see. Staff get the document unchanged.
+const CLIENT_HIDDEN_CASE_FIELDS = ["canonicalProfile", "canonicalHistory", "auditLog", "knowledgePlan"];
+function caseForViewer(caseData, user) {
+  if (!caseData || !isClientSideUser(user)) return caseData;
+  const plain = typeof caseData.toObject === "function" ? caseData.toObject() : { ...caseData };
+  CLIENT_HIDDEN_CASE_FIELDS.forEach((field) => { delete plain[field]; });
+  return plain;
+}
+
 async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const timer = createStageTimer();
   const caseData = await Case.findById(caseId);
@@ -2881,7 +2892,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
       ...timer.done(),
     });
     return {
-      case: caseData,
+      case: caseForViewer(caseData, user),
       questionnaire,
       questions: intelligentState.pendingQuestions,
       documentQuestions: intelligentState.pendingQuestions.filter((question) => question.type === "file"),
@@ -2908,7 +2919,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     ...timer.done(),
   });
   return {
-    case: caseData,
+    case: caseForViewer(caseData, user),
     questionnaire,
     questions: visibleQuestions,
     documentQuestions: visibleQuestions.filter((question) => question.type === "file"),
