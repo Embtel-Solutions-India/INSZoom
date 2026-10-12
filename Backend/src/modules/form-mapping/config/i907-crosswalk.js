@@ -81,7 +81,7 @@ const MAPPED_EDGES = [
 
   // Part 2 item 3, classification requested: the case's own visa type - right for a case that has
   // been upgraded (H-1B, O-1A ...), meaningless on a standalone Premium Processing case, so skipped there.
-  { fieldName: `${P2}P2_Line2_ClassorEligRequested[0]`, source: "case.visaType", sourceVerified: true, condition: { field: "case.visaType", operator: "not_equals", value: "Premium Processing" }, note: "Item 3, classification or eligibility requested = the related case's visa type (not for a standalone Premium Processing case)." },
+  { fieldName: `${P2}P2_Line2_ClassorEligRequested[0]`, source: "case.classification", fallback: "case.visaType", sourceVerified: true, condition: { field: "case.visaType", operator: "not_equals", value: "Premium Processing" }, note: "Item 3, classification or eligibility requested = the related case's visa type (not for a standalone Premium Processing case)." },
 
   // --- Part 9 continuation sheet header (page 7): repeated identity fields ---
   text(`${P7}Pt1Line3_FamilyName[1]`, "i907_filer_last_name", "Continuation sheet header, family name (repeat)."),

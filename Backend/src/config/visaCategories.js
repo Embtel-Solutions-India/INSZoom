@@ -65,6 +65,15 @@ const VISA_CATEGORIES = {
     forms: ["i-129"],
     label: "L-1B Intracompany Specialized Knowledge",
   },
+  // Filed as an L-1A (same classification, forms and checklists) but as a continuation of previously approved employment.
+  // `classification` is what the USCIS form prints/ticks; `filingBasis` drives the "Continuation" box (canonical case.classification / case.filingBasis).
+  "L-1A Extension": {
+    caseStructure: "employer_employee",
+    forms: ["i-129"],
+    label: "L-1A Extension (Intracompany Manager/Executive)",
+    classification: "L-1A",
+    filingBasis: "extension",
+  },
   "O-1A": {
     caseStructure: "employer_employee",
     forms: ["i-129"],
@@ -299,10 +308,10 @@ const VISA_CATEGORIES = {
   "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
   "Conditional Green Card Removal": { caseStructure: "single", forms: ["i-751"], label: "Removal of Conditions on Residence" },
   // label is staff-facing (CreateCaseModal.jsx's case-type dropdown, CRM
-  // displays) - the client never sees this string; the client sees the
-  // Questionnaire's own title, "Renew, Replace, Correct or Update Green
-  // Card" (greenCardRenewalChecklist.js), never "I-90".
-  "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal / Replacement / Correction / Update" },
+  // displays); the case-creation dropdown shows it as "I-90 - Green Card
+  // Renewal / Lost" (Admin visaOptions.js prefixes the single form number).
+  // The client sees the Questionnaire's own title (greenCardRenewalChecklist.js).
+  "Green Card Renewal": { caseStructure: "single", forms: ["i-90"], label: "Green Card Renewal / Lost" },
   "Re-entry Permit": { caseStructure: "single", forms: ["i-131"], label: "Re-entry Permit" },
   // Premium Processing (Form I-907) as its OWN case - for a client who wants only the
   // expedite request. Single party: the Form I-907 Information Checklist
@@ -346,6 +355,14 @@ function getSubTypes(visaType) {
   return [...(VISA_CATEGORIES[visaType]?.subTypes || [])];
 }
 
+// The classification a USCIS form shows for this case type (L-1A Extension -> "L-1A"); the case type itself when it has no override.
+function getClassification(visaType) {
+  return VISA_CATEGORIES[visaType]?.classification || visaType || null;
+}
+// "extension" etc. when the case type is a filing basis of its classification, else null.
+function getFilingBasis(visaType) {
+  return VISA_CATEGORIES[visaType]?.filingBasis || null;
+}
 function getFormIds(visaType) {
   return VISA_CATEGORIES[visaType]?.forms ?? [];
 }
@@ -368,5 +385,7 @@ module.exports = {
   getCaseStructure,
   getFormIds,
   getSubTypes,
+  getClassification,
+  getFilingBasis,
   getVisaTypesByStructure,
 };

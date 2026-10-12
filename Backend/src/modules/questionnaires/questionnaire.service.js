@@ -419,6 +419,14 @@ function validateQuestionValue(question, value) {
     if (rule.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) bucket.push(rule.message || `${question.label} must be a valid email`);
     if (rule.type === "phone" && value && String(value).replace(/\D/g, "").length < Number(rule.value || 7)) bucket.push(rule.message || `${question.label} must be a valid phone number`);
     if (rule.type === "date" && value && Number.isNaN(new Date(value).getTime())) bucket.push(rule.message || `${question.label} must be a valid date`);
+    if (rule.type === "date" && rule.value === "past" && value && !Number.isNaN(new Date(value).getTime()) && new Date(value).getTime() > Date.now()) bucket.push(rule.message || `${question.label} cannot be in the future`);
+  }
+  // Opt-in (metadata.strictOptions): a select / radio / multi-select answer must be one of the question's own option values. Checklists that
+  // do not set the flag keep accepting free values exactly as before.
+  if (question.metadata?.strictOptions && !isUnanswered && Array.isArray(question.options) && question.options.length && ["select", "radio", "multi_select", "multiselect"].includes(question.type)) {
+    const allowed = new Set(question.options.map((option) => String(option.value)));
+    const given = Array.isArray(value) ? value : [value];
+    if (given.some((item) => !allowed.has(String(item)))) errors.push(`${question.label} must be one of the listed options`);
   }
   if (question.type === "repeating_group" && Array.isArray(value) && value.length) {
     const rowResult = validateRepeatingGroupRows(question, value);
@@ -1873,6 +1881,41 @@ async function assertSubmittable(payload, user) {
   }
 }
 
+// Checklists whose FINAL case submission is verified on the server. A single-party client's "Submit case" does not go through submitResponse
+// (the portal calls the employment-workflow submit, which checks nothing), so for these checklists the submit endpoint calls this guard:
+// every visible question answered, every answer passing its format rules. Opt-in by checklist key; no other checklist is affected.
+const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist"]);
+
+async function assertStrictChecklistsSubmittable(caseData, user) {
+  for (const reference of (caseData.questionnaireReferences || []).filter((item) => item.active !== false)) {
+    const questionnaireId = reference.questionnaireId || reference.questionnaireTemplateId;
+    if (!questionnaireId) continue;
+    const questionnaire = await Questionnaire.findById(questionnaireId).select("key title version").lean();
+    if (!questionnaire || !STRICT_SUBMIT_CHECKLIST_KEYS.has(baseKey(questionnaire.key))) continue;
+    const questions = await Question.find({ questionnaire: questionnaireId, active: true });
+    const stored = reference.responseId ? await Answer.find({ responseId: reference.responseId }).lean() : [];
+    const answerMap = getAnswerMapFromAnswers(stored);
+    const missing = questions
+      .filter((question) => isQuestionVisible(question, answerMap, user))
+      .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
+    if (missing.length) {
+      const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
+      error.status = 422;
+      error.code = "CHECKLIST_INCOMPLETE";
+      error.details = { checklist: questionnaire.key, missing: missing.slice(0, 50).map((question) => ({ questionKey: question.key, label: question.label })), missingCount: missing.length };
+      throw error;
+    }
+    const result = validateResponse(questionnaire, questions, answerMap, user);
+    if (!result.valid) {
+      const error = new Error(`Please correct ${result.errors.length} answer${result.errors.length === 1 ? "" : "s"} before submitting: ${result.errors.slice(0, 3).map((item) => item.message).join("; ")}`);
+      error.status = 422;
+      error.code = "CHECKLIST_INVALID";
+      error.details = { checklist: questionnaire.key, errors: result.errors.slice(0, 50).map((item) => ({ questionKey: item.questionKey, label: item.label, message: item.message })) };
+      throw error;
+    }
+  }
+}
+
 async function submitResponse(payload, user, req) {
   await assertSubmittable(payload, user);
   const result = await saveAnswers(payload, user, req, "submitted");
@@ -2312,7 +2355,7 @@ async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
 // Same create-or-patch logic as the full seed, scoped to the checklists a request actually needs, cached per template key
 // (ENSURE_TTL_MS) so repeated page loads cost nothing.
 const lazyTemplateCache = new Map(); // definition.key -> { at, promise, present }
-const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-s]/g, "").toUpperCase();
+const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-\s]/g, "").toUpperCase();
 
 function reconcileInBackground(definition, user, req) {
   const state = lazyTemplateCache.get(definition.key) || {};
@@ -3501,6 +3544,7 @@ module.exports = {
   readAnswerFile,
   PRESERVE_ANSWER_STATUS,
   submitResponse,
+  assertStrictChecklistsSubmittable,
   unlockQuestionnaire,
   updateQuestion,
   updateQuestionnaire,

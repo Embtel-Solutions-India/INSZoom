@@ -23,4 +23,26 @@ function employeeChanged(childId) {
   }
 }
 
-module.exports = { employeeChanged };
+// Automated test runs (node --test) create and save cases all the time; they must never queue pushes to a real GHL account.
+const underTestRunner = () => process.env.NODE_ENV === "test" || Boolean(process.env.NODE_TEST_CONTEXT);
+
+// A case was just created (or its visa was just chosen). Queues its GHL card / employer link in the background so the
+// request that created it returns at once; failures retry in the job worker and the periodic sweep. Same guarantees as above.
+function caseSaved(caseId) {
+  try {
+    if (!env.ghl.enabled || !env.ghl.token || !caseId || underTestRunner()) return;
+    setImmediate(() => {
+      try {
+        require("./ghlCaseOutbound")
+          .enqueueForCase(caseId)
+          .catch(() => {});
+      } catch {
+        /* never affects the caller */
+      }
+    });
+  } catch {
+    /* never affects the caller */
+  }
+}
+
+module.exports = { employeeChanged, caseSaved };

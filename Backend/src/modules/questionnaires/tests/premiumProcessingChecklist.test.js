@@ -76,7 +76,7 @@ test("point of contact and EIN apply only when a company/organization is named",
 
 test("every I-907 crosswalk source key exists in the checklist; no two edges share a PDF field", () => {
   const keys = new Set(checklist.questions.map((question) => question.key));
-  for (const edge of MAPPED_EDGES.filter((item) => item.source !== "case.visaType")) {
+  for (const edge of MAPPED_EDGES.filter((item) => !["case.visaType", "case.classification"].includes(item.source))) {
     const match = /^raw\.questionnaireAnswers\.(.+)\.value$/.exec(edge.source);
     assert.ok(match, `${edge.fieldName}: source must be a questionnaire answer`);
     assert.ok(keys.has(match[1]), `${edge.fieldName}: unknown checklist key ${match[1]}`);

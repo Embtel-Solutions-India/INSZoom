@@ -76,6 +76,33 @@ function checkboxMatch(source, value) {
   return { condition: { field: source, operator: Array.isArray(value) ? "in" : "equals", value }, transform: { type: "boolean" } };
 }
 
+// case.classification / case.filingBasis come from the case-type registry (see CanonicalBuilderService / CanonicalDataService). A
+// backend that predates them leaves case.classification empty, so every edge below falls back to case.visaType (which, for every case
+// type that existed before L-1A Extension, IS its classification): the same mapping graph prints identically on old and new code.
+const CLASSIFICATION = { source: "case.classification", fallback: "case.visaType" };
+// "this case's classification is `value`" (works with or without case.classification)
+const classificationIs = (value) => ({
+  any: [
+    { field: "case.classification", operator: "equals", value },
+    { all: [{ field: "case.classification", operator: "empty" }, { field: "case.visaType", operator: "equals", value }] },
+  ],
+});
+const classificationBox = (value) => ({ ...CLASSIFICATION, condition: classificationIs(value), transform: { type: "boolean" } });
+
+// Item 2b "Continuation of previously approved employment": ticked when the case type itself is an extension (canonical
+// case.filingBasis, e.g. L-1A Extension) OR the H-1B questionnaire's own filing-type answer says so (existing H-1B edge, unchanged).
+// The boolean transform reads the edge's source (case.classification, falling back to case.visaType; always set), the condition decides.
+function continuationMatch() {
+  return {
+    ...CLASSIFICATION,
+    condition: { any: [
+      { field: "case.filingBasis", operator: "equals", value: "extension" },
+      { field: "raw.questionnaireAnswers.employee_filingType.value", operator: "equals", value: "H1B Extension" },
+    ] },
+    transform: { type: "boolean" },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pages that belong to a different classification/supplement entirely and
 // are out of scope for this crosswalk (never shown to an H-1B or L-1A/L-1B
@@ -158,12 +185,12 @@ const MAPPED_EDGES = [
   { fieldName: "form1[0].#subform[0].Line2_DaytimePhoneNumber1_Part8[0]", source: "raw.questionnaireAnswers.employer_company_daytimePhone.value", transform: { type: "phone" }, note: "Item 4, daytime phone. Phase 4 (§I.3): (xxx) xxx-xxxx - confirmed to fit this widget's real validationRules (maxLength 15, regex allows digits/()/-/space) before wiring." },
 
   // --- Part 2: Information About This Petition (page 2) ---
-  { fieldName: "form1[0].#subform[1].Part2_ClassificationSymbol[0]", source: "case.visaType", note: "Item 1, requested classification symbol. case.visaType is always the literal string 'H-1B' for a case this template is assigned to (visaTypes:['H-1B']) - used directly rather than inventing a separate static-value mechanism (FormMappingService.applyMappingGraph does not forward a custom staticValue field from a graph edge, and that file is out of scope to modify per §3f/§8)." },
+  { fieldName: "form1[0].#subform[1].Part2_ClassificationSymbol[0]", ...CLASSIFICATION, note: "Item 1, requested classification symbol. case.classification is the case type's USCIS classification (registry, config/visaCategories.js): the case type itself for H-1B / L-1A / L-1B..., and the underlying classification for a filing-basis type (L-1A Extension prints 'L-1A')." },
   { fieldName: "form1[0].#subform[1].new[0]", source: "raw.questionnaireAnswers.employee_filingType.value", ...checkboxMatch("raw.questionnaireAnswers.employee_filingType.value", "New H1B"), note: "Item 2a, New employment." },
   { fieldName: "form1[0].#subform[1].concurrent[0]", source: "raw.questionnaireAnswers.employee_filingType.value", ...checkboxMatch("raw.questionnaireAnswers.employee_filingType.value", "H1B Concurrent"), note: "Item 2d, New concurrent employment." },
   { fieldName: "form1[0].#subform[1].change[0]", source: "raw.questionnaireAnswers.employee_filingType.value", ...checkboxMatch("raw.questionnaireAnswers.employee_filingType.value", "H1B Transfer"), note: "Item 2e, Change of employer." },
   { fieldName: "form1[0].#subform[1].amended[0]", source: "raw.questionnaireAnswers.employee_filingType.value", ...checkboxMatch("raw.questionnaireAnswers.employee_filingType.value", "H1B Amendment"), note: "Item 2f, Amended petition." },
-  { fieldName: "form1[0].#subform[1].continuation[0]", source: "raw.questionnaireAnswers.employee_filingType.value", ...checkboxMatch("raw.questionnaireAnswers.employee_filingType.value", "H1B Extension"), note: "Item 2b, Continuation of previously approved employment without change. FLAGGED: 'H1B Extension' could also mean Item 2c (Change in previously approved employment, 'previouschange' field) depending on whether anything changed - attorney should confirm this default and, ideally, a future phase should split filingType into a more precise selector." },
+  { fieldName: "form1[0].#subform[1].continuation[0]", ...continuationMatch(), note: "Item 2b, Continuation of previously approved employment without change. FLAGGED: 'H1B Extension' could also mean Item 2c (Change in previously approved employment, 'previouschange' field) depending on whether anything changed - attorney should confirm this default and, ideally, a future phase should split filingType into a more precise selector." },
   { fieldName: "form1[0].#subform[1].Part3_Line2_FamilyName[0]", source: "person.lastName", note: "Part 3 Item 3, beneficiary family name (spills onto page 2)." },
   { fieldName: "form1[0].#subform[1].Part3_Line2_GivenName[0]", source: "person.firstName", note: "Part 3 Item 3, beneficiary given name." },
   { fieldName: "form1[0].#subform[1].Part3_Line2_MiddleName[0]", source: "person.middleName", note: "Part 3 Item 3, beneficiary middle name." },
@@ -299,8 +326,8 @@ const MAPPED_EDGES = [
   // employment-workflow/questionnaires/l1a.js's fieldCatalog() (employer.*
   // paths, no canonicalPath, resolved via raw.questionnaireAnswers.* the
   // same way h1b.js's employer.* fields are - see this file's header note).
-  { fieldName: "form1[0].#subform[25].a_L1A[0]", source: "case.visaType", ...checkboxMatch("case.visaType", "L-1A"), note: "L Classification Supplement Item 3, L-1A Managerial or Executive Capacity - the classification this platform's l1a.js questionnaire targets. Sourced from case.visaType, same pattern as the H-1B Item 4a edge above." },
-  { fieldName: "form1[0].#subform[25].b_L1B[0]", source: "case.visaType", ...checkboxMatch("case.visaType", "L-1B"), note: "Item 3, L-1B Specialized Knowledge widget. Mapped for template completeness (I-129's visaTypes includes L-1B) even though l1a.js's own questionnaire content targets L-1A specifically - resolves to false for an L-1A case, as intended." },
+  { fieldName: "form1[0].#subform[25].a_L1A[0]", ...classificationBox("L-1A"), note: "L Classification Supplement Item 3, L-1A Managerial or Executive Capacity - the classification this platform's l1a.js questionnaire targets. Sourced from case.visaType, same pattern as the H-1B Item 4a edge above." },
+  { fieldName: "form1[0].#subform[25].b_L1B[0]", ...classificationBox("L-1B"), note: "Item 3, L-1B Specialized Knowledge widget. Mapped for template completeness (I-129's visaTypes includes L-1B) even though l1a.js's own questionnaire content targets L-1A specifically - resolves to false for an L-1A case, as intended." },
   { fieldName: "form1[0].#subform[25].HSupLine2_FamilyName[0]", source: "person.lastName", note: "Beneficiary family name header repeated on this supplement page. Field name inherited an 'HSup' prefix from template authoring (this widget is NOT on an H supplement page - verified via pdf-lib page mapping, it's page 24, inside the L Classification Supplement) - a template-authoring artifact, not a mapping error." },
   { fieldName: "form1[0].#subform[25].Line1_FamilyName[4]", source: "person.lastName", note: "Same beneficiary family name header, a second repeated widget instance on this page (index [4] = 5th occurrence of this field name across the whole form)." },
   { fieldName: "form1[0].#subform[25].LSuppLine3_NameofEmployerAbroad[0]", source: "raw.questionnaireAnswers.employer_foreignCompany_name.value", note: "Item, name of employer abroad." },

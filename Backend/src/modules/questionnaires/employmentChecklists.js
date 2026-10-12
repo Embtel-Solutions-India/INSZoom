@@ -933,6 +933,8 @@ function o1CriteriaQuestions(criteria, variantLabel, variantValue, groupIntro, v
 // L-1B gets its own copy of every L-1A checklist (same questions/documents).
 const L1A_VISA_TYPES = ["L1A", "L-1A"];
 const L1B_VISA_TYPES = ["L1B", "L-1B"];
+// L-1A Extension: also a copy of every L-1A checklist, under its own keys/visa (hyphen-stripped form listed too - see O1_VISA_TYPES note).
+const L1A_EXTENSION_VISA_TYPES = ["L1AEXTENSION", "L-1A Extension"];
 
 const O1_VISA_TYPES = [
   "O1",
@@ -1254,18 +1256,22 @@ function buildTnEmployeeChecklist() {
   };
 }
 
-// L-1B uses the identical L-1A questionnaire content under its own keys/visa.
-function l1bCopyOf(definition) {
-  const relabel = (text) => (typeof text === "string" ? text.replace(/L-1A/g, "L-1B") : text);
+// L-1B and L-1A Extension use the identical L-1A questionnaire content under their own keys/visa.
+// Every `l1a_*` key becomes `<keyPrefix>_*`, and "L-1A" in titles/descriptions becomes `label`.
+function l1aVariantCopyOf(definition, { keyPrefix, label, visaType, visaTypes }) {
+  const relabel = (text) => (typeof text === "string" ? text.replace(/L-1A/g, label) : text);
   return {
     ...definition,
-    key: definition.key.replace(/^l1a_/, "l1b_"),
+    key: definition.key.replace(/^l1a_/, `${keyPrefix}_`),
     title: relabel(definition.title),
     description: relabel(definition.description),
-    visaType: "L1B",
-    visaTypes: L1B_VISA_TYPES,
+    visaType,
+    visaTypes,
   };
 }
+const l1bCopyOf = (definition) => l1aVariantCopyOf(definition, { keyPrefix: "l1b", label: "L-1B", visaType: "L1B", visaTypes: L1B_VISA_TYPES });
+const l1aExtensionCopyOf = (definition) =>
+  l1aVariantCopyOf(definition, { keyPrefix: "l1aext", label: "L-1A Extension", visaType: "L1AEXTENSION", visaTypes: L1A_EXTENSION_VISA_TYPES });
 
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
@@ -1274,6 +1280,7 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildL1aEmployeeChecklist(),
   buildL1aBusinessPlanChecklist(),
   ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1bCopyOf),
+  ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1aExtensionCopyOf),
   buildE2VisaChecklist(),
   buildE2BusinessPlanChecklist(),
   buildE2SupportingDocumentsChecklist(),

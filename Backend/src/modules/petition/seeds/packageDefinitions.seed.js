@@ -310,6 +310,13 @@ const DEFINITIONS = [
   },
 ];
 
+// Case types filed as another case type's petition: the same package under their own key (L-1A Extension = an L-1A package).
+const PACKAGE_VARIANTS = [{ from: "L-1A", key: "L-1A Extension", displayName: "L-1A Extension Intracompany Transferee Petition" }];
+PACKAGE_VARIANTS.forEach(({ from, key, displayName }) => {
+  const base = DEFINITIONS.find((definition) => definition.key === from);
+  if (base) DEFINITIONS.push({ ...base, key, visaType: key, displayName });
+});
+
 async function seedPackageDefinitions() {
   const results = [];
   for (const definition of DEFINITIONS) {

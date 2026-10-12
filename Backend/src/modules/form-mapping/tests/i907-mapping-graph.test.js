@@ -28,11 +28,11 @@ async function loadCurrentI907Graph() {
   return { template, graph };
 }
 
-test("I-907 mapping graph: Classification or Eligibility Requested resolves to case.visaType, never contact.address.line2", async () => {
+test("I-907 mapping graph: Classification or Eligibility Requested resolves to case.classification, never contact.address.line2", async () => {
   const { graph } = await loadCurrentI907Graph();
   const field = graph.edges.find((edge) => /Classification or Eligibility Requested/i.test(edge.targetLabel || ""));
   assert.ok(field, "sanity: the field should still be mapped");
-  assert.equal(field.sourcePath, "case.visaType");
+  assert.equal(field.sourcePath, "case.classification");
 });
 
 test("I-907 mapping graph: Representative/Interpreter/Preparer fields never read from the applicant's own person./contact.* canonical paths", async () => {

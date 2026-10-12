@@ -52,6 +52,8 @@ const BASE_FIELDS = [
   { path: "case.caseNumber", aliases: ["case number", "case id"], type: "text" },
   { path: "case.caseType", aliases: ["case type", "petition type"], type: "text" },
   { path: "case.visaType", aliases: ["visa type", "classification", "visa category"], type: "text" },
+  { path: "case.classification", aliases: ["classification symbol", "requested classification"], type: "text" },
+  { path: "case.filingBasis", aliases: ["filing basis", "basis for classification"], type: "text" },
   { path: "case.priorityDate", aliases: ["priority date"], type: "date" },
   { path: "case.receiptNumber", aliases: ["receipt number", "uscis receipt number"], type: "text" },
   { path: "company.name", aliases: ["company name", "petitioner name", "employer name", "organization name"], type: "text" },
@@ -143,6 +145,13 @@ const BASE_FIELDS = [
   const { PERM_CANONICAL_FIELDS } = require("../../canonical/config/permCanonicalPaths");
   const known = new Set(BASE_FIELDS.map((field) => field.path));
   PERM_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
+// Form I-90 (Green Card renewal / replacement / correction / update) paths - see canonical/config/i90CanonicalPaths.js. Additive only.
+{
+  const { I90_CANONICAL_FIELDS } = require("../../canonical/config/i90CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I90_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
 class CanonicalFieldRegistryService {

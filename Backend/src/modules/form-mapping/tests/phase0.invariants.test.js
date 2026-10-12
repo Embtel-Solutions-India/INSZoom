@@ -32,7 +32,7 @@ function fanOutSources(edges) {
 // changed - which may be entirely intentional (a reviewed crosswalk edit), but it must be a
 // deliberate update to this test + the baseline doc, not a silent drift.
 const FAN_OUT_BASELINE = {
-  "i129-h1b-crosswalk (H-1B + L-1A/L-1B)": { module: i129h1bCrosswalk, totalEdges: 101, distinctSources: 68, fanOutSourceCount: 15 },
+  "i129-h1b-crosswalk (H-1B + L-1A/L-1B)": { module: i129h1bCrosswalk, totalEdges: 101, distinctSources: 69, fanOutSourceCount: 15 },
   "i129f-k1-crosswalk": { module: i129fK1Crosswalk, totalEdges: 271, distinctSources: 145, fanOutSourceCount: 35 },
   "i130-k3-crosswalk": { module: i130K3Crosswalk, totalEdges: 209, distinctSources: 113, fanOutSourceCount: 26 },
 };

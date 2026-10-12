@@ -1617,6 +1617,16 @@ exports.updateCase = async (req, res, next) => {
     ];
     const changes = {};
 
+    // IR/CR visas no longer offer Consular Processing. A case already on
+    // CONSULAR keeps it (re-saving the unchanged value is allowed).
+    if (
+      req.body.processingPath === "CONSULAR" &&
+      caseData.processingPath !== "CONSULAR" &&
+      require("../questionnaires/familyChecklists").isConsularProcessingDisabled(req.body.visaType || caseData.visaType)
+    ) {
+      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${req.body.visaType || caseData.visaType}` });
+    }
+
     allowedFields.forEach((field) => {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         changes[field] = { from: caseData[field], to: req.body[field] };

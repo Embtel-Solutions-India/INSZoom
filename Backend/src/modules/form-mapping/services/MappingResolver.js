@@ -168,7 +168,7 @@ class MappingResolver {
     if (!type) return undefined;
     if (type === "fullName" || type === "concat") {
       const fields = config.fields || ["beneficiary.firstName", "beneficiary.middleName", "beneficiary.lastName"];
-      return fields.map((field) => this.resolvePath(canonicalData, field)).filter(Boolean).join(" ").trim();
+      return fields.map((field) => this.resolvePath(canonicalData, field)).filter(Boolean).join(config.separator ?? " ").trim();
     }
     if (type === "age") return this.calculateAge(this.resolvePath(canonicalData, config.source || config.path || "beneficiary.dateOfBirth"));
     if (type === "yearsOfExperience") return Math.round(this.calculateYearsOfExperience(this.resolvePath(canonicalData, config.source || "employmentHistory", [])));
@@ -259,6 +259,19 @@ class MappingResolver {
         const parts = value.map((row) => (transform.itemPath && row && typeof row === "object" ? row[transform.itemPath] : row)).map((part) => String(part ?? "").trim()).filter(Boolean);
         return parts.length ? parts.join(transform.separator ?? ", ") : undefined;
       }
+      // One digit of a number written into single-digit boxes (Form I-90 weight: three boxes). pad = total boxes; the number is
+      // zero-padded on the left, and a number that does not fit the boxes yields nothing rather than a truncated value.
+      case "digitAt": {
+        const digits = String(value ?? "").replace(/D/g, "");
+        if (!digits) return undefined;
+        const width = Number(transform.pad || 0);
+        if (width && digits.length > width) return undefined;
+        const padded = width ? digits.padStart(width, "0") : digits;
+        return padded[Number(transform.index ?? 0)];
+      }
+      // A number (or any scalar) as plain text, for dropdown / text widgets whose options are strings.
+      case "string":
+        return value === undefined || value === null ? undefined : String(value);
       case "uppercase":
         return String(value ?? "").toUpperCase();
       case "lowercase":

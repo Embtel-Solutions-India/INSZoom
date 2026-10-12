@@ -289,6 +289,8 @@ add(
 // ===================== L FAMILY =====================
 add(i129Petition("L-1A"), i129LSupplement("L-1A"), m("L-1A", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A"), i539("L-1A"), i907("L-1A"));
 add(i129Petition("L-1B"), i129LSupplement("L-1B"), m("L-1B", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1B"), i539("L-1B"), i907("L-1B"));
+// L-1A Extension: filed as an L-1A (case.classification), so the same forms.
+add(i129Petition("L-1A Extension"), i129LSupplement("L-1A Extension"), m("L-1A Extension", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A Extension"), i539("L-1A Extension"), i907("L-1A Extension"));
 add(i539("L-2"), i539A("L-2"), i765("L-2"), ds160("L-2"));
 
 // ===================== O FAMILY =====================

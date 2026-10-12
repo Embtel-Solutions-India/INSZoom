@@ -9,6 +9,9 @@ const DOCUMENT_REQUIREMENTS = {
   "H-1B": ["passport", "updated_resume", "academic_certificates", "employment_offer_letter"],
   L1A: ["passport", "updated_resume", "beneficiary_offer_letter"],
   "L-1A": ["passport", "updated_resume", "beneficiary_offer_letter"],
+  // L-1A Extension is an L-1A filing: same documents (its checklists are copies of L-1A's).
+  L1AEXTENSION: ["passport", "updated_resume", "beneficiary_offer_letter"],
+  "L-1A Extension": ["passport", "updated_resume", "beneficiary_offer_letter"],
   // L1B has no canonical checklist yet (Backend/src/modules/employment-workflow/questionnaires/registry.js
   // only matches L-1A) — left as the old placeholder keys pending that checklist definition.
   L1B: ["passport", "resume", "employment_letter"],

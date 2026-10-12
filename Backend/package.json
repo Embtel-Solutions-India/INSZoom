@@ -33,6 +33,7 @@
     "seed:i129f-k1-mapping": "node src/modules/form-mapping/seeds/i129f-k1-mapping.seed.js",
     "seed:i130-k3-mapping": "node src/modules/form-mapping/seeds/i130-k3-mapping.seed.js",
     "seed:i907-mapping": "node src/modules/form-mapping/seeds/i907-mapping.seed.js",
+    "seed:i90-mapping": "node src/modules/form-mapping/seeds/i90-mapping.seed.js",
     "seed:i140-perm-mapping": "node src/modules/form-mapping/seeds/i140-perm-mapping.seed.js",
     "seed:i485supj-mapping": "node src/modules/form-mapping/seeds/i485supj-mapping.seed.js",
     "seed:i485-perm-mapping": "node src/modules/form-mapping/seeds/i485-perm-mapping.seed.js",

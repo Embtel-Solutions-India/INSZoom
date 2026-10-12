@@ -43,7 +43,11 @@ const FILING_PATH_OPTIONS = [
   { value: 'CONSULAR', label: 'Consular Processing / Green Card (DS-260, filing abroad)' },
 ]
 
-const RELATIONSHIP_OPTIONS = ['Husband/wife', 'Parent', 'Brother/Sister', 'Child']
+// IR/CR visas do not offer Consular Processing (mirrors the backend's
+// isConsularProcessingDisabled in questionnaires/familyChecklists.js).
+const NO_CONSULAR_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5'])
+
+const RELATIONSHIP_OPTIONS =['Husband/wife', 'Parent', 'Brother/Sister', 'Child']
 
 const PACKAGE_OPTIONS = [
   { value: '', label: 'Not selected' },
@@ -121,10 +125,20 @@ const CreateCaseModal = ({
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
   const showFilingPathFields = showFamilyPackageFields
+  const filingPathOptions = NO_CONSULAR_VISA_TYPES.has(form.visaType)
+    ? FILING_PATH_OPTIONS.filter((opt) => opt.value !== 'CONSULAR')
+    : FILING_PATH_OPTIONS
   const showFamilyFields = showFamilyPackageFields || FAMILY_SINGLE_CASE_VISA_TYPES.has(form.visaType)
   // An employer matter (L-1A/L-1B/O-1/H-1B...) is opened for the COMPANY: its name and petitioner email are the case's
   // client details. Employees (beneficiaries) are added later, each with their own visa - never at case creation.
   const isEmployerCase = showEmployerFields && !showFamilyFields
+
+  // switching to an IR/CR visa must not leave a previously chosen Consular path selected
+  useEffect(() => {
+    if (form.filingPath === 'CONSULAR' && NO_CONSULAR_VISA_TYPES.has(form.visaType)) {
+      setForm((prev) => ({ ...prev, filingPath: '' }))
+    }
+  }, [form.visaType, form.filingPath])
 
   // a lead's visa type may be a registry-only type that only resolves once the registry list has loaded
   useEffect(() => {
@@ -434,7 +448,7 @@ const CreateCaseModal = ({
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="" disabled>Select filing path</option>
-                  {FILING_PATH_OPTIONS.map((opt) => (
+                  {filingPathOptions.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
                 </select>

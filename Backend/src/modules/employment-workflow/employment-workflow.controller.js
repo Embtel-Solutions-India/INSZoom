@@ -574,6 +574,8 @@ exports.submitParticipantInfo = async (req, res, next) => {
     const caseData = await Case.findById(req.params.id);
     if (!caseData || !canAccessEmployerCase(req.user, caseData)) return res.status(404).json({ success: false, message: "Case not found" });
     const role = normalizeRole(req.user.role) === "employer" || req.body.target === "employer" ? "employer" : "employee";
+    // Opt-in server-side check for checklists that need one (the Form I-90 checklist): incomplete or invalid answers are refused here.
+    await require("../questionnaires/questionnaire.service").assertStrictChecklistsSubmittable(caseData, req.user);
     const now = new Date();
     const participant = participantService.findParticipant(caseData, { role, participantId: req.body.participantId, userId: req.user._id, email: req.user.email }) ||
       participantService.ensureParticipant(caseData, { role, participantId: req.body.participantId, userId: role === "employee" ? req.user._id : caseData.employerUser, email: req.user.email }, req.user);

@@ -306,6 +306,9 @@ exports.createFamilyCase = async (req, res, next) => {
     if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
       return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
     }
+    if (req.body.processingPath === "CONSULAR" && familyChecklists.isConsularProcessingDisabled(visaType)) {
+      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${visaType}` });
+    }
     // Lead conversion (Admin Leads -> Create Case). Previously only the
     // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
     // converted through the family path never got marked converted.

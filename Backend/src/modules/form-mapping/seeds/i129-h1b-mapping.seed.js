@@ -101,6 +101,7 @@ function buildCrosswalkGraph(template) {
       status: "active",
       transform: edge.transform || { type: "direct" },
       condition: edge.condition,
+      fallback: edge.fallback,
       note: edge.note,
       profileOwner: classifyProfileOwner(edge.source),
       allowsOccurrenceOverride: ALLOWS_OCCURRENCE_OVERRIDE,

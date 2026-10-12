@@ -470,7 +470,10 @@ const CRMCaseDetail = () => {
   // with the Green Card checklist, so it's looked up by its own
   // referenceId (from checklistsProgress) rather than by role alone - see
   // useCaseQuestionnaire's referenceId option.
-  const gcNvcEligible = isFamilyCase && caseData?.processingPath === 'CONSULAR'
+  // IR/CR visas no longer offer Consular Processing, so never offer the GC-NVC approval for them
+  // (mirrors isConsularProcessingDisabled in Backend questionnaires/familyChecklists.js).
+  const consularDisabled = /^(IR|CR)-[1-5]$/i.test(String(caseData?.visaType || '').trim())
+  const gcNvcEligible = isFamilyCase && !consularDisabled && caseData?.processingPath === 'CONSULAR'
   const gcNvcChecklistEntry = checklistsProgress.find((item) => item.key?.startsWith('gc_nvc_'))
   const gcNvcApproved = Boolean(caseData?.gcNvcChecklist?.approved)
   const gcNvcQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', {
@@ -2767,7 +2770,7 @@ const CRMCaseDetail = () => {
 
         {isGreenCardRenewalCase && (
           <QuestionnaireAnswersPanel
-            title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
+            title="Questionnaire for Form I-90 — Application to Replace Permanent Resident Card"
             questionnaire={greenCardRenewalQuestionnaire.questionnaire}
             fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
             documentQuestions={greenCardRenewalQuestionnaire.documentQuestions}
@@ -2831,7 +2834,9 @@ const CRMCaseDetail = () => {
                 <option value="">Not selected</option>
                 <option value="PETITION_ONLY">Petition Only (I-130)</option>
                 <option value="ADJUSTMENT_OF_STATUS">Adjustment of Status / Green Card (I-485)</option>
-                <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+                {(!consularDisabled || caseData.processingPath === 'CONSULAR') && (
+                  <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+                )}
               </select>
               <button
                 type="button"

@@ -421,9 +421,11 @@ class CaseLifecycleOrchestrator {
     const visaFormMappingService = require("../form-registry/visaFormMapping.service");
     const questionnaireService = require("../questionnaires/questionnaire.service");
     const logger = require("../../utils/logger");
+    // Read the case afresh: orchestrateOne() above assigns the case's checklists through its own copy of the document, so the in-memory
+    // `caseData` passed in does not show them yet - checking it would assign the same checklist a second time (two identical references).
     const targets = caseData.childCases?.length
       ? await Case.find({ _id: { $in: caseData.childCases } })
-      : [caseData];
+      : [(await Case.findById(caseData._id)) || caseData];
     for (const target of targets) {
       try {
         const resolved = await visaFormMappingService.resolveChecklistsForCase(target);

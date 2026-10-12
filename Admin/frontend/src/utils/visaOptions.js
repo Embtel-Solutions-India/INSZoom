@@ -7,6 +7,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'h1b', label: 'H-1B' },
   { value: 'h1b1', label: 'H-1B1' },
   { value: 'l1a', label: 'L-1A' },
+  { value: 'l1aextension', label: 'L-1A Extension', canonicalLabel: 'L-1A Extension' },
   { value: 'l1b', label: 'L-1B' },
   { value: 'o1a', label: 'O-1A' },
   { value: 'o1b', label: 'O-1B' },

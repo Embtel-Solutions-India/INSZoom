@@ -1342,6 +1342,16 @@ const caseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// GHL: every new case (whichever workflow created it), and a case whose visa was just chosen, gets its GHL card queued.
+// Background only - never delays or fails the save; a no-op unless the GHL integration is enabled.
+caseSchema.pre("save", function flagGhlCaseSync(next) {
+  this.$locals.ghlNeedsSync = this.isNew || this.isModified("visaType") || this.isModified("visaSelectionStatus");
+  next();
+});
+caseSchema.post("save", function queueGhlCaseSync(doc) {
+  if (doc.$locals?.ghlNeedsSync) require("../integrations/ghl/ghlOutboundHooks").caseSaved(doc._id);
+});
+
 caseSchema.pre("validate", function gateNewCaseChecklists(next) {
   if (this.isNew && this.checklistApproval?.required === undefined) this.set("checklistApproval.required", true);
   next();
