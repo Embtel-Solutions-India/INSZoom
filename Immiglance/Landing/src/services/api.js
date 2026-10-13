@@ -632,8 +632,8 @@ export const usersApi = {
 };
 
 // ── Payments ───────────────────────────────────────
-const ANSWER_FILE_DIRECT_LIMIT = 3 * 1024 * 1024;
-const ANSWER_FILE_CHUNK_SIZE = 3 * 1024 * 1024;
+const ANSWER_FILE_DIRECT_LIMIT = 700 * 1024;
+const ANSWER_FILE_CHUNK_SIZE = 700 * 1024;
 const ANSWER_FILE_PARALLEL_CHUNKS = 4;
 async function uploadAnswerFileInChunks(id, payload, file) {
   const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, {

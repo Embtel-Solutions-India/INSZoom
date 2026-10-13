@@ -306,8 +306,8 @@ export const documentsApi = {
   cancelUpload: (uploadId) => api.delete(`/documents/uploads/sessions/${uploadId}`),
   uploadResumable: async (file, category, documentType, context = {}, controls = {}) => {
     // chunks stay small so no single request exceeds what a hosting proxy accepts (413 above ~5 MB)
-    const chunkSize = 2 * 1024 * 1024;
-    if (file.size <= 3 * 1024 * 1024) {
+    const chunkSize = 700 * 1024;
+    if (file.size <= 700 * 1024) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("category", category);
@@ -659,8 +659,8 @@ export const usersApi = {
 };
 
 // ── Payments ───────────────────────────────────────
-const ANSWER_FILE_DIRECT_LIMIT = 3 * 1024 * 1024;
-const ANSWER_FILE_CHUNK_SIZE = 3 * 1024 * 1024;
+const ANSWER_FILE_DIRECT_LIMIT = 700 * 1024;
+const ANSWER_FILE_CHUNK_SIZE = 700 * 1024;
 const ANSWER_FILE_PARALLEL_CHUNKS = 4;
 async function uploadAnswerFileInChunks(id, payload, file) {
   const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, {
