@@ -51,6 +51,9 @@ router.get("/:id/visible-questions", authenticate, authorizeRoles(...readerRoles
 router.get("/:id/answers", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getAnswers);
 router.post("/:id/answers", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.saveAnswer);
 router.post("/:id/answers/files", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), upload.array("files", 10), ctrl.saveFileAnswer);
+router.post("/:id/answers/files/sessions", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.createAnswerFileSession);
+router.put("/:id/answers/files/sessions/:uploadId/chunks/:chunkIndex", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), upload.single("chunk"), ctrl.uploadAnswerFileChunk);
+router.post("/:id/answers/files/sessions/:uploadId/complete", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.completeAnswerFileSession);
 router.get("/:id/answers/files/download", authenticate, authorizeRoles(...caseReaderRoles), authorizePermissions("questionnaires:read"), ctrl.downloadAnswerFile);
 router.delete("/:id/answers/files", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:update"), ctrl.removeAnswerFile);
 router.get("/:id/progress", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getProgress);

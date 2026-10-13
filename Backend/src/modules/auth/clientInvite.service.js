@@ -21,8 +21,7 @@ async function createClientInviteToken(user) {
 // Used by GET /auth/invite/:token (shared with the employee path).
 async function getClientInviteDetails(token) {
   const user = await User.findOne({
-    inviteTokenHash: hashToken(token),
-    inviteTokenExpiresAt: { $gt: new Date() },
+    ...User.inviteTokenFilter(hashToken(token)),
     role: "client",
   }).select("+inviteTokenHash");
   if (!user) return null;
@@ -34,8 +33,7 @@ async function getClientInviteDetails(token) {
 // Returns the activated user, or null for invalid/expired token.
 async function acceptClientInvite(token, newPassword, username) {
   const user = await User.findOne({
-    inviteTokenHash: hashToken(token),
-    inviteTokenExpiresAt: { $gt: new Date() },
+    ...User.inviteTokenFilter(hashToken(token)),
     role: "client",
   }).select("+inviteTokenHash");
   if (!user) return null;

@@ -339,17 +339,29 @@ add(
 );
 
 // ===================== TN =====================
+// Bare "TN" is what the Admin New-case list creates (TN Canada / TN Mexico are the country variants); it carries the same USCIS forms.
+// The Trade Agreement Supplement is the part of the TN I-129 that carries the TN-specific answers (same component H-1B1 and E-3 already use).
+add(i129TradeAgreementSupplement("TN"), i129TradeAgreementSupplement("TN Canada"), i129TradeAgreementSupplement("TN Mexico"));
+add(
+  ds160("TN"),
+  i129Petition("TN", { provisioningType: COND, initialCaseCreation: false, notes: "USCIS extension/change/status route only - TN is typically adjudicated at the border or consulate, not via I-129." }),
+  i539("TN"),
+  i907("TN"),
+  g28("TN")
+);
 add(
   ds160("TN Canada"),
   i129Petition("TN Canada", { provisioningType: COND, initialCaseCreation: false, notes: "USCIS extension/change/status route only - TN Canada is typically adjudicated at the border, not via I-129." }),
   i539("TN Canada"),
-  i907("TN Canada")
+  i907("TN Canada"),
+  g28("TN Canada")
 );
 add(
   ds160("TN Mexico", { provisioningType: AUTO, initialCaseCreation: true }),
   i129Petition("TN Mexico", { provisioningType: COND, initialCaseCreation: false }),
   i539("TN Mexico"),
-  i907("TN Mexico")
+  i907("TN Mexico"),
+  g28("TN Mexico")
 );
 
 // ===================== K FAMILY =====================

@@ -305,8 +305,9 @@ export const documentsApi = {
   completeUpload: (uploadId) => api.post(`/documents/uploads/sessions/${uploadId}/complete`, {}),
   cancelUpload: (uploadId) => api.delete(`/documents/uploads/sessions/${uploadId}`),
   uploadResumable: async (file, category, documentType, context = {}, controls = {}) => {
-    const chunkSize = 5 * 1024 * 1024;
-    if (file.size <= chunkSize) {
+    // chunks stay small so no single request exceeds what a hosting proxy accepts (413 above ~5 MB)
+    const chunkSize = 2 * 1024 * 1024;
+    if (file.size <= 3 * 1024 * 1024) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("category", category);
@@ -658,6 +659,47 @@ export const usersApi = {
 };
 
 // ── Payments ───────────────────────────────────────
+const ANSWER_FILE_DIRECT_LIMIT = 3 * 1024 * 1024;
+const ANSWER_FILE_CHUNK_SIZE = 3 * 1024 * 1024;
+const ANSWER_FILE_PARALLEL_CHUNKS = 4;
+async function uploadAnswerFileInChunks(id, payload, file) {
+  const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, {
+    originalName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    expectedSize: file.size,
+    chunkSize: ANSWER_FILE_CHUNK_SIZE,
+  });
+  const session = created.session || created.data?.session;
+  // Several chunks go up at the same time (each one is a separate small request, so a proxy's body limit is never reached); a failed chunk is retried.
+  let nextChunk = 0;
+  let failure = null;
+  const sendChunks = async () => {
+    while (!failure && nextChunk < session.totalChunks) {
+      const index = nextChunk;
+      nextChunk += 1;
+      const start = index * session.chunkSize;
+      const chunk = file.slice(start, Math.min(start + session.chunkSize, file.size), file.type);
+      let lastError;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const fd = new FormData();
+          fd.append("chunk", chunk, file.name);
+          await api.put(`/questionnaires/${id}/answers/files/sessions/${session.uploadId}/chunks/${index}`, fd);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+        }
+      }
+      if (lastError) { failure = lastError; return; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(ANSWER_FILE_PARALLEL_CHUNKS, session.totalChunks) }, sendChunks));
+  if (failure) throw failure;
+  return api.post(`/questionnaires/${id}/answers/files/sessions/${session.uploadId}/complete`, payload || {});
+}
+
 export const questionnairesApi = {
   // after Save progress: tells the case's case manager (email, throttled server-side). Never blocks or fails a save.
   notifyProgressSaved: (caseId, body = {}) => api.post(`/questionnaires/case/${caseId}/progress-saved`, body),
@@ -668,13 +710,22 @@ export const questionnairesApi = {
   listCaseChecklists: (caseId) => api.get(`/questionnaires/case/${caseId}/checklists`),
   getTemplate: (id) => api.get(`/questionnaires/${id}`),
   saveAnswer: (id, payload) => api.post(`/questionnaires/${id}/answers`, payload),
-  saveFileAnswer: (id, payload, files = []) => {
-    const fd = new FormData();
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) fd.append(key, value);
-    });
-    files.forEach((file) => fd.append("files", file));
-    return api.post(`/questionnaires/${id}/answers/files`, fd);
+  // Files up to ANSWER_FILE_DIRECT_LIMIT go up in one multipart request. Larger ones (up to the 50 MB limit) are sent in small chunks so no single
+  // request exceeds what a hosting proxy accepts (a 413 "Request Entity Too Large" above ~5 MB), then assembled and saved by the server.
+  saveFileAnswer: async (id, payload, files = []) => {
+    const small = files.filter((file) => file.size <= ANSWER_FILE_DIRECT_LIMIT);
+    const large = files.filter((file) => file.size > ANSWER_FILE_DIRECT_LIMIT);
+    let result;
+    if (small.length || !large.length) {
+      const fd = new FormData();
+      Object.entries(payload || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) fd.append(key, value);
+      });
+      small.forEach((file) => fd.append("files", file));
+      result = await api.post(`/questionnaires/${id}/answers/files`, fd);
+    }
+    for (const file of large) result = await uploadAnswerFileInChunks(id, payload, file);
+    return result;
   },
   // Removes ONE entry (by storageKey) from a file question's answer.
   removeAnswerFile: (id, payload) => api.delete(`/questionnaires/${id}/answers/files`, payload),

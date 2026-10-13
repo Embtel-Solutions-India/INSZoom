@@ -143,4 +143,4 @@ async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = n
   return result;
 }
 
-module.exports = { migrateCaseFormsToEdition, FROZEN_STATUSES };
+module.exports = { migrateCaseFormsToEdition, FROZEN_STATUSES, leaves };

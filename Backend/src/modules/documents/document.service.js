@@ -658,14 +658,16 @@ async function storeUploadChunk(uploadId, chunkIndexValue, file, user) {
     return session;
   }
   await storageService.storeImmutableBuffer(uploadSessionChunkKey(uploadId, chunkIndex), file.buffer);
-  session.receivedChunks.push(chunkIndex);
-  session.receivedChunks.sort((left, right) => left - right);
-  session.chunkChecksums.set(String(chunkIndex), incomingChecksum);
-  session.receivedBytes += file.buffer.length;
-  session.status = "uploading";
-  session.expiresAt = new Date(Date.now() + UPLOAD_SESSION_TTL_MS);
-  await session.save();
-  return session;
+  // Atomic: the client sends several chunks of one upload in parallel, so a load-modify-save of the whole session would collide (VersionError).
+  await DocumentUploadSession.updateOne(
+    { uploadId, receivedChunks: { $ne: chunkIndex } },
+    {
+      $push: { receivedChunks: chunkIndex },
+      $set: { [`chunkChecksums.${chunkIndex}`]: incomingChecksum, status: "uploading", expiresAt: new Date(Date.now() + UPLOAD_SESSION_TTL_MS) },
+      $inc: { receivedBytes: file.buffer.length },
+    }
+  );
+  return DocumentUploadSession.findOne({ uploadId });
 }
 
 async function completeUploadSession(uploadId, user, req) {
@@ -688,10 +690,7 @@ async function completeUploadSession(uploadId, user, req) {
   session.attempts += 1;
   await session.save();
   try {
-    const chunks = [];
-    for (let chunkIndex = 0; chunkIndex < session.totalChunks; chunkIndex += 1) {
-      chunks.push(await storageService.readBuffer(uploadSessionChunkKey(uploadId, chunkIndex)));
-    }
+    const chunks = await Promise.all(Array.from({ length: session.totalChunks }, (_, chunkIndex) => storageService.readBuffer(uploadSessionChunkKey(uploadId, chunkIndex))));
     const buffer = Buffer.concat(chunks);
     const checksum = storageService.checksum(buffer);
     if (buffer.length !== session.expectedSize || (session.expectedChecksum && checksum !== session.expectedChecksum)) {
@@ -725,6 +724,37 @@ async function completeUploadSession(uploadId, user, req) {
     await session.save();
     throw error;
   }
+}
+
+// Chunked upload that is NOT a Document: assembles the uploaded chunks into one file for a caller that stores it itself (checklist file
+// answers). Same session, storage and integrity rules as completeUploadSession; finish() marks the session done and removes the chunks.
+async function readUploadSessionFile(uploadId, user) {
+  const session = await assertUploadSessionAccess(uploadId, user);
+  if (!["initiated", "uploading", "failed"].includes(session.status)) {
+    const error = new Error(`Upload session cannot be completed while ${session.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+  if (session.receivedChunks.length !== session.totalChunks || session.receivedBytes !== session.expectedSize) {
+    const error = new Error("Upload is incomplete");
+    error.statusCode = 409;
+    error.details = { receivedChunks: session.receivedChunks.length, totalChunks: session.totalChunks };
+    throw error;
+  }
+  const chunks = await Promise.all(Array.from({ length: session.totalChunks }, (_, chunkIndex) => storageService.readBuffer(uploadSessionChunkKey(uploadId, chunkIndex))));
+  const buffer = Buffer.concat(chunks);
+  if (buffer.length !== session.expectedSize || (session.expectedChecksum && storageService.checksum(buffer) !== session.expectedChecksum)) {
+    const error = new Error("Assembled file failed integrity validation");
+    error.statusCode = 422;
+    error.code = "UPLOAD_INTEGRITY_FAILED";
+    throw error;
+  }
+  const removeChunks = () => Promise.all(Array.from({ length: session.totalChunks }, (_, chunkIndex) => storageService.deleteObject(uploadSessionChunkKey(uploadId, chunkIndex)).catch(() => false)));
+  return {
+    file: { buffer, size: buffer.length, originalname: session.originalName, mimetype: session.mimeType },
+    finish: async () => { session.status = "completed"; session.lastError = undefined; await session.save(); removeChunks().catch(() => null); },
+    discard: async () => { session.status = "cancelled"; await session.save().catch(() => null); await removeChunks(); },
+  };
 }
 
 async function cancelUploadSession(uploadId, user) {
@@ -1127,6 +1157,7 @@ module.exports = {
   canViewDocumentIntelligence,
   canReviewDocument,
   cancelUploadSession,
+  readUploadSessionFile,
   completeUploadSession,
   createUploadSession,
   createDocumentFromFile,

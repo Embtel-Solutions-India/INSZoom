@@ -345,6 +345,8 @@ class CaseLifecycleOrchestrator {
     await this.provisionRequiredForms(caseData, user, req);
     await this.provisionPetitionDraft(caseData, user, req);
     await this.provisionChecklistAssignments(caseData, user, req);
+    // an employee case (or the employee cases of this principal) picks up the principal's already-given approval of the employee checklist
+    await require("../questionnaires/case-checklist.service").inheritParentApprovals(caseData._id, user).catch((error) => require("../../utils/logger").error("inherit_parent_approvals_failed", { caseId: String(caseData._id), error: error.message }));
     const result = await this.recalculate(caseData._id, user, req, "case_initialized");
     await this.notifyCaseCreated(caseData, result, user, req);
     return { ...result, knowledgePlan: knowledge?.knowledgePlan || result.case?.knowledgePlan };

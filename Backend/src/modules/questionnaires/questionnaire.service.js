@@ -1697,6 +1697,14 @@ function withRowLock(lockKey, task) {
   return run;
 }
 
+// An employee case is released by approving its checklist on the employee case OR on its principal (employer) case - the Admin approves from the principal workspace.
+async function isApprovedIncludingParent(caseData, entry) {
+  if (isApproved(caseData, entry)) return true;
+  if (!caseData?.parentCase) return false;
+  const parent = await Case.findById(caseData.parentCase).select("checklistApproval").lean();
+  return Boolean(parent) && isApproved(parent, entry);
+}
+
 async function saveFileAnswer(payload, files, user, req, { preserveStatus = false } = {}) {
   if (!files?.length) {
     const error = new Error("No file was provided");
@@ -2874,7 +2882,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
-  if (isGated(referenceCase) && isClientSideUser(user) && !isApproved(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest })) {
+  if (isGated(referenceCase) && isClientSideUser(user) && !(await isApprovedIncludingParent(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest }))) {
     const error = new Error("Your case manager is still preparing this checklist. You will be notified when it is ready.");
     error.status = 403;
     error.code = "CHECKLIST_NOT_APPROVED";
@@ -3146,7 +3154,9 @@ async function listCaseChecklists(caseId, user) {
   }
   let resolved = await resolveCaseQuestionnaires(caseId);
   const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
-  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => isApproved(caseData, gateEntry(entry)));
+  const parentCaseForGate = caseData?.parentCase ? await Case.findById(caseData.parentCase).select("checklistApproval").lean() : null;
+  const approvedHere = (entry) => isApproved(caseData, gateEntry(entry)) || Boolean(parentCaseForGate && isApproved(parentCaseForGate, gateEntry(entry)));
+  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => approvedHere(entry));
   timer.mark("questionnaire_resolution", { count: resolved.length });
   const responseIds = resolved.map((entry) => entry.responseId).filter(Boolean);
   const answers = responseIds.length ? await Answer.find({ responseId: { $in: responseIds } }).lean() : [];
@@ -3187,7 +3197,7 @@ async function listCaseChecklists(caseId, user) {
       referenceId: entry.referenceId,
       staffRequest: Boolean(entry.staffRequest),
       checklistId: gateChecklistId(gateEntry(entry)),
-      clientApproval: isApproved(caseData, gateEntry(entry)) ? "approved" : "draft",
+      clientApproval: approvedHere(entry) ? "approved" : "draft",
       caseSpecific: String(entry.questionnaire.key || "").includes("__case_"),
       questionnaireId: entry.questionnaire._id,
       key: entry.questionnaire.key,

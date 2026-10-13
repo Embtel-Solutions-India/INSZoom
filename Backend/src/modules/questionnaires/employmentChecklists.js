@@ -260,9 +260,46 @@ const EMPLOYEE_CANONICAL_PATHS = {
   "personal.currentUsAddress.zipCode": "contact.address.zip",
   "immigrationStatus.currentVisaStatus": "immigration.currentStatus",
   "immigrationStatus.i94Number": "immigration.i94.number",
+  // same shared meaning on every visa's employee section (TN is the first catalog that asks all of these)
+  "personal.ssn": "person.ssn",
+  "personal.aNumber": "person.alienNumber",
+  "personal.provinceStateOfBirth": "person.provinceOfBirth",
+  "personal.sevisNumber": "immigration.sevisNumber",
+  "personal.currentUsAddress": "contact.address.formatted",
+  "passport.number": "person.passport.number",
+  "passport.issueDate": "person.passport.issueDate",
+  "passport.expirationDate": "person.passport.expirationDate",
+  "immigrationStatus.dateOfLastArrival": "immigration.lastArrivalDate",
+  "immigrationStatus.statusExpirationDate": "immigration.currentStatusExpirationDate",
+  "immigrationStatus.foreignAddress": "contact.foreignAddress.formatted",
 };
 
-function canonicalPathForEntry(entry) {
+// Employer/petitioner side. Opt-in per checklist (options.employerCanonicalPaths) so another visa's employer answers keep flowing exactly as
+// they do today; the canonical PartyAliasService then exposes these as petitioner.* for every form.
+const EMPLOYER_CANONICAL_PATHS = {
+  "company.legalName": "company.name",
+  "company.fein": "company.ein",
+  "company.businessType": "company.industry",
+  "company.yearEstablished": "company.yearEstablished",
+  "company.totalUsEmployees": "company.numberOfEmployees",
+  "company.grossAnnualIncome": "company.grossAnnualIncome",
+  "company.netAnnualIncome": "company.netAnnualIncome",
+  "company.website": "company.website",
+  "company.address": "company.address.formatted",
+  "signingPerson.firstName": "company.authorizedRepresentative.firstName",
+  "signingPerson.lastName": "company.authorizedRepresentative.lastName",
+  "signingPerson.title": "company.authorizedRepresentative.title",
+  "signingPerson.email": "company.authorizedRepresentative.email",
+  "signingPerson.mobilePhone": "company.authorizedRepresentative.phone",
+  "position.jobTitle": "employment.jobTitle",
+  "position.salary": "employment.wage",
+};
+
+function canonicalPathForEntry(entry, options = {}) {
+  if (options.employerCanonicalPaths && entry.path.startsWith("employer.")) {
+    const employerPath = EMPLOYER_CANONICAL_PATHS[entry.path.replace(/^employer\./, "")];
+    return employerPath ? { canonicalPath: employerPath } : undefined;
+  }
   if (!entry.path.startsWith("employee.")) return undefined;
   const canonicalPath = EMPLOYEE_CANONICAL_PATHS[entry.path.replace(/^employee\./, "")];
   return canonicalPath ? { canonicalPath } : undefined;
@@ -287,7 +324,7 @@ function conditionalLogicFromEntry(entry) {
 // filtered to entries belonging to this checklist. Tracks section order-of-
 // first-appearance and a per-section counter so `order` is stable and the
 // returned `sections` list matches what ensureDefaultVisaTemplates() expects.
-function fieldQuestionsFromCatalog(catalogEntries, visibility) {
+function fieldQuestionsFromCatalog(catalogEntries, visibility, options = {}) {
   const sectionOrder = [];
   const counters = new Map();
   const questions = catalogEntries.map((entry) => {
@@ -309,7 +346,7 @@ function fieldQuestionsFromCatalog(catalogEntries, visibility) {
       metadata: entry.repeatable
         ? { sourcePath: entry.path, repeatableFields: REPEATABLE_FIELDS[entry.path] || [], ...(entry.masterDataPath ? { masterDataPath: entry.masterDataPath } : {}) }
         : { sourcePath: entry.path, ...(entry.masterDataPath ? { masterDataPath: entry.masterDataPath } : {}) },
-      mapping: canonicalPathForEntry(entry),
+      mapping: canonicalPathForEntry(entry, options),
       visibility,
       repeatable: Boolean(entry.repeatable),
       conditionalLogic: conditionalLogicFromEntry(entry),
@@ -1221,6 +1258,7 @@ function buildTnEmployerChecklist() {
   const fieldResult = fieldQuestionsFromCatalog(
     tn.fieldCatalog().filter((entry) => entry.section === "employer"),
     visibility,
+    { employerCanonicalPaths: true },
   );
   return {
     key: "tn_employer_checklist",

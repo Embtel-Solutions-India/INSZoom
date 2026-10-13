@@ -479,6 +479,50 @@ exports.saveFileAnswer = async (req, res, next) => {
   }
 };
 
+// Large checklist files arrive in small chunks (a hosting proxy may cap a single request body well below the 50 MB file limit). The chunks are
+// stored through the shared upload-session machinery, then assembled and saved exactly like a normal multipart upload (same authorization,
+// same per-file / per-row limits).
+exports.createAnswerFileSession = async (req, res, next) => {
+  try {
+    const documentService = require("../documents/document.service");
+    const session = await documentService.createUploadSession({
+      originalName: req.body.originalName,
+      mimeType: req.body.mimeType || "application/octet-stream",
+      expectedSize: req.body.expectedSize,
+      chunkSize: req.body.chunkSize,
+      checksum: req.body.checksum,
+    }, req.user);
+    res.status(201).json({ success: true, session });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.uploadAnswerFileChunk = async (req, res, next) => {
+  try {
+    const documentService = require("../documents/document.service");
+    const session = await documentService.storeUploadChunk(req.params.uploadId, req.params.chunkIndex, req.file, req.user);
+    res.json({ success: true, session });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.completeAnswerFileSession = async (req, res, next) => {
+  const documentService = require("../documents/document.service");
+  let assembled;
+  try {
+    assembled = await documentService.readUploadSessionFile(req.params.uploadId, req.user);
+    const staffPreserve = caseService.isStaff(req.user) && isPreserveStatusRequested(req.body);
+    const result = await questionnaireService.saveFileAnswer({ ...req.body, questionnaireId: req.params.id }, [assembled.file], req.user, req, { preserveStatus: staffPreserve });
+    await assembled.finish();
+    res.json({ success: true, data: result });
+  } catch (error) {
+    if (assembled && error.statusCode !== 409) await assembled.discard().catch(() => null);
+    next(error);
+  }
+};
+
 exports.downloadAnswerFile = async (req, res, next) => {
   try {
     const file = await questionnaireService.readAnswerFile({ ...req.query }, req.user);

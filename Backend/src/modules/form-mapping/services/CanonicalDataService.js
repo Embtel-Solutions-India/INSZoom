@@ -32,6 +32,10 @@ class CanonicalDataService {
         filingBasis: profile.case?.filingBasis === undefined ? getFilingBasis(caseData.visaType) : profile.case.filingBasis,
       };
     }
+    // generic party roots (beneficiary.* / petitioner.*): a profile cached before they existed gets them here too (on a copy, never overwriting)
+    profile.beneficiary = structuredClone(profile.beneficiary || {});
+    profile.petitioner = structuredClone(profile.petitioner || {});
+    require("../../canonical/services/PartyAliasService").apply(profile);
     return {
       ...profile,
       canonicalProfile: profile,

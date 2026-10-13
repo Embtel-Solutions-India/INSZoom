@@ -13,6 +13,7 @@ const FormVersionService = require("./FormVersionService");
 const VersionManagementService = require("../../uscis-lifecycle/services/VersionManagementService");
 const AutoFillService = require("../../form-mapping/services/AutoFillService");
 const { migrateMappingToEdition, checkEditionReady, findPreviousEdition } = require("../../form-mapping/services/EditionMigrationService");
+const { deriveVisaTypesFromRegistry } = require("../seeds/deriveVisaTypesFromRegistry");
 const { migrateCaseFormsToEdition } = require("../../form-mapping/services/CaseFormEditionMigrationService");
 const BiographicMappingService = require("../../form-mapping/services/BiographicMappingService");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
@@ -225,6 +226,14 @@ async function activateOrPromote(template, user, req) {
       readiness = { ready: false, problems: [error.message] };
     }
     if (!readiness.ready) logger.info("uscis_form_new_edition_not_ready", { formCode: template.formCode, version: template.version, problems: readiness.problems });
+  }
+  // A template with no visa-type scope can never be provisioned onto a case (Add then silently does nothing): always scope it from the registry.
+  try {
+    const derived = await deriveVisaTypesFromRegistry(template.formCode);
+    const merged = Array.from(new Set([...(template.visaTypes || []), ...derived]));
+    if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
+  } catch (error) {
+    logger.info("uscis_form_visa_types_scope_failed", { formCode: template.formCode, error: error.message });
   }
   const autoActivate = (Boolean(migration?.activated) && Boolean(readiness?.ready)) || String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true";
   let activationBlockedReason = null;

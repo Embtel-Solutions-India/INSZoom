@@ -710,6 +710,9 @@ class CanonicalBuilderService {
     // ("L-1A Extension" -> "L-1A"), and the filing basis it adds ("extension"). Forms read these canonical paths only.
     merged.profile.case.classification = getClassification(sources.caseRecord.visaType);
     merged.profile.case.filingBasis = getFilingBasis(sources.caseRecord.visaType);
+    // Generic party roots (beneficiary.* / petitioner.*) that every form maps against - filled from person/contact/immigration/company and free-text
+    // addresses, never overwriting a value already present.
+    require("./PartyAliasService").apply(merged.profile);
     merged.profile.metadata = {
       caseId,
       beneficiaryId: idOf(sources.beneficiary),

@@ -516,6 +516,20 @@ async function reconcileConditionalForms(caseData, user, req, conditions) {
 // picks them up with no changes of its own; reconciliation (archiving a
 // form whose condition became false) happens separately in
 // ensureAssignedForms itself, not here, so this function stays a pure read.
+// Forms the VisaFormMapping registry marks CONDITIONAL for this visa type are offered to the case manager (Add / Not applicable), never attached
+// just because the template's legacy visaTypes list names the visa. Cached briefly per visa type (the registry rarely changes).
+const conditionalCodesCache = new Map();
+async function registryConditionalFormCodes(visaType) {
+  if (!visaType) return new Set();
+  const cached = conditionalCodesCache.get(visaType);
+  if (cached && cached.expiresAt > Date.now()) return cached.codes;
+  const VisaFormMapping = require("../../models/VisaFormMapping");
+  const rows = await VisaFormMapping.find({ visaType, active: true, agency: "USCIS", provisioningType: "CONDITIONAL", componentType: "STANDALONE_FORM" }).select("formNumber").lean();
+  const codes = new Set(rows.map((row) => normalizeFormCode(row.formNumber)));
+  conditionalCodesCache.set(visaType, { codes, expiresAt: Date.now() + TEMPLATE_CACHE_TTL_MS });
+  return codes;
+}
+
 async function latestTemplatesByAssignmentRules(caseData, user, req) {
   const timer = createPerfTimer("uscis_template_resolution_performance", { caseId: caseData?._id, visaType: caseData?.visaType });
   const templates = await activeTemplatesCached();
@@ -541,7 +555,8 @@ async function latestTemplatesByAssignmentRules(caseData, user, req) {
   // templateAppliesToCase directly (every family form's registry status
   // came back TEMPLATE_RULE_CONFLICT instead).
   const skipLegacyScan = caseData.visaCategory === "Family";
-  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData))).forEach((template) => {
+  const conditionalCodes = skipLegacyScan ? new Set() : await registryConditionalFormCodes(caseData.visaType);
+  (skipLegacyScan ? [] : templates.filter((template) => templateAppliesToCase(template, caseData) && !conditionalCodes.has(normalizeFormCode(template.formCode || template.formNumber)))).forEach((template) => {
     const code = normalizeFormCode(template.formCode || template.formNumber);
     const existing = grouped.get(code);
     if (!existing || latestTemplateSort(template, existing) < 0) grouped.set(code, template);
