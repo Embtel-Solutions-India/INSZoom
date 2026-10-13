@@ -401,20 +401,20 @@ export const questionnairesApi = {
   saveFileAnswer: async (id, formData) => {
     formData.append('preserveStatus', 'true')
     const files = formData.getAll('files')
-    const large = files.filter((file) => file.size > 3 * 1024 * 1024)
+    const large = files.filter((file) => file.size > 700 * 1024)
     if (!large.length) return api.post(`/questionnaires/${id}/answers/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
     const payload = {}
     for (const [key, value] of formData.entries()) if (key !== 'files') payload[key] = value
     let result
     for (const file of files) {
-      if (file.size <= 3 * 1024 * 1024) {
+      if (file.size <= 700 * 1024) {
         const fd = new FormData()
         Object.entries(payload).forEach(([key, value]) => fd.append(key, value))
         fd.append('files', file)
         result = await api.post(`/questionnaires/${id}/answers/files`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
         continue
       }
-      const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, { originalName: file.name, mimeType: file.type || 'application/octet-stream', expectedSize: file.size, chunkSize: 3 * 1024 * 1024 })
+      const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, { originalName: file.name, mimeType: file.type || 'application/octet-stream', expectedSize: file.size, chunkSize: 700 * 1024 })
       const session = created.data.session
       // several chunks go up at once (each a separate small request); a failed chunk is retried
       let nextChunk = 0
