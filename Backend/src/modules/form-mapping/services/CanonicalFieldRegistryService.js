@@ -161,6 +161,13 @@ const BASE_FIELDS = [
   SB1_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// Form I-907 (Premium Processing) checklist paths - see canonical/config/i907CanonicalPaths.js. Additive only.
+{
+  const { I907_CANONICAL_FIELDS } = require("../../canonical/config/i907CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I907_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 class CanonicalFieldRegistryService {
   static tokenize(value = "") {
     return String(value)

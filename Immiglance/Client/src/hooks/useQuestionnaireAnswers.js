@@ -165,6 +165,7 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
   // Items still blank. Nothing is mandatory to SAVE, but Submit needs every visible item filled, so this is the count that
   // gates the Submit button (name kept for existing callers). Computed locally so unsaved edits count immediately.
   const missingRequiredCount = useMemo(() => visibleQuestions.filter((question) => {
+    if (question.metadata?.optional) return false; // opt-in: an optional question never blocks Submit
     const key = questionKey(question);
     return fieldItemStatus(answerByKey.get(key), answers[key]).status === STATUS.NOT_STARTED;
   }).length, [visibleQuestions, answers, answerByKey]);

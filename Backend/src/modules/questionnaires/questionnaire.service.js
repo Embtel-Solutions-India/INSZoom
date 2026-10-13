@@ -892,7 +892,8 @@ async function calculateCompletion(questionnaire, answerMap, user) {
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
   // "required" in the returned shape now means "needed for a complete submission": every visible question. Nothing is
   // mandatory to save, but Submit needs 100%.
-  const required = visibleQuestions;
+  // A question flagged metadata.optional never blocks Submit (opt-in per question).
+  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
   const answeredRequired = required.filter((question) => {
     const value = getAnswerValue(answerMap, question.key);
     return value !== undefined && value !== null && value !== "";
@@ -980,8 +981,8 @@ async function resolveVisibleQuestions(questionnaire, answerMap, user) {
 async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
   const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
-  // Every visible question is needed for a complete submission (nothing is mandatory to save).
-  const required = visibleQuestions;
+  // Every visible question is needed for a complete submission (nothing is mandatory to save) - except one flagged metadata.optional.
+  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
   const answeredRequiredKeys = new Set(
     required.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key))).map((question) => question.key)
   );
@@ -1871,6 +1872,7 @@ async function assertSubmittable(payload, user) {
   });
   const missing = questions
     .filter((question) => isQuestionVisible(question, answerMap, user))
+    .filter((question) => !question.metadata?.optional)
     .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   if (missing.length) {
     const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);

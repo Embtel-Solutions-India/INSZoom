@@ -20,7 +20,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
     [qa.sections, qa.questionsBySection]
   );
   // Nothing is mandatory to save; Submit needs every item filled in.
-  const missing = (qa.visibleQuestions || []).filter((question) => isEmptyValue(qa.answers[questionKey(question)])).length;
+  const missing = (qa.visibleQuestions || []).filter((question) => !question.metadata?.optional && isEmptyValue(qa.answers[questionKey(question)])).length;
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
