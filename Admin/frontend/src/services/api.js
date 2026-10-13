@@ -627,6 +627,12 @@ export const formGenerationApi = {
   // The one official download: real, authentic, watermark-free USCIS PDF,
   // no status gate. Replaces the old draftPdf/filingPdf split.
   downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
+  // Save back a form edited outside the system (the downloaded PDF edited in the user's own browser / PDF viewer).
+  uploadExternalEdit: (caseFormId, file) => {
+    const data = new FormData()
+    data.append('file', file)
+    return api.post(`/forms/${caseFormId}/external-edit`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 export const petitionApi = {

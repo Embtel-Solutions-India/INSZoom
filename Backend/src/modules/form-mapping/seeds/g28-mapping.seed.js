@@ -158,6 +158,7 @@ async function seedG28Mapping({ user } = {}) {
 }
 
 module.exports = seedG28Mapping;
+module.exports.buildCrosswalkGraph = buildCrosswalkGraph;
 
 if (require.main === module) {
   mongoose

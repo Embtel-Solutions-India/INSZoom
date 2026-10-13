@@ -60,6 +60,8 @@ const caseFormSchema = new mongoose.Schema(
     fieldValues: { type: mongoose.Schema.Types.Mixed, default: {} },
     sourceAttribution: { type: mongoose.Schema.Types.Mixed, default: {} },
     manualOverrides: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // one entry per edition move: values whose field has no counterpart in the new edition are kept here, never dropped
+    editionMigrations: { type: [mongoose.Schema.Types.Mixed], default: [] },
     autoFillReport: { type: mongoose.Schema.Types.Mixed, default: {} },
     mappingVersion: { type: Number, default: 0 },
     mappingVersionId: { type: mongoose.Schema.Types.ObjectId, ref: "USCISMappingVersion" },

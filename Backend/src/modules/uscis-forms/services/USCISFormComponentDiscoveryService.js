@@ -103,7 +103,9 @@ function findTrailingBoilerplateStart(pages) {
 // documents (one per component, keyed to this exact template version).
 // Idempotent: re-running against the same active template version produces
 // the same result, not duplicates.
-async function discoverComponentsForParentForm(parentFormCode) {
+// options.templateId: discover against that specific (not yet active) edition - a pre-activation readiness check. Registry rows are only wired
+// to the components when discovery ran against the ACTIVE edition.
+async function discoverComponentsForParentForm(parentFormCode, options = {}) {
   const componentMappings = await VisaFormMapping.find({
     parentForm: parentFormCode,
     componentType: { $in: ["SUPPLEMENT", "FORM_COMPONENT"] },
@@ -114,7 +116,9 @@ async function discoverComponentsForParentForm(parentFormCode) {
     if (!distinctByName.has(row.formName)) distinctByName.set(row.formName, row);
   }
 
-  const template = await USCISFormTemplate.findOne({ formCode: new RegExp(`^${escapeRegex(parentFormCode)}$`, "i"), status: "active" });
+  const template = options.templateId
+    ? await USCISFormTemplate.findById(options.templateId)
+    : await USCISFormTemplate.findOne({ formCode: new RegExp(`^${escapeRegex(parentFormCode)}$`, "i"), status: "active" });
   if (!template) {
     return { parentFormCode, error: "NO_ACTIVE_PARENT_TEMPLATE", componentsDiscovered: 0 };
   }
@@ -220,6 +224,35 @@ async function discoverComponentsForParentForm(parentFormCode) {
     results.push(definition);
   }
 
+  // Continuation sheets that no visa "requires" (e.g. I-129 Part 9 Additional Beneficiary Information, registered once by
+  // scripts/registerI129AdditionalBeneficiaryComponent.js) were never re-created for a new edition. Re-derive each such component the same way
+  // that script does: it is the trailing run of pages after the last page claimed by an ACTIVE component of THIS edition.
+  const manualDefinitions = await USCISFormComponentDefinition.find({ parentFormCode, parentTemplateId: { $ne: template._id }, verificationMethod: "manual_registration_not_visa_driven" }).lean();
+  for (const manual of Object.values(Object.fromEntries(manualDefinitions.map((item) => [item.componentCode, item])))) {
+    const lastClaimedPage = results.filter((item) => item.status === "ACTIVE").reduce((max, item) => Math.max(max, ...(item.pageRanges || []).map((range) => range.endPage)), 0);
+    const startPage = lastClaimedPage + 1;
+    if (startPage > pages.length) continue;
+    // sanity: the trailing pages must still look like the same sheet - compare their text with the same sheet of the edition it was registered on
+    let looksSame = false;
+    try {
+      const oldTemplate = await USCISFormTemplate.findById(manual.parentTemplateId);
+      const oldPages = await extractPerPageText(await storageService.readBuffer(oldTemplate.artifacts.form.storageKey));
+      const oldRange = manual.pageRanges?.[0];
+      const oldText = oldPages.slice((oldRange?.startPage || 1) - 1, oldRange?.endPage || oldPages.length).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
+      const newText = pages.slice(startPage - 1).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
+      looksSame = textSimilarity(oldText, newText) >= 0.7;
+    } catch (error) {
+      looksSame = false;
+    }
+    results.push(await upsertDefinition({
+      parentFormCode, template, componentCode: manual.componentCode, formName: manual.name, componentType: manual.componentType,
+      pageRanges: [{ startPage, endPage: pages.length }],
+      fieldIds: (template.formFields || []).filter((f) => f.pageNumber != null && f.pageNumber >= startPage && f.pageNumber <= pages.length).map((f) => f.fieldId || f.fieldName).filter(Boolean),
+      status: looksSame ? "ACTIVE" : "REVIEW_REQUIRED",
+      reviewReason: looksSame ? undefined : `Trailing pages ${startPage}-${pages.length} no longer look like "${manual.name}".`,
+    }));
+  }
+
   // Connect every matching VisaFormMapping row's componentCode - only for
   // ACTIVE definitions, so a REVIEW_REQUIRED component (like E above) stays
   // fully excluded from resolution exactly as an unconnected one already
@@ -227,7 +260,7 @@ async function discoverComponentsForParentForm(parentFormCode) {
   // itself grouped rows by), so this connects every visa's row that shares
   // a given component, not just one.
   for (const definition of results) {
-    if (definition.status !== "ACTIVE") continue;
+    if (definition.status !== "ACTIVE" || template.status !== "active") continue;
     await VisaFormMapping.updateMany(
       { parentForm: parentFormCode, formName: definition.name },
       { $set: { componentCode: definition.componentCode } }

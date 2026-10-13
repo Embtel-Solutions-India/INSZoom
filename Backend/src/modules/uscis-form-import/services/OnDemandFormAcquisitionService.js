@@ -12,6 +12,8 @@ const USCISFormImporterService = require("./USCISFormImporterService");
 const FormVersionService = require("./FormVersionService");
 const VersionManagementService = require("../../uscis-lifecycle/services/VersionManagementService");
 const AutoFillService = require("../../form-mapping/services/AutoFillService");
+const { migrateMappingToEdition, checkEditionReady, findPreviousEdition } = require("../../form-mapping/services/EditionMigrationService");
+const { migrateCaseFormsToEdition } = require("../../form-mapping/services/CaseFormEditionMigrationService");
 const BiographicMappingService = require("../../form-mapping/services/BiographicMappingService");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
 const CanonicalBiographicAutofill = require("../../uscis-forms/CanonicalBiographicAutofill");
@@ -202,7 +204,29 @@ async function resolveOfficialPdf(formNumber) {
 // ensureCurrentUSCISForm's new-edition branch reuses it instead of
 // duplicating the approve/activate/biographic-tier sequence.
 async function activateOrPromote(template, user, req) {
-  const autoActivate = String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true";
+  // Carry the field mapping onto this edition automatically (previous edition's graph, or the form's authored crosswalk). A lossless result
+  // activates the mapping, and the edition is then activated below so every visa uses it; a lossy one leaves the old edition in service.
+  let migration = null;
+  try {
+    migration = await migrateMappingToEdition(template, user, req);
+    if (migration.migrated) {
+      template = await USCISFormTemplate.findById(template._id);
+      logger.info("uscis_form_mapping_migrated", { formCode: template.formCode, templateId: String(template._id), activated: migration.activated, reason: migration.reason, lost: migration.lostEdges?.length || 0, source: migration.summary?.source });
+    }
+  } catch (error) {
+    logger.info("uscis_form_mapping_migration_failed", { formCode: template.formCode, error: error.message });
+  }
+  // The live edition is never replaced until the new one is fully ready (mapping lossless + every component sliceable); otherwise it stays as is.
+  let readiness = null;
+  if (migration?.activated) {
+    try {
+      readiness = await checkEditionReady(template, await findPreviousEdition(template));
+    } catch (error) {
+      readiness = { ready: false, problems: [error.message] };
+    }
+    if (!readiness.ready) logger.info("uscis_form_new_edition_not_ready", { formCode: template.formCode, version: template.version, problems: readiness.problems });
+  }
+  const autoActivate = (Boolean(migration?.activated) && Boolean(readiness?.ready)) || String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true";
   let activationBlockedReason = null;
   if (autoActivate && template.status !== "active") {
     // VersionManagementService.activate() requires the edition to already
@@ -230,7 +254,28 @@ async function activateOrPromote(template, user, req) {
       // the template stays at "review" and this is reported back as
       // requiresActivation, not silently swallowed or forced through.
       activationBlockedReason = error.message;
+      // never leave a form without a live edition: put the previous one back if activation died half-way
+      const stillActive = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
+      if (!stillActive) {
+        const previousEdition = await USCISFormTemplate.findOne({ formCode: template.formCode, _id: { $ne: template._id }, status: "retired" }).sort({ retiredAt: -1 });
+        if (previousEdition) { previousEdition.status = "active"; previousEdition.currentStatus = "active"; previousEdition.activeFlag = true; await previousEdition.save(); }
+      }
       logger.info("uscis_form_mapping_review_required", { formCode: template.formCode, templateId: String(template._id), reason: error.message });
+    }
+  }
+
+  // The new edition is live: every visa that used the old one keeps using it (visa types carried over), and every open case form of the old
+  // edition moves onto it with all saved values (nothing is dropped; unmatched values are archived on the form).
+  let caseMigration = null;
+  if (template.status === "active" && migration?.activated && readiness?.ready) {
+    try {
+      const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
+      const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
+      if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
+      caseMigration = await migrateCaseFormsToEdition({ newTemplate: template, actor: user, req });
+      logger.info("uscis_form_cases_migrated", { formCode: template.formCode, ...caseMigration, failed: caseMigration.failed.length });
+    } catch (error) {
+      logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
     }
   }
 
@@ -255,6 +300,9 @@ async function activateOrPromote(template, user, req) {
     activationBlockedReason,
     biographicReady: template.mappingStatus === "biographic_active",
     coverage: biographicMapping?.coverage || null,
+    migration,
+    readiness,
+    caseMigration,
   };
 }
 

@@ -4,6 +4,8 @@ const _ = require("lodash");
 
 function parseEditionDate(value) {
   if (!value) return undefined;
+  // the scanner passes a real Date; stringifying it would match no pattern below and silently drop the edition date
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value;
   const normalized = String(value).trim();
   const isoMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (isoMatch) {

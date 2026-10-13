@@ -12,6 +12,7 @@ const workflowService = require("./modules/workflows/workflow.service");
 const paymentService = require("./modules/payments/payment.service");
 const questionnaireService = require("./modules/questionnaires/questionnaire.service");
 const { startUSCISMonitoringJob } = require("./modules/uscis-lifecycle/jobs/USCISMonitoringJob");
+const { startUSCISEditionUpgradeJob } = require("./modules/uscis-lifecycle/jobs/USCISEditionUpgradeJob");
 const reminderGenerationService = require("./modules/notifications/reminder-generation.service");
 const aiOrchestrationService = require("./modules/ai/ai-orchestration.service");
 const reportService = require("./modules/reports/report.service");
@@ -229,6 +230,7 @@ connectDB()
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob();
+    const uscisEditionUpgrade = startUSCISEditionUpgradeJob();
     const settingsRetentionMaintenance = startSettingsRetentionMaintenance();
     const slaSweepMaintenance = startSlaSweepMaintenance();
     // null (and nothing scheduled) unless GHL_ENABLED=true.
@@ -261,6 +263,7 @@ connectDB()
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
+      if (uscisEditionUpgrade) clearInterval(uscisEditionUpgrade);
       clearInterval(settingsRetentionMaintenance);
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);

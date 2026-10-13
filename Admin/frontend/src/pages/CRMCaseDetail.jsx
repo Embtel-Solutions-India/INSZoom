@@ -3233,6 +3233,46 @@ const CRMCaseDetail = () => {
                             >
                               Download
                             </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await formGenerationApi.downloadForm(form._id)
+                                  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+                                  window.open(url, '_blank')
+                                  const formWarnings = readFormWarnings(response)
+                                  setFormActionMessage(formWarnings.length
+                                    ? `Opened in a new tab. ${formWarnings.join('; ')}`
+                                    : 'Opened the autofilled PDF in a new tab. Edit and save it there, then use "Save edited PDF" to keep your changes.')
+                                } catch (error) {
+                                  setFormActionMessage(error.response?.data?.message || 'Unable to open this form.')
+                                }
+                              }}
+                              className="btn-secondary text-sm"
+                              title="Open the autofilled PDF in your browser to edit it there"
+                            >
+                              Edit in browser
+                            </button>
+                            <label className="btn-secondary text-sm cursor-pointer" title="Upload the PDF you edited and saved in your browser; your changes are kept on this form">
+                              Save edited PDF
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                className="hidden"
+                                onChange={async (event) => {
+                                  const file = event.target.files?.[0]
+                                  event.target.value = ''
+                                  if (!file) return
+                                  try {
+                                    const response = await formGenerationApi.uploadExternalEdit(form._id, file)
+                                    const count = response.data?.data?.changedFieldCount ?? 0
+                                    setFormActionMessage(`Saved. ${count} changed field${count === 1 ? '' : 's'} kept as manual changes; autofill will not overwrite them.`)
+                                    fetchFormsOverview?.(true)
+                                  } catch (error) {
+                                    setFormActionMessage(error.response?.data?.message || 'Unable to save the edited PDF.')
+                                  }
+                                }}
+                              />
+                            </label>
                           </div>
                         </td>
                       </tr>
