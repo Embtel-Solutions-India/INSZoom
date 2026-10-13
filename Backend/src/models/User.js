@@ -65,6 +65,9 @@ const userSchema = new mongoose.Schema(
     passwordResetExpiresAt: Date,
     inviteTokenHash: { type: String, select: false },
     inviteTokenExpiresAt: Date,
+    // Earlier invite tokens that are still unexpired. Sending a new invitation used to silently kill every earlier email's link; now each stays
+    // valid until it expires or one of them is used (accepting clears all). Maintained by the hooks below, whichever code path writes the token.
+    inviteTokenHashes: { type: [{ _id: false, hash: String, expiresAt: Date }], select: false, default: undefined },
     lastLogin: Date,
     lastSeenAt: Date,
     isActive: { type: Boolean, default: true, index: true },
@@ -214,6 +217,51 @@ userSchema.methods.toAuthJSON = function () {
 };
 
 userSchema.statics.roles = USER_ROLES;
+
+const INVITE_HISTORY_LIMIT = 10;
+// previous = { hash, expiresAt, history }; returns the history to keep once newHash replaces previous.hash (nothing kept when the token is being revoked)
+function nextInviteHistory(previous, newHash) {
+  if (!newHash) return [];
+  const now = Date.now();
+  const kept = (previous?.history || []).filter((item) => item?.hash && item.hash !== newHash && new Date(item.expiresAt).getTime() > now);
+  if (previous?.hash && previous.hash !== newHash && previous.expiresAt && new Date(previous.expiresAt).getTime() > now) kept.push({ hash: previous.hash, expiresAt: previous.expiresAt });
+  return kept.slice(-INVITE_HISTORY_LIMIT);
+}
+async function loadInvitePrevious(model, filter) {
+  const row = await model.findOne(filter).select("+inviteTokenHash +inviteTokenHashes inviteTokenExpiresAt").lean();
+  return row ? { hash: row.inviteTokenHash, expiresAt: row.inviteTokenExpiresAt, history: row.inviteTokenHashes } : null;
+}
+userSchema.pre("save", async function keepEarlierInviteTokens(next) {
+  try {
+    if (this.isNew || !this.isModified("inviteTokenHash")) return next();
+    const previous = await loadInvitePrevious(this.constructor, { _id: this._id });
+    this.set("inviteTokenHashes", nextInviteHistory(previous, this.inviteTokenHash));
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
+for (const hookName of ["updateOne", "findOneAndUpdate"]) {
+  userSchema.pre(hookName, async function keepEarlierInviteTokensOnUpdate(next) {
+    try {
+      const update = this.getUpdate() || {};
+      const set = update.$set || update;
+      const revoked = update.$unset && Object.prototype.hasOwnProperty.call(update.$unset, "inviteTokenHash");
+      if (!revoked && !(set && Object.prototype.hasOwnProperty.call(set, "inviteTokenHash"))) return next();
+      const newHash = revoked ? null : set.inviteTokenHash;
+      const previous = newHash ? await loadInvitePrevious(this.model, this.getFilter()) : null;
+      this.set("inviteTokenHashes", nextInviteHistory(previous, newHash));
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  });
+}
+// Filter matching a still-valid invite token: the current one or any earlier unexpired one.
+userSchema.statics.inviteTokenFilter = function inviteTokenFilter(hash) {
+  const now = new Date();
+  return { $or: [{ inviteTokenHash: hash, inviteTokenExpiresAt: { $gt: now } }, { inviteTokenHashes: { $elemMatch: { hash, expiresAt: { $gt: now } } } }] };
+};
 
 userSchema.index({ companyId: 1, isActive: 1 });
 userSchema.index({ teamId: 1, isActive: 1 });

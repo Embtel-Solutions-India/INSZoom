@@ -345,6 +345,8 @@ class CaseLifecycleOrchestrator {
     await this.provisionRequiredForms(caseData, user, req);
     await this.provisionPetitionDraft(caseData, user, req);
     await this.provisionChecklistAssignments(caseData, user, req);
+    // an employee case (or the employee cases of this principal) picks up the principal's already-given approval of the employee checklist
+    await require("../questionnaires/case-checklist.service").inheritParentApprovals(caseData._id, user).catch((error) => require("../../utils/logger").error("inherit_parent_approvals_failed", { caseId: String(caseData._id), error: error.message }));
     const result = await this.recalculate(caseData._id, user, req, "case_initialized");
     await this.notifyCaseCreated(caseData, result, user, req);
     return { ...result, knowledgePlan: knowledge?.knowledgePlan || result.case?.knowledgePlan };
@@ -421,9 +423,11 @@ class CaseLifecycleOrchestrator {
     const visaFormMappingService = require("../form-registry/visaFormMapping.service");
     const questionnaireService = require("../questionnaires/questionnaire.service");
     const logger = require("../../utils/logger");
+    // Read the case afresh: orchestrateOne() above assigns the case's checklists through its own copy of the document, so the in-memory
+    // `caseData` passed in does not show them yet - checking it would assign the same checklist a second time (two identical references).
     const targets = caseData.childCases?.length
       ? await Case.find({ _id: { $in: caseData.childCases } })
-      : [caseData];
+      : [(await Case.findById(caseData._id)) || caseData];
     for (const target of targets) {
       try {
         const resolved = await visaFormMappingService.resolveChecklistsForCase(target);

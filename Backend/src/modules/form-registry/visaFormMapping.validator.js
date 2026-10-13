@@ -9,7 +9,7 @@ const VisaFormMapping = require("../../models/VisaFormMapping");
 // these must have at least one active mapping, or validation fails.
 const REQUIRED_VISA_TYPES = [
   "H-1B", "H-1B1 Chile", "H-1B1 Singapore", "H-2A", "H-2B", "H-3", "H-4",
-  "L-1A", "L-1B", "L-2",
+  "L-1A", "L-1A Extension", "L-1B", "L-2",
   "O-1A", "O-1B", "O-2", "O-3",
   "P-1", "P-1S", "P-2", "P-2S", "P-3", "P-3S", "P-4",
   "Q-1",

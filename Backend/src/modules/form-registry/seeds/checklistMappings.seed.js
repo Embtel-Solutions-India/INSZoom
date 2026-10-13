@@ -64,6 +64,12 @@ set("L-1B", "I-129S", [cm("l1b_employer_checklist", COND, { role: "employer", no
 set("L-1B", "I-539", [cm("l1b_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
 set("L-1B", "I-907", [cm("l1b_employer_checklist", COND, { role: "employer" }), cm("l1b_employee_checklist", COND, { role: "employee" })]);
 
+// L-1A Extension: its own copy of every L-1A checklist (l1aext_*), mapped to the same forms as L-1A. Filed as an L-1A, so I-129 prints L-1A (case.classification).
+set("L-1A Extension", "I-129", [cm("l1aext_employer_checklist", AUTO, { role: "employer" }), cm("l1aext_employee_checklist", AUTO, { role: "employee" }), cm("l1aext_business_plan_checklist", COND, { role: "employer", condition: NEW_OFFICE_CONDITION, notes: "New Office petition only" })]);
+set("L-1A Extension", "I-129S", [cm("l1aext_employer_checklist", COND, { role: "employer", notes: "blanket petition workflow" }), cm("l1aext_employee_checklist", COND, { role: "employee", notes: "blanket petition workflow" })]);
+set("L-1A Extension", "I-539", [cm("l1aext_employee_checklist", COND, { role: "employee", notes: "COS / extension" })]);
+set("L-1A Extension", "I-907", [cm("l1aext_employer_checklist", COND, { role: "employer" }), cm("l1aext_employee_checklist", COND, { role: "employee" })]);
+
 // ---- E-2 (spec §3 E-2) -------------------------------------------------
 set("E-2", "I-129", [cm("e2_visa_checklist", COND, { notes: "USCIS COS/extension route" })]);
 set("E-2", "I-907", [cm("e2_visa_checklist", COND)]);
@@ -107,6 +113,13 @@ for (const formNumber of ["I-485", "I-765", "I-131", "I-693"]) {
   set("EB-1B", formNumber, [cm("eb1b_employee_checklist", COND, { role: "employee" })]);
 }
 set("EB-1B", "I-907", [cm("eb1b_employer_checklist", COND, { role: "employer" }), cm("eb1b_employee_checklist", COND, { role: "employee" })]);
+
+// ---- EB-1C (Multinational Manager / Executive): same employer + employee pair as EB-1B -------------------
+set("EB-1C", "I-140", [cm("eb1c_employer_checklist", AUTO, { role: "employer" }), cm("eb1c_employee_checklist", AUTO, { role: "employee" })]);
+for (const formNumber of ["I-485", "I-765", "I-131", "I-693"]) {
+  set("EB-1C", formNumber, [cm("eb1c_employee_checklist", COND, { role: "employee" })]);
+}
+set("EB-1C", "I-907", [cm("eb1c_employer_checklist", COND, { role: "employer" }), cm("eb1c_employee_checklist", COND, { role: "employee" })]);
 
 // ---- EB-2 / EB-2 PERM (spec §3 EB-2, i140_* checklists) -----------------
 for (const visaType of ["EB-2", "EB-2 PERM"]) {

@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildPremiumProcessingChecklist, PART1_QUESTIONS, PART2_QUESTIONS, questionKeyForPath } = require("../premiumProcessingChecklist");
+const { buildPremiumProcessingChecklist, PART1_QUESTIONS, MAILING_QUESTIONS, PHYSICAL_QUESTIONS, PART2_QUESTIONS, questionKeyForPath } = require("../premiumProcessingChecklist");
 const { evaluateConditionGroup } = require("../condition-evaluator");
 const { MAPPED_EDGES, classifyField } = require("../../form-mapping/config/i907-crosswalk");
 const visaCategories = require("../../../config/visaCategories");
@@ -25,13 +25,14 @@ test("the checklist is the case's default 'client' checklist and keeps the exist
   assert.equal(checklist.isDefault, true);
   assert.deepEqual(checklist.visaTypes, ["PremiumProcessing"]);
   assert.equal(checklist.reconcileMetadata, true);
-  assert.deepEqual(checklist.sections, ["Information About the Person Filing This Request", "Information About the Request"]);
+  assert.deepEqual(checklist.sections, ["Information About the Person Filing This Request", "Mailing Address", "Physical Address", "Information About the Request", "Required Document"]);
 });
 
 test("question keys are unique and follow the approved field paths", () => {
   const keys = checklist.questions.map((question) => question.key);
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(PART1_QUESTIONS.length + PART2_QUESTIONS.length, 32);
+  assert.equal(PART1_QUESTIONS.length + MAILING_QUESTIONS.length + PHYSICAL_QUESTIONS.length + PART2_QUESTIONS.length, 33);
+  assert.equal(checklist.questions.length, 34, "33 questions + the one document");
   assert.equal(questionKeyForPath("i907.filer.last_name"), "i907_filer_last_name");
   assert.ok(keys.includes("i907_company_ein") && keys.includes("i907_address_same_as_physical"));
 });
@@ -76,7 +77,7 @@ test("point of contact and EIN apply only when a company/organization is named",
 
 test("every I-907 crosswalk source key exists in the checklist; no two edges share a PDF field", () => {
   const keys = new Set(checklist.questions.map((question) => question.key));
-  for (const edge of MAPPED_EDGES.filter((item) => item.source !== "case.visaType")) {
+  for (const edge of MAPPED_EDGES.filter((item) => !["case.visaType", "case.classification"].includes(item.source))) {
     const match = /^raw\.questionnaireAnswers\.(.+)\.value$/.exec(edge.source);
     assert.ok(match, `${edge.fieldName}: source must be a questionnaire answer`);
     assert.ok(keys.has(match[1]), `${edge.fieldName}: unknown checklist key ${match[1]}`);
@@ -84,8 +85,9 @@ test("every I-907 crosswalk source key exists in the checklist; no two edges sha
   assert.equal(new Set(MAPPED_EDGES.map((edge) => edge.fieldName)).size, MAPPED_EDGES.length);
   // every checklist question that has a form destination is mapped at least once
   const mappedKeys = new Set(MAPPED_EDGES.map((edge) => /Answers.(.+).value$/.exec(edge.source)?.[1]));
+  // The only answers with no PDF box: the optional second receipt number (the form has one receipt box) and the receipt-notice upload (a document, not a field).
   const unmapped = [...keys].filter((key) => !mappedKeys.has(key));
-  assert.deepEqual(unmapped, [], "every checklist answer lands on the I-907");
+  assert.deepEqual(unmapped.sort(), ["i907_doc_relatedCaseReceiptNotice", "i907_related_case_receipt_number_2"]);
 });
 
 test("classifyField buckets: barcode is USCIS-only, mapped field is mapped, middle name stays manual", () => {

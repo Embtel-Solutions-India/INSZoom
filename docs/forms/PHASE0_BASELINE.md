@@ -134,7 +134,7 @@ Verified by loading the three crosswalk config modules directly and grouping `MA
 
 | Crosswalk | Total edges | Distinct sources | Fan-out sources (source -> pdfField count) |
 |---|---|---|---|
-| `i129-h1b-crosswalk.js` (H-1B **and** L-1A/L-1B) | 101 | 68 | 15 fan-out sources, incl. `employee_education_highestLevel.value`->9, `employer_foreignCompany_relationshipType.value`->5, `employee_filingType.value`->5, `case.visaType`->4, `employer_position_wageLevel.value`->4, plus several 2-way Yes/No checkbox pairs |
+| `i129-h1b-crosswalk.js` (H-1B **and** L-1A/L-1B) | 101 | 69 | 15 fan-out sources, incl. `employee_education_highestLevel.value`->9, `employer_foreignCompany_relationshipType.value`->5, `employee_filingType.value`->4, `case.classification`->4 (classification symbol, L-1A/L-1B boxes, Continuation; L-1A Extension), `case.visaType`->1, `employer_position_wageLevel.value`->4, plus several 2-way Yes/No checkbox pairs |
 | `i129f-k1-crosswalk.js` | 34 | 26 | 4: `petitioner_info_gender`->2, `petitioner_info_maritalStatus`->4, `beneficiary_info_gender`->2, `beneficiary_info_maritalStatus`->4 |
 | `i130-k3-crosswalk.js` | 33 | 25 | 4: same shape as K-1 (gender/maritalStatus checkbox groups) |
 

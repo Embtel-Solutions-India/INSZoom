@@ -25,7 +25,7 @@ const MappingGraphService = require("../services/MappingGraphService");
 const { classifyField, MAPPED_EDGES } = require("../config/i129-h1b-crosswalk");
 
 const FORM_CODE = "I-129";
-const VERSION = "2026-02-27";
+// The edition is no longer pinned: the seed targets whatever I-129 edition is ACTIVE (a new USCIS edition replaces the pinned one over time).
 
 async function resolveSystemActor() {
   const admin = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
@@ -84,10 +84,10 @@ function buildCrosswalkGraph(template) {
     const { edge } = result;
     sourcePaths.add(edge.source);
     edges.push({
-      mappingId: `${FORM_CODE}:${VERSION}:${targetField.targetFieldId}`,
+      mappingId: `${FORM_CODE}:${template.version}:${targetField.targetFieldId}`,
       formCode: FORM_CODE,
       editionDate: template.editionDate,
-      version: VERSION,
+      version: template.version,
       sourcePath: edge.source,
       sourceType: "canonical",
       targetFieldId: targetField.targetFieldId,
@@ -101,6 +101,7 @@ function buildCrosswalkGraph(template) {
       status: "active",
       transform: edge.transform || { type: "direct" },
       condition: edge.condition,
+      fallback: edge.fallback,
       note: edge.note,
       profileOwner: classifyProfileOwner(edge.source),
       allowsOccurrenceOverride: ALLOWS_OCCURRENCE_OVERRIDE,
@@ -112,7 +113,7 @@ function buildCrosswalkGraph(template) {
     formCode: FORM_CODE,
     formName: template.title,
     editionDate: template.editionDate,
-    version: VERSION,
+    version: template.version,
     // Deliberately no `generatedAt: new Date()` here (unlike
     // MappingGraphService.generateGraph()'s own auto-suggest path) - this
     // graph is checksummed (MappingGraphService.graphChecksum hashes
@@ -174,14 +175,14 @@ function contentChecksum(graph) {
 }
 
 async function seedI129H1bMapping({ user } = {}) {
-  const template = await USCISFormTemplate.findOne({ formCode: FORM_CODE, version: VERSION });
+  const template = await USCISFormTemplate.findOne({ formCode: FORM_CODE, status: "active" }).sort({ editionDate: -1, createdAt: -1 });
   if (!template) {
-    const error = new Error(`No USCISFormTemplate found for ${FORM_CODE} ${VERSION} - run Phase H0's seed:i129 first.`);
+    const error = new Error(`No active USCISFormTemplate found for ${FORM_CODE} - run Phase H0's seed:i129 first.`);
     error.code = "I129_TEMPLATE_NOT_FOUND";
     throw error;
   }
   if (template.status !== "active") {
-    const error = new Error(`USCISFormTemplate ${FORM_CODE} ${VERSION} is not active (status: ${template.status}) - Phase H0 must complete first.`);
+    const error = new Error(`USCISFormTemplate ${FORM_CODE} ${template.version} is not active (status: ${template.status}) - Phase H0 must complete first.`);
     error.code = "I129_TEMPLATE_NOT_ACTIVE";
     throw error;
   }

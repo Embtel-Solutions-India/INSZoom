@@ -470,7 +470,10 @@ const CRMCaseDetail = () => {
   // with the Green Card checklist, so it's looked up by its own
   // referenceId (from checklistsProgress) rather than by role alone - see
   // useCaseQuestionnaire's referenceId option.
-  const gcNvcEligible = isFamilyCase && caseData?.processingPath === 'CONSULAR'
+  // IR/CR visas no longer offer Consular Processing, so never offer the GC-NVC approval for them
+  // (mirrors isConsularProcessingDisabled in Backend questionnaires/familyChecklists.js).
+  const consularDisabled = /^(IR|CR)-[1-5]$/i.test(String(caseData?.visaType || '').trim())
+  const gcNvcEligible = isFamilyCase && !consularDisabled && caseData?.processingPath === 'CONSULAR'
   const gcNvcChecklistEntry = checklistsProgress.find((item) => item.key?.startsWith('gc_nvc_'))
   const gcNvcApproved = Boolean(caseData?.gcNvcChecklist?.approved)
   const gcNvcQuestionnaire = useCaseQuestionnaire(caseData?._id, 'beneficiary', {
@@ -2767,7 +2770,7 @@ const CRMCaseDetail = () => {
 
         {isGreenCardRenewalCase && (
           <QuestionnaireAnswersPanel
-            title="Green Card Renewal / Replacement / Correction / Update — Form I-90"
+            title="Questionnaire for Form I-90 — Application to Replace Permanent Resident Card"
             questionnaire={greenCardRenewalQuestionnaire.questionnaire}
             fieldQuestions={greenCardRenewalQuestionnaire.fieldQuestions}
             documentQuestions={greenCardRenewalQuestionnaire.documentQuestions}
@@ -2831,7 +2834,9 @@ const CRMCaseDetail = () => {
                 <option value="">Not selected</option>
                 <option value="PETITION_ONLY">Petition Only (I-130)</option>
                 <option value="ADJUSTMENT_OF_STATUS">Adjustment of Status / Green Card (I-485)</option>
-                <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+                {(!consularDisabled || caseData.processingPath === 'CONSULAR') && (
+                  <option value="CONSULAR">Consular Processing / Green Card (DS-260)</option>
+                )}
               </select>
               <button
                 type="button"
@@ -3228,6 +3233,46 @@ const CRMCaseDetail = () => {
                             >
                               Download
                             </button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await formGenerationApi.downloadForm(form._id)
+                                  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+                                  window.open(url, '_blank')
+                                  const formWarnings = readFormWarnings(response)
+                                  setFormActionMessage(formWarnings.length
+                                    ? `Opened in a new tab. ${formWarnings.join('; ')}`
+                                    : 'Opened the autofilled PDF in a new tab. Edit and save it there, then use "Save edited PDF" to keep your changes.')
+                                } catch (error) {
+                                  setFormActionMessage(error.response?.data?.message || 'Unable to open this form.')
+                                }
+                              }}
+                              className="btn-secondary text-sm"
+                              title="Open the autofilled PDF in your browser to edit it there"
+                            >
+                              Edit in browser
+                            </button>
+                            <label className="btn-secondary text-sm cursor-pointer" title="Upload the PDF you edited and saved in your browser; your changes are kept on this form">
+                              Save edited PDF
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                className="hidden"
+                                onChange={async (event) => {
+                                  const file = event.target.files?.[0]
+                                  event.target.value = ''
+                                  if (!file) return
+                                  try {
+                                    const response = await formGenerationApi.uploadExternalEdit(form._id, file)
+                                    const count = response.data?.data?.changedFieldCount ?? 0
+                                    setFormActionMessage(`Saved. ${count} changed field${count === 1 ? '' : 's'} kept as manual changes; autofill will not overwrite them.`)
+                                    fetchFormsOverview?.(true)
+                                  } catch (error) {
+                                    setFormActionMessage(error.response?.data?.message || 'Unable to save the edited PDF.')
+                                  }
+                                }}
+                              />
+                            </label>
                           </div>
                         </td>
                       </tr>
@@ -3286,6 +3331,7 @@ const CRMCaseDetail = () => {
                           <td className="py-2 px-3">
                             <p className="font-medium text-foreground text-sm">{item.formNumber}</p>
                             <p className="text-xs text-muted-foreground">{item.formName}</p>
+                            {item.appliesWhen && <p className="text-xs text-amber-700 mt-0.5">{item.appliesWhen}</p>}
                           </td>
                           <td className="py-2 px-3">
                             <span className={`badge ${getUiStatusColor(item.uiStatus)}`}>

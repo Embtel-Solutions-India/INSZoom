@@ -77,13 +77,30 @@ exports.regenerate = async (req, res) => {
 // out, and the case record should keep it.
 exports.downloadForm = async (req, res) => {
   try {
-    const { prepareOfficialDownload } = require("../services/OfficialFormDownloadService");
+    const { prepareOfficialDownload, withTimeout } = require("../services/OfficialFormDownloadService");
+    // A form whose template is not (yet) active in the system - G-28 and the like - is checked against uscis.gov on EVERY download, so a newly
+    // published edition is never missed. The case keeps its edition (an edition-locked form is not swapped silently); the user is told.
+    let freshnessNote = null;
+    try {
+      const current = await require("../../../models/CaseForm").findById(req.params.caseFormId).populate({ path: "formTemplateId", select: "status version formCode" });
+      if (current?.formTemplateId && current.formTemplateId.status !== "active") {
+        const check = await withTimeout(require("../../uscis-form-import/services/OnDemandFormAcquisitionService").ensureCurrentUSCISForm(current.formCode, req.user, req, { forceCheck: true }), 25000, "USCIS edition check");
+        if (check?.template && String(check.template._id) !== String(current.formTemplateId._id)) {
+          freshnessNote = `USCIS now publishes a newer edition of ${current.formCode} (${check.template.version || "new"}); this copy is the edition already on the case (${current.formTemplateId.version || "current"}).`;
+        } else if (check?.checkError) {
+          freshnessNote = `Could not reach uscis.gov to check for a newer edition (${check.checkError}); this is the edition stored on the case.`;
+        }
+      }
+    } catch (checkError) {
+      freshnessNote = `Could not check uscis.gov for a newer edition (${checkError.message}); this is the edition stored on the case.`;
+    }
     const { buffer, caseForm, mode, warnings, bookkeeping } = await prepareOfficialDownload({ caseFormId: req.params.caseFormId, user: req.user, req, deferBookkeeping: true });
 
     // Anything that was adjusted, left blank or degraded is reported to the
     // user (the Admin UI shows it after the file downloads).
     res.setHeader("X-Form-Render-Mode", mode);
-    if (warnings.length) res.setHeader("X-Form-Warnings", encodeURIComponent(JSON.stringify(warnings.slice(0, 20))));
+    const allWarnings = freshnessNote ? [...warnings, freshnessNote] : warnings;
+    if (allWarnings.length) res.setHeader("X-Form-Warnings", encodeURIComponent(JSON.stringify(allWarnings.slice(0, 20))));
     res.setHeader("Access-Control-Expose-Headers", "X-Form-Warnings, X-Form-Render-Mode, Content-Disposition");
 
     const date = new Date().toISOString().slice(0, 10);
@@ -94,6 +111,19 @@ exports.downloadForm = async (req, res) => {
     res.send(buffer);
     // Saving the copy and the audit entry happen after the file is on its way.
     if (bookkeeping) bookkeeping().catch(() => {});
+  } catch (error) {
+    handle(res, error);
+  }
+};
+
+// POST /:caseFormId/external-edit (multipart "file"): the edited copy of the downloaded PDF. Saved as the form's newest copy and every changed
+// field is kept as a manual override (see ExternalEditService).
+exports.uploadExternalEdit = async (req, res) => {
+  try {
+    const data = await require("../services/ExternalEditService").saveExternalEdit({
+      caseFormId: req.params.caseFormId, buffer: req.file?.buffer, originalName: req.file?.originalname, user: req.user, req,
+    });
+    res.status(201).json({ success: true, data });
   } catch (error) {
     handle(res, error);
   }

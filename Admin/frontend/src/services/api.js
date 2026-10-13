@@ -396,9 +396,56 @@ export const questionnairesApi = {
   // One entry of a multi-entry file answer: stream it (auth header) for view/download, or remove it.
   downloadAnswerFile: (id, params) => api.get(`/questionnaires/${id}/answers/files/download`, { params, responseType: 'blob' }),
   removeAnswerFile: (id, data) => api.delete(`/questionnaires/${id}/answers/files`, { data }),
-  saveFileAnswer: (id, formData) => {
+  // Files up to 3 MB go up in one request; larger ones (up to the 50 MB limit) are sent in 2 MB chunks so no single request exceeds what a hosting
+  // proxy accepts (413 above ~5 MB), then assembled and saved by the server.
+  saveFileAnswer: async (id, formData) => {
     formData.append('preserveStatus', 'true')
-    return api.post(`/questionnaires/${id}/answers/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const files = formData.getAll('files')
+    const large = files.filter((file) => file.size > 3 * 1024 * 1024)
+    if (!large.length) return api.post(`/questionnaires/${id}/answers/files`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    const payload = {}
+    for (const [key, value] of formData.entries()) if (key !== 'files') payload[key] = value
+    let result
+    for (const file of files) {
+      if (file.size <= 3 * 1024 * 1024) {
+        const fd = new FormData()
+        Object.entries(payload).forEach(([key, value]) => fd.append(key, value))
+        fd.append('files', file)
+        result = await api.post(`/questionnaires/${id}/answers/files`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        continue
+      }
+      const created = await api.post(`/questionnaires/${id}/answers/files/sessions`, { originalName: file.name, mimeType: file.type || 'application/octet-stream', expectedSize: file.size, chunkSize: 3 * 1024 * 1024 })
+      const session = created.data.session
+      // several chunks go up at once (each a separate small request); a failed chunk is retried
+      let nextChunk = 0
+      let failure = null
+      const sendChunks = async () => {
+        while (!failure && nextChunk < session.totalChunks) {
+          const index = nextChunk
+          nextChunk += 1
+          const start = index * session.chunkSize
+          const chunk = file.slice(start, Math.min(start + session.chunkSize, file.size), file.type)
+          let lastError
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+              const fd = new FormData()
+              fd.append('chunk', chunk, file.name)
+              await api.put(`/questionnaires/${id}/answers/files/sessions/${session.uploadId}/chunks/${index}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+              lastError = null
+              break
+            } catch (error) {
+              lastError = error
+              if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 500))
+            }
+          }
+          if (lastError) { failure = lastError; return }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(4, session.totalChunks) }, sendChunks))
+      if (failure) throw failure
+      result = await api.post(`/questionnaires/${id}/answers/files/sessions/${session.uploadId}/complete`, payload)
+    }
+    return result
   },
   progress: (id, params = {}) => api.get(`/questionnaires/${id}/progress`, { params }),
   mappings: (id) => api.get(`/questionnaires/${id}/uscis-mappings`),
@@ -627,6 +674,12 @@ export const formGenerationApi = {
   // The one official download: real, authentic, watermark-free USCIS PDF,
   // no status gate. Replaces the old draftPdf/filingPdf split.
   downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
+  // Save back a form edited outside the system (the downloaded PDF edited in the user's own browser / PDF viewer).
+  uploadExternalEdit: (caseFormId, file) => {
+    const data = new FormData()
+    data.append('file', file)
+    return api.post(`/forms/${caseFormId}/external-edit`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 export const petitionApi = {

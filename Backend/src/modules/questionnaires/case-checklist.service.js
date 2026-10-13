@@ -128,6 +128,33 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
   return { approved };
 }
 
+// An employee case inherits the principal's approval of an EMPLOYEE checklist. The cascade in approveChecklists only reaches child cases that exist
+// (with their checklist provisioned) at the moment of approval; this brings every other employee case - created or provisioned later - in line, for
+// every visa type. Idempotent. caseId may be the principal (all its employee cases) or one employee case.
+async function inheritParentApprovals(caseId, user) {
+  const caseDoc = await Case.findById(caseId).select("parentCase").lean();
+  if (!caseDoc) return { inherited: 0 };
+  const children = caseDoc.parentCase ? [caseDoc._id] : (await Case.find({ parentCase: caseDoc._id }).select("_id").lean()).map((child) => child._id);
+  let inherited = 0;
+  for (const childId of children) {
+    const child = await Case.findById(childId);
+    if (!child || !child.parentCase || !isGated(child)) continue;
+    const parent = await Case.findById(child.parentCase).select("checklistApproval").lean();
+    const have = new Set((child.checklistApproval?.approvals || []).map((approval) => approval.checklistId));
+    const removed = new Set((child.checklistApproval?.removed || []).map((item) => item.checklistId));
+    const missing = (parent?.checklistApproval?.approvals || []).filter((approval) => String(approval.checklistId).endsWith("|employee") && !have.has(approval.checklistId) && !removed.has(approval.checklistId));
+    if (!missing.length) continue;
+    for (const approval of missing) {
+      child.checklistApproval.approvals.push({ checklistId: approval.checklistId, questionnaireId: approval.questionnaireId, targetRole: approval.targetRole, approvedAt: approval.approvedAt || new Date(), approvedBy: approval.approvedBy });
+      caseService.addTimelineEvent(child, "questionnaire", "Checklist Approved", "The employee checklist was approved on the employer case and is now available to the client.", user || { _id: approval.approvedBy }, { checklistId: approval.checklistId });
+    }
+    await child.save();
+    broadcastChecklistsChanged(child, "approved", user);
+    inherited += missing.length;
+  }
+  return { inherited };
+}
+
 // ── reject / delete a checklist for this case ──────────────────────────
 // The checklist is taken off THIS case completely: staff no longer see it, the client is never sent it (or loses it, if it
 // was already sent), and automatic assignment cannot bring it back. The shared template and other cases are untouched,
@@ -318,4 +345,4 @@ async function broadcastEdited(caseId, user) {
   broadcastChecklistsChanged([principal, ...children], "edited", user);
 }
 
-module.exports = { approveChecklists, removeChecklist, forkChecklist, editChecklist, baseKey };
+module.exports = { approveChecklists, inheritParentApprovals, removeChecklist, forkChecklist, editChecklist, baseKey };

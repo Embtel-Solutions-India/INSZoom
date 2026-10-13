@@ -28,7 +28,7 @@ import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 // — useCaseQuestionnaire has no request cache of its own.
 export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   const {
-    questionnaire, initialLoading, refreshing, error, sections, questionsBySection, answers, answerByKey,
+    questionnaire, initialLoading, refreshing, error, notReleased, sections, questionsBySection, answers, answerByKey,
     prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult,
     overallCompletion, missingRequiredCount, dirty, saveState, lastSavedAt, statusMessage, responseId,
   } = qa;
@@ -65,6 +65,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   // ever completes; a later refetch with existing data shows the subtle
   // "Updating…" indicator below instead of replacing this content.
   if (initialLoading) return <p className="text-sm text-slate-400">Loading…</p>;
+  if (notReleased) return <p className="text-sm text-slate-500">We are preparing this checklist. It will appear here as soon as it is ready, and we will let you know.</p>;
   if (error) return <p className="text-sm text-red-600">{error.message || "Unable to load this checklist."}</p>;
   if (!questionnaire) return <p className="text-sm text-slate-400">No checklist is available for this visa type yet.</p>;
 

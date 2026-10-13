@@ -465,6 +465,7 @@ export default function Documents() {
   const itemIsMissingRequired = (item) => {
     if (item.type === "document" && item.docId) return !(files[item.docId] || []).length;
     if (item.question) {
+      if (item.question.metadata?.optional) return false; // opt-in: an optional question never blocks Submit
       const src = item.qaSource || legacyQA;
       return isEmptyAnswerValue(src.answers[questionKey(item.question)]);
     }

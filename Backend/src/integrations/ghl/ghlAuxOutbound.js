@@ -68,7 +68,7 @@ function categoryForVisa(visaType, petitionSubType, entries) {
   const exact = rows.find((e) => (e.petitionSubType || "") === (petitionSubType || ""));
   const hit = exact || rows[0];
   if (hit?.category) return hit.category;
-  return /^(EB-|PERM$|IR-[0-9]$|CR-[0-9]$|F[1-4][AB]?$|GC)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
+  return /^(EB-|PERM$|IR-[0-9]$|CR-[0-9]$|F[1-4][AB]?$|GC|SB-1|Green Card)/i.test(visaType || "") ? "immigrant" : "non_immigrant"; // green-card / family-based classifications are immigrant
 }
 
 const DETAIL_TO_SERVICE_TYPE = { work_visa: "Work Visa", study_visa: "Study Visa", green_card: "Green Card", business__investment: "Business/Investment" };
@@ -91,7 +91,9 @@ async function queueJob(caseId, type) {
   // One waiting/running job of a type per card is enough: it recomputes what to do when it runs.
   if (await GHLSyncJob.exists({ caseId, type, status: { $in: ["pending", "processing"] } })) return null;
   // A job that just failed for good is not retried by every sweep (that only hammers GHL and re-alerts admins); try again after an hour.
-  if (await GHLSyncJob.exists({ caseId, type, status: "failed", updatedAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) } })) return null;
+  // A case that never made it to GHL is retried much sooner (every sweep after 10 minutes): it must always end up there.
+  const cooldownMs = type === "create_case_opportunity" || type === "link_employer" ? 10 * 60 * 1000 : 60 * 60 * 1000;
+  if (await GHLSyncJob.exists({ caseId, type, status: "failed", updatedAt: { $gte: new Date(Date.now() - cooldownMs) } })) return null;
   return GHLSyncJob.create({ type, caseId, operationId: crypto.randomUUID(), status: "pending", nextAttemptAt: new Date() });
 }
 

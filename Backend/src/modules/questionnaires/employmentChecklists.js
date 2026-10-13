@@ -14,6 +14,7 @@ const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
 const o2 = require("../employment-workflow/questionnaires/o2");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
+const { EB1C_CHECKLIST_DEFINITIONS } = require("./eb1cChecklists");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
 const e2 = require("../employment-workflow/questionnaires/e2");
@@ -259,9 +260,46 @@ const EMPLOYEE_CANONICAL_PATHS = {
   "personal.currentUsAddress.zipCode": "contact.address.zip",
   "immigrationStatus.currentVisaStatus": "immigration.currentStatus",
   "immigrationStatus.i94Number": "immigration.i94.number",
+  // same shared meaning on every visa's employee section (TN is the first catalog that asks all of these)
+  "personal.ssn": "person.ssn",
+  "personal.aNumber": "person.alienNumber",
+  "personal.provinceStateOfBirth": "person.provinceOfBirth",
+  "personal.sevisNumber": "immigration.sevisNumber",
+  "personal.currentUsAddress": "contact.address.formatted",
+  "passport.number": "person.passport.number",
+  "passport.issueDate": "person.passport.issueDate",
+  "passport.expirationDate": "person.passport.expirationDate",
+  "immigrationStatus.dateOfLastArrival": "immigration.lastArrivalDate",
+  "immigrationStatus.statusExpirationDate": "immigration.currentStatusExpirationDate",
+  "immigrationStatus.foreignAddress": "contact.foreignAddress.formatted",
 };
 
-function canonicalPathForEntry(entry) {
+// Employer/petitioner side. Opt-in per checklist (options.employerCanonicalPaths) so another visa's employer answers keep flowing exactly as
+// they do today; the canonical PartyAliasService then exposes these as petitioner.* for every form.
+const EMPLOYER_CANONICAL_PATHS = {
+  "company.legalName": "company.name",
+  "company.fein": "company.ein",
+  "company.businessType": "company.industry",
+  "company.yearEstablished": "company.yearEstablished",
+  "company.totalUsEmployees": "company.numberOfEmployees",
+  "company.grossAnnualIncome": "company.grossAnnualIncome",
+  "company.netAnnualIncome": "company.netAnnualIncome",
+  "company.website": "company.website",
+  "company.address": "company.address.formatted",
+  "signingPerson.firstName": "company.authorizedRepresentative.firstName",
+  "signingPerson.lastName": "company.authorizedRepresentative.lastName",
+  "signingPerson.title": "company.authorizedRepresentative.title",
+  "signingPerson.email": "company.authorizedRepresentative.email",
+  "signingPerson.mobilePhone": "company.authorizedRepresentative.phone",
+  "position.jobTitle": "employment.jobTitle",
+  "position.salary": "employment.wage",
+};
+
+function canonicalPathForEntry(entry, options = {}) {
+  if (options.employerCanonicalPaths && entry.path.startsWith("employer.")) {
+    const employerPath = EMPLOYER_CANONICAL_PATHS[entry.path.replace(/^employer\./, "")];
+    return employerPath ? { canonicalPath: employerPath } : undefined;
+  }
   if (!entry.path.startsWith("employee.")) return undefined;
   const canonicalPath = EMPLOYEE_CANONICAL_PATHS[entry.path.replace(/^employee\./, "")];
   return canonicalPath ? { canonicalPath } : undefined;
@@ -286,7 +324,7 @@ function conditionalLogicFromEntry(entry) {
 // filtered to entries belonging to this checklist. Tracks section order-of-
 // first-appearance and a per-section counter so `order` is stable and the
 // returned `sections` list matches what ensureDefaultVisaTemplates() expects.
-function fieldQuestionsFromCatalog(catalogEntries, visibility) {
+function fieldQuestionsFromCatalog(catalogEntries, visibility, options = {}) {
   const sectionOrder = [];
   const counters = new Map();
   const questions = catalogEntries.map((entry) => {
@@ -308,7 +346,7 @@ function fieldQuestionsFromCatalog(catalogEntries, visibility) {
       metadata: entry.repeatable
         ? { sourcePath: entry.path, repeatableFields: REPEATABLE_FIELDS[entry.path] || [], ...(entry.masterDataPath ? { masterDataPath: entry.masterDataPath } : {}) }
         : { sourcePath: entry.path, ...(entry.masterDataPath ? { masterDataPath: entry.masterDataPath } : {}) },
-      mapping: canonicalPathForEntry(entry),
+      mapping: canonicalPathForEntry(entry, options),
       visibility,
       repeatable: Boolean(entry.repeatable),
       conditionalLogic: conditionalLogicFromEntry(entry),
@@ -933,6 +971,8 @@ function o1CriteriaQuestions(criteria, variantLabel, variantValue, groupIntro, v
 // L-1B gets its own copy of every L-1A checklist (same questions/documents).
 const L1A_VISA_TYPES = ["L1A", "L-1A"];
 const L1B_VISA_TYPES = ["L1B", "L-1B"];
+// L-1A Extension: also a copy of every L-1A checklist, under its own keys/visa (hyphen-stripped form listed too - see O1_VISA_TYPES note).
+const L1A_EXTENSION_VISA_TYPES = ["L1AEXTENSION", "L-1A Extension"];
 
 const O1_VISA_TYPES = [
   "O1",
@@ -1218,6 +1258,7 @@ function buildTnEmployerChecklist() {
   const fieldResult = fieldQuestionsFromCatalog(
     tn.fieldCatalog().filter((entry) => entry.section === "employer"),
     visibility,
+    { employerCanonicalPaths: true },
   );
   return {
     key: "tn_employer_checklist",
@@ -1254,18 +1295,22 @@ function buildTnEmployeeChecklist() {
   };
 }
 
-// L-1B uses the identical L-1A questionnaire content under its own keys/visa.
-function l1bCopyOf(definition) {
-  const relabel = (text) => (typeof text === "string" ? text.replace(/L-1A/g, "L-1B") : text);
+// L-1B and L-1A Extension use the identical L-1A questionnaire content under their own keys/visa.
+// Every `l1a_*` key becomes `<keyPrefix>_*`, and "L-1A" in titles/descriptions becomes `label`.
+function l1aVariantCopyOf(definition, { keyPrefix, label, visaType, visaTypes }) {
+  const relabel = (text) => (typeof text === "string" ? text.replace(/L-1A/g, label) : text);
   return {
     ...definition,
-    key: definition.key.replace(/^l1a_/, "l1b_"),
+    key: definition.key.replace(/^l1a_/, `${keyPrefix}_`),
     title: relabel(definition.title),
     description: relabel(definition.description),
-    visaType: "L1B",
-    visaTypes: L1B_VISA_TYPES,
+    visaType,
+    visaTypes,
   };
 }
+const l1bCopyOf = (definition) => l1aVariantCopyOf(definition, { keyPrefix: "l1b", label: "L-1B", visaType: "L1B", visaTypes: L1B_VISA_TYPES });
+const l1aExtensionCopyOf = (definition) =>
+  l1aVariantCopyOf(definition, { keyPrefix: "l1aext", label: "L-1A Extension", visaType: "L1AEXTENSION", visaTypes: L1A_EXTENSION_VISA_TYPES });
 
 const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildH1bEmployerChecklist(),
@@ -1274,6 +1319,7 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildL1aEmployeeChecklist(),
   buildL1aBusinessPlanChecklist(),
   ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1bCopyOf),
+  ...[buildL1aEmployerChecklist(), buildL1aEmployeeChecklist(), buildL1aBusinessPlanChecklist()].map(l1aExtensionCopyOf),
   buildE2VisaChecklist(),
   buildE2BusinessPlanChecklist(),
   buildE2SupportingDocumentsChecklist(),
@@ -1287,6 +1333,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildO2EmployeeChecklist(),
   buildEb1bEmployerChecklist(),
   buildEb1bEmployeeChecklist(),
+  // EB-1C (Multinational Manager / Executive): employer + employee checklists, every item optional - see eb1cChecklists.js
+  ...EB1C_CHECKLIST_DEFINITIONS,
   buildI140EmployerChecklist(),
   buildI140EmployeeChecklist(),
   buildTnEmployerChecklist(),

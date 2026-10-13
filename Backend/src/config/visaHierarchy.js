@@ -25,7 +25,7 @@ const VISA_HIERARCHY = {
   "P-1": { children: ["P-1A", "P-1B", "P-1S"] },
   "P-2": { children: ["P-2S"] },
   "P-3": { children: ["P-3S"] },
-  "L-1": { children: ["L-1A", "L-1B"] },
+  "L-1": { children: ["L-1A", "L-1A Extension", "L-1B"] },
   "O-1": { children: ["O-1A", "O-1B"] },
   "EB-1": { children: ["EB-1A", "EB-1B", "EB-1C"] },
   "EB-2": { children: ["EB-2 PERM", "EB-2 NIW"] },

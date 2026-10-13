@@ -19,6 +19,8 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
     progress: null,
     loading: true,
     error: null,
+    // the case manager has not released this checklist yet: not an error, the client is told it is being prepared
+    notReleased: false,
   });
   const saveTimers = useRef({});
   // Bug fix: a file upload (saveFiles in useQuestionnaireAnswers) calls
@@ -69,8 +71,15 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
         responseId: data.responseId,
         loading: false,
         error: null,
+        notReleased: false,
       });
     } catch (error) {
+      // a checklist that is still being prepared answers 403 CHECKLIST_NOT_APPROVED - retrying will not change that, and it is not a failure
+      if (error.code === "CHECKLIST_NOT_APPROVED" || (error.status === 403 && /still preparing|not been released/i.test(error.message || ""))) {
+        hasLoadedOnce.current = true;
+        setState((prev) => ({ ...prev, loading: false, error: null, notReleased: true }));
+        return;
+      }
       if (attempt < 2) {
         setTimeout(() => load(attempt + 1), 2000 * (attempt + 1));
         return;

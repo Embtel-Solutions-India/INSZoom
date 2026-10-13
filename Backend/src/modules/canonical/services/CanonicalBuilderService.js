@@ -10,6 +10,7 @@ const EmployerProfile = require("../../../models/EmployerProfile");
 const User = require("../../../models/User");
 const MappingResolver = require("../../form-mapping/services/MappingResolver");
 const CanonicalMergeService = require("./CanonicalMergeService");
+const { getClassification, getFilingBasis } = require("../../../config/visaCategories");
 const { CASE_SCOPED_CANONICAL_PATHS } = require("../config/fieldScope");
 const { isFamilyPartiesCase, partyOf, scopeFamilyPath } = require("../config/familyPartyPaths");
 const {
@@ -705,6 +706,13 @@ class CanonicalBuilderService {
     // against a single case's own Document records.
     merged.profile.case.caseRole = sources.caseRecord.caseRole;
     merged.profile.case.caseStructure = sources.caseRecord.caseStructure;
+    // Derived from the case-type registry (never a mergeable input): what a USCIS form prints/ticks for this case type
+    // ("L-1A Extension" -> "L-1A"), and the filing basis it adds ("extension"). Forms read these canonical paths only.
+    merged.profile.case.classification = getClassification(sources.caseRecord.visaType);
+    merged.profile.case.filingBasis = getFilingBasis(sources.caseRecord.visaType);
+    // Generic party roots (beneficiary.* / petitioner.*) that every form maps against - filled from person/contact/immigration/company and free-text
+    // addresses, never overwriting a value already present.
+    require("./PartyAliasService").apply(merged.profile);
     merged.profile.metadata = {
       caseId,
       beneficiaryId: idOf(sources.beneficiary),

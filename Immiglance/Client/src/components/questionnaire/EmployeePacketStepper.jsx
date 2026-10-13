@@ -24,7 +24,7 @@ const STEPS = [
 // the actual submit action). Reuses `qa` from useQuestionnaireAnswers as-is.
 export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExit, onSubmitted, readOnly = false }) {
   const {
-    questionnaire, initialLoading, error, sections, questionsBySection, answers, answerByKey,
+    questionnaire, initialLoading, error, notReleased, sections, questionsBySection, answers, answerByKey,
     prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult, responseId,
     questionnaireId, missingRequiredCount, dirty, saveState, lastSavedAt,
   } = qa;
@@ -147,6 +147,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
   };
 
   if (initialLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (notReleased) return <p className="text-sm text-muted-foreground">We are preparing this checklist. It will appear here as soon as it is ready, and we will let you know.</p>;
   if (error) return <p className="text-sm text-destructive">{error.message || "Unable to load this checklist."}</p>;
   if (!questionnaire) return <p className="text-sm text-muted-foreground">No checklist is available for this visa type yet.</p>;
 

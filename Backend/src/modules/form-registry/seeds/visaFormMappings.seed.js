@@ -289,6 +289,8 @@ add(
 // ===================== L FAMILY =====================
 add(i129Petition("L-1A"), i129LSupplement("L-1A"), m("L-1A", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A"), i539("L-1A"), i907("L-1A"));
 add(i129Petition("L-1B"), i129LSupplement("L-1B"), m("L-1B", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1B"), i539("L-1B"), i907("L-1B"));
+// L-1A Extension: filed as an L-1A (case.classification), so the same forms.
+add(i129Petition("L-1A Extension"), i129LSupplement("L-1A Extension"), m("L-1A Extension", "I-129S", "Nonimmigrant Petition Based on Blanket L Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-129s", notes: "Blanket L petition workflow only." }), ds160("L-1A Extension"), i539("L-1A Extension"), i907("L-1A Extension"));
 add(i539("L-2"), i539A("L-2"), i765("L-2"), ds160("L-2"));
 
 // ===================== O FAMILY =====================
@@ -337,17 +339,29 @@ add(
 );
 
 // ===================== TN =====================
+// Bare "TN" is what the Admin New-case list creates (TN Canada / TN Mexico are the country variants); it carries the same USCIS forms.
+// The Trade Agreement Supplement is the part of the TN I-129 that carries the TN-specific answers (same component H-1B1 and E-3 already use).
+add(i129TradeAgreementSupplement("TN"), i129TradeAgreementSupplement("TN Canada"), i129TradeAgreementSupplement("TN Mexico"));
+add(
+  ds160("TN"),
+  i129Petition("TN", { provisioningType: COND, initialCaseCreation: false, notes: "USCIS extension/change/status route only - TN is typically adjudicated at the border or consulate, not via I-129." }),
+  i539("TN"),
+  i907("TN"),
+  g28("TN")
+);
 add(
   ds160("TN Canada"),
   i129Petition("TN Canada", { provisioningType: COND, initialCaseCreation: false, notes: "USCIS extension/change/status route only - TN Canada is typically adjudicated at the border, not via I-129." }),
   i539("TN Canada"),
-  i907("TN Canada")
+  i907("TN Canada"),
+  g28("TN Canada")
 );
 add(
   ds160("TN Mexico", { provisioningType: AUTO, initialCaseCreation: true }),
   i129Petition("TN Mexico", { provisioningType: COND, initialCaseCreation: false }),
   i539("TN Mexico"),
-  i907("TN Mexico")
+  i907("TN Mexico"),
+  g28("TN Mexico")
 );
 
 // ===================== K FAMILY =====================
@@ -535,6 +549,8 @@ function eb1(visaType, opts = {}) {
   );
 }
 eb1("EB-1A"); eb1("EB-1B", { supplementJ: true }); eb1("EB-1C", { supplementJ: true });
+// EB-1C: G-28 is a Case-Manager-decision form (only when an attorney / accredited representative is on record), like H-1B / COSF1 / F-1 reinstatement.
+add(g28("EB-1C"));
 
 // ===================== PREMIUM PROCESSING (standalone case) =====================
 // A case opened only to expedite an already-filed petition/application: Form I-907 is the

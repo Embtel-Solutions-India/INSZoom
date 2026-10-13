@@ -1,5 +1,6 @@
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
 const Case = require("../../../models/Case");
+const { getClassification, getFilingBasis } = require("../../../config/visaCategories");
 
 class CanonicalDataService {
   // options.skipRebuild: read CanonicalProfileService's cached profile
@@ -14,7 +15,7 @@ class CanonicalDataService {
   static async build(caseId, user, req, options = {}) {
     const [canonicalState, caseData] = await Promise.all([
       CanonicalProfileService.get(caseId, user, req, { rebuild: !options.skipRebuild, reason: options.reason || "form_mapping" }),
-      Case.findById(caseId).select("questionnaireData").lean(),
+      Case.findById(caseId).select("questionnaireData visaType").lean(),
     ]);
     const masterData = caseData?.questionnaireData?.masterData || {};
     const profile = {
@@ -22,6 +23,19 @@ class CanonicalDataService {
       ...(canonicalState.profile || {}),
       questionnaireMasterData: masterData,
     };
+    // A canonical profile cached before case.classification / case.filingBasis existed has neither; they come from the case-type
+    // registry, so they are always filled here (a rebuilt profile already carries the same values).
+    if (caseData?.visaType) {
+      profile.case = {
+        ...(profile.case || {}),
+        classification: profile.case?.classification || getClassification(caseData.visaType),
+        filingBasis: profile.case?.filingBasis === undefined ? getFilingBasis(caseData.visaType) : profile.case.filingBasis,
+      };
+    }
+    // generic party roots (beneficiary.* / petitioner.*): a profile cached before they existed gets them here too (on a copy, never overwriting)
+    profile.beneficiary = structuredClone(profile.beneficiary || {});
+    profile.petitioner = structuredClone(profile.petitioner || {});
+    require("../../canonical/services/PartyAliasService").apply(profile);
     return {
       ...profile,
       canonicalProfile: profile,

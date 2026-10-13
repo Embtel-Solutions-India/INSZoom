@@ -126,7 +126,11 @@ async function runLinkEmployer(job, client) {
   if (await GHLEmployerLink.exists({ principalCaseId: caseDoc._id })) return "skipped";
   const locationId = env.ghl.locationId;
   const contactId = await upsertContact(client, locationId, await contactDetails(caseDoc));
-  await GHLEmployerLink.create({ locationId, contactId, principalCaseId: caseDoc._id }).catch((error) => {
+  // The employee sync treats employees older than the link as history and never gives them a card. A matter created in the CRM
+  // is linked a moment AFTER its employee slots exist, so the link takes the matter's own creation time: they are not history.
+  const config = await GHLIntegration.findOne({ locationId }).select("crmCaseSyncSince").lean();
+  const autoSynced = config?.crmCaseSyncSince && new Date(caseDoc.createdAt) >= new Date(config.crmCaseSyncSince);
+  await GHLEmployerLink.create({ locationId, contactId, principalCaseId: caseDoc._id, ...(autoSynced ? { createdAt: caseDoc.createdAt } : {}) }).catch((error) => {
     if (error?.code !== 11000) throw error; // the contact already belongs to another employer matter: leave it to a person
   });
   return "done";

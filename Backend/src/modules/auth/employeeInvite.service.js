@@ -16,20 +16,14 @@ async function createInviteToken(user) {
 }
 
 async function getInviteDetails(token) {
-  const user = await User.findOne({
-    inviteTokenHash: hashToken(token),
-    inviteTokenExpiresAt: { $gt: new Date() },
-  }).select("+inviteTokenHash");
+  const user = await User.findOne(User.inviteTokenFilter(hashToken(token))).select("+inviteTokenHash");
   if (!user) return null;
   const caseData = await Case.findOne({ employeeUser: user._id }).select("caseNumber").sort({ createdAt: -1 });
   return { name: user.name || user.displayName || "", email: user.email, caseNumber: caseData?.caseNumber || null };
 }
 
 async function acceptInvite(token, newPassword, username) {
-  const user = await User.findOne({
-    inviteTokenHash: hashToken(token),
-    inviteTokenExpiresAt: { $gt: new Date() },
-  }).select("+inviteTokenHash");
+  const user = await User.findOne(User.inviteTokenFilter(hashToken(token))).select("+inviteTokenHash");
   if (!user) return null;
 
   user.password = newPassword;

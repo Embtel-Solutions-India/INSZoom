@@ -419,6 +419,14 @@ function validateQuestionValue(question, value) {
     if (rule.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) bucket.push(rule.message || `${question.label} must be a valid email`);
     if (rule.type === "phone" && value && String(value).replace(/\D/g, "").length < Number(rule.value || 7)) bucket.push(rule.message || `${question.label} must be a valid phone number`);
     if (rule.type === "date" && value && Number.isNaN(new Date(value).getTime())) bucket.push(rule.message || `${question.label} must be a valid date`);
+    if (rule.type === "date" && rule.value === "past" && value && !Number.isNaN(new Date(value).getTime()) && new Date(value).getTime() > Date.now()) bucket.push(rule.message || `${question.label} cannot be in the future`);
+  }
+  // Opt-in (metadata.strictOptions): a select / radio / multi-select answer must be one of the question's own option values. Checklists that
+  // do not set the flag keep accepting free values exactly as before.
+  if (question.metadata?.strictOptions && !isUnanswered && Array.isArray(question.options) && question.options.length && ["select", "radio", "multi_select", "multiselect"].includes(question.type)) {
+    const allowed = new Set(question.options.map((option) => String(option.value)));
+    const given = Array.isArray(value) ? value : [value];
+    if (given.some((item) => !allowed.has(String(item)))) errors.push(`${question.label} must be one of the listed options`);
   }
   if (question.type === "repeating_group" && Array.isArray(value) && value.length) {
     const rowResult = validateRepeatingGroupRows(question, value);
@@ -450,6 +458,21 @@ function validateResponse(questionnaire, questions, answerMap, user) {
       } else {
         seenUniqueValues.set(normalized, question.label);
       }
+    }
+  });
+  // Opt-in (metadata.sumGroup {id, total}): when EVERY visible member of a group has an answer, the answers must add up to the total.
+  // A partially answered group is never judged.
+  const sumGroups = new Map();
+  visibleQuestions.forEach((question) => {
+    const group = question.metadata?.sumGroup;
+    if (group?.id) sumGroups.set(group.id, { ...group, members: [...(sumGroups.get(group.id)?.members || []), question] });
+  });
+  sumGroups.forEach((group) => {
+    const values = group.members.map((member) => getAnswerValue(answerMap, member.key));
+    if (!values.every((value) => hasAnsweredValue(value))) return;
+    const sum = values.reduce((total, value) => total + Number(value), 0);
+    if (Number.isFinite(sum) && Math.abs(sum - Number(group.total)) > 0.001) {
+      errors.push({ questionKey: group.members[0].key, label: group.members[0].label, message: `${group.label || "These answers"} must add up to ${group.total} (they add up to ${sum})` });
     }
   });
   return {
@@ -884,7 +907,8 @@ async function calculateCompletion(questionnaire, answerMap, user) {
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
   // "required" in the returned shape now means "needed for a complete submission": every visible question. Nothing is
   // mandatory to save, but Submit needs 100%.
-  const required = visibleQuestions;
+  // A question flagged metadata.optional never blocks Submit (opt-in per question).
+  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
   const answeredRequired = required.filter((question) => {
     const value = getAnswerValue(answerMap, question.key);
     return value !== undefined && value !== null && value !== "";
@@ -972,8 +996,8 @@ async function resolveVisibleQuestions(questionnaire, answerMap, user) {
 async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
   const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
-  // Every visible question is needed for a complete submission (nothing is mandatory to save).
-  const required = visibleQuestions;
+  // Every visible question is needed for a complete submission (nothing is mandatory to save) - except one flagged metadata.optional.
+  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
   const answeredRequiredKeys = new Set(
     required.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key))).map((question) => question.key)
   );
@@ -1673,6 +1697,14 @@ function withRowLock(lockKey, task) {
   return run;
 }
 
+// An employee case is released by approving its checklist on the employee case OR on its principal (employer) case - the Admin approves from the principal workspace.
+async function isApprovedIncludingParent(caseData, entry) {
+  if (isApproved(caseData, entry)) return true;
+  if (!caseData?.parentCase) return false;
+  const parent = await Case.findById(caseData.parentCase).select("checklistApproval").lean();
+  return Boolean(parent) && isApproved(parent, entry);
+}
+
 async function saveFileAnswer(payload, files, user, req, { preserveStatus = false } = {}) {
   if (!files?.length) {
     const error = new Error("No file was provided");
@@ -1863,6 +1895,7 @@ async function assertSubmittable(payload, user) {
   });
   const missing = questions
     .filter((question) => isQuestionVisible(question, answerMap, user))
+    .filter((question) => !question.metadata?.optional)
     .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   if (missing.length) {
     const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
@@ -1870,6 +1903,42 @@ async function assertSubmittable(payload, user) {
     error.code = "CHECKLIST_INCOMPLETE";
     error.details = { missing: missing.slice(0, 50).map((question) => ({ questionKey: question.key, label: question.label })), missingCount: missing.length };
     throw error;
+  }
+}
+
+// Checklists whose FINAL case submission is verified on the server. A single-party client's "Submit case" does not go through submitResponse
+// (the portal calls the employment-workflow submit, which checks nothing), so for these checklists the submit endpoint calls this guard:
+// every visible question answered, every answer passing its format rules. Opt-in by checklist key; no other checklist is affected.
+const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist", "eb1c_employer_checklist", "eb1c_employee_checklist"]);
+
+async function assertStrictChecklistsSubmittable(caseData, user) {
+  for (const reference of (caseData.questionnaireReferences || []).filter((item) => item.active !== false)) {
+    const questionnaireId = reference.questionnaireId || reference.questionnaireTemplateId;
+    if (!questionnaireId) continue;
+    const questionnaire = await Questionnaire.findById(questionnaireId).select("key title version").lean();
+    if (!questionnaire || !STRICT_SUBMIT_CHECKLIST_KEYS.has(baseKey(questionnaire.key))) continue;
+    const questions = await Question.find({ questionnaire: questionnaireId, active: true });
+    const stored = reference.responseId ? await Answer.find({ responseId: reference.responseId }).lean() : [];
+    const answerMap = getAnswerMapFromAnswers(stored);
+    const missing = questions
+      .filter((question) => isQuestionVisible(question, answerMap, user))
+      .filter((question) => !question.metadata?.optional)
+      .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
+    if (missing.length) {
+      const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
+      error.status = 422;
+      error.code = "CHECKLIST_INCOMPLETE";
+      error.details = { checklist: questionnaire.key, missing: missing.slice(0, 50).map((question) => ({ questionKey: question.key, label: question.label })), missingCount: missing.length };
+      throw error;
+    }
+    const result = validateResponse(questionnaire, questions, answerMap, user);
+    if (!result.valid) {
+      const error = new Error(`Please correct ${result.errors.length} answer${result.errors.length === 1 ? "" : "s"} before submitting: ${result.errors.slice(0, 3).map((item) => item.message).join("; ")}`);
+      error.status = 422;
+      error.code = "CHECKLIST_INVALID";
+      error.details = { checklist: questionnaire.key, errors: result.errors.slice(0, 50).map((item) => ({ questionKey: item.questionKey, label: item.label, message: item.message })) };
+      throw error;
+    }
   }
 }
 
@@ -2312,7 +2381,7 @@ async function ensureDefaultVisaTemplates(user, req, { force = false } = {}) {
 // Same create-or-patch logic as the full seed, scoped to the checklists a request actually needs, cached per template key
 // (ENSURE_TTL_MS) so repeated page loads cost nothing.
 const lazyTemplateCache = new Map(); // definition.key -> { at, promise, present }
-const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-s]/g, "").toUpperCase();
+const normalizeVisaForTemplates = (value) => String(value || "").replace(/[-\s]/g, "").toUpperCase();
 
 function reconcileInBackground(definition, user, req) {
   const state = lazyTemplateCache.get(definition.key) || {};
@@ -2626,6 +2695,17 @@ async function reconcileDefinition(definition, systemUser, req) {
   return questionnaire;
 }
 
+// The case document returned alongside a questionnaire. Client-side users get it without the internal, staff-facing parts (the canonical
+// profile with its provenance and history, the audit log, the knowledge plan): the client portal reads none of them, and they are not the
+// client's to see. Staff get the document unchanged.
+const CLIENT_HIDDEN_CASE_FIELDS = ["canonicalProfile", "canonicalHistory", "auditLog", "knowledgePlan"];
+function caseForViewer(caseData, user) {
+  if (!caseData || !isClientSideUser(user)) return caseData;
+  const plain = typeof caseData.toObject === "function" ? caseData.toObject() : { ...caseData };
+  CLIENT_HIDDEN_CASE_FIELDS.forEach((field) => { delete plain[field]; });
+  return plain;
+}
+
 async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const timer = createStageTimer();
   const caseData = await Case.findById(caseId);
@@ -2802,7 +2882,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
-  if (isGated(referenceCase) && isClientSideUser(user) && !isApproved(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest })) {
+  if (isGated(referenceCase) && isClientSideUser(user) && !(await isApprovedIncludingParent(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest }))) {
     const error = new Error("Your case manager is still preparing this checklist. You will be notified when it is ready.");
     error.status = 403;
     error.code = "CHECKLIST_NOT_APPROVED";
@@ -2838,7 +2918,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
       ...timer.done(),
     });
     return {
-      case: caseData,
+      case: caseForViewer(caseData, user),
       questionnaire,
       questions: intelligentState.pendingQuestions,
       documentQuestions: intelligentState.pendingQuestions.filter((question) => question.type === "file"),
@@ -2865,7 +2945,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     ...timer.done(),
   });
   return {
-    case: caseData,
+    case: caseForViewer(caseData, user),
     questionnaire,
     questions: visibleQuestions,
     documentQuestions: visibleQuestions.filter((question) => question.type === "file"),
@@ -3074,7 +3154,9 @@ async function listCaseChecklists(caseId, user) {
   }
   let resolved = await resolveCaseQuestionnaires(caseId);
   const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
-  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => isApproved(caseData, gateEntry(entry)));
+  const parentCaseForGate = caseData?.parentCase ? await Case.findById(caseData.parentCase).select("checklistApproval").lean() : null;
+  const approvedHere = (entry) => isApproved(caseData, gateEntry(entry)) || Boolean(parentCaseForGate && isApproved(parentCaseForGate, gateEntry(entry)));
+  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => approvedHere(entry));
   timer.mark("questionnaire_resolution", { count: resolved.length });
   const responseIds = resolved.map((entry) => entry.responseId).filter(Boolean);
   const answers = responseIds.length ? await Answer.find({ responseId: { $in: responseIds } }).lean() : [];
@@ -3115,7 +3197,7 @@ async function listCaseChecklists(caseId, user) {
       referenceId: entry.referenceId,
       staffRequest: Boolean(entry.staffRequest),
       checklistId: gateChecklistId(gateEntry(entry)),
-      clientApproval: isApproved(caseData, gateEntry(entry)) ? "approved" : "draft",
+      clientApproval: approvedHere(entry) ? "approved" : "draft",
       caseSpecific: String(entry.questionnaire.key || "").includes("__case_"),
       questionnaireId: entry.questionnaire._id,
       key: entry.questionnaire.key,
@@ -3501,6 +3583,7 @@ module.exports = {
   readAnswerFile,
   PRESERVE_ANSWER_STATUS,
   submitResponse,
+  assertStrictChecklistsSubmittable,
   unlockQuestionnaire,
   updateQuestion,
   updateQuestionnaire,
