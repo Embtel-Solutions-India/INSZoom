@@ -14,6 +14,7 @@ const p = require("../employment-workflow/questionnaires/p");
 const o1 = require("../employment-workflow/questionnaires/o1");
 const o2 = require("../employment-workflow/questionnaires/o2");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
+const { EB1C_CHECKLIST_DEFINITIONS } = require("./eb1cChecklists");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
 const e2 = require("../employment-workflow/questionnaires/e2");
@@ -1294,6 +1295,8 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildO2EmployeeChecklist(),
   buildEb1bEmployerChecklist(),
   buildEb1bEmployeeChecklist(),
+  // EB-1C (Multinational Manager / Executive): employer + employee checklists, every item optional - see eb1cChecklists.js
+  ...EB1C_CHECKLIST_DEFINITIONS,
   buildI140EmployerChecklist(),
   buildI140EmployeeChecklist(),
   buildTnEmployerChecklist(),

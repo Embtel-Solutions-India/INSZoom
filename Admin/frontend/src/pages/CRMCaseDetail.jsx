@@ -3291,6 +3291,7 @@ const CRMCaseDetail = () => {
                           <td className="py-2 px-3">
                             <p className="font-medium text-foreground text-sm">{item.formNumber}</p>
                             <p className="text-xs text-muted-foreground">{item.formName}</p>
+                            {item.appliesWhen && <p className="text-xs text-amber-700 mt-0.5">{item.appliesWhen}</p>}
                           </td>
                           <td className="py-2 px-3">
                             <span className={`badge ${getUiStatusColor(item.uiStatus)}`}>

@@ -114,6 +114,13 @@ for (const formNumber of ["I-485", "I-765", "I-131", "I-693"]) {
 }
 set("EB-1B", "I-907", [cm("eb1b_employer_checklist", COND, { role: "employer" }), cm("eb1b_employee_checklist", COND, { role: "employee" })]);
 
+// ---- EB-1C (Multinational Manager / Executive): same employer + employee pair as EB-1B -------------------
+set("EB-1C", "I-140", [cm("eb1c_employer_checklist", AUTO, { role: "employer" }), cm("eb1c_employee_checklist", AUTO, { role: "employee" })]);
+for (const formNumber of ["I-485", "I-765", "I-131", "I-693"]) {
+  set("EB-1C", formNumber, [cm("eb1c_employee_checklist", COND, { role: "employee" })]);
+}
+set("EB-1C", "I-907", [cm("eb1c_employer_checklist", COND, { role: "employer" }), cm("eb1c_employee_checklist", COND, { role: "employee" })]);
+
 // ---- EB-2 / EB-2 PERM (spec §3 EB-2, i140_* checklists) -----------------
 for (const visaType of ["EB-2", "EB-2 PERM"]) {
   set(visaType, "I-140", [cm("i140_petitioner_checklist", AUTO, { role: "petitioner" }), cm("i140_beneficiary_checklist", AUTO, { role: "beneficiary" })]);

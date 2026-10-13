@@ -483,6 +483,24 @@ exports.getFormsOverview = async (req, res, next) => {
       .map((entry) => toOverviewEntry(bucketByMappingId.get(String(entry.mapping._id)), entry, caseFormsByCode))
       .sort((left, right) => (left.displayOrder || 0) - (right.displayOrder || 0) || String(left.formNumber).localeCompare(String(right.formNumber)));
 
+    // Every other independent USCIS form the registry maps to this visa must still be LISTED even when the case's current filing path (or a
+    // trigger) does not apply yet - e.g. I-485 / I-765 / I-131 / I-693 until Adjustment of Status is chosen, G-28 until an attorney is on record.
+    // They are shown as pending decisions with the reason, never silently hidden; adding one still goes through the same decision / acquire flow.
+    const listed = new Set(bucketByMappingId.keys());
+    const PATH_LABEL = { ADJUSTMENT_OF_STATUS: "Adjustment of Status", CONSULAR: "Consular Processing", NVC: "NVC", PETITION_ONLY: "Petition Only", CHANGE_OF_STATUS: "Change of Status", EXTENSION_OF_STATUS: "Extension of Status" };
+    const allMappings = await VisaFormMapping.find({ visaType: resolved.resolvedVisaType || caseData.visaType, active: true }).lean();
+    for (const mapping of allMappings) {
+      if (listed.has(String(mapping._id)) || !visaFormMappingService.isIndependentUSCISForm(mapping)) continue;
+      const decision = (caseData.conditionalFormDecisions || []).find((item) => String(item.mappingId) === String(mapping._id))?.decision || null;
+      const templateStatus = await visaFormMappingService.resolveTemplateStatus(mapping, caseData);
+      const row = toOverviewEntry("conditional", { mapping, decision, templateStatus }, caseFormsByCode);
+      row.appliesWhen = mapping.processingPaths?.length
+        ? `Applies when the filing path is ${mapping.processingPaths.map((path) => PATH_LABEL[path] || path).join(" / ")}${caseData.processingPath ? " (this case: " + (PATH_LABEL[caseData.processingPath] || caseData.processingPath) + ")" : " (not chosen yet)"}`
+        : (mapping.triggerCondition ? "Applies when its case condition is met (for example an attorney of record)" : "Not applicable to this case's current details");
+      items.push(row);
+    }
+    items.sort((left, right) => (left.displayOrder || 0) - (right.displayOrder || 0) || String(left.formNumber).localeCompare(String(right.formNumber)));
+
     res.json({
       success: true,
       data: {

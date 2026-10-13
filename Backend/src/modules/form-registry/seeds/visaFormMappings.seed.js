@@ -537,6 +537,8 @@ function eb1(visaType, opts = {}) {
   );
 }
 eb1("EB-1A"); eb1("EB-1B", { supplementJ: true }); eb1("EB-1C", { supplementJ: true });
+// EB-1C: G-28 is a Case-Manager-decision form (only when an attorney / accredited representative is on record), like H-1B / COSF1 / F-1 reinstatement.
+add(g28("EB-1C"));
 
 // ===================== PREMIUM PROCESSING (standalone case) =====================
 // A case opened only to expedite an already-filed petition/application: Form I-907 is the

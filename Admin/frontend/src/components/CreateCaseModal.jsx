@@ -56,7 +56,7 @@ const PACKAGE_OPTIONS = [
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
 
-const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'perm'])
+const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
 
 // What a PERM case is created with - shown read-only on the create form.
 const PERM_STRUCTURE = [

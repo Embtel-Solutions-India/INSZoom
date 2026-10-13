@@ -414,7 +414,9 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
     error.status = 404;
     throw error;
   }
-  if (!isRegistryApplicable(mapping, caseData)) {
+  // An explicit case-manager action may add a form whose only gate is the filing path (e.g. I-485 before Adjustment of Status is chosen);
+  // the case manager explicitly deciding to add the form is itself the trigger (e.g. G-28 without a recorded attorney).
+  if (!isRegistryApplicable({ ...(mapping.toObject ? mapping.toObject() : mapping), processingPaths: [], triggerCondition: undefined }, caseData)) {
     const error = new Error("This mapping is not applicable to this case");
     error.status = 400;
     throw error;
@@ -500,7 +502,9 @@ async function provisionAvailableMapping(caseData, mappingId, user, req) {
     error.status = 404;
     throw error;
   }
-  if (!isRegistryApplicable(mapping, caseData)) {
+  // An explicit case-manager action may add a form whose only gate is the filing path (e.g. I-485 before Adjustment of Status is chosen);
+  // the case manager explicitly deciding to add the form is itself the trigger (e.g. G-28 without a recorded attorney).
+  if (!isRegistryApplicable({ ...(mapping.toObject ? mapping.toObject() : mapping), processingPaths: [], triggerCondition: undefined }, caseData)) {
     const error = new Error("This mapping is not applicable to this case");
     error.status = 400;
     throw error;

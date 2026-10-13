@@ -52,6 +52,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'i539ext', label: 'I-539-EXT' },
   { value: 'eb1a', label: 'EB-1A' },
   { value: 'eb1b', label: 'EB-1B' },
+  { value: 'eb1c', label: 'EB-1C', canonicalLabel: 'EB-1C' },
   { value: 'eb2', label: 'EB-2' },
   { value: 'niw', label: 'EB-2 NIW' },
   { value: 'eb3', label: 'EB-3' },

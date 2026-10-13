@@ -460,6 +460,21 @@ function validateResponse(questionnaire, questions, answerMap, user) {
       }
     }
   });
+  // Opt-in (metadata.sumGroup {id, total}): when EVERY visible member of a group has an answer, the answers must add up to the total.
+  // A partially answered group is never judged.
+  const sumGroups = new Map();
+  visibleQuestions.forEach((question) => {
+    const group = question.metadata?.sumGroup;
+    if (group?.id) sumGroups.set(group.id, { ...group, members: [...(sumGroups.get(group.id)?.members || []), question] });
+  });
+  sumGroups.forEach((group) => {
+    const values = group.members.map((member) => getAnswerValue(answerMap, member.key));
+    if (!values.every((value) => hasAnsweredValue(value))) return;
+    const sum = values.reduce((total, value) => total + Number(value), 0);
+    if (Number.isFinite(sum) && Math.abs(sum - Number(group.total)) > 0.001) {
+      errors.push({ questionKey: group.members[0].key, label: group.members[0].label, message: `${group.label || "These answers"} must add up to ${group.total} (they add up to ${sum})` });
+    }
+  });
   return {
     questionnaireId: questionnaire._id,
     questionnaireKey: questionnaire.key,
@@ -1886,7 +1901,7 @@ async function assertSubmittable(payload, user) {
 // Checklists whose FINAL case submission is verified on the server. A single-party client's "Submit case" does not go through submitResponse
 // (the portal calls the employment-workflow submit, which checks nothing), so for these checklists the submit endpoint calls this guard:
 // every visible question answered, every answer passing its format rules. Opt-in by checklist key; no other checklist is affected.
-const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist"]);
+const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist", "eb1c_employer_checklist", "eb1c_employee_checklist"]);
 
 async function assertStrictChecklistsSubmittable(caseData, user) {
   for (const reference of (caseData.questionnaireReferences || []).filter((item) => item.active !== false)) {
@@ -1899,6 +1914,7 @@ async function assertStrictChecklistsSubmittable(caseData, user) {
     const answerMap = getAnswerMapFromAnswers(stored);
     const missing = questions
       .filter((question) => isQuestionVisible(question, answerMap, user))
+      .filter((question) => !question.metadata?.optional)
       .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
     if (missing.length) {
       const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);

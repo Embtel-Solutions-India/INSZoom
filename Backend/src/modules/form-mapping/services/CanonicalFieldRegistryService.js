@@ -168,6 +168,13 @@ const BASE_FIELDS = [
   I907_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// EB-1C checklist paths - see canonical/config/eb1cCanonicalPaths.js. Additive only.
+{
+  const { EB1C_CANONICAL_FIELDS } = require("../../canonical/config/eb1cCanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  EB1C_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 class CanonicalFieldRegistryService {
   static tokenize(value = "") {
     return String(value)
