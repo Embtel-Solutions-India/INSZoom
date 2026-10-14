@@ -11,6 +11,7 @@ import {
   prefillMetaFromAnswers,
   isFileQuestion,
   isQuestionVisible,
+  isQuestionRequired,
   validateQuestion,
   DOCUMENTS_SECTION_KEY,
 } from "../utils/questionnaireEngine";
@@ -162,10 +163,11 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
       message,
     }))
   ), [answers, visibleQuestions]);
-  // Items still blank. Nothing is mandatory to SAVE, but Submit needs every visible item filled, so this is the count that
-  // gates the Submit button (name kept for existing callers). Computed locally so unsaved edits count immediately.
+  // REQUIRED items still blank. Nothing is mandatory to SAVE, but Submit needs every required visible item filled (a question is required by its
+  // checklist definition - see isQuestionRequired), so this is the count that gates the Submit button. Computed locally so unsaved edits count
+  // immediately.
   const missingRequiredCount = useMemo(() => visibleQuestions.filter((question) => {
-    if (question.metadata?.optional) return false; // opt-in: an optional question never blocks Submit
+    if (!isQuestionRequired(question, answers)) return false; // optional / not-required questions never block Submit
     const key = questionKey(question);
     return fieldItemStatus(answerByKey.get(key), answers[key]).status === STATUS.NOT_STARTED;
   }).length, [visibleQuestions, answers, answerByKey]);

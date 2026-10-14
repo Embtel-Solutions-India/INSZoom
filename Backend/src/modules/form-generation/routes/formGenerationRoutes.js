@@ -4,7 +4,6 @@ const authorizePermissions = require("../../../middleware/authorizePermissions")
 const authorizeRoles = require("../../../middleware/authorizeRoles");
 const requireCaseFormAccess = require("../middleware/requireCaseFormAccess");
 const controller = require("../controllers/FormGenerationController");
-const upload = require("../../uploads/upload.middleware");
 
 router.use(authenticate);
 
@@ -15,8 +14,6 @@ router.post("/:caseFormId/generate", authorizeRoles("super_admin", "admin", "tea
 router.get("/:caseFormId/preview", authorizePermissions("forms:read"), requireCaseFormAccess, controller.preview);
 router.get("/:caseFormId/download", authorizePermissions("forms:read"), requireCaseFormAccess, controller.download);
 router.get("/:caseFormId/download-form", authorizePermissions("forms:read"), requireCaseFormAccess, controller.downloadForm);
-// Save back a form that was edited outside the system (the downloaded, autofilled PDF opened in the user's own PDF viewer).
-router.post("/:caseFormId/external-edit", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), requireCaseFormAccess, upload.single("file"), controller.uploadExternalEdit);
 router.post("/:caseFormId/approve", authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("forms:approve"), requireCaseFormAccess, controller.approve);
 router.post("/:caseFormId/regenerate", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), requireCaseFormAccess, controller.regenerate);
 

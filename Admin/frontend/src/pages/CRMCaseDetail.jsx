@@ -850,6 +850,7 @@ const CRMCaseDetail = () => {
         clientIntakeApi.caseIntake(id).catch(() => null)
       ])
       const nextCase = response.data.case
+      childPollStoppedRef.current = false // the case loaded, so child-case refreshes may run again
       setCaseData(nextCase)
       setIntakeBundle(intakeResponse?.data?.intake || null)
       if (nextCase.caseRole === 'principal' && nextCase.childCaseCount > 0) {
@@ -873,11 +874,22 @@ const CRMCaseDetail = () => {
   // background - no spinner, nothing collapses, the open tab and scroll stay put.
   useRouteRevisit(() => { fetchCaseDetail(true) })
 
+  // Set once the case is gone (404) or no longer accessible (403): such an answer never changes by itself, and this page is
+  // kept alive after the user leaves it, so without this the 30s poll below would hit the API (and the console) forever for a
+  // deleted case. Cleared again when the case loads successfully.
+  const childPollStoppedRef = useRef(false)
   const refetchChildCases = async () => {
+    if (childPollStoppedRef.current) return
     try {
       const relatedResponse = await casesApi.getRelated(id)
       setChildCases(relatedResponse.data.childCases || [])
     } catch (error) {
+      const status = error.response?.status
+      if (status === 404 || status === 403) {
+        childPollStoppedRef.current = true
+        console.warn(`Stopped refreshing child cases: case ${id} is ${status === 404 ? 'no longer available' : 'not accessible'}.`)
+        return
+      }
       console.error('Error refetching child cases:', error)
     }
   }
@@ -888,7 +900,10 @@ const CRMCaseDetail = () => {
   refetchChildCasesRef.current = refetchChildCases
   useEffect(() => {
     if (caseData?.caseStructure !== 'employer_employee') return undefined
-    const timer = setInterval(() => { refetchChildCasesRef.current() }, 30000)
+    const timer = setInterval(() => {
+      if (document.hidden) return // a background browser tab does not need the refresh
+      refetchChildCasesRef.current()
+    }, 30000)
     return () => clearInterval(timer)
   }, [caseData?.caseStructure])
 
@@ -912,6 +927,11 @@ const CRMCaseDetail = () => {
     const who = child.clientName || 'this employee'
     if (!window.confirm(`Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`)) return
     runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in')
+  }
+  // Employer-filled slot -> invited employee: opens the name/email row under the slot; "Send invite" then switches the slot's mode.
+  const handleStartInvite = (child) => {
+    setEmployeeActionMessage('')
+    setInviteDraft({ childId: child._id, name: child.clientName || '', email: child.clientEmail || '' })
   }
   const handleSendInviteFromDraft = async () => {
     if (!inviteDraft?.name?.trim() || !inviteDraft?.email?.trim()) {
@@ -1948,6 +1968,8 @@ const CRMCaseDetail = () => {
           if (child.status === 'removed') return { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground line-through' }
           if (!child.clientName && !child.clientEmail) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
           if (child.user && String(child.user) !== String(caseData.user?._id || caseData.user)) {
+            // inviteStatus comes from GET /cases/:id/related ("pending" until the employee sets a password); an older backend omits it
+            if (child.inviteStatus === 'accepted') return { label: 'Accepted', className: 'bg-green-100 text-green-800' }
             return { label: 'Invited', className: 'bg-blue-100 text-blue-800' }
           }
           return { label: child.status, className: getStatusColor(child.status) }
@@ -1989,46 +2011,52 @@ const CRMCaseDetail = () => {
               <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border">
+                {/* The four action buttons always sit on ONE line; the text columns (name, visa, workflow, case manager) wrap to give them room,
+                    so the table fits the card at normal widths. The scroll wrapper only appears on a very narrow screen, as a last resort. */}
+                <table className="w-full table-auto divide-y divide-border">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
-                      <th className="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
-                      <th className="px-5 py-2"></th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
+                      <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {visibleChildCases.map((child) => {
                       const pill = childStatusPill(child)
                       const isRemoved = child.status === 'removed'
-                      const isInvitedPending = pill.label === 'Invited'
                       const childIsInvited = Boolean(child.user) && String(child.user?._id || child.user) !== String(caseData.user?._id || caseData.user)
+                      // none = the employer fills this employee in; pending = invited, no login yet; accepted = the employee has their own login
+                      const inviteState = !childIsInvited ? 'none' : (child.inviteStatus === 'accepted' ? 'accepted' : 'pending')
                       const childMode = child.employeeDataEntryMode || (childIsInvited ? 'invite' : caseData.dataEntryMode)
                       const employeeFills = childMode === 'invite'
                       return (
                         <Fragment key={child._id}>
-                        <tr className={isRemoved ? 'opacity-60' : ''}>
-                          <td className="px-5 py-3 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
-                          <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">{child.clientName || 'Employee Slot'}</td>
-                          <td className="px-5 py-3 whitespace-nowrap text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
-                          <td className="px-5 py-3 whitespace-nowrap">
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
+                        <tr
+                          className={isRemoved ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40 transition-colors'}
+                          onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
+                        >
+                          <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
+                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || 'Employee Slot'}</td>
+                          <td className="px-3 py-2.5 text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
                           </td>
-                          <td className="px-5 py-3 whitespace-nowrap">
+                          <td className="px-3 py-2.5">
                             {isEmployerMatter && (
                               <span
-                                className={`px-2 py-1 text-xs font-medium rounded-full ${employeeFills ? 'bg-primary/10 text-primary' : 'bg-secondary text-foreground'}`}
+                                className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${employeeFills ? 'bg-primary/10 text-primary' : 'bg-secondary text-foreground'}`}
                                 title={employeeFills ? 'The invited employee fills in their own information' : 'The employer fills in this employee\'s information'}
                               >
                                 {employeeFills ? 'Employee fills (invited)' : 'Employer fills'}
                               </span>
                             )}
                           </td>
-                          <td className="px-5 py-3 whitespace-nowrap text-sm text-muted-foreground">
+                          <td className="px-3 py-2.5 text-sm text-muted-foreground">
                             {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
                             {child.assignmentOverridden && (
                               <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
@@ -2036,54 +2064,72 @@ const CRMCaseDetail = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-5 py-3 whitespace-nowrap text-right space-x-3">
+                          <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-nowrap items-center justify-end gap-1.5">
                             {isRemoved ? (
                               <button
                                 type="button"
                                 onClick={() => handleRestoreEmployee(child._id)}
                                 disabled={employeeActionBusy === `restore:${child._id}`}
-                                className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                                className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
                               >
                                 {employeeActionBusy === `restore:${child._id}` ? 'Restoring…' : 'Restore'}
                               </button>
                             ) : (
                               <>
-                                {isEmployerMatter && isInvitedPending && (
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/crm-cases/${child._id}`)}
+                                  className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600 bg-primary-600/10 text-primary-600 hover:bg-primary-600/20"
+                                >
+                                  View →
+                                </button>
+                                {/* The same four actions for every employee slot of every employer matter (View, invite/resend, employer
+                                    fills instead, Withdraw); the second and third are disabled - never hidden - when the slot's state makes
+                                    them meaningless, so the row looks and behaves the same whatever the visa type. */}
+                                {isEmployerMatter && (inviteState === 'none' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartInvite(child)}
+                                    disabled={employeeActionBusy === `mode:${child._id}`}
+                                    title="Invite the employee to fill in their own information (the employer is filling it in now)"
+                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    Invite Employee
+                                  </button>
+                                ) : (
                                   <button
                                     type="button"
                                     onClick={() => handleResendInvite(child._id)}
-                                    disabled={employeeActionBusy === `resend:${child._id}`}
-                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                                    disabled={inviteState === 'accepted' || employeeActionBusy === `resend:${child._id}`}
+                                    title={inviteState === 'accepted' ? 'This employee has already accepted their invitation' : 'Send this employee a fresh invitation email'}
+                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {employeeActionBusy === `resend:${child._id}` ? 'Resending…' : 'Resend Invite'}
                                   </button>
-                                )}
-                                {isEmployerMatter && childIsInvited && (
+                                ))}
+                                {isEmployerMatter && (
                                   <button
                                     type="button"
                                     onClick={() => handleEmployerFillsInstead(child)}
-                                    disabled={employeeActionBusy === `mode:${child._id}`}
-                                    className="text-sm font-semibold text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                                    disabled={inviteState === 'none' || employeeActionBusy === `mode:${child._id}`}
+                                    title={inviteState === 'none' ? "The employer already fills in this employee's information" : "Cancel the invitation and let the employer fill in this employee's information"}
+                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {employeeActionBusy === `mode:${child._id}` ? 'Switching…' : 'Employer fills instead'}
                                   </button>
                                 )}
                                 <button
-                                  onClick={() => navigate(`/crm-cases/${child._id}`)}
-                                  className="text-sm font-semibold text-primary-600 hover:text-primary-700"
-                                >
-                                  View →
-                                </button>
-                                <button
                                   type="button"
                                   onClick={() => handleRemoveEmployee(child._id)}
                                   disabled={employeeActionBusy === `remove:${child._id}`}
-                                  className="text-sm font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                                  className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-red-600/50 text-red-600 hover:bg-red-600/10 disabled:opacity-50"
                                 >
                                   Withdraw
                                 </button>
                               </>
                             )}
+                            </div>
                           </td>
                         </tr>
                         {inviteDraft?.childId === child._id && (
@@ -3149,27 +3195,27 @@ const CRMCaseDetail = () => {
                 <table className="w-full min-w-[640px]">
                   <thead>
                     <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Form</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Edition</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Completion</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Last Modified</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Form</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Edition</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Completion</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Status</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Last Modified</th>
+                      <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Actions</th>
                     </tr>
                   </thead>
                   {caseFormGroups.map((group) => (
                   <tbody key={group.ownerId}>
                     {group.label && (
                       <tr className="bg-muted/40">
-                        <td colSpan={6} className="py-2 px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        <td colSpan={6} className="py-1.5 px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                           {group.label}
                         </td>
                       </tr>
                     )}
                     {group.rows.map(({ form, isComponent }) => (
                       <tr key={form._id} className="border-b border-border">
-                        <td className="py-3 px-4">
-                          <p className={`font-medium text-foreground ${isComponent ? 'pl-4' : ''}`}>
+                        <td className="py-2 px-3">
+                          <p className={`font-medium text-foreground text-sm ${isComponent ? 'pl-4' : ''}`}>
                             {isComponent && <span className="text-muted-foreground mr-1">&#8627;</span>}
                             {form.formCode}
                           </p>
@@ -3179,31 +3225,31 @@ const CRMCaseDetail = () => {
                               : form.formTemplateId?.title}
                           </p>
                         </td>
-                        <td className="py-3 px-4">{form.formVersion}</td>
-                        <td className="py-3 px-4 min-w-[180px]">
+                        <td className="py-2 px-3 text-sm whitespace-nowrap">{form.formVersion}</td>
+                        <td className="py-2 px-3 min-w-[150px]">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 bg-muted rounded-full">
-                              <div className="h-2 bg-blue-500 rounded-full" style={{ width: `${form.completion?.percent || 0}%` }} />
+                            <div className="flex-1 h-1.5 bg-muted rounded-full">
+                              <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${form.completion?.percent || 0}%` }} />
                             </div>
-                            <span className="text-sm font-medium">{form.completion?.percent || 0}%</span>
+                            <span className="text-xs font-medium">{form.completion?.percent || 0}%</span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">{form.completion?.missingRequiredFields || 0} required missing</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 whitespace-nowrap">{form.completion?.missingRequiredFields || 0} required missing</p>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-2 px-3">
                           <span className={`badge ${getFormStatusColor(form.status)}`}>{form.status?.replace('_', ' ')}</span>
                         </td>
-                        <td className="py-3 px-4 text-sm text-muted-foreground">
+                        <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
                           {form.lastModifiedAt || form.updatedAt ? new Date(form.lastModifiedAt || form.updatedAt).toLocaleString() : 'Not started'}
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => setSelectedCaseForm(form)} className="btn-primary text-sm">
+                        <td className="py-2 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button onClick={() => setSelectedCaseForm(form)} className="btn-primary text-xs whitespace-nowrap">
                               Open Form
                             </button>
                             <button
                               onClick={() => handleAutofillForm({ mappingId: `caseform-${form._id}`, formNumber: form.formCode, caseForm: { id: form._id }, caseId: form.caseId?._id || form.caseId })}
                               disabled={rowActionPending === `caseform-${form._id}`}
-                              className="btn-secondary text-sm"
+                              className="btn-secondary text-xs whitespace-nowrap"
                               title="Re-run curated + biographic-fallback autofill for this form"
                             >
                               {rowActionPending === `caseform-${form._id}` ? 'Filling…' : 'Autofill'}
@@ -3228,51 +3274,11 @@ const CRMCaseDetail = () => {
                                   setFormActionMessage(error.response?.data?.message || 'Unable to download this form.')
                                 }
                               }}
-                              className="btn-secondary text-sm"
+                              className="btn-secondary text-xs whitespace-nowrap"
                               title="Download the official, filled PDF (sliced to this form's own pages only)"
                             >
                               Download
                             </button>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const response = await formGenerationApi.downloadForm(form._id)
-                                  const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
-                                  window.open(url, '_blank')
-                                  const formWarnings = readFormWarnings(response)
-                                  setFormActionMessage(formWarnings.length
-                                    ? `Opened in a new tab. ${formWarnings.join('; ')}`
-                                    : 'Opened the autofilled PDF in a new tab. Edit and save it there, then use "Save edited PDF" to keep your changes.')
-                                } catch (error) {
-                                  setFormActionMessage(error.response?.data?.message || 'Unable to open this form.')
-                                }
-                              }}
-                              className="btn-secondary text-sm"
-                              title="Open the autofilled PDF in your browser to edit it there"
-                            >
-                              Edit in browser
-                            </button>
-                            <label className="btn-secondary text-sm cursor-pointer" title="Upload the PDF you edited and saved in your browser; your changes are kept on this form">
-                              Save edited PDF
-                              <input
-                                type="file"
-                                accept="application/pdf"
-                                className="hidden"
-                                onChange={async (event) => {
-                                  const file = event.target.files?.[0]
-                                  event.target.value = ''
-                                  if (!file) return
-                                  try {
-                                    const response = await formGenerationApi.uploadExternalEdit(form._id, file)
-                                    const count = response.data?.data?.changedFieldCount ?? 0
-                                    setFormActionMessage(`Saved. ${count} changed field${count === 1 ? '' : 's'} kept as manual changes; autofill will not overwrite them.`)
-                                    fetchFormsOverview?.(true)
-                                  } catch (error) {
-                                    setFormActionMessage(error.response?.data?.message || 'Unable to save the edited PDF.')
-                                  }
-                                }}
-                              />
-                            </label>
                           </div>
                         </td>
                       </tr>

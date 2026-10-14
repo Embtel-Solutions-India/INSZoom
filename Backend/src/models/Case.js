@@ -1177,6 +1177,9 @@ const caseSchema = new mongoose.Schema(
         abandonedByImmiglance: { type: Boolean },
         flags: {
           deletedInGhl: { type: Boolean, default: false },
+          // When sync first found the opportunity gone from GHL. The case is only deleted after it is confirmed gone AGAIN a little later
+          // (ghlDeletedInGhl.js), so one failed lookup can never delete a case.
+          deletedInGhlAt: { type: Date },
           needsAttention: { type: Boolean, default: false },
           // Employer matter holding employees on more than one visa. Employer-side questions for the
           // extra visas are not covered until the mixed-visa phase (R3-6).

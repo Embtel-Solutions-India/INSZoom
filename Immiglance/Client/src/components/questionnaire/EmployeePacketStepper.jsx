@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
-import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
 
@@ -63,7 +63,8 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     sectionsWithItems.forEach((section) => {
       section.questions.forEach((question) => {
         const { status } = questionStatus(question);
-        if (status === STATUS.NOT_STARTED) missing.push({ section: section.title, question, isDocument: isFileQuestion(question) });
+        // only REQUIRED items hold back Submit (a question is required by its checklist definition); blank optional ones do not
+        if (status === STATUS.NOT_STARTED && isQuestionRequired(question, answers)) missing.push({ section: section.title, question, isDocument: isFileQuestion(question) });
       });
     });
     return missing;

@@ -43,11 +43,14 @@ function desiredEmployeeName(child, principal) {
   return employer ? `${employer}, ${employee}` : employee;
 }
 
-/** Which jobs does this employee card need right now? */
-function planJobsForChild(child, principal, link) {
+/** Which jobs does this employee card need right now? `syncSince` = when CRM-case sync was switched on (GHLIntegration.crmCaseSyncSince). */
+function planJobsForChild(child, principal, link, syncSince = null) {
   if (!child || child.caseRole !== "employee" || !link) return [];
-  // Employees that existed before GHL knew the employer are history: never created in GHL.
-  if (link.createdAt && child.createdAt && new Date(child.createdAt) < new Date(link.createdAt)) return [];
+  // Employees that existed before GHL knew the employer are history: never created in GHL. "Before GHL knew the employer" is only history
+  // when the employee ALSO predates the sync itself: an employee created in the CRM after the sync was on must always reach GHL, even when the
+  // employer link was written a few seconds after the slot (a link made by an older code path, or by a retry, is not backdated to the matter).
+  const createdAfterSyncStarted = Boolean(syncSince && child.createdAt && new Date(child.createdAt) >= new Date(syncSince));
+  if (!createdAfterSyncStarted && link.createdAt && child.createdAt && new Date(child.createdAt) < new Date(link.createdAt)) return [];
   const ghl = child.integrations?.ghl || {};
   const removed = child.status === "removed";
 
@@ -87,6 +90,16 @@ function serviceTypeFor(visaType, petitionSubType, entries) {
 // Queueing
 // ---------------------------------------------------------------------------
 
+// When CRM-case sync was switched on (ghlCaseOutbound.syncSince sets it the first time it runs). null when unknown: the old rule then applies unchanged.
+async function crmSyncSince() {
+  try {
+    const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).select("crmCaseSyncSince").lean();
+    return config?.crmCaseSyncSince || null;
+  } catch {
+    return null;
+  }
+}
+
 async function queueJob(caseId, type) {
   // One waiting/running job of a type per card is enough: it recomputes what to do when it runs.
   if (await GHLSyncJob.exists({ caseId, type, status: { $in: ["pending", "processing"] } })) return null;
@@ -102,12 +115,13 @@ async function enqueueForChild(childId) {
   try {
     const child = await Case.findById(childId).select("caseNumber caseRole status parentCase user clientName createdAt visaType petitionSubType integrations.ghl canonicalProfile.profile.person.firstName canonicalProfile.profile.person.lastName canonicalProfile.profile.person.fullName employeeIdentity.name").lean();
     if (!child || child.caseRole !== "employee" || !child.parentCase) return [];
-    const [link, principal] = await Promise.all([
+    const [link, principal, syncSince] = await Promise.all([
       GHLEmployerLink.findOne({ principalCaseId: child.parentCase }).lean(),
       Case.findById(child.parentCase).select("petitionerName clientName user").lean(),
+      crmSyncSince(),
     ]);
     const queued = [];
-    for (const type of planJobsForChild(child, principal, link)) {
+    for (const type of planJobsForChild(child, principal, link, syncSince)) {
       const job = await queueJob(child._id, type);
       if (job) {
         queued.push(type);
@@ -132,6 +146,7 @@ async function sweep({ limit = 500 } = {}) {
   const principals = await Case.find({ _id: { $in: links.map((l) => l.principalCaseId) } }).select("childCases petitionerName clientName user").lean();
   const linkOf = new Map(links.map((l) => [String(l.principalCaseId), l]));
   const principalOf = new Map(principals.map((p) => [String(p._id), p]));
+  const syncSince = await crmSyncSince();
   const childIds = principals.flatMap((p) => p.childCases || []).slice(-limit);
   if (!childIds.length) return { checked: 0, queued: 0 };
 
@@ -141,7 +156,7 @@ async function sweep({ limit = 500 } = {}) {
   let queued = 0;
   for (const child of children) {
     const key = String(child.parentCase);
-    if (planJobsForChild(child, principalOf.get(key), linkOf.get(key)).length) queued += (await enqueueForChild(child._id)).length;
+    if (planJobsForChild(child, principalOf.get(key), linkOf.get(key), syncSince).length) queued += (await enqueueForChild(child._id)).length;
   }
   return { checked: children.length, queued };
 }

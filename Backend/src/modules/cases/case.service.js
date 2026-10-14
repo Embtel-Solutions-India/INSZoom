@@ -807,7 +807,28 @@ async function getRelatedRecords(caseData) {
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);
-  return { documents, messages, notifications, appointments, payments, tasks, workflows, parentCase, childCases };
+  return { documents, messages, notifications, appointments, payments, tasks, workflows, parentCase, childCases: await withInviteStatus(childCases, caseData) };
+}
+
+// Per child case: "none" (the principal's own side fills it in - the child's user is still the principal's), "pending" (an employee was
+// invited and has not set a password yet - a resend is meaningful) or "accepted" (the invited employee has an active login). The panel
+// needs this to offer only the actions the endpoints will accept (resend-employee-invite rejects an accepted employee with ALREADY_ACCEPTED).
+async function withInviteStatus(childCases, principal) {
+  const principalUserId = String(principal.user?._id || principal.user || "");
+  const invitedUserIds = childCases
+    .map((child) => String(child.user?._id || child.user || ""))
+    .filter((userId) => userId && userId !== principalUserId);
+  const acceptedUserIds = new Set();
+  if (invitedUserIds.length) {
+    const users = await User.find({ _id: { $in: invitedUserIds } }).select("+password").lean();
+    users.forEach((user) => { if (user.password) acceptedUserIds.add(String(user._id)); });
+  }
+  return childCases.map((child) => {
+    const plain = typeof child.toObject === "function" ? child.toObject() : { ...child };
+    const userId = String(child.user?._id || child.user || "");
+    plain.inviteStatus = !userId || userId === principalUserId ? "none" : (acceptedUserIds.has(userId) ? "accepted" : "pending");
+    return plain;
+  });
 }
 
 async function linkCases(caseData, linkedCaseId, relationship, user, notes, req) {

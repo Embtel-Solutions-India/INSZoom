@@ -674,12 +674,6 @@ export const formGenerationApi = {
   // The one official download: real, authentic, watermark-free USCIS PDF,
   // no status gate. Replaces the old draftPdf/filingPdf split.
   downloadForm: (caseFormId) => api.get(`/forms/${caseFormId}/download-form`, { responseType: 'blob' }),
-  // Save back a form edited outside the system (the downloaded PDF edited in the user's own browser / PDF viewer).
-  uploadExternalEdit: (caseFormId, file) => {
-    const data = new FormData()
-    data.append('file', file)
-    return api.post(`/forms/${caseFormId}/external-edit`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
-  },
 }
 
 export const petitionApi = {
@@ -741,7 +735,8 @@ export const ghlApi = {
   moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
   setupPreview: () => api.get('/integrations/ghl/setup'),
   confirmMapping: () => api.post('/integrations/ghl/setup/confirm'),
-  syncNow: () => api.post('/integrations/ghl/sync'),
-  reconcileNow: () => api.post('/integrations/ghl/reconcile'),
+  // A full pass reads every opportunity of both pipelines from GoHighLevel, so it can legitimately run longer than the default 2 minutes.
+  syncNow: () => api.post('/integrations/ghl/sync', {}, { timeout: 600_000 }),
+  reconcileNow: () => api.post('/integrations/ghl/reconcile', {}, { timeout: 600_000 }),
   retryJob: (jobId) => api.post(`/integrations/ghl/jobs/${jobId}/retry`),
 }

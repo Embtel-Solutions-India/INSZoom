@@ -91,6 +91,8 @@ async function certify(template, { previous = null, persist = true } = {}) {
       if (PDFRenderer.setFormField(form, { pdfField: edge.targetPdfField, value: PROBE, type: "text" }, template.formCode)) written.push(edge.targetPdfField);
     }
     if (!written.length) fail("no mapped field accepted a value - the filled form would be blank");
+    // the real render path (PDFRenderer) runs this before save(); an empty rich-text field otherwise makes pdf-lib's updateFieldAppearances throw
+    require("../../form-generation/services/RichTextFieldGuard").disableEmptyRichTextFields(form);
     filledBytes = Buffer.from(await pdf.save());
     const reloaded = await PDFDocument.load(filledBytes, { ignoreEncryption: true });
     const reloadedForm = reloaded.getForm();

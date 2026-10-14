@@ -3565,9 +3565,7 @@ exports.deleteCasePermanently = async (req, res, next) => {
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
     // A case on the GoHighLevel pipeline (and, for an employer matter, its employees) has its GHL opportunity deleted too, so the next sync
-    // cannot re-import it as a new case.
-    // (queued and retried in the background; the request never waits for GHL and never fails because of it)
-    await require("../../integrations/ghl/ghlCaseOutbound").queueGhlOpportunityDeletions(caseData);
+    // cannot re-import it as a new case: requestCaseDeletion queues those durable jobs itself (for every deletion path), in the background.
     // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
     const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
     res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });

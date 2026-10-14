@@ -35,10 +35,17 @@ test("all 43 numbered requirements are present exactly once, with their exact la
   assert.equal(employee.questions.filter((q) => q.type === "file" && !/spouse|child/.test(q.key)).length, 10);
 });
 
-test("every question is optional (nothing required, nothing blocks Submit)", () => {
+test("required follows the platform convention (requirementLogic.js): passport, essential documents and gating answers are required, everything else stays optional", () => {
   const { isPassportInformation } = require("../passportInformation");
-  // platform rule (passportInformation.js): passport items are always flagged required in the definition; metadata.optional still keeps them from blocking Submit
-  all.forEach((q) => { assert.equal(q.required, isPassportInformation(q), q.key); assert.equal(q.metadata.optional, true, q.key); });
+  // a question is EITHER required (and then not flagged optional, so it really blocks Submit) OR optional (flagged, never blocks)
+  all.forEach((q) => {
+    if (q.required) assert.notEqual(q.metadata.optional, true, `${q.key}: a required question must not carry the optional flag`);
+    else assert.equal(q.metadata.optional, true, `${q.key}: not required, so optional`);
+    if (isPassportInformation(q)) assert.equal(q.required, true, `${q.key}: passport information is always required`);
+  });
+  const requiredKeys = all.filter((q) => q.required).map((q) => q.key);
+  assert.ok(requiredKeys.includes("eb1c_beneficiary_i94") && requiredKeys.includes("eb1c_beneficiary_passport"), "the beneficiary's I-94 and passport are required");
+  assert.ok(all.some((q) => !q.required), "supporting evidence stays optional");
 });
 
 test("canonical targets: the supplied paths, all registered; website URLs are validated URLs, not a replacement for the upload", () => {

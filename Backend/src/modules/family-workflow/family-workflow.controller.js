@@ -260,6 +260,37 @@ exports.createFamilyCase = async (req, res, next) => {
     const petitionerPhone = clean(req.body.petitioner?.phone || req.body.petitionerPhone || req.body.clientPhone);
     if (!petitionerEmail) return res.status(400).json({ success: false, message: "Petitioner email is required" });
 
+    // Every request check happens BEFORE the first write below. A rejected request (400) used to have already created/updated the
+    // petitioner's client account (and later the Beneficiary record / burned a case number), leaving partial data behind on each retry.
+    const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
+    const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
+    const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
+    if (!beneficiaryEmail) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
+    const completionMode = req.body.familyCompletionMode === "petitioner_completes" ? "petitioner_completes" : "invite_beneficiary";
+    if (completionMode === "invite_beneficiary" && !beneficiaryPhone) {
+      return res.status(400).json({ success: false, message: "Beneficiary mobile number is required to send an invitation" });
+    }
+    const visaType = req.body.visaType || "K-1";
+    // Client-facing wording never says "I-130"/"processingPath" (see
+    // Immiglance intake) - it maps its own plain-language choice onto this
+    // same enum before the request reaches here, so this stays the single
+    // source of truth for both the client and staff-facing (Admin
+    // CreateCaseModal) surfaces. Invalid/unrecognized values are rejected
+    // rather than silently coerced - never guess the client's intent.
+    if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
+      return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
+    }
+    if (req.body.processingPath === "CONSULAR" && familyChecklists.isConsularProcessingDisabled(visaType)) {
+      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${visaType}` });
+    }
+    // Lead conversion (Admin Leads -> Create Case). Previously only the
+    // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
+    // converted through the family path never got marked converted.
+    const sourceLead = req.body.leadId ? await Lead.findById(req.body.leadId) : null;
+    if (sourceLead?.convertedCaseId) {
+      return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
+    }
+
     let petitionerUser = await User.findOne({ email: petitionerEmail });
     let petitionerSetupToken = null;
     if (petitionerUser) {
@@ -285,14 +316,6 @@ exports.createFamilyCase = async (req, res, next) => {
       }]);
     }
 
-    const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
-    const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
-    const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
-    if (!beneficiaryEmail) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
-    const completionMode = req.body.familyCompletionMode === "petitioner_completes" ? "petitioner_completes" : "invite_beneficiary";
-    if (completionMode === "invite_beneficiary" && !beneficiaryPhone) {
-      return res.status(400).json({ success: false, message: "Beneficiary mobile number is required to send an invitation" });
-    }
     const beneficiaryUser = await User.findOne({ email: beneficiaryEmail });
     const beneficiary = await Beneficiary.findOneAndUpdate(
       { email: beneficiaryEmail },
@@ -300,26 +323,6 @@ exports.createFamilyCase = async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     const caseNumber = await generateCaseNumber();
-    const visaType = req.body.visaType || "K-1";
-    // Client-facing wording never says "I-130"/"processingPath" (see
-    // Immiglance intake) - it maps its own plain-language choice onto this
-    // same enum before the request reaches here, so this stays the single
-    // source of truth for both the client and staff-facing (Admin
-    // CreateCaseModal) surfaces. Invalid/unrecognized values are rejected
-    // rather than silently coerced - never guess the client's intent.
-    if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
-      return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
-    }
-    if (req.body.processingPath === "CONSULAR" && familyChecklists.isConsularProcessingDisabled(visaType)) {
-      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${visaType}` });
-    }
-    // Lead conversion (Admin Leads -> Create Case). Previously only the
-    // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
-    // converted through the family path never got marked converted.
-    const sourceLead = req.body.leadId ? await Lead.findById(req.body.leadId) : null;
-    if (sourceLead?.convertedCaseId) {
-      return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
-    }
     let caseData = await Case.create({
       ...pipelineCategoryFields(req.body),
       ...(sourceLead ? { creationSource: "lead_conversion", leadId: sourceLead._id } : {}),

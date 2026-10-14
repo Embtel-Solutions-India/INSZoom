@@ -32,6 +32,8 @@ const { N600_CHECKLIST_DEFINITION } = require("./n600Checklist");
 const { CHANGE_OF_ADDRESS_DEFINITIONS } = require("./changeOfAddressChecklist");
 const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { isPassportInformation } = require("./passportInformation");
+const { applyRequirementLogicToAll } = require("./requirementLogic");
+const adminEdits = require("./adminEdits");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
@@ -398,6 +400,22 @@ function isQuestionVisible(question, answerMap = {}, user) {
   return evaluateConditionGroup(question.conditionalLogic, answerMap);
 }
 
+// Must this (visible) question be answered before Submit? Only a question that is REQUIRED: its own flag (set from the checklist definition),
+// a "required" validation rule, or a `requireWhen` condition that is true for the answers so far. A question flagged metadata.optional never is.
+// Nothing is required to SAVE (validateQuestionValue ignores "required"): Save progress always works. Mirrors the client's isQuestionRequired.
+function isQuestionRequired(question, answerMap = {}) {
+  if (question?.metadata?.optional) return false;
+  if (question?.required) return true;
+  if ((question?.validationRules || []).some((rule) => rule.type === "required")) return true;
+  const requireWhen = question?.metadata?.requireWhen || question?.requiredWhen;
+  if (!requireWhen) return false;
+  try {
+    return Boolean(evaluateConditionGroup(requireWhen, answerMap));
+  } catch {
+    return false; // a malformed condition must never block a submit or crash a page
+  }
+}
+
 function validateQuestionValue(question, value) {
   const errors = [];
   const warnings = [];
@@ -519,6 +537,28 @@ function buildCalculatedFields(questions, answerMap) {
   }, {});
 }
 
+// What makes a questionnaire THE checklist for a visa + role (and which designer edits it carries). A clone is a new, separate
+// questionnaire and must not inherit it; a new VERSION is the same questionnaire and must, or the visa would lose its default checklist
+// the moment a designer versions it (every default/role lookup is isDefault + checklistRole + visaType on the latest version).
+function versionIdentity(questionnaire) {
+  const source = questionnaire.toObject ? questionnaire.toObject() : questionnaire;
+  return {
+    type: source.type,
+    visaType: source.visaType,
+    adminVisaTypes: source.adminVisaTypes,
+    appliesToAllVisas: source.appliesToAllVisas,
+    checklistRole: source.checklistRole,
+    isDefault: source.isDefault,
+    assignmentRules: source.assignmentRules,
+    checklistTriggers: source.checklistTriggers,
+    documentRequirements: source.documentRequirements,
+    evidenceRequirements: source.evidenceRequirements,
+    requiredCanonicalFields: source.requiredCanonicalFields,
+    taskTemplates: source.taskTemplates,
+    adminEditedFields: source.adminEditedFields,
+  };
+}
+
 function copyQuestionnaireShape(questionnaire, overrides = {}) {
   const source = questionnaire.toObject ? questionnaire.toObject() : questionnaire;
   return {
@@ -579,7 +619,11 @@ async function createQuestionnaire(payload, user, req) {
 async function updateQuestionnaire(questionnaire, payload, user, req) {
   assertCanDesign(user, "update questionnaires");
   if (questionnaire.status === "published" && payload.status !== "archived") assertDraft(questionnaire);
-  Object.assign(questionnaire, payload, { updatedBy: user._id });
+  const incoming = adminEdits.stripMarkers(payload);
+  // remember WHICH built-in fields the designer changed, so the definition reconciler never reverts them
+  const edited = adminEdits.changedFields(questionnaire, incoming, { only: adminEdits.QUESTIONNAIRE_TRACKED_FIELDS });
+  Object.assign(questionnaire, incoming, { updatedBy: user._id });
+  if (edited.length) questionnaire.adminEditedFields = adminEdits.mergeEditedFields(questionnaire.adminEditedFields, edited);
   addQuestionnaireAudit(questionnaire, "update", user, payload, req);
   await questionnaire.save();
   await writeAuditLog("update", "questionnaire", questionnaire, user, payload, req);
@@ -649,6 +693,7 @@ async function createNewVersion(questionnaire, user, req) {
     parentVersion: questionnaire._id,
     rootQuestionnaire: questionnaire.rootQuestionnaire || questionnaire._id,
     latestVersion: true,
+    ...versionIdentity(questionnaire),
     approval: { status: "draft" },
     createdBy: user._id,
     updatedBy: user._id,
@@ -685,7 +730,7 @@ async function cloneQuestionnaire(questionnaire, payload, user, req) {
 async function createQuestion(questionnaire, payload, user, req) {
   assertCanDesign(user, "manage questions");
   assertDraft(questionnaire);
-  let normalizedPayload = normalizeQuestionPayload(payload);
+  let normalizedPayload = normalizeQuestionPayload(adminEdits.stripMarkers(payload));
   const libraryItemId = payload.libraryItemId || payload.libraryItem;
   if (libraryItemId) {
     const libraryItem = await QuestionLibraryItem.findById(libraryItemId);
@@ -726,6 +771,7 @@ async function createQuestion(questionnaire, payload, user, req) {
   }
   const question = await Question.create({
     ...normalizedPayload,
+    adminCreated: true, // added on the Questionnaire page: never retired by the definition reconciler
     questionnaire: questionnaire._id,
     questionnaireKey: questionnaire.key,
     questionnaireVersion: questionnaire.version,
@@ -753,7 +799,10 @@ async function updateQuestion(question, payload, user, req) {
   assertCanDesign(user, "manage questions");
   const questionnaire = await Questionnaire.findById(question.questionnaire);
   if (questionnaire) assertDraft(questionnaire);
-  Object.assign(question, normalizeQuestionPayload(payload), { updatedBy: user._id });
+  const incoming = normalizeQuestionPayload(adminEdits.stripMarkers(payload));
+  const edited = adminEdits.changedFields(question, incoming);
+  Object.assign(question, incoming, { updatedBy: user._id });
+  if (edited.length) question.adminEditedFields = adminEdits.mergeEditedFields(question.adminEditedFields, edited);
   await question.save();
   await writeAuditLog("update", "question", question, user, payload, req);
   return question;
@@ -765,10 +814,19 @@ async function reorderQuestionnaire(questionnaire, payload, user, req) {
   if (payload.pageOrder) questionnaire.builder.pageOrder = payload.pageOrder;
   if (payload.sectionOrder) questionnaire.builder.sectionOrder = payload.sectionOrder;
   if (payload.questionOrder) questionnaire.builder.questionOrder = payload.questionOrder;
-  const operations = (payload.questions || []).map((item) => Question.updateOne(
-    { questionnaire: questionnaire._id, key: item.key },
-    { $set: { order: item.order, pageKey: item.pageKey, sectionKey: item.sectionKey, groupKey: item.groupKey, updatedBy: user._id } }
-  ));
+  if (payload.pageOrder || payload.sectionOrder || payload.questionOrder) {
+    questionnaire.adminEditedFields = adminEdits.mergeEditedFields(questionnaire.adminEditedFields, ["builder"]);
+  }
+  // A question the designer really moved is marked, so the definition reconciler never moves it back; one that only came along in a
+  // full-list save is not (otherwise one drag would freeze the layout of every question).
+  const current = new Map((await Question.find({ questionnaire: questionnaire._id }).select("key order pageKey sectionKey").lean()).map((row) => [row.key, row]));
+  const operations = (payload.questions || []).map((item) => {
+    const before = current.get(item.key) || {};
+    const moved = before.order !== item.order || (item.pageKey !== undefined && before.pageKey !== item.pageKey) || (item.sectionKey !== undefined && before.sectionKey !== item.sectionKey);
+    const update = { $set: { order: item.order, pageKey: item.pageKey, sectionKey: item.sectionKey, groupKey: item.groupKey, updatedBy: user._id } };
+    if (moved) update.$addToSet = { adminEditedFields: { $each: ["order", "pageKey", "sectionKey"] } };
+    return Question.updateOne({ questionnaire: questionnaire._id, key: item.key }, update);
+  });
   await Promise.all(operations);
   addQuestionnaireAudit(questionnaire, "reorder", user, payload, req);
   await questionnaire.save();
@@ -907,10 +965,9 @@ async function buildResponseState(responseId) {
 async function calculateCompletion(questionnaire, answerMap, user) {
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
-  // "required" in the returned shape now means "needed for a complete submission": every visible question. Nothing is
-  // mandatory to save, but Submit needs 100%.
-  // A question flagged metadata.optional never blocks Submit (opt-in per question).
-  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
+  // "required" = the visible questions that are required to SUBMIT (isQuestionRequired: the question's own required flag from its checklist
+  // definition, a required rule, or a requireWhen that is true). Nothing is mandatory to save.
+  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap));
   const answeredRequired = required.filter((question) => {
     const value = getAnswerValue(answerMap, question.key);
     return value !== undefined && value !== null && value !== "";
@@ -998,8 +1055,8 @@ async function resolveVisibleQuestions(questionnaire, answerMap, user) {
 async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
   const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
-  // Every visible question is needed for a complete submission (nothing is mandatory to save) - except one flagged metadata.optional.
-  const required = visibleQuestions.filter((question) => !question.metadata?.optional);
+  // The visible questions required to SUBMIT (isQuestionRequired); nothing is mandatory to save.
+  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap));
   const answeredRequiredKeys = new Set(
     required.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key))).map((question) => question.key)
   );
@@ -1900,10 +1957,10 @@ async function assertSubmittable(payload, user) {
   });
   const missing = questions
     .filter((question) => isQuestionVisible(question, answerMap, user))
-    .filter((question) => !question.metadata?.optional)
+    .filter((question) => isQuestionRequired(question, answerMap))
     .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   if (missing.length) {
-    const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
+    const error = new Error(`${missing.length} required item${missing.length === 1 ? " is" : "s are"} still blank. Complete every required item before submitting - use Save progress to keep what you have filled in so far.`);
     error.status = 422;
     error.code = "CHECKLIST_INCOMPLETE";
     error.details = { missing: missing.slice(0, 50).map((question) => ({ questionKey: question.key, label: question.label })), missingCount: missing.length };
@@ -2282,12 +2339,22 @@ const VISA_TEMPLATE_DEFINITIONS = [
 function enforceRequiredPassportInformation(definitions) {
   for (const definition of definitions) {
     for (const question of definition.questions || []) {
-      if (isPassportInformation(question)) question.required = true;
+      if (!isPassportInformation(question)) continue;
+      question.required = true;
+      // a question flagged metadata.optional is never required at Submit, so "required" would be silently overridden by it
+      if (question.metadata?.optional) {
+        const { optional, ...rest } = question.metadata;
+        question.metadata = { ...rest, requirement: "required" };
+      }
     }
   }
   return definitions;
 }
 
+// A checklist authored "everything optional" gets its REQUIRED questions by the same convention as the other checklists (requirementLogic.js:
+// core identity, passport information, the employer's core facts, essential documents, gating answers). Runs BEFORE the passport rule, which
+// would otherwise make such a definition look "not fully optional". Definitions that already have required questions are left exactly as they are.
+applyRequirementLogicToAll(VISA_TEMPLATE_DEFINITIONS);
 enforceRequiredPassportInformation(VISA_TEMPLATE_DEFINITIONS);
 
 function slugSection(title) {
@@ -2518,17 +2585,19 @@ async function reconcileDefinition(definition, systemUser, req) {
     // an intro paragraph) or section list changed — patch the existing
     // record in place, never recreate it.
     let changed = false;
-    if (questionnaire.description !== definition.description) {
+    // Whatever a designer changed on the Questionnaire page is theirs: the code definition never reverts it.
+    const designerEdited = (field) => adminEdits.isEdited(questionnaire.adminEditedFields, field);
+    if (!designerEdited("description") && questionnaire.description !== definition.description) {
       questionnaire.description = definition.description;
       changed = true;
     }
-    if (definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
+    if (!designerEdited("assignmentRules") && definition.assignmentRules && questionnaire.assignmentRules?.requiresNewOfficePetition !== definition.assignmentRules.requiresNewOfficePetition) {
       questionnaire.assignmentRules = { ...(questionnaire.assignmentRules?.toObject?.() || questionnaire.assignmentRules || {}), ...definition.assignmentRules };
       changed = true;
     }
     // Code-defined visas plus any an admin mapped from the UI (adminVisaTypes).
     const definitionVisaTypes = [...new Set([...(definition.visaTypes || [definition.visaType]), ...(questionnaire.adminVisaTypes || [])])];
-    if (JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
+    if (!designerEdited("visaTypes") && JSON.stringify(questionnaire.visaTypes || []) !== JSON.stringify(definitionVisaTypes)) {
       questionnaire.visaTypes = definitionVisaTypes;
       changed = true;
     }
@@ -2546,18 +2615,20 @@ async function reconcileDefinition(definition, systemUser, req) {
     if (definition.reconcileMetadata && questionnaire.status !== "archived") {
       for (const field of ["title", "visaType", "checklistRole", "isDefault"]) {
         const next = field === "isDefault" ? Boolean(definition.isDefault) : (definition[field] ?? "");
-        if (questionnaire[field] !== next) {
+        if (!designerEdited(field) && questionnaire[field] !== next) {
           questionnaire[field] = next;
           changed = true;
         }
       }
-      if (questionnaire.templateCategory !== definition.visaType) {
+      if (!designerEdited("templateCategory") && questionnaire.templateCategory !== definition.visaType) {
         questionnaire.templateCategory = definition.visaType;
         changed = true;
       }
     }
     const currentSectionTitles = (questionnaire.sections || []).map((section) => section.title);
-    if (JSON.stringify(currentSectionTitles) !== JSON.stringify(definition.sections)) {
+    // Sections/pages/question order are rebuilt from the definition only while no designer has arranged them.
+    const layoutEdited = designerEdited("sections") || designerEdited("pages") || designerEdited("builder");
+    if (!layoutEdited && JSON.stringify(currentSectionTitles) !== JSON.stringify(definition.sections)) {
       questionnaire.sections = definition.sections.map((title, index) => {
         const existingSection = (questionnaire.sections || []).find((section) => section.key === slugSection(title));
         return { key: slugSection(title), title, description: existingSection?.description || "", order: index + 1, isActive: true };
@@ -2623,8 +2694,12 @@ async function reconcileDefinition(definition, systemUser, req) {
         });
         continue;
       }
-      const patch = reconcileQuestionFields(existing, question);
-      if (existing.active === false || existing.isActive === false) {
+      // A question a designer added is theirs alone; one they changed keeps exactly the fields they changed (the rest still follows the
+      // definition), and one they removed (deactivated) stays removed.
+      if (existing.adminCreated) continue;
+      const editedFields = existing.adminEditedFields || [];
+      const patch = adminEdits.withoutEditedFields(reconcileQuestionFields(existing, question), editedFields);
+      if (!adminEdits.isEdited(editedFields, "active") && (existing.active === false || existing.isActive === false)) {
         patch.active = true;
         patch.isActive = true;
       }
@@ -2646,6 +2721,7 @@ async function reconcileDefinition(definition, systemUser, req) {
     // published-status guard rather than running unconditionally.
     for (const existing of existingQuestions) {
       if (definitionKeys.has(existing.key)) continue;
+      if (existing.adminCreated) continue; // added on the Questionnaire page, not part of the code definition
       if (existing.active === false && existing.isActive === false) continue;
       ops.push({
         updateOne: {
@@ -3511,6 +3587,7 @@ module.exports = {
   reconcileDefinition,
   // pure helpers, exported so definition tests can exercise real validation without a DB
   isQuestionVisible,
+  isQuestionRequired,
   normalizeAnswerValue,
   validateQuestionValue,
   validateResponse,

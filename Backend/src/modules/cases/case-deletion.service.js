@@ -79,7 +79,11 @@ async function removeCasesAndAccounts(caseIds, userIds) {
 /**
  * Phase 1. Returns as soon as the cases and accounts are gone; the linked-data sweep continues in the background.
  */
-async function requestCaseDeletion(caseData, actor) {
+async function requestCaseDeletion(caseData, actor, { skipGhl = false } = {}) {
+  // EVERY deletion removes the GoHighLevel card(s) of the case (and of an employer matter's employees) too - queued as durable, retried jobs, never
+  // blocking and never failing the deletion. Done here, not in one controller, so no path (a bulk action, a script, a sync) can leave a card behind.
+  // `skipGhl` is for a deletion CAUSED by GHL (the card is already gone there).
+  if (!skipGhl) await require("../../integrations/ghl/ghlCaseOutbound").queueGhlOpportunityDeletions(caseData);
   const { cases, caseIds } = await collectTargets(caseData);
   const orphans = await orphanedClientUsers(cases, caseIds);
   const userIds = orphans.map((user) => user._id);
@@ -194,8 +198,8 @@ async function retryDeletionJob(jobId) {
 }
 
 // Kept for scripts and callers that want the whole deletion done before they continue.
-async function deleteCasePermanently(caseData, actor) {
-  const { jobId, caseNumbers, accountsRemoved } = await requestCaseDeletion(caseData, actor);
+async function deleteCasePermanently(caseData, actor, options) {
+  const { jobId, caseNumbers, accountsRemoved } = await requestCaseDeletion(caseData, actor, options);
   let job = await CaseDeletionJob.findById(jobId).lean();
   for (let guard = 0; guard < MAX_ATTEMPTS && job && job.status !== "done"; guard += 1) {
     await CaseDeletionJob.updateOne({ _id: jobId, status: "pending" }, { $set: { nextAttemptAt: new Date(0) } });

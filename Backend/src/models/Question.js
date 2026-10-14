@@ -178,12 +178,16 @@ const questionSchema = new mongoose.Schema(
     evidenceCategory: { type: String, index: true },
     localization: { type: mongoose.Schema.Types.Mixed, default: {} },
     metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
-    // Nothing a client fills in is ever mandatory: an answer can always be saved partially (Save progress). Completeness is
-    // a separate rule - Submit needs every visible question answered (see questionnaire.service.js submitResponse). The flag
-    // is kept for schema compatibility but is always stored false, whatever a seed/template/editor writes.
-    required: { type: Boolean, default: false, index: true, set: () => false },
+    // Required to SUBMIT (set from the checklist definition, e.g. `required: true`; passport information is always required). Never required to
+    // SAVE: an answer can always be saved partially (Save progress) - see questionnaire.service.js isQuestionRequired / assertSubmittable.
+    // (A setter used to force this to false for every question; the flag is stored as written again.)
+    required: { type: Boolean, default: false, index: true },
     active: { type: Boolean, default: true, index: true },
     isActive: { type: Boolean, default: true, index: true },
+    // Set when a designer changes the question on the Questionnaire page: the fields they changed (so the built-in definition
+    // reconciler never reverts them) and whether they added the question themselves (so it is never retired as "not in the code").
+    adminEditedFields: [{ type: String }],
+    adminCreated: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
