@@ -34,6 +34,7 @@ const { SB1_CHECKLIST_DEFINITION } = require("./sb1Checklist");
 const { isPassportInformation } = require("./passportInformation");
 const { applyRequirementLogicToAll } = require("./requirementLogic");
 const adminEdits = require("./adminEdits");
+const employerViewAccess = require("../cases/employer-view-access");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
@@ -1814,7 +1815,10 @@ async function readAnswerFile(payload, user) {
     throw error;
   }
   const caseData = answer.caseId ? await Case.findById(answer.caseId) : null;
-  const authorized = caseData ? caseService.canAccessCase(user, caseData) : String(answer.user || "") === String(user?._id || "");
+  // an employer may VIEW the documents of an employee they invited (read-only; removing/replacing a file keeps canAccessCase alone)
+  const authorized = caseData
+    ? (caseService.canAccessCase(user, caseData) || await employerViewAccess.canReadInvitedEmployeeCase(user, caseData))
+    : String(answer.user || "") === String(user?._id || "");
   if (!authorized) {
     const error = new Error("Not authorized to view this file");
     error.status = 403;
@@ -2411,6 +2415,8 @@ function reconcileQuestionFields(existingDoc, definitionQuestion) {
 // added EB1B checklists from appearing on the admin Questionnaire Templates
 // page even though the code was correct. Restored the real TTL below.
 const ENSURE_TTL_MS = 5 * 60 * 1000;
+// questions that only structure the form (never answered), so they do not count towards a completion percentage of typed answers
+const LAYOUT_QUESTION_TYPES = new Set(["page_break", "section_break", "group"]);
 let ensureCache = { at: 0, promise: null };
 
 // FULL reconcile of every built-in template. Explicit trigger only (POST /questionnaires/defaults/seed, the opt-in
@@ -2775,7 +2781,10 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
-  if (!caseService.canAccessCase(user, caseData)) {
+  // Read-only door for the employer of an invited employee: they may read the employee's checklist (never write it - every save
+  // path checks canAccessCase alone), and the response says so.
+  const viaEmployerView = !caseService.canAccessCase(user, caseData) && await employerViewAccess.canReadInvitedEmployeeCase(user, caseData);
+  if (!viaEmployerView && !caseService.canAccessCase(user, caseData)) {
     const error = new Error("Not authorized to access this case questionnaire");
     error.status = 403;
     throw error;
@@ -2798,9 +2807,11 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     const parentCaseData = await Case.findById(caseData.parentCase);
     if (parentCaseData) referenceCase = parentCaseData;
   }
-  const requestedParticipant = options.participantId
-    ? participantService.findParticipant(referenceCase, { role: targetRole, participantId: options.participantId })
-    : participantService.participantForUser(referenceCase, user, targetRole);
+  const requestedParticipant = viaEmployerView
+    ? null // the employer is not a participant of the employee's file: the response is the one the employee works on
+    : options.participantId
+      ? participantService.findParticipant(referenceCase, { role: targetRole, participantId: options.participantId })
+      : participantService.participantForUser(referenceCase, user, targetRole);
   let eligibleReferences = (referenceCase.questionnaireReferences || [])
     .filter((reference) => reference.active !== false && reference.status !== "returned")
     .filter((reference) => !targetRole || reference.targetRole === targetRole)
@@ -2994,6 +3005,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
         percent: intelligentState.summary.percent,
         intelligent: intelligentState.summary,
       },
+      ...(viaEmployerView ? { readOnly: true, viewerMode: "employer_readonly" } : {}),
     };
   }
   logger.info("questionnaire_case_load_completed", {
@@ -3018,6 +3030,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     responseId,
     participant: participantService.participantSnapshot(requestedParticipant),
     progress,
+    ...(viaEmployerView ? { readOnly: true, viewerMode: "employer_readonly" } : {}),
   };
 }
 
@@ -3207,7 +3220,7 @@ async function listCaseChecklists(caseId, user) {
     error.status = 404;
     throw error;
   }
-  if (!caseService.canAccessCase(user, caseData)) {
+  if (!caseService.canAccessCase(user, caseData) && !(await employerViewAccess.canReadInvitedEmployeeCase(user, caseData))) {
     const error = new Error("Not authorized to access this case's checklists");
     error.status = 403;
     throw error;
@@ -3253,6 +3266,14 @@ async function listCaseChecklists(caseId, user) {
       user,
       visibleQuestions.filter((question) => question.type === "file")
     );
+    // The typed-answer side on its own (everything that is not an upload and not layout), so a card can show "information" and
+    // "documents" as two separate, exact percentages - same counting rules as the two above.
+    const textProgress = await calculateDetailedProgress(
+      entry.questionnaire,
+      answerMap,
+      user,
+      visibleQuestions.filter((question) => question.type !== "file" && !LAYOUT_QUESTION_TYPES.has(question.type))
+    );
     return {
       referenceId: entry.referenceId,
       staffRequest: Boolean(entry.staffRequest),
@@ -3274,6 +3295,7 @@ async function listCaseChecklists(caseId, user) {
       resolvedDynamically: !entry.explicit,
       progress,
       documentProgress,
+      textProgress,
       documentLabels: documentLabelsByQuestionnaire.get(String(entry.questionnaire._id)) || {},
       // every upload question this checklist currently asks for (as edited for this case), with whether it is answered:
       // the Required Documents list is built from this, so it always matches the checklist the client sees

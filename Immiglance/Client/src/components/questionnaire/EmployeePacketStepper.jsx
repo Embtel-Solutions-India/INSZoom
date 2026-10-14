@@ -22,7 +22,10 @@ const STEPS = [
 // scroll: Documents (every file-type question across every section, flat),
 // Information (every remaining section, one at a time), Review (a summary +
 // the actual submit action). Reuses `qa` from useQuestionnaireAnswers as-is.
-export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExit, onSubmitted, readOnly = false }) {
+// readOnly = the employer looking at an INVITED employee's information (the employee holds the file): nothing can be edited, saved or
+// submitted; the documents can be opened, and `onTakeBack` offers switching back to "employer fills". `onGrantAccess` (employer filling
+// the employee's information themselves) opens the grant-access popup, which saves their progress first.
+export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExit, onSubmitted, readOnly = false, onTakeBack, onGrantAccess, takingBack = false }) {
   const {
     questionnaire, initialLoading, error, notReleased, sections, questionsBySection, answers, answerByKey,
     prefillMeta, savingKey, saveAnswer, saveFiles, removeFile, commitAll, handleAutofillResult, responseId,
@@ -98,6 +101,9 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
           onFileChange={(uploadedFiles) => saveFiles(question, uploadedFiles)}
           files={answerByKey.get(key)?.files}
           onRemoveFile={(file) => removeFile(question, file)}
+          onViewFile={readOnly && questionnaireId ? (file) => (file?.storageKey
+            ? questionnairesApi.viewAnswerFile(questionnaireId, { responseId, questionKey: key, storageKey: file.storageKey })
+            : Promise.reject(new Error("This document cannot be opened from here."))) : undefined}
         />
         {!readOnly && (
           <PrefillBadge
@@ -154,6 +160,25 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-28">
+      {readOnly && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4" data-testid="read-only-banner">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-amber-800">Read only view</p>
+              <p className="mt-0.5 text-sm text-amber-900">
+                You are viewing what {employeeLabel || "the employee"} has filled in and what is still missing. Nothing here can be edited by you
+                while they have access - it updates automatically as they save.
+              </p>
+            </div>
+            {onTakeBack && (
+              <button type="button" onClick={onTakeBack} disabled={takingBack} className="shrink-0 rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
+                {takingBack ? "Switching…" : "I'll fill this myself instead"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         {onExit && (
           <button type="button" onClick={onExit} className="text-sm font-semibold text-muted-foreground hover:text-foreground shrink-0">
@@ -162,8 +187,19 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         )}
         <div className="min-w-0">
           <p className="text-sm font-bold text-foreground truncate">{employeeLabel}</p>
-          <p className="text-xs text-muted-foreground truncate">{questionnaire.title}</p>
+          <p className="text-xs text-muted-foreground truncate">{questionnaire.title}{readOnly ? " · Read only view" : ""}</p>
         </div>
+        {!readOnly && onGrantAccess && (
+          <button
+            type="button"
+            onClick={onGrantAccess}
+            disabled={savingProgress || submitting}
+            className="ml-auto shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-secondary disabled:opacity-40 transition-colors"
+            title="Saves your progress, then lets the employee fill in the rest"
+          >
+            Grant access to employee
+          </button>
+        )}
       </div>
 
       {/* Stepper — collapses to "Step X of 3" + a thin bar below sm */}
@@ -283,7 +319,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
           </div>
           {missingItems.length > 0 ? (
             <div className="rounded-xl border border-border bg-secondary p-5">
-              <p className="text-sm font-bold text-foreground mb-2">A few things still need attention</p>
+              <p className="text-sm font-bold text-foreground mb-2">{readOnly ? `Not filled in yet by ${employeeLabel || "the employee"}` : "A few things still need attention"}</p>
               <ul className="space-y-1.5">
                 {missingItems.map((item) => (
                   <li key={item.question._id || item.question.key}>
@@ -300,7 +336,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             </div>
           ) : (
             <div className="rounded-xl border border-accent-foreground/20 bg-accent p-5">
-              <p className="text-sm font-bold text-accent-foreground">Everything's complete. Ready to submit.</p>
+              <p className="text-sm font-bold text-accent-foreground">{readOnly ? "Everything required has been filled in." : "Everything's complete. Ready to submit."}</p>
             </div>
           )}
           {submitError && <p className="text-sm text-destructive">{submitError}</p>}

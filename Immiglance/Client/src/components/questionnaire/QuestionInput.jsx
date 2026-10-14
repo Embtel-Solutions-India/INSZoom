@@ -209,7 +209,7 @@ function RepeatableGroupInput({ question, value, disabled, onChange }) {
 // The one field+file+repeating-group renderer for every question type a
 // Questionnaire template can define. Used exclusively by
 // QuestionnaireRenderer — nothing else should hand-code per-type question JSX.
-export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange, files, onRemoveFile }) {
+export default function QuestionInput({ question, value, disabled, saving, onChange, onFileChange, files, onRemoveFile, onViewFile }) {
   const type = normalizeType(question);
   const options = normalizeOptions(question.options);
 
@@ -342,6 +342,7 @@ export default function QuestionInput({ question, value, disabled, saving, onCha
           busy={Boolean(saving)}
           onAdd={(picked) => onFileChange(picked)}
           onRemove={(entry) => onRemoveFile?.(entry.raw)}
+          onView={onViewFile ? (entry) => onViewFile(entry.raw) : undefined}
         />
         {!entries.length && Array.isArray(value) && value.length > 0 && <p className="text-xs font-bold text-muted-foreground">{value.length} file{value.length === 1 ? "" : "s"} saved</p>}
       </div>

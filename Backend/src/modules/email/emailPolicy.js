@@ -45,7 +45,7 @@ async function recentlySent({ templateKey, to, caseId, windowMs }) {
 const MIN = 60 * 1000;
 const DEFAULT_COOLDOWN_MS = 2 * MIN;
 // Credential / security mails are always sent - a user asking twice must get it twice.
-const NEVER_THROTTLED = new Set(["password-reset", "staff-credentials", "client-portal-invitation", "employee-case-invitation", "family-beneficiary-invitation"]);
+const NEVER_THROTTLED = new Set(["password-reset", "staff-credentials", "client-portal-invitation", "employee-case-invitation", "employee-access-restored", "family-beneficiary-invitation"]);
 
 // ── per-trigger policy ───────────────────────────────────────────────────
 // auto: the email is sent by default (an admin can still switch it off, or
@@ -91,6 +91,7 @@ const SEND_RULES = {
   // ── built-in emails (existing call sites; unchanged logic) ───────────
   "client-portal-invitation": { when: "A staff member creates a case for a client who has not set a password yet (also when the client asks for a new activation link).", unless: "The client already has an active account - they get the 'Case created' email instead, never both." },
   "employee-case-invitation": { when: "An employer invites an employee to complete their part of the case (or resends the invite).", unless: "The case is not in 'invite' mode, or the employee was already invited." },
+  "employee-access-restored": { when: "An employer gives an invited employee access to their information AGAIN (the invitation had been withdrawn so the employer could fill part of it in).", unless: "It is the employee's first invitation - they get the normal invitation email instead." },
   "family-beneficiary-invitation": { when: "A family-visa beneficiary is invited to the petitioner's case.", unless: "The beneficiary is completed by the petitioner themselves." },
   "password-reset": { when: "A user requests a password reset.", unless: "Never reveals whether the address exists; the account must be active." },
   "staff-credentials": { when: "A new staff or attorney account is created.", unless: "—" },

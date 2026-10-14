@@ -734,6 +734,16 @@ export const questionnairesApi = {
     return api.get(`/questionnaires/${id}/progress${q ? "?" + q : ""}`);
   },
   submit: (id, payload) => api.post(`/questionnaires/${id}/submit`, payload),
+  // Opens one stored answer file in a new tab (read-only view of an invited employee's documents). The download route authorizes
+  // against the answer's own case, so this works for exactly the people allowed to read that file.
+  viewAnswerFile: async (id, { responseId, questionKey, storageKey }) => {
+    const query = new URLSearchParams({ responseId, questionKey, storageKey, inline: "true" }).toString();
+    const response = await api.get(`/questionnaires/${id}/answers/files/download?${query}`);
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  },
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
 };
 
