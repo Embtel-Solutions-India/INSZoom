@@ -129,11 +129,19 @@ function deriveOffSiteWorkLocations(profile) {
   if (different.length) setPath(profile, "employment.offSiteWorkLocations", different);
 }
 
+// the "New status and effective date" answer is one record; expose its two parts on their own canonical paths
+function deriveRequestedStatus(profile) {
+  const row = (getPath(profile, "application.requestedStatusRecord") || [])[0];
+  if (!row || typeof row !== "object") return;
+  if (blank(getPath(profile, "application.requestedStatus")) && !blank(row.status)) setPath(profile, "application.requestedStatus", row.status);
+  if (blank(getPath(profile, "application.requestedStatusEffectiveDate")) && !blank(row.effectiveDate)) setPath(profile, "application.requestedStatusEffectiveDate", row.effectiveDate);
+}
+
 function apply(profile) {
   if (!profile || typeof profile !== "object") return profile;
   // person.* / company.* mean beneficiary / petitioner only in an employer-sponsored case; in a family case person.* is the petitioner, so nothing is derived there
   const structure = profile.case && profile.case.caseStructure;
-  if (structure && structure !== "employer_employee") return profile;
+  if (structure && structure !== "employer_employee" && structure !== "single") return profile;
   flattenStructuredAddresses(profile);
   fill(profile, BENEFICIARY_SOURCES);
   fill(profile, PETITIONER_SOURCES);
@@ -159,6 +167,7 @@ function apply(profile) {
     if (!parsedAny && blank(getPath(profile, streetPath))) setPath(profile, streetPath, String(text).trim());
   }
   deriveOffSiteWorkLocations(profile);
+  deriveRequestedStatus(profile);
   return profile;
 }
 

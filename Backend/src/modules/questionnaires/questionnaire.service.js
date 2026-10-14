@@ -37,6 +37,7 @@ const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
+const { COS_H4_CHECKLIST_DEFINITIONS } = require("./cosH4Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 const { validateRepeatingGroupRows } = require("./repeating-group-validation");
 const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
@@ -1657,9 +1658,12 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
         synced.push(existing);
         continue;
       }
+      const owner = question.metadata?.documentOwner;
+      const principalCaseId = owner ? (await Case.findById(caseId).select("principalCaseRef").lean())?.principalCaseRef : undefined;
       const document = await Document.create({
         caseId,
         documentType,
+        ...(owner ? { participantRole: owner, tags: [owner], description: "Document of the related H-1B principal", metadata: { documentOwner: owner, ...(principalCaseId ? { principalCaseId } : {}) } } : {}),
         category: question.metadata?.category || question.evidenceCategory || "other",
         originalName: file.originalName,
         fileName: file.originalName,
@@ -2265,6 +2269,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // banner for why these two records must never be merged into one shared
   // checklist.
   ...COS_B1_B2_CHECKLIST_DEFINITIONS,
+  // Change of Status to H-4 (dependent): every item optional - see cosH4Checklist.js
+  ...COS_H4_CHECKLIST_DEFINITIONS,
 ];
 
 // Applied here, once, for every built-in definition so no individual

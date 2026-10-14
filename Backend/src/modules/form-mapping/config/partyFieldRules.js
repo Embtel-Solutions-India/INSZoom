@@ -117,6 +117,32 @@ const RULES = {
 
   // the applicant of an I-539 is the person extending / changing status (for TN, the TD dependent)
   "I-539": [
+    // Part 1: USCIS account number; mailing (Item 4) and physical (Item 6) U.S. addresses come from their own structured answers
+    R("beneficiary.uscisOnlineAccountNumber", "Pt1Line2_USCISOnlineAcctNumber", { transform: { type: "digits" } }),
+    R("beneficiary.usMailingAddress.line1", "Part2_Item11_StreetName"),
+    R("beneficiary.usMailingAddress.city", "Part2_Item11_City"),
+    R("beneficiary.usMailingAddress.state", "Part2_Item11_State", { transform: { type: "usState" } }),
+    R("beneficiary.usMailingAddress.postalCode", "Part2_Item11_ZipCode"),
+    R("beneficiary.usPhysicalAddress.line1", "Part1_Item6_StreetName"),
+    R("beneficiary.usPhysicalAddress.city", "Part1_Item6_City"),
+    R("beneficiary.usPhysicalAddress.state", "Part1_Item6_State", { transform: { type: "usState" } }),
+    R("beneficiary.usPhysicalAddress.postalCode", "Part1_Item6_ZipCode"),
+    // Part 1 Item 12 / passport: status expiry and passport dates
+    R("beneficiary.currentVisaExpirationDate", "SupA_Line1p_DateExpires"),
+    R("beneficiary.passport.expirationDate", "SupA_Line1n_ExpDate"),
+    // Part 2 Item 1: application type. Reinstatement is deliberately NOT mapped (not an H-4 application type; flagged for case manager review)
+    R("application.applicationType", "P2_checkbox", { pages: [2], index: 0, checkboxEquals: "An extension of stay in my current status" }),
+    R("application.applicationType", "P2_checkbox", { pages: [2], index: 1, checkboxEquals: "Change of status" }),
+    R("application.applicationType", "P2_checkbox", { pages: [2], index: 2, remove: true }),
+    // Part 2 Item 2: requested new status and effective date (only when a change of status was requested)
+    R("application.requestedStatus", "Pt2Line2a_NewStatus"),
+    R("application.requestedStatusEffectiveDate", "Pt2Line2b_EffectiveDate"),
+    // Part 4 Item 2: physical address outside the U.S. (state and province are distinct answers; the form has a Province box only)
+    R("beneficiary.foreignAddress.streetAddress", "P2_Line10_StreetName"),
+    R("beneficiary.foreignAddress.city", "P2_Line10_City"),
+    R("beneficiary.foreignAddress.province", "P2_Line10_Province", { fallback: "beneficiary.foreignAddress.state" }),
+    R("beneficiary.foreignAddress.postalCode", "P2_Line10_PostalCode"),
+    R("beneficiary.foreignAddress.country", "P2_Line10_Country", { transform: { type: "country" } }),
     R("beneficiary.lastName", "P1Line1a_FamilyName"),
     R("beneficiary.firstName", "P1_Line1b_GivenName"),
     R("beneficiary.middleName", "P1_Line1c_MiddleName"),

@@ -183,6 +183,8 @@ set("COSF2", "I-539A", [cm("cos_f2_questionnaire", COND)]);
 set("COSB1", "I-539", [cm("cos_b1_questionnaire", AUTO)]);
 // COS -> B-2 and F-1 -> B-2 share the same destination-driven checklist -
 // both real DB visaTypes get the identical entry, never a second checklist.
+set("COSH4", "I-539", [cm("cos_h4_questionnaire", AUTO)]);
+set("COSH4", "I-765", [cm("cos_h4_questionnaire", COND)]);
 set("COSB2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 set("B-1/B-2", "I-539", [cm("cos_b2_questionnaire", AUTO)]);
 

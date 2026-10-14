@@ -182,6 +182,13 @@ const BASE_FIELDS = [
   PARTY_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// H-4 change-of-status checklist paths - see canonical/config/h4CanonicalPaths.js. Additive only.
+{
+  const { H4_CANONICAL_FIELDS } = require("../../canonical/config/h4CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  H4_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 // O-1A checklist paths - see canonical/config/o1aCanonicalPaths.js. Additive only.
 {
   const { O1A_CANONICAL_FIELDS } = require("../../canonical/config/o1aCanonicalPaths");
