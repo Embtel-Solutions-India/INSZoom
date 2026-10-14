@@ -38,8 +38,15 @@ test("O-2 employee: 11 documents, no O-1A/O-1B criteria groups, typed + required
 
 test("a new O-1A / O-1B / O-2 case (dropdown spellings) is assigned the right checklists", () => {
   const apply = (visaType, key) => ImmigrationKnowledgeEngineService.questionnaireApplies(byKey[key], { visaType });
-  for (const visaType of ["o1a", "O-1A", "o1b", "O-1B"]) {
-    assert.ok(apply(visaType, "o1_employer_checklist") && apply(visaType, "o1_employee_checklist"), visaType);
+  for (const visaType of ["o1a", "O-1A"]) {
+    assert.ok(apply(visaType, "o1a_employer_checklist") && apply(visaType, "o1a_employee_checklist"), visaType);
+    assert.ok(!apply(visaType, "o1_employer_checklist") && !apply(visaType, "o1_employee_checklist") && !apply(visaType, "o1b_employer_checklist"), visaType);
+    assert.ok(!apply(visaType, "o2_employer_checklist") && !apply(visaType, "o2_employee_checklist"), visaType);
+  }
+  // O-1B has its own dedicated pair and no longer matches the shared O-1 pair
+  for (const visaType of ["o1b", "O-1B"]) {
+    assert.ok(apply(visaType, "o1b_employer_checklist") && apply(visaType, "o1b_employee_checklist"), visaType);
+    assert.ok(!apply(visaType, "o1_employer_checklist") && !apply(visaType, "o1_employee_checklist"), visaType);
     assert.ok(!apply(visaType, "o2_employer_checklist") && !apply(visaType, "o2_employee_checklist"), visaType);
   }
   for (const visaType of ["o2", "O-2"]) {

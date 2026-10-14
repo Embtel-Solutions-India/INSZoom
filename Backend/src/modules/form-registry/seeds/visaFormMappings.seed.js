@@ -294,8 +294,8 @@ add(i129Petition("L-1A Extension"), i129LSupplement("L-1A Extension"), m("L-1A E
 add(i539("L-2"), i539A("L-2"), i765("L-2"), ds160("L-2"));
 
 // ===================== O FAMILY =====================
-add(i129Petition("O-1A"), i129OPSupplement("O-1A"), ds160("O-1A"), i539("O-1A"), i907("O-1A"));
-add(i129Petition("O-1B"), i129OPSupplement("O-1B"), ds160("O-1B"), i539("O-1B"), i907("O-1B"));
+add(i129Petition("O-1A"), i129OPSupplement("O-1A"), ds160("O-1A"), i539("O-1A"), i907("O-1A"), g28("O-1A"));
+add(i129Petition("O-1B"), i129OPSupplement("O-1B"), ds160("O-1B"), i539("O-1B"), i907("O-1B"), g28("O-1B"));
 add(i129Petition("O-2"), i129OPSupplement("O-2"), ds160("O-2"), i539("O-2"), i907("O-2"));
 add(i539("O-3"), ds160("O-3"));
 
@@ -487,6 +487,16 @@ add(ds160("B-1/B-2", { provisioningType: AUTO, initialCaseCreation: true }), i53
 // above. No DS-160 (this is an in-country COS, not consular) and no I-539A
 // (this checklist has no co-applicant/dependent content).
 add(i539AutoCreate("COSB1", { notes: "Change of Status to B-1 filing type — I-539 is the primary and only USCIS form." }));
+// ===================== COS TO H-4 (SINGLE-PARTY FILING TYPE) =====================
+// Change of Status to H-4 (dependent) is an in-country change of status: I-539 is the primary form (AUTO_CREATE). G-28 (attorney), I-907 (premium) and I-765
+// (employment authorization) stay CONDITIONAL case-manager decisions - never assigned automatically. No DS-160 (a DOS reference form for consular cases) and no I-129:
+// the principal's H-1B petition is a separate matter.
+add(
+  i539AutoCreate("COSH4", { notes: "Change of Status to H-4 filing type - I-539 is the primary USCIS form (in-country change of status)." }),
+  g28("COSH4"),
+  i907("COSH4", { triggerCondition: { field: "premiumProcessing", operator: "equals", value: true }, notes: "Premium processing is optional for an H-4 change of status - attached only when premium processing is selected (or added by the case manager)." }),
+  i765("COSH4")
+);
 add(i539AutoCreate("COSB2", { notes: "Change of Status to B-2 filing type (also used by the F1_TO_B2 registry key, which shares this visaType) — I-539 is the primary and only USCIS form." }));
 
 // ===================== U VISA =====================

@@ -19,6 +19,7 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
   cosf2: 'COS_F2',
   cosb1: 'COS_B1',
   cosb2: 'COS_B2',
+  cosh4: 'COS_H4',
 }
 
 // familyBased() (Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js)

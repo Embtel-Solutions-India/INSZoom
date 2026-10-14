@@ -18,7 +18,8 @@ router.get("/cases/:caseId/packages", authorizePermissions("forms:read"), contro
 router.get("/packages/:id", authorizePermissions("forms:read"), controller.getPackage);
 router.get("/packages/:id/validation", authorizePermissions("forms:read"), controller.getValidation);
 router.get("/packages/:id/preview", authorizePermissions("forms:read"), controller.preview);
-router.get("/packages/:id/download", authorizePermissions("forms:read"), controller.download);
+// the attorney portal is view-only for petitions (preview, no download) - by product decision
+router.get("/packages/:id/download", (req, res, next) => (req.user?.role === "attorney" ? res.status(403).json({ success: false, message: "Attorneys can preview the petition but not download it." }) : next()), authorizePermissions("forms:read"), controller.download);
 router.patch("/packages/:id/letters/:sectionKey", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.saveLetter);
 router.patch("/packages/:id/exhibits/order", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.reorderExhibits);
 router.post("/cases/:caseId/request-attorney-review", authorizeRoles("super_admin", "admin", "team_lead", "case_manager"), authorizePermissions("forms:update"), controller.requestAttorneyReview);

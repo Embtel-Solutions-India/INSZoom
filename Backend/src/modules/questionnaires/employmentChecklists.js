@@ -15,6 +15,8 @@ const o1 = require("../employment-workflow/questionnaires/o1");
 const o2 = require("../employment-workflow/questionnaires/o2");
 const eb1b = require("../employment-workflow/questionnaires/eb1b");
 const { EB1C_CHECKLIST_DEFINITIONS } = require("./eb1cChecklists");
+const { O1B_CHECKLIST_DEFINITIONS } = require("./o1bChecklists");
+const { O1A_CHECKLIST_DEFINITIONS } = require("./o1aChecklists");
 const i140 = require("../employment-workflow/questionnaires/i140");
 const tn = require("../employment-workflow/questionnaires/tn");
 const e2 = require("../employment-workflow/questionnaires/e2");
@@ -974,10 +976,11 @@ const L1B_VISA_TYPES = ["L1B", "L-1B"];
 // L-1A Extension: also a copy of every L-1A checklist, under its own keys/visa (hyphen-stripped form listed too - see O1_VISA_TYPES note).
 const L1A_EXTENSION_VISA_TYPES = ["L1AEXTENSION", "L-1A Extension"];
 
+// O-1B has its own dedicated pair (o1bChecklists.js); the shared pair below keeps serving O-1A / bare O-1 so no case ever receives both.
 const O1_VISA_TYPES = [
   "O1",
-  ...o1.O_CLASSIFICATIONS,
-  ...o1.O_CLASSIFICATIONS.map((value) => value.replace(/-/g, "")),
+  // O-1A and O-1B each have a dedicated pair (o1aChecklists.js / o1bChecklists.js); this shared pair only serves bare O-1
+  ...o1.O_CLASSIFICATIONS.filter((value) => value !== "O-1B" && value !== "O-1A"),
 ];
 
 function buildO1EmployerChecklist() {
@@ -1335,6 +1338,10 @@ const EMPLOYMENT_CHECKLIST_DEFINITIONS = [
   buildEb1bEmployeeChecklist(),
   // EB-1C (Multinational Manager / Executive): employer + employee checklists, every item optional - see eb1cChecklists.js
   ...EB1C_CHECKLIST_DEFINITIONS,
+  // O-1B: dedicated employer + employee checklists, every item optional - see o1bChecklists.js
+  ...O1B_CHECKLIST_DEFINITIONS,
+  // O-1A: dedicated employer + employee checklists, every item optional - see o1aChecklists.js
+  ...O1A_CHECKLIST_DEFINITIONS,
   buildI140EmployerChecklist(),
   buildI140EmployeeChecklist(),
   buildTnEmployerChecklist(),

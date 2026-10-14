@@ -566,9 +566,16 @@ class CanonicalBuilderService {
     // record, or a brand-new case would inherit a prior case's employer.
     // The current case's OWN employment answers (if any) still flow in via
     // the merge candidates above (addQuestionnaireCandidates), untouched.
+    // Checklist answers mapped to employment.<field> (wage, job title, work locations, ...) arrive as an OBJECT here; the old line below replaced
+    // every non-array value with a history list and silently dropped them. Keep the object, and keep any history list under employment.history.
+    const employmentFields = profile.employment && typeof profile.employment === "object" && !Array.isArray(profile.employment) && Object.keys(profile.employment).length ? profile.employment : null;
     profile.employment = profile.employment?.length
       ? profile.employment
       : (CASE_SCOPED_CANONICAL_PATHS.has("employment") ? [] : beneficiary.employmentHistory || []);
+    if (employmentFields) {
+      if (Array.isArray(profile.employment) && profile.employment.length && !employmentFields.history) employmentFields.history = profile.employment;
+      profile.employment = employmentFields;
+    }
     profile.education = profile.education?.length ? profile.education : beneficiary.educationHistory || [];
     profile.travelHistory = profile.travelHistory?.length ? profile.travelHistory : beneficiary.travelHistory || [];
     profile.immigrationHistory = profile.immigrationHistory?.length ? profile.immigrationHistory : beneficiary.immigrationHistory || [];

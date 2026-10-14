@@ -37,6 +37,7 @@ const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
+const { COS_H4_CHECKLIST_DEFINITIONS } = require("./cosH4Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 const { validateRepeatingGroupRows } = require("./repeating-group-validation");
 const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
@@ -1657,9 +1658,12 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
         synced.push(existing);
         continue;
       }
+      const owner = question.metadata?.documentOwner;
+      const principalCaseId = owner ? (await Case.findById(caseId).select("principalCaseRef").lean())?.principalCaseRef : undefined;
       const document = await Document.create({
         caseId,
         documentType,
+        ...(owner ? { participantRole: owner, tags: [owner], description: "Document of the related H-1B principal", metadata: { documentOwner: owner, ...(principalCaseId ? { principalCaseId } : {}) } } : {}),
         category: question.metadata?.category || question.evidenceCategory || "other",
         originalName: file.originalName,
         fileName: file.originalName,
@@ -1909,7 +1913,7 @@ async function assertSubmittable(payload, user) {
 // Checklists whose FINAL case submission is verified on the server. A single-party client's "Submit case" does not go through submitResponse
 // (the portal calls the employment-workflow submit, which checks nothing), so for these checklists the submit endpoint calls this guard:
 // every visible question answered, every answer passing its format rules. Opt-in by checklist key; no other checklist is affected.
-const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist", "eb1c_employer_checklist", "eb1c_employee_checklist"]);
+const STRICT_SUBMIT_CHECKLIST_KEYS = new Set(["green_card_renewal_checklist", "eb1c_employer_checklist", "eb1c_employee_checklist", "o1b_employer_checklist", "o1b_employee_checklist", "o1a_employer_checklist", "o1a_employee_checklist"]);
 
 async function assertStrictChecklistsSubmittable(caseData, user) {
   for (const reference of (caseData.questionnaireReferences || []).filter((item) => item.active !== false)) {
@@ -2127,32 +2131,7 @@ function makeQuestion(key, label, type, sectionKey, order, extras = {}) {
 }
 
 const VISA_TEMPLATE_DEFINITIONS = [
-  {
-    key: "o1a_questionnaire",
-    title: "O1A Questionnaire",
-    visaType: "O1A",
-    description: "Extraordinary ability intake for O-1A strategy, evidence planning, and petition drafting.",
-    sections: ["Personal Information", "Employment", "Awards", "Memberships", "Judging", "Publications", "Media Coverage", "High Salary", "Evidence Uploads"],
-    questions: [
-      makeQuestion("fullName", "Full legal name", "text", "personal_information", 1, { required: true, uscisMappings: ["I129.part2.beneficiary.fullName"] }),
-      makeQuestion("email", "Email address", "email", "personal_information", 2, { required: true }),
-      makeQuestion("passportNumber", "Passport number", "text", "personal_information", 3, { uscisMappings: ["I129.part2.passportNumber", "I140.beneficiary.passportNumber"] }),
-      makeQuestion("currentEmployer", "Current employer", "text", "employment", 1, { required: true, uscisMappings: ["I129.part5.employerName"] }),
-      makeQuestion("positionTitle", "Position title", "text", "employment", 2, { required: true }),
-      makeQuestion("hasAwards", "Have you received major awards or prizes?", "radio", "awards", 1, { options: ["Yes", "No"], eligibilityWeight: 25, evidenceCategory: "Award" }),
-      makeQuestion("awardSummary", "Summarize your awards", "textarea", "awards", 2, { showIf: { field: "hasAwards", operator: "equals", value: "Yes" }, evidenceCategory: "Award" }),
-      makeQuestion("hasMemberships", "Are you a member of selective professional associations?", "radio", "memberships", 1, { options: ["Yes", "No"], eligibilityWeight: 15, evidenceCategory: "Membership" }),
-      makeQuestion("hasJudging", "Have you judged the work of others?", "radio", "judging", 1, { options: ["Yes", "No"], eligibilityWeight: 20, evidenceCategory: "Judging" }),
-      makeQuestion("judgingCount", "How many judging or peer review activities?", "number", "judging", 2, { showIf: { field: "hasJudging", operator: "equals", value: "Yes" }, evidenceCategory: "Judging" }),
-      makeQuestion("hasPublications", "Do you have publications?", "radio", "publications", 1, { options: ["Yes", "No"], eligibilityWeight: 15, evidenceCategory: "Publication" }),
-      makeQuestion("publicationCount", "How many publications do you have?", "number", "publications", 2, { showIf: { field: "hasPublications", operator: "equals", value: "Yes" }, evidenceCategory: "Publication" }),
-      makeQuestion("hasMediaCoverage", "Have you been covered by media or press?", "radio", "media_coverage", 1, { options: ["Yes", "No"], eligibilityWeight: 15, evidenceCategory: "Press" }),
-      makeQuestion("hasHighSalary", "Do you have evidence of high salary or remuneration?", "radio", "high_salary", 1, { options: ["Yes", "No"], eligibilityWeight: 15, evidenceCategory: "High Salary" }),
-      makeQuestion("publicationEvidence", "Upload publication evidence", "file-multiple", "evidence_uploads", 1, { showIf: { field: "publicationCount", operator: "greater_than", value: 0 }, evidenceCategory: "Publication" }),
-      makeQuestion("awardEvidence", "Upload award certificates", "file-multiple", "evidence_uploads", 2, { showIf: { field: "hasAwards", operator: "equals", value: "Yes" }, evidenceCategory: "Award" }),
-      makeQuestion("judgingEvidence", "Upload judging evidence", "file-multiple", "evidence_uploads", 3, { showIf: { field: "hasJudging", operator: "equals", value: "Yes" }, evidenceCategory: "Judging" }),
-    ],
-  },
+  // The older single-party "o1a_questionnaire" was replaced by the dedicated o1a_employer_checklist / o1a_employee_checklist (o1aChecklists.js).
   {
     key: "eb1a_questionnaire",
     title: "EB1A Questionnaire",
@@ -2290,6 +2269,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   // banner for why these two records must never be merged into one shared
   // checklist.
   ...COS_B1_B2_CHECKLIST_DEFINITIONS,
+  // Change of Status to H-4 (dependent): every item optional - see cosH4Checklist.js
+  ...COS_H4_CHECKLIST_DEFINITIONS,
 ];
 
 // Applied here, once, for every built-in definition so no individual
@@ -3523,6 +3504,8 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  // create-or-patch ONE built-in checklist template from its code definition (used by scripts/syncChecklistDefinitions.js)
+  reconcileDefinition,
   // pure helpers, exported so definition tests can exercise real validation without a DB
   isQuestionVisible,
   normalizeAnswerValue,

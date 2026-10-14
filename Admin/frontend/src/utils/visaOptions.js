@@ -75,6 +75,7 @@ export const VISA_TYPE_OPTIONS = [
   { value: 'cosf2', label: 'Change of Status to F-2' },
   { value: 'cosb1', label: 'Change of Status to B-1' },
   { value: 'cosb2', label: 'Change of Status to B-2' },
+  { value: 'cosh4', label: 'Change of Status to H-4' },
 ]
 
 // The dropdown = the curated options above (they carry special routing/labels) + EVERY other case type the registry can create

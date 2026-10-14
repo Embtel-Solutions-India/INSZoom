@@ -27,9 +27,9 @@ function fakeRes() {
 
 // ── Stage 1: registry shape ──
 test("filing-type registry: registers the full expected set with category + transition metadata", () => {
-  const expectedKeys = ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
+  const expectedKeys = ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "COS_H4", "COS_GENERIC", "F1_REINSTATEMENT", "F1_TO_B2", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"];
   assert.deepEqual(Object.keys(FILING_TYPES).sort(), expectedKeys.sort());
-  assert.equal(listFilingTypes().length, 11);
+  assert.equal(listFilingTypes().length, 12);
 
   const cosF1 = getFilingType("COS_F1");
   assert.equal(cosF1.category, "change_of_status");
@@ -122,7 +122,7 @@ test("resolveTransitionFilingType: COS_B1/COS_B2 accept ANY current status (not 
 
 test("groupedForSelection: separates transition (picker) entries from standalone (named-option) entries", () => {
   const grouped = groupedForSelection();
-  assert.deepEqual(grouped.transitions.map((e) => e.key).sort(), ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2"].sort());
+  assert.deepEqual(grouped.transitions.map((e) => e.key).sort(), ["COS_F1", "COS_F2", "COS_B1", "COS_B2", "COS_H4", "F1_TO_B2"].sort());
   assert.deepEqual(
     grouped.standalone.map((e) => e.key).sort(),
     ["COS_GENERIC", "F1_REINSTATEMENT", "EAD", "H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD"].sort()
@@ -140,7 +140,7 @@ test("groupedForSelection: separates transition (picker) entries from standalone
 // cosF2Checklist.js's COS_F2_CHECKLIST_DEFINITIONS, cosB1B2Checklist.js's
 // COS_B1_B2_CHECKLIST_DEFINITIONS, asserted separately below).
 test("single-party scaffold checklists: one scaffold per real-content-EXCLUDED filing type, checklistRole is the applicant only, clearly marked temporary", () => {
-  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "F1_TO_B2", "F1_REINSTATEMENT"];
+  const REAL_CONTENT_KEYS = ["H4_EXTENSION", "H4_EAD", "H4_EXTENSION_EAD", "COS_F1", "COS_F2", "COS_B1", "COS_B2", "COS_H4", "F1_TO_B2", "F1_REINSTATEMENT"];
   const scaffoldEligible = listFilingTypes().filter((ft) => !REAL_CONTENT_KEYS.includes(ft.key));
   assert.equal(SINGLE_PARTY_FILING_DEFINITIONS.length, scaffoldEligible.length, "exactly one scaffold per real-content-excluded filing type");
   const visaTypesSeen = new Set();

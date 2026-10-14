@@ -38,7 +38,7 @@ const VISA_HIERARCHY = {
   // its own dedicated VisaFormMapping rows (visaFormMappings.seed.js) that
   // always win first — this parent link only matters as a fallback if one
   // of those dedicated rows were ever removed.
-  "H-4": { children: ["H4EXTENSION", "H4EAD", "H4EXTENSIONEAD"] },
+  "H-4": { children: ["H4EXTENSION", "H4EAD", "H4EXTENSIONEAD", "COSH4"] },
   // COSF2 is the single-party filing-type variant of F-2 (filingTypes.js's
   // COS_F2) — same fallback-only relationship as the H-4 entry above.
   "F-1": { children: ["COSF1", "F1REINSTATEMENT"] },

@@ -103,6 +103,8 @@ class CanonicalTransformationService {
   static normalizeByPath(path, value) {
     if (this.isEmpty(value)) return value;
     const normalizedPath = String(path || "").toLowerCase();
+    // explicit yes/no facts first (some of these paths also contain words the date / country rules below would catch)
+    if (/(petitionhasvalidpassport|intendstoreplacei94|intendtoreplacei94|anypersoninremovalproceedings|previouslyfiledimmigrantpetition|visaissuedinpastsevenyears|visadeniedinpastsevenyears|withinsevenyears)$/.test(normalizedPath)) return this.boolean(value);
     if (/(firstname|middlename|lastname|name)$/.test(normalizedPath)) return this.name(value);
     if (/email/.test(normalizedPath)) return this.email(value);
     if (/phone|mobile|telephone/.test(normalizedPath)) return this.phone(value);

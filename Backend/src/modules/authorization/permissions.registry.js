@@ -117,7 +117,7 @@ const ROLE_PERMISSIONS = {
   // a create/update/delete permission against case data itself (documents:
   // create/feedback:create/tasks:create/update are the attorney's own
   // notes/messages/tasks, never an edit to the client's case record).
-  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "questionnaires:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
+  attorney: ["cases:read", "clients:read", "beneficiaries:read", "companies:read", "documents:read", "documents:create", "document_intelligence:read", "notifications:read", "notifications:update", "notifications:delete", "dashboard:read", "questionnaires:read", "forms:read", "feedback:create", "feedback:read", "feedback:update", "tasks:read", "tasks:create", "tasks:update"],
 };
 
 function expandPermission(resource, action) {

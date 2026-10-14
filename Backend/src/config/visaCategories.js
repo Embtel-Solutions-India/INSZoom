@@ -228,6 +228,7 @@ const VISA_CATEGORIES = {
   "F1REINSTATEMENT": { caseStructure: "single", forms: ["i-539"], label: "F-1 Reinstatement" },
   "COSB1": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-1" },
   "COSB2": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to B-2" },
+  "COSH4": { caseStructure: "single", forms: ["i-539"], label: "Change of Status to H-4" },
   "L-2": { caseStructure: "single", forms: ["i-539"], label: "L-2 Dependent" },
   "O-3": { caseStructure: "single", forms: ["i-539"], label: "O-3 Dependent" },
   "P-1": { caseStructure: "employer_employee", forms: ["i-129"], label: "P-1 Internationally Recognized Athlete/Entertainment Group" },

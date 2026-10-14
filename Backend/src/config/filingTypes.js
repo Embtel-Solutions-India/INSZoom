@@ -112,6 +112,19 @@ const FILING_TYPES = {
     visaType: "COSB1",
     questionnaireKey: "cos_b1_questionnaire",
   },
+  // Wildcard (any current status) -> H-4 (dependent). Selected through the same transition picker as the other change-of-status filings;
+  // the principal H-1B case can be linked via Case.principalCaseRef.
+  COS_H4: {
+    key: "COS_H4",
+    label: "Change of Status to H-4",
+    category: "change_of_status",
+    includesEad: false,
+    isTransition: true,
+    fromStatus: null,
+    toStatus: "H-4",
+    visaType: "COSH4",
+    questionnaireKey: "cos_h4_questionnaire",
+  },
   // Wildcard (any current status) -> B-2. F1_TO_B2 above is more specific
   // (fromStatus:"F-1") and wins for that one pair, per
   // resolveTransitionFilingType's specificity rule — but it now shares this
