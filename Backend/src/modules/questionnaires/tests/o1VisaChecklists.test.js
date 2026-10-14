@@ -212,8 +212,9 @@ test("employer and employee checklists carry disjoint role-based visibility (emp
   });
 });
 
-test("O1 checklists declare visaTypes covering both real O-1 case sub-codes (O-1A/O-1B, hyphenated and hyphen-stripped)", () => {
-  const expected = ["O1", "O-1A", "O-1B", "O1A", "O1B"];
+// O-1B has its own dedicated, optional-only pair (o1bChecklists.js); the shared pair covers bare O-1 and O-1A.
+test("the shared O1 checklists only serve bare O-1: O-1A and O-1B each have a dedicated pair", () => {
+  const expected = ["O1"];
   for (const definition of [employer, employee]) {
     expected.forEach((code) => {
       assert.ok(definition.visaTypes?.includes(code), `${definition.key}.visaTypes is missing "${code}"`);

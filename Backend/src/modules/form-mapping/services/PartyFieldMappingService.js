@@ -9,6 +9,11 @@ const MappingGraphService = require("./MappingGraphService");
 const { RULES } = require("../config/partyFieldRules");
 
 const SKIP_TYPES = new Set(["checkbox", "radio", "signature", "button"]);
+const indexOf = (pdfField) => { const match = /\[(\d+)\]$/.exec(String(pdfField || "")); return match ? Number(match[1]) : 0; };
+// a Yes / No box: ticked when the generic yes/no answer (boolean, or the older "Yes"/"No" text) matches the box
+const checkboxTransform = (ticksWhenYes) => ({ type: "checkbox", optionsMap: ticksWhenYes
+  ? { true: true, false: false, Yes: true, yes: true, No: false, no: false }
+  : { true: false, false: true, Yes: false, yes: false, No: true, no: true } });
 const stemOf = (pdfField) => String(pdfField || "").split(".").pop().replace(/\[\d+\]/g, "").toLowerCase();
 
 function defaultTransform(type) {
@@ -59,9 +64,12 @@ function plan(template, graph) {
   const matchedStems = new Set();
 
   for (const target of targets) {
-    if (SKIP_TYPES.has(target.type) || /PDF417|barcode/i.test(target.targetPdfField)) continue;
-    const rules = (byStem.get(stemOf(target.targetPdfField)) || []).filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber));
+    if (/PDF417|barcode/i.test(target.targetPdfField)) continue;
+    const rules = (byStem.get(stemOf(target.targetPdfField)) || [])
+      .filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber))
+      .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField));
     if (!rules.length) continue;
+    if (SKIP_TYPES.has(target.type) && !rules.some((rule) => rule.checkbox !== undefined)) continue;
     if (rules.length > 1 && new Set(rules.map((rule) => rule.to)).size > 1) report.conflicts.push({ field: target.targetPdfField, paths: rules.map((rule) => rule.to) });
     const rule = rules[0];
     matchedStems.add(stemOf(target.targetPdfField));
@@ -70,8 +78,9 @@ function plan(template, graph) {
     const sourcePath = rule.transform?.fields?.[0] || rule.to;
     const existing = edgesByTarget.get(target.targetFieldId);
     if (existing) {
-      const nextTransform = rule.transform || remapTransform(existing.transform, rule) || defaultTransform(target.type);
-      const nextCondition = remapCondition(existing.condition, rule);
+      const isBox = rule.checkbox !== undefined;
+      const nextTransform = isBox ? checkboxTransform(rule.checkbox) : (rule.transform || remapTransform(existing.transform, rule) || defaultTransform(target.type));
+      const nextCondition = isBox ? undefined : remapCondition(existing.condition, rule);
       if (existing.sourcePath === sourcePath && JSON.stringify(existing.transform) === JSON.stringify(nextTransform) && JSON.stringify(existing.condition) === JSON.stringify(nextCondition)) { report.unchanged += 1; continue; }
       const index = outIndex.get(target.targetFieldId);
       out[index] = {
@@ -79,9 +88,10 @@ function plan(template, graph) {
         sourcePath,
         fallback: existing.sourcePath && existing.sourcePath !== sourcePath ? existing.sourcePath : existing.fallback,
         transform: nextTransform,
-        ...(nextCondition ? { condition: nextCondition } : {}),
         partyRule: rule.to,
       };
+      if (nextCondition) out[index].condition = nextCondition; else delete out[index].condition;
+      if (isBox) out[index].mappingType = "checkbox";
       report.rewired += 1;
       continue;
     }
@@ -98,10 +108,10 @@ function plan(template, graph) {
       targetType: target.type,
       section: target.section,
       pageNumber: target.pageNumber,
-      mappingType: target.type === "date" ? "date" : "direct",
+      mappingType: rule.checkbox !== undefined ? "checkbox" : target.type === "date" ? "date" : "direct",
       confidence: 90,
       status: "active",
-      transform: rule.transform || defaultTransform(target.type),
+      transform: rule.checkbox !== undefined ? checkboxTransform(rule.checkbox) : (rule.transform || defaultTransform(target.type)),
       note: `Generic ${rule.to.split(".")[0]} rule: ${rule.to}`,
       profileOwner: rule.to.startsWith("petitioner") ? "employer" : "employee",
       allowsOccurrenceOverride: false,

@@ -89,7 +89,15 @@ for (const visaType of ["P-1", "P-2", "P-3"]) {
 }
 
 // ---- O-1A / O-1B (spec §3 O-1A/O-1B) -----------------------------------
-for (const visaType of ["O-1A", "O-1B"]) {
+// O-1B has its own dedicated checklist pair (o1b_*); O-1A keeps the shared o1_* pair.
+set("O-1B", "I-129", [cm("o1b_employer_checklist", AUTO, { role: "employer" }), cm("o1b_employee_checklist", AUTO, { role: "employee" })]);
+set("O-1B", "I-539", [cm("o1b_employee_checklist", COND, { role: "employee" })]);
+set("O-1B", "I-907", [cm("o1b_employer_checklist", COND, { role: "employer" }), cm("o1b_employee_checklist", COND, { role: "employee" })]);
+// O-1A likewise has its own dedicated pair (o1a_*).
+set("O-1A", "I-129", [cm("o1a_employer_checklist", AUTO, { role: "employer" }), cm("o1a_employee_checklist", AUTO, { role: "employee" })]);
+set("O-1A", "I-539", [cm("o1a_employee_checklist", COND, { role: "employee" })]);
+set("O-1A", "I-907", [cm("o1a_employer_checklist", COND, { role: "employer" }), cm("o1a_employee_checklist", COND, { role: "employee" })]);
+for (const visaType of []) {
   set(visaType, "I-129", [cm("o1_employer_checklist", AUTO, { role: "employer" }), cm("o1_employee_checklist", AUTO, { role: "employee" })]);
   set(visaType, "I-539", [cm("o1_employee_checklist", COND, { role: "employee" })]);
   set(visaType, "I-907", [cm("o1_employer_checklist", COND, { role: "employer" }), cm("o1_employee_checklist", COND, { role: "employee" })]);

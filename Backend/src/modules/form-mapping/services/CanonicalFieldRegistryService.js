@@ -175,6 +175,27 @@ const BASE_FIELDS = [
   EB1C_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// Shared party paths (TN / O-1B / ...) - see canonical/config/partyCanonicalPaths.js. Additive only.
+{
+  const { PARTY_CANONICAL_FIELDS } = require("../../canonical/config/partyCanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  PARTY_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
+// O-1A checklist paths - see canonical/config/o1aCanonicalPaths.js. Additive only.
+{
+  const { O1A_CANONICAL_FIELDS } = require("../../canonical/config/o1aCanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  O1A_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
+// O-1B checklist paths - see canonical/config/o1bCanonicalPaths.js. Additive only.
+{
+  const { O1B_CANONICAL_FIELDS } = require("../../canonical/config/o1bCanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  O1B_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 class CanonicalFieldRegistryService {
   static tokenize(value = "") {
     return String(value)

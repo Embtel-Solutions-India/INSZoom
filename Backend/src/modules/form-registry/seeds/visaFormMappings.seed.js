@@ -294,8 +294,8 @@ add(i129Petition("L-1A Extension"), i129LSupplement("L-1A Extension"), m("L-1A E
 add(i539("L-2"), i539A("L-2"), i765("L-2"), ds160("L-2"));
 
 // ===================== O FAMILY =====================
-add(i129Petition("O-1A"), i129OPSupplement("O-1A"), ds160("O-1A"), i539("O-1A"), i907("O-1A"));
-add(i129Petition("O-1B"), i129OPSupplement("O-1B"), ds160("O-1B"), i539("O-1B"), i907("O-1B"));
+add(i129Petition("O-1A"), i129OPSupplement("O-1A"), ds160("O-1A"), i539("O-1A"), i907("O-1A"), g28("O-1A"));
+add(i129Petition("O-1B"), i129OPSupplement("O-1B"), ds160("O-1B"), i539("O-1B"), i907("O-1B"), g28("O-1B"));
 add(i129Petition("O-2"), i129OPSupplement("O-2"), ds160("O-2"), i539("O-2"), i907("O-2"));
 add(i539("O-3"), ds160("O-3"));
 

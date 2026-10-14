@@ -105,11 +105,36 @@ function fill(profile, rows) {
   }
 }
 
+// A structured address answer arrives as {line1, line2, city, state, postalCode, country}; copy its parts to the flat generic fields (never overwriting)
+function flattenStructuredAddresses(profile) {
+  const copy = (source, target, map) => {
+    const object = getPath(profile, source);
+    if (!object || typeof object !== "object" || Array.isArray(object)) return;
+    for (const [from, to] of Object.entries(map)) {
+      const value = object[from];
+      if (!blank(value) && blank(getPath(profile, `${target}.${to}`))) setPath(profile, `${target}.${to}`, value);
+    }
+  };
+  copy("beneficiary.currentUSAddress", "beneficiary", { line1: "address", line2: "apartment", city: "city", state: "state", postalCode: "zipCode", country: "country" });
+  copy("petitioner.company.address", "petitioner.address", { line1: "line1", line2: "line2", city: "city", state: "state", postalCode: "zip", country: "country" });
+}
+
+// I-129 Part 5 Item 3 asks for the address where the beneficiary will work "if different from Part 1": keep only the job locations whose street differs from the petitioner's own
+function deriveOffSiteWorkLocations(profile) {
+  const rows = getPath(profile, "employment.workLocations");
+  if (!Array.isArray(rows) || !rows.length || Array.isArray(getPath(profile, "employment.offSiteWorkLocations"))) return;
+  const norm = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const own = norm(getPath(profile, "petitioner.address.line1"));
+  const different = rows.filter((row) => row && typeof row === "object" && !blank(row.address) && (!own || norm(row.address) !== own));
+  if (different.length) setPath(profile, "employment.offSiteWorkLocations", different);
+}
+
 function apply(profile) {
   if (!profile || typeof profile !== "object") return profile;
   // person.* / company.* mean beneficiary / petitioner only in an employer-sponsored case; in a family case person.* is the petitioner, so nothing is derived there
   const structure = profile.case && profile.case.caseStructure;
   if (structure && structure !== "employer_employee") return profile;
+  flattenStructuredAddresses(profile);
   fill(profile, BENEFICIARY_SOURCES);
   fill(profile, PETITIONER_SOURCES);
   // the petitioner's authorized signatory may only be known as one full name
@@ -133,6 +158,7 @@ function apply(profile) {
     const streetPath = `${block.target}.${Object.keys(block.keys)[0]}`;
     if (!parsedAny && blank(getPath(profile, streetPath))) setPath(profile, streetPath, String(text).trim());
   }
+  deriveOffSiteWorkLocations(profile);
   return profile;
 }
 

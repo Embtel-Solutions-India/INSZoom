@@ -154,5 +154,5 @@ test("no other visa type's employer/employee checklist definitions were disturbe
   // added its own two checklists: employer, employee) - see
   // e3Checklists.test.js.
   // 25 -> 27 by the later, unrelated PERM task (permChecklists.js added its own employer + employee checklist).
-  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 32, "EB1C x2 (added), H1B x2, L1A x3, L1B x3, L1A-Extension x3, P x2, O1 x2, O2 x2, EB1B x2, I-140 x2, TN x2, E-2 x3, E-3 x2, PERM x2 = 27");
+  assert.equal(EMPLOYMENT_CHECKLIST_DEFINITIONS.length, 36, "EB1C x2 (added), H1B x2, L1A x3, L1B x3, L1A-Extension x3, P x2, O1 x2, O2 x2, EB1B x2, I-140 x2, TN x2, E-2 x3, E-3 x2, PERM x2 = 27");
 });

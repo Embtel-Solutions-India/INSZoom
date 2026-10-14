@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
 import { Loader2, Eye, FileText, X } from 'lucide-react'
-import { caseDataApi } from '../../../services/api'
+import { caseDataApi, attorneyApi } from '../../../services/api'
 
 const STATUS_TONE = {
   draft: 'badge-neutral',
@@ -62,6 +62,26 @@ export default function PetitionTab() {
   const [uploads, setUploads] = useState([])
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
+  const [note, setNote] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState('')
+  const [sendError, setSendError] = useState('')
+
+  const sendReview = async (decision) => {
+    setSending(true)
+    setSendError('')
+    setSent('')
+    try {
+      const heading = decision === 'approve' ? 'PETITION APPROVED by attorney' : 'PETITION - CHANGES REQUESTED by attorney'
+      await attorneyApi.sendFeedback(caseId, note.trim() ? `${heading}\n${note.trim()}` : heading)
+      setSent(decision === 'approve' ? 'Approval sent to the case manager.' : 'Your requested changes were sent to the case manager.')
+      setNote('')
+    } catch (err) {
+      setSendError(err.response?.data?.message || 'Could not send your review. Please try again.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   useEffect(() => {
     caseDataApi
@@ -127,6 +147,20 @@ export default function PetitionTab() {
             ))}
           </div>
         )
+      )}
+
+      {(packages.length > 0 || uploads.length > 0) && (
+        <div className="card space-y-3">
+          <p className="text-sm font-semibold text-foreground">Your review</p>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Feedback for the case manager (optional for approval)" className="input w-full" />
+          <div className="flex flex-wrap items-center gap-3">
+            <button disabled={sending} onClick={() => sendReview('approve')} className="btn-primary">Approve petition</button>
+            <button disabled={sending || !note.trim()} onClick={() => sendReview('changes')} className="btn-secondary">Request changes</button>
+            {sending && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+          </div>
+          {sent && <p className="text-sm text-success">{sent}</p>}
+          {sendError && <p className="text-sm text-destructive">{sendError}</p>}
+        </div>
       )}
 
       {preview && <PetitionPreviewModal title={preview.title} fetcher={preview.fetcher} onClose={() => setPreview(null)} />}
