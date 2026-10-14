@@ -462,6 +462,6 @@ test("single-case: Admin CreateCaseModal routes K-1/K-3 through the family workf
   const path = require("node:path");
   const file = path.join(__dirname, "../../../../../Admin/frontend/src/components/CreateCaseModal.jsx");
   const src = fs.readFileSync(file, "utf8");
-  assert.match(src, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3'\]\)/);
+  assert.match(src, /FAMILY_SINGLE_CASE_VISA_TYPES = new Set\(\['k1', 'k3', 'i824'\]\)/); // I-824 is a two-party case created the same way
   assert.ok(src.indexOf("if (showFamilyFields)") < src.indexOf("casesApi.create(payload)"));
 });

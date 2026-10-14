@@ -21,12 +21,27 @@ function parseEditionDate(value) {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
-function isoDateVersion(date, fallback) {
-  if (!date) return fallback;
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  const year = date.getUTCFullYear();
-  return `${month}/${day}/${year}`;
+// yyyy-mm-dd (UTC) - the ONE edition-date format used for a form's version and its stored file name ("i-129_2026-09-09.pdf")
+function isoDate(date, fallback) {
+  if (!date || Number.isNaN(date.getTime?.())) return fallback;
+  return date.toISOString().slice(0, 10);
+}
+
+// A caller-supplied version that is really a date ("07/22/2025", "2026-9-9") is normalised to yyyy-mm-dd; anything else (a deliberate label) is kept.
+function normalizeVersion(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  return /^[\d/ -]+$/.test(text) && parseEditionDate(text) ? isoDate(parseEditionDate(text)) : text;
+}
+
+// Which date is THE edition of the file being imported. The edition printed on the PDF itself describes the stored file, so it wins; the date USCIS shows on the
+// form page is kept separately (publishedEditionDate) because the catalog sync compares the page against the page. Never silently "today": if neither source
+// has a date the import date is used and marked as such so nothing downstream mistakes it for a real edition.
+function resolveEdition({ printed, page, inputVersion, now = new Date() }) {
+  const editionDate = printed || page || undefined;
+  const source = printed ? "pdf" : page ? "uscis_page" : "import_date";
+  const version = normalizeVersion(inputVersion) || isoDate(editionDate || now);
+  return { editionDate, publishedEditionDate: page || undefined, editionDateSource: source, version };
 }
 
 function extractFormNumber(text = "") {
@@ -108,9 +123,12 @@ class FormMetadataService {
       pdfDoc = null;
     }
     const formNumber = String(input.formType || input.formCode || input.formNumber || extractFormNumber(parsedText) || "").trim().toUpperCase();
-    const editionDate = input.editionDate ? parseEditionDate(input.editionDate) : extractEditionDate(parsedText);
+    const { editionDate, publishedEditionDate, editionDateSource, version } = resolveEdition({
+      printed: extractEditionDate(parsedText),
+      page: input.editionDate ? parseEditionDate(input.editionDate) : undefined,
+      inputVersion: input.version,
+    });
     const revisionDate = input.revisionDate ? parseEditionDate(input.revisionDate) : editionDate;
-    const version = String(input.version || isoDateVersion(editionDate, undefined) || new Date().toISOString().slice(0, 10));
     const formName = input.formName || input.title || extractTitle(parsedText, formNumber);
     const sections = scanResult.sections?.length ? scanResult.sections : buildSections(scanResult.fields || []);
     const pages = scanResult.pages?.length
@@ -126,6 +144,8 @@ class FormMetadataService {
       formName,
       title: formName,
       editionDate,
+      publishedEditionDate,
+      editionDateSource,
       revisionDate,
       version,
       provider: input.provider || "uscis",
@@ -151,3 +171,7 @@ class FormMetadataService {
 }
 
 module.exports = FormMetadataService;
+module.exports.resolveEdition = resolveEdition;
+module.exports.normalizeVersion = normalizeVersion;
+module.exports.isoDate = isoDate;
+module.exports.parseEditionDate = parseEditionDate;

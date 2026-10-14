@@ -531,6 +531,8 @@ const caseSchema = new mongoose.Schema(
     // replacement for) parentCase/linkedCases, which serve broader/different
     // purposes across the rest of the app.
     principalCaseRef: { type: mongoose.Schema.Types.ObjectId, ref: "Case", index: true, default: null },
+    // I-824 only: underlying approved petition/application, requested action and staff-review flags (see family-workflow/i824CaseDetails.js).
+    postApprovalAction: { type: mongoose.Schema.Types.Mixed, default: undefined },
     clientName: { type: String, trim: true },
     clientEmail: { type: String, lowercase: true, trim: true },
     employeeInvite: {

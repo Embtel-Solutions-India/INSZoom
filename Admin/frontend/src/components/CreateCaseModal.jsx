@@ -33,7 +33,9 @@ const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'i
 // through familyWorkflowApi.createCase as well (never casesApi.create, which
 // used to spawn a principal + lettered beneficiary child case). They have no
 // filing-path/relationship choice, so they skip those two fields.
-const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3'])
+const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
+// I-824 also records the underlying approved petition / requested action (all optional; staff verify them - see family-workflow createFamilyCase)
+const I824_VISA_TYPE = 'i824'
 
 // Client-facing surfaces must never say "I-130"/"processingPath" - staff
 // already work with form numbers everywhere else in the CRM, so technical
@@ -85,6 +87,10 @@ const initialForm = {
   beneficiaryEmail: '',
   beneficiaryName: '',
   beneficiaryPhone: '',
+  underlyingFormNumber: '',
+  underlyingReceiptNumber: '',
+  underlyingApprovalDate: '',
+  requestedAction: '',
 }
 
 const normalizeInitialVisaType = (value, options = VISA_TYPE_OPTIONS) => {
@@ -233,6 +239,12 @@ const CreateCaseModal = ({
           beneficiaryName: form.beneficiaryName.trim(),
           beneficiaryEmail: form.beneficiaryEmail.trim(),
           beneficiaryPhone: form.beneficiaryPhone.trim(),
+          ...(form.visaType === I824_VISA_TYPE ? { underlyingPetition: {
+            formNumber: form.underlyingFormNumber.trim(),
+            receiptNumber: form.underlyingReceiptNumber.trim(),
+            approvalDate: form.underlyingApprovalDate,
+            requestedAction: form.requestedAction.trim(),
+          } } : {}),
         }
         const res = await familyWorkflowApi.createCase(payload)
         const result = res.data || {}
@@ -479,6 +491,16 @@ const CreateCaseModal = ({
                   placeholder="beneficiary@example.com"
                 />
               </div>
+
+              {form.visaType === I824_VISA_TYPE && (
+                <div className="space-y-3 rounded-lg border border-border p-3">
+                  <p className="text-sm font-medium text-muted-foreground">Underlying approved petition / application (optional - staff will verify)</p>
+                  <input type="text" value={form.underlyingFormNumber} onChange={handleChange('underlyingFormNumber')} className="w-full px-3 py-2 border rounded-lg" placeholder="Approved form (e.g. I-130, I-140)" />
+                  <input type="text" value={form.underlyingReceiptNumber} onChange={handleChange('underlyingReceiptNumber')} className="w-full px-3 py-2 border rounded-lg" placeholder="Receipt number" />
+                  <input type="date" value={form.underlyingApprovalDate} onChange={handleChange('underlyingApprovalDate')} className="w-full px-3 py-2 border rounded-lg" />
+                  <input type="text" value={form.requestedAction} onChange={handleChange('requestedAction')} className="w-full px-3 py-2 border rounded-lg" placeholder="Requested action (e.g. notify consulate, replace approval notice)" />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Beneficiary Phone</label>

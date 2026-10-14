@@ -691,6 +691,15 @@ function familyBased(visaType, opts = {}) {
 // business owner's explicit request. No other family category does.
 add(i485SupplementJ("F4", { provisioningType: LATER, stage: "adjustment_of_status" }));
 
+// ===================== I-824 (STANDALONE TWO-PARTY CASE TYPE) =====================
+// Form I-824 is the case's own USCIS form (AUTO_CREATE). Only G-28 (attorney representation) is a conditional, case-manager decision. Nothing else is assigned
+// because of the underlying approval: the I-130 approval notice is evidence, not an instruction to file I-130 / I-485 / I-864 / I-129; and no DOS form (DS-260,
+// DS-160) is ever registered here - a consular / other-agency route is flagged for staff review instead.
+add(
+  m("I-824", "I-824", "Application for Action on an Approved Application or Petition", "USCIS", AUTO, STANDALONE, { formTemplateFormCode: "i-824", initialCaseCreation: true, immigrationNature: "POST_APPROVAL", notes: "Core form of the I-824 case type." }),
+  g28("I-824")
+);
+
 // ===================== GC-NVC (checklist-driven, NO forms) =====================
 // Deliberately no rows: a GC-NVC case is a checklist/questionnaire-driven case type like PERM (config/visaCategories.js noForms).
 // Its only provisioning is the gc_nvc_checklist (questionnaires/gcNvcChecklist.js); no USCIS/DOS form is ever auto-created for it.

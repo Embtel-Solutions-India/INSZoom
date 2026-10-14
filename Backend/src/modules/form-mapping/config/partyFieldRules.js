@@ -179,4 +179,9 @@ const RULES = {
   ],
 };
 
-module.exports = { RULES, FULL_NAME };
+// Form I-824: verified rules live in their own file. EXCLUSIVE forms keep ONLY rule-backed edges - any older auto-guessed edge on a field no rule covers
+// (e.g. company.name on a beneficiary name box) is removed instead of leaving wrong data on the PDF.
+RULES["I-824"] = require("./i824FieldRules").I824_RULES;
+const EXCLUSIVE_FORMS = new Set(["I-824"]);
+
+module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

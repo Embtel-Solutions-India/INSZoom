@@ -23,6 +23,7 @@ const inviteTokenService = require("../auth/employeeInvite.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const registry = require("./questionnaires/registry");
 const familyChecklists = require("../questionnaires/familyChecklists");
+const { buildI824Details, isI824 } = require("./i824CaseDetails");
 // Same find-or-create-client-user helpers case.controller.js's createCase
 // already uses for the employer/employee path - reused here rather than
 // re-invented, so a newly created petitioner gets the identical account
@@ -212,7 +213,10 @@ async function ensureFamilyChecklistReferences(caseData, user, req, options = {}
 
   const keys = familyChecklists.resolveFamilyChecklistKeys(caseData.visaType, caseData.processingPath);
   for (const key of keys) {
-    const questionnaire = await Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    const findTemplate = () => Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    let questionnaire = await findTemplate();
+    // self-heal: a built-in checklist that has not been materialised yet is created from its definition (idempotent), never skipped
+    if (!questionnaire && !options.dryRun) { await questionnaireService.ensureTemplate(key, user, req, { wait: true }).catch(() => null); questionnaire = await findTemplate(); }
     if (!questionnaire) { results.push({ key, status: "template_not_found" }); continue; }
     await assign(questionnaire.checklistRole, questionnaire);
   }
@@ -344,6 +348,15 @@ exports.createFamilyCase = async (req, res, next) => {
     });
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
     await beneficiary.save();
+    if (isI824(visaType)) {
+      // underlying approved petition + requested action (optional, staff-verified); link the original case when its number is given
+      const details = buildI824Details(req.body.underlyingPetition);
+      const original = details.originalCaseNumber ? await Case.findOne({ caseNumber: details.originalCaseNumber }).select("_id").lean() : null;
+      if (original) caseData.linkedCases = [...(caseData.linkedCases || []), { case: original._id, relationship: "related", notes: "Original approved case for this I-824", linkedBy: req.user._id }];
+      caseData.postApprovalAction = details;
+      caseService.addTimelineEvent(caseData, "case", "I-824 Review Flags", details.reviewFlags.length ? `Staff review needed: ${details.reviewFlags.join(", ")}` : "Underlying approval and requested action recorded.", req.user, { reviewFlags: details.reviewFlags });
+      await caseData.save();
+    }
     if (sourceLead) {
       sourceLead.status = "converted";
       sourceLead.convertedCaseId = caseData._id;

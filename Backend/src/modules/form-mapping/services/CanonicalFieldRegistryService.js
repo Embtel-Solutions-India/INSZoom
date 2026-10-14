@@ -189,6 +189,13 @@ const BASE_FIELDS = [
   H4_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// I-824 checklist paths - see canonical/config/i824CanonicalPaths.js. Additive only.
+{
+  const { I824_CANONICAL_FIELDS } = require("../../canonical/config/i824CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I824_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 // O-1A checklist paths - see canonical/config/o1aCanonicalPaths.js. Additive only.
 {
   const { O1A_CANONICAL_FIELDS } = require("../../canonical/config/o1aCanonicalPaths");

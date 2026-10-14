@@ -6,7 +6,8 @@
 //   - nothing else is touched, nothing is removed, and the result is a NEW mapping version (history is kept), activated only if it validates.
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const MappingGraphService = require("./MappingGraphService");
-const { RULES } = require("../config/partyFieldRules");
+const { RULES, EXCLUSIVE_FORMS } = require("../config/partyFieldRules");
+const { inferRules } = require("./FieldRuleInferenceService");
 
 const SKIP_TYPES = new Set(["checkbox", "radio", "signature", "button"]);
 const indexOf = (pdfField) => { const match = /\[(\d+)\]$/.exec(String(pdfField || "")); return match ? Number(match[1]) : 0; };
@@ -42,9 +43,16 @@ function remapTransform(transform, rule) {
   return { ...transform, countryPath: remapPath(transform.countryPath, rule) };
 }
 
-function indexRules(formCode) {
+// authored rules always win; a form without any gets conservative rules inferred from its own field names (FieldRuleInferenceService)
+function rulesFor(template, { allowInference = true } = {}) {
+  if (RULES[template.formCode]) return { rules: RULES[template.formCode], inferred: false };
+  if (!allowInference) return { rules: [], inferred: true };
+  return { rules: inferRules(template, (item) => MappingGraphService.getTemplateFields(item)), inferred: true };
+}
+
+function indexRules(rules) {
   const byStem = new Map();
-  for (const rule of RULES[formCode] || []) {
+  for (const rule of rules || []) {
     for (const stem of rule.stems) {
       const key = stem.toLowerCase();
       byStem.set(key, [...(byStem.get(key) || []), rule]);
@@ -53,9 +61,10 @@ function indexRules(formCode) {
   return byStem;
 }
 
-function plan(template, graph) {
+function plan(template, graph, options = {}) {
   const formCode = template.formCode;
-  const byStem = indexRules(formCode);
+  const { rules: formRules, inferred } = rulesFor(template, options);
+  const byStem = indexRules(formRules);
   const version = template.version || String(template.editionDate || "unknown");
   const targets = MappingGraphService.getTemplateFields(template);
   const edgesByTarget = new Map((graph.edges || []).map((edge) => [edge.targetFieldId, edge]));
@@ -70,7 +79,13 @@ function plan(template, graph) {
     const rules = (byStem.get(stemOf(target.targetPdfField)) || [])
       .filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber))
       .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField));
-    if (!rules.length) continue;
+    if (!rules.length) {
+      // exclusive forms keep only rule-backed edges; for an inferred form the importer's unreviewed guesses (status != active) are dropped the same way,
+      // while an already-active edge (carried over from a verified earlier edition) is kept
+      const existingEdge = edgesByTarget.get(target.targetFieldId);
+      if (existingEdge && (EXCLUSIVE_FORMS.has(formCode) || (inferred && formRules.length && existingEdge.status !== "active"))) { removeIds.add(target.targetFieldId); report.removed = (report.removed || 0) + 1; }
+      continue;
+    }
     if (rules.some((rule) => rule.remove)) {
       if (edgesByTarget.has(target.targetFieldId)) { removeIds.add(target.targetFieldId); report.removed = (report.removed || 0) + 1; }
       continue;
@@ -99,6 +114,13 @@ function plan(template, graph) {
       if (nextCondition) out[index].condition = nextCondition; else delete out[index].condition;
       if (isBox) out[index].mappingType = "checkbox";
       if ("fallback" in rule) { if (rule.fallback === null) delete out[index].fallback; else out[index].fallback = rule.fallback; }
+      if (EXCLUSIVE_FORMS.has(formCode) || (rule.inferred && existing.status !== "active")) {
+        // a verified rule replaces the old guess completely: no inherited fallback source, no inherited review status
+        if (!rule.fallback) delete out[index].fallback;
+        out[index].status = "active";
+        out[index].confidence = 90;
+        out[index].note = `Verified ${formCode} rule: ${rule.to}`;
+      }
       report.rewired += 1;
       continue;
     }
@@ -159,19 +181,30 @@ function plan(template, graph) {
       mappingCoverage: targets.length ? Math.round((out.length / targets.length) * 100) : 100,
     },
   };
+  if (EXCLUSIVE_FORMS.has(formCode) || (inferred && formRules.length)) {
+    // Rule-driven forms: every field is either rule-mapped or deliberately left for the case manager (preparer / interpreter / signature / requested-action
+    // boxes, evidence-only items). Those are listed for review, not treated as an activation-blocking gap.
+    const mappedTargets = new Set(out.map((edge) => edge.targetFieldId));
+    next.unmappedTargets = [];
+    next.intentionallyUnmapped = targets
+      .filter((target) => !mappedTargets.has(target.targetFieldId) && !/PDF417|barcode/i.test(target.targetPdfField))
+      .map((target) => ({ targetFieldId: target.targetFieldId, targetPdfField: target.targetPdfField, label: target.label, pageNumber: target.pageNumber, reason: "no verified rule - left for the case manager / retained as case information" }));
+    report.intentionallyUnmapped = next.intentionallyUnmapped.length;
+  }
   next.validation = MappingGraphService.validateGraph(next, template);
   return { graph: next, report };
 }
 
 // dryRun: only reports; otherwise saves a new mapping version and activates it when it validates (a template that is not the live edition is saved only)
-async function apply(templateOrId, user, req, { dryRun = false, activate = true } = {}) {
+async function apply(templateOrId, user, req, { dryRun = false, activate = true, allowInference = true } = {}) {
   const template = typeof templateOrId === "object" && templateOrId.save ? templateOrId : await USCISFormTemplate.findById(templateOrId);
   if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
-  if (!RULES[template.formCode]) return { formCode: template.formCode, skipped: "no party rules for this form" };
+  if (!rulesFor(template, { allowInference }).rules.length) return { formCode: template.formCode, skipped: "no authored or inferable rules for this form" };
   const current = await MappingGraphService.loadCurrentGraph(template);
-  const { graph, report } = plan(template, current);
+  const { graph, report } = plan(template, current, { allowInference });
   report.validation = graph.validation.summary;
-  if (dryRun || (report.created === 0 && report.rewired === 0)) return { ...report, saved: false };
+  const staleUnmapped = (EXCLUSIVE_FORMS.has(template.formCode) || rulesFor(template, { allowInference }).inferred) && (current.unmappedTargets || []).length > 0;
+  if (dryRun || (report.created === 0 && report.rewired === 0 && !report.removed && !staleUnmapped)) return { ...report, saved: false };
   if (!graph.validation.valid) return { ...report, saved: false, error: "graph does not validate", errors: graph.validation.errors.slice(0, 5) };
   const version = await MappingGraphService.persistVersion(template, graph, user);
   let activated = false;

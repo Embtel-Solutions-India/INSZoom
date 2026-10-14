@@ -246,6 +246,8 @@ function withKey(definition, key) {
 // the processing-path-change handler) can look them up and assign via the
 // shared dedup-safe helper without re-deriving the key formula itself.
 function resolveFamilyChecklistKeys(visaType, processingPath) {
+  // I-824: always exactly the petitioner + beneficiary checklists (no filing-path variants, no third principal-immigrant checklist)
+  if (visaSlug(String(visaType || "")) === "i824") return ["i824_petitioner_checklist", "i824_beneficiary_checklist"];
   const slug = visaSlug(visaType);
   const i130Petitioner = `i130_${slug}_petitioner_checklist`;
   const i130Beneficiary = `i130_${slug}_beneficiary_checklist`;

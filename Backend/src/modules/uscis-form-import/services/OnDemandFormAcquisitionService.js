@@ -16,6 +16,10 @@ const { migrateMappingToEdition, checkEditionReady, findPreviousEdition } = requ
 const { deriveVisaTypesFromRegistry } = require("../seeds/deriveVisaTypesFromRegistry");
 const { migrateCaseFormsToEdition } = require("../../form-mapping/services/CaseFormEditionMigrationService");
 const BiographicMappingService = require("../../form-mapping/services/BiographicMappingService");
+const MappingGraphService = require("../../form-mapping/services/MappingGraphService");
+const PartyFieldMappingService = require("../../form-mapping/services/PartyFieldMappingService");
+const FormCertificationService = require("../../form-mapping/services/FormCertificationService");
+const { retryUntilSuccess } = require("../../../utils/resilientRetry");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
 const CanonicalBiographicAutofill = require("../../uscis-forms/CanonicalBiographicAutofill");
 const uscisFormService = require("../../uscis-forms/uscis-form.service");
@@ -204,6 +208,22 @@ async function resolveOfficialPdf(formNumber) {
 // Extracted from the original acquireAndActivate (no behavior change) so
 // ensureCurrentUSCISForm's new-edition branch reuses it instead of
 // duplicating the approve/activate/biographic-tier sequence.
+// Where the filer's data belongs (beneficiary.* applicant vs petitioner.*) is decided from the registry, never guessed: inference (which maps the filer's own block to
+// the applicant root beneficiary.*) is allowed only when every registry visa type using this form is a single-applicant case. A petition / sponsored form (family or
+// employer structure) keeps its earlier edition's verified mapping or its authored rules instead; a form the registry does not know is inferred only if it is not a petition.
+async function inferenceAllowed(template) {
+  try {
+    const { getCaseStructure } = require("../../../config/visaCategories");
+    const code = template.formCode;
+    const rows = await VisaFormMapping.find({ active: true, $or: [{ formNumber: code }, { formTemplateFormCode: String(code).toLowerCase() }, { parentForm: code }] }).select("visaType").lean();
+    const structures = [...new Set(rows.map((row) => getCaseStructure(row.visaType)).filter(Boolean))];
+    if (structures.length) return structures.every((structure) => structure === "single");
+    return !/^\s*petition/i.test(String(template.formName || template.title || ""));
+  } catch (_error) {
+    return false; // when in doubt, do not infer
+  }
+}
+
 async function activateOrPromote(template, user, req) {
   // Carry the field mapping onto this edition automatically (previous edition's graph, or the form's authored crosswalk). A lossless result
   // activates the mapping, and the edition is then activated below so every visa uses it; a lossy one leaves the old edition in service.
@@ -216,6 +236,19 @@ async function activateOrPromote(template, user, req) {
     }
   } catch (error) {
     logger.info("uscis_form_mapping_migration_failed", { formCode: template.formCode, error: error.message });
+  }
+  // Forms with authored, verified field rules (partyFieldRules.js) get their mapping built from those rules by code - retried until it saves - so a freshly
+  // imported edition is mapped without any person or AI step. Idempotent: an already-correct graph reports "unchanged".
+  let ruleMapping = null;
+  // (a form with no authored rules gets conservative rules inferred from its own PDF field names - FieldRuleInferenceService - so ANY imported form is mapped by code)
+  {
+    try {
+      ruleMapping = await retryUntilSuccess(async () => PartyFieldMappingService.apply(template, user, req, { allowInference: await inferenceAllowed(template) }), { attempts: 4, label: `rules:${template.formCode}`, onRetry: (info) => logger.info("uscis_form_rule_mapping_retry", { formCode: template.formCode, attempt: info.attempt, error: info.error.message }) });
+      logger.info("uscis_form_rule_mapping_applied", { formCode: template.formCode, saved: ruleMapping.saved, activated: ruleMapping.activated, matched: ruleMapping.matched, skipped: ruleMapping.skipped, error: ruleMapping.error, validation: ruleMapping.validation });
+      template = await USCISFormTemplate.findById(template._id);
+    } catch (error) {
+      logger.info("uscis_form_rule_mapping_failed", { formCode: template.formCode, error: error.message });
+    }
   }
   // The live edition is never replaced until the new one is fully ready (mapping lossless + every component sliceable); otherwise it stays as is.
   let readiness = null;
@@ -235,7 +268,18 @@ async function activateOrPromote(template, user, req) {
   } catch (error) {
     logger.info("uscis_form_visa_types_scope_failed", { formCode: template.formCode, error: error.message });
   }
-  const autoActivate = (Boolean(migration?.activated) && Boolean(readiness?.ready)) || String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true";
+  // Automatic certification (mapping, fillability, filled-not-blank round trip, viewer/download bytes, component slicing). Only a PASS may promote the edition;
+  // the backup snapshot is written first and the edition being replaced stays in service until then.
+  let certification = null;
+  try {
+    const previousEdition = await findPreviousEdition(template);
+    certification = await FormCertificationService.certify(template, { previous: previousEdition });
+    await FormCertificationService.backupTemplate(template, await MappingGraphService.loadCurrentGraph(template).catch(() => null));
+  } catch (error) {
+    certification = { passed: false, checks: [{ name: "certification", passed: false, detail: error.message }] };
+  }
+  const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
+  const autoActivate = readyToPromote || (String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true" && Boolean(certification?.passed));
   let activationBlockedReason = null;
   if (autoActivate && template.status !== "active") {
     // VersionManagementService.activate() requires the edition to already
@@ -249,7 +293,9 @@ async function activateOrPromote(template, user, req) {
       template = await VersionManagementService.approve(template._id, user, req);
     }
     try {
-      template = await versionService.activate(template._id, user, req);
+      // VersionManagementService.activate returns { template, impact, componentDiscovery } - keep the document itself (a later step persists against it)
+      const activated = await versionService.activate(template._id, user, req);
+      template = activated?.template || (await USCISFormTemplate.findById(template._id));
       logger.info("uscis_form_activated", { formCode: template.formCode, templateId: String(template._id), version: template.version });
     } catch (error) {
       // Also confirmed live: activate() additionally requires
@@ -276,7 +322,7 @@ async function activateOrPromote(template, user, req) {
   // The new edition is live: every visa that used the old one keeps using it (visa types carried over), and every open case form of the old
   // edition moves onto it with all saved values (nothing is dropped; unmatched values are archived on the form).
   let caseMigration = null;
-  if (template.status === "active" && migration?.activated && readiness?.ready) {
+  if (template.status === "active" && certification?.passed && (readyToPromote || (migration?.activated && readiness?.ready))) {
     try {
       const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
       const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
@@ -311,6 +357,7 @@ async function activateOrPromote(template, user, req) {
     coverage: biographicMapping?.coverage || null,
     migration,
     readiness,
+    certification,
     caseMigration,
   };
 }
@@ -322,18 +369,21 @@ async function activateOrPromote(template, user, req) {
 // legacy acquireAndActivate entry point share one implementation.
 async function acquireMissingForm(formCode, user, req) {
   logger.info("uscis_form_download_started", { formCode });
-  const resolved = await resolveOfficialPdf(formCode);
-  const importResult = await USCISFormImporterService.importFromUrl(
-    {
-      pdfUrl: resolved.pdfUrl,
-      formType: formCode,
-      source: "on_demand_acquisition",
-      officialPageUrl: resolved.officialPageUrl,
-      editionDate: resolved.editionDate,
-    },
-    user,
-    req
-  );
+  // resolve + download + normalize + import is retried (re-resolving the official PDF each attempt) until it succeeds or the bounded attempts run out
+  const importResult = await retryUntilSuccess(async () => {
+    const resolved = await resolveOfficialPdf(formCode);
+    return USCISFormImporterService.importFromUrl(
+      {
+        pdfUrl: resolved.pdfUrl,
+        formType: formCode,
+        source: "on_demand_acquisition",
+        officialPageUrl: resolved.officialPageUrl,
+        editionDate: resolved.editionDate,
+      },
+      user,
+      req
+    );
+  }, { attempts: 5, label: `import:${formCode}`, onRetry: (info) => logger.info("uscis_form_import_retry", { formCode, attempt: info.attempt, delay: info.delay, error: info.error.message }) });
   logger.info("uscis_form_download_completed", { formCode, templateId: String(importResult.template._id) });
   const activation = await activateOrPromote(importResult.template, user, req);
   return { ...activation, alreadyActive: false };

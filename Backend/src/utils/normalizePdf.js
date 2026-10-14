@@ -54,6 +54,9 @@ async function normalizePdf(inputBuffer) {
     return await fs.readFile(outPath);
   } catch (error) {
     if (error.code === "ENOENT") {
+      // self-heal: locate / install qpdf by code, then normalize again (once - the resolved path differs from the one that just failed)
+      const resolved = await require("./ensureQpdf").ensureQpdf();
+      if (resolved && resolved !== qpdf) return normalizePdf(inputBuffer);
       const e = new Error(
         `qpdf binary not found (looked for "${qpdf}"). Install it and/or set QPDF_PATH, ` +
         `then open a NEW terminal (PATH changes don't reach already-open shells). ` +

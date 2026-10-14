@@ -38,6 +38,7 @@ const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChe
 const { COS_F2_CHECKLIST_DEFINITIONS } = require("./cosF2Checklist");
 const { COS_B1_B2_CHECKLIST_DEFINITIONS } = require("./cosB1B2Checklist");
 const { COS_H4_CHECKLIST_DEFINITIONS } = require("./cosH4Checklist");
+const { I824_CHECKLIST_DEFINITIONS } = require("./i824Checklist");
 const { getAnswerValue, compareRule, evaluateConditionGroup } = require("./condition-evaluator");
 const { validateRepeatingGroupRows } = require("./repeating-group-validation");
 const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
@@ -1663,7 +1664,7 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
       const document = await Document.create({
         caseId,
         documentType,
-        ...(owner ? { participantRole: owner, tags: [owner], description: "Document of the related H-1B principal", metadata: { documentOwner: owner, ...(principalCaseId ? { principalCaseId } : {}) } } : {}),
+        ...(owner ? { participantRole: owner, tags: [owner], description: owner === "principal_immigrant" ? "Document of the principal immigrant" : "Document of the related H-1B principal", metadata: { documentOwner: owner, ...(principalCaseId ? { principalCaseId } : {}) } } : {}),
         category: question.metadata?.category || question.evidenceCategory || "other",
         originalName: file.originalName,
         fileName: file.originalName,
@@ -2271,6 +2272,8 @@ const VISA_TEMPLATE_DEFINITIONS = [
   ...COS_B1_B2_CHECKLIST_DEFINITIONS,
   // Change of Status to H-4 (dependent): every item optional - see cosH4Checklist.js
   ...COS_H4_CHECKLIST_DEFINITIONS,
+  // I-824 standalone case: petitioner (incl. principal applicant) + beneficiary checklists, every item optional - see i824Checklist.js
+  ...I824_CHECKLIST_DEFINITIONS,
 ];
 
 // Applied here, once, for every built-in definition so no individual
