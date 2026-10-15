@@ -10,6 +10,7 @@ const realtimeGateway = require("../realtime/realtime.gateway");
 const { dashboardCacheBump } = require("../../config/redis");
 const workflowService = require("../workflows/workflow.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 const pricingService = require("./pricing.service");
 const paymentGateway = require("./payment.gateway");
 const { normalizePackageName } = require("../../config/packages");
@@ -1155,11 +1156,11 @@ async function reconcilePayment(payment, payload, user, req) {
 
 async function notifyPayment(payment, actor, eventType, req) {
   const caseData = payment.caseId || payment.case
-    ? await Case.findById(payment.caseId || payment.case).select("assignedCaseManager assignedTeamLead")
+    ? await Case.findById(payment.caseId || payment.case).select("assignedCaseManager additionalCaseManagers assignedTeamLead")
     : null;
   const recipients = [...new Set([
     payment.user,
-    caseData?.assignedCaseManager,
+    ...(caseData ? allCaseManagerIds(caseData) : []),
     caseData?.assignedTeamLead,
   ].filter(Boolean).map(String))];
   const latestTransaction = [...(payment.transactions || [])].reverse().find((transaction) => ["paid", "succeeded", "failed"].includes(transaction.status));

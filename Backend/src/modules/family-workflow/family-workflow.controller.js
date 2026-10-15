@@ -15,6 +15,7 @@ const Lead = require("../../models/Lead");
 const Questionnaire = require("../../models/Questionnaire");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 const notificationService = require("../notifications/notification.service");
 const questionnaireService = require("../questionnaires/questionnaire.service");
 // Reused as-is (unmodified) — createInviteToken/getInviteDetails are already
@@ -548,7 +549,7 @@ exports.submitParticipantInfo = async (req, res, next) => {
     if (caseData.familyWorkflow.caseManagerStatus === "ready_for_review") caseData.familyWorkflow.readyForReviewAt = now;
     caseService.addTimelineEvent(caseData, role, `${role === "petitioner" ? "Petitioner" : "Beneficiary"} Information ${alreadySubmitted ? "Updated" : "Submitted"}`, `${role} ${alreadySubmitted ? "updated" : "submitted"} their portion of the family case.`, req.user);
     await caseData.save();
-    if (caseData.assignedCaseManager) await notifyUser(caseData.assignedCaseManager, { title: `Family Case Information ${alreadySubmitted ? "Updated" : "Submitted"}`, message: `${role} ${alreadySubmitted ? "updated" : "submitted"} information for ${caseData.caseNumber}.`, link: `/crm-cases/${caseData._id}`, caseId: caseData._id }, req.user, req);
+    await Promise.all(allCaseManagerIds(caseData).map((managerId) => notifyUser(managerId, { title: `Family Case Information ${alreadySubmitted ? "Updated" : "Submitted"}`, message: `${role} ${alreadySubmitted ? "updated" : "submitted"} information for ${caseData.caseNumber}.`, link: `/crm-cases/${caseData._id}`, caseId: caseData._id }, req.user, req)));
     res.json({ success: true, case: caseData });
   } catch (error) {
     next(error);

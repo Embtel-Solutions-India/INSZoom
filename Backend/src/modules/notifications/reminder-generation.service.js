@@ -6,6 +6,7 @@ const Payment = require("../../models/Payment");
 const Task = require("../../models/Task");
 const notificationService = require("./notification.service");
 const workflowService = require("../workflows/workflow.service");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_CASE_STATUSES = ["active", "pending", "in_review", "pending_approval", "ready_for_filing", "rfe"];
@@ -88,7 +89,10 @@ async function notifyCaseDate(caseData, config, days) {
   const eventKey = `${config.type}:${caseData._id}:${days}:${parseDate(caseData[config.path])?.toISOString().slice(0, 10)}`;
   const recipients = [
     { userId: clientUser, title: config.clientTitle(days), message: config.clientMessage(caseData, days), clientVisible: true },
-    { userId: idOf(caseData.assignedCaseManager || caseData.primaryOwner), title: config.staffTitle(days), message: config.staffMessage(caseData, days), clientVisible: false },
+    // Every case manager on the case (primary + additional); the owner when there is no case manager.
+    ...(allCaseManagerIds(caseData).length ? allCaseManagerIds(caseData) : [idOf(caseData.primaryOwner)]).map((managerId) => (
+      { userId: managerId, title: config.staffTitle(days), message: config.staffMessage(caseData, days), clientVisible: false }
+    )),
     ...(config.attorney ? [{ userId: idOf(caseData.assignedAttorney), title: config.staffTitle(days), message: config.staffMessage(caseData, days), clientVisible: false }] : []),
   ];
   await Promise.all(recipients.filter((item) => item.userId).map((item) => notify({

@@ -7,6 +7,7 @@ const PDFValidationService = require("./PDFValidationService");
 const notificationService = require("../../notifications/notification.service");
 const workflowService = require("../../workflows/workflow.service");
 const logger = require("../../../utils/logger");
+const { allCaseManagerIds } = require("../../cases/caseManagerAccess");
 
 class PDFGenerationService {
   static userId(user) {
@@ -69,9 +70,9 @@ class PDFGenerationService {
 
   static async notify(caseForm, user, req, payload) {
     const Case = require("../../../models/Case");
-    const caseData = await Case.findById(caseForm.caseId).select("assignedCaseManager assignedTeamLead user clientProfile caseNumber caseId").lean().catch(() => null);
+    const caseData = await Case.findById(caseForm.caseId).select("assignedCaseManager additionalCaseManagers assignedTeamLead user clientProfile caseNumber caseId").lean().catch(() => null);
     const recipients = [
-      caseData?.assignedCaseManager,
+      ...(caseData ? allCaseManagerIds(caseData) : []),
       caseData?.assignedTeamLead,
     ].filter(Boolean).map(String).filter((id) => id !== String(this.userId(user)));
     await Promise.all([...new Set(recipients)].map((userId) => notificationService.createNotification({

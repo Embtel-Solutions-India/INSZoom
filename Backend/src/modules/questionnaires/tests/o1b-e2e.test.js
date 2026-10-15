@@ -1,10 +1,10 @@
 // O-1B end to end against the REAL configured database: real createCase, both checklists provisioned once (and not the shared O-1 pair), approval gate,
-// partial save / reload / resume, submit with every answer blank, repeating groups, canonical sync (petitioner / beneficiary roots), I-129 autofill with a
+// partial save / reload / resume, an incomplete checklist being refused at submit (only the required questions block it), repeating groups, canonical sync (petitioner / beneficiary roots), I-129 autofill with a
 // manual override that survives, PDF download, data isolation, and an O-1A case that still gets the shared pair. Every record created is deleted afterwards.
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-test("O-1B: createCase -> checklists, forms, approval, save/resume/blank submit, canonical, autofill, download", { timeout: 900000 }, async (t) => {
+test("O-1B: createCase -> checklists, forms, approval, save/resume/incomplete-submit blocked, canonical, autofill, download", { timeout: 900000 }, async (t) => {
   const mongoose = require("mongoose");
   await require("../../../config/database")();
   const models = (name) => require(`../../../models/${name}`);
@@ -74,7 +74,16 @@ test("O-1B: createCase -> checklists, forms, approval, save/resume/blank submit,
   const employee = await service.getQuestionnaireForCase(o1b.childId, manager, "employee");
   assert.equal(employer.questions.length, 19);
   assert.equal(employee.questions.filter((q) => q.type === "file").length, 16, "10 beneficiary documents + 6 criteria");
-  [...employer.questions, ...employee.questions].forEach((q) => { assert.equal(q.required, false, q.key); assert.equal(q.metadata.optional, true, q.key); });
+  // The checklists are authored "everything optional"; requirementLogic.js then makes the core questions required (identity, passport, the employer's core facts,
+  // essential documents, gating answers). Everything else stays optional. The provisioned questions must match the code definitions exactly.
+  const { EMPLOYMENT_CHECKLIST_DEFINITIONS } = require("../employmentChecklists");
+  const expectedRequired = new Set(EMPLOYMENT_CHECKLIST_DEFINITIONS.filter((def) => /^o1b_/.test(def.key)).flatMap((def) => def.questions.filter((q) => q.required).map((q) => q.key)));
+  assert.ok(expectedRequired.has("o1b_employer_signatory_first_name") && expectedRequired.has("o1b_employee_first_name"), "core questions are required");
+  assert.ok(expectedRequired.size > 0 && expectedRequired.size < employer.questions.length + employee.questions.length, "some questions stay optional");
+  [...employer.questions, ...employee.questions].forEach((q) => {
+    assert.equal(q.required, expectedRequired.has(q.key), q.key);
+    assert.equal(Boolean(q.metadata.optional), !expectedRequired.has(q.key), q.key);
+  });
   const employerUser = await User.findOne({ email: o1b.email }).lean();
   const clientUser = { _id: employerUser._id, role: "client", email: employerUser.email };
   assert.equal((await service.listCaseChecklists(o1b.principalId, clientUser)).checklists.length, 0, "not released before approval");
@@ -83,7 +92,7 @@ test("O-1B: createCase -> checklists, forms, approval, save/resume/blank submit,
   const asClientEmployee = await service.getQuestionnaireForCase(o1b.childId, clientUser, "employee");
   assert.ok(asClientEmployee.questions.length, "the employee checklist opens for the client once approved on the employer case");
 
-  // 4. partial save, reload, resume, repeating groups, blank submit
+  // 4. partial save, reload, resume, repeating groups, incomplete submit refused
   const save = (q, caseId, role, answers) => service.saveAnswers({ questionnaireId: q.questionnaire._id, caseId, responseId: q.responseId, targetRole: role, answers: Object.entries(answers).map(([questionKey, value]) => ({ questionKey, value })) }, manager, req);
   const K = (role, shortKey) => `o1b_${role}_${shortKey}`;
   await save(employer, o1b.principalId, "employer", {
@@ -107,8 +116,12 @@ test("O-1B: createCase -> checklists, forms, approval, save/resume/blank submit,
   assert.equal(val(resumedEmployee, K("employee", "has_valid_passport")) === undefined, false);
   assert.equal(val(resumedEmployee, K("employee", "intend_replace_i94")), undefined, "an unanswered Yes/No stays unknown, not false");
   const strict = async (id) => service.assertStrictChecklistsSubmittable({ questionnaireReferences: (await Case.findById(id).lean()).questionnaireReferences }, manager).then(() => null, (error) => error);
-  assert.equal(await strict(o1b.principalId), null, "a partially filled employer checklist can be submitted");
-  assert.equal(await strict(o1b.childId), null, "a partially filled employee checklist can be submitted");
+  // Save progress accepts a partial checklist, but submitting one that still has required questions blank is refused - and only required ones block it.
+  for (const id of [o1b.principalId, o1b.childId]) {
+    const refused = await strict(id);
+    assert.equal(refused?.code, "CHECKLIST_INCOMPLETE", "a partially filled checklist cannot be submitted");
+    assert.ok(refused.details.missing.every((item) => expectedRequired.has(item.questionKey)), "only required questions are demanded");
+  }
 
   // 5. canonical sync: petitioner / beneficiary roots with provenance
   const sync = require("../../canonical/services/CanonicalSyncService");

@@ -13,6 +13,7 @@ const CanonicalProfileService = require("../canonical/services/CanonicalProfileS
 const ReverseIndexService = require("../form-mapping/services/ReverseIndexService");
 const SyncStateService = require("../form-mapping/services/SyncStateService");
 const notificationService = require("../notifications/notification.service");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 const uscisFormService = require("./uscis-form.service");
 const logger = require("../../utils/logger");
 
@@ -201,7 +202,7 @@ class InteractiveFormReviewService {
 
   static async notifyCaseTeam(caseData, caseForm, user, req, event, title, message, options = {}) {
     const recipients = [
-      caseData.assignedCaseManager,
+      ...allCaseManagerIds(caseData),
       caseData.assignedTeamLead,
     ].map(idOf).filter(Boolean);
     const actorId = idOf(this.userId(user));

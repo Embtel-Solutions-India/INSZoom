@@ -25,7 +25,10 @@ exports.list = async (req, res, next) => {
   try {
     const caseData = await loadCase(req, res);
     if (!caseData) return;
-    res.json({ success: true, requests: await service.listRequestsWithAnswers(caseData) });
+    // Requests the client already satisfied on their own checklist flip to Received before listing, so the panel is right the moment it opens.
+    const { changed } = await service.reconcileFulfilment({ caseId: caseData._id, user: req.user, req }).catch(() => ({ changed: 0 }));
+    const current = changed ? (await Case.findById(caseData._id)) || caseData : caseData;
+    res.json({ success: true, requests: await service.listRequestsWithAnswers(current) });
   } catch (error) {
     next(error);
   }

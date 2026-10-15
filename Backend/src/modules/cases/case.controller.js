@@ -14,6 +14,7 @@ const User = require("../../models/User");
 const { resolveDocumentRequirements } = require("../document-requirements/document-requirement.resolver");
 const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
+const caseManagersService = require("./case-managers.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
 const ghlVisaSelection = require("../../integrations/ghl/ghlVisaSelection.service");
@@ -457,6 +458,9 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
     },
   }, actor, req).catch(() => {});
 }
+
+// Shared with case-managers.controller.js (add/remove additional case managers). Not routes.
+exports.teamHelpers = { canAssignCase, syncCaseMessagingAssignment, notifyAssignee, runAfterResponse };
 
 exports.checklistUploadMiddleware = multer({
   storage: multer.memoryStorage(),
@@ -1206,7 +1210,7 @@ exports.createCase = async (req, res, next) => {
     try {
       const selectedAt = normalizedPackage ? new Date() : undefined;
       const checklist = await resolveDocumentRequirements(trimmedVisaType);
-      const teamLead = await caseService.resolveTeamLeadForCase(req.body);
+      const teamLead = await caseService.resolveTeamLeadForCase(req.body, req.user);
       const amount = centsFromPrice(price);
       const trimmedCaseDetails = cleanString(caseDetails);
       const trimmedEmployerName = cleanString(employerName);
@@ -2027,6 +2031,8 @@ exports.assignCaseManager = async (req, res, next) => {
     }
 
     caseService.assignUser(caseData, "case_manager", assignee, req.user, req.body.notes);
+    // A case manager promoted to primary no longer sits in the additional list.
+    caseManagersService.dropFromAdditional(caseData, assignee);
     if (req.user.role === "team_lead" && !caseData.assignedTeamLead) caseService.assignUser(caseData, "team_lead", req.user._id, req.user, "Assigned by team lead");
 
     // Phase 7 — a child case (caseRole employee/beneficiary) being assigned
@@ -2073,6 +2079,7 @@ exports.assignCaseManager = async (req, res, next) => {
         console.error("[assignCaseManager] Cascade to children failed (non-fatal):", cascadeErr.message);
         return 0;
       });
+      await caseManagersService.cascadeToChildren(caseData, assignee, "remove").catch(() => 0);
     }
 
     const lifecycle = await lifecycleOrchestrator.onAssignment(caseData, req.user, req);
@@ -2802,6 +2809,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
       assignedTeamLead: principal.assignedTeamLead,
       teamId: principal.teamId,
       assignedCaseManager: principal.assignedCaseManager,
+      additionalCaseManagers: principal.additionalCaseManagers || [],
       user: principal.user,
       delegateEmployerUser: principal.delegateEmployerUser || null,
       parentCase: principal._id,
@@ -2895,7 +2903,10 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
       // the aggregate pipeline itself.
       Case.aggregate([
         { $match: { ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } } },
-        { $group: { _id: "$assignedCaseManager", totalCases: { $sum: 1 }, activeCases: { $sum: { $cond: [{ $ne: ["$status", "pending_assignment"] }, 1, 0] } }, pendingCases: { $sum: { $cond: [{ $eq: ["$status", "pending_assignment"] }, 1, 0] } } } },
+        // A case counts toward every case manager on it (primary + additional).
+        { $project: { status: 1, caseManagers: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }] } } },
+        { $unwind: "$caseManagers" },
+        { $group: { _id: "$caseManagers", totalCases: { $sum: 1 }, activeCases: { $sum: { $cond: [{ $ne: ["$status", "pending_assignment"] }, 1, 0] } }, pendingCases: { $sum: { $cond: [{ $eq: ["$status", "pending_assignment"] }, 1, 0] } } } },
         { $sort: { activeCases: -1 } },
       ]).option({ maxTimeMS: 8000 }),
     ]);
@@ -3719,7 +3730,7 @@ exports.createCaseWithClient = async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    const teamLead = await caseService.resolveTeamLeadForCase(req.body);
+    const teamLead = await caseService.resolveTeamLeadForCase(req.body, req.user);
     const assignmentMode = employerCompletionMode === "invite_employees" ? "invite_employees" : employerCompletionMode === "employer_completes" ? "employer_completes" : "";
     const trimmedEmployerName = String(employerName || "").trim();
     const trimmedEmployerEmail = String(employerEmail || "").trim().toLowerCase();

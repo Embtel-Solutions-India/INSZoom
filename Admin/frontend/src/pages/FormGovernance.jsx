@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
 import UploadFormModal from '../components/UploadFormModal'
+import FormEditionEvidenceSection, { EVIDENCE_ROLES } from '../components/FormEditionEvidenceSection'
 import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2 } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
@@ -64,6 +65,8 @@ const FormGovernance = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = ['super_admin', 'admin'].includes(user?.role)
+  const canRecordEvidence = EVIDENCE_ROLES.includes(user?.role) // exactly admin and team_lead (never super_admin)
+  const [showEvidence, setShowEvidence] = useState(false)
   const [forms, setForms] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -233,6 +236,11 @@ const FormGovernance = () => {
           >
             <FileCheck2 className="w-4 h-4" /> {showHealth ? 'Hide' : 'Show'} Checklist Health
           </button>
+          {canRecordEvidence && (
+            <button onClick={() => setShowEvidence((open) => !open)} className="btn-secondary text-sm flex items-center gap-1 shrink-0">
+              <FileCheck2 className="w-4 h-4" /> {showEvidence ? 'Hide' : 'Show'} Edition Evidence
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setShowUpload(true)} className="btn-primary text-sm flex items-center gap-1 shrink-0">
               <Upload className="w-4 h-4" /> Upload Form
@@ -240,6 +248,8 @@ const FormGovernance = () => {
           )}
         </div>
       </div>
+
+      {canRecordEvidence && showEvidence && <FormEditionEvidenceSection />}
 
       {showCoverage && (
         <div className="card">

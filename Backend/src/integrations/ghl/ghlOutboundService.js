@@ -12,6 +12,7 @@ const { createClient, GHLApiError } = require("./ghlClient");
 const { resolveGhlStage } = require("./ghlPipelineService");
 const opportunityService = require("./ghlOpportunityService");
 const { presentCard } = require("./ghlPresenter");
+const { allCaseManagerIds } = require("../../modules/cases/caseManagerAccess");
 
 const MAX_ATTEMPTS = 8;
 const LEASE_MS = 60 * 1000;
@@ -126,7 +127,7 @@ function emitMove(caseDoc, moveId) {
     const ghl = caseDoc.integrations?.ghl || {};
     const payload = { caseId: caseDoc._id, kind: "stage", unifiedStageKey: ghl.unifiedStageKey, pipelineId: ghl.pipelineId, source: "immiglance", moveId };
     ["super_admin", "admin", "team_lead"].forEach((role) => realtimeGateway.emitToRole(role, "ghl:pipeline:updated", payload));
-    if (caseDoc.assignedCaseManager) realtimeGateway.emitToUser(caseDoc.assignedCaseManager, "ghl:pipeline:updated", payload);
+    allCaseManagerIds(caseDoc).forEach((managerId) => realtimeGateway.emitToUser(managerId, "ghl:pipeline:updated", payload));
   } catch (error) {
     logger.warn("ghl_realtime_emit_failed", { error: error.message });
   }

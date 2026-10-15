@@ -20,6 +20,7 @@ const User = require("../../models/User");
 const Workflow = require("../../models/Workflow");
 const CaseForm = require("../../models/CaseForm");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { caseManagerMatch } = require("../cases/caseManagerAccess");
 
 function roleOf(user) {
   return normalizeRole(user?.role);
@@ -67,7 +68,8 @@ async function monthlyTrend(Model, valueField, match = {}) {
 function scopedCaseFilter(user) {
   const role = roleOf(user);
   if (["super_admin", "admin", "finance"].includes(role)) return {};
-  if (role === "case_manager") return { assignedCaseManager: user._id };
+  // $and (not $or) so callers that spread this and add their own $or keep working. Primary + additional case managers.
+  if (role === "case_manager") return { $and: [caseManagerMatch(user._id)] };
   if (role === "employer") return { companyId: user.companyId };
   if (role === "client" || role === "user") return { user: user._id };
   return {};

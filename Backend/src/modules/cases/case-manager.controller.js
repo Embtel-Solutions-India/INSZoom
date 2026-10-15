@@ -4,6 +4,7 @@ const Payment = require("../../models/Payment");
 const Task = require("../../models/Task");
 const User = require("../../models/User");
 const caseService = require("./case.service");
+const { caseManagerMatch } = require("./caseManagerAccess");
 const caseManagerAnalyticsService = require("./case-manager-analytics.service");
 const ratingService = require("./case-manager-rating.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
@@ -63,7 +64,10 @@ async function buildManagerMetrics() {
   const [caseRows, taskRows, paymentRows] = await Promise.all([
     Case.aggregate([
       { $match: { assignedCaseManager: { $ne: null } } },
-      { $group: { _id: { manager: "$assignedCaseManager", status: "$status" }, count: { $sum: 1 } } },
+      // A case counts toward every case manager on it (primary + additional).
+      { $project: { status: 1, managers: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }] } } },
+      { $unwind: "$managers" },
+      { $group: { _id: { manager: "$managers", status: "$status" }, count: { $sum: 1 } } },
     ]),
     Task.aggregate([
       { $match: { status: { $nin: ["completed", "cancelled"] }, assignedTo: { $ne: null } } },
@@ -73,7 +77,9 @@ async function buildManagerMetrics() {
       { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
       { $unwind: "$caseData" },
       { $match: { "caseData.assignedCaseManager": { $ne: null } } },
-      { $group: { _id: "$caseData.assignedCaseManager", total: { $sum: { $ifNull: ["$amountPaid", 0] } } } },
+      { $project: { amountPaid: 1, managers: { $setUnion: [["$caseData.assignedCaseManager"], { $ifNull: ["$caseData.additionalCaseManagers", []] }] } } },
+      { $unwind: "$managers" },
+      { $group: { _id: "$managers", total: { $sum: { $ifNull: ["$amountPaid", 0] } } } },
     ]),
   ]);
   const metrics = new Map();
@@ -191,7 +197,7 @@ async function getCaseManagerDetails(req, res, next) {
   try {
     const manager = await User.findById(req.params.id).select("-password");
     if (!manager || manager.role !== "case_manager") return res.status(404).json({ success: false, message: "Case manager not found" });
-    const cases = await caseService.populateCaseQuery(Case.find({ assignedCaseManager: manager._id }).sort({ updatedAt: -1 }).limit(100));
+    const cases = await caseService.populateCaseQuery(Case.find(caseManagerMatch(manager._id)).sort({ updatedAt: -1 }).limit(100));
     const tasks = await Task.find({ assignedTo: manager._id }).sort({ dueDate: 1 }).limit(100);
     const caseIds = cases.map((caseData) => caseData._id);
     const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).select("totalFee totalAmount amountPaid paidAmount remainingAmount").lean();
@@ -227,7 +233,7 @@ async function getCaseManagerCases(req, res, next) {
 
 async function getCaseManagerActivities(req, res, next) {
   try {
-    const cases = await Case.find({ assignedCaseManager: req.params.id }).select("caseNumber clientName timeline activityLog updatedAt").sort({ updatedAt: -1 }).limit(50);
+    const cases = await Case.find(caseManagerMatch(req.params.id)).select("caseNumber clientName timeline activityLog updatedAt").sort({ updatedAt: -1 }).limit(50);
     const activities = cases.flatMap((caseData) => [
       ...(caseData.timeline || []).map((item) => ({ ...asObject(item), caseNumber: caseData.caseNumber, clientName: caseData.clientName })),
       ...(caseData.activityLog || []).map((item) => ({ ...asObject(item), caseNumber: caseData.caseNumber, clientName: caseData.clientName })),
@@ -240,7 +246,7 @@ async function getCaseManagerActivities(req, res, next) {
 
 async function getCaseManagerPayments(req, res, next) {
   try {
-    const cases = await Case.find({ assignedCaseManager: req.params.id }).select("_id");
+    const cases = await Case.find(caseManagerMatch(req.params.id)).select("_id");
     const caseIds = cases.map((caseData) => caseData._id);
     const payments = await Payment.find({ $or: [{ caseId: { $in: caseIds } }, { case: { $in: caseIds } }] }).sort({ updatedAt: -1 });
     res.json({ success: true, count: payments.length, data: payments, payments });
@@ -251,7 +257,7 @@ async function getCaseManagerPayments(req, res, next) {
 
 async function getCaseManagerAnalytics(req, res, next) {
   try {
-    const caseFilter = { assignedCaseManager: req.params.id };
+    const caseFilter = caseManagerMatch(req.params.id);
     const [caseRows, tasks, payments] = await Promise.all([
       Case.find(caseFilter).select("caseNumber clientName status stage priority visaType visaCategory category createdAt updatedAt dueDate keyDates").lean(),
       Task.find({ assignedTo: req.params.id }).select("status priority category dueDate createdAt updatedAt completedAt").lean(),
@@ -259,7 +265,7 @@ async function getCaseManagerAnalytics(req, res, next) {
         { $lookup: { from: "cases", localField: "caseId", foreignField: "_id", as: "caseData" } },
         { $lookup: { from: "cases", localField: "case", foreignField: "_id", as: "legacyCaseData" } },
         { $addFields: { resolvedCase: { $ifNull: [{ $arrayElemAt: ["$caseData", 0] }, { $arrayElemAt: ["$legacyCaseData", 0] }] } } },
-        { $match: { "resolvedCase.assignedCaseManager": objectId(req.params.id) } },
+        { $match: { $or: [{ "resolvedCase.assignedCaseManager": objectId(req.params.id) }, { "resolvedCase.additionalCaseManagers": objectId(req.params.id) }] } },
         { $project: { totalFee: 1, totalAmount: 1, amountPaid: 1, paidAmount: 1, remainingAmount: 1, paymentStatus: 1, status: 1, paymentDate: 1, updatedAt: 1, createdAt: 1 } },
       ]),
     ]);

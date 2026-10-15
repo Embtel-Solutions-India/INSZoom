@@ -105,7 +105,7 @@ exports.autofillPreview = async (req, res, next) => {
     if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
     const caseId = req.query.caseId;
     if (!caseId) throw Object.assign(new Error("caseId is required"), { status: 400 });
-    const caseData = await Case.findById(caseId).select("_id user assignedCaseManager assignedTeamLead companyId employerUser attorney assignedAttorney").lean();
+    const caseData = await Case.findById(caseId).select("_id user assignedCaseManager additionalCaseManagers assignedTeamLead companyId employerUser attorney assignedAttorney").lean();
     if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(req.user, caseData)) throw Object.assign(new Error("Not authorized to access this case"), { status: 403 });
     const result = await AutoFillService.preview(caseId, template.formCode, template.version);

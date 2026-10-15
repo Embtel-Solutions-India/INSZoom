@@ -82,12 +82,12 @@ test("employer document checklist matches the source exactly (6 documents), neve
   docTypes.forEach((docType) => assert.ok(!employeeDocTypes.includes(docType), `${docType} must not also appear on the employee checklist`));
 });
 
-test("employee document checklist matches the source exactly (13 documents), optional ones kept optional", () => {
+test("employee document checklist matches the source exactly (13 documents), only the 'if applicable'/'if any' ones kept optional", () => {
   const docs = employee.questions.filter((q) => q.type === "file");
   assert.equal(docs.length, 13);
-  const optionalDocs = ["tn_beneficiary_credential_evaluation_report", "tn_beneficiary_training_diploma_certificates", "tn_beneficiary_awards_certifications", "tn_beneficiary_previous_work_experience_letters", "tn_beneficiary_previous_i797_notices", "tn_beneficiary_i94_copy", "tn_beneficiary_ssn_copy", "tn_beneficiary_drivers_license_or_state_id"];
+  const optionalDocs = ["tn_beneficiary_training_diploma_certificates", "tn_beneficiary_awards_certifications", "tn_beneficiary_previous_i797_notices", "tn_beneficiary_i94_copy", "tn_beneficiary_ssn_copy", "tn_beneficiary_drivers_license_or_state_id"];
   optionalDocs.forEach((key) => assert.equal(docs.find((d) => d.metadata.documentType === key).required, false, `${key} must be optional`));
-  ["tn_beneficiary_visa_letter", "tn_beneficiary_academic_certificates", "tn_beneficiary_updated_resume", "tn_beneficiary_passport", "tn_beneficiary_proof_of_citizenship"]
+  ["tn_beneficiary_visa_letter", "tn_beneficiary_academic_certificates", "tn_beneficiary_credential_evaluation_report", "tn_beneficiary_updated_resume", "tn_beneficiary_previous_work_experience_letters", "tn_beneficiary_passport", "tn_beneficiary_proof_of_citizenship"]
     .forEach((key) => assert.equal(docs.find((d) => d.metadata.documentType === key).required, true, `${key} must be required`));
 });
 

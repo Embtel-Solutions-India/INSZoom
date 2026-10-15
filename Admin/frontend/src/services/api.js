@@ -229,6 +229,9 @@ export const casesApi = {
   addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
   assignCaseManager: (id, caseManagerId, notes, extra = {}) =>
     api.put(`/cases/${id}/assign-case-manager`, { caseManagerId, notes, ...extra }),
+  // Additional case managers working the case alongside the primary one (the primary is changed through assignCaseManager above).
+  addCaseManager: (id, caseManagerId) => api.post(`/cases/${id}/case-managers`, { caseManagerId }),
+  removeCaseManager: (id, userId) => api.delete(`/cases/${id}/case-managers/${userId}`),
   // Phase 7 — assigning a principal/single case cascades to its non-overridden
   // child cases server-side; assigning a child case directly (e.g. from that
   // child's own detail page) marks it individually overridden. Same two
@@ -618,6 +621,15 @@ export const uscisFormsApi = {
 // state, and which visa types/case types reference them (from the
 // VisaFormMapping registry). Global/not case-scoped - distinct from
 // uscisFormsApi above, which is case- or template-detail-scoped.
+// Release 0b-1: evidence-resolution API for USCIS form-edition acceptance (admin / team_lead only). Responses are { success, data }.
+export const formEditionPolicyApi = {
+  editions: () => api.get('/form-edition-policy/editions'),
+  gate: (formCode, edition) => api.get('/form-edition-policy/gate', { params: { formCode, edition } }),
+  submitEvidence: (payload) => api.post('/form-edition-policy/evidence', payload),
+  evidenceCase: (evidenceCaseId) => api.get(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}`),
+  recordDecision: (evidenceCaseId, payload) => api.post(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}/decision`, payload),
+}
+
 export const formGovernanceApi = {
   catalog: () => api.get('/form-registry/catalog'),
   fetchFromUSCIS: (formCode) => api.post(`/form-registry/catalog/${encodeURIComponent(formCode)}/fetch`),

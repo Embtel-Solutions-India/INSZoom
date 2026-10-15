@@ -6,6 +6,7 @@
 // calendar).
 const settingsEngine = require("./settingsEngine.service");
 const Case = require("../../models/Case");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 
 function addCalendarDays(from, days) {
   const result = new Date(from);
@@ -52,7 +53,7 @@ async function runSlaSweep() {
       { "slaDueDates.rfeResponse": { $lte: atRiskThreshold } },
       { "slaDueDates.docCollection": { $lte: atRiskThreshold } },
     ],
-  }).select("_id caseId caseNumber assignedCaseManager slaDueDates slaStatus");
+  }).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers slaDueDates slaStatus");
 
   let breached = 0;
   let atRisk = 0;
@@ -67,17 +68,18 @@ async function runSlaSweep() {
     await caseDoc.save();
     if (nextStatus === "breached") breached += 1;
     else atRisk += 1;
-    if (nextStatus === "breached" && caseDoc.assignedCaseManager) {
+    if (nextStatus === "breached") {
+      // Every case manager on the case (primary + additional) is told.
       // Lazy require — avoids a require-cycle with notification.service.js,
       // which itself doesn't depend on this module.
-      require("../notifications/notification.service").createNotification({
+      allCaseManagerIds(caseDoc).forEach((managerId) => require("../notifications/notification.service").createNotification({
         type: "workflow_sla_breached",
-        userId: caseDoc.assignedCaseManager,
+        userId: managerId,
         caseId: caseDoc._id,
         title: "Case SLA breached",
         message: `Case ${caseDoc.caseNumber || caseDoc.caseId} has passed its SLA due date.`,
         priority: "high",
-      }).catch(() => {});
+      }).catch(() => {}));
     }
     // Team lead / admin / super admin escalation (the case manager is covered above).
     if (nextStatus === "breached") {

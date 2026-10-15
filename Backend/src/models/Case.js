@@ -413,6 +413,9 @@ const informationRequestSchema = new mongoose.Schema(
     requestedAt: { type: Date, default: Date.now },
     submittedAt: Date,
     resolvedAt: Date,
+    // How a "submitted" (shown as Received) request got satisfied: "request" = the client answered the request's own row; "checklist" = the
+    // client had already answered the same item on their normal checklist (see information-requests/request-fulfilment.js).
+    fulfilledBy: { type: String, enum: ["request", "checklist", ""], default: "" },
     task: { type: mongoose.Schema.Types.ObjectId, ref: "Task" },
     notes: String,
   },
@@ -756,6 +759,10 @@ const caseSchema = new mongoose.Schema(
     secondaryOwner: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     assignedTeamLead: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
     assignedCaseManager: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    // Extra case managers working this case alongside assignedCaseManager (the primary/lead - the only one the client ever sees).
+    // Every case manager in [assignedCaseManager, ...additionalCaseManagers] has the same access to the case; see
+    // modules/cases/caseManagerAccess.js. Empty for every existing case.
+    additionalCaseManagers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     // Attorney of record during preparation/filing (distinct from
     // immigrationLifecycle.tracking.filing.filingAttorney, which records who
     // filed AFTER the fact). PetitionAssemblyService's buildMergeContext
@@ -1465,6 +1472,7 @@ caseSchema.index({ primaryOwner: 1, status: 1 });
 caseSchema.index({ secondaryOwner: 1, status: 1 });
 caseSchema.index({ assignedTeamLead: 1, status: 1 });
 caseSchema.index({ assignedCaseManager: 1, status: 1 });
+caseSchema.index({ additionalCaseManagers: 1, status: 1 });
 caseSchema.index({ assignedCaseManager: 1, rfeDeadline: 1 });
 caseSchema.index({ assignedCaseManager: 1, updatedAt: -1 });
 caseSchema.index({ companyId: 1, status: 1 });

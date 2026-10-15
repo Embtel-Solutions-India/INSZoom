@@ -12,6 +12,9 @@ const emailService = require("../email/email.service");
 const env = require("../../config/env");
 const requestedFields = require("./requested-fields");
 const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
+const realtimeGateway = require("../realtime/realtime.gateway");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
+const { evaluateRequest, sameRecipientRole } = require("./request-fulfilment");
 
 // Generic staff "Request information" flow.
 //
@@ -332,7 +335,7 @@ async function markAnswered({ caseId, questionnaire, answerMap = {}, user, req }
     if (!isAnswered(answerMap[request.questionKey])) continue;
     const result = await Case.updateOne(
       { _id: caseId, informationRequests: { $elemMatch: { _id: request._id, status: "open" } } },
-      { $set: { "informationRequests.$.status": "submitted", "informationRequests.$.submittedAt": now } }
+      { $set: { "informationRequests.$.status": "submitted", "informationRequests.$.submittedAt": now, "informationRequests.$.fulfilledBy": "request" } }
     );
     if (!result.modifiedCount) continue;
     done.push(request);
@@ -349,8 +352,98 @@ async function markAnswered({ caseId, questionnaire, answerMap = {}, user, req }
       }, user, req).catch(() => null);
     }
   }
+  if (done.length) announceRequestChange(caseData, "information_request_received");
   return done;
 }
+
+// ── A request the client already satisfied on their normal checklist ───────────────────────────────────────────────────────────────────
+// Staff type requests as free text ("Current U.S. Address", "Copy of Educational Credential Evaluation Report"...). When the client has already
+// answered the same item on their own checklist, the request is Received - not Open - and disappears from the client's "Requested by your case
+// manager" list. It reopens if that answer is later removed. Matching is conservative (request-fulfilment.js): an item it cannot match keeps the
+// request open. Called after every answer save on a case that has such requests, and when the Admin panel lists the requests.
+
+const isChecklistFulfillable = (request) => request.questionKey && request.scope !== "existing_question" && ((request.status || "open") === "open" || request.fulfilledBy === "checklist");
+
+// Everything the recipient has on their normal (non staff-request) checklists: questions + answers, keys namespaced per checklist.
+async function recipientChecklistFacts(caseData, request) {
+  const refs = (caseData.questionnaireReferences || []).filter((ref) => ref.active !== false && !ref.staffRequest && ref.questionnaireId && ref.responseId
+    && (sameRecipientRole(ref.targetRole, request.recipientRole) || sameRecipientRole(ref.participantRole, request.recipientRole))
+    && (!request.participantId || !ref.participantId || idOf(ref.participantId) === idOf(request.participantId)));
+  const questions = [];
+  const answers = new Map();
+  const where = new Map();
+  for (const ref of refs) {
+    const [rows, stored] = await Promise.all([
+      Question.find({ questionnaire: ref.questionnaireId, active: { $ne: false } }).select("key label").lean(),
+      Answer.find({ responseId: ref.responseId }).select("questionKey value files").lean(),
+    ]);
+    const byKey = new Map(stored.map((answer) => [answer.questionKey, answer]));
+    rows.forEach((row) => {
+      const namespaced = `${idOf(ref._id)}|${row.key}`;
+      questions.push({ key: namespaced, label: row.label });
+      where.set(namespaced, { questionnaireId: ref.questionnaireId, responseId: ref.responseId, questionKey: row.key, label: row.label });
+      if (byKey.has(row.key)) answers.set(namespaced, byKey.get(row.key));
+    });
+  }
+  return { questions, answers, where };
+}
+
+function announceRequestChange(caseData, action) {
+  try {
+    const recipients = new Set([caseData.user, ...allCaseManagerIds(caseData)].filter(Boolean).map(String));
+    (caseData.informationRequests || []).forEach((request) => request.assignedTo && recipients.add(String(request.assignedTo)));
+    recipients.forEach((userId) => {
+      realtimeGateway.emitToUser(userId, "case:checklists_changed", { caseId: String(caseData._id), reason: action, at: new Date().toISOString() });
+      realtimeGateway.emitToUser(userId, "case:updated", { caseId: caseData._id, caseNumber: caseData.caseNumber, action, performedAt: new Date() });
+    });
+  } catch { /* a missed live push must never fail the change */ }
+}
+
+async function reconcileFulfilment({ caseId, user, req } = {}) {
+  const caseData = await Case.findById(caseId).select("informationRequests questionnaireReferences caseNumber user assignedCaseManager additionalCaseManagers").lean();
+  if (!caseData) return { changed: 0 };
+  const candidates = (caseData.informationRequests || []).filter(isChecklistFulfillable);
+  if (!candidates.length) return { changed: 0 };
+  let changed = 0;
+  for (const request of candidates) {
+    const facts = await recipientChecklistFacts(caseData, request);
+    const verdict = evaluateRequest(request.title, facts.questions, facts.answers);
+    const open = (request.status || "open") === "open";
+    if (open && verdict.fulfilled) {
+      const result = await Case.updateOne(
+        { _id: caseId, informationRequests: { $elemMatch: { _id: request._id, status: "open" } } },
+        { $set: { "informationRequests.$.status": "submitted", "informationRequests.$.submittedAt": new Date(), "informationRequests.$.fulfilledBy": "checklist" } }
+      );
+      if (!result.modifiedCount) continue;
+      changed += 1;
+      // the client no longer sees it under "Requested by your case manager"; the work item is done
+      await Question.updateOne({ questionnaire: request.questionnaireId, key: request.questionKey }, { $set: { active: false, isActive: false } }).catch(() => null);
+      if (request.task) await Task.updateOne({ _id: request.task, status: { $nin: ["completed", "cancelled"] } }, { $set: { status: "completed" } }).catch(() => null);
+      const notify = request.requestedBy ? [request.requestedBy] : allCaseManagerIds(caseData);
+      await Promise.all(notify.map((userId) => notificationService.createNotification({
+        userId,
+        type: "questionnaire_submitted",
+        title: "Requested information received",
+        message: `${request.recipientName || "The client"} already provided "${request.title}" for ${caseData.caseNumber || "the case"}.`,
+        link: `/crm-cases/${caseId}`,
+        caseId,
+        source: "shared",
+      }, user, req).catch(() => null)));
+    } else if (!open && request.fulfilledBy === "checklist" && !verdict.fulfilled) {
+      const result = await Case.updateOne(
+        { _id: caseId, informationRequests: { $elemMatch: { _id: request._id, status: "submitted", fulfilledBy: "checklist" } } },
+        { $set: { "informationRequests.$.status": "open", "informationRequests.$.fulfilledBy": "" }, $unset: { "informationRequests.$.submittedAt": "" } }
+      );
+      if (!result.modifiedCount) continue;
+      changed += 1;
+      await Question.updateOne({ questionnaire: request.questionnaireId, key: request.questionKey }, { $set: { active: true, isActive: true } }).catch(() => null);
+      if (request.task) await Task.updateOne({ _id: request.task, status: "completed" }, { $set: { status: request.assignedTo ? "assigned" : "pending" } }).catch(() => null);
+    }
+  }
+  if (changed) announceRequestChange(caseData, "information_request_received");
+  return { changed };
+}
+
 
 // Admin view: all requests (legacy employer/employee ones included) joined with the stored answer (value or file names).
 async function listRequestsWithAnswers(caseData) {
@@ -362,10 +455,22 @@ async function listRequestsWithAnswers(caseData) {
     if (request.questionKey && reference?.responseId) {
       answer = await Answer.findOne({ responseId: reference.responseId, questionKey: request.questionKey }).select("value files status").lean();
     }
+    // Satisfied from the client's normal checklist: say where, and expose those answers so Admin can read/open them.
+    let providedIn = [];
+    if (request.fulfilledBy === "checklist" && isChecklistFulfillable(request)) {
+      const facts = await recipientChecklistFacts(caseData, request);
+      const verdict = evaluateRequest(request.title, facts.questions, facts.answers);
+      providedIn = verdict.questionKeys.map((key) => {
+        const place = facts.where.get(key);
+        const stored = facts.answers.get(key);
+        return { ...place, value: stored?.value, files: (stored?.files || []).map((file) => ({ originalName: file.originalName, storageKey: file.storageKey })) };
+      });
+    }
     out.push({
       ...(request.toObject ? request.toObject() : request),
       responseId: reference?.responseId,
       answer: answer ? { value: answer.value, status: answer.status, files: (answer.files || []).map((file) => ({ originalName: file.originalName, storageKey: file.storageKey })) } : null,
+      providedIn,
     });
   }
   return out;
@@ -534,6 +639,7 @@ async function markItemRequestsAnswered({ caseId, responseId, answerMap = {}, us
 }
 
 module.exports = {
+  reconcileFulfilment,
   createItemRequest,
   cancelItemRequest,
   markItemRequestsAnswered,

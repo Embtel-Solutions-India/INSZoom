@@ -19,6 +19,7 @@ const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const User = require("../../models/User");
 const Workflow = require("../../models/Workflow");
 const { hasPermission } = require("../authorization/rbac.service");
+const { caseManagersMatch } = require("../cases/caseManagerAccess");
 
 const staffRoles = new Set(["super_admin", "admin", "case_manager", "team_lead"]);
 const clientRoles = new Set(["client", "user"]);
@@ -423,8 +424,8 @@ async function assignmentFilter(config, filters = {}) {
   const ids = users.map((item) => item._id);
   if (!ids.length) return { _id: null };
   if (config.entity === "cases") {
-    if (filters.assignedRole === "case_manager") return { assignedCaseManager: { $in: ids } };
-    return { $or: [{ assignedCaseManager: { $in: ids } }, { assignedAgentUser: { $in: ids } }] };
+    if (filters.assignedRole === "case_manager") return caseManagersMatch(ids);
+    return { $or: [{ assignedCaseManager: { $in: ids } }, { additionalCaseManagers: { $in: ids } }, { assignedAgentUser: { $in: ids } }] };
   }
   if (config.entity === "appointments") {
     return { $or: [{ assignedTo: { $in: ids } }, { caseManagerId: { $in: ids } }, { "attendees.user": { $in: ids } }] };

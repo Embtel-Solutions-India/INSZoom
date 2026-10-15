@@ -5,6 +5,7 @@ const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const logger = require("../../utils/logger");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 
 // Attorney <-> Case Manager dialogue on a case. The counterpart resolution
 // below is the whole point of this module: whoever did NOT write the
@@ -22,7 +23,7 @@ function isAttorneyRole(role) {
 }
 
 // Who should be notified about a message authored by `author` on this case.
-// Attorney writes  -> the case's assigned case manager.
+// Attorney writes  -> every case manager on the case.
 // Case Manager (or any staff) writes -> the case's active attorney(s).
 async function resolveRecipients(caseDoc, author, parentFeedback) {
   // A reply always goes back to whoever wrote the message being replied to,
@@ -32,7 +33,7 @@ async function resolveRecipients(caseDoc, author, parentFeedback) {
   }
 
   if (isAttorneyRole(author.role)) {
-    return [caseDoc.assignedCaseManager].filter(Boolean);
+    return allCaseManagerIds(caseDoc);
   }
 
   return (caseDoc.attorneyAccess || [])
@@ -105,7 +106,7 @@ async function listFeedback(caseId) {
 }
 
 async function createFeedback({ caseId, author, message, parentFeedbackId = null, files = [] }) {
-  const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager attorneyAccess");
+  const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers attorneyAccess");
   if (!caseDoc) {
     const error = new Error("Case not found");
     error.status = 404;

@@ -17,6 +17,7 @@ const { resolveContact } = require("./ghlContactService");
 const { createCaseFromOpportunity, findCaseByOpportunity, syncCardName } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
 const auxOutbound = require("./ghlAuxOutbound");
+const { allCaseManagerIds } = require("../../modules/cases/caseManagerAccess");
 
 // A pending case re-checks its visa on updates, but at most once a minute so a burst of events costs nothing.
 const VISA_RECHECK_MS = 60 * 1000;
@@ -376,7 +377,7 @@ function emitPipelineUpdate(caseDoc, kind) {
     const ghl = caseDoc.integrations?.ghl || {};
     const payload = { caseId: caseDoc._id, kind, unifiedStageKey: ghl.unifiedStageKey, pipelineId: ghl.pipelineId, source: "ghl" };
     ["super_admin", "admin", "team_lead"].forEach((role) => realtimeGateway.emitToRole(role, "ghl:pipeline:updated", payload));
-    if (caseDoc.assignedCaseManager) realtimeGateway.emitToUser(caseDoc.assignedCaseManager, "ghl:pipeline:updated", payload);
+    allCaseManagerIds(caseDoc).forEach((managerId) => realtimeGateway.emitToUser(managerId, "ghl:pipeline:updated", payload));
   } catch (error) {
     logger.warn("ghl_realtime_emit_failed", { error: error.message });
   }

@@ -4,6 +4,7 @@ import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
+import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
 import { questionKey, sectionKey, matchingAutofillSources } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 
@@ -35,6 +36,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [showSaveNotice, setShowSaveNotice] = useState(false); // wording-only reminder after Save progress
 
   // Save progress = persist whatever is filled so far (partial is fine). Submit = only when everything is filled.
   const handleSubmit = async () => {
@@ -50,6 +52,15 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSaveProgress = async () => {
+    try {
+      await commitAll();
+    } catch {
+      return; // the hook already shows "Save failed"
+    }
+    setShowSaveNotice(true);
   };
 
   const sectionsWithItems = useMemo(() => sections.map((section) => {
@@ -71,6 +82,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
 
   return (
     <div className="space-y-6">
+      <SaveProgressNoticeModal open={showSaveNotice} onClose={() => setShowSaveNotice(false)} />
       {refreshing && <p className="text-xs text-slate-400">Updating…</p>}
       {!readOnly && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
@@ -87,7 +99,7 @@ export function CaseRoleChecklistView({ qa, caseId, readOnly = false }) {
             </span>
             <button
               type="button"
-              onClick={commitAll}
+              onClick={handleSaveProgress}
               disabled={!dirty || saveState === "saving" || submitting}
               className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-bold text-primary hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed"
               title="Saves everything you have filled in so far - you can come back and finish later"

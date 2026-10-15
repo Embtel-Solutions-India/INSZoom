@@ -1549,6 +1549,14 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
       .markAnswered({ caseId: caseData._id, questionnaire, answerMap, user, req })
       .catch(() => null);
   }
+  // A free-text staff request that the client has now answered on their normal checklist is Received, not Open (and it reopens if that answer
+  // is removed). Only cases that actually have such requests pay for the check; never awaited, so it cannot slow a save or an upload.
+  if (caseData && !(questionnaire.tags || []).includes("staff_request")
+    && (caseData.informationRequests || []).some((request) => request.questionKey && request.scope !== "existing_question" && ((request.status || "open") === "open" || request.fulfilledBy === "checklist"))) {
+    require("../information-requests/information-request.service")
+      .reconcileFulfilment({ caseId: caseData._id, user, req })
+      .catch(() => null);
+  }
   // Questions the case manager asked for on an existing checklist: an answered one flips its request to "submitted" (no extra query
   // unless this response really has an open request - the case document is already loaded).
   const openItemRequests = requestedFields.itemRequestsFor([caseData, requestedCaseData], responseId).filter((request) => (request.status || "open") === "open");

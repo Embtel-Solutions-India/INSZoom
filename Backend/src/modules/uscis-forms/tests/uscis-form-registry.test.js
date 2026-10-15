@@ -170,7 +170,7 @@ test("a CaseForm records the exact registry version it was provisioned from", ()
     assert.ok(
       CaseForm.schema.path(`formVersionLock.${field}`),
       `formVersionLock is missing ${field}`
-    );
+    ); 
   }
 });
 

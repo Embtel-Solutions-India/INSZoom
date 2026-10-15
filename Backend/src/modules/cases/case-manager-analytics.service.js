@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Case = require("../../models/Case");
+const { caseManagerMatch } = require("./caseManagerAccess");
 const Payment = require("../../models/Payment");
 const PaymentLedgerEntry = require("../../models/PaymentLedgerEntry");
 
@@ -183,7 +184,8 @@ async function byVisaTypeBreakdown(caseManagerFilter) {
 }
 
 async function buildPanel(caseManagerId, { period = "90d", staleDays = DEFAULT_STALE_DAYS } = {}) {
-  const caseManagerFilter = { assignedCaseManager: objectId(caseManagerId) };
+  // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager.
+  const caseManagerFilter = { $and: [caseManagerMatch(objectId(caseManagerId))] };
 
   const [totalCasesInScope, activeTotal, caseIds] = await Promise.all([
     Case.countDocuments(caseManagerFilter),

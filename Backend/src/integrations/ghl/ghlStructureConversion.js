@@ -116,6 +116,7 @@ async function convertToEmployee(caseData, visaType, visaRecord = {}) {
     assignedTeamLead: principal.assignedTeamLead,
     teamId: principal.teamId,
     assignedCaseManager: principal.assignedCaseManager,
+    additionalCaseManagers: principal.additionalCaseManagers || [],
     primaryOwner: principal.primaryOwner,
     assignedAgent: principal.assignedAgent,
     agentEmail: principal.agentEmail,

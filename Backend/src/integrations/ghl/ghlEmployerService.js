@@ -16,6 +16,7 @@ const { resolveDocumentRequirements } = require("../../modules/document-requirem
 const { generateOpaqueToken, hashToken } = require("../../modules/auth/password.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const visaService = require("./ghlVisaService");
+const { allCaseManagerIds } = require("../../modules/cases/caseManagerAccess");
 
 // GHL opportunity (employer visa) -> the EXISTING employer model:
 //   one employer matter (principal case + one shared EmployerProfile)
@@ -248,6 +249,7 @@ async function createEmployeeChild({ principal, caseObjectId, opportunity, conta
           assignedTeamLead: principal.assignedTeamLead,
           teamId: principal.teamId,
           assignedCaseManager: principal.assignedCaseManager,
+          additionalCaseManagers: principal.additionalCaseManagers || [],
           primaryOwner: principal.primaryOwner,
           assignedAgent: principal.assignedAgent,
           agentEmail: principal.agentEmail,
@@ -331,7 +333,7 @@ function emitCreated(child) {
     const ghl = child.integrations?.ghl || {};
     const payload = { caseId: child._id, kind: "created", unifiedStageKey: ghl.unifiedStageKey, pipelineId: ghl.pipelineId, source: "ghl" };
     ["super_admin", "admin", "team_lead"].forEach((role) => realtimeGateway.emitToRole(role, "ghl:pipeline:updated", payload));
-    if (child.assignedCaseManager) realtimeGateway.emitToUser(child.assignedCaseManager, "ghl:pipeline:updated", payload);
+    allCaseManagerIds(child).forEach((managerId) => realtimeGateway.emitToUser(managerId, "ghl:pipeline:updated", payload));
   } catch (error) {
     logger.warn("ghl_realtime_emit_failed", { error: error.message });
   }

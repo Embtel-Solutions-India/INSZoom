@@ -402,13 +402,13 @@ const CASE_BOUND_ROLES = new Set(["client", "case_manager", "team_lead", "attorn
 
 // Users on `caseId` for the given case-bound roles:
 //   client        the case's client / petitioner / beneficiary
-//   case_manager  the assigned case manager (falls back to the team lead if unassigned)
+//   case_manager  every case manager on the case - primary + additional (falls back to the team lead if unassigned)
 //   team_lead     the assigned team lead (unassigned cases go to all team leads, who triage them)
 //   attorney      attorneys with active access, plus the legacy assigned attorney
 async function resolveCaseBoundUsers(caseId, boundRoles) {
   const Case = require("../../models/Case");
   const caseDoc = await Case.findById(caseId)
-    .select("user petitionerUser beneficiaryUser assignedCaseManager primaryOwner assignedTeamLead assignedAttorney attorneyAccess")
+    .select("user petitionerUser beneficiaryUser assignedCaseManager additionalCaseManagers primaryOwner assignedTeamLead assignedAttorney attorneyAccess")
     .lean();
   if (!caseDoc) return [];
   const ids = new Set();
@@ -417,7 +417,8 @@ async function resolveCaseBoundUsers(caseId, boundRoles) {
   if (boundRoles.includes("client")) { add(caseDoc.user); add(caseDoc.petitionerUser); add(caseDoc.beneficiaryUser); }
   if (boundRoles.includes("case_manager")) {
     const manager = caseDoc.assignedCaseManager || caseDoc.primaryOwner;
-    if (manager) add(manager);
+    // Every case manager on the case (primary + additional) is addressed.
+    if (manager) { add(manager); (caseDoc.additionalCaseManagers || []).forEach(add); }
     else if (caseDoc.assignedTeamLead) add(caseDoc.assignedTeamLead);
     else teamLeadFallback = true;
   }

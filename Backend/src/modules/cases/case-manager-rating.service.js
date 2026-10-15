@@ -3,6 +3,7 @@ const Case = require("../../models/Case");
 const Task = require("../../models/Task");
 const User = require("../../models/User");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { caseManagerMatch } = require("./caseManagerAccess");
 
 // Weekly performance ratings for case managers. A week runs Monday 00:00 to the next Monday 00:00 (server time).
 const DAY = 24 * 60 * 60 * 1000;
@@ -26,7 +27,7 @@ const average = (ratings) => (ratings.length ? Math.round((ratings.reduce((sum, 
 // A team lead "has" a case manager when they share a team, or when the team lead is the assigned team lead on any of that manager's cases.
 async function teamLeadOwns(user, manager) {
   if (user.teamId && String(user.teamId) === String(manager.teamId || "")) return true;
-  return Boolean(await Case.exists({ assignedTeamLead: user._id, assignedCaseManager: manager._id }));
+  return Boolean(await Case.exists({ assignedTeamLead: user._id, ...caseManagerMatch(manager._id) }));
 }
 
 // Who may rate this case manager: admins and super admins any; a team lead only a case manager of their own team.
@@ -56,7 +57,7 @@ function visibleRatings(viewer, managerId, ratings, raterNames) {
 async function weekAnalytics(managerId, start) {
   const end = weekEndOf(start);
   const [completedCases, completedTasks] = await Promise.all([
-    Case.countDocuments({ assignedCaseManager: managerId, status: { $in: CLOSED_CASE_STATUSES }, updatedAt: { $gte: start, $lt: end } }),
+    Case.countDocuments({ ...caseManagerMatch(managerId), status: { $in: CLOSED_CASE_STATUSES }, updatedAt: { $gte: start, $lt: end } }),
     Task.countDocuments({ assignedTo: managerId, status: "completed", updatedAt: { $gte: start, $lt: end } }),
   ]);
   return { completedCases, completedTasks };

@@ -619,6 +619,10 @@ const CRMCaseDetail = () => {
   const [assignInternalNote, setAssignInternalNote] = useState('')
   const [assignError, setAssignError] = useState('')
   const [assigning, setAssigning] = useState(false)
+  // Edit Staff popup: adding / removing additional case managers (the primary is changed through the Assign Staff form).
+  const [addCaseManagerId, setAddCaseManagerId] = useState('')
+  const [teamActionBusy, setTeamActionBusy] = useState(false)
+  const [teamActionError, setTeamActionError] = useState('')
   // P12-S2: replaces a window.alert() previously fired here.
   const [infoModal, setInfoModal] = useState(null)
   // P12-S3: Case ID copy-to-clipboard feedback (case header).
@@ -853,7 +857,8 @@ const CRMCaseDetail = () => {
       ensureUsers()
       ensureAttorneys()
     }
-  }, [showAssignModal, ensureUsers, ensureAttorneys])
+    if (showStaffDetailsModal) ensureUsers()
+  }, [showAssignModal, showStaffDetailsModal, ensureUsers, ensureAttorneys])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -1194,6 +1199,28 @@ const CRMCaseDetail = () => {
     })
   }, [connected, id, fetchChecklistsProgress, fetchDocuments, fetchCaseForms, fetchFormsOverview])
 
+  // Another case manager changed this case (or the case team changed): refresh quietly so every case manager sees the same data.
+  // Debounced - one edit can fire several events.
+  useEffect(() => {
+    if (!connected) return undefined
+    let timer = null
+    const refresh = (payload) => {
+      if (String(payload?.caseId || payload?._id) !== String(id)) return
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        invalidateCachedGet(`/questionnaires/case/${id}`)
+        fetchCaseDetail(true)
+        fetchChecklistsProgress(id)
+        fetchDocuments(true)
+      }, 800)
+    }
+    const unsubscribers = [subscribe('case:updated', refresh), subscribe('case:team_updated', refresh)]
+    return () => {
+      clearTimeout(timer)
+      unsubscribers.forEach((unsubscribe) => unsubscribe?.())
+    }
+  }, [connected, id, subscribe, fetchChecklistsProgress, fetchDocuments]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Phase 2: on-demand live fetch from uscis.gov for a mapped form whose
   // template doesn't exist yet.
   const handleAcquireForm = async (item) => {
@@ -1458,6 +1485,49 @@ const CRMCaseDetail = () => {
       setAssignError(error.response?.data?.message || error.message || 'Failed to assign staff. Please try again.')
     } finally {
       setAssigning(false)
+    }
+  }
+
+  // Only admins and team leads manage the case team; other staff see it read-only.
+  const canManageCaseTeam = ['super_admin', 'admin', 'team_lead'].includes(user?.role)
+  const sameUserId = (a, b) => Boolean(a && b) && String(a._id || a.id || a) === String(b._id || b.id || b)
+  const additionalCaseManagers = Array.isArray(caseData?.additionalCaseManagers) ? caseData.additionalCaseManagers : []
+  const addableCaseManagers = users.filter((candidate) => (
+    candidate.role === 'case_manager'
+    && !sameUserId(candidate, caseData?.assignedCaseManager)
+    && !additionalCaseManagers.some((existing) => sameUserId(existing, candidate))
+  ))
+
+  const handleAddCaseManager = async () => {
+    if (!addCaseManagerId || teamActionBusy) return
+    setTeamActionError('')
+    setTeamActionBusy(true)
+    try {
+      const response = await casesApi.addCaseManager(id, addCaseManagerId)
+      setAddCaseManagerId('')
+      await fetchCaseDetail(true)
+      const cascaded = response?.data?.childrenCascaded || 0
+      if (cascaded > 0) setInfoModal({ message: `Case manager also added to ${cascaded} child case${cascaded === 1 ? '' : 's'}.` })
+    } catch (error) {
+      setTeamActionError(error.response?.data?.message || error.message || 'Could not add the case manager. Please try again.')
+    } finally {
+      setTeamActionBusy(false)
+    }
+  }
+
+  const handleRemoveCaseManager = async (manager) => {
+    if (teamActionBusy) return
+    const name = manager?.name || manager?.displayName || manager?.email || 'this case manager'
+    if (!window.confirm(`Remove ${name} from this case? They will lose access to it.`)) return
+    setTeamActionError('')
+    setTeamActionBusy(true)
+    try {
+      await casesApi.removeCaseManager(id, manager._id || manager.id)
+      await fetchCaseDetail(true)
+    } catch (error) {
+      setTeamActionError(error.response?.data?.message || error.message || 'Could not remove the case manager. Please try again.')
+    } finally {
+      setTeamActionBusy(false)
     }
   }
 
@@ -3506,19 +3576,92 @@ const CRMCaseDetail = () => {
                 <p className="font-medium text-foreground break-words">{caseData.caseNumber}</p>
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Current Case Manager</p>
+                <p className="text-sm text-muted-foreground">Team Lead</p>
+                <p className="font-medium text-foreground">
+                  {caseData.assignedTeamLead?.name || caseData.assignedTeamLead?.displayName || 'Unassigned'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Case Manager (primary)</p>
                 <p className="font-medium text-foreground">
                   {caseData.assignedCaseManager?.name || caseData.assignedCaseManager?.displayName || 'Unassigned'}
                 </p>
               </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Additional Case Managers</p>
+                {additionalCaseManagers.length === 0 ? (
+                  <p className="font-medium text-foreground">None</p>
+                ) : (
+                  <ul className="mt-1 space-y-1.5">
+                    {additionalCaseManagers.map((manager) => (
+                      <li key={manager._id || manager.id || String(manager)} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-1.5">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">{manager.name || manager.displayName || manager.email || 'Case manager'}</span>
+                        {canManageCaseTeam && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCaseManager(manager)}
+                            disabled={teamActionBusy}
+                            className="shrink-0 text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Attorneys</p>
+                <p className="font-medium text-foreground">
+                  {(caseData.attorneyAccess || [])
+                    .filter((grant) => grant.status === 'active')
+                    .map((grant) => grant.attorneyId?.name || grant.attorneyId?.displayName || grant.attorneyId?.email || 'Attorney')
+                    .join(', ') || 'None'}
+                </p>
+              </div>
             </div>
+
+            {canManageCaseTeam && (
+              <div className="mb-6 rounded-lg border border-border p-3">
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Add Case Manager</label>
+                <div className="flex gap-2">
+                  <select
+                    value={addCaseManagerId}
+                    onChange={(e) => setAddCaseManagerId(e.target.value)}
+                    disabled={teamActionBusy}
+                    className="input-field min-w-0 flex-1"
+                  >
+                    <option value="">Select case manager</option>
+                    {addableCaseManagers.map((candidate) => (
+                      <option key={candidate._id} value={candidate._id}>{candidate.name || candidate.displayName || candidate.email}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddCaseManager}
+                    disabled={!addCaseManagerId || teamActionBusy}
+                    className="btn-primary shrink-0 disabled:opacity-50"
+                  >
+                    {teamActionBusy ? 'Adding…' : 'Add'}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">They get the same access to this case and are emailed about the assignment. The client still sees only the primary case manager.</p>
+                {teamActionError && <p role="alert" className="mt-2 text-xs font-semibold text-red-600">{teamActionError}</p>}
+              </div>
+            )}
+
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setShowStaffDetailsModal(false)}
+                onClick={() => {
+                  setShowStaffDetailsModal(false)
+                  setTeamActionError('')
+                  setAddCaseManagerId('')
+                }}
                 className="btn-secondary flex-1"
               >
-                Cancel
+                Close
               </button>
               <button
                 type="button"

@@ -14,11 +14,13 @@ const REQUEST_TYPES = [
 ]
 const STATUS_STYLES = {
   open: 'bg-amber-100 text-amber-800',
-  submitted: 'bg-blue-100 text-blue-800',
+  submitted: 'bg-green-100 text-green-800',
   approved: 'bg-green-100 text-green-800',
   rejected: 'bg-red-100 text-red-800',
   closed: 'bg-secondary text-muted-foreground',
 }
+// What the status reads as. "submitted" is stored as is (other code relies on it); to the case manager it is Received.
+const STATUS_LABELS = { submitted: 'Received' }
 const EMPTY_FORM = { recipientId: '', name: '', itemKind: 'document', documentCategory: 'Identity', optionsText: '', description: '' }
 
 const kindLabel = (kind) => REQUEST_TYPES.find((item) => item.value === kind)?.label || 'Request'
@@ -213,11 +215,17 @@ export default function InformationRequestPanel({ caseId, caseData, onCaseUpdate
                     </p>
                   </div>
                   <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase ${STATUS_STYLES[request.status] || STATUS_STYLES.closed}`}>
-                    {String(request.status || 'open').replace(/_/g, ' ')}
+                    {STATUS_LABELS[request.status] || String(request.status || 'open').replace(/_/g, ' ')}
                   </span>
                 </div>
                 {request.description && <p className="mt-1 text-sm text-muted-foreground">{request.description}</p>}
                 <AnswerPreview request={request} onOpenFile={openFile} busyKey={busyKey} />
+                {(request.providedIn || []).map((item) => (
+                  <div key={`${item.responseId}-${item.questionKey}`}>
+                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-green-700">Already provided in the client's checklist: {item.label}</p>
+                    <AnswerPreview request={{ ...request, ...item, answer: { value: item.value, files: item.files } }} onOpenFile={openFile} busyKey={busyKey} />
+                  </div>
+                ))}
               </li>
             ))}
           </ul>
