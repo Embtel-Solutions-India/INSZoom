@@ -76,9 +76,44 @@ async function planClientUser(email) {
  * nothing visa-driven runs until a team lead selects one
  * (see ghlVisaSelection.service.js).
  */
+// What an imported card's pipeline stage says about the case:
+//   - "Case Onboarded" is the first stage: a NEW case. Only these send the client the case-creation email.
+//   - any other stage means the case is already under way (an OLD case, imported for the record): no email to the client.
+//   - "Submitted (FedEx)" means the petition was already sent in: the case is imported as COMPLETED, not as a case waiting for assignment.
+const NEW_CASE_STAGE_KEY = "case_onboarded";
+const COMPLETED_STAGE_KEYS = new Set(["submitted_fedex"]);
+const isNewCaseStage = (mapping) => mapping?.unifiedStageKey === NEW_CASE_STAGE_KEY;
+const isCompletedStage = (mapping) => COMPLETED_STAGE_KEYS.has(mapping?.unifiedStageKey);
+
+async function markImportedCaseCompleted(caseDoc) {
+  if (!caseDoc?._id) return;
+  await Case.updateOne(
+    { _id: caseDoc._id, status: { $ne: "completed" } },
+    { $set: { status: "completed" }, $push: { timeline: { type: "status", title: "Marked completed", description: "Imported from GoHighLevel at the Submitted (FedEx) stage: the case was already submitted.", metadata: { previousStatus: caseDoc.status, source: "ghl_import" }, createdAt: new Date() } } }
+  ).catch((error) => logger.error("ghl_mark_completed_failed", { caseId: String(caseDoc._id), error: error.message }));
+}
+
+// An individual imported case keeps the name of its GHL card. Called for cases that already exist whenever their card is seen again (a rename in
+// GHL, or an older import named after the contact). Employee cards (named for the employee, the card holds "Employer, Employee") and family
+// cases (the contact is the petitioner) are left alone. Returns true when the name changed. Never throws.
+async function syncCardName(existing, opportunity) {
+  try {
+    const name = String(opportunity?.name || "").trim();
+    const ghl = existing?.integrations?.ghl;
+    if (!name || !ghl || ghl.role !== "individual" || existing.caseRole === "employee" || existing.clientName === name) return false;
+    const result = await Case.updateOne({ _id: existing._id, "integrations.ghl.role": "individual", clientName: { $ne: name } }, { $set: { clientName: name } });
+    return Boolean(result?.modifiedCount);
+  } catch (error) {
+    logger.error("ghl_sync_card_name_failed", { caseId: String(existing?._id), error: error.message });
+    return false;
+  }
+}
+
 async function createCaseFromOpportunity({ opportunity, contact, category, mapping, origin = "webhook", sendNotifications = false, locationId = env.ghl.locationId, visaResolution = null }) {
   const existing = await findCaseByOpportunity(locationId, opportunity.id);
   if (existing) return { case: existing, created: false };
+  // the client's case-creation email goes only to NEW cases (stage "Case Onboarded"), whatever the caller asked for
+  sendNotifications = Boolean(sendNotifications) && isNewCaseStage(mapping);
   // The case of this opportunity was deleted in the CRM and the opportunity is still being removed from GHL: never bring it back.
   if (await require("./ghlCaseOutbound").isDeletionPending(opportunity.id)) return { case: null, created: false, skipped: "deleted" };
   // An identity link that has stood for a while but whose case no longer exists: the case was deleted without its GHL opportunity being removed
@@ -101,15 +136,18 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
 
   try {
     const routing = await chooseRoute({ opportunity, contact, visaResolution, locationId });
+    let outcome;
     if (routing.route === "family") {
       // Family visa: ONE family case (petitioner = the GHL contact), no child cases (see ghlFamilyService.js).
-      return await familyService.intakeFamilyOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
-    }
-    if (routing.route === "employer") {
+      outcome = await familyService.intakeFamilyOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
+    } else if (routing.route === "employer") {
       // Employer visa: one employee card under a shared employer matter (see ghlEmployerService.js).
-      return await employerService.intakeEmployerOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
+      outcome = await employerService.intakeEmployerOpportunity({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, match: routing.match });
+    } else {
+      outcome = await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, extraAttention: routing.attention || [] });
     }
-    return await buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, extraAttention: routing.attention || [] });
+    if (outcome?.created && isCompletedStage(mapping)) await markImportedCaseCompleted(outcome.case);
+    return outcome;
   } catch (error) {
     await GHLCaseLink.deleteOne({ locationId, opportunityId: opportunity.id, caseId: caseObjectId }).catch(() => {});
     await Case.deleteOne({ _id: caseObjectId }).catch(() => {});
@@ -147,7 +185,9 @@ async function chooseRoute({ opportunity, contact, visaResolution, locationId })
 async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, mapping, origin, sendNotifications, locationId, visaResolution, extraAttention = [] }) {
   const visaPlan = visaService.planFromResolution(visaResolution);
   const email = contact.email || "";
-  const clientName = contact.name || opportunity.name || "GHL Client";
+  // The case carries the name the GHL card shows (the opportunity's own name), not the linked contact's: on an imported card the contact can be a
+  // different person or the company. The contact's name is still used to greet the client in emails.
+  const clientName = String(opportunity.name || "").trim() || contact.name || "GHL Client";
   const clientPlan = await planClientUser(email);
   const needsAttentionReasons = [];
   if (clientPlan.action === "none") needsAttentionReasons.push(clientPlan.reason);
@@ -284,7 +324,7 @@ async function buildAndSaveCase({ caseObjectId, opportunity, contact, category, 
   if (visaPlan.applied) visaService.scheduleProvisioning(newCase._id); // background, throttled
 
   if (sendNotifications) {
-    await notifyGhlCaseCreated(newCase, { clientUser, setupToken }).catch((error) =>
+    await notifyGhlCaseCreated(newCase, { clientUser, setupToken, name: contact.name || clientName }).catch((error) =>
       logger.error("ghl_case_notifications_failed", { caseId: newCase._id, error: error.message })
     );
   }
@@ -363,4 +403,4 @@ async function notifyGhlCaseCreated(caseData, { clientUser, setupToken, email, n
   }
 }
 
-module.exports = { createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink, notifyGhlCaseCreated, planClientUser };
+module.exports = { syncCardName, NEW_CASE_STAGE_KEY, COMPLETED_STAGE_KEYS, isNewCaseStage, isCompletedStage, markImportedCaseCompleted, createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink, notifyGhlCaseCreated, planClientUser };
