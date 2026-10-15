@@ -22,6 +22,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     documentQuestions: [],
     fieldQuestions: [],
     answers: [],
+    requestedItems: [],
     loading: true,
     error: null,
   })
@@ -43,6 +44,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
         documentQuestions: data.documentQuestions || [],
         fieldQuestions: data.fieldQuestions || [],
         answers: data.answers || [],
+        requestedItems: data.requestedItems || [],
         loading: false,
         error: null,
       })
@@ -125,5 +127,12 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     return response.data
   }, [caseId, load])
 
-  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer, removeFileAnswer, autofillFromDocument }
+  // Everything QuestionnaireAnswersPanel needs to show the per-item "Request" control for this checklist.
+  const requestProps = {
+    caseId, targetRole, referenceId,
+    items: state.requestedItems,
+    onChanged: async () => { invalidateCachedGet(`/questionnaires/case/${caseId}`); invalidateCachedGet(`/questionnaires/case/${caseId}/checklists`); await load() },
+  }
+
+  return { ...state, answerMap, filesByKey, refetch: load, saveAnswer, saveFileAnswer, removeFileAnswer, autofillFromDocument, requestProps }
 }

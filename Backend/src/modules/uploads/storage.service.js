@@ -101,7 +101,42 @@ function isS3PreconditionFailed(error) {
   return error?.name === "PreconditionFailed" || error?.$metadata?.httpStatusCode === 412;
 }
 
+// A small, bounded read cache for S3 objects: opening or downloading the same document again (View, then Download, a second reviewer) is
+// served from memory instead of fetching it again - over a slow link one fetch of a 1.7 MB PDF took 43 s. It holds the object exactly as S3
+// returned it (still ENCRYPTED - decryption happens per read as before), is dropped on every write and delete of that key, expires after
+// 10 minutes and never exceeds STORAGE_READ_CACHE_MB (default 64; 0 turns it off). Objects over 20 MB are never cached.
+const READ_CACHE_MAX_BYTES = Math.max(0, Number(process.env.STORAGE_READ_CACHE_MB ?? 64)) * 1024 * 1024;
+const READ_CACHE_TTL_MS = 10 * 60 * 1000;
+const READ_CACHE_MAX_OBJECT_BYTES = 20 * 1024 * 1024;
+const readCache = new Map(); // key -> { buffer, at }  (Map order = least recently used first)
+let readCacheBytes = 0;
+
+function readCacheDrop(key) {
+  const entry = readCache.get(key);
+  if (!entry) return;
+  readCache.delete(key);
+  readCacheBytes -= entry.buffer.length;
+}
+
+function readCacheGet(key) {
+  const entry = readCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.at > READ_CACHE_TTL_MS) { readCacheDrop(key); return null; }
+  readCache.delete(key); // refresh recency
+  readCache.set(key, entry);
+  return Buffer.from(entry.buffer); // a copy: no caller can alter what is cached
+}
+
+function readCachePut(key, buffer) {
+  if (!READ_CACHE_MAX_BYTES || buffer.length > READ_CACHE_MAX_OBJECT_BYTES || buffer.length > READ_CACHE_MAX_BYTES) return;
+  readCacheDrop(key);
+  readCache.set(key, { buffer: Buffer.from(buffer), at: Date.now() });
+  readCacheBytes += buffer.length;
+  while (readCacheBytes > READ_CACHE_MAX_BYTES && readCache.size) readCacheDrop(readCache.keys().next().value);
+}
+
 async function s3PutObject(key, body, contentType) {
+  readCacheDrop(key); // a rewritten object must never be served from the old copy
   const { client, commands } = getS3();
   await client.send(
     new commands.PutObjectCommand({
@@ -112,12 +147,17 @@ async function s3PutObject(key, body, contentType) {
       ServerSideEncryption: env.storage.aws.sse,
     })
   );
+  readCacheDrop(key); // and again after the write: a read that raced it may have cached the old copy
 }
 
 async function s3GetObject(key) {
+  const cached = readCacheGet(key);
+  if (cached) return cached;
   const { client, commands } = getS3();
   const response = await client.send(new commands.GetObjectCommand({ Bucket: env.storage.aws.bucket, Key: key }));
-  return s3BodyToBuffer(response.Body);
+  const buffer = await s3BodyToBuffer(response.Body);
+  readCachePut(key, buffer);
+  return buffer;
 }
 
 async function s3HeadObject(key) {
@@ -375,7 +415,9 @@ async function deleteObject(key) {
     const exists = await s3HeadObject(normalizedKey);
     if (!exists) return false;
     const { client, commands } = getS3();
+    readCacheDrop(normalizedKey);
     await client.send(new commands.DeleteObjectCommand({ Bucket: env.storage.aws.bucket, Key: normalizedKey }));
+    readCacheDrop(normalizedKey);
     return true;
   }
   try {
@@ -389,6 +431,7 @@ async function deleteObject(key) {
 
 module.exports = {
   checksum,
+  _readCache: { get: readCacheGet, put: readCachePut, drop: readCacheDrop, size: () => readCache.size, bytes: () => readCacheBytes },
   decrypt,
   deleteObject,
   encrypt,

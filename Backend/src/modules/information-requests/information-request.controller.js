@@ -31,6 +31,37 @@ exports.list = async (req, res, next) => {
   }
 };
 
+// "Request" next to an existing question/document of the client's checklist: it becomes required for this case only.
+exports.createItem = async (req, res, next) => {
+  try {
+    const caseData = await loadCase(req, res);
+    if (!caseData) return;
+    const result = await service.createItemRequest(caseData, req.body, req.user, req);
+    res.status(result.resent ? 200 : 201).json({ success: true, resent: result.resent, request: result.request, recipient: result.recipient, question: result.question });
+  } catch (error) {
+    if (error.code === "RECIPIENT_REQUIRED") return res.status(error.status || 409).json({ success: false, code: error.code, message: error.message, recipients: error.details?.recipients || [] });
+    next(error);
+  }
+};
+
+// Withdraw such a request (the item stops being required). The request may live on the principal case (shared roles).
+exports.cancelItem = async (req, res, next) => {
+  try {
+    const caseData = await loadCase(req, res);
+    if (!caseData) return;
+    let holder = caseData;
+    const has = (doc) => (doc.informationRequests || []).some((item) => String(item._id) === String(req.params.requestId));
+    if (!has(holder) && caseData.parentCase) {
+      const parent = await Case.findById(caseData.parentCase);
+      if (parent && caseService.canAccessCase(req.user, parent) && has(parent)) holder = parent;
+    }
+    const request = await service.cancelItemRequest(holder, req.params.requestId, req.user, req);
+    res.json({ success: true, request });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.create = async (req, res, next) => {
   try {
     const caseData = await loadCase(req, res);

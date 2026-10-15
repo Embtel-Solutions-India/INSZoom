@@ -82,6 +82,11 @@ async function refreshAccessToken() {
 // clear, retriable error instead of an infinite wait.
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS) || 25000;
 const UPLOAD_TIMEOUT_MS = Number(import.meta.env.VITE_UPLOAD_TIMEOUT_MS) || 180000;
+// Writes that do a lot of work on the server (adding an employee slot provisions its checklists and forms; switching an employee's workflow
+// moves the file and sends the invitation) can take far longer than an ordinary request on a slow connection to the database. Giving up at
+// 25 s does NOT stop the server - it finishes, and a retry would repeat the action - so these wait longer.
+const LONG_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_LONG_API_TIMEOUT_MS) || 120000;
+const longRequest = () => ({ signal: AbortSignal.timeout(LONG_REQUEST_TIMEOUT_MS) });
 
 async function request(path, options = {}, retry = true) {
   const headers = { ...options.headers };
@@ -174,20 +179,22 @@ async function request(path, options = {}, retry = true) {
 
 export const api = {
   get: (path) => request(path, { method: "GET" }),
-  post: (path, body) =>
+  post: (path, body, options) =>
     request(path, {
       method: "POST",
       body: body instanceof FormData ? body : JSON.stringify(body),
+      ...options,
     }),
   put: (path, body) =>
     request(path, {
       method: "PUT",
       body: body instanceof FormData ? body : JSON.stringify(body),
     }),
-  patch: (path, body) =>
+  patch: (path, body, options) =>
     request(path, {
       method: "PATCH",
       body: body instanceof FormData ? body : JSON.stringify(body),
+      ...options,
     }),
   delete: (path, body) =>
     request(path, {
@@ -532,19 +539,20 @@ export const casesApi = {
   // Phase 9 — caseRole=principal/employee/beneficiary child-Case
   // architecture. Distinct from employmentWorkflowApi above, which is the
   // older employerUser/employeeUser-on-one-Case architecture.
-  getRelated: (id) => api.get(`/cases/${id}/related`),
+  // scope: "children" = just the principal/child links (what the Employees dashboard reads and polls) instead of every related record
+  getRelated: (id, { scope } = {}) => api.get(`/cases/${id}/related${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
   setDataEntryMode: (principalId, mode) =>
     api.patch(`/cases/${principalId}/data-entry-mode`, { mode }),
   // Per-employee workflow: { mode: "fill_self" } revokes an invitation, { mode: "invite", employeeName, employeeEmail } invites.
   setEmployeeDataEntryMode: (principalId, childCaseId, payload) =>
-    api.patch(`/cases/${principalId}/employees/${childCaseId}/data-entry-mode`, payload),
+    api.patch(`/cases/${principalId}/employees/${childCaseId}/data-entry-mode`, payload, longRequest()),
   inviteEmployee: (principalId, data) =>
-    api.post(`/cases/${principalId}/invite-employee`, data),
-  removeEmployee: (caseId) => api.patch(`/cases/${caseId}/remove-employee`),
+    api.post(`/cases/${principalId}/invite-employee`, data, longRequest()),
+  removeEmployee: (caseId) => api.patch(`/cases/${caseId}/remove-employee`, undefined, longRequest()),
   resendEmployeeInvite: (principalId, childCaseId) =>
-    api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }),
+    api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }, longRequest()),
   addEmployeeSlot: (principalId, payload = {}) =>
-    api.post(`/cases/${principalId}/add-employee-slot`, payload),
+    api.post(`/cases/${principalId}/add-employee-slot`, payload, longRequest()),
   employeeVisaOptions: () => api.get("/cases/employee-visa-options"),
 };
 
@@ -737,12 +745,20 @@ export const questionnairesApi = {
   // Opens one stored answer file in a new tab (read-only view of an invited employee's documents). The download route authorizes
   // against the answer's own case, so this works for exactly the people allowed to read that file.
   viewAnswerFile: async (id, { responseId, questionKey, storageKey }) => {
-    const query = new URLSearchParams({ responseId, questionKey, storageKey, inline: "true" }).toString();
-    const response = await api.get(`/questionnaires/${id}/answers/files/download?${query}`);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    // the tab opens on the click itself (a tab opened after a slow download is blocked by the browser); the file is loaded into it later
+    const tab = window.open("", "_blank");
+    if (tab) { try { tab.opener = null; tab.document.body.innerText = "Opening document…"; } catch { /* cosmetic only */ } }
+    try {
+      const query = new URLSearchParams({ responseId, questionKey, storageKey, inline: "true" }).toString();
+      const response = await api.get(`/questionnaires/${id}/answers/files/download?${query}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      if (tab) tab.location.href = url; else window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) {
+      if (tab) tab.close();
+      throw error;
+    }
   },
   generateDocumentRequests: (id, payload) => api.post(`/questionnaires/${id}/document-requests`, payload),
 };

@@ -478,9 +478,20 @@ async function getMyIntake(user) {
   return buildIntakePayload(client, caseData, user);
 }
 
+async function resolveCaseClient(caseData) {
+  return caseData.clientProfile?._id ? caseData.clientProfile : Client.findOne({ $or: [{ _id: caseData.clientProfile }, { user: caseData.user }, { clientPortalId: caseData.clientPortalId }].filter((item) => Object.values(item)[0]) });
+}
+
+// Just the client profile of a case (same access check, same client resolution as getCaseIntake) - what the Admin case page reads from the
+// intake bundle - without building the rest of the bundle (the whole case again, every document, up to 200 answers).
+async function getCaseIntakeClient(caseId, user) {
+  const caseData = await caseService.getAccessibleCaseOrThrow(caseId, user, { omit: caseService.CASE_OMIT_LOOKUP });
+  return { client: (await resolveCaseClient(caseData)) || {} };
+}
+
 async function getCaseIntake(caseId, user) {
   const caseData = await assertCaseAccess(caseId, user);
-  const client = caseData.clientProfile?._id ? caseData.clientProfile : await Client.findOne({ $or: [{ _id: caseData.clientProfile }, { user: caseData.user }, { clientPortalId: caseData.clientPortalId }].filter((item) => Object.values(item)[0]) });
+  const client = await resolveCaseClient(caseData);
   if (!client) return buildIntakePayload({}, caseData, user);
   return buildIntakePayload(client, caseData, user);
 }
@@ -488,6 +499,7 @@ async function getCaseIntake(caseId, user) {
 module.exports = {
   calculateProgress,
   getCaseIntake,
+  getCaseIntakeClient,
   getMyIntake,
   saveClientIntake,
   submitClientIntake,

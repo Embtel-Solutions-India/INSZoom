@@ -10,6 +10,8 @@ const participantService = require("../cases/case-participant.service");
 const notificationService = require("../notifications/notification.service");
 const emailService = require("../email/email.service");
 const env = require("../../config/env");
+const requestedFields = require("./requested-fields");
+const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
 
 // Generic staff "Request information" flow.
 //
@@ -203,7 +205,7 @@ function ensureReference(caseData, questionnaire, recipient, actor, dueDate) {
 
 const PORTAL_LINK = "/dashboard/documents";
 
-async function notifyRecipient({ caseData, recipient, name, itemKind, description, actor, req }) {
+async function notifyRecipient({ caseData, recipient, name, itemKind, description, actor, req, required = false }) {
   const caseManager = userName(actor) || "Your case manager";
   const emailData = {
     caseNumber: caseData.caseNumber,
@@ -212,6 +214,7 @@ async function notifyRecipient({ caseData, recipient, name, itemKind, descriptio
     itemName: name,
     itemKind: itemKind === "document" ? "document" : "information",
     details: description || name,
+    required,
     portalLink: `${env.clientUrl || ""}${PORTAL_LINK}`,
   };
   const message = `${caseManager} is asking for ${itemKind === "document" ? "this document" : "this information"}: ${name}. Please log in and provide the details in your checklist.`;
@@ -368,7 +371,173 @@ async function listRequestsWithAnswers(caseData) {
   return out;
 }
 
+// ── "Request" on an item that is ALREADY on the client's checklist ─────────────────────────────────────────────────────────────────────
+// The case manager clicks Request next to a text answer or a document row. That question becomes REQUIRED FOR THIS CASE ONLY (the shared
+// questionnaire is never edited): the client is e-mailed what is being asked, sees the item flagged "Requested by your case manager", and
+// cannot submit the checklist until it is answered. Idempotent: asking again for an item with an open request re-sends the e-mail (with the
+// updated note) instead of creating a second request.
+function kindOfQuestion(question) {
+  return question?.type === "file" || question?.type === "file-multiple" ? "document" : "text";
+}
+
+// The recipients that can own this checklist: its role first, the case's single person otherwise.
+function candidateRecipients(recipients, role) {
+  const byRole = recipients.filter((option) => option.role === role);
+  if (byRole.length) return byRole;
+  return recipients.length === 1 ? recipients : [];
+}
+
+async function createItemRequest(caseData, input, actor, req) {
+  const questionKey = clean(input.questionKey);
+  if (!questionKey) throw httpError(400, "questionKey is required");
+  const note = clean(input.note || input.description);
+  if (note.length > 2000) throw httpError(400, "The note is too long (2000 characters at most)");
+
+  // Resolve the checklist exactly the way the screen showed it; this is also what proves the question is really on this case's checklist.
+  const questionnaireService = require("../questionnaires/questionnaire.service");
+  const state = await questionnaireService.getQuestionnaireForCase(caseData._id, actor, clean(input.targetRole) || undefined, { referenceId: clean(input.referenceId) || undefined });
+  if (!state?.questionnaire || !state.responseId) throw httpError(404, "That checklist is not available for this case");
+  const question = (state.questions || []).find((item) => item.key === questionKey);
+  if (!question) throw httpError(404, "That question is not on this case's checklist");
+  const role = clean(input.targetRole) || state.questionnaire.checklistRole || "";
+
+  // Where the response (and therefore the request) lives: a principal's shared role is answered on the principal case.
+  let ownerCase = caseData;
+  if (isSharedRoleForChildCase(caseData, role)) {
+    ownerCase = await Case.findById(caseData.parentCase);
+    if (!ownerCase || !caseService.canAccessCase(actor, ownerCase)) throw httpError(404, "Case not found");
+  }
+
+  const recipients = await listRecipients(ownerCase);
+  let recipient = input.recipientId ? recipients.find((option) => option.id === input.recipientId) : null;
+  if (input.recipientId && !recipient) throw httpError(400, "Recipient is not a participant of this case");
+  if (!recipient) {
+    const candidates = candidateRecipients(recipients, role);
+    if (candidates.length === 1) [recipient] = candidates;
+    else if (candidates.length > 1) {
+      const error = httpError(409, "Choose who this request goes to");
+      error.code = "RECIPIENT_REQUIRED";
+      error.details = { recipients: candidates };
+      throw error;
+    }
+  }
+  if (!recipient) throw httpError(400, "There is no client on this checklist to send the request to");
+
+  const itemKind = kindOfQuestion(question);
+  const name = clean(question.label) || questionKey;
+  const existing = (ownerCase.informationRequests || []).find((request) => (
+    request.scope === "existing_question" && request.questionKey === questionKey && String(request.responseId || "") === String(state.responseId) && (request.status || "open") === "open"
+  ));
+
+  let request = existing;
+  let task = null;
+  if (existing) {
+    if (note) existing.description = note;
+    existing.requestedBy = actor._id;
+    existing.requestedAt = new Date();
+  } else {
+    const requestId = new mongoose.Types.ObjectId();
+    task = await Task.create({
+      title: `Provide: ${name}`,
+      description: note,
+      caseId: ownerCase._id,
+      companyId: ownerCase.companyId,
+      assignedTo: recipient.userId || undefined,
+      assignedBy: actor._id,
+      category: "client_communication",
+      documentation: { workType: itemKind === "document" ? "document_request" : "client_follow_up", documentType: name, instructions: note },
+      priority: "medium",
+      status: recipient.userId ? "assigned" : "pending",
+      dueDate: input.dueDate,
+      source: "shared",
+    });
+    ownerCase.informationRequests.push({
+      _id: requestId,
+      scope: "existing_question",
+      target: recipient.role,
+      title: name,
+      description: note,
+      requestType: itemKind === "document" ? "document" : "questionnaire",
+      documentType: itemKind === "document" ? name : undefined,
+      itemKind,
+      recipientRole: recipient.role,
+      recipientName: recipient.name,
+      recipientEmail: recipient.email,
+      dueDate: input.dueDate,
+      assignedTo: recipient.userId || undefined,
+      participantId: recipient.participantId || undefined,
+      requestedBy: actor._id,
+      task: task._id,
+      questionnaireId: state.questionnaire._id,
+      questionKey,
+      responseId: state.responseId,
+    });
+    request = ownerCase.informationRequests[ownerCase.informationRequests.length - 1];
+    // A request on a finished checklist re-opens it: the client has something to submit again.
+    const reference = (ownerCase.questionnaireReferences || []).find((item) => item.active !== false && String(item.responseId || "") === String(state.responseId));
+    if (reference && ["completed", "submitted", "approved", "returned"].includes(reference.status)) reference.status = "in_progress";
+    caseService.addTimelineEvent(ownerCase, "request", "Information Requested", `${recipient.label} was asked for ${name} (now required for this case).`, actor, { target: recipient.role, taskId: task._id, requestId, questionKey });
+  }
+  caseService.addAuditEntry(ownerCase, existing ? "information_request_resent" : "information_request_created", `${existing ? "Re-sent request for" : "Requested"} ${name} from ${recipient.label}`, actor, { requestId: request._id, questionKey, scope: "existing_question", itemKind, recipientRole: recipient.role }, req);
+  await ownerCase.save();
+  await caseService.writeAuditLog(existing ? "information_request_resent" : "information_request_created", ownerCase, actor, { requestId: request._id, questionKey, scope: "existing_question" }, req).catch(() => null);
+  // Delivery failures must never undo a saved request.
+  await notifyRecipient({ caseData: ownerCase, recipient, name, itemKind, description: note, actor, req, required: true }).catch(() => null);
+  return { request, recipient, resent: Boolean(existing), question: { key: question.key, label: name, itemKind }, ownerCaseId: ownerCase._id };
+}
+
+// Withdraws a request (made by mistake / no longer needed): the item stops being required for this case. The client's answer, if any, stays.
+async function cancelItemRequest(caseData, requestId, actor, req) {
+  const request = caseData.informationRequests?.id?.(requestId) || (caseData.informationRequests || []).find((item) => idOf(item._id) === idOf(requestId));
+  if (!request || request.scope !== "existing_question") throw httpError(404, "Request not found");
+  if (request.status === "closed") return request;
+  request.status = "closed";
+  request.resolvedAt = new Date();
+  if (request.task) await Task.updateOne({ _id: request.task, status: { $nin: ["completed", "cancelled"] } }, { $set: { status: "cancelled" } }).catch(() => null);
+  caseService.addTimelineEvent(caseData, "request", "Request Withdrawn", `The request for ${request.title} was withdrawn; it is no longer required.`, actor, { requestId: request._id });
+  caseService.addAuditEntry(caseData, "information_request_closed", `Withdrew request for ${request.title}`, actor, { requestId: request._id, questionKey: request.questionKey }, req);
+  await caseData.save();
+  return request;
+}
+
+// Called by saveAnswers when an answer arrives for a response that has open item requests: answered ones move to "submitted" and the
+// requesting team member is told.
+async function markItemRequestsAnswered({ caseId, responseId, answerMap = {}, user, req }) {
+  const caseData = await Case.findById(caseId).select("informationRequests caseNumber assignedCaseManager").lean();
+  if (!caseData) return [];
+  const now = new Date();
+  const done = [];
+  for (const request of caseData.informationRequests || []) {
+    if (!requestedFields.isItemRequest(request) || (request.status || "open") !== "open" || String(request.responseId || "") !== String(responseId)) continue;
+    if (!isAnswered(answerMap[request.questionKey])) continue;
+    const result = await Case.updateOne(
+      { _id: caseId, informationRequests: { $elemMatch: { _id: request._id, status: "open" } } },
+      { $set: { "informationRequests.$.status": "submitted", "informationRequests.$.submittedAt": now } }
+    );
+    if (!result.modifiedCount) continue;
+    done.push(request);
+    if (request.task) await Task.updateOne({ _id: request.task, status: { $nin: ["completed", "cancelled"] } }, { $set: { status: "completed" } }).catch(() => null);
+    const notifyId = request.requestedBy || caseData.assignedCaseManager;
+    if (notifyId) {
+      await notificationService.createNotification({
+        userId: notifyId,
+        type: "questionnaire_submitted",
+        title: "Requested information received",
+        message: `${request.recipientName || "The client"} provided "${request.title}" for ${caseData.caseNumber || "the case"}.`,
+        link: `/crm-cases/${caseId}`,
+        caseId,
+        source: "shared",
+      }, user, req).catch(() => null);
+    }
+  }
+  return done;
+}
+
 module.exports = {
+  createItemRequest,
+  cancelItemRequest,
+  markItemRequestsAnswered,
+  candidateRecipients,
   ITEM_KINDS,
   DOCUMENT_CATEGORIES,
   STAFF_REQUEST_TAG,

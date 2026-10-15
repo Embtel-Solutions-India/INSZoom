@@ -14,6 +14,8 @@ import {
   isQuestionRequired,
   validateQuestion,
   DOCUMENTS_SECTION_KEY,
+  REQUESTED_SECTION_KEY,
+  isStaffRequested,
 } from "../utils/questionnaireEngine";
 
 // Headless answer-state engine for one case + targetRole's questionnaire —
@@ -138,27 +140,37 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
   // question — this is exactly where a conditional document (e.g. "Upload
   // FEIN Letter" when DOL verification = No) surfaces, inside the
   // questionnaire, never on the reusable Documents page's own baseline list.
+  // What the case manager asked this client for comes FIRST, in one group of its own (documents and information together); those questions
+  // are not repeated in their normal sections. With no request on the case both lists are empty and nothing below changes.
+  const requestedQuestions = useMemo(() => visibleQuestions.filter(isStaffRequested), [visibleQuestions]);
+  const regularFieldQuestions = useMemo(() => (requestedQuestions.length ? visibleFieldQuestions.filter((question) => !isStaffRequested(question)) : visibleFieldQuestions), [requestedQuestions.length, visibleFieldQuestions]);
+  const regularDocumentQuestions = useMemo(() => (requestedQuestions.length ? visibleDocumentQuestions.filter((question) => !isStaffRequested(question)) : visibleDocumentQuestions), [requestedQuestions.length, visibleDocumentQuestions]);
+
   const sections = useMemo(() => {
-    if (!visibleDocumentQuestions.length) return questionnaireSections;
-    return [...questionnaireSections, { key: DOCUMENTS_SECTION_KEY, title: "Documents", description: "Upload the documents this section requires." }];
-  }, [questionnaireSections, visibleDocumentQuestions.length]);
+    const base = regularDocumentQuestions.length
+      ? [...questionnaireSections, { key: DOCUMENTS_SECTION_KEY, title: "Documents", description: "Upload the documents this section requires." }]
+      : questionnaireSections;
+    if (!requestedQuestions.length) return base;
+    return [{ key: REQUESTED_SECTION_KEY, title: "Requested by your case manager", description: "Your case manager asked for these items. Please provide them first." }, ...base];
+  }, [questionnaireSections, regularDocumentQuestions.length, requestedQuestions.length]);
 
   const questionsBySection = useMemo(() => {
     const map = new Map();
     sections.forEach((section) => map.set(sectionKey(section), []));
-    visibleFieldQuestions.forEach((question) => {
+    regularFieldQuestions.forEach((question) => {
       const key = question.sectionKey || "general";
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(question);
     });
-    if (visibleDocumentQuestions.length) map.set(DOCUMENTS_SECTION_KEY, visibleDocumentQuestions);
+    if (regularDocumentQuestions.length) map.set(DOCUMENTS_SECTION_KEY, regularDocumentQuestions);
+    if (requestedQuestions.length) map.set(REQUESTED_SECTION_KEY, requestedQuestions);
     return map;
-  }, [sections, visibleFieldQuestions, visibleDocumentQuestions]);
+  }, [sections, regularFieldQuestions, regularDocumentQuestions, requestedQuestions]);
 
   const allValidationErrors = useMemo(() => visibleQuestions.flatMap((question) =>
     validateQuestion(question, answers[questionKey(question)], answers).map((message) => ({
       key: questionKey(question),
-      sectionKey: isFileQuestion(question) ? DOCUMENTS_SECTION_KEY : (question.sectionKey || "general"),
+      sectionKey: isStaffRequested(question) ? REQUESTED_SECTION_KEY : isFileQuestion(question) ? DOCUMENTS_SECTION_KEY : (question.sectionKey || "general"),
       label: question.label,
       message,
     }))
@@ -330,6 +342,7 @@ export default function useQuestionnaireAnswers(caseId, targetRole, { disabled =
     visibleQuestions,
     visibleFieldQuestions,
     visibleDocumentQuestions,
+    requestedQuestions,
     allValidationErrors,
     missingRequiredCount,
     overallCompletion,

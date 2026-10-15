@@ -82,6 +82,35 @@ describe("employee card after the employer took the information back", () => {
   });
 });
 
+describe("confirmations on the Employees dashboard are themed dialogs, never the browser's box", () => {
+  it("withdrawing an employee asks first in a centred dialog and only then calls the API", async () => {
+    listCaseChecklists.mockResolvedValue({ checklists: [checklist()] });
+    const native = vi.spyOn(window, "confirm");
+    const api = await import("../../services/api");
+    api.casesApi.removeEmployee.mockResolvedValue({ success: true });
+    renderDashboard(invitedChild);
+    fireEvent.click(await screen.findByLabelText("Employee workflow options"));
+    fireEvent.click(screen.getByText("Withdraw"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Withdraw Ana Ruiz?");
+    expect(api.casesApi.removeEmployee).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByText("Withdraw").pop());
+    await waitFor(() => expect(api.casesApi.removeEmployee).toHaveBeenCalledWith("c1"));
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it("'I'll fill this myself instead' on an invited card asks in the dialog; Cancel leaves everything as it was", async () => {
+    listCaseChecklists.mockResolvedValue({ checklists: [checklist()] });
+    const api = await import("../../services/api");
+    renderDashboard(invitedChild);
+    fireEvent.click(await screen.findByText("I'll fill this myself instead"));
+    expect((await screen.findByRole("alertdialog")).textContent).toContain("Their invitation will be cancelled");
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(api.casesApi.setEmployeeDataEntryMode).not.toHaveBeenCalled();
+  });
+});
+
 describe("GrantAccessModal", () => {
   it("saves the employer's progress FIRST, then grants access", async () => {
     const order = [];

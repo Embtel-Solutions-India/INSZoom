@@ -34,6 +34,7 @@ import {
   titleFromKey,
   matchingAutofillSources,
   isWideQuestion,
+  REQUESTED_SECTION_KEY,
 } from "../../utils/questionnaireEngine";
 import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from "../../utils/checklistStatus";
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
@@ -91,7 +92,12 @@ function buildRoleSections(qa, reusableCategories, roleGroup) {
   // item belonging to a DIFFERENT role (e.g. the employer's own "Passport"
   // vs. the employee's own "Passport") is a different person's document and
   // must never be collapsed together.
-  return dedupeSectionsByLabel([...docSections, ...questionnaireSections]);
+  // What the case manager asked this client for goes ABOVE everything, including the reusable document baseline; a case with no request has no
+  // such section and the order is exactly as before.
+  const isRequestedSection = (section) => section.id.endsWith(`-${REQUESTED_SECTION_KEY}`);
+  const requestedSections = questionnaireSections.filter(isRequestedSection);
+  const otherQuestionnaireSections = requestedSections.length ? questionnaireSections.filter((section) => !isRequestedSection(section)) : questionnaireSections;
+  return dedupeSectionsByLabel([...requestedSections, ...docSections, ...otherQuestionnaireSections]);
 }
 
 // Merges save-state/lastSavedAt/statusMessage across however many qa

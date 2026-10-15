@@ -876,7 +876,7 @@ exports.getCases = async (req, res, next) => {
 
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }], { allowDiskUse: true }).toArray()
+      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }, ...[caseService.caseListSlimStage()].filter(Boolean)], { allowDiskUse: true }).toArray()
         .then((docs) => caseService.populateCaseListDocs(docs)),
     ]);
     timer.mark("case_query_completed", { total, count: cases.length });
@@ -913,7 +913,8 @@ exports.getCases = async (req, res, next) => {
 
 exports.getCase = async (req, res, next) => {
   try {
-    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
+    // canonicalHistory (up to ~300 KB) is read by no screen: leave it out of this read (see case.service CASE_OMIT_HISTORY)
+    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_HISTORY });
     const serialized = caseService.serializeCaseForUser(caseData, req.user);
     await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
@@ -3048,6 +3049,14 @@ exports.linkCase = async (req, res, next) => {
 
 exports.getRelated = async (req, res, next) => {
   try {
+    // ?scope=children: the principal/child links only (what the Employees panels read and poll). Same access check and the same child rows
+    // as the full response, without loading every document, message, notification, payment, task and workflow of the case.
+    if (req.query.scope === "children") {
+      const lookup = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_LOOKUP });
+      if (caseService.isRestrictedPortalRole(req.user?.role)) return res.json({ success: true, parentCase: null, childCases: [] });
+      const links = await caseService.getCaseLinks(lookup);
+      return res.json({ success: true, parentCase: links.parentCase, childCases: links.childCases });
+    }
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const related = await caseService.getRelatedRecords(caseData);
     if (caseService.isRestrictedPortalRole(req.user?.role)) {

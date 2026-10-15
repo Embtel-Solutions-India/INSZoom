@@ -35,7 +35,10 @@ async function submitMyIntake(req, res, next) {
 
 async function getCaseIntake(req, res, next) {
   try {
-    const intake = await intakeService.getCaseIntake(req.params.caseId, req.user);
+    // ?view=client: only the client profile (the Admin case page reads nothing else from the bundle)
+    const intake = req.query.view === "client"
+      ? await intakeService.getCaseIntakeClient(req.params.caseId, req.user)
+      : await intakeService.getCaseIntake(req.params.caseId, req.user);
     res.json({ success: true, intake });
   } catch (error) {
     next(error);

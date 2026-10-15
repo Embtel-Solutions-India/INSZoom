@@ -43,6 +43,13 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     return { key, title: section.title, questions, autofillSources: matchingAutofillSources(questions) };
   }).filter((section) => section.questions.length > 0), [sections, questionsBySection]);
 
+  // Items the case manager requested are NOT a page of their own: the qa hook puts them in the FIRST section, so the first document on the
+  // Documents step and the first group on the Information step are the requested ones, right above everything else.
+  const steps = STEPS;
+  const safeStepIndex = Math.min(stepIndex, steps.length - 1);
+  const stepKey = steps[safeStepIndex].key;
+  const stepOfItem = (item) => (item.isDocument ? 0 : 1);
+
   const documentQuestions = useMemo(
     () => sectionsWithItems.flatMap((section) => section.questions.filter((q) => isFileQuestion(q))),
     [sectionsWithItems]
@@ -204,36 +211,36 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
 
       {/* Stepper — collapses to "Step X of 3" + a thin bar below sm */}
       <div className="hidden sm:flex items-center gap-2">
-        {STEPS.map((step, index) => (
+        {steps.map((step, index) => (
           <div key={step.key} className="flex items-center gap-2 flex-1">
             <button
               type="button"
-              onClick={() => index <= stepIndex && setStepIndex(index)}
-              disabled={index > stepIndex}
+              onClick={() => index <= safeStepIndex && setStepIndex(index)}
+              disabled={index > safeStepIndex}
               className={`flex items-center gap-2 text-sm font-semibold whitespace-nowrap transition-colors ${
-                index === stepIndex ? "text-foreground" : index < stepIndex ? "text-primary" : "text-muted-foreground"
+                index === safeStepIndex ? "text-foreground" : index < safeStepIndex ? "text-primary" : "text-muted-foreground"
               }`}
             >
               <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold border transition-colors ${
-                index === stepIndex ? "border-primary bg-primary text-primary-foreground" : index < stepIndex ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"
+                index === safeStepIndex ? "border-primary bg-primary text-primary-foreground" : index < safeStepIndex ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground"
               }`}>
-                {index < stepIndex ? "✓" : index + 1}
+                {index < safeStepIndex ? "✓" : index + 1}
               </span>
               {step.label}
             </button>
-            {index < STEPS.length - 1 && <div className={`h-px flex-1 transition-colors ${index < stepIndex ? "bg-primary" : "bg-border"}`} />}
+            {index < steps.length - 1 && <div className={`h-px flex-1 transition-colors ${index < safeStepIndex ? "bg-primary" : "bg-border"}`} />}
           </div>
         ))}
       </div>
       <div className="sm:hidden space-y-1.5">
-        <p className="text-sm font-bold text-foreground">Step {stepIndex + 1} of {STEPS.length} · {STEPS[stepIndex].label}</p>
+        <p className="text-sm font-bold text-foreground">Step {safeStepIndex + 1} of {steps.length} · {steps[safeStepIndex].label}</p>
         <div className="h-1 rounded-full bg-secondary overflow-hidden">
-          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${((stepIndex + 1) / STEPS.length) * 100}%` }} />
+          <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${((safeStepIndex + 1) / steps.length) * 100}%` }} />
         </div>
       </div>
 
       {/* Step 1: Documents */}
-      {stepIndex === 0 && (
+      {stepKey === "documents" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-5">
             <p className="text-sm font-bold text-foreground">Documents we need</p>
@@ -256,7 +263,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
       )}
 
       {/* Step 2: Information */}
-      {stepIndex === 1 && (
+      {stepKey === "information" && (
         <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
           <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible border-b md:border-b-0 md:border-r border-border pb-2 md:pb-0 md:pr-4 md:sticky md:top-4 md:self-start">
             {infoSections.map((section, index) => (
@@ -301,7 +308,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
       )}
 
       {/* Step 3: Review */}
-      {stepIndex === 2 && (
+      {stepKey === "review" && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04)] divide-y divide-border">
             {sectionsWithItems.map((section) => {
@@ -325,7 +332,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                   <li key={item.question._id || item.question.key}>
                     <button
                       type="button"
-                      onClick={() => { setStepIndex(item.isDocument ? 0 : 1); }}
+                      onClick={() => { setStepIndex(stepOfItem(item)); }}
                       className="text-sm text-primary underline underline-offset-2"
                     >
                       {item.section} — {item.question.label}
@@ -348,7 +355,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         <button
           type="button"
           onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
-          disabled={stepIndex === 0}
+          disabled={safeStepIndex === 0}
           className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-40 transition-colors hover:bg-secondary"
         >
           Back
@@ -369,13 +376,13 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             {savingProgress ? "Saving…" : "Save progress"}
           </button>
         )}
-        {stepIndex < STEPS.length - 1 ? (
+        {safeStepIndex < steps.length - 1 ? (
           <button
             type="button"
-            onClick={() => setStepIndex((i) => Math.min(STEPS.length - 1, i + 1))}
+            onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
             className="rounded-lg bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            {stepIndex === STEPS.length - 2 ? "Continue to Review" : "Continue"}
+            {safeStepIndex === steps.length - 2 ? "Continue to Review" : "Continue"}
           </button>
         ) : !readOnly ? (
           <button

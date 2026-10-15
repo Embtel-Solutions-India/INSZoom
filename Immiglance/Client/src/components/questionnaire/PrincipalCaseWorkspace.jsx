@@ -6,6 +6,7 @@ import DataEntryModeModal from "./DataEntryModeModal";
 import EmployeeDashboard from "./EmployeeDashboard";
 import EmployeePacketStepper from "./EmployeePacketStepper";
 import GrantAccessModal from "./GrantAccessModal";
+import ConfirmDialog from "./ConfirmDialog";
 
 // how often a read-only view of an invited employee's file re-reads it (what they save or submit appears without a reload)
 const READ_ONLY_REFRESH_MS = 20000;
@@ -38,6 +39,7 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // the grant-access popup: { child, saveFirst } - saveFirst = opened from the employee's own form, whose entries are saved before access is given
   const [grantTarget, setGrantTarget] = useState(null);
   const [takingBack, setTakingBack] = useState(false);
+  const [confirmTakeBack, setConfirmTakeBack] = useState(false);
   const [notice, setNotice] = useState("");
 
   // Called here (not inside CaseRoleChecklistView) so this component can also
@@ -63,7 +65,8 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   const fetchChildren = async (silent = false) => {
     if (!silent) setLoadingChildren(true);
     try {
-      const relatedRes = await casesApi.getRelated(principalId);
+      // only the employee slots are read here: ask for just the principal/child links (it is polled every 30 s)
+      const relatedRes = await casesApi.getRelated(principalId, { scope: "children" });
       // Invariant 5: a removed child's data is preserved server-side, but it
       // no longer shows as an active card/invite slot here.
       const activeChildren = (relatedRes?.childCases || []).filter((c) => c.status !== "removed");
@@ -99,8 +102,7 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // (answers belong to the case, not to the account holding it) and the same screen becomes editable.
   const handleTakeBack = async () => {
     if (!activeChild) return;
-    const who = activeChild.clientName || "this employee";
-    if (!window.confirm(`Fill in ${who}'s information yourself? Their access will be withdrawn. Everything they have already entered is kept.`)) return;
+    setConfirmTakeBack(false);
     setTakingBack(true);
     try {
       const res = await casesApi.setEmployeeDataEntryMode(principalId, activeChild._id, { mode: "fill_self" });
@@ -145,6 +147,16 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
         </div>
       )}
 
+      {confirmTakeBack && activeChild && (
+        <ConfirmDialog
+          title={`Fill in ${activeChild.clientName || "this employee"}'s information yourself?`}
+          message={"Their access will be withdrawn. Everything they have already entered is kept."}
+          confirmLabel="Yes, I'll fill it in"
+          onConfirm={handleTakeBack}
+          onCancel={() => setConfirmTakeBack(false)}
+        />
+      )}
+
       {grantChild && (
         <GrantAccessModal
           employeeName={grantChild.clientName || ""}
@@ -168,7 +180,7 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           caseId={activeChild._id}
           employeeLabel={activeChild.clientName || activeChild.caseNumber}
           readOnly={activeReadOnly}
-          onTakeBack={activeReadOnly ? handleTakeBack : undefined}
+          onTakeBack={activeReadOnly ? () => setConfirmTakeBack(true) : undefined}
           takingBack={takingBack}
           onGrantAccess={!activeReadOnly ? () => setGrantTarget({ child: activeChild, saveFirst: true }) : undefined}
           onExit={closeChild}

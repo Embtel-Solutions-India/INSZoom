@@ -845,16 +845,17 @@ const CRMCaseDetail = () => {
   const fetchCaseDetail = async (silent = false) => {
     try {
       if (silent !== true) setLoading(true)
-      const [response, intakeResponse] = await Promise.all([
-        casesApi.get(id),
-        clientIntakeApi.caseIntake(id).catch(() => null)
-      ])
+      const response = await casesApi.get(id)
       const nextCase = response.data.case
       childPollStoppedRef.current = false // the case loaded, so child-case refreshes may run again
       setCaseData(nextCase)
-      setIntakeBundle(intakeResponse?.data?.intake || null)
+      // The client profile shown in the Overview is the only thing read from the intake bundle: fetch just that, in the background, so the
+      // page opens as soon as the case itself is here (it used to wait for the whole intake bundle too).
+      clientIntakeApi.caseIntake(id, { view: 'client' })
+        .then((intakeResponse) => setIntakeBundle(intakeResponse?.data?.intake || null))
+        .catch(() => setIntakeBundle(null))
       if (nextCase.caseRole === 'principal' && nextCase.childCaseCount > 0) {
-        casesApi.getRelated(id)
+        casesApi.getRelated(id, { scope: 'children' })
           .then((relatedResponse) => setChildCases(relatedResponse.data.childCases || []))
           .catch((error) => {
             console.error('Error fetching child cases:', error)
@@ -881,7 +882,7 @@ const CRMCaseDetail = () => {
   const refetchChildCases = async () => {
     if (childPollStoppedRef.current) return
     try {
-      const relatedResponse = await casesApi.getRelated(id)
+      const relatedResponse = await casesApi.getRelated(id, { scope: 'children' })
       setChildCases(relatedResponse.data.childCases || [])
     } catch (error) {
       const status = error.response?.status
@@ -2709,6 +2710,7 @@ const CRMCaseDetail = () => {
               onSaveFile={qa.saveFileAnswer}
               onRemoveFile={qa.removeFileAnswer}
               onAutofill={qa.autofillFromDocument}
+              requests={qa.requestProps}
             />
           )
         })()}
@@ -2724,6 +2726,7 @@ const CRMCaseDetail = () => {
           onSaveFile={employerQuestionnaire.saveFileAnswer}
           onRemoveFile={employerQuestionnaire.removeFileAnswer}
           onAutofill={employerQuestionnaire.autofillFromDocument}
+          requests={employerQuestionnaire.requestProps}
         />
         <QuestionnaireAnswersPanel
           title="Employee Questionnaire"
@@ -2737,6 +2740,7 @@ const CRMCaseDetail = () => {
           onSaveFile={employeeQuestionnaire.saveFileAnswer}
           onRemoveFile={employeeQuestionnaire.removeFileAnswer}
           onAutofill={employeeQuestionnaire.autofillFromDocument}
+          requests={employeeQuestionnaire.requestProps}
         />
         <QuestionnaireAnswersPanel
           title="Business Plan Checklist"
@@ -2750,6 +2754,7 @@ const CRMCaseDetail = () => {
           onSaveFile={businessPlanQuestionnaire.saveFileAnswer}
           onRemoveFile={businessPlanQuestionnaire.removeFileAnswer}
           onAutofill={businessPlanQuestionnaire.autofillFromDocument}
+          requests={businessPlanQuestionnaire.requestProps}
         />
         {extraApprovedChecklists.map((item) => (
           <ApprovedChecklistPanel
@@ -2771,6 +2776,7 @@ const CRMCaseDetail = () => {
           onSaveFile={supportingDocumentsQuestionnaire.saveFileAnswer}
           onRemoveFile={supportingDocumentsQuestionnaire.removeFileAnswer}
           onAutofill={supportingDocumentsQuestionnaire.autofillFromDocument}
+          requests={supportingDocumentsQuestionnaire.requestProps}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Petitioner Checklist`}
@@ -2784,6 +2790,7 @@ const CRMCaseDetail = () => {
           onSaveFile={petitionerQuestionnaire.saveFileAnswer}
           onRemoveFile={petitionerQuestionnaire.removeFileAnswer}
           onAutofill={petitionerQuestionnaire.autofillFromDocument}
+          requests={petitionerQuestionnaire.requestProps}
         />
         <QuestionnaireAnswersPanel
           title={`${caseData.visaType || 'Family'} Visa — Beneficiary Checklist`}
@@ -2797,6 +2804,7 @@ const CRMCaseDetail = () => {
           onSaveFile={beneficiaryQuestionnaire.saveFileAnswer}
           onRemoveFile={beneficiaryQuestionnaire.removeFileAnswer}
           onAutofill={beneficiaryQuestionnaire.autofillFromDocument}
+          requests={beneficiaryQuestionnaire.requestProps}
         />
         {showJointSponsorPanel && (
           <QuestionnaireAnswersPanel
@@ -2811,6 +2819,7 @@ const CRMCaseDetail = () => {
             onSaveFile={jointSponsorQuestionnaire.saveFileAnswer}
             onRemoveFile={jointSponsorQuestionnaire.removeFileAnswer}
             onAutofill={jointSponsorQuestionnaire.autofillFromDocument}
+            requests={jointSponsorQuestionnaire.requestProps}
           />
         )}
 
@@ -2827,6 +2836,7 @@ const CRMCaseDetail = () => {
             onSaveFile={greenCardRenewalQuestionnaire.saveFileAnswer}
             onRemoveFile={greenCardRenewalQuestionnaire.removeFileAnswer}
             onAutofill={greenCardRenewalQuestionnaire.autofillFromDocument}
+            requests={greenCardRenewalQuestionnaire.requestProps}
           />
         )}
 
@@ -2861,6 +2871,7 @@ const CRMCaseDetail = () => {
             onSaveFile={gcNvcQuestionnaire.saveFileAnswer}
             onRemoveFile={gcNvcQuestionnaire.removeFileAnswer}
             onAutofill={gcNvcQuestionnaire.autofillFromDocument}
+            requests={gcNvcQuestionnaire.requestProps}
           />
         )}
 

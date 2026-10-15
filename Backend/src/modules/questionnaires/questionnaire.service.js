@@ -35,6 +35,7 @@ const { isPassportInformation } = require("./passportInformation");
 const { applyRequirementLogicToAll } = require("./requirementLogic");
 const adminEdits = require("./adminEdits");
 const employerViewAccess = require("../cases/employer-view-access");
+const requestedFields = require("../information-requests/requested-fields");
 const { H4_CHECKLIST_DEFINITIONS } = require("./h4Checklist");
 const { COS_F1_CHECKLIST_DEFINITIONS } = require("./cosF1Checklist");
 const { F1_REINSTATEMENT_CHECKLIST_DEFINITIONS } = require("./f1ReinstatementChecklist");
@@ -404,7 +405,10 @@ function isQuestionVisible(question, answerMap = {}, user) {
 // Must this (visible) question be answered before Submit? Only a question that is REQUIRED: its own flag (set from the checklist definition),
 // a "required" validation rule, or a `requireWhen` condition that is true for the answers so far. A question flagged metadata.optional never is.
 // Nothing is required to SAVE (validateQuestionValue ignores "required"): Save progress always works. Mirrors the client's isQuestionRequired.
-function isQuestionRequired(question, answerMap = {}) {
+// `requestedKeys` (optional Set): questions the case manager asked THIS client for through the "Request" button - required for this case only,
+// whatever the checklist says (information-requests/requested-fields.js).
+function isQuestionRequired(question, answerMap = {}, requestedKeys) {
+  if (requestedKeys && requestedKeys.has(question?.key)) return true;
   if (question?.metadata?.optional) return false;
   if (question?.required) return true;
   if ((question?.validationRules || []).some((rule) => rule.type === "required")) return true;
@@ -963,12 +967,12 @@ async function buildResponseState(responseId) {
   return { answers, answerMap, questions };
 }
 
-async function calculateCompletion(questionnaire, answerMap, user) {
+async function calculateCompletion(questionnaire, answerMap, user, requestedKeys) {
   const questions = await Question.find({ questionnaire: questionnaire._id, active: true }).sort({ pageKey: 1, sectionKey: 1, order: 1 });
   const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
   // "required" = the visible questions that are required to SUBMIT (isQuestionRequired: the question's own required flag from its checklist
   // definition, a required rule, or a requireWhen that is true). Nothing is mandatory to save.
-  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap));
+  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap, requestedKeys));
   const answeredRequired = required.filter((question) => {
     const value = getAnswerValue(answerMap, question.key);
     return value !== undefined && value !== null && value !== "";
@@ -1053,11 +1057,11 @@ async function resolveVisibleQuestions(questionnaire, answerMap, user) {
 // behavior by simply omitting the 4th argument. It also lets a caller pass a
 // filtered subset (e.g. file-type questions only) to get completion stats
 // scoped to that subset instead of the whole questionnaire.
-async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride) {
+async function calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestionsOverride, requestedKeys) {
   const visibleQuestions = visibleQuestionsOverride || (await resolveVisibleQuestions(questionnaire, answerMap, user));
   const answeredQuestions = visibleQuestions.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   // The visible questions required to SUBMIT (isQuestionRequired); nothing is mandatory to save.
-  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap));
+  const required = visibleQuestions.filter((question) => isQuestionRequired(question, answerMap, requestedKeys));
   const answeredRequiredKeys = new Set(
     required.filter((question) => hasAnsweredValue(getAnswerValue(answerMap, question.key))).map((question) => question.key)
   );
@@ -1522,8 +1526,9 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
       await syncDocumentRecordsFromFileAnswer(question, item.newFiles || item.files, effectiveCaseId, user, req);
     }
   }
-  const completion = await calculateCompletion(questionnaire, answerMap, user);
-  const detailedProgress = await calculateDetailedProgress(questionnaire, answerMap, user);
+  const requestedKeys = requestedFields.requestedKeysFromCases([caseData, requestedCaseData], responseId);
+  const completion = await calculateCompletion(questionnaire, answerMap, user, requestedKeys);
+  const detailedProgress = await calculateDetailedProgress(questionnaire, answerMap, user, undefined, requestedKeys);
   const mappingOutput = buildMappingOutput(questions, answerMap);
   const calculatedFields = buildCalculatedFields(questions, answerMap);
   const responseValidation = validateResponse(questionnaire, questions, answerMap, user);
@@ -1540,6 +1545,14 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
   if (caseData && (questionnaire.tags || []).includes("staff_request")) {
     await require("../information-requests/information-request.service")
       .markAnswered({ caseId: caseData._id, questionnaire, answerMap, user, req })
+      .catch(() => null);
+  }
+  // Questions the case manager asked for on an existing checklist: an answered one flips its request to "submitted" (no extra query
+  // unless this response really has an open request - the case document is already loaded).
+  const openItemRequests = requestedFields.itemRequestsFor([caseData, requestedCaseData], responseId).filter((request) => (request.status || "open") === "open");
+  if (openItemRequests.length && openItemRequests.some((request) => hasAnsweredValue(getAnswerValue(answerMap, request.questionKey)))) {
+    await require("../information-requests/information-request.service")
+      .markItemRequestsAnswered({ caseId: (requestedCaseData || caseData)._id, responseId, answerMap, user, req })
       .catch(() => null);
   }
   const answerAudit = writeAuditLog(status === PRESERVE_ANSWER_STATUS ? "staff_edited" : status, "answer", { responseId }, user, { questionnaireId: questionnaire._id, count: saved.length }, req);
@@ -1706,6 +1719,28 @@ function documentTypeForQuestion(question) {
 // the only document-upload surface reachable from the real client
 // questionnaire UI. Idempotent on re-save: matches existing Documents by
 // caseId + documentType + storageKey rather than creating duplicates.
+// A checklist question's own category name ("o1b_criteria", "supporting_document", "us_business", "Publication"...) is NOT always one of the
+// Document model's allowed categories - and an unallowed value made Document.create fail validation, which this best-effort sync swallowed:
+// the file sat in the client's checklist but never appeared in the case's Uploaded Documents. This maps any category to a valid one (a valid
+// value is kept as is), so EVERY uploaded file gets its Document record. The original name is kept in the document's tags.
+const DOCUMENT_CATEGORY_VALUES = new Set(Document.schema.path("category").enumValues);
+function documentCategoryFor(question) {
+  const raw = String(question?.metadata?.category || question?.evidenceCategory || "").trim();
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  if (!key) return { category: "other", original: "" };
+  if (DOCUMENT_CATEGORY_VALUES.has(key)) return { category: key, original: raw === key ? "" : raw };
+  let category = "other";
+  if (/business/.test(key)) category = "business";
+  else if (/(^|_)(criteria|evidence|award|publication|impact|judging|press|membership)(_|$)/.test(key)) category = "evidence";
+  else if (/statement|letter/.test(key)) category = "letters";
+  else if (/supporting|principal/.test(key)) category = "supporting";
+  else if (/educat|degree|academic/.test(key)) category = "education";
+  else if (/employ|work|job/.test(key)) category = "employment";
+  else if (/financ|tax|bank/.test(key)) category = "financial";
+  else if (/identity|passport/.test(key)) category = "identity";
+  return { category, original: raw };
+}
+
 async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, req) {
   const documentType = documentTypeForQuestion(question);
   if (!documentType) return [];
@@ -1723,7 +1758,8 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
         caseId,
         documentType,
         ...(owner ? { participantRole: owner, tags: [owner], description: owner === "principal_immigrant" ? "Document of the principal immigrant" : "Document of the related H-1B principal", metadata: { documentOwner: owner, ...(principalCaseId ? { principalCaseId } : {}) } } : {}),
-        category: question.metadata?.category || question.evidenceCategory || "other",
+        category: documentCategoryFor(question).category,
+        ...(documentCategoryFor(question).original ? { tags: [...new Set([...(owner ? [owner] : []), documentCategoryFor(question).original])] } : {}),
         originalName: file.originalName,
         fileName: file.originalName,
         mimeType: file.mimeType,
@@ -1739,8 +1775,9 @@ async function syncDocumentRecordsFromFileAnswer(question, files, caseId, user, 
     } catch (err) {
       // Best-effort, mirroring syncFileAnswerFromDocument's own contract -
       // a Document-sync failure must never fail the underlying answer save.
-      logger.warn?.("questionnaire_file_answer_document_sync_failed", {
-        caseId, questionKey: question.key, error: err.message,
+      // Loud on purpose: a silent failure here is exactly how uploaded files went missing from the Admin Uploaded Documents list.
+      logger.error("questionnaire_file_answer_document_sync_failed", {
+        caseId: String(caseId), questionKey: question.key, storageKey: file.storageKey, error: err.message,
       });
     }
   }
@@ -1814,7 +1851,9 @@ async function readAnswerFile(payload, user) {
     error.status = 404;
     throw error;
   }
-  const caseData = answer.caseId ? await Case.findById(answer.caseId) : null;
+  // Only the access check reads this case: leave out the bulky history/profile/plan fields (they are not part of canAccessCase), so opening
+  // a document no longer downloads the whole case first.
+  const caseData = answer.caseId ? await Case.findById(answer.caseId).select(`-${["canonicalHistory", "canonicalProfile", "auditHistory", "knowledgePlan", "questionnaireData"].join(" -")}`) : null;
   // an employer may VIEW the documents of an employee they invited (read-only; removing/replacing a file keeps canAccessCase alone)
   const authorized = caseData
     ? (caseService.canAccessCase(user, caseData) || await employerViewAccess.canReadInvitedEmployeeCase(user, caseData))
@@ -1949,6 +1988,20 @@ async function syncFileAnswerFromDocument(caseData, document, user, req) {
   return synced;
 }
 
+// The questions a case manager has asked for on this response (case + its principal, for an employee/child case).
+async function requestedKeysForResponse(caseId, responseId) {
+  try {
+    const own = await Case.findById(caseId).select("informationRequests parentCase").lean();
+    if (!own) return new Set();
+    const cases = [own];
+    if (own.parentCase) cases.push(...await requestedFields.loadRequestCases([own.parentCase]));
+    return requestedFields.requestedKeysFromCases(cases, responseId);
+  } catch (error) {
+    logger.error("requested_keys_lookup_failed", { caseId: String(caseId), error: error.message });
+    return new Set(); // never block a save or submit because the lookup failed
+  }
+}
+
 // Submit is for COMPLETE information only. Checked against what is already saved plus what this request carries,
 // BEFORE anything is flagged as submitted, so an incomplete attempt leaves the saved progress exactly as it was.
 async function assertSubmittable(payload, user) {
@@ -1956,12 +2009,14 @@ async function assertSubmittable(payload, user) {
   const questions = await Question.find({ questionnaire: payload.questionnaireId, active: true });
   const stored = await Answer.find({ responseId: payload.responseId }).lean();
   const answerMap = getAnswerMapFromAnswers(stored);
+  // items the case manager asked for on this case are required to submit, even when the checklist marks them optional
+  const requestedKeys = payload.caseId ? await requestedKeysForResponse(payload.caseId, payload.responseId) : new Set();
   (payload.answers || []).forEach((item) => {
     answerMap[item.questionKey] = { ...(answerMap[item.questionKey] || {}), questionKey: item.questionKey, value: item.value };
   });
   const missing = questions
     .filter((question) => isQuestionVisible(question, answerMap, user))
-    .filter((question) => isQuestionRequired(question, answerMap))
+    .filter((question) => isQuestionRequired(question, answerMap, requestedKeys))
     .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
   if (missing.length) {
     const error = new Error(`${missing.length} required item${missing.length === 1 ? " is" : "s are"} still blank. Complete every required item before submitting - use Save progress to keep what you have filled in so far.`);
@@ -1986,9 +2041,10 @@ async function assertStrictChecklistsSubmittable(caseData, user) {
     const questions = await Question.find({ questionnaire: questionnaireId, active: true });
     const stored = reference.responseId ? await Answer.find({ responseId: reference.responseId }).lean() : [];
     const answerMap = getAnswerMapFromAnswers(stored);
+    const requestedKeys = requestedFields.requestedKeysFromCases([caseData], reference.responseId);
     const missing = questions
       .filter((question) => isQuestionVisible(question, answerMap, user))
-      .filter((question) => !question.metadata?.optional)
+      .filter((question) => !question.metadata?.optional || requestedKeys.has(question.key))
       .filter((question) => !hasAnsweredValue(getAnswerValue(answerMap, question.key)));
     if (missing.length) {
       const error = new Error(`${missing.length} item${missing.length === 1 ? " is" : "s are"} still blank. Complete everything before submitting - use Save progress to keep what you have filled in so far.`);
@@ -2774,7 +2830,9 @@ function caseForViewer(caseData, user) {
 
 async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const timer = createStageTimer();
-  const caseData = await Case.findById(caseId);
+  // canonicalHistory (up to ~300 KB, read by nothing here) is left out: this read never saves the case, and every checklist panel of a case
+  // page asks for it once (case.service CASE_OMIT_HISTORY).
+  const caseData = await Case.findById(caseId).select("-canonicalHistory");
   timer.mark("case_lookup");
   if (!caseData) {
     const error = new Error("Case not found");
@@ -2970,8 +3028,12 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
   const answers = await Answer.find({ responseId }).populate("question", "key label type sectionKey pageKey order").sort({ updatedAt: -1 }).lean();
   timer.mark("answer_lookup", { count: answers.length });
   const answerMap = getAnswerMapFromAnswers(answers);
-  const visibleQuestions = questions.filter((question) => isQuestionVisible(question, answerMap, user));
-  const progress = await calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestions);
+  // Items the case manager asked this client for are REQUIRED for this case only: flagged here, so the portal's Submit gate, asterisks
+  // and "missing" list agree with the server's own checks (the shared questionnaire is untouched).
+  const requestMap = requestedFields.requestMapFromCases([caseData, referenceCase], responseId);
+  const requestedKeys = new Set(requestMap.keys());
+  const visibleQuestions = requestedFields.applyRequestedRequirement(questions.filter((question) => isQuestionVisible(question, answerMap, user)), requestMap);
+  const progress = await calculateDetailedProgress(questionnaire, answerMap, user, visibleQuestions, requestedKeys);
   timer.mark("visibility_and_progress", { visibleCount: visibleQuestions.length });
   if (questionnaire.generation?.source === "uscis_question_library") {
     const intelligentState = IntelligentQuestionnaireService.buildCaseQuestionState(
@@ -3030,6 +3092,11 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     responseId,
     participant: participantService.participantSnapshot(requestedParticipant),
     progress,
+    // what the case manager has asked for on this checklist (the Admin panel's per-item "Requested" state)
+    requestedItems: [...requestMap.values()].map((request) => ({
+      requestId: String(request._id), questionKey: request.questionKey, status: request.status, note: request.description || "",
+      requestedAt: request.requestedAt, recipientName: request.recipientName || "", recipientEmail: request.recipientEmail || "",
+    })),
     ...(viaEmployerView ? { readOnly: true, viewerMode: "employer_readonly" } : {}),
   };
 }
@@ -3213,7 +3280,7 @@ async function resolveCaseQuestionnaires(caseId) {
 // theoretically supported by the underlying array.
 async function listCaseChecklists(caseId, user) {
   const timer = createStageTimer();
-  const caseData = await Case.findById(caseId);
+  const caseData = await Case.findById(caseId).select("-canonicalHistory"); // read-only, see getQuestionnaireForCase
   timer.mark("case_lookup");
   if (!caseData) {
     const error = new Error("Case not found");
@@ -3227,7 +3294,7 @@ async function listCaseChecklists(caseId, user) {
   }
   let resolved = await resolveCaseQuestionnaires(caseId);
   const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
-  const parentCaseForGate = caseData?.parentCase ? await Case.findById(caseData.parentCase).select("checklistApproval").lean() : null;
+  const parentCaseForGate = caseData?.parentCase ? await Case.findById(caseData.parentCase).select("checklistApproval informationRequests").lean() : null;
   const approvedHere = (entry) => isApproved(caseData, gateEntry(entry)) || Boolean(parentCaseForGate && isApproved(parentCaseForGate, gateEntry(entry)));
   if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => approvedHere(entry));
   timer.mark("questionnaire_resolution", { count: resolved.length });
@@ -3255,8 +3322,9 @@ async function listCaseChecklists(caseId, user) {
   const checklists = await Promise.all(resolved.map(async (entry) => {
     const responseAnswers = answersByResponseId.get(entry.responseId) || [];
     const answerMap = getAnswerMapFromAnswers(responseAnswers);
+    const requestedKeys = requestedFields.requestedKeysFromCases([caseData, parentCaseForGate], entry.responseId);
     const visibleQuestions = await resolveVisibleQuestions(entry.questionnaire, answerMap, user);
-    const progress = await calculateDetailedProgress(entry.questionnaire, answerMap, user, visibleQuestions);
+    const progress = await calculateDetailedProgress(entry.questionnaire, answerMap, user, visibleQuestions, requestedKeys);
     // Scoped to upload (file-type) questions only, so UI that shows "document"
     // completion (as opposed to questionnaire-answer completion) doesn't mix
     // in unanswered field questions - see CRMCaseDetail.jsx's documentsProgress.
@@ -3610,6 +3678,8 @@ module.exports = {
   // pure helpers, exported so definition tests can exercise real validation without a DB
   isQuestionVisible,
   isQuestionRequired,
+  documentCategoryFor,
+  syncDocumentRecordsFromFileAnswer,
   normalizeAnswerValue,
   validateQuestionValue,
   validateResponse,

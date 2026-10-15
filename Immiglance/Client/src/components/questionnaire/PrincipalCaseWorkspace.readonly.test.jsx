@@ -72,11 +72,17 @@ describe("read-only view of an invited employee", () => {
     expect(input.disabled).toBe(true);
   });
 
-  it("'I'll fill this myself instead' withdraws the access and the SAME screen becomes editable (nothing is lost)", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("'I'll fill this myself instead' asks in a themed centred dialog, then withdraws the access and the SAME screen becomes editable (nothing is lost)", async () => {
+    const nativeConfirm = vi.spyOn(window, "confirm");
     render(<PrincipalCaseWorkspace activeCase={principal} />);
     fireEvent.click(await screen.findByText(/View what Ana Ruiz filled in/));
     fireEvent.click(await screen.findByText("I'll fill this myself instead", { selector: "[data-testid='read-only-banner'] button" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Fill in Ana Ruiz's information yourself?");
+    expect(dialog.textContent).toContain("Everything they have already entered is kept");
+    expect(api.setEmployeeDataEntryMode).not.toHaveBeenCalled(); // nothing happens until it is confirmed
+    fireEvent.click(screen.getByText("Yes, I'll fill it in"));
+    expect(nativeConfirm).not.toHaveBeenCalled(); // never the browser's own box
     await waitFor(() => expect(api.setEmployeeDataEntryMode).toHaveBeenCalledWith("p1", "c1", { mode: "fill_self" }));
     await waitFor(() => expect(screen.queryByTestId("read-only-banner")).toBeNull());
     expect(screen.getByText("Save progress")).toBeTruthy();
@@ -85,11 +91,15 @@ describe("read-only view of an invited employee", () => {
     expect(open.options.disabled).toBe(false);
   });
 
-  it("a declined confirmation changes nothing", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("cancelling the dialog changes nothing (Cancel, and Escape)", async () => {
     render(<PrincipalCaseWorkspace activeCase={principal} />);
     fireEvent.click(await screen.findByText(/View what Ana Ruiz filled in/));
     fireEvent.click(await screen.findByText("I'll fill this myself instead", { selector: "[data-testid='read-only-banner'] button" }));
+    fireEvent.click(await screen.findByText("Cancel"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(screen.getByText("I'll fill this myself instead", { selector: "[data-testid='read-only-banner'] button" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(api.setEmployeeDataEntryMode).not.toHaveBeenCalled();
     expect(screen.getByTestId("read-only-banner")).toBeTruthy();
   });

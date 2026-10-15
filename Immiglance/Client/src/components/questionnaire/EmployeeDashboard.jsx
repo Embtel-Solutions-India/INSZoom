@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { casesApi, questionnairesApi } from "../../services/api";
 import AddEmployeeModal from "./AddEmployeeModal";
+import ConfirmDialog from "./ConfirmDialog";
 
 function initials(name) {
   if (!name) return "?";
@@ -116,6 +117,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [confirmFillSelf, setConfirmFillSelf] = useState(false);
 
   const pillLabel = statusPillFor(child, dataEntryMode, progress);
   // A slot nobody has decided for yet (no explicit choice, no employee named, nothing entered) asks the employer who
@@ -123,8 +125,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const undecided = !child.employeeDataEntryMode && !child.clientName && caseDefaultMode !== "invite" && !(progress?.progress?.percent > 0) && pillLabel !== "Withdrawn";
 
   const handleSwitchToFillSelf = async () => {
-    const who = child.clientName || "this employee";
-    if (!window.confirm(`Fill in ${who}'s information yourself? Their invitation will be cancelled and they will lose access to this case. Anything already entered is kept.`)) return;
+    setConfirmFillSelf(false);
     setSwitching(true);
     setError("");
     try {
@@ -209,7 +210,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
                     <>
                       <button type="button" onClick={() => { setMenuOpen(false); onOpen(child._id, { readOnly: true }); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">View information (read only)</button>
                       <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Resend invite</button>
-                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); handleSwitchToFillSelf(); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
+                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); setConfirmFillSelf(true); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
                     </>
                   )}
                   {!invited && (
@@ -277,7 +278,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
             View what {child.clientName} filled in
             <span className="ml-1.5 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Read only</span>
           </button>
-          <button type="button" disabled={switching} onClick={handleSwitchToFillSelf} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={switching} onClick={() => setConfirmFillSelf(true)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             I'll fill this myself instead
           </button>
         </div>
@@ -304,6 +305,16 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
             Invite employee to fill it instead
           </button>
         )
+      )}
+      {confirmFillSelf && (
+        <ConfirmDialog
+          title={`Fill in ${child.clientName || "this employee"}'s information yourself?`}
+          message={"Their invitation will be cancelled and they will lose access to this case. Anything already entered is kept."}
+          confirmLabel="Yes, I'll fill it in"
+          busy={switching}
+          onConfirm={handleSwitchToFillSelf}
+          onCancel={() => setConfirmFillSelf(false)}
+        />
       )}
     </div>
   );
@@ -340,13 +351,21 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
     }
   };
 
-  const handleWithdraw = async (childId) => {
-    if (!window.confirm("Withdraw this employee? Their information is kept for your records, but they won't be included in this filing.")) return;
+  // Withdrawing asks first, in a themed dialog (the target child is held until the employer confirms).
+  const [withdrawTarget, setWithdrawTarget] = useState(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const handleWithdraw = (childId) => setWithdrawTarget(children.find((child) => child._id === childId) || { _id: childId });
+  const confirmWithdraw = async () => {
+    setWithdrawing(true);
     try {
-      await casesApi.removeEmployee(childId);
+      await casesApi.removeEmployee(withdrawTarget._id);
+      setWithdrawTarget(null);
       onChanged();
     } catch (err) {
+      setWithdrawTarget(null);
       setActionError(err.message || "Failed to withdraw employee");
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -357,6 +376,17 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
       </div>
       {actionError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{actionError}</div>
+      )}
+      {withdrawTarget && (
+        <ConfirmDialog
+          title={`Withdraw ${withdrawTarget.clientName || "this employee"}?`}
+          message={"Their information is kept for your records, but they won't be included in this filing."}
+          confirmLabel="Withdraw"
+          tone="danger"
+          busy={withdrawing}
+          onConfirm={confirmWithdraw}
+          onCancel={() => setWithdrawTarget(null)}
+        />
       )}
       {showAddEmployee && (
         <AddEmployeeModal

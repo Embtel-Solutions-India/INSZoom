@@ -710,6 +710,32 @@ function populateCaseQueryForClient(query) {
   ]);
 }
 
+// The Cases list returns up to 100 whole documents; most of their bytes are fields no list screen reads. This stage (run in the database,
+// after $limit, so only the page is touched) trims them while keeping EXACTLY what summarizeCase and the list screens use:
+//   canonicalHistory / auditHistory / knowledgePlan / questionnaireData   removed (never read from a list)
+//   canonicalProfile   reduced to { missingFields, conflicts } - the only parts summarizeCase reads
+//   timeline           last 5 entries - summarizeCase's recentActivity is timeline.slice(-5)
+// CASE_LIST_SLIM=false restores the untrimmed list.
+function caseListSlimStage() {
+  if (String(process.env.CASE_LIST_SLIM || "true").toLowerCase() === "false") return null;
+  return {
+    $set: {
+      canonicalHistory: "$$REMOVE",
+      auditHistory: "$$REMOVE",
+      knowledgePlan: "$$REMOVE",
+      questionnaireData: "$$REMOVE",
+      canonicalProfile: {
+        $cond: [
+          { $eq: [{ $type: "$canonicalProfile" }, "object"] },
+          { missingFields: "$canonicalProfile.missingFields", conflicts: "$canonicalProfile.conflicts" },
+          "$$REMOVE",
+        ],
+      },
+      timeline: { $cond: [{ $isArray: "$timeline" }, { $slice: ["$timeline", -5] }, "$$REMOVE"] },
+    },
+  };
+}
+
 function populateCaseListQuery(query) {
   return query.populate(CASE_LIST_POPULATE);
 }
@@ -729,8 +755,19 @@ function buildOrQuery(conditions) {
   return picked.length ? { $or: picked } : { _id: null };
 }
 
-async function getAccessibleCaseOrThrow(id, user) {
-  const caseData = await populateCaseQuery(Case.findOne({ $or: [{ _id: id }, { caseId: id }, { caseNumber: id }, { clientPortalId: id }] }));
+// A Case document can be several hundred KB (canonicalHistory alone reached 292 KB on one case) and every read pays for those bytes over
+// the network to the database. Reads that never use a bulky field leave it out - `omit` names paths to exclude. Default: nothing omitted,
+// so every existing caller gets exactly the document it always got.
+//   canonicalHistory   audit trail of canonical-profile rebuilds; no screen or read path uses it (CanonicalProfileService loads its own copy)
+const CASE_OMIT_HISTORY = ["canonicalHistory"];
+//   everything a LOOKUP / LINK read does not need (access checks, child-case links): the canonical profile, histories, plan and answers snapshot
+const CASE_OMIT_LOOKUP = ["canonicalHistory", "canonicalProfile", "auditHistory", "knowledgePlan", "questionnaireData"];
+const omitSelect = (fields) => fields.map((field) => `-${field}`).join(" ");
+
+async function getAccessibleCaseOrThrow(id, user, { omit } = {}) {
+  let query = Case.findOne({ $or: [{ _id: id }, { caseId: id }, { caseNumber: id }, { clientPortalId: id }] });
+  if (omit && omit.length) query = query.select(omitSelect(omit));
+  const caseData = await populateCaseQuery(query);
   if (!caseData) {
     const error = new Error("Case not found");
     error.statusCode = 404;
@@ -785,9 +822,27 @@ async function hydrateCaseRelationships(caseData, user, req) {
   return caseData;
 }
 
+// The principal/child links of a case - the only part of "related records" the employer/employee screens use. One place for the two
+// queries so the full related-records read and the children-only read can never disagree.
+async function getCaseLinks(caseData) {
+  const caseId = caseData._id;
+  const [parentCase, childCases] = await Promise.all([
+    caseData.parentCase ? Case.findById(caseData.parentCase).select("caseNumber clientName visaType status stage") : null,
+    // Phase 7 - also select assignment fields so the child-case list UI can show who's assigned and whether that assignment was
+    // individually overridden (and would therefore be skipped by a future cascade).
+    // Phase 9 - also select clientEmail/dataEntryMode so the invite panel can tell "not yet invited" from "invited" (clientEmail is set by
+    // inviteEmployee) without a second round-trip.
+    Case.find({ parentCase: caseId })
+      .select("caseNumber clientName clientEmail user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
+      .populate("assignedCaseManager", "name displayName email")
+      .sort({ childIndex: 1, createdAt: 1 }),
+  ]);
+  return { parentCase, childCases: await withInviteStatus(childCases, caseData) };
+}
+
 async function getRelatedRecords(caseData) {
   const caseId = caseData._id;
-  const [documents, messages, notifications, appointments, payments, tasks, workflows, parentCase, childCases] = await Promise.all([
+  const [documents, messages, notifications, appointments, payments, tasks, workflows, links] = await Promise.all([
     Document.find(buildOrQuery([{ caseId }, { clientPortalId: caseData.clientPortalId }])).sort({ updatedAt: -1 }),
     Message.find(buildOrQuery([{ caseId }, { clientPortalId: caseData.clientPortalId }])).sort({ createdAt: -1 }).limit(100),
     Notification.find(buildOrQuery([{ caseId }, { case: caseId }, { user: caseData.user }])).sort({ createdAt: -1 }).limit(100),
@@ -795,19 +850,9 @@ async function getRelatedRecords(caseData) {
     Payment.find(buildOrQuery([{ caseId }, { case: caseId }, { user: caseData.user }])).sort({ updatedAt: -1 }),
     Task.find({ caseId }).sort({ dueDate: 1 }),
     Workflow.find(buildOrQuery([{ caseId }, { entityId: caseId }, { "context.caseId": caseId }])).sort({ updatedAt: -1 }),
-    caseData.parentCase ? Case.findById(caseData.parentCase).select("caseNumber clientName visaType status stage") : null,
-    // Phase 7 — also select assignment fields so the child-case list UI can
-    // show who's assigned and whether that assignment was individually
-    // overridden (and would therefore be skipped by a future cascade).
-    // Phase 9 — also select clientEmail/dataEntryMode so the invite panel
-    // can tell "not yet invited" from "invited" (clientEmail is set by
-    // inviteEmployee) without a second round-trip.
-    Case.find({ parentCase: caseId })
-      .select("caseNumber clientName clientEmail user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
-      .populate("assignedCaseManager", "name displayName email")
-      .sort({ childIndex: 1, createdAt: 1 }),
+    getCaseLinks(caseData),
   ]);
-  return { documents, messages, notifications, appointments, payments, tasks, workflows, parentCase, childCases: await withInviteStatus(childCases, caseData) };
+  return { documents, messages, notifications, appointments, payments, tasks, workflows, parentCase: links.parentCase, childCases: links.childCases };
 }
 
 // Per child case: "none" (the principal's own side fills it in - the child's user is still the principal's), "pending" (an employee was
@@ -937,6 +982,10 @@ module.exports = {
   bulkUpdateCases,
   getAccessibleCaseOrThrow,
   getRelatedRecords,
+  getCaseLinks,
+  caseListSlimStage,
+  CASE_OMIT_HISTORY,
+  CASE_OMIT_LOOKUP,
   hydrateCaseRelationships,
   isAdmin,
   isRestrictedPortalRole,

@@ -32,5 +32,20 @@ router.post(
   ctrl.create
 );
 
+// Request an item that is already on the client's checklist (required for this case only), re-send it, or withdraw it.
+router.post(
+  "/item",
+  ...guard,
+  body("questionKey").isString().trim().isLength({ min: 1, max: 200 }).withMessage("questionKey is required"),
+  body("targetRole").optional({ values: "falsy" }).isString().isLength({ max: 60 }),
+  body("referenceId").optional({ values: "falsy" }).isMongoId(),
+  body("recipientId").optional({ values: "falsy" }).isString().isLength({ max: 120 }),
+  body("note").optional({ values: "falsy" }).isString().isLength({ max: 2000 }),
+  body("dueDate").optional({ values: "falsy" }).isISO8601(),
+  validate,
+  ctrl.createItem
+);
+router.post("/:requestId/cancel", ...guard, ctrl.cancelItem);
+
 router.hasTwoOptions = hasTwoOptions;
 module.exports = router;

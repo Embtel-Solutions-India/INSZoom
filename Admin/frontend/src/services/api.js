@@ -244,7 +244,8 @@ export const casesApi = {
     api.patch(`/cases/${id}/attorney-access`, { attorneyId, action: 'grant' }),
   revokeAttorneyAccess: (id, attorneyId) =>
     api.patch(`/cases/${id}/attorney-access`, { attorneyId, action: 'revoke' }),
-  getRelated: (id) => api.get(`/cases/${id}/related`),
+  // scope: 'children' = just the principal/child links (what the Employees panel reads and polls) instead of every related record
+  getRelated: (id, params) => api.get(`/cases/${id}/related`, params ? { params } : undefined),
   // Employer/employee child-case slots (case.controller.js's Phase 9 +
   // extensions) — staff can act on any child case; the employer client can
   // act on their own principal's children (enforced server-side).
@@ -317,6 +318,9 @@ export const informationRequestsApi = {
   recipients: (caseId) => api.get(`/cases/${caseId}/information-requests/recipients`),
   list: (caseId) => api.get(`/cases/${caseId}/information-requests`),
   create: (caseId, payload) => api.post(`/cases/${caseId}/information-requests`, payload),
+  // "Request" next to an item already on the client's checklist: becomes required for this case only (re-sends when already requested)
+  requestItem: (caseId, payload) => api.post(`/cases/${caseId}/information-requests/item`, payload),
+  cancelItemRequest: (caseId, requestId) => api.post(`/cases/${caseId}/information-requests/${requestId}/cancel`),
 }
 
 export const employmentWorkflowApi = {
@@ -536,7 +540,8 @@ export const documentsApi = {
 }
 
 export const clientIntakeApi = {
-  caseIntake: (caseId) => api.get(`/client-intake/cases/${caseId}`),
+  // params.view = 'client': only the client profile (the case page reads nothing else from the bundle)
+  caseIntake: (caseId, params) => api.get(`/client-intake/cases/${caseId}`, params ? { params } : undefined),
 }
 
 export const uscisFormsApi = {

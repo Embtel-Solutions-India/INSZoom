@@ -28,6 +28,7 @@ export default function ApprovedChecklistPanel({ caseId, checklist, refreshToken
       onSaveFile={panel.saveFileAnswer}
       onRemoveFile={panel.removeFileAnswer}
       onAutofill={panel.autofillFromDocument}
+      requests={panel.requestProps}
     />
   )
 }

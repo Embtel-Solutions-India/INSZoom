@@ -400,6 +400,11 @@ const informationRequestSchema = new mongoose.Schema(
     questionnaireId: { type: mongoose.Schema.Types.ObjectId },
     questionKey: String,
     referenceId: { type: mongoose.Schema.Types.ObjectId },
+    // "new_item" (default, the original flow): the request appended its own question to the recipient's "Additional Requested Information"
+    // checklist. "existing_question": the case manager asked for a question/document that is ALREADY on the client's checklist - that
+    // question becomes REQUIRED FOR THIS CASE ONLY (questionKey + responseId identify it; the shared questionnaire is never edited).
+    scope: { type: String, enum: ["new_item", "existing_question"], default: "new_item" },
+    responseId: String,
     status: { type: String, enum: ["open", "submitted", "approved", "rejected", "closed"], default: "open", index: true },
     dueDate: Date,
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

@@ -186,6 +186,11 @@ export function isFileQuestion(question) {
 }
 
 export const DOCUMENTS_SECTION_KEY = "__documents__";
+// Items the case manager asked THIS client for ("Request" in the Admin portal) are shown first, in their own group, ahead of everything else.
+// Membership is decided only by the per-case flag the server puts on such a question (metadata.requestedByStaff) - a case with no request
+// has no such group and everything renders exactly as before.
+export const REQUESTED_SECTION_KEY = "__requested_by_staff__";
+export const isStaffRequested = (question) => Boolean(question?.metadata?.requestedByStaff);
 
 export function isEmptyValue(value) {
   if (value === undefined || value === null) return true;
@@ -249,6 +254,8 @@ export function isQuestionVisible(question, answers) {
 // requireWhen condition that is true for the answers so far. A question flagged metadata.optional never is. Nothing is required to SAVE: any
 // partial answer can always be saved ("Save progress"); only Submit is gated (see missingRequiredCount in useQuestionnaireAnswers).
 export function isQuestionRequired(question, answers) {
+  // asked for by the case manager ("Request" in the Admin portal): required for this case, whatever the checklist says
+  if (question?.metadata?.requestedByStaff) return true;
   if (question?.metadata?.optional) return false;
   if (question?.required) return true;
   if ((question?.validationRules || []).some((rule) => rule.type === "required")) return true;
