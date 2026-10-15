@@ -34,6 +34,14 @@ async function findCaseByOpportunity(locationId, opportunityId) {
   return link ? Case.findById(link.caseId) : null;
 }
 
+// True when an opportunity's identity link has stood for a while but its case no longer exists. Callers check this BEFORE any per-opportunity GHL
+// call (contact, visa), so an orphan costs one database read instead of two API calls and a wait on every pass. Call it only after
+// findCaseByOpportunity returned nothing (a link WITH a case is a normal, existing card).
+async function isOrphanedLink(locationId, opportunityId) {
+  const link = await GHLCaseLink.findOne({ locationId, opportunityId }).select("createdAt").lean();
+  return Boolean(link && Date.now() - new Date(link.createdAt).getTime() > 2 * 60 * 1000);
+}
+
 // A concurrent creator claimed the link first; wait briefly for its case to exist.
 async function awaitLinkedCase(locationId, opportunityId, attempts = 10) {
   for (let i = 0; i < attempts; i += 1) {
@@ -73,6 +81,10 @@ async function createCaseFromOpportunity({ opportunity, contact, category, mappi
   if (existing) return { case: existing, created: false };
   // The case of this opportunity was deleted in the CRM and the opportunity is still being removed from GHL: never bring it back.
   if (await require("./ghlCaseOutbound").isDeletionPending(opportunity.id)) return { case: null, created: false, skipped: "deleted" };
+  // An identity link that has stood for a while but whose case no longer exists: the case was deleted without its GHL opportunity being removed
+  // (for example a direct database cleanup). It is not a concurrent creator mid-flight, so do not wait for one (that cost ~2s and an error per
+  // opportunity on EVERY reconcile pass) and do not bring the deleted case back. Report it as "orphaned"; see scripts/ghl-orphan-cleanup.js.
+  if (await isOrphanedLink(locationId, opportunity.id)) return { case: null, created: false, skipped: "orphaned_link" };
 
   // Claim the external identity FIRST. The unique (locationId, opportunityId)
   // index makes exactly one concurrent creator win; everyone else gets the
@@ -351,4 +363,4 @@ async function notifyGhlCaseCreated(caseData, { clientUser, setupToken, email, n
   }
 }
 
-module.exports = { createCaseFromOpportunity, findCaseByOpportunity, notifyGhlCaseCreated, planClientUser };
+module.exports = { createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink, notifyGhlCaseCreated, planClientUser };

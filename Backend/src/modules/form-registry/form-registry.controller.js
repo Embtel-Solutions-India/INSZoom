@@ -468,11 +468,19 @@ exports.getFormsOverview = async (req, res, next) => {
     const caseData = await loadAuthorizedCase(req);
     const resolved = await visaFormMappingService.resolveVisaFormMappings(caseData);
     const independentEntries = visaFormMappingService.independentFormsFrom(resolved);
-    const existingForms = await CaseForm.find({ caseId: caseData._id })
+    // BUG (fixed): for a principal (employer / family container) case every real CaseForm belongs to a CHILD case's own _id, so looking
+    // only at this case's id found none and listed forms that were already on the case as "ready to add" (the Forms list above this
+    // overview already resolves children this way - uscis-form.service.js listCaseForms: childCases-or-self).
+    const caseIds = caseData.childCases?.length ? caseData.childCases : [caseData._id];
+    const existingForms = await CaseForm.find({ caseId: { $in: caseIds } })
       .select("formCode status formEditionDate completion formTemplateId")
       .populate({ path: "formTemplateId", select: "mappingStatus" })
       .lean();
-    const caseFormsByCode = new Map(existingForms.map((form) => [String(form.formCode).toUpperCase(), form]));
+    const caseFormsByCode = new Map();
+    for (const form of existingForms) {
+      const code = String(form.formCode).toUpperCase();
+      if (!caseFormsByCode.has(code)) caseFormsByCode.set(code, form); // several employees: the first one found represents "already added"
+    }
 
     const bucketByMappingId = new Map();
     for (const bucketName of ["autoCreate", "conditional", "laterStage", "reference"]) {

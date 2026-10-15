@@ -305,6 +305,10 @@ const VISA_CATEGORIES = {
   F3: { caseStructure: "family", forms: ["i-130"], label: "F3 Married Son/Daughter of U.S. Citizen" },
   F4: { caseStructure: "family", forms: ["i-130"], label: "F4 Sibling of U.S. Citizen" },
 
+  // I-824 (Application for Action on an Approved Application or Petition) as its OWN two-party case: Petitioner + Beneficiary checklists, Form I-824
+  // only. Never converted into the underlying petition (I-130, ...) - that approval is referenced evidence, not a form to re-file.
+  "I-824": { caseStructure: "family", forms: ["i-824"], label: "I-824" },
+
   // ─── GREEN CARD / CITIZENSHIP WORKFLOWS (STANDALONE CASE TYPES) ───────────
   "Adjustment of Status": { caseStructure: "single", forms: ["i-485"], label: "Adjustment of Status" },
   "Conditional Green Card Removal": { caseStructure: "single", forms: ["i-751"], label: "Removal of Conditions on Residence" },

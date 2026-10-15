@@ -262,11 +262,28 @@ async function runDeleteOpportunity(job, client) {
   return "done";
 }
 
-/** True while an opportunity of a deleted case is still waiting to be removed from GHL: sync must not turn it back into a case. */
+// GHL's opportunity list is eventually consistent: a card whose delete just succeeded can still be returned by the search for a while. Without
+// a "recently deleted" window the next sync would find a card with no case and import it back as a brand-new case (it happened: a deleted test
+// card came back as a case about a minute after its delete job finished).
+const DELETE_TOMBSTONE_MS = () => Number(process.env.GHL_DELETE_TOMBSTONE_MS || 30 * 60 * 1000);
+
+/** The Mongo filter that matches a delete job still protecting an opportunity from being re-imported. Pure; exported for tests. */
+function deletionPendingFilter(opportunityId, now = Date.now()) {
+  return {
+    type: "delete_opportunity",
+    opportunityId,
+    $or: [
+      { status: { $in: ["pending", "processing", "failed"] } },
+      { status: "done", completedAt: { $gte: new Date(now - DELETE_TOMBSTONE_MS()) } },
+    ],
+  };
+}
+
+/** True while an opportunity of a deleted case is waiting to be removed from GHL (or was removed moments ago): sync must not turn it back into a case. */
 async function isDeletionPending(opportunityId) {
   if (!opportunityId) return false;
   const GHLSyncJob = require("../../models/GHLSyncJob");
-  return Boolean(await GHLSyncJob.exists({ type: "delete_opportunity", opportunityId, status: { $in: ["pending", "processing", "failed"] } }));
+  return Boolean(await GHLSyncJob.exists(deletionPendingFilter(opportunityId)));
 }
 
-module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };

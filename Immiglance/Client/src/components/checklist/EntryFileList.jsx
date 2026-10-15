@@ -18,7 +18,7 @@ const isRetryable = (error) => !error?.status || error.status >= 500 || error.st
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let localSeq = 0;
 
-export default function EntryFileList({ inputId, entries = [], disabled = false, busy = false, onAdd, onRemove, lockedLabel = "Uploads are locked" }) {
+export default function EntryFileList({ inputId, entries = [], disabled = false, busy = false, onAdd, onRemove, onView, lockedLabel = "Uploads are locked" }) {
   const inputRef = useRef(null);
   const mounted = useRef(true);
   const [drag, setDrag] = useState(false);
@@ -89,6 +89,16 @@ export default function EntryFileList({ inputId, entries = [], disabled = false,
               <span className="shrink-0 font-semibold text-muted-foreground">Entry {index + 1}</span>
               <span className="min-w-0 flex-1 basis-32 truncate font-medium text-foreground" title={entry.name}>{entry.name}</span>
               {entry.size ? <span className="shrink-0 text-muted-foreground">{formatBytes(entry.size)}</span> : null}
+              {onView && (
+                <button
+                  type="button"
+                  onClick={() => Promise.resolve(onView(entry)).catch((viewError) => setError(viewError?.message || "Unable to open this document."))}
+                  aria-label={`View entry ${index + 1}: ${entry.name}`}
+                  className="shrink-0 rounded px-1.5 py-1 font-semibold text-primary hover:underline"
+                >
+                  View
+                </button>
+              )}
               {!disabled && (
                 <button
                   type="button"

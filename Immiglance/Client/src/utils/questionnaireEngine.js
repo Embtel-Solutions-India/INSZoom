@@ -186,6 +186,11 @@ export function isFileQuestion(question) {
 }
 
 export const DOCUMENTS_SECTION_KEY = "__documents__";
+// Items the case manager asked THIS client for ("Request" in the Admin portal) are shown first, in their own group, ahead of everything else.
+// Membership is decided only by the per-case flag the server puts on such a question (metadata.requestedByStaff) - a case with no request
+// has no such group and everything renders exactly as before.
+export const REQUESTED_SECTION_KEY = "__requested_by_staff__";
+export const isStaffRequested = (question) => Boolean(question?.metadata?.requestedByStaff);
 
 export function isEmptyValue(value) {
   if (value === undefined || value === null) return true;
@@ -245,10 +250,17 @@ export function isQuestionVisible(question, answers) {
   return evaluateCondition(question?.conditionalLogic, answers) && evaluateCondition(question?.showIf, answers);
 }
 
-// Nothing a client fills in is mandatory: any partial answer can always be saved ("Save progress"). Completeness is a
-// separate rule - Submit needs every visible item answered (see missingRequiredCount in useQuestionnaireAnswers).
-export function isQuestionRequired() {
-  return false;
+// Is this (visible) question required to SUBMIT? Its own required flag (set from the checklist definition), a "required" validation rule, or a
+// requireWhen condition that is true for the answers so far. A question flagged metadata.optional never is. Nothing is required to SAVE: any
+// partial answer can always be saved ("Save progress"); only Submit is gated (see missingRequiredCount in useQuestionnaireAnswers).
+export function isQuestionRequired(question, answers) {
+  // asked for by the case manager ("Request" in the Admin portal): required for this case, whatever the checklist says
+  if (question?.metadata?.requestedByStaff) return true;
+  if (question?.metadata?.optional) return false;
+  if (question?.required) return true;
+  if ((question?.validationRules || []).some((rule) => rule.type === "required")) return true;
+  const requireWhen = question?.metadata?.requireWhen || question?.requiredWhen;
+  return Boolean(requireWhen && evaluateCondition(requireWhen, answers || {}));
 }
 
 // The role set that makes a case "employer-shaped" for the unified
@@ -313,9 +325,8 @@ export function resolveApplicableChecklistRoles(caseData, user) {
 export function validateQuestion(question, value, answers) {
   if (!isQuestionVisible(question, answers)) return [];
   const errors = [];
-  if (isQuestionRequired(question, answers) && isEmptyValue(value)) {
-    errors.push("This field is required.");
-  }
+  // A blank answer is never an error here, required or not: nothing is mandatory to SAVE. Required items are enforced when the person
+  // SUBMITS (isQuestionRequired -> missingRequiredCount / the server's assertSubmittable), not as an inline error while filling in.
   if (question.type === "repeating_group" && Array.isArray(value) && value.length) {
     errors.push(...validateRepeatingGroupRows(question, value).errors);
   }

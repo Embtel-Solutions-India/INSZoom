@@ -16,6 +16,7 @@
 import { useState } from 'react'
 import { Pencil, X, Loader2, Paperclip, ScanLine } from 'lucide-react'
 import { questionnairesApi } from '../services/api'
+import ItemRequestControl from './ItemRequestControl'
 
 const EDITABLE_SCALAR_TYPES = new Set([
   'text', 'textarea', 'number', 'currency', 'percent', 'date', 'datetime',
@@ -66,12 +67,23 @@ function sectionTitleFor(questionnaire, sectionKey) {
     || sectionKey
 }
 
-function AnswerRow({ label, value }) {
+// One answer, laid out like the edit form: the question on the left and the Request control on the right of the same row, and below them
+// the answer in a read-only box ("Needed" when the client has not answered).
+function AnswerRow({ label, value, extra = null }) {
+  const answered = value !== undefined && value !== null && value !== ''
   return (
-    <p>
-      <span className="text-muted-foreground">{label}:</span>{' '}
-      <span className="font-semibold text-foreground">{value ?? 'Needed'}</span>
-    </p>
+    <div className="min-w-0">
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <span className="min-w-0 text-[13px] font-medium leading-snug text-foreground">{label}</span>
+        {extra && <span className="shrink-0">{extra}</span>}
+      </div>
+      <div
+        className={`min-h-[38px] whitespace-pre-wrap break-words rounded-xl border border-border bg-muted px-3.5 py-2 text-sm ${answered ? 'font-medium text-foreground' : 'text-muted-foreground'}`}
+        data-answered={answered ? 'true' : 'false'}
+      >
+        {answered ? value : 'Needed'}
+      </div>
+    </div>
   )
 }
 
@@ -128,12 +140,18 @@ function EditableAnswerInput({ question, value, onChange }) {
   return <input type="text" className={inputClass} value={value || ''} onChange={(event) => onChange(event.target.value)} />
 }
 
-function RepeatingGroupRows({ question, rows: rawRows }) {
+function RepeatingGroupRows({ question, rows: rawRows, requestControl = null }) {
   // An answer can arrive as a single object, a string or null, not only an array.
   const rows = Array.isArray(rawRows) ? rawRows : (rawRows && typeof rawRows === 'object' ? [rawRows] : [])
   const fields = question.metadata?.repeatableFields || []
   return (
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+      {requestControl && (
+        <div className="flex items-start justify-between gap-2 md:col-span-2">
+          <p className="min-w-0 text-sm font-semibold text-foreground">{question.label}</p>
+          <span className="shrink-0">{requestControl}</span>
+        </div>
+      )}
       {(rows || []).map((row, index) => (
         <div key={row?.id || index} className="rounded-lg border border-border bg-muted p-3 text-sm">
           <p className="font-semibold text-foreground mb-1">{question.label} {index + 1}</p>
@@ -165,7 +183,7 @@ function formatFileSize(bytes = 0) {
 // served). Staff can add entries (up to 10, 50 MB each) and remove one.
 // Review: per-file approve/reject lives on each file's Documents record (the
 // Uploaded Documents table); the row-level answer status is unchanged.
-function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove }) {
+function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requestControl = null }) {
   const [uploading, setUploading] = useState(false)
   const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
@@ -199,6 +217,10 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove }) {
   const openEntry = async (file, download) => {
     setBusyKey(file.storageKey)
     setError('')
+    // The file can take a while to arrive; a tab opened only AFTER that wait is blocked by the browser (it is no longer "from the click").
+    // So the tab opens on the click itself and the file is loaded into it when it is here.
+    const viewTab = download ? null : window.open('', '_blank')
+    if (viewTab) { try { viewTab.opener = null; viewTab.document.title = 'Opening document…'; viewTab.document.body.innerText = 'Opening document…' } catch { /* cosmetic only */ } }
     try {
       const response = await questionnairesApi.downloadAnswerFile(questionnaireId, {
         responseId: file.responseId, questionKey: file.questionKey, storageKey: file.storageKey, inline: !download,
@@ -209,12 +231,15 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove }) {
         link.href = url
         link.download = file.originalName || 'document'
         link.click()
+      } else if (viewTab) {
+        viewTab.location.href = url
       } else {
-        window.open(url, '_blank', 'noopener')
+        window.open(url, '_blank', 'noopener') // pop-ups were blocked outright: best effort
       }
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch (err) {
-      setError('Unable to open this file.')
+      if (viewTab) viewTab.close()
+      setError(err.response?.data?.message ? `Unable to open this file: ${err.response.data.message}` : 'Unable to open this file.')
     } finally {
       setBusyKey('')
     }
@@ -234,7 +259,10 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove }) {
 
   return (
     <div className="rounded-lg border border-border bg-muted p-3 text-sm">
-      <p className="font-semibold text-foreground mb-1">{question.label}{current.length > 1 ? ` (${current.length})` : ''}</p>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold text-foreground">{question.label}{current.length > 1 ? ` (${current.length})` : ''}</p>
+        {requestControl}
+      </div>
       {current.length ? (
         <ul className="space-y-1.5">
           {current.map((file, index) => (
@@ -300,7 +328,7 @@ function PassportScanButton({ onAutofill }) {
 
 const PASSPORT_FIELD_KEY = /_passportNumber$/
 
-export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile, onRemoveFile, onAutofill }) {
+export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQuestions, documentQuestions, answerMap, filesByKey, loading, onSaveAnswer, onSaveFile, onRemoveFile, onAutofill, requests }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({})
   const [saving, setSaving] = useState(false)
@@ -402,7 +430,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                 {typeof onAutofill === 'function' && plainQuestions.some((q) => PASSPORT_FIELD_KEY.test(q.key)) && <PassportScanButton onAutofill={onAutofill} />}
               </div>
               {plainQuestions.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm md:grid-cols-2">
                   {plainQuestions.map((question) => (
                     editing && EDITABLE_SCALAR_TYPES.has(question.type) ? (
                       <div key={question.key}>
@@ -414,7 +442,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                         />
                       </div>
                     ) : (
-                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} />
+                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                     )
                   ))}
                 </div>
@@ -422,12 +450,12 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
               {fileQuestions.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                   {fileQuestions.map((question) => (
-                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} />
+                    <FileAnswerRow key={question.key} question={question} files={filesByKey?.[question.key]} questionnaireId={questionnaire?._id} onAdd={onSaveFile} onRemove={onRemoveFile} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                   ))}
                 </div>
               )}
               {repeatingQuestions.map((question) => (
-                <RepeatingGroupRows key={question.key} question={question} rows={answerMap?.[question.key]} />
+                <RepeatingGroupRows key={question.key} question={question} rows={answerMap?.[question.key]} requestControl={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
               ))}
             </div>
           )

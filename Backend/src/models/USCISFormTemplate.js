@@ -253,6 +253,9 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       importedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       importedAt: Date,
       checksum: String,
+      // the date USCIS shows on the form's page (compared with the page by the catalog sync) and where editionDate came from: pdf | uscis_page | import_date
+      publishedEditionDate: Date,
+      editionDateSource: String,
       validationSummary: mongoose.Schema.Types.Mixed,
     },
     lastChecked: Date,

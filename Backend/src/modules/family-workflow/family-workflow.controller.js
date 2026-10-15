@@ -23,6 +23,7 @@ const inviteTokenService = require("../auth/employeeInvite.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const registry = require("./questionnaires/registry");
 const familyChecklists = require("../questionnaires/familyChecklists");
+const { buildI824Details, isI824 } = require("./i824CaseDetails");
 // Same find-or-create-client-user helpers case.controller.js's createCase
 // already uses for the employer/employee path - reused here rather than
 // re-invented, so a newly created petitioner gets the identical account
@@ -212,7 +213,10 @@ async function ensureFamilyChecklistReferences(caseData, user, req, options = {}
 
   const keys = familyChecklists.resolveFamilyChecklistKeys(caseData.visaType, caseData.processingPath);
   for (const key of keys) {
-    const questionnaire = await Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    const findTemplate = () => Questionnaire.findOne({ key, status: { $ne: "archived" }, isActive: { $ne: false }, latestVersion: true }).sort({ version: -1 });
+    let questionnaire = await findTemplate();
+    // self-heal: a built-in checklist that has not been materialised yet is created from its definition (idempotent), never skipped
+    if (!questionnaire && !options.dryRun) { await questionnaireService.ensureTemplate(key, user, req, { wait: true }).catch(() => null); questionnaire = await findTemplate(); }
     if (!questionnaire) { results.push({ key, status: "template_not_found" }); continue; }
     await assign(questionnaire.checklistRole, questionnaire);
   }
@@ -256,6 +260,37 @@ exports.createFamilyCase = async (req, res, next) => {
     const petitionerPhone = clean(req.body.petitioner?.phone || req.body.petitionerPhone || req.body.clientPhone);
     if (!petitionerEmail) return res.status(400).json({ success: false, message: "Petitioner email is required" });
 
+    // Every request check happens BEFORE the first write below. A rejected request (400) used to have already created/updated the
+    // petitioner's client account (and later the Beneficiary record / burned a case number), leaving partial data behind on each retry.
+    const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
+    const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
+    const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
+    if (!beneficiaryEmail) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
+    const completionMode = req.body.familyCompletionMode === "petitioner_completes" ? "petitioner_completes" : "invite_beneficiary";
+    if (completionMode === "invite_beneficiary" && !beneficiaryPhone) {
+      return res.status(400).json({ success: false, message: "Beneficiary mobile number is required to send an invitation" });
+    }
+    const visaType = req.body.visaType || "K-1";
+    // Client-facing wording never says "I-130"/"processingPath" (see
+    // Immiglance intake) - it maps its own plain-language choice onto this
+    // same enum before the request reaches here, so this stays the single
+    // source of truth for both the client and staff-facing (Admin
+    // CreateCaseModal) surfaces. Invalid/unrecognized values are rejected
+    // rather than silently coerced - never guess the client's intent.
+    if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
+      return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
+    }
+    if (req.body.processingPath === "CONSULAR" && familyChecklists.isConsularProcessingDisabled(visaType)) {
+      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${visaType}` });
+    }
+    // Lead conversion (Admin Leads -> Create Case). Previously only the
+    // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
+    // converted through the family path never got marked converted.
+    const sourceLead = req.body.leadId ? await Lead.findById(req.body.leadId) : null;
+    if (sourceLead?.convertedCaseId) {
+      return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
+    }
+
     let petitionerUser = await User.findOne({ email: petitionerEmail });
     let petitionerSetupToken = null;
     if (petitionerUser) {
@@ -281,14 +316,6 @@ exports.createFamilyCase = async (req, res, next) => {
       }]);
     }
 
-    const beneficiaryEmail = clean(req.body.beneficiary?.email || req.body.beneficiaryEmail).toLowerCase();
-    const beneficiaryName = req.body.beneficiary?.name || req.body.beneficiaryName;
-    const beneficiaryPhone = clean(req.body.beneficiary?.phone || req.body.beneficiaryPhone);
-    if (!beneficiaryEmail) return res.status(400).json({ success: false, message: "Beneficiary email is required" });
-    const completionMode = req.body.familyCompletionMode === "petitioner_completes" ? "petitioner_completes" : "invite_beneficiary";
-    if (completionMode === "invite_beneficiary" && !beneficiaryPhone) {
-      return res.status(400).json({ success: false, message: "Beneficiary mobile number is required to send an invitation" });
-    }
     const beneficiaryUser = await User.findOne({ email: beneficiaryEmail });
     const beneficiary = await Beneficiary.findOneAndUpdate(
       { email: beneficiaryEmail },
@@ -296,26 +323,6 @@ exports.createFamilyCase = async (req, res, next) => {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
     const caseNumber = await generateCaseNumber();
-    const visaType = req.body.visaType || "K-1";
-    // Client-facing wording never says "I-130"/"processingPath" (see
-    // Immiglance intake) - it maps its own plain-language choice onto this
-    // same enum before the request reaches here, so this stays the single
-    // source of truth for both the client and staff-facing (Admin
-    // CreateCaseModal) surfaces. Invalid/unrecognized values are rejected
-    // rather than silently coerced - never guess the client's intent.
-    if (req.body.processingPath !== undefined && !VALID_PROCESSING_PATHS.has(req.body.processingPath)) {
-      return res.status(400).json({ success: false, message: `Invalid processingPath "${req.body.processingPath}"` });
-    }
-    if (req.body.processingPath === "CONSULAR" && familyChecklists.isConsularProcessingDisabled(visaType)) {
-      return res.status(400).json({ success: false, message: `Consular Processing is not available for ${visaType}` });
-    }
-    // Lead conversion (Admin Leads -> Create Case). Previously only the
-    // generic createCase handled this, so a K-1/K-3 (or IR-1/...) lead
-    // converted through the family path never got marked converted.
-    const sourceLead = req.body.leadId ? await Lead.findById(req.body.leadId) : null;
-    if (sourceLead?.convertedCaseId) {
-      return res.status(409).json({ success: false, code: "LEAD_ALREADY_CONVERTED", message: "This lead has already been converted to a case" });
-    }
     let caseData = await Case.create({
       ...pipelineCategoryFields(req.body),
       ...(sourceLead ? { creationSource: "lead_conversion", leadId: sourceLead._id } : {}),
@@ -344,6 +351,15 @@ exports.createFamilyCase = async (req, res, next) => {
     });
     beneficiary.caseIds = [...new Set([...(beneficiary.caseIds || []), caseData._id].map(String))];
     await beneficiary.save();
+    if (isI824(visaType)) {
+      // underlying approved petition + requested action (optional, staff-verified); link the original case when its number is given
+      const details = buildI824Details(req.body.underlyingPetition);
+      const original = details.originalCaseNumber ? await Case.findOne({ caseNumber: details.originalCaseNumber }).select("_id").lean() : null;
+      if (original) caseData.linkedCases = [...(caseData.linkedCases || []), { case: original._id, relationship: "related", notes: "Original approved case for this I-824", linkedBy: req.user._id }];
+      caseData.postApprovalAction = details;
+      caseService.addTimelineEvent(caseData, "case", "I-824 Review Flags", details.reviewFlags.length ? `Staff review needed: ${details.reviewFlags.join(", ")}` : "Underlying approval and requested action recorded.", req.user, { reviewFlags: details.reviewFlags });
+      await caseData.save();
+    }
     if (sourceLead) {
       sourceLead.status = "converted";
       sourceLead.convertedCaseId = caseData._id;

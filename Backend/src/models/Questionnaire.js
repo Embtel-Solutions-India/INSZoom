@@ -124,6 +124,8 @@ const questionnaireSchema = new mongoose.Schema(
     // visaTypes to the definition's own list, can re-add these instead of
     // silently wiping the admin's mapping. Always a subset of visaTypes.
     adminVisaTypes: [{ type: String }],
+    // Top-level fields a designer changed on the Questionnaire page; the built-in definition reconciler leaves exactly these alone.
+    adminEditedFields: [{ type: String }],
     caseTypes: [{ type: String, index: true }],
     tags: [{ type: String, index: true }],
     isTemplate: { type: Boolean, default: false, index: true },

@@ -5,7 +5,7 @@ const GHLIntegration = require("../../models/GHLIntegration");
 const pipelineService = require("./ghlPipelineService");
 const { fetchAllOpportunities } = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
-const { createCaseFromOpportunity } = require("./ghlCaseFactory");
+const { createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
 
 const isEnabled = () => env.ghl.enabled && Boolean(env.ghl.token) && Boolean(env.ghl.locationId);
@@ -87,7 +87,7 @@ async function initialSync({ client, user } = {}) {
 
   const summary = { ok: true, pipelines: [] };
   for (const pipeline of config.pipelines.filter((p) => p.enabled)) {
-    const result = { pipeline: pipeline.ghlPipelineName, fetched: 0, created: 0, existing: 0, skippedUnmapped: 0, needsAttention: 0, failed: 0, errors: [] };
+    const result = { pipeline: pipeline.ghlPipelineName, fetched: 0, created: 0, existing: 0, skippedUnmapped: 0, orphaned: 0, needsAttention: 0, failed: 0, errors: [] };
     summary.pipelines.push(result);
     try {
       const opportunities = await fetchAllOpportunities(pipeline.ghlPipelineId, { client });
@@ -100,6 +100,11 @@ async function initialSync({ client, user } = {}) {
           const mapping = pipelineService.resolveUnifiedStage(config.stageMappings, opportunity.pipelineId, opportunity.pipelineStageId);
           if (!mapping) {
             result.skippedUnmapped += 1;
+            continue;
+          }
+          // Its case was deleted but the card is still in GHL: nothing to import, and no GHL calls to spend on it (ghlCaseFactory.isOrphanedLink).
+          if (!(await findCaseByOpportunity(config.locationId, opportunity.id)) && (await isOrphanedLink(config.locationId, opportunity.id))) {
+            result.orphaned += 1;
             continue;
           }
           const contact = await resolveContact(opportunity, client);
@@ -115,6 +120,11 @@ async function initialSync({ client, user } = {}) {
             locationId: config.locationId,
             visaResolution,
           });
+          if (outcome.skipped) {
+            // no case to update: its case was deleted and the card is still being removed from GHL (or its link is orphaned)
+            result.orphaned += 1;
+            continue;
+          }
           if (outcome.created) {
             result.created += 1;
             if (outcome.needsAttention?.length) result.needsAttention += 1;

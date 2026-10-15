@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { casesApi, questionnairesApi } from "../../services/api";
 import AddEmployeeModal from "./AddEmployeeModal";
+import ConfirmDialog from "./ConfirmDialog";
 
 function initials(name) {
   if (!name) return "?";
@@ -11,36 +12,46 @@ function initials(name) {
 // endpoint CRMCaseDetail.jsx (Admin) already uses for its own documents
 // progress, so the dashboard never has to load a child's full questionnaire
 // just to show two percentages.
-function useChildProgress(childId, targetRole, enabled) {
+//
+// An INVITED employee's card reads the same numbers: the employer is allowed a read-only view of the employee's progress (backend
+// employer-view-access.js), and the card re-reads them every `pollMs` so what the employee saves or submits shows up without a reload.
+function useChildProgress(childId, targetRole, enabled, pollMs = 0) {
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(enabled);
 
   useEffect(() => {
     if (!enabled) { setProgress(null); setLoading(false); return undefined; }
     let cancelled = false;
-    setLoading(true);
-    questionnairesApi.listCaseChecklists(childId)
-      .then((res) => {
-        if (cancelled) return;
-        const checklists = res?.checklists || res?.data?.checklists || [];
-        const entry = checklists.find((c) => c.targetRole === targetRole) || checklists[0] || null;
-        setProgress(entry || null);
-      })
-      .catch(() => { if (!cancelled) setProgress(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [childId, targetRole, enabled]);
+    const read = (initial) => {
+      if (initial) setLoading(true);
+      return questionnairesApi.listCaseChecklists(childId)
+        .then((res) => {
+          if (cancelled) return;
+          const checklists = res?.checklists || res?.data?.checklists || [];
+          const entry = checklists.find((c) => c.targetRole === targetRole) || checklists[0] || null;
+          setProgress(entry || null);
+        })
+        // a failed background refresh keeps the numbers already on screen; only the first read may leave the card without bars
+        .catch(() => { if (!cancelled && initial) setProgress(null); })
+        .finally(() => { if (!cancelled && initial) setLoading(false); });
+    };
+    read(true);
+    const timer = pollMs ? setInterval(() => { if (!document.hidden) read(false); }, pollMs) : null;
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [childId, targetRole, enabled, pollMs]);
 
   return { progress, loading };
 }
 
+// Exact numbers from the server (answered / visible questions) - never estimated here. Shows "56% · 5 of 9" when the counts are known.
 function ProgressBar({ label, done, total, percent }) {
   const pct = typeof percent === "number" ? percent : (total ? Math.round((done / total) * 100) : 0);
+  const counts = typeof done === "number" && typeof total === "number";
   return (
     <div>
       <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
         <span>{label}</span>
-        <span className="font-semibold text-slate-600">{typeof done === "number" ? `${done} / ${total}` : `${pct}%`}</span>
+        <span className="font-semibold text-slate-600">{counts ? `${pct}% · ${done} of ${total}` : `${pct}%`}</span>
       </div>
       <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
         <div className="h-full rounded-full bg-slate-900 transition-all duration-300" style={{ width: `${pct}%` }} />
@@ -78,27 +89,27 @@ function statusPillFor(child, dataEntryMode, progress) {
   if (progress?.status === "submitted" || progress?.status === "approved") {
     return progress.status === "approved" ? "Completed" : "Ready for Review";
   }
+  const percent = progress?.progress?.percent ?? 0;
   if (dataEntryMode === "invite") {
+    if (child.clientEmail && percent > 0) return percent >= 100 ? "Ready for Review" : "In Progress";
     return child.clientEmail ? "Invited" : "Not Started";
   }
-  const percent = progress?.progress?.percent ?? 0;
   if (percent >= 100) return "Ready for Review";
   if (percent > 0) return "In Progress";
   return "Not Started";
 }
 
-function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw }) {
+function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw, onGrantAccess }) {
   // Each employee has their own workflow; an employee without an individual choice follows the case-wide default.
   const dataEntryMode = child.employeeDataEntryMode || caseDefaultMode;
   const identified = Boolean(child.clientName) || dataEntryMode === "fill_self";
   const invited = dataEntryMode === "invite" && Boolean(child.clientEmail);
-  // Once an employee is invited, ownership of their checklist/answers
-  // transfers to their own account (inviteEmployee pulls the child case off
-  // the employer's caseIds) — the employer's own session can no longer read
-  // it, by design (see EmployeeSelfServiceView.jsx's own comment on this
-  // being an intentional privacy boundary, not a gap). Skip fetching
-  // progress numbers we already know the API will 403 on.
-  const { progress, loading } = useChildProgress(child._id, targetRole, !invited);
+  // Once an employee is invited, ownership of their checklist/answers transfers to their own account (inviteEmployee pulls the child
+  // case off the employer's caseIds): the employer cannot EDIT it any more, but may READ it (backend employer-view-access.js) - so the
+  // card shows the employee's real, live progress and offers a read-only view of what they have filled in.
+  const { progress, loading } = useChildProgress(child._id, targetRole, true, invited ? 30000 : 0);
+  // an employee who had access before and whose information the employer took back: access can be given again in one step
+  const returning = !invited && Boolean(child.clientEmail) && Boolean(child.clientName) && dataEntryMode !== "invite";
   const [inviting, setInviting] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [name, setName] = useState("");
@@ -106,6 +117,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [confirmFillSelf, setConfirmFillSelf] = useState(false);
 
   const pillLabel = statusPillFor(child, dataEntryMode, progress);
   // A slot nobody has decided for yet (no explicit choice, no employee named, nothing entered) asks the employer who
@@ -113,8 +125,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const undecided = !child.employeeDataEntryMode && !child.clientName && caseDefaultMode !== "invite" && !(progress?.progress?.percent > 0) && pillLabel !== "Withdrawn";
 
   const handleSwitchToFillSelf = async () => {
-    const who = child.clientName || "this employee";
-    if (!window.confirm(`Fill in ${who}'s information yourself? Their invitation will be cancelled and they will lose access to this case. Anything already entered is kept.`)) return;
+    setConfirmFillSelf(false);
     setSwitching(true);
     setError("");
     try {
@@ -197,12 +208,15 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
                 <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
                   {invited && (
                     <>
+                      <button type="button" onClick={() => { setMenuOpen(false); onOpen(child._id, { readOnly: true }); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">View information (read only)</button>
                       <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Resend invite</button>
-                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); handleSwitchToFillSelf(); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
+                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); setConfirmFillSelf(true); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
                     </>
                   )}
                   {!invited && (
-                    <button type="button" onClick={() => { setMenuOpen(false); setShowInviteForm(true); setError(""); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Invite this employee to fill it in</button>
+                    <button type="button" onClick={() => { setMenuOpen(false); if (returning) onGrantAccess?.(child); else { setShowInviteForm(true); setError(""); } }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                      {returning ? `Grant access to ${child.clientName} again` : "Invite this employee to fill it in"}
+                    </button>
                   )}
                   <button type="button" onClick={() => { setMenuOpen(false); onWithdraw(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">Withdraw</button>
                 </div>
@@ -213,9 +227,14 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
       </div>
 
       {!loading && progress && (
-        <div className="space-y-2.5">
-          <ProgressBar label="Documents" done={progress.documentProgress?.answeredTotal} total={progress.documentProgress?.totalQuestions} />
-          <ProgressBar label="Questionnaire" percent={progress.progress?.percent} />
+        <div className="space-y-2.5" data-testid="employee-progress">
+          <ProgressBar label="Documents" done={progress.documentProgress?.answeredTotal} total={progress.documentProgress?.totalQuestions} percent={progress.documentProgress?.percent} />
+          <ProgressBar
+            label="Information"
+            done={(progress.textProgress || progress.progress)?.answeredTotal}
+            total={(progress.textProgress || progress.progress)?.totalQuestions}
+            percent={(progress.textProgress || progress.progress)?.percent}
+          />
         </div>
       )}
 
@@ -251,9 +270,15 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
           <p className="text-center text-xs text-slate-400 py-1.5">
             {pillLabel === "Ready for Review" || pillLabel === "Completed"
               ? `${child.clientName} has submitted their information.`
-              : `Waiting for ${child.clientName} to complete their information.`}
+              : pillLabel === "In Progress"
+                ? `${child.clientName} is filling in their information.`
+                : `Waiting for ${child.clientName} to start their information.`}
           </p>
-          <button type="button" disabled={switching} onClick={handleSwitchToFillSelf} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" onClick={() => onOpen(child._id, { readOnly: true })} className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 transition-colors">
+            View what {child.clientName} filled in
+            <span className="ml-1.5 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Read only</span>
+          </button>
+          <button type="button" disabled={switching} onClick={() => setConfirmFillSelf(true)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
             I'll fill this myself instead
           </button>
         </div>
@@ -271,9 +296,25 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
         </button>
       )}
       {!showInviteForm && !undecided && !invited && dataEntryMode !== "invite" && pillLabel !== "Withdrawn" && (
-        <button type="button" onClick={() => { setShowInviteForm(true); setError(""); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-          Invite employee to fill it instead
-        </button>
+        returning ? (
+          <button type="button" onClick={() => onGrantAccess?.(child)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+            Grant access to {child.clientName} again
+          </button>
+        ) : (
+          <button type="button" onClick={() => { setShowInviteForm(true); setError(""); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+            Invite employee to fill it instead
+          </button>
+        )
+      )}
+      {confirmFillSelf && (
+        <ConfirmDialog
+          title={`Fill in ${child.clientName || "this employee"}'s information yourself?`}
+          message={"Their invitation will be cancelled and they will lose access to this case. Anything already entered is kept."}
+          confirmLabel="Yes, I'll fill it in"
+          busy={switching}
+          onConfirm={handleSwitchToFillSelf}
+          onCancel={() => setConfirmFillSelf(false)}
+        />
       )}
     </div>
   );
@@ -295,7 +336,7 @@ function AddEmployeeGhostCard({ onClick }) {
 // old plain tab bar with one card per employee slot, matching the Admin
 // CRM's own Employees panel (status pills, resend/withdraw) so both portals
 // present the same matter consistently.
-export default function EmployeeDashboard({ principalId, children, dataEntryMode, targetRole, defaultVisaType, onOpen, onChanged }) {
+export default function EmployeeDashboard({ principalId, children, dataEntryMode, targetRole, defaultVisaType, onOpen, onChanged, onGrantAccess }) {
   const [actionError, setActionError] = useState("");
   const [showAddEmployee, setShowAddEmployee] = useState(false);
 
@@ -310,13 +351,21 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
     }
   };
 
-  const handleWithdraw = async (childId) => {
-    if (!window.confirm("Withdraw this employee? Their information is kept for your records, but they won't be included in this filing.")) return;
+  // Withdrawing asks first, in a themed dialog (the target child is held until the employer confirms).
+  const [withdrawTarget, setWithdrawTarget] = useState(null);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const handleWithdraw = (childId) => setWithdrawTarget(children.find((child) => child._id === childId) || { _id: childId });
+  const confirmWithdraw = async () => {
+    setWithdrawing(true);
     try {
-      await casesApi.removeEmployee(childId);
+      await casesApi.removeEmployee(withdrawTarget._id);
+      setWithdrawTarget(null);
       onChanged();
     } catch (err) {
+      setWithdrawTarget(null);
       setActionError(err.message || "Failed to withdraw employee");
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -327,6 +376,17 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
       </div>
       {actionError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{actionError}</div>
+      )}
+      {withdrawTarget && (
+        <ConfirmDialog
+          title={`Withdraw ${withdrawTarget.clientName || "this employee"}?`}
+          message={"Their information is kept for your records, but they won't be included in this filing."}
+          confirmLabel="Withdraw"
+          tone="danger"
+          busy={withdrawing}
+          onConfirm={confirmWithdraw}
+          onCancel={() => setWithdrawTarget(null)}
+        />
       )}
       {showAddEmployee && (
         <AddEmployeeModal
@@ -347,6 +407,7 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
             onInviteSent={onChanged}
             onResend={handleResend}
             onWithdraw={handleWithdraw}
+            onGrantAccess={onGrantAccess}
           />
         ))}
         <AddEmployeeGhostCard onClick={handleAddEmployee} />

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { casesApi } from "../../services/api";
+import ConfirmDialog from "./ConfirmDialog";
 
 // One row per child case. INVARIANT: in invite mode the employer never sees
 // any employee questionnaire data here — only name/email entry and the
@@ -61,8 +62,9 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
     }
   };
 
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const handleWithdraw = async () => {
-    if (!window.confirm(`Withdraw ${child.clientName || "this employee"}? Their information is kept for your records, but they won't be included in this filing.`)) return;
+    setConfirmWithdraw(false);
     setWithdrawing(true);
     setError("");
     try {
@@ -85,6 +87,16 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
 
   return (
     <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+      {confirmWithdraw && (
+        <ConfirmDialog
+          title={`Withdraw ${child.clientName || "this employee"}?`}
+          message={"Their information is kept for your records, but they won't be included in this filing."}
+          confirmLabel="Withdraw"
+          tone="danger"
+          onConfirm={handleWithdraw}
+          onCancel={() => setConfirmWithdraw(false)}
+        />
+      )}
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-slate-800">{child.caseNumber}</span>
         {statusPill()}
@@ -97,7 +109,7 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
             <button type="button" onClick={handleResend} disabled={sending} className="text-xs font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40">
               {sending ? "Sending…" : "Resend"}
             </button>
-            <button type="button" onClick={handleWithdraw} disabled={withdrawing} className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-40">
+            <button type="button" onClick={() => setConfirmWithdraw(true)} disabled={withdrawing} className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-40">
               {withdrawing ? "Withdrawing…" : "Withdraw"}
             </button>
           </div>

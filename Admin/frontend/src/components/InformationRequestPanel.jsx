@@ -114,14 +114,19 @@ export default function InformationRequestPanel({ caseId, caseData, onCaseUpdate
 
   const openFile = async (request, file) => {
     setBusyKey(file.storageKey)
+    // open the tab on the click itself (a tab opened after a slow download is blocked by the browser), load the file into it afterwards
+    const viewTab = window.open('', '_blank')
+    if (viewTab) { try { viewTab.opener = null; viewTab.document.body.innerText = 'Opening document…' } catch { /* cosmetic only */ } }
     try {
       const response = await questionnairesApi.downloadAnswerFile(request.questionnaireId, {
         responseId: request.responseId, questionKey: request.questionKey, storageKey: file.storageKey, inline: true,
       })
       const url = URL.createObjectURL(response.data)
-      window.open(url, '_blank', 'noopener')
+      if (viewTab) viewTab.location.href = url
+      else window.open(url, '_blank', 'noopener')
       setTimeout(() => URL.revokeObjectURL(url), 60000)
     } catch {
+      if (viewTab) viewTab.close()
       setMessage({ type: 'error', text: 'Unable to open this file.' })
     } finally {
       setBusyKey('')

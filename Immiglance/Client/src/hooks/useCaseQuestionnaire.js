@@ -8,7 +8,7 @@ import { useSocket } from "../context/SocketContext";
 // already evaluates conditionalLogic/showIf server-side (isQuestionVisible),
 // so refetching after a save is how newly-visible/hidden questions surface;
 // no client-side conditional evaluator is needed.
-export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
+export default function useCaseQuestionnaire(caseId, targetRole, referenceId, { pollMs = 0 } = {}) {
   const [state, setState] = useState({
     questionnaire: null,
     documentQuestions: [],
@@ -105,6 +105,14 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId) {
     socket.on("case:checklists_changed", onChanged);
     return () => socket.off("case:checklists_changed", onChanged);
   }, [socket, caseId]);
+
+  // A read-only view of somebody else's file (the employer looking at an invited employee's answers) re-reads it on a timer, so what the
+  // other person saves or submits shows up without a reload. Never used for a file the viewer edits (a refetch would race their typing).
+  useEffect(() => {
+    if (!pollMs || !caseId) return undefined;
+    const timer = setInterval(() => { if (!document.hidden) loadRef.current(); }, pollMs);
+    return () => clearInterval(timer);
+  }, [pollMs, caseId]);
 
   const saveAnswer = useCallback((questionKey, value) => {
     if (!state.questionnaire?._id) return;

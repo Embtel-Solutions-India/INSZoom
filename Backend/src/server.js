@@ -231,6 +231,10 @@ connectDB()
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob();
     const uscisEditionUpgrade = startUSCISEditionUpgradeJob();
+    // every 12 h: compare EVERY uscis.gov form (installed or not) with the installed edition and auto-import new / changed ones
+    const uscisCatalogSync = require("./modules/uscis-lifecycle/jobs/USCISCatalogSyncJob").startUSCISCatalogSyncJob(withJobLock);
+    // keeps the form registry / rule-driven mappings / certification correct by code (registry gap-fill, component linking, per-form certification)
+    const formAutopilot = require("./modules/form-registry/FormPipelineAutopilot").startFormPipelineAutopilot(withJobLock);
     const settingsRetentionMaintenance = startSettingsRetentionMaintenance();
     const slaSweepMaintenance = startSlaSweepMaintenance();
     // null (and nothing scheduled) unless GHL_ENABLED=true.
@@ -264,6 +268,8 @@ connectDB()
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);
       if (uscisEditionUpgrade) clearInterval(uscisEditionUpgrade);
+      if (uscisCatalogSync) clearInterval(uscisCatalogSync);
+      if (formAutopilot) clearInterval(formAutopilot);
       clearInterval(settingsRetentionMaintenance);
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);

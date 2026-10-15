@@ -20,6 +20,7 @@ const t = (key, label, category, recipient, description, { groups = CASE_GROUPS,
 const TRIGGERS = [
   t("client-portal-invitation", "Case Created - New Client (Set Password)", "Case", "client", "A case is created for a client with no password yet: the email asks them to set a password by the link, then log in.", { groups: ["Client", "Case"] }),
   t("employee-case-invitation", "Employee Invited to Case", "Account", "client", "An employer's employee is invited to complete their case.", { groups: ["Client", "Case", "Company"] }),
+  t("employee-access-restored", "Employee Given Access Again", "Account", "client", "An employer hands an employee's information back to them (after filling part of it in), so the employee is told to review and complete it.", { groups: ["Client", "Case", "Company"] }),
   t("family-beneficiary-invitation", "Beneficiary Invited to Case", "Account", "client", "A family-visa beneficiary is invited to the petitioner's case.", { groups: ["Client", "Case", "Company"] }),
   t("password-reset", "Password Reset", "Account", "client", "Password reset link. Locked for security.", { groups: ["Client"], locked: true }),
   t("staff-credentials", "Staff Credentials", "Internal Team", "team_member", "Login credentials for a new staff account. Locked for security.", { groups: ["Client"], locked: true }),

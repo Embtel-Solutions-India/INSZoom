@@ -116,19 +116,6 @@ exports.downloadForm = async (req, res) => {
   }
 };
 
-// POST /:caseFormId/external-edit (multipart "file"): the edited copy of the downloaded PDF. Saved as the form's newest copy and every changed
-// field is kept as a manual override (see ExternalEditService).
-exports.uploadExternalEdit = async (req, res) => {
-  try {
-    const data = await require("../services/ExternalEditService").saveExternalEdit({
-      caseFormId: req.params.caseFormId, buffer: req.file?.buffer, originalName: req.file?.originalname, user: req.user, req,
-    });
-    res.status(201).json({ success: true, data });
-  } catch (error) {
-    handle(res, error);
-  }
-};
-
 exports.generatePackage = async (req, res) => {
   try {
     const data = await FilingPackageService.assemble(req.body || {}, req.user, req);

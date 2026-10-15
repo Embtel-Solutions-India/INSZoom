@@ -21,7 +21,7 @@ const auxOutbound = require("./ghlAuxOutbound");
 // A pending case re-checks its visa on updates, but at most once a minute so a burst of events costs nothing.
 const VISA_RECHECK_MS = 60 * 1000;
 
-const OPPORTUNITY_EVENTS = new Set(["OpportunityCreate", "OpportunityUpdate", "OpportunityStageUpdate", "OpportunityStatusUpdate"]);
+const OPPORTUNITY_EVENTS = new Set(["OpportunityCreate", "OpportunityUpdate", "OpportunityStageUpdate", "OpportunityStatusUpdate", "OpportunityDelete"]);
 const CONTACT_EVENTS = new Set(["ContactCreate", "ContactUpdate"]);
 const HANDLED_EVENTS = new Set([...OPPORTUNITY_EVENTS, ...CONTACT_EVENTS]);
 
@@ -189,6 +189,15 @@ function opportunityFromPayload(p) {
 async function handleOpportunityEvent(event, config) {
   let opportunity = opportunityFromPayload(event.payload);
   if (!opportunity.id) return { outcome: "ignored", note: "no opportunity id" };
+
+  // The card was deleted in GHL: its case follows, but only after the deletion is confirmed again a little later (ghlDeletedInGhl.js), driven by
+  // the reconcile pass - so this only records the sighting, and a delete event for an opportunity WE are deleting is simply ignored.
+  if (event.eventType === "OpportunityDelete") {
+    const gone = await findCaseByOpportunity(event.locationId, opportunity.id);
+    if (!gone) return { outcome: "ignored", note: "deleted opportunity has no case" };
+    await require("./ghlDeletedInGhl").flagDeletedInGhl(gone._id);
+    return { outcome: "processed", note: "opportunity deleted in GHL: case flagged for deletion" };
+  }
 
   // A payload without the pipeline/stage (some update events) is completed from the API.
   if (!opportunity.pipelineId || !opportunity.pipelineStageId) {

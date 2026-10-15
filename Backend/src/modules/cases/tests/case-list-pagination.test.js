@@ -67,12 +67,14 @@ test("GET /cases returns server-side pagination metadata without changing legacy
   await controller.getCases(req, res, (error) => { nextError = error; });
 
   assert.equal(nextError, undefined);
-  assert.deepEqual(pipeline, [
+  // the page of documents is selected exactly as before; the last stage only trims fields no list screen reads (case.service caseListSlimStage)
+  assert.deepEqual(pipeline.slice(0, 4), [
     { $match: { status: "active" } },
     { $sort: { _id: -1 } },
     { $skip: 5 },
     { $limit: 5 },
   ]);
+  assert.deepEqual(pipeline.slice(4), [caseService.caseListSlimStage()]);
   assert.deepEqual(aggregateOptions, { allowDiskUse: true });
   assert.equal(res.payload.success, true);
   assert.equal(res.payload.cases.length, 5);

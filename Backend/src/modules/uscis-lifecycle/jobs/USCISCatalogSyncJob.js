@@ -1,0 +1,22 @@
+const User = require("../../../models/User");
+const logger = require("../../../utils/logger");
+const { runCatalogSync } = require("../../uscis-form-import/services/FormCatalogSyncService");
+
+// Every 12 hours (USCIS_CATALOG_SYNC_INTERVAL_MS): check EVERY form on uscis.gov - installed or not - and import the new / changed editions through the automatic
+// pipeline (see FormCatalogSyncService). On by default; USCIS_CATALOG_SYNC=false turns it off. Lock-guarded across instances through the caller's withJobLock.
+function startUSCISCatalogSyncJob(withJobLock) {
+  if (String(process.env.USCIS_CATALOG_SYNC || "true").toLowerCase() === "false") return null;
+  const intervalMs = Number(process.env.USCIS_CATALOG_SYNC_INTERVAL_MS || 12 * 60 * 60 * 1000);
+  const initialDelayMs = Number(process.env.USCIS_CATALOG_SYNC_INITIAL_DELAY_MS || 10 * 60 * 1000);
+  const run = () => withJobLock("uscis-catalog-sync", 3 * 60 * 60 * 1000, async () => {
+    const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
+    return runCatalogSync({ user: actor || { role: "super_admin" } });
+  }).catch((error) => logger.error("uscis_catalog_sync_failed", { error: error.message }));
+  const initial = setTimeout(run, Math.max(initialDelayMs, 0));
+  initial.unref?.();
+  const timer = setInterval(run, intervalMs);
+  timer.unref?.();
+  return timer;
+}
+
+module.exports = { startUSCISCatalogSyncJob };

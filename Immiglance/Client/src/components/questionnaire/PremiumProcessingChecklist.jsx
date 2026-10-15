@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import QuestionInput from "./QuestionInput";
 import { questionnairesApi } from "../../services/api";
-import { questionKey, sectionKey, isEmptyValue, isWideQuestion } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, isEmptyValue, isWideQuestion, isQuestionRequired } from "../../utils/questionnaireEngine";
 
 // The "Form I-907 Information Checklist" a case manager attaches when upgrading a case to
 // Premium Processing. It is an ordinary questionnaire (same answers/save pipeline as every other
@@ -20,7 +20,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
     [qa.sections, qa.questionsBySection]
   );
   // Nothing is mandatory to save; Submit needs every item filled in.
-  const missing = (qa.visibleQuestions || []).filter((question) => !question.metadata?.optional && isEmptyValue(qa.answers[questionKey(question)])).length;
+  const missing = (qa.visibleQuestions || []).filter((question) => isQuestionRequired(question, qa.answers) && isEmptyValue(qa.answers[questionKey(question)])).length;
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");

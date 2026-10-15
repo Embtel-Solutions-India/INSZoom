@@ -876,7 +876,7 @@ exports.getCases = async (req, res, next) => {
 
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }], { allowDiskUse: true }).toArray()
+      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }, ...[caseService.caseListSlimStage()].filter(Boolean)], { allowDiskUse: true }).toArray()
         .then((docs) => caseService.populateCaseListDocs(docs)),
     ]);
     timer.mark("case_query_completed", { total, count: cases.length });
@@ -913,7 +913,8 @@ exports.getCases = async (req, res, next) => {
 
 exports.getCase = async (req, res, next) => {
   try {
-    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
+    // canonicalHistory (up to ~300 KB) is read by no screen: leave it out of this read (see case.service CASE_OMIT_HISTORY)
+    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_HISTORY });
     const serialized = caseService.serializeCaseForUser(caseData, req.user);
     await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
@@ -2317,6 +2318,9 @@ exports.inviteEmployee = async (req, res, next) => {
     // Re-inviting an employee that was switched to "employer fills" (invitation revoked) must reuse their existing
     // employee account instead of failing on the unique email - never create a second account for the same person.
     let employeeUser = await User.findOne({ email: normalizedEmail }).select("+password");
+    // The SAME employee being given access again (their invitation was withdrawn so the employer could fill in part of the file):
+    // they already belong to this case, so they get the "access returned" email instead of a first invitation.
+    const isRegrant = Boolean(employeeUser) && cleanEmail(childCase.clientEmail) === normalizedEmail;
     if (employeeUser && employeeUser.role !== childCase.caseRole) {
       return res.status(409).json({ success: false, code: "EMAIL_IN_USE", message: "That email already belongs to another account type. Use a different email for this employee." });
     }
@@ -2392,25 +2396,33 @@ exports.inviteEmployee = async (req, res, next) => {
       }
     );
 
-    await caseService.writeAuditLog("invite_employee", childCase, req.user, { employeeEmail: normalizedEmail }, req);
+    await caseService.writeAuditLog(isRegrant ? "regrant_employee_access" : "invite_employee", childCase, req.user, { employeeEmail: normalizedEmail }, req);
+    const needsSetup = !employeeUser.password;
+    if (isRegrant) {
+      caseService.addTimelineEvent(childCase, "employee", "Access granted again", `Access was given back to ${trimmedName}. Everything the employer entered is kept and visible to them.`, req.user, { to: "invite", regrant: true });
+      await childCase.save();
+    }
 
     const notification = await notificationService.createNotification({
       userId: employeeUser._id,
       type: "case_created",
       category: "case",
-      title: "You've Been Invited to Complete Your Immigration Case",
-      message: `${childCase.caseNumber} - ${childCase.visaType}`,
+      title: isRegrant ? "Your employer has given you access to your information again" : "You've Been Invited to Complete Your Immigration Case",
+      message: isRegrant
+        ? `${childCase.caseNumber} - ${principal.clientName || "Your employer"} has filled in part of your information. Please review it and complete the rest.`
+        : `${childCase.caseNumber} - ${childCase.visaType}`,
       caseId: childCase._id,
-      link: "/accept-invite",
+      link: needsSetup ? "/accept-invite" : "/dashboard/documents",
       priority: "medium",
       source: "shared",
-      emailTemplate: "employee-case-invitation",
+      emailTemplate: isRegrant ? "employee-access-restored" : "employee-case-invitation",
       emailTo: normalizedEmail,
       emailData: {
         employeeName: trimmedName,
         employerName: principal.clientName,
         caseNumber: childCase.caseNumber,
         token: setupToken,
+        needsSetup,
       },
     }, req.user, req).catch(() => null);
 
@@ -2425,10 +2437,13 @@ exports.inviteEmployee = async (req, res, next) => {
     const sent = emailDelivery?.status === "sent";
     return res.status(200).json({
       success: true,
-      message: sent ? `Invitation sent to ${normalizedEmail}` : "Employee added, but the invitation email could not be confirmed as sent. You can resend it.",
+      message: isRegrant
+        ? (sent ? `Access granted again. ${trimmedName} has been notified.` : "Access granted again, but the notification email could not be confirmed as sent.")
+        : (sent ? `Invitation sent to ${normalizedEmail}` : "Employee added, but the invitation email could not be confirmed as sent. You can resend it."),
       childCaseId: childCase._id,
       childCaseNumber: childCase.caseNumber,
       inviteStatus: sent ? "sent" : (emailDelivery?.status === "failed" ? "failed" : "pending"),
+      regranted: isRegrant,
     });
   } catch (err) {
     handleError(err, next);
@@ -3034,6 +3049,14 @@ exports.linkCase = async (req, res, next) => {
 
 exports.getRelated = async (req, res, next) => {
   try {
+    // ?scope=children: the principal/child links only (what the Employees panels read and poll). Same access check and the same child rows
+    // as the full response, without loading every document, message, notification, payment, task and workflow of the case.
+    if (req.query.scope === "children") {
+      const lookup = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_LOOKUP });
+      if (caseService.isRestrictedPortalRole(req.user?.role)) return res.json({ success: true, parentCase: null, childCases: [] });
+      const links = await caseService.getCaseLinks(lookup);
+      return res.json({ success: true, parentCase: links.parentCase, childCases: links.childCases });
+    }
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const related = await caseService.getRelatedRecords(caseData);
     if (caseService.isRestrictedPortalRole(req.user?.role)) {
@@ -3565,9 +3588,7 @@ exports.deleteCasePermanently = async (req, res, next) => {
     if (!caseData) return;
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to delete this case" });
     // A case on the GoHighLevel pipeline (and, for an employer matter, its employees) has its GHL opportunity deleted too, so the next sync
-    // cannot re-import it as a new case.
-    // (queued and retried in the background; the request never waits for GHL and never fails because of it)
-    await require("../../integrations/ghl/ghlCaseOutbound").queueGhlOpportunityDeletions(caseData);
+    // cannot re-import it as a new case: requestCaseDeletion queues those durable jobs itself (for every deletion path), in the background.
     // the case and its accounts are gone when this returns; stored files and linked records are cleaned up (and retried) in the background
     const { caseNumbers, accountsRemoved } = await require("./case-deletion.service").requestCaseDeletion(caseData, req.user);
     res.json({ success: true, message: `Case ${caseData.caseNumber} deleted permanently`, caseNumbers, accountsRemoved, cleanup: "background" });

@@ -154,7 +154,9 @@ class USCISFormImporterService {
       storageSegment(metadata.version),
       sourceChecksum,
     ].join("/");
-    const storedForm = await storageService.storeImmutableBuffer(`${baseKey}/form.pdf`, buffer);
+    // the stored file is always <form>_<edition yyyy-mm-dd>.pdf, e.g. "i-129_2026-09-09.pdf" (the hash directory above keeps it immutable)
+    const fileName = `${String(metadata.formCode).toLowerCase().replace(/[^a-z0-9-]+/g, "-")}_${storageSegment(metadata.version)}.pdf`;
+    const storedForm = await storageService.storeImmutableBuffer(`${baseKey}/${fileName}`, buffer);
     let storedInstructions = null;
     let instructionsChecksum = null;
     if (input.instructionsBuffer) {
@@ -372,6 +374,8 @@ class USCISFormImporterService {
           importedBy: userId(user),
           importedAt,
           checksum: sourceChecksum,
+          publishedEditionDate: metadata.publishedEditionDate,
+          editionDateSource: metadata.editionDateSource,
           validationSummary: {
             pageCount: metadata.pageCount,
             fieldCount: scanResult.fieldCount,

@@ -5,6 +5,11 @@ import { CaseRoleChecklistView } from "./CaseRoleChecklist";
 import DataEntryModeModal from "./DataEntryModeModal";
 import EmployeeDashboard from "./EmployeeDashboard";
 import EmployeePacketStepper from "./EmployeePacketStepper";
+import GrantAccessModal from "./GrantAccessModal";
+import ConfirmDialog from "./ConfirmDialog";
+
+// how often a read-only view of an invited employee's file re-reads it (what they save or submit appears without a reload)
+const READ_ONLY_REFRESH_MS = 20000;
 
 // Top-level orchestrator for a caseRole=principal Case: the employer/
 // petitioner questionnaire (rendered through the SAME card-based
@@ -29,6 +34,13 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // the landing page every time, exactly like Documents.jsx's own landing
   // page for a single-party case.
   const [activeChildId, setActiveChildId] = useState(null);
+  // true while the employer is LOOKING at an invited employee's information (the employee holds the file): nothing is editable
+  const [activeReadOnly, setActiveReadOnly] = useState(false);
+  // the grant-access popup: { child, saveFirst } - saveFirst = opened from the employee's own form, whose entries are saved before access is given
+  const [grantTarget, setGrantTarget] = useState(null);
+  const [takingBack, setTakingBack] = useState(false);
+  const [confirmTakeBack, setConfirmTakeBack] = useState(false);
+  const [notice, setNotice] = useState("");
 
   // Called here (not inside CaseRoleChecklistView) so this component can also
   // read employerQa.answers to gate the data-entry-mode modal below, without
@@ -37,12 +49,24 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
   // Always called (hooks can't be conditional) — disabled until a card is
   // actually opened, matching CaseRoleChecklist's own disabled-when-readOnly
   // pattern for this same hook.
-  const employeeQa = useQuestionnaireAnswers(activeChildId, employeeTargetRole, { disabled: !activeChildId });
+  const employeeQa = useQuestionnaireAnswers(activeChildId, employeeTargetRole, {
+    disabled: !activeChildId || activeReadOnly,
+    pollMs: activeReadOnly ? READ_ONLY_REFRESH_MS : 0,
+  });
+
+  const openChild = (childId, options = {}) => {
+    setNotice("");
+    setActiveReadOnly(Boolean(options.readOnly));
+    setActiveChildId(childId);
+  };
+  const closeChild = () => { setActiveChildId(null); setActiveReadOnly(false); };
+
 
   const fetchChildren = async (silent = false) => {
     if (!silent) setLoadingChildren(true);
     try {
-      const relatedRes = await casesApi.getRelated(principalId);
+      // only the employee slots are read here: ask for just the principal/child links (it is polled every 30 s)
+      const relatedRes = await casesApi.getRelated(principalId, { scope: "children" });
       // Invariant 5: a removed child's data is preserved server-side, but it
       // no longer shows as an active card/invite slot here.
       const activeChildren = (relatedRes?.childCases || []).filter((c) => c.status !== "removed");
@@ -74,6 +98,37 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
 
   const activeChild = children.find((c) => c._id === activeChildId) || null;
 
+  // Switch from the read-only view back to "employer fills": the invitation is withdrawn, everything the employee entered is kept
+  // (answers belong to the case, not to the account holding it) and the same screen becomes editable.
+  const handleTakeBack = async () => {
+    if (!activeChild) return;
+    setConfirmTakeBack(false);
+    setTakingBack(true);
+    try {
+      const res = await casesApi.setEmployeeDataEntryMode(principalId, activeChild._id, { mode: "fill_self" });
+      if (!res?.success) throw new Error(res?.message || "Could not change this employee's workflow");
+      setActiveReadOnly(false);
+      await fetchChildren(true);
+      await employeeQa.refetch?.();
+    } catch (err) {
+      setNotice(err.message || "Could not change this employee's workflow");
+    } finally {
+      setTakingBack(false);
+    }
+  };
+
+  // The grant-access popup's two steps: (1) the employer's pending entries are saved (when opened from the employee's own form),
+  // (2) the file is handed to the employee. A failed save aborts the grant, so nothing is ever lost.
+  const grantChild = grantTarget?.child || null;
+  const handleGrant = async ({ name, email }) => {
+    const res = await casesApi.setEmployeeDataEntryMode(principalId, grantChild._id, { mode: "invite", employeeName: name, employeeEmail: email });
+    if (!res?.success) throw new Error(res?.message || "Access could not be granted.");
+    setGrantTarget(null);
+    closeChild();
+    setNotice(res.message || "Access granted.");
+    fetchChildren(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Bug fix (real-browser test): this used to render unconditionally,
@@ -84,6 +139,34 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           §7A.4 calls for. Hidden while a packet is open; EmployeePacketStepper
           has its own header (employee name + "All employees" back link). */}
       {!activeChildId && <CaseRoleChecklistView qa={employerQa} caseId={principalId} />}
+
+      {notice && (
+        <div role="status" className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+      )}
+
+      {confirmTakeBack && activeChild && (
+        <ConfirmDialog
+          title={`Fill in ${activeChild.clientName || "this employee"}'s information yourself?`}
+          message={"Their access will be withdrawn. Everything they have already entered is kept."}
+          confirmLabel="Yes, I'll fill it in"
+          onConfirm={handleTakeBack}
+          onCancel={() => setConfirmTakeBack(false)}
+        />
+      )}
+
+      {grantChild && (
+        <GrantAccessModal
+          employeeName={grantChild.clientName || ""}
+          employeeEmail={grantChild.clientEmail || ""}
+          returning={Boolean(grantChild.clientName && grantChild.clientEmail)}
+          beforeGrant={grantTarget.saveFirst ? () => employeeQa.commitAll() : undefined}
+          onGrant={handleGrant}
+          onClose={() => setGrantTarget(null)}
+        />
+      )}
 
       {showModeModal && (
         <DataEntryModeModal principalCaseId={principalId} isFamily={isFamily} onModeSelected={handleModeSelected} />
@@ -96,8 +179,12 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           qa={employeeQa}
           caseId={activeChild._id}
           employeeLabel={activeChild.clientName || activeChild.caseNumber}
-          onExit={() => setActiveChildId(null)}
-          onSubmitted={() => { setActiveChildId(null); fetchChildren(); }}
+          readOnly={activeReadOnly}
+          onTakeBack={activeReadOnly ? () => setConfirmTakeBack(true) : undefined}
+          takingBack={takingBack}
+          onGrantAccess={!activeReadOnly ? () => setGrantTarget({ child: activeChild, saveFirst: true }) : undefined}
+          onExit={closeChild}
+          onSubmitted={() => { closeChild(); fetchChildren(); }}
         />
       ) : (dataEntryMode === "invite" || dataEntryMode === "fill_self") ? (
         <EmployeeDashboard
@@ -106,8 +193,9 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
           dataEntryMode={dataEntryMode}
           defaultVisaType={activeCase.visaType}
           targetRole={employeeTargetRole}
-          onOpen={setActiveChildId}
+          onOpen={openChild}
           onChanged={fetchChildren}
+          onGrantAccess={(child) => setGrantTarget({ child, saveFirst: false })}
         />
       ) : (
         <p className="text-sm text-slate-400">

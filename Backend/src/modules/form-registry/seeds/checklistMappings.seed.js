@@ -215,6 +215,12 @@ for (const visaType of FAMILY_VISA_TYPES) {
   ]);
 }
 
+// ---- I-824 (standalone two-party case): exactly two checklists; principal-immigrant content lives inside the petitioner checklist -------
+set("I-824", "I-824", [
+  cm("i824_petitioner_checklist", AUTO, { role: "petitioner" }),
+  cm("i824_beneficiary_checklist", AUTO, { role: "beneficiary" }),
+]);
+
 // ---- K-1 (spec §7) -------------------------------------------------------
 set("K-1", "I-129F", [cm("k1_petitioner_checklist", AUTO, { role: "petitioner" }), cm("k1_beneficiary_checklist", AUTO, { role: "beneficiary" })]);
 // I-134 (Declaration of Financial Support) has no dedicated K-1 checklist -

@@ -400,6 +400,11 @@ const informationRequestSchema = new mongoose.Schema(
     questionnaireId: { type: mongoose.Schema.Types.ObjectId },
     questionKey: String,
     referenceId: { type: mongoose.Schema.Types.ObjectId },
+    // "new_item" (default, the original flow): the request appended its own question to the recipient's "Additional Requested Information"
+    // checklist. "existing_question": the case manager asked for a question/document that is ALREADY on the client's checklist - that
+    // question becomes REQUIRED FOR THIS CASE ONLY (questionKey + responseId identify it; the shared questionnaire is never edited).
+    scope: { type: String, enum: ["new_item", "existing_question"], default: "new_item" },
+    responseId: String,
     status: { type: String, enum: ["open", "submitted", "approved", "rejected", "closed"], default: "open", index: true },
     dueDate: Date,
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -531,6 +536,8 @@ const caseSchema = new mongoose.Schema(
     // replacement for) parentCase/linkedCases, which serve broader/different
     // purposes across the rest of the app.
     principalCaseRef: { type: mongoose.Schema.Types.ObjectId, ref: "Case", index: true, default: null },
+    // I-824 only: underlying approved petition/application, requested action and staff-review flags (see family-workflow/i824CaseDetails.js).
+    postApprovalAction: { type: mongoose.Schema.Types.Mixed, default: undefined },
     clientName: { type: String, trim: true },
     clientEmail: { type: String, lowercase: true, trim: true },
     employeeInvite: {
@@ -1175,6 +1182,9 @@ const caseSchema = new mongoose.Schema(
         abandonedByImmiglance: { type: Boolean },
         flags: {
           deletedInGhl: { type: Boolean, default: false },
+          // When sync first found the opportunity gone from GHL. The case is only deleted after it is confirmed gone AGAIN a little later
+          // (ghlDeletedInGhl.js), so one failed lookup can never delete a case.
+          deletedInGhlAt: { type: Date },
           needsAttention: { type: Boolean, default: false },
           // Employer matter holding employees on more than one visa. Employer-side questions for the
           // extra visas are not covered until the mixed-visa phase (R3-6).

@@ -112,6 +112,16 @@ async function getBoard(user, { perColumn, column, skip, category } = {}) {
   return { ...base, columns };
 }
 
+// A failed push for a case that has since been deleted can never be retried or fixed, so it is not "a failed push" for the health panel
+// (it used to keep the counter red forever). A failed delete_opportunity IS counted: its case is gone on purpose and GHL still holds the card.
+async function countActionableFailedJobs() {
+  const failed = await GHLSyncJob.find({ status: "failed" }).select("caseId type").lean();
+  const needsCase = failed.filter((job) => job.type !== "delete_opportunity");
+  if (!needsCase.length) return failed.length;
+  const alive = new Set((await Case.find({ _id: { $in: needsCase.map((job) => job.caseId) } }).select("_id").lean()).map((item) => String(item._id)));
+  return failed.length - needsCase.filter((job) => !alive.has(String(job.caseId))).length;
+}
+
 /**
  * Health summary. Everyone on the board only learns whether the integration is
  * on; admins and super admins get the full picture (never any secret).
@@ -123,7 +133,7 @@ async function getStatus(user) {
   const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).lean();
   const [pendingJobs, failedJobs, deadEvents, failedEvents, deferredEvents] = await Promise.all([
     GHLSyncJob.countDocuments({ status: { $in: ["pending", "processing"] } }),
-    GHLSyncJob.countDocuments({ status: "failed" }),
+    countActionableFailedJobs(),
     GHLWebhookEvent.countDocuments({ status: "dead" }),
     GHLWebhookEvent.countDocuments({ status: "failed" }),
     GHLWebhookEvent.countDocuments({ status: "deferred" }),

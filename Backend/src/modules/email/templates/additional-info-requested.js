@@ -11,6 +11,7 @@ function bodyLines(data = {}) {
     `Hi ${data.recipientName || "there"},`,
     asking,
     data.details && data.details !== data.itemName ? `<strong>Details:</strong> ${data.details}` : null,
+    data.required ? `<strong>This item is now required</strong> - your checklist cannot be submitted until you have provided it.` : null,
     `Please log in to the portal and provide the details in your checklist as soon as possible.`,
     `<a href="${data.portalLink || "#"}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Provide Information</a>`,
   ].filter(Boolean);
