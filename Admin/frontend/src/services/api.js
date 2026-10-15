@@ -229,6 +229,9 @@ export const casesApi = {
   addInternalNote: (id, payload) => api.post(`/cases/${id}/notes`, payload),
   assignCaseManager: (id, caseManagerId, notes, extra = {}) =>
     api.put(`/cases/${id}/assign-case-manager`, { caseManagerId, notes, ...extra }),
+  // Additional case managers working the case alongside the primary one (the primary is changed through assignCaseManager above).
+  addCaseManager: (id, caseManagerId) => api.post(`/cases/${id}/case-managers`, { caseManagerId }),
+  removeCaseManager: (id, userId) => api.delete(`/cases/${id}/case-managers/${userId}`),
   // Phase 7 — assigning a principal/single case cascades to its non-overridden
   // child cases server-side; assigning a child case directly (e.g. from that
   // child's own detail page) marks it individually overridden. Same two

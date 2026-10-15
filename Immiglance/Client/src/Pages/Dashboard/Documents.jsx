@@ -16,6 +16,7 @@ import ChecklistItemRow from "../../components/checklist/ChecklistItemRow";
 import DocumentUploadControl from "../../components/checklist/DocumentUploadControl";
 import StatusLegend from "../../components/checklist/StatusLegend";
 import EmployeeHandoffModal from "../../components/checklist/EmployeeHandoffModal";
+import SaveProgressNoticeModal from "../../components/questionnaire/SaveProgressNoticeModal";
 import CaseIntakeExtras from "../../components/checklist/CaseIntakeExtras";
 import SmartScanStep from "../../components/checklist/SmartScanStep";
 import QuestionInput from "../../components/questionnaire/QuestionInput";
@@ -287,6 +288,7 @@ export default function Documents() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveProgressState, setSaveProgressState] = useState("idle"); // idle | saving | saved | error
+  const [showSaveNotice, setShowSaveNotice] = useState(false); // wording-only reminder after Save progress
   const [submitError, setSubmitError] = useState("");
   const [activeSectionId, setActiveSectionId] = useState("");
   const sectionRefs = useRef({});
@@ -596,6 +598,7 @@ export default function Documents() {
     try {
       await commitAll();
       setSaveProgressState("saved");
+      setShowSaveNotice(true);
       // Tell the case manager (email) that this checklist was filled in. Fire-and-forget: the save already succeeded.
       if (activeCaseId) {
         try {
@@ -1188,6 +1191,8 @@ export default function Documents() {
               ) : null}
             </section>
           )}
+
+          <SaveProgressNoticeModal open={showSaveNotice} onClose={() => setShowSaveNotice(false)} />
 
           <EmployeeHandoffModal
             open={showHandoffModal}

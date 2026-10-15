@@ -10,6 +10,7 @@ const { normalizeRole } = require("../../modules/authorization/roleHierarchy");
 const { generateOpaqueToken, hashToken } = require("../../modules/auth/password.service");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 const visaService = require("./ghlVisaService");
+const { allCaseManagerIds } = require("../../modules/cases/caseManagerAccess");
 
 // GHL opportunity (family visa) -> ONE family case:
 //   - one Case, one GHL opportunity, one board card, NO child cases
@@ -86,7 +87,7 @@ function emitCreated(caseDoc) {
     const ghl = caseDoc.integrations?.ghl || {};
     const payload = { caseId: caseDoc._id, kind: "created", unifiedStageKey: ghl.unifiedStageKey, pipelineId: ghl.pipelineId, source: "ghl" };
     ["super_admin", "admin", "team_lead"].forEach((role) => realtimeGateway.emitToRole(role, "ghl:pipeline:updated", payload));
-    if (caseDoc.assignedCaseManager) realtimeGateway.emitToUser(caseDoc.assignedCaseManager, "ghl:pipeline:updated", payload);
+    allCaseManagerIds(caseDoc).forEach((managerId) => realtimeGateway.emitToUser(managerId, "ghl:pipeline:updated", payload));
   } catch (error) {
     logger.warn("ghl_realtime_emit_failed", { error: error.message });
   }

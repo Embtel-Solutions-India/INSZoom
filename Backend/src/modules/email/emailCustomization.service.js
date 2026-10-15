@@ -15,6 +15,7 @@ const User = require("../../models/User");
 const Company = require("../../models/Company");
 const registry = require("./emailVariables.registry");
 const triggers = require("./emailTriggers.registry");
+const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 
 // ── active-template lookup ───────────────────────────────────────────────
 // Read straight from the database on every send (one indexed query - emails
@@ -33,7 +34,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   const ctx = { data, caseContext: {} };
   if (!caseId) return ctx;
   const caseDoc = await Case.findById(caseId)
-    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager assignedTeamLead attorneyAccess companyId employerUser isDemoData")
+    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager additionalCaseManagers assignedTeamLead attorneyAccess companyId employerUser isDemoData")
     .lean();
   if (!caseDoc) return ctx;
   ctx.isDemoData = Boolean(caseDoc.isDemoData);
@@ -63,7 +64,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   // User ids per audience, for the notification dispatcher (triggerEvents.service).
   ctx.people = {
     client: [caseDoc.user, caseDoc.petitionerUser].filter(Boolean).map(String),
-    case_manager: caseDoc.assignedCaseManager ? [String(caseDoc.assignedCaseManager)] : [],
+    case_manager: allCaseManagerIds(caseDoc), // primary + additional
     team_lead: caseDoc.assignedTeamLead ? [String(caseDoc.assignedTeamLead)] : [],
     attorney: activeAttorneyIds.map(String),
   };

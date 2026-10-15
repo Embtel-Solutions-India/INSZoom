@@ -136,10 +136,15 @@ const CRMCases = () => {
     const unsubscribeSubmitted = subscribe('case:client_submitted', () => fetchCasesRef.current?.())
     // A card moved on the Pipeline, through Update Stage, or in GoHighLevel: the Stage column follows it.
     const unsubscribeStage = subscribe('ghl:pipeline:updated', () => fetchCasesRef.current?.())
+    // Taken off a case, or the case team changed: the list drops / updates the case without a reload.
+    const unsubscribeUnassigned = subscribe('case:unassigned', () => fetchCasesRef.current?.())
+    const unsubscribeTeam = subscribe('case:team_updated', () => fetchCasesRef.current?.())
     return () => {
       unsubscribeAssigned()
       unsubscribeSubmitted()
       unsubscribeStage()
+      unsubscribeUnassigned?.()
+      unsubscribeTeam?.()
     }
   }, [connected, user?._id])
 

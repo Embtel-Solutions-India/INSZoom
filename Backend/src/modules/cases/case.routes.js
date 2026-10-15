@@ -6,6 +6,7 @@ const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const ctrl = require("./case.controller");
 const attorneyCtrl = require("../attorney/attorney.controller");
+const caseManagersCtrl = require("./case-managers.controller");
 const staffFeedbackCtrl = require("../feedback/feedback.controller");
 const upload = require("../uploads/upload.middleware");
 const { PRIORITIES } = require("./case.constants");
@@ -96,6 +97,23 @@ router.put(
   body("internalNote").optional().isString(),
   validate,
   ctrl.assignCaseManager
+);
+// Additional case managers (the primary is changed through assign-case-manager above).
+router.post(
+  "/:id/case-managers",
+  authenticate,
+  authorizeRoles("super_admin", "admin", "team_lead"),
+  authorizePermissions("cases:assign"),
+  body("caseManagerId").isMongoId().withMessage("caseManagerId must be a valid ID"),
+  validate,
+  caseManagersCtrl.addCaseManager
+);
+router.delete(
+  "/:id/case-managers/:userId",
+  authenticate,
+  authorizeRoles("super_admin", "admin", "team_lead"),
+  authorizePermissions("cases:assign"),
+  caseManagersCtrl.removeCaseManager
 );
 router.put("/:id/assign-team-lead", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:assign"), ctrl.assignTeamLead);
 router.put("/:id/ownership", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:assign"), ctrl.transferOwnership);

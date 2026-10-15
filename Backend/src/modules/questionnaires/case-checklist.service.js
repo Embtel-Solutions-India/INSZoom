@@ -40,7 +40,7 @@ function broadcastChecklistsChanged(caseDocs, reason, actor) {
   try {
     const realtimeGateway = require("../realtime/realtime.gateway");
     for (const caseDoc of [].concat(caseDocs).filter(Boolean)) {
-      const recipients = new Set([caseDoc.user, caseDoc.delegateEmployerUser, caseDoc.assignedCaseManager, actor?._id].filter(Boolean).map(String));
+      const recipients = new Set([caseDoc.user, caseDoc.delegateEmployerUser, ...allCaseManagerIds(caseDoc), actor?._id].filter(Boolean).map(String));
       const payload = { caseId: String(caseDoc._id), reason, at: new Date().toISOString() };
       recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "case:checklists_changed", payload));
       realtimeGateway.emitToRole?.("admin", "case:checklists_changed", payload);
@@ -369,9 +369,9 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
 }
 
 async function broadcastEdited(caseId, user) {
-  const principal = await Case.findById(caseId).select("user delegateEmployerUser assignedCaseManager").lean();
+  const principal = await Case.findById(caseId).select("user delegateEmployerUser assignedCaseManager additionalCaseManagers").lean();
   // the employee cases under a principal are served its customised checklists too, so their sessions refresh as well
-  const children = await Case.find({ parentCase: caseId }).select("user delegateEmployerUser assignedCaseManager").lean();
+  const children = await Case.find({ parentCase: caseId }).select("user delegateEmployerUser assignedCaseManager additionalCaseManagers").lean();
   broadcastChecklistsChanged([principal, ...children], "edited", user);
 }
 

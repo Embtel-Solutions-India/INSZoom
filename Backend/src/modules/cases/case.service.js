@@ -16,9 +16,11 @@ const CaseHistoryArchive = require("../../models/CaseHistoryArchive");
 const mongoose = require("mongoose");
 const { dashboardCacheBump } = require("../../config/redis");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const env = require("../../config/env");
 const { CASE_LIFECYCLE_STAGES, CRM_STAGE_TO_INDEX, STAGE_NAMES } = require("./case.constants");
 const { openRfeDeadlineFilter } = require("./case-manager-analytics.service");
 const participantService = require("./case-participant.service");
+const { isCaseManagerOfCase, caseManagerMatch, allCaseManagerIds } = require("./caseManagerAccess");
 
 const ADMIN_ROLES = ["super_admin", "admin"];
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -40,6 +42,7 @@ const CASE_LIST_POPULATE = [
   { path: "organization", select: "name legalName status" },
   { path: "companyId", select: "name legalName status" },
   { path: "assignedCaseManager", select: "name displayName email department phone role" },
+  { path: "additionalCaseManagers", select: "name displayName email department phone role" },
   { path: "primaryOwner", select: "name displayName email department phone role" },
   { path: "secondaryOwner", select: "name displayName email department phone role" },
   { path: "assignedTeamLead", select: "name displayName email department phone role" },
@@ -158,7 +161,7 @@ function canAccessCase(user, caseData) {
   if (sameId(caseData.beneficiary?.user, user._id)) return true;
   if (sameId(caseData.primaryOwner, user._id) || sameId(caseData.secondaryOwner, user._id)) return true;
   if (sameId(caseData.assignedTeamLead, user._id)) return true;
-  if (role === "case_manager") return sameId(caseData.assignedCaseManager, user._id) || sameId(caseData.primaryOwner, user._id);
+  if (role === "case_manager") return isCaseManagerOfCase(caseData, user._id) || sameId(caseData.primaryOwner, user._id);
   if (role === "employer") return sameId(caseData.employerUser, user._id) || sameId(caseData.companyId, user.companyId) || sameId(caseData.employer, user.companyId) || sameId(caseData.organization, user.companyId);
   if (role === "employee") return sameId(caseData.employeeUser, user._id) || sameId(caseData.user, user._id) || sameId(caseData.beneficiary?.user, user._id);
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
@@ -202,7 +205,7 @@ function applyCaseRoleFilter(filter, user) {
     ];
     return filter;
   }
-  if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
+  if (role === "case_manager") filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, { additionalCaseManagers: user._id }, { primaryOwner: user._id }, { secondaryOwner: user._id }] }];
   else if (role === "employer") filter.$and = [...(filter.$and || []), { $or: [{ employerUser: user._id }, { delegateEmployerUser: user._id }, { "participants.userId": user._id }, { "participants.email": user.email }, ...(user.companyId ? [{ companyId: user.companyId }, { employer: user.companyId }, { organization: user.companyId }, { "participants.companyId": user.companyId }] : [])] }];
   else if (role === "employee") filter.$and = [...(filter.$and || []), buildRestrictedCaseOwnershipFilter(user, role)];
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
@@ -249,7 +252,8 @@ function buildCaseFilterFields(query) {
   if (query.stage) filter.stage = query.stage;
   if (query.priority) filter.priority = query.priority;
   if (query.package) filter.package = query.package;
-  if (query.assignedCaseManager) filter.assignedCaseManager = castObjectId(query.assignedCaseManager);
+  // "Cases of this case manager" = as the primary OR as an additional case manager.
+  if (query.assignedCaseManager) filter.$and = [...(filter.$and || []), caseManagerMatch(castObjectId(query.assignedCaseManager))];
   if (query.companyId) filter.companyId = castObjectId(query.companyId);
   if (query.beneficiary) filter.beneficiary = castObjectId(query.beneficiary);
   if (query.beneficiaryId) filter.beneficiary = castObjectId(query.beneficiaryId);
@@ -440,6 +444,19 @@ function addAuditEntry(caseData, action, description, user, changes = {}, req) {
         performedAt,
       });
     });
+  // Same live push for every case manager on the case (primary + additional) so they stay in sync with each other, minus
+  // the one who made the change.
+  allCaseManagerIds(caseData)
+    .filter((managerId) => managerId !== String(user?._id))
+    .forEach((managerId) => {
+      realtimeGateway.emitToUser(managerId, "case:updated", {
+        caseId: caseData._id,
+        caseNumber: caseData.caseNumber,
+        action,
+        description,
+        performedAt,
+      });
+    });
   // Every case mutation goes through here — bump the shared dashboard cache
   // generation so stale aggregates never outlive a real change (fire-and-
   // forget, same as the realtime emits above; a no-op without Redis).
@@ -522,6 +539,8 @@ function serializeCaseForUser(caseData, user) {
   const data = caseData?.toObject ? caseData.toObject({ virtuals: true }) : { ...(caseData || {}) };
   const role = normalizeRole(user?.role);
   if (["client", "user", ...RESTRICTED_PORTAL_ROLES].includes(role)) {
+    // Clients only ever see the primary case manager (assignedCaseManager); the rest of the team stays internal.
+    delete data.additionalCaseManagers;
     delete data.internalNotes;
     delete data.auditHistory;
     delete data.notes;
@@ -680,6 +699,7 @@ function populateCaseQuery(query) {
     { path: "childCases", select: "caseNumber clientName visaType status stage" },
     { path: "linkedCases.case", select: "caseNumber clientName visaType status stage" },
     { path: "assignedCaseManager", select: "name displayName email department phone role" },
+    { path: "additionalCaseManagers", select: "name displayName email department phone role" },
     { path: "primaryOwner", select: "name displayName email department phone role" },
     { path: "secondaryOwner", select: "name displayName email department phone role" },
     { path: "assignedTeamLead", select: "name displayName email department phone role" },
@@ -959,10 +979,25 @@ async function bulkUpdateCases(ids, action, payload, user, req) {
 // to a teamId when one is already known). Reused by every case-creation path
 // (explicit POST /cases, and the auto-create-on-profile-completion path) so
 // no case is ever created without an owner able to see and assign it.
-async function resolveTeamLeadForCase(payload = {}) {
+async function resolveTeamLeadForCase(payload = {}, creator = null) {
   if (payload.assignedTeamLead) return payload.assignedTeamLead;
+  // A team lead who creates the case is that case's team lead. Anyone else (admin, super admin, GoHighLevel, automatic creation) falls through
+  // to the default team lead below.
+  if (creator && normalizeRole(creator.role) === "team_lead" && creator.isActive !== false) return { _id: creator._id, teamId: creator.teamId };
   const query = { role: "team_lead", isActive: { $ne: false } };
   if (payload.teamId) query.teamId = payload.teamId;
+  // A creator with a dedicated team lead (TEAM_LEAD_BY_CREATOR_EMAIL, e.g. admin@immiglance.com -> teamlead@immiglance.com).
+  const dedicatedEmail = creator?.email && env.teamLeadByCreatorEmail[String(creator.email).toLowerCase()];
+  if (dedicatedEmail) {
+    const dedicated = await User.findOne({ ...query, email: dedicatedEmail }).select("_id teamId");
+    if (dedicated) return dedicated;
+  }
+  // A configured default team lead (DEFAULT_TEAM_LEAD_EMAIL) gets every case that names nobody, as long as they are an active team lead
+  // (and on the requested team, when one is given). Otherwise - or if they are inactive/missing - fall back to the round robin below.
+  if (env.defaultTeamLeadEmail) {
+    const preferred = await User.findOne({ ...query, email: env.defaultTeamLeadEmail }).select("_id teamId");
+    if (preferred) return preferred;
+  }
   return User.findOne(query).sort({ updatedAt: 1 }).select("_id teamId");
 }
 

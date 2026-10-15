@@ -15,6 +15,7 @@ const generateCaseNumber = require("../cases/caseId");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const { normalizePackageName } = require("../../config/packages");
 const caseService = require("../cases/case.service");
+const { additionalCaseRecordIds, allCaseManagerIds } = require("../cases/caseManagerAccess");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
 
@@ -127,7 +128,7 @@ function completionScore(client) {
   return Math.round((complete / fields.length) * 100);
 }
 
-function buildClientFilter(query = {}, user) {
+function buildClientFilter(query = {}, user, extraClientIds = []) {
   const filter = {};
   if (query.status) filter.status = query.status;
   if (query.visaType) filter.visaType = query.visaType;
@@ -141,8 +142,10 @@ function buildClientFilter(query = {}, user) {
   }
   const role = roleOf(user);
   if (role === "client") filter.user = user._id;
-  else if (role === "case_manager") filter.assignedCaseManager = user._id;
-  else if (role === "team_lead" && user.teamId) filter.teamId = user.teamId;
+  else if (role === "case_manager") {
+    // Own clients, plus the clients of cases where this case manager is an additional (not primary) case manager.
+    filter.$and = [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, ...(extraClientIds.length ? [{ _id: { $in: extraClientIds } }] : [])] }];
+  } else if (role === "team_lead" && user.teamId) filter.teamId = user.teamId;
   return filter;
 }
 
@@ -206,27 +209,30 @@ async function notifyCaseOfClientSubmission(caseData, client, user, req, { isFir
   await caseData.save();
   await caseService.writeAuditLog("client_profile_submitted", caseData, user, { clientId: client._id, isFirstSubmission }, req);
 
-  const caseManagerId = caseData.assignedCaseManager || caseData.primaryOwner;
-  if (!caseManagerId) return;
+  // Every case manager on the case (primary + additional) is told; falls back to the owner for a case with no case manager.
+  const caseManagerIds = allCaseManagerIds(caseData);
+  if (!caseManagerIds.length && caseData.primaryOwner) caseManagerIds.push(String(caseData.primaryOwner));
 
-  await notificationService.createNotification({
-    userId: caseManagerId,
-    type: isFirstSubmission ? "questionnaire_submitted" : "general",
-    category: "case",
-    title,
-    message: `${caseData.caseNumber || caseData.caseId} · ${description}`,
-    caseId: caseData._id,
-    link: `/crm-cases/${caseData._id}`,
-    priority: isFirstSubmission ? "high" : "medium",
-    source: "shared",
-  }, user, req).catch(() => null);
+  await Promise.all(caseManagerIds.map(async (caseManagerId) => {
+    await notificationService.createNotification({
+      userId: caseManagerId,
+      type: isFirstSubmission ? "questionnaire_submitted" : "general",
+      category: "case",
+      title,
+      message: `${caseData.caseNumber || caseData.caseId} · ${description}`,
+      caseId: caseData._id,
+      link: `/crm-cases/${caseData._id}`,
+      priority: isFirstSubmission ? "high" : "medium",
+      source: "shared",
+    }, user, req).catch(() => null);
 
-  realtimeGateway.emitToUser(caseManagerId, "case:client_submitted", {
-    _id: caseData._id,
-    caseNumber: caseData.caseNumber,
-    clientName: caseData.clientName,
-    isFirstSubmission,
-  });
+    realtimeGateway.emitToUser(caseManagerId, "case:client_submitted", {
+      _id: caseData._id,
+      caseNumber: caseData.caseNumber,
+      clientName: caseData.clientName,
+      isFirstSubmission,
+    });
+  }));
 }
 
 async function createClient(payload, user, req) {
@@ -321,7 +327,8 @@ async function updateClient(id, payload, user, req) {
 }
 
 async function listClients(query, user) {
-  const filter = buildClientFilter(query, user);
+  const extraClientIds = roleOf(user) === "case_manager" ? (await additionalCaseRecordIds(user._id)).clientIds : [];
+  const filter = buildClientFilter(query, user, extraClientIds);
   const { page, limit, skip } = pagination(query);
   const [clients, total] = await Promise.all([
     Client.find(filter).sort(sortFor(query)).skip(skip).limit(limit),

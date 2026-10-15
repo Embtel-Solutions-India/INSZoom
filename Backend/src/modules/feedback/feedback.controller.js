@@ -10,7 +10,7 @@ const feedbackService = require("./feedback.service");
 // definition, not a feedback-specific copy of it.
 async function assertStaffCaseAccess(req) {
   const caseDoc = await Case.findById(req.params.caseId).select(
-    "_id caseId caseNumber assignedCaseManager assignedTeamLead primaryOwner secondaryOwner teamId user clientProfile attorneyAccess"
+    "_id caseId caseNumber assignedCaseManager additionalCaseManagers assignedTeamLead primaryOwner secondaryOwner teamId user clientProfile attorneyAccess"
   );
   if (!caseDoc) {
     const error = new Error("Case not found");

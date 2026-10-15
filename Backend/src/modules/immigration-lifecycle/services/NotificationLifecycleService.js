@@ -1,4 +1,5 @@
 const notificationService = require("../../notifications/notification.service");
+const { allCaseManagerIds } = require("../../cases/caseManagerAccess");
 
 class NotificationLifecycleService {
   static async roles(roles, payload, user, req) {
@@ -13,7 +14,7 @@ class NotificationLifecycleService {
   static async caseStakeholders(caseData, payload, user, req) {
     await Promise.all([
       this.user(caseData.user || caseData.clientProfile, payload, user, req),
-      this.user(caseData.assignedCaseManager, payload, user, req),
+      ...allCaseManagerIds(caseData).map((managerId) => this.user(managerId, payload, user, req)),
       this.user(caseData.assignedAttorney, payload, user, req),
     ]);
     this.emitTriggerEvent(caseData, payload, user, req);
@@ -40,7 +41,7 @@ class NotificationLifecycleService {
       caseId: caseData._id, actor: user, req,
       data: { ...(decision ? { decision } : {}), ...(caseData.rfeDeadline && event === "rfe.received" ? { rfeDeadline: new Date(caseData.rfeDeadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) } : {}) },
       covered: { client: { notified: true, emailed: true }, case_manager: { notified: true, emailed: false } },
-      skipUserIds: [caseData.assignedAttorney, caseData.assignedCaseManager, caseData.user].filter(Boolean),
+      skipUserIds: [caseData.assignedAttorney, ...allCaseManagerIds(caseData), caseData.user].filter(Boolean),
     });
   }
 }

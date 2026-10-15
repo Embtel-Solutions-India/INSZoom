@@ -5,6 +5,7 @@ import PrefillBadge from "../PrefillBadge";
 import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired, orderShortThenWide } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
+import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
 
 // The "Autofill with resume" button on a PERM employee's Employment History is built (backend converter + upload) but
 // hidden while OCR is not reliable. Set to true to show it again - nothing else needs to change.
@@ -125,6 +126,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
 
   const [savingProgress, setSavingProgress] = useState(false);
   const [progressNote, setProgressNote] = useState("");
+  const [showSaveNotice, setShowSaveNotice] = useState(false); // wording-only reminder after Save progress
   // Save progress: persist what is filled so far (any amount) without submitting.
   const handleSaveProgress = async () => {
     setSavingProgress(true);
@@ -133,6 +135,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
     try {
       await commitAll();
       setProgressNote("Progress saved. You can come back and finish later.");
+      setShowSaveNotice(true);
     } catch (err) {
       setSubmitError(err.response?.message || err.message || "Unable to save - please try again.");
     } finally {
@@ -167,6 +170,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-28">
+      <SaveProgressNoticeModal open={showSaveNotice} onClose={() => setShowSaveNotice(false)} />
       {readOnly && (
         <div role="status" className="rounded-xl bg-primary/10 p-4 ring-1 ring-inset ring-primary/10" data-testid="read-only-banner">
           <div className="flex flex-wrap items-center justify-between gap-3">

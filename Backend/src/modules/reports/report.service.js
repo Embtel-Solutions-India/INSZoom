@@ -13,6 +13,7 @@ const Workflow = require("../../models/Workflow");
 const Task = require("../../models/Task");
 const { recordAuditEvent } = require("../audit/audit.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { caseManagerMatch } = require("../cases/caseManagerAccess");
 
 const IST_OFFSET_MS = 330 * 60 * 1000;
 // Only roles EODReport.role can store: other roles used to make the whole generation job throw on validation.
@@ -398,6 +399,7 @@ function caseAssignmentFilter(staff) {
     paralegal: "assignedDocumentationSpecialist",
     reviewer: "reviewers",
   };
+  if (role === "case_manager") return caseManagerMatch(staff._id); // primary + additional
   const field = assignmentFields[role];
   return field ? { [field]: staff._id } : { _id: null };
 }

@@ -48,18 +48,33 @@ function rank(rows) {
 
 // Case managers and team leads share one shape: cases assigned to them via
 // `field`, plus the tasks assigned to them.
+// Cases per staff member, grouped by `field`. A case manager is counted on every case they work (primary + additional), so for
+// that role the group runs over the union of both fields; other roles keep the single-field group.
+function casesGroupedByStaff(field, ids, extraMatch) {
+  if (field !== "assignedCaseManager") {
+    return Case.aggregate([{ $match: { [field]: { $in: ids }, ...extraMatch } }, { $group: { _id: `$${field}`, n: { $sum: 1 } } }]);
+  }
+  return Case.aggregate([
+    { $match: { $or: [{ assignedCaseManager: { $in: ids } }, { additionalCaseManagers: { $in: ids } }], ...extraMatch } },
+    { $project: { staff: { $setUnion: [[{ $ifNull: ["$assignedCaseManager", null] }], { $ifNull: ["$additionalCaseManagers", []] }] } } },
+    { $unwind: "$staff" },
+    { $match: { staff: { $in: ids } } },
+    { $group: { _id: "$staff", n: { $sum: 1 } } },
+  ]);
+}
+
 async function staffBoard({ role, field }, period, now) {
   const users = await User.find({ role, isActive: true }).select("name displayName email").lean();
   if (!users.length) return [];
   const ids = users.map((user) => user._id);
   const start = periodStart(period, now);
-  const closedMatch = { [field]: { $in: ids }, status: { $in: CLOSED_STATUSES }, ...(start ? { updatedAt: { $gte: start } } : {}) };
+  const closedMatch = { status: { $in: CLOSED_STATUSES }, ...(start ? { updatedAt: { $gte: start } } : {}) };
   const taskDoneMatch = { assignedTo: { $in: ids }, status: "completed", ...(start ? { updatedAt: { $gte: start } } : {}) };
 
   const [open, closed, totalClosed, tasksDone, overdue] = await Promise.all([
-    Case.aggregate([{ $match: { [field]: { $in: ids }, status: { $nin: NOT_OPEN_STATUSES } } }, { $group: { _id: `$${field}`, n: { $sum: 1 } } }]),
-    Case.aggregate([{ $match: closedMatch }, { $group: { _id: `$${field}`, n: { $sum: 1 } } }]),
-    Case.aggregate([{ $match: { [field]: { $in: ids }, status: { $in: CLOSED_STATUSES } } }, { $group: { _id: `$${field}`, n: { $sum: 1 } } }]),
+    casesGroupedByStaff(field, ids, { status: { $nin: NOT_OPEN_STATUSES } }),
+    casesGroupedByStaff(field, ids, closedMatch),
+    casesGroupedByStaff(field, ids, { status: { $in: CLOSED_STATUSES } }),
     Task.aggregate([{ $match: taskDoneMatch }, { $group: { _id: "$assignedTo", n: { $sum: 1 } } }]),
     Task.aggregate([{ $match: { assignedTo: { $in: ids }, status: { $nin: ["completed", "cancelled"] }, dueDate: { $lt: now } } }, { $group: { _id: "$assignedTo", n: { $sum: 1 } } }]),
   ]);

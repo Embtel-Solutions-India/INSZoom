@@ -19,13 +19,15 @@ function resolveCaseConversationRouting(caseData = {}, currentUser = {}) {
     .filter((participant) => participant.status !== "deleted" && participant.status !== "replaced")
     .map((participant) => participant.userId);
   const caseParticipantIds = [clientId, caseData.employerUser, caseData.employeeUser, caseData.beneficiaryUser, ...participantUserIds];
-  const desiredParticipantIds = [...caseParticipantIds, caseData.assignedCaseManager || caseData.primaryOwner, caseData.assignedTeamLead]
+  // Every case manager on the case (primary + additional) joins the conversation, so they all see and can answer the client.
+  const desiredParticipantIds = [...caseParticipantIds, caseData.assignedCaseManager || caseData.primaryOwner, ...(caseData.additionalCaseManagers || []), caseData.assignedTeamLead]
     .map(idOf)
     .filter(Boolean);
 
   const currentUserIsAssignedParticipant = [
     ...caseParticipantIds,
     caseData.assignedCaseManager,
+    ...(caseData.additionalCaseManagers || []),
     caseData.primaryOwner,
     caseData.assignedTeamLead,
   ].some((participantId) => sameId(currentUser?._id, participantId));

@@ -16,7 +16,7 @@ async function assertCaseFormAccess(req, caseFormId) {
   const caseForm = await CaseForm.findById(caseFormId).select("caseId").lean();
   if (!caseForm) throw Object.assign(new Error("CaseForm not found"), { status: 404 });
   const caseData = await Case.findById(caseForm.caseId)
-    .select("_id user assignedCaseManager assignedTeamLead companyId employerUser attorney assignedAttorney")
+    .select("_id user assignedCaseManager additionalCaseManagers assignedTeamLead companyId employerUser attorney assignedAttorney")
     .lean();
   if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
   if (!caseService.canAccessCase(req.user, caseData)) throw Object.assign(new Error("Not authorized to access this case"), { status: 403 });

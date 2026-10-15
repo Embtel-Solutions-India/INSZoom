@@ -8,6 +8,7 @@ const { canCreateUserRole, canModifyUser } = require("../authorization/rbac.serv
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const caseService = require("../cases/case.service");
 const { invalidateUserCache } = require("../../config/redis");
+const { caseManagerMatch } = require("../cases/caseManagerAccess");
 
 const USER_SELECT = "-password -passwordResetTokenHash -emailVerificationTokenHash -twoFactorSecret";
 const ASSIGNABLE_ROLES = ["case_manager", "team_lead", "admin", "paralegal", "finance", "hr", "reviewer"];
@@ -308,7 +309,7 @@ async function getUserPerformance(id, currentUser) {
   const performanceData = await StaffPerformance.find({ staff: user._id }).sort({ periodStart: -1 }).limit(6);
   const currentCases = [];
   if (role === "case_manager") {
-    const cases = await Case.find({ assignedCaseManager: user._id, status: { $in: ["active", "processing", "in_review"] } }).select("caseNumber clientName status stage").limit(20);
+    const cases = await Case.find({ ...caseManagerMatch(user._id), status: { $in: ["active", "processing", "in_review"] } }).select("caseNumber clientName status stage").limit(20);
     currentCases.push(...cases);
   }
   return { user, role, currentCases, performanceData };

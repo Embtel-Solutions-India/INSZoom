@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import QuestionInput from "./QuestionInput";
+import SaveProgressNoticeModal from "./SaveProgressNoticeModal";
 import { questionnairesApi } from "../../services/api";
 import { questionKey, sectionKey, isEmptyValue, isWideQuestion, isQuestionRequired } from "../../utils/questionnaireEngine";
 
@@ -26,6 +27,15 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [showSaveNotice, setShowSaveNotice] = useState(false); // wording-only reminder after Save progress
+  const handleSaveProgress = async () => {
+    try {
+      await qa.commitAll();
+    } catch {
+      return; // the hook already shows the save error
+    }
+    setShowSaveNotice(true);
+  };
   const handleSubmit = async () => {
     if (missing > 0 || !qa.questionnaire?._id) return;
     setSubmitting(true);
@@ -46,6 +56,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
 
   return (
     <section className="rounded-2xl border border-border bg-card shadow-sm" aria-labelledby="premium-processing-heading">
+      <SaveProgressNoticeModal open={showSaveNotice} onClose={() => setShowSaveNotice(false)} />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
         <div>
           <h2 id="premium-processing-heading" className="text-base font-semibold text-foreground">Premium Processing - Form I-907</h2>
@@ -95,7 +106,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => qa.commitAll().catch(() => null)}
+            onClick={handleSaveProgress}
             disabled={qa.saveState === "saving" || qa.uploadsInFlight > 0 || submitting}
             className="rounded-lg border border-primary bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
             title="Saves everything you have filled in so far"

@@ -11,7 +11,7 @@ const Case = require("../../models/Case");
 const AuthSession = require("../../models/AuthSession");
 const { invalidateUserCache } = require("../../config/redis");
 
-const CASE_ASSIGNMENT_FIELDS = ["assignedCaseManager", "assignedTeamLead", "primaryOwner", "secondaryOwner"];
+const CASE_ASSIGNMENT_FIELDS = ["assignedCaseManager", "additionalCaseManagers", "assignedTeamLead", "primaryOwner", "secondaryOwner"];
 
 async function countAssignedCases(userId) {
   return Case.countDocuments({

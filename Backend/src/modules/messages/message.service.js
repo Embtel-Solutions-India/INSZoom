@@ -94,7 +94,7 @@ async function canAccessConversation(user, conversation) {
   if (conversation.caseId && conversation.type === "case" && isStaff(user)) {
     if (!dbIsConnected()) return false;
     const caseData = await Case.findById(idOf(conversation.caseId)).select(
-      "user employeeUser employerUser clientProfile beneficiary primaryOwner secondaryOwner assignedTeamLead assignedCaseManager teamId petitionerUser beneficiaryUser beneficiaryInvite companyId employer organization"
+      "user employeeUser employerUser clientProfile beneficiary primaryOwner secondaryOwner assignedTeamLead assignedCaseManager additionalCaseManagers teamId petitionerUser beneficiaryUser beneficiaryInvite companyId employer organization"
     );
     return Boolean(caseData) && caseService.canAccessCase(user, caseData);
   }
@@ -216,7 +216,7 @@ async function syncCaseConversationParticipants(conversation, caseData) {
   if (!conversation?.caseId || conversation.type !== "case") return conversation;
 
   const resolvedCase = caseData || await Case.findById(conversation.caseId)
-    .select("_id caseId caseNumber visaType clientPortalId user clientProfile primaryOwner assignedTeamLead assignedCaseManager companyId teamId");
+    .select("_id caseId caseNumber visaType clientPortalId user clientProfile primaryOwner assignedTeamLead assignedCaseManager additionalCaseManagers companyId teamId");
   if (!resolvedCase) return conversation;
 
   const existingParticipants = Array.isArray(conversation.participants) ? [...conversation.participants] : [];

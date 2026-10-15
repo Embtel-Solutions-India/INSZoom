@@ -6,6 +6,7 @@ const Document = require("../../models/Document");
 const User = require("../../models/User");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const caseService = require("../cases/case.service");
+const { isCaseManagerOfCase, allCaseManagerIds } = require("../cases/caseManagerAccess");
 const caseWorkflowAutomation = require("../cases/case-workflow-automation.service");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
@@ -241,7 +242,7 @@ function canEditClientIntake(user, client, caseData) {
   const role = roleOf(user);
   if (["super_admin", "admin"].includes(role)) return true;
   if (["client", "user"].includes(role)) return sameId(client.user, user._id) && !["submitted", "locked"].includes(client.intakeSubmission?.status);
-  if (role === "case_manager") return sameId(caseData?.assignedCaseManager, user._id);
+  if (role === "case_manager") return isCaseManagerOfCase(caseData, user._id);
   if (role === "team_lead") return true;
   return false;
 }
@@ -335,8 +336,13 @@ async function saveClientIntake({ user, caseId, payload, req, autoSave = false }
 }
 
 async function notifySubmission(caseData, client, user, req) {
-  const caseManagerId = caseData.assignedCaseManager || caseData.primaryOwner;
-  if (!caseManagerId) return;
+  // Every case manager on the case (primary + additional) is told; falls back to the owner for a case with no case manager.
+  const caseManagerIds = allCaseManagerIds(caseData);
+  if (!caseManagerIds.length && caseData.primaryOwner) caseManagerIds.push(String(caseData.primaryOwner));
+  await Promise.all(caseManagerIds.map((caseManagerId) => notifyCaseManagerOfSubmission(caseManagerId, caseData, client, user, req)));
+}
+
+async function notifyCaseManagerOfSubmission(caseManagerId, caseData, client, user, req) {
   const caseManager = await User.findById(caseManagerId).select("name displayName email").lean().catch(() => null);
   await notificationService.createNotification({
     userId: caseManagerId,

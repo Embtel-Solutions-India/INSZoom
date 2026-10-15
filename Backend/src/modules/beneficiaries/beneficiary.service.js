@@ -13,6 +13,7 @@ const Task = require("../../models/Task");
 const User = require("../../models/User");
 const Workflow = require("../../models/Workflow");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const { additionalCaseRecordIds } = require("../cases/caseManagerAccess");
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const WRITE_ROLES = ["super_admin", "admin", "case_manager"];
@@ -250,10 +251,11 @@ function buildBaseFilter(query = {}) {
   return filter;
 }
 
-function applyAccessFilter(filter, user) {
+function applyAccessFilter(filter, user, extraBeneficiaryIds = []) {
   const role = roleOf(user);
   if (role === "client") return { ...filter, user: user._id };
-  if (role === "case_manager") return { ...filter, assignedCaseManager: user._id };
+  // Own beneficiaries, plus those on cases where this case manager is an additional (not primary) case manager.
+  if (role === "case_manager") return { ...filter, $and: [...(filter.$and || []), { $or: [{ assignedCaseManager: user._id }, ...(extraBeneficiaryIds.length ? [{ _id: { $in: extraBeneficiaryIds } }] : [])] }] };
   if (role === "team_lead" && user.teamId) return { ...filter, teamId: user.teamId };
   return filter;
 }
@@ -368,7 +370,8 @@ async function getAccessibleBeneficiaryOrThrow(id, user) {
 }
 
 async function listBeneficiaries(query, user) {
-  const filter = applyAccessFilter(buildBaseFilter(query), user);
+  const extraIds = roleOf(user) === "case_manager" ? (await additionalCaseRecordIds(user._id)).beneficiaryIds : [];
+  const filter = applyAccessFilter(buildBaseFilter(query), user, extraIds);
   const { page, limit, skip } = pagination(query);
   const [beneficiaries, total] = await Promise.all([
     populateBeneficiaryQuery(Beneficiary.find(filter).sort(sortFor(query)).skip(skip).limit(limit)),
@@ -468,7 +471,8 @@ async function getDashboard(user, req) {
       recentActivity: beneficiary.activityHistory.slice(-20).reverse(),
     };
   }
-  const filter = applyAccessFilter({}, user);
+  const extraIds = roleOf(user) === "case_manager" ? (await additionalCaseRecordIds(user._id)).beneficiaryIds : [];
+  const filter = applyAccessFilter({}, user, extraIds);
   const [total, active, passportExpiring, visaExpiring] = await Promise.all([
     Beneficiary.countDocuments(filter),
     Beneficiary.countDocuments({ ...filter, status: "active" }),

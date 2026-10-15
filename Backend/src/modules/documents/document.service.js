@@ -1006,7 +1006,7 @@ async function addReviewComment(document, payload, user, req) {
 
 function populateDocumentQuery(query) {
   return query.populate([
-    { path: "caseId", select: "caseNumber caseId clientName clientEmail user assignedCaseManager assignedAttorney assignedProfessor companyId teamId clientPortalId" },
+    { path: "caseId", select: "caseNumber caseId clientName clientEmail user assignedCaseManager additionalCaseManagers assignedAttorney assignedProfessor companyId teamId clientPortalId" },
     { path: "user", select: "name displayName email role" },
     { path: "client", select: "fullName email user status" },
     { path: "beneficiary", select: "fullName email user visaType status" },
