@@ -50,17 +50,17 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
     }
   };
 
-  const field = "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400";
+  const field = "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-      <form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-xl">
+      <form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl bg-card p-6 shadow-xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-slate-900">Add employee</h3>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600" aria-label="Close">✕</button>
+          <h3 className="text-base font-bold text-foreground">Add employee</h3>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">✕</button>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-semibold text-slate-500">Visa *</label>
+          <label className="mb-1 block text-xs font-semibold text-muted-foreground">Visa *</label>
           <select className={field} value={visaType} onChange={(e) => { setVisaType(e.target.value); setPetitionSubType(""); }} disabled={busy}>
             <option value="" disabled>Select the employee's visa</option>
             {options.map((option) => <option key={option.visaType} value={option.visaType}>{option.label}</option>)}
@@ -69,7 +69,7 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
 
         {subTypes.length > 0 && (
           <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">{visaType} type *</label>
+            <label className="mb-1 block text-xs font-semibold text-muted-foreground">{visaType} type *</label>
             <select className={field} value={petitionSubType} onChange={(e) => setPetitionSubType(e.target.value)} disabled={busy}>
               <option value="" disabled>Select type (new, extension, transfer...)</option>
               {subTypes.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -78,9 +78,9 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
         )}
 
         <fieldset className="space-y-2" disabled={busy}>
-          <legend className="mb-1 text-xs font-semibold text-slate-500">Who fills in their information?</legend>
-          <label className="flex items-center gap-2 text-sm text-slate-800"><input type="radio" checked={mode === "fill_self"} onChange={() => setMode("fill_self")} /> I'll fill it in myself</label>
-          <label className="flex items-center gap-2 text-sm text-slate-800"><input type="radio" checked={mode === "invite"} onChange={() => setMode("invite")} /> Invite the employee to fill it in</label>
+          <legend className="mb-1 text-xs font-semibold text-muted-foreground">Who fills in their information?</legend>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={mode === "fill_self"} onChange={() => setMode("fill_self")} /> I'll fill it in myself</label>
+          <label className="flex items-center gap-2 text-sm text-foreground"><input type="radio" checked={mode === "invite"} onChange={() => setMode("invite")} /> Invite the employee to fill it in</label>
         </fieldset>
 
         {mode === "invite" && (
@@ -90,11 +90,11 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
           </div>
         )}
 
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
-          <button type="submit" disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50">{busy ? "Adding…" : "Add employee"}</button>
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Cancel</button>
+          <button type="submit" disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{busy ? "Adding…" : "Add employee"}</button>
         </div>
       </form>
     </div>

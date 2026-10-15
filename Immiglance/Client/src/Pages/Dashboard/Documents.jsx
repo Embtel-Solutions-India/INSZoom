@@ -35,6 +35,7 @@ import {
   matchingAutofillSources,
   isWideQuestion,
   REQUESTED_SECTION_KEY,
+  orderShortThenWide,
 } from "../../utils/questionnaireEngine";
 import { STATUS, fieldItemStatus, documentItemStatus, isEmptyAnswerValue } from "../../utils/checklistStatus";
 import { dedupeSectionsByLabel } from "../../utils/dedupeChecklistSections";
@@ -764,7 +765,7 @@ export default function Documents() {
         <span className="text-xs font-semibold text-muted-foreground">{section.items.filter(itemIsDone).length}/{section.items.length} complete</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        {section.items.map((item) => {
+        {orderShortThenWide(section.items, (item) => item.question).map((item) => {
           const { status, reason } = itemStatus(item);
           if (item.type === "document" && item.docId) {
             return (

@@ -30,6 +30,23 @@ export function isWideQuestion(question) {
   return String(question.description || question.helpText || "").length > 150;
 }
 
+// Order for a card grid that is two columns wide: short questions together FIRST (they pair up two to a row), then the wide ones together (one per
+// row) - so a short card is never stranded between two wide ones with an empty half-row beside it. Stable (the checklist's own order is kept inside
+// each group). Items the case manager requested stay at the very top, in their own order.
+export function orderShortThenWide(items, getQuestion = (item) => item) {
+  const list = Array.isArray(items) ? items : [];
+  const requested = [];
+  const short = [];
+  const wide = [];
+  list.forEach((item) => {
+    const question = getQuestion(item);
+    if (isStaffRequested(question)) requested.push(item);
+    else if (isWideQuestion(question)) wide.push(item);
+    else short.push(item);
+  });
+  return [...requested, ...short, ...wide];
+}
+
 export function titleFromKey(key) {
   return String(key || "General")
     .replace(/[_-]+/g, " ")

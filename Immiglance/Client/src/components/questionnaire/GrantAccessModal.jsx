@@ -60,40 +60,40 @@ export default function GrantAccessModal({ employeeName = "", employeeEmail = ""
         aria-modal="true"
         aria-labelledby="grant-access-title"
         onSubmit={confirm}
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl outline-none"
+        className="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl outline-none"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 id="grant-access-title" className="text-base font-bold text-slate-900">
+            <h2 id="grant-access-title" className="text-base font-bold text-foreground">
               {returning ? `Grant access to ${who} again?` : `Give ${who} access?`}
             </h2>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               {returning ? "Hand this information back to the same employee." : "Invite the employee to fill in their own information."}
             </p>
           </div>
-          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="text-slate-400 hover:text-slate-600 disabled:opacity-40">✕</button>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Close" className="text-muted-foreground hover:text-foreground disabled:opacity-40">✕</button>
         </div>
 
-        <ul className="mb-4 space-y-2 rounded-xl bg-slate-50 p-4 text-xs text-slate-600">
-          <li className="flex gap-2"><span aria-hidden>1.</span><span><strong className="text-slate-800">Your progress is saved first.</strong> Everything you have filled in is stored before access is granted - nothing is lost.</span></li>
-          <li className="flex gap-2"><span aria-hidden>2.</span><span><strong className="text-slate-800">{who === "the employee" ? "The employee" : who} sees your entries</strong> when they sign in, and can review, correct and complete the rest.</span></li>
-          <li className="flex gap-2"><span aria-hidden>3.</span><span><strong className="text-slate-800">You get a read-only view</strong> of what they fill in. You can take the information back at any time.</span></li>
+        <ul className="mb-4 space-y-2 rounded-xl bg-primary/10 p-4 text-xs text-muted-foreground ring-1 ring-inset ring-primary/10">
+          <li className="flex gap-2"><span aria-hidden>1.</span><span><strong className="text-foreground">Your progress is saved first.</strong> Everything you have filled in is stored before access is granted - nothing is lost.</span></li>
+          <li className="flex gap-2"><span aria-hidden>2.</span><span><strong className="text-foreground">{who === "the employee" ? "The employee" : who} sees your entries</strong> when they sign in, and can review, correct and complete the rest.</span></li>
+          <li className="flex gap-2"><span aria-hidden>3.</span><span><strong className="text-foreground">You get a read-only view</strong> of what they fill in. You can take the information back at any time.</span></li>
           <li className="flex gap-2"><span aria-hidden>4.</span><span>{returning ? "They will be notified by email that access was given again." : "They will receive an invitation email."}</span></li>
         </ul>
 
         {!known && (
           <div className="mb-4 space-y-2">
-            <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Employee full name" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-            <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Employee email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+            <input className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Employee full name" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+            <input type="email" className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Employee email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
           </div>
         )}
-        {known && <p className="mb-4 text-xs text-slate-500">Access goes to <strong className="text-slate-700">{employeeName}</strong> ({employeeEmail}).</p>}
+        {known && <p className="mb-4 text-xs text-muted-foreground">Access goes to <strong className="text-foreground">{employeeName}</strong> ({employeeEmail}).</p>}
 
-        {error && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+        {error && <p role="alert" className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}
 
         <div className="flex gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40">Cancel</button>
-          <button type="submit" disabled={busy} className="flex-1 rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-lg border border-border px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-secondary disabled:opacity-40">Cancel</button>
+          <button type="submit" disabled={busy} className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {phase === "saving" ? "Saving your progress…" : phase === "granting" ? "Granting access…" : "Save progress & grant access"}
           </button>
         </div>

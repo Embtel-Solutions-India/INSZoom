@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import ChecklistItemRow from "../checklist/ChecklistItemRow";
 import QuestionInput, { AutofillButton } from "./QuestionInput";
 import PrefillBadge from "../PrefillBadge";
-import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired } from "../../utils/questionnaireEngine";
+import { questionKey, sectionKey, matchingAutofillSources, isFileQuestion, isWideQuestion, isQuestionRequired, orderShortThenWide } from "../../utils/questionnaireEngine";
 import { fieldItemStatus, STATUS } from "../../utils/checklistStatus";
 import { questionnairesApi } from "../../services/api";
 
@@ -168,17 +168,17 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-28">
       {readOnly && (
-        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4" data-testid="read-only-banner">
+        <div role="status" className="rounded-xl bg-primary/10 p-4 ring-1 ring-inset ring-primary/10" data-testid="read-only-banner">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-extrabold uppercase tracking-wider text-amber-800">Read only view</p>
-              <p className="mt-0.5 text-sm text-amber-900">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-primary">Read only view</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
                 You are viewing what {employeeLabel || "the employee"} has filled in and what is still missing. Nothing here can be edited by you
                 while they have access - it updates automatically as they save.
               </p>
             </div>
             {onTakeBack && (
-              <button type="button" onClick={onTakeBack} disabled={takingBack} className="shrink-0 rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
+              <button type="button" onClick={onTakeBack} disabled={takingBack} className="shrink-0 rounded-lg border border-primary bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                 {takingBack ? "Switching…" : "I'll fill this myself instead"}
               </button>
             )}
@@ -256,7 +256,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-            {documentQuestions.map(renderQuestionRow)}
+            {orderShortThenWide(documentQuestions).map(renderQuestionRow)}
             {documentQuestions.length === 0 && <p className="text-sm text-muted-foreground">No documents required for this checklist.</p>}
           </div>
         </div>
@@ -264,21 +264,27 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
 
       {/* Step 2: Information */}
       {stepKey === "information" && (
-        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
-          <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible border-b md:border-b-0 md:border-r border-border pb-2 md:pb-0 md:pr-4 md:sticky md:top-4 md:self-start">
-            {infoSections.map((section, index) => (
-              <button
-                key={section.key}
-                type="button"
-                onClick={() => setActiveInfoSection(index)}
-                className={`text-left whitespace-nowrap px-3 py-2 rounded-lg text-sm font-semibold ${
-                  activeInfoSection === index ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                {section.title}
-              </button>
-            ))}
-          </div>
+        <div className="space-y-5">
+          {/* The sections are a row of tabs ABOVE the cards (not a column beside them), so the cards use the full width under the progress bar and sit
+              centred with it. With a single section there is nothing to switch between, so no tab row is shown. */}
+          {infoSections.length > 1 && (
+            <div className="flex flex-wrap gap-2 border-b border-border pb-3" role="tablist" aria-label="Sections">
+              {infoSections.map((section, index) => (
+                <button
+                  key={section.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeInfoSection === index}
+                  onClick={() => setActiveInfoSection(index)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                    activeInfoSection === index ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {section.title}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="space-y-4 min-w-0">
             {infoSections[activeInfoSection] && (
               <section>
@@ -298,7 +304,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                  {infoSections[activeInfoSection].questions.map(renderQuestionRow)}
+                  {orderShortThenWide(infoSections[activeInfoSection].questions).map(renderQuestionRow)}
                 </div>
               </section>
             )}
@@ -360,6 +366,8 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         >
           Back
         </button>
+        {/* Save progress sits right beside Continue/Submit, with the saved-state text just before it */}
+        <div className="flex items-center gap-3">
         {!readOnly && (
           <span role="status" aria-live="polite" className={`text-xs font-semibold ${saveState === "error" ? "text-destructive" : !dirty && lastSavedAt ? "text-emerald-600" : "text-muted-foreground"}`}>
             {savingProgress || saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : dirty ? "Unsaved changes" : lastSavedAt ? `Saved at ${lastSavedAt}` : ""}
@@ -397,6 +405,7 @@ export default function EmployeePacketStepper({ qa, caseId, employeeLabel, onExi
         ) : (
           <span className="text-xs text-muted-foreground">Read-only view</span>
         )}
+        </div>
       </div>
     </div>
   );

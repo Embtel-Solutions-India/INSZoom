@@ -49,36 +49,38 @@ function ProgressBar({ label, done, total, percent }) {
   const counts = typeof done === "number" && typeof total === "number";
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-        <span>{label}</span>
-        <span className="font-semibold text-slate-600">{counts ? `${pct}% · ${done} of ${total}` : `${pct}%`}</span>
+      <div className="mb-1.5 flex items-baseline justify-between text-[11px]">
+        <span className="font-medium text-muted-foreground">{label}</span>
+        <span className="font-semibold text-foreground tabular-nums">
+          {pct}%
+          {counts && <span className="ml-1.5 font-normal text-muted-foreground">{done} of {total}</span>}
+        </span>
       </div>
-      <div className="h-1 rounded-full bg-slate-100 overflow-hidden">
-        <div className="h-full rounded-full bg-slate-900 transition-all duration-300" style={{ width: `${pct}%` }} />
+      <div className="h-1.5 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: "#0f766e" }} />
       </div>
     </div>
   );
 }
 
-// §7A.0's shared status-pill palette — identical labels/colors to the Admin
-// CRM's own Employees panel, so a case looks the same in both portals.
+// Status pills: the same labels as the Admin CRM's own Employees panel. No rainbow: a deep teal (the theme's accent) for any employee who is
+// moving - invited, in progress, ready, completed - a quiet grey for one who has not started or was withdrawn, and red only for a failed invite.
+const PILL = "bg-accent text-accent-foreground ring-1 ring-inset ring-accent-foreground/10";
+const QUIET_PILL = "bg-secondary text-muted-foreground ring-1 ring-inset ring-border";
 const STATUS_STYLES = {
-  "Not Started": "bg-slate-100 text-slate-500",
-  "Invited": "bg-blue-50 text-blue-700",
-  "Invitation Failed": "bg-amber-50 text-amber-700",
-  "In Progress": "bg-indigo-50 text-indigo-700",
-  "Ready for Review": "bg-violet-50 text-violet-700",
-  "Completed": "bg-emerald-50 text-emerald-700",
-  "Withdrawn": "bg-slate-100 text-slate-400",
+  "Not Started": QUIET_PILL,
+  "Invited": PILL,
+  "Invitation Failed": "bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20",
+  "In Progress": PILL,
+  "Ready for Review": PILL,
+  "Completed": PILL,
+  "Withdrawn": QUIET_PILL,
 };
 
 function StatusPill({ label }) {
-  const dotColor = {
-    "Not Started": "bg-slate-400", "Invited": "bg-blue-500", "Invitation Failed": "bg-amber-500",
-    "In Progress": "bg-indigo-500", "Ready for Review": "bg-violet-500", "Completed": "bg-emerald-500", "Withdrawn": "bg-slate-300",
-  }[label] || "bg-slate-400";
+  const dotColor = { "Not Started": "bg-muted-foreground/50", "Withdrawn": "bg-muted-foreground/50", "Invitation Failed": "bg-destructive" }[label] || "bg-accent-foreground";
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-full ${STATUS_STYLES[label] || "bg-slate-100 text-slate-500"}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-full ${STATUS_STYLES[label] || "bg-secondary text-muted-foreground"}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
       {label}
     </span>
@@ -170,29 +172,27 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
 
   return (
     <div
-      className={`rounded-xl border bg-white p-6 space-y-4 transition-shadow ${
+      className={`rounded-2xl border bg-card p-6 space-y-4 transition-shadow ${
         identified || dataEntryMode === "invite"
-          ? "border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:border-slate-300"
-          : "border-dashed border-slate-300"
+          ? "border-border shadow-[0_1px_3px_rgba(15,23,42,0.05)] hover:shadow-[0_8px_24px_rgba(15,23,42,0.07)]"
+          : "border-dashed border-border"
       } ${pillLabel === "Withdrawn" ? "opacity-50" : ""}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-10 h-10 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${identified ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-400"}`}>
+          <div className={`w-10 h-10 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${identified ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
             {identified ? initials(child.clientName) : "?"}
           </div>
           <div className="min-w-0">
-            <p className={`text-sm font-bold truncate ${identified ? "text-slate-900" : "text-slate-400 italic font-medium"}`}>
+            <p className={`text-sm font-bold truncate ${identified ? "text-foreground" : "text-muted-foreground italic font-medium"}`}>
               {child.clientName || "Employee Slot"}
             </p>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{child.caseNumber}</p>
-            <span className="mt-1.5 mr-1.5 inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">{child.caseNumber}</p>
+            <span className="mt-1.5 mr-1.5 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold tracking-wide text-foreground ring-1 ring-inset ring-border">
               {child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}
             </span>
             <span
-              className={`mt-1.5 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                undecided ? "bg-amber-50 text-amber-700" : dataEntryMode === "invite" ? "bg-sky-50 text-sky-700" : "bg-slate-100 text-slate-600"
-              }`}
+              className="mt-1.5 inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
               title={dataEntryMode === "invite" ? "This employee fills in their own information" : "You fill in this employee's information"}
             >
               {undecided ? "Choose who fills" : dataEntryMode === "invite" ? "Employee fills (invited)" : "Employer fills"}
@@ -203,22 +203,22 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
           <StatusPill label={pillLabel} />
           {pillLabel !== "Withdrawn" && (
             <div className="relative">
-              <button type="button" onClick={() => setMenuOpen((v) => !v)} className="text-slate-400 hover:text-slate-600 px-1 leading-none" aria-label="Employee workflow options">⋯</button>
+              <button type="button" onClick={() => setMenuOpen((v) => !v)} className="text-muted-foreground hover:text-foreground px-1 leading-none" aria-label="Employee workflow options">⋯</button>
               {menuOpen && (
-                <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-10 py-1">
+                <div className="absolute right-0 mt-1 w-56 bg-card border border-border rounded-lg shadow-lg z-10 py-1">
                   {invited && (
                     <>
-                      <button type="button" onClick={() => { setMenuOpen(false); onOpen(child._id, { readOnly: true }); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">View information (read only)</button>
-                      <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">Resend invite</button>
-                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); setConfirmFillSelf(true); }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50">I'll fill this myself instead</button>
+                      <button type="button" onClick={() => { setMenuOpen(false); onOpen(child._id, { readOnly: true }); }} className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary">View information (read only)</button>
+                      <button type="button" onClick={() => { setMenuOpen(false); onResend(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary">Resend invite</button>
+                      <button type="button" disabled={switching} onClick={() => { setMenuOpen(false); setConfirmFillSelf(true); }} className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary disabled:opacity-50">I'll fill this myself instead</button>
                     </>
                   )}
                   {!invited && (
-                    <button type="button" onClick={() => { setMenuOpen(false); if (returning) onGrantAccess?.(child); else { setShowInviteForm(true); setError(""); } }} className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                    <button type="button" onClick={() => { setMenuOpen(false); if (returning) onGrantAccess?.(child); else { setShowInviteForm(true); setError(""); } }} className="w-full text-left px-3 py-1.5 text-xs text-foreground hover:bg-secondary">
                       {returning ? `Grant access to ${child.clientName} again` : "Invite this employee to fill it in"}
                     </button>
                   )}
-                  <button type="button" onClick={() => { setMenuOpen(false); onWithdraw(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">Withdraw</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); onWithdraw(child._id); }} className="w-full text-left px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10">Withdraw</button>
                 </div>
               )}
             </div>
@@ -238,70 +238,70 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
         </div>
       )}
 
-      {error && !showInviteForm && <p className="text-xs text-red-600">{error}</p>}
+      {error && !showInviteForm && <p className="text-xs text-destructive">{error}</p>}
 
       {showInviteForm ? (
         <div className="space-y-2 animate-in fade-in duration-150">
-          <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} disabled={inviting} />
-          <input type="email" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={inviting} />
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          <input className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} disabled={inviting} />
+          <input type="email" className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} disabled={inviting} />
+          {error && <p className="text-xs text-destructive">{error}</p>}
           <div className="flex gap-2">
-            <button type="button" onClick={handleSendInvite} disabled={inviting} className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-40">
+            <button type="button" onClick={handleSendInvite} disabled={inviting} className="flex-1 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-40">
               {inviting ? "Sending…" : "Send Invite"}
             </button>
-            <button type="button" onClick={() => { setShowInviteForm(false); setError(""); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600">Cancel</button>
+            <button type="button" onClick={() => { setShowInviteForm(false); setError(""); }} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Cancel</button>
           </div>
         </div>
       ) : undecided ? (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-600">Who will fill in this employee's information?</p>
+          <p className="text-xs font-semibold text-muted-foreground">Who will fill in this employee's information?</p>
           <div className="flex gap-2">
-            <button type="button" disabled={switching} onClick={handleChooseFillSelf} className="flex-1 rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 disabled:opacity-50">
+            <button type="button" disabled={switching} onClick={handleChooseFillSelf} className="flex-1 rounded-lg bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {switching ? "Saving…" : "I'll fill it myself"}
             </button>
-            <button type="button" disabled={switching} onClick={() => { setShowInviteForm(true); setError(""); }} className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+            <button type="button" disabled={switching} onClick={() => { setShowInviteForm(true); setError(""); }} className="flex-1 rounded-lg border border-border px-3 py-2.5 text-xs font-bold text-foreground hover:bg-secondary">
               Invite employee
             </button>
           </div>
-          <p className="text-[11px] text-slate-400">You can change this later from this card.</p>
+          <p className="text-[11px] text-muted-foreground">You can change this later from this card.</p>
         </div>
       ) : invited ? (
         <div className="space-y-2">
-          <p className="text-center text-xs text-slate-400 py-1.5">
+          <p className="text-center text-xs text-muted-foreground py-1.5">
             {pillLabel === "Ready for Review" || pillLabel === "Completed"
               ? `${child.clientName} has submitted their information.`
               : pillLabel === "In Progress"
                 ? `${child.clientName} is filling in their information.`
                 : `Waiting for ${child.clientName} to start their information.`}
           </p>
-          <button type="button" onClick={() => onOpen(child._id, { readOnly: true })} className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 transition-colors">
+          <button type="button" onClick={() => onOpen(child._id, { readOnly: true })} className="w-full rounded-lg bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors">
             View what {child.clientName} filled in
-            <span className="ml-1.5 rounded bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Read only</span>
+            <span className="ml-1.5 rounded bg-primary-foreground/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Read only</span>
           </button>
-          <button type="button" disabled={switching} onClick={() => setConfirmFillSelf(true)} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={switching} onClick={() => setConfirmFillSelf(true)} className="w-full rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary disabled:opacity-50">
             I'll fill this myself instead
           </button>
         </div>
       ) : dataEntryMode === "invite" ? (
-        <button type="button" onClick={() => setShowInviteForm(true)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors">
+        <button type="button" onClick={() => setShowInviteForm(true)} className="w-full rounded-lg border border-border px-3 py-2.5 text-xs font-bold text-foreground hover:bg-secondary hover:border-primary/40 transition-colors">
           Invite Employee
         </button>
       ) : (
         <button
           type="button"
           onClick={() => onOpen(child._id)}
-          className="w-full rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-700 transition-colors"
+          className="w-full rounded-lg bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           {pillLabel === "Not Started" ? "Fill Information" : pillLabel === "Ready for Review" || pillLabel === "Completed" ? "Review" : "Continue"}
         </button>
       )}
       {!showInviteForm && !undecided && !invited && dataEntryMode !== "invite" && pillLabel !== "Withdrawn" && (
         returning ? (
-          <button type="button" onClick={() => onGrantAccess?.(child)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => onGrantAccess?.(child)} className="w-full rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary">
             Grant access to {child.clientName} again
           </button>
         ) : (
-          <button type="button" onClick={() => { setShowInviteForm(true); setError(""); }} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+          <button type="button" onClick={() => { setShowInviteForm(true); setError(""); }} className="w-full rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary">
             Invite employee to fill it instead
           </button>
         )
@@ -325,7 +325,7 @@ function AddEmployeeGhostCard({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl border-2 border-dashed border-slate-300 p-6 flex items-center justify-center text-sm font-bold text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-colors min-h-28"
+      className="rounded-xl border-2 border-dashed border-border p-6 flex items-center justify-center text-sm font-bold text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors min-h-28"
     >
       + Add Employee
     </button>
@@ -372,10 +372,10 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold text-slate-900">Employees ({children.length})</h2>
+        <h2 className="text-base font-bold text-foreground">Employees ({children.length})</h2>
       </div>
       {actionError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{actionError}</div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">{actionError}</div>
       )}
       {withdrawTarget && (
         <ConfirmDialog
@@ -411,7 +411,7 @@ export default function EmployeeDashboard({ principalId, children, dataEntryMode
           />
         ))}
         <AddEmployeeGhostCard onClick={handleAddEmployee} />
-        {children.length === 0 && <p className="text-sm text-slate-400 col-span-full">No employees on this case yet.</p>}
+        {children.length === 0 && <p className="text-sm text-muted-foreground col-span-full">No employees on this case yet.</p>}
       </div>
     </div>
   );

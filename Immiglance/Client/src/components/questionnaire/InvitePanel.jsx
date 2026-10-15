@@ -79,14 +79,14 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
   };
 
   const statusPill = () => {
-    if (!invited) return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-700">Not invited</span>;
-    if (sendResult === "failed") return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700">Invitation Failed</span>;
-    if (sendResult === "pending") return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-amber-100 text-amber-700">Invitation Queued</span>;
-    return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-700">Invited</span>;
+    if (!invited) return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-secondary text-muted-foreground ring-1 ring-inset ring-border">Not invited</span>;
+    if (sendResult === "failed") return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-destructive/10 text-destructive">Invitation Failed</span>;
+    if (sendResult === "pending") return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-accent text-accent-foreground">Invitation Queued</span>;
+    return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-accent text-accent-foreground">Invited</span>;
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+    <div className="rounded-xl border border-border p-4 space-y-3">
       {confirmWithdraw && (
         <ConfirmDialog
           title={`Withdraw ${child.clientName || "this employee"}?`}
@@ -98,18 +98,18 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
         />
       )}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-800">{child.caseNumber}</span>
+        <span className="text-sm font-semibold text-foreground">{child.caseNumber}</span>
         {statusPill()}
       </div>
 
       {invited ? (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-slate-500">{child.clientName} — {child.clientEmail}</p>
+          <p className="text-sm text-muted-foreground">{child.clientName} — {child.clientEmail}</p>
           <div className="flex items-center gap-3 shrink-0">
-            <button type="button" onClick={handleResend} disabled={sending} className="text-xs font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40">
+            <button type="button" onClick={handleResend} disabled={sending} className="text-xs font-semibold text-foreground hover:text-foreground disabled:opacity-40">
               {sending ? "Sending…" : "Resend"}
             </button>
-            <button type="button" onClick={() => setConfirmWithdraw(true)} disabled={withdrawing} className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:opacity-40">
+            <button type="button" onClick={() => setConfirmWithdraw(true)} disabled={withdrawing} className="text-xs font-semibold text-destructive hover:text-destructive/80 disabled:opacity-40">
               {withdrawing ? "Withdrawing…" : "Withdraw"}
             </button>
           </div>
@@ -117,7 +117,7 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <input
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring"
             placeholder="Full name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -125,7 +125,7 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
           />
           <input
             type="email"
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+            className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-ring"
             placeholder="Email address"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -135,14 +135,14 @@ function InviteRow({ principalCaseId, child, onInvited, onChanged }) {
             type="button"
             onClick={handleSend}
             disabled={sending}
-            className="sm:col-span-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-40"
+            className="sm:col-span-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
           >
             {sending ? "Sending…" : "Send Invite"}
           </button>
         </div>
       )}
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }
@@ -166,11 +166,11 @@ export default function InvitePanel({ principalCaseId, children, onChanged }) {
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+    <div className="rounded-2xl border border-border bg-card p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Invite Employees</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="text-lg font-bold text-foreground">Invite Employees</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Send each employee their own secure link to complete their own questionnaire.
           </p>
         </div>
@@ -178,17 +178,17 @@ export default function InvitePanel({ principalCaseId, children, onChanged }) {
           type="button"
           onClick={handleAddEmployee}
           disabled={addingSlot}
-          className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+          className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary disabled:opacity-40"
         >
           {addingSlot ? "Adding…" : "+ Add Employee"}
         </button>
       </div>
-      {addError && <p className="text-xs text-red-600">{addError}</p>}
+      {addError && <p className="text-xs text-destructive">{addError}</p>}
       <div className="space-y-3">
         {children.map((child) => (
           <InviteRow key={child._id} principalCaseId={principalCaseId} child={child} onInvited={onChanged} onChanged={onChanged} />
         ))}
-        {children.length === 0 && <p className="text-sm text-slate-400">No employee slots on this case yet.</p>}
+        {children.length === 0 && <p className="text-sm text-muted-foreground">No employee slots on this case yet.</p>}
       </div>
     </div>
   );
