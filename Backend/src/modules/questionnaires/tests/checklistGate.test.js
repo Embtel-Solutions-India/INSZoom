@@ -54,3 +54,14 @@ test("only internal staff are exempt: client, employer, employee, beneficiary, p
     assert.equal(gate.isClientSideUser({ role }), false, String(role));
   }
 });
+
+test("a held staff-requested checklist (Premium Processing) is not approved until released, even on a case that is not gated", () => {
+  const { isApproved, needsGate } = require("../checklist-gate");
+  const entry = { key: "i907_premium_processing_profile__case_abc", targetRole: "client", staffRequest: true };
+  const held = { checklistApproval: { heldStaffChecklists: ["i907_premium_processing_profile|client"] } };
+  assert.equal(needsGate(held), true);
+  assert.equal(isApproved(held, entry), false);
+  assert.equal(isApproved({ checklistApproval: { heldStaffChecklists: [] } }, entry), true);
+  assert.equal(isApproved({}, entry), true, "cases with nothing held behave as before");
+  assert.equal(isApproved(held, { key: "other", targetRole: "client", staffRequest: true }), true, "only the held checklist is affected");
+});

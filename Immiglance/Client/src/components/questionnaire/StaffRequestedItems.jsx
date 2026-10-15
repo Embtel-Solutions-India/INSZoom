@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import useCaseChecklists from "../../hooks/useCaseChecklists";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import QuestionInput from "./QuestionInput";
-import PremiumProcessingChecklist, { PREMIUM_PROCESSING_CHECKLIST_KEY } from "./PremiumProcessingChecklist";
+import PremiumProcessingChecklist, { isPremiumProcessingChecklist } from "./PremiumProcessingChecklist";
 import { questionKey, isEmptyValue, isWideQuestion } from "../../utils/questionnaireEngine";
 
 // One "Additional Requested Information" checklist (created when a case
@@ -72,18 +72,18 @@ function RequestedChecklist({ caseId, checklist }) {
 }
 
 // section: "premium" -> only the Premium Processing checklist; "requested" -> only the additional-item requests;
-// omitted -> both (premium first), the original behaviour.
-export default function StaffRequestedItems({ caseId, user, section }) {
+// omitted -> both (premium first), the original behaviour. className replaces the default wrapper spacing.
+export default function StaffRequestedItems({ caseId, user, section, className }) {
   const { checklists } = useCaseChecklists(caseId);
   const all = checklists.filter((checklist) => checklist.staffRequest && (!checklist.assignedTo || String(checklist.assignedTo) === String(user?._id || user?.id)));
   // The Premium Processing (Form I-907) checklist a case manager attaches is also a staff-added
   // checklist, but it is a full form section of its own - not an "additional item" request.
-  const premium = all.filter((checklist) => checklist.key === PREMIUM_PROCESSING_CHECKLIST_KEY);
-  const mine = section === "premium" ? [] : all.filter((checklist) => checklist.key !== PREMIUM_PROCESSING_CHECKLIST_KEY);
+  const premium = all.filter(isPremiumProcessingChecklist);
+  const mine = section === "premium" ? [] : all.filter((checklist) => !isPremiumProcessingChecklist(checklist));
   const premiumShown = section === "requested" ? [] : premium;
   if (!caseId || (!mine.length && !premiumShown.length)) return null;
   return (
-    <div className={section === "premium" ? "space-y-4" : "mt-6 space-y-4"}>
+    <div className={className || (section === "premium" ? "space-y-4" : "mt-6 space-y-4")}>
       {premiumShown.map((checklist) => <PremiumProcessingChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
       {mine.map((checklist) => <RequestedChecklist key={checklist.referenceId} caseId={caseId} checklist={checklist} />)}
     </div>

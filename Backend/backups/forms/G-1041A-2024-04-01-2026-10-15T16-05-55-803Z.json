@@ -1,0 +1,2211 @@
+{
+ "formCode": "G-1041A",
+ "version": "2024-04-01",
+ "status": "review",
+ "mappingStatus": "active",
+ "pdfStorageKey": "government/uscis/G-1041A/2024-04-01/9e86238475c0f311fd6fa86a250ea7212b8c74c0b2f9ca06f52f1fd67a4af7db/form.pdf",
+ "fieldCount": 82,
+ "graph": {
+  "templateId": "6ab5eb37e0763f40f842d928",
+  "formCode": "G-1041A",
+  "formName": "G-1041A, Genealogy Records Request",
+  "version": "2024-04-01",
+  "generatedAt": "2026-09-25T03:32:12.505Z",
+  "nodes": {
+   "canonical": [
+    {
+     "id": "canonical:person.firstName",
+     "path": "person.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.middleName",
+     "path": "person.middleName",
+     "label": "middleName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.lastName",
+     "path": "person.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.fullName",
+     "path": "person.fullName",
+     "label": "fullName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.dob",
+     "path": "person.dob",
+     "label": "dob",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.gender",
+     "path": "person.gender",
+     "label": "gender",
+     "type": "boolean"
+    },
+    {
+     "id": "canonical:person.maritalStatus",
+     "path": "person.maritalStatus",
+     "label": "maritalStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.citizenship",
+     "path": "person.citizenship",
+     "label": "citizenship",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.countryOfBirth",
+     "path": "person.countryOfBirth",
+     "label": "countryOfBirth",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.alienNumber",
+     "path": "person.alienNumber",
+     "label": "alienNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.ssn",
+     "path": "person.ssn",
+     "label": "ssn",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.number",
+     "path": "person.passport.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.country",
+     "path": "person.passport.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.issueDate",
+     "path": "person.passport.issueDate",
+     "label": "issueDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.passport.expirationDate",
+     "path": "person.passport.expirationDate",
+     "label": "expirationDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:contact.email",
+     "path": "contact.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:contact.phone",
+     "path": "contact.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:contact.address.line1",
+     "path": "contact.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.line2",
+     "path": "contact.address.line2",
+     "label": "line2",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.city",
+     "path": "contact.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.state",
+     "path": "contact.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.zip",
+     "path": "contact.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.country",
+     "path": "contact.address.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseNumber",
+     "path": "case.caseNumber",
+     "label": "caseNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseType",
+     "path": "case.caseType",
+     "label": "caseType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.visaType",
+     "path": "case.visaType",
+     "label": "visaType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.priorityDate",
+     "path": "case.priorityDate",
+     "label": "priorityDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:company.name",
+     "path": "company.name",
+     "label": "name",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.legalName",
+     "path": "company.legalName",
+     "label": "legalName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.ein",
+     "path": "company.ein",
+     "label": "ein",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.phone",
+     "path": "company.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:company.email",
+     "path": "company.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:company.address.line1",
+     "path": "company.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.city",
+     "path": "company.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.state",
+     "path": "company.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.zip",
+     "path": "company.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:employment[].employerName",
+     "path": "employment[].employerName",
+     "label": "employerName",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].jobTitle",
+     "path": "employment[].jobTitle",
+     "label": "jobTitle",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].startDate",
+     "path": "employment[].startDate",
+     "label": "startDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].endDate",
+     "path": "employment[].endDate",
+     "label": "endDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:education[].institution",
+     "path": "education[].institution",
+     "label": "institution",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].degree",
+     "path": "education[].degree",
+     "label": "degree",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].fieldOfStudy",
+     "path": "education[].fieldOfStudy",
+     "label": "fieldOfStudy",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].graduationDate",
+     "path": "education[].graduationDate",
+     "label": "graduationDate",
+     "type": "date",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:family.spouse.firstName",
+     "path": "family.spouse.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.spouse.lastName",
+     "path": "family.spouse.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.children[].firstName",
+     "path": "family.children[].firstName",
+     "label": "firstName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:family.children[].lastName",
+     "path": "family.children[].lastName",
+     "label": "lastName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:immigration.currentStatus",
+     "path": "immigration.currentStatus",
+     "label": "currentStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.i94.number",
+     "path": "immigration.i94.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.sevisNumber",
+     "path": "immigration.sevisNumber",
+     "label": "sevisNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.receiptNumbers[]",
+     "path": "immigration.receiptNumbers[]",
+     "label": "receiptNumbers",
+     "type": "text",
+     "repeatable": "receiptNumbers"
+    },
+    {
+     "id": "canonical:travelHistory[].arrivalDate",
+     "path": "travelHistory[].arrivalDate",
+     "label": "arrivalDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:travelHistory[].departureDate",
+     "path": "travelHistory[].departureDate",
+     "label": "departureDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:documents[].type",
+     "path": "documents[].type",
+     "label": "type",
+     "type": "text",
+     "repeatable": "documents"
+    },
+    {
+     "id": "canonical:beneficiary.lastName",
+     "path": "beneficiary.lastName",
+     "label": "beneficiary.lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:beneficiary.firstName",
+     "path": "beneficiary.firstName",
+     "label": "beneficiary.firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:beneficiary.middleName",
+     "path": "beneficiary.middleName",
+     "label": "beneficiary.middleName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:beneficiary.primaryPhone",
+     "path": "beneficiary.primaryPhone",
+     "label": "beneficiary.primaryPhone",
+     "type": "text"
+    },
+    {
+     "id": "canonical:beneficiary.email",
+     "path": "beneficiary.email",
+     "label": "beneficiary.email",
+     "type": "text"
+    }
+   ],
+   "form": [
+    {
+     "id": "form:page1.form10PageSet0Page10Pdf417BarCode10",
+     "fieldId": "page1.form10PageSet0Page10Pdf417BarCode10",
+     "pdfField": "form1[0].#pageSet[0].Page1[0].PDF417BarCode1[0]",
+     "label": "Form 1 0 Page Set 0 Page 1 0 Pdf 417 Bar Code 1 0",
+     "type": "textarea",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10PageSet0Page11Pdf417BarCode10",
+     "fieldId": "page1.form10PageSet0Page11Pdf417BarCode10",
+     "pdfField": "form1[0].#pageSet[0].Page1[1].PDF417BarCode1[0]",
+     "label": "Form 1 0 Page Set 0 Page 1 1 Pdf 417 Bar Code 1 0",
+     "type": "textarea",
+     "section": "Page 1",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10PageSet0Page12Pdf417BarCode10",
+     "fieldId": "page1.form10PageSet0Page12Pdf417BarCode10",
+     "pdfField": "form1[0].#pageSet[0].Page1[2].PDF417BarCode1[0]",
+     "label": "Form 1 0 Page Set 0 Page 1 2 Pdf 417 Bar Code 1 0",
+     "type": "textarea",
+     "section": "Page 1",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line1AFamilyName0",
+     "fieldId": "page1.form10Subform0P1Line1AFamilyName0",
+     "pdfField": "form1[0].#subform[0].P1_Line1a_FamilyName[0]",
+     "label": "Item 1: Enter Family Name (Last Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line1BGivenName0",
+     "fieldId": "page1.form10Subform0P1Line1BGivenName0",
+     "pdfField": "form1[0].#subform[0].P1_Line1b_GivenName[0]",
+     "label": "Item 1: Enter Given Name (First Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line1CMiddleName0",
+     "fieldId": "page1.form10Subform0P1Line1CMiddleName0",
+     "pdfField": "form1[0].#subform[0].P1_Line1c_MiddleName[0]",
+     "label": "Item 1: Enter Middle Name",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line3DaytimeTelephone0",
+     "fieldId": "page1.form10Subform0P1Line3DaytimeTelephone0",
+     "pdfField": "form1[0].#subform[0].P1_Line3_DaytimeTelephone[0]",
+     "label": "Item 3: Enter Requestor's Daytime Telephone Number",
+     "type": "phone",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line4MobileTelephone0",
+     "fieldId": "page1.form10Subform0P1Line4MobileTelephone0",
+     "pdfField": "form1[0].#subform[0].P1_Line4_MobileTelephone[0]",
+     "label": "Item 4: Enter Requestor's Mobile Telephone Number, if any",
+     "type": "phone",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line5Email0",
+     "fieldId": "page1.form10Subform0P1Line5Email0",
+     "pdfField": "form1[0].#subform[0].P1_Line5_Email[0]",
+     "label": "Item 5: Enter Requestor's Email Address, if any",
+     "type": "email",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2BStreetNumberName0",
+     "fieldId": "page1.form10Subform0P1Line2BStreetNumberName0",
+     "pdfField": "form1[0].#subform[0].P1_Line2b_StreetNumberName[0]",
+     "label": "Item 2: Enter Street Number and Name",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2CUnit0",
+     "fieldId": "page1.form10Subform0P1Line2CUnit0",
+     "pdfField": "form1[0].#subform[0].P1_Line2c_unit[0]",
+     "label": "Item 2: Select Suite",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2CUnit1",
+     "fieldId": "page1.form10Subform0P1Line2CUnit1",
+     "pdfField": "form1[0].#subform[0].P1_Line2c_unit[1]",
+     "label": "Item 2: Select Floor",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2CAptSteFlrNumber0",
+     "fieldId": "page1.form10Subform0P1Line2CAptSteFlrNumber0",
+     "pdfField": "form1[0].#subform[0].P1_Line2c_AptSteFlrNumber[0]",
+     "label": "Item 2: Enter Apartment, Suite or Floor Number",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2CUnit2",
+     "fieldId": "page1.form10Subform0P1Line2CUnit2",
+     "pdfField": "form1[0].#subform[0].P1_Line2c_unit[2]",
+     "label": "Item 2: Select Apartment",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2DCityOrTown0",
+     "fieldId": "page1.form10Subform0P1Line2DCityOrTown0",
+     "pdfField": "form1[0].#subform[0].P1_Line2d_CityOrTown[0]",
+     "label": "Item 2: Enter City or Town",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2AInCareofName0",
+     "fieldId": "page1.form10Subform0P1Line2AInCareofName0",
+     "pdfField": "form1[0].#subform[0].P1_Line2a_InCareofName[0]",
+     "label": "Item 2: Enter In Care Of Name, if any",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line2AFamilyName0",
+     "fieldId": "page2.form10Subform0P2Line2AFamilyName0",
+     "pdfField": "form1[0].#subform[0].P2_Line2a_FamilyName[0]",
+     "label": "Item 2: Enter Family Name (Last Name)",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line2BGivenName0",
+     "fieldId": "page2.form10Subform0P2Line2BGivenName0",
+     "pdfField": "form1[0].#subform[0].P2_Line2b_GivenName[0]",
+     "label": "Item 2: Enter Given Name (First Name)",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line2CMiddleName0",
+     "fieldId": "page2.form10Subform0P2Line2CMiddleName0",
+     "pdfField": "form1[0].#subform[0].P2_Line2c_MiddleName[0]",
+     "label": "Item 2: Enter Middle Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2GProvince0",
+     "fieldId": "page1.form10Subform0P1Line2GProvince0",
+     "pdfField": "form1[0].#subform[0].P1_Line2g_Province[0]",
+     "label": "Item 2: Enter Province",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2HPostalCode0",
+     "fieldId": "page1.form10Subform0P1Line2HPostalCode0",
+     "pdfField": "form1[0].#subform[0].P1_Line2h_PostalCode[0]",
+     "label": "Item 2: Enter Postal Code",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2FZipCode0",
+     "fieldId": "page1.form10Subform0P1Line2FZipCode0",
+     "pdfField": "form1[0].#subform[0].P1_Line2f_ZipCode[0]",
+     "label": "Item 2: Enter Zip Code",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2EState0",
+     "fieldId": "page1.form10Subform0P1Line2EState0",
+     "pdfField": "form1[0].#subform[0].P1_Line2e_State[0]",
+     "label": "Item 2: Select State from List of States",
+     "type": "dropdown",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line2ICountry0",
+     "fieldId": "page1.form10Subform0P1Line2ICountry0",
+     "pdfField": "form1[0].#subform[0].P1_Line2i_Country[0]",
+     "label": "Item 2: Enter Country",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0Area0P2Chbx1Ayesno0",
+     "fieldId": "page2.form10Subform0Area0P2Chbx1Ayesno0",
+     "pdfField": "form1[0].#subform[0].#area[0].P2_chbx1ayesno[0]",
+     "label": "Item 1: If you answered \"Yes,\" provide the Genealogy Index Search Request case numbers in Item Number 1 B",
+     "type": "checkbox",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0Area0P2Chbx1Ayesno1",
+     "fieldId": "page2.form10Subform0Area0P2Chbx1Ayesno1",
+     "pdfField": "form1[0].#subform[0].#area[0].P2_chbx1ayesno[1]",
+     "label": "Item 1: Select No",
+     "type": "checkbox",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0P1Line6BRequesterSignDate0",
+     "fieldId": "page1.form10Subform0P1Line6BRequesterSignDate0",
+     "pdfField": "form1[0].#subform[0].P1_Line6b_RequesterSignDate[0]",
+     "label": "Item 6: Enter as 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform0P4Line1BMedicalLicenseNumber0",
+     "fieldId": "page4.form10Subform0P4Line1BMedicalLicenseNumber0",
+     "pdfField": "form1[0].#subform[0].P4_Line1b_Medical_License_Number[0]",
+     "label": "Item 1: Enter Genealogy Index Search Case Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line3AFamilyName0",
+     "fieldId": "page2.form10Subform0P2Line3AFamilyName0",
+     "pdfField": "form1[0].#subform[0].P2_Line3a_FamilyName[0]",
+     "label": "Item 3: Enter Family Name (Last Name)",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line3BGivenName0",
+     "fieldId": "page2.form10Subform0P2Line3BGivenName0",
+     "pdfField": "form1[0].#subform[0].P2_Line3b_GivenName[0]",
+     "label": "Item 3: Enter Given Name (First Name)",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform0P2Line3CMiddleName0",
+     "fieldId": "page2.form10Subform0P2Line3CMiddleName0",
+     "pdfField": "form1[0].#subform[0].P2_Line3c_MiddleName[0]",
+     "label": "Item 3: Enter Middle Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page5.form10Subform0P5Line6ASignatureofApplicant0",
+     "fieldId": "page5.form10Subform0P5Line6ASignatureofApplicant0",
+     "pdfField": "form1[0].#subform[0].P5_Line6a_SignatureofApplicant[0]",
+     "label": "Item 6: The name of the requestor can not be typewritten into this space",
+     "type": "signature",
+     "section": "Page 5",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line1BDateOfNat0",
+     "fieldId": "page3.form10Subform1P3Line1BDateOfNat0",
+     "pdfField": "form1[0].#subform[1].P3_Line1b_DateOfNat[0]",
+     "label": "Item 1: Enter as 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line1CCourt0",
+     "fieldId": "page3.form10Subform1P3Line1CCourt0",
+     "pdfField": "form1[0].#subform[1].P3_Line1c_Court[0]",
+     "label": "Item 1: Enter Court",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line1DCity0",
+     "fieldId": "page3.form10Subform1P3Line1DCity0",
+     "pdfField": "form1[0].#subform[1].P3_Line1d_City[0]",
+     "label": "Item 1: Enter City",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line1DCounty0",
+     "fieldId": "page3.form10Subform1P3Line1DCounty0",
+     "pdfField": "form1[0].#subform[1].P3_Line1d_County[0]",
+     "label": "Item 1: Enter County",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line1ACertNumber0",
+     "fieldId": "page3.form10Subform1P3Line1ACertNumber0",
+     "pdfField": "form1[0].#subform[1].P3_Line1a_Cert-Number[0]",
+     "label": "Item 1: Enter Certificate Number",
+     "type": "number",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line2ACertNumber0",
+     "fieldId": "page3.form10Subform1P3Line2ACertNumber0",
+     "pdfField": "form1[0].#subform[1].P3_Line2a_Cert-Number[0]",
+     "label": "Item 2: Enter Number as Shown on Certificate",
+     "type": "number",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line2BDateOfIssu0",
+     "fieldId": "page3.form10Subform1P3Line2BDateOfIssu0",
+     "pdfField": "form1[0].#subform[1].P3_Line2b_DateOfIssu[0]",
+     "label": "Item 2: Enter as 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line3BFee0",
+     "fieldId": "page3.form10Subform1P3Line3BFee0",
+     "pdfField": "form1[0].#subform[1].P3_Line3b_Fee[0]",
+     "label": "Item 3: Select 80 dollars (Copy Format - Microfilm)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line4BFee0",
+     "fieldId": "page3.form10Subform1P3Line4BFee0",
+     "pdfField": "form1[0].#subform[1].P3_Line4b_Fee[0]",
+     "label": "Item 4: Select 80 dollars (Copy Format - Hard Copy)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1P2Line4ADateofBirth0",
+     "fieldId": "page2.form10Subform1P2Line4ADateofBirth0",
+     "pdfField": "form1[0].#subform[1].P2_Line4a_DateofBirth[0]",
+     "label": "Item 4: See the Who Should Use Form G-1041A section of these Instructions for examples of acceptable documentary proof of death",
+     "type": "date",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:part2.form10Subform1Area3Part2Line4BActual0",
+     "fieldId": "part2.form10Subform1Area3Part2Line4BActual0",
+     "pdfField": "form1[0].#subform[1].#area[3].Pt2Line4b_actual[0]",
+     "label": "Item 4: Select Actual",
+     "type": "checkbox",
+     "section": "Part 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:part2.form10Subform1Area3Part2Line4BEstimated0",
+     "fieldId": "part2.form10Subform1Area3Part2Line4BEstimated0",
+     "pdfField": "form1[0].#subform[1].#area[3].Pt2Line4b_estimated[0]",
+     "label": "Item 4: Select Estimated",
+     "type": "checkbox",
+     "section": "Part 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1P2Line5ACityOrTown0",
+     "fieldId": "page2.form10Subform1P2Line5ACityOrTown0",
+     "pdfField": "form1[0].#subform[1].P2_Line5a_CityOrTown[0]",
+     "label": "Item 5: Enter Town or Village",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1P2Line5BProvince0",
+     "fieldId": "page2.form10Subform1P2Line5BProvince0",
+     "pdfField": "form1[0].#subform[1].P2_Line5b_Province[0]",
+     "label": "Item 5: Enter Province",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1P2Line5CCountry0",
+     "fieldId": "page2.form10Subform1P2Line5CCountry0",
+     "pdfField": "form1[0].#subform[1].P2_Line5c_Country[0]",
+     "label": "Item 5: Enter Country",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:part2.form10Subform1Area4Part2Line1AlienNumber0",
+     "fieldId": "part2.form10Subform1Area4Part2Line1AlienNumber0",
+     "pdfField": "form1[0].#subform[1].#area[4].Pt2Line1_AlienNumber[0]",
+     "label": "Item 3: R",
+     "type": "alienNumber",
+     "section": "Part 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line5AVisaNumber0",
+     "fieldId": "page3.form10Subform1P3Line5AVisaNumber0",
+     "pdfField": "form1[0].#subform[1].P3_Line5a_Visa_Number[0]",
+     "label": "Item 5: Enter Visa Number",
+     "type": "number",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line5BDateOfEntry0",
+     "fieldId": "page3.form10Subform1P3Line5BDateOfEntry0",
+     "pdfField": "form1[0].#subform[1].P3_Line5b_DateOfEntry[0]",
+     "label": "Item 5: Enter as 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line5CPortOfEntry0",
+     "fieldId": "page3.form10Subform1P3Line5CPortOfEntry0",
+     "pdfField": "form1[0].#subform[1].P3_Line5c_PortOfEntry[0]",
+     "label": "Item 5: Enter Port of Entry",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line5DShip0",
+     "fieldId": "page3.form10Subform1P3Line5DShip0",
+     "pdfField": "form1[0].#subform[1].P3_Line5d_Ship[0]",
+     "label": "Item 5: Enter Ship (seaport arrivals only)",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line6TotalFees0",
+     "fieldId": "page3.form10Subform1P3Line6TotalFees0",
+     "pdfField": "form1[0].#subform[1].P3_Line6_TotalFees[0]",
+     "label": "Enter Total Fees Due / Attached",
+     "type": "currency",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line6ARegistryFile0",
+     "fieldId": "page3.form10Subform1P3Line6ARegistryFile0",
+     "pdfField": "form1[0].#subform[1].P3_Line6a_RegistryFile[0]",
+     "label": "Item 6: R",
+     "type": "text",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line5EChbx0",
+     "fieldId": "page3.form10Subform1P3Line5EChbx0",
+     "pdfField": "form1[0].#subform[1].P3_Line5e_chbx[0]",
+     "label": "Item 5: Select 80 dollars (Copy Format - Hard Copy)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line6BChbx0",
+     "fieldId": "page3.form10Subform1P3Line6BChbx0",
+     "pdfField": "form1[0].#subform[1].P3_Line6b_chbx[0]",
+     "label": "Item 6: Select 80 dollars (Copy Format - Hard Copy)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1P3Line4AAFileNumber0",
+     "fieldId": "page3.form10Subform1P3Line4AAFileNumber0",
+     "pdfField": "form1[0].#subform[1].P3_Line4a_A-File_Number[0]",
+     "label": "Item 4: A",
+     "type": "number",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1Area7P3Line1FChbx0",
+     "fieldId": "page3.form10Subform1Area7P3Line1FChbx0",
+     "pdfField": "form1[0].#subform[1].#area[7].P3_line1f_chbx[0]",
+     "label": "Item 1: Select 80 dollars (Microfilm)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page3.form10Subform1Area7P3Line1FChbx1",
+     "fieldId": "page3.form10Subform1Area7P3Line1FChbx1",
+     "pdfField": "form1[0].#subform[1].#area[7].P3_line1f_chbx[1]",
+     "label": "Item 1: Select 80 dollars (Hard Copy)",
+     "type": "checkbox",
+     "section": "Page 3",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform2P1Line1AFamilyName1",
+     "fieldId": "page1.form10Subform2P1Line1AFamilyName1",
+     "pdfField": "form1[0].#subform[2].P1_Line1a_FamilyName[1]",
+     "label": "Item 1: Enter Family Name (Last Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform2P1Line1BGivenName1",
+     "fieldId": "page1.form10Subform2P1Line1BGivenName1",
+     "pdfField": "form1[0].#subform[2].P1_Line1b_GivenName[1]",
+     "label": "Item 1: Enter Given Name (First Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform2P1Line1CMiddleName1",
+     "fieldId": "page1.form10Subform2P1Line1CMiddleName1",
+     "pdfField": "form1[0].#subform[2].P1_Line1c_MiddleName[1]",
+     "label": "Item 1: Enter Middle Name",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line3CItemNumber0",
+     "fieldId": "page4.form10Subform2P4Line3CItemNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line3c_ItemNumber[0]",
+     "label": "Item 3: Enter Item Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line3APageNumber0",
+     "fieldId": "page4.form10Subform2P4Line3APageNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line3a_PageNumber[0]",
+     "label": "Item 3: Enter Page Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line3BPartNumber0",
+     "fieldId": "page4.form10Subform2P4Line3BPartNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line3b_PartNumber[0]",
+     "label": "Item 3: Enter Part Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line3DAdditionalInfo0",
+     "fieldId": "page4.form10Subform2P4Line3DAdditionalInfo0",
+     "pdfField": "form1[0].#subform[2].P4_Line3d_AdditionalInfo[0]",
+     "label": "Item 3: Enter Additional Information",
+     "type": "textarea",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line4CItemNumber0",
+     "fieldId": "page4.form10Subform2P4Line4CItemNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line4c_ItemNumber[0]",
+     "label": "Item 4: Enter Item Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line4APageNumber0",
+     "fieldId": "page4.form10Subform2P4Line4APageNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line4a_PageNumber[0]",
+     "label": "Item 4: Enter Page Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line4BPartNumber0",
+     "fieldId": "page4.form10Subform2P4Line4BPartNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line4b_PartNumber[0]",
+     "label": "Item 4: Enter Part Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line4DAdditionalInfo0",
+     "fieldId": "page4.form10Subform2P4Line4DAdditionalInfo0",
+     "pdfField": "form1[0].#subform[2].P4_Line4d_AdditionalInfo[0]",
+     "label": "Item 4: Enter Additional Information",
+     "type": "textarea",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line2CItemNumber0",
+     "fieldId": "page4.form10Subform2P4Line2CItemNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line2c_ItemNumber[0]",
+     "label": "Item 2: Enter Item Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line2APageNumber0",
+     "fieldId": "page4.form10Subform2P4Line2APageNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line2a_PageNumber[0]",
+     "label": "Item 2: Enter Page Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line2BPartNumber0",
+     "fieldId": "page4.form10Subform2P4Line2BPartNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line2b_PartNumber[0]",
+     "label": "Item 2: Enter Part Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line2DAdditionalInfo0",
+     "fieldId": "page4.form10Subform2P4Line2DAdditionalInfo0",
+     "pdfField": "form1[0].#subform[2].P4_Line2d_AdditionalInfo[0]",
+     "label": "Item 2: Enter Additional Information",
+     "type": "textarea",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5DAdditionalInfo0",
+     "fieldId": "page4.form10Subform2P4Line5DAdditionalInfo0",
+     "pdfField": "form1[0].#subform[2].P4_Line5d_AdditionalInfo[0]",
+     "label": "Item 5: Enter Additional Information",
+     "type": "textarea",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5CItemNumber0",
+     "fieldId": "page4.form10Subform2P4Line5CItemNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line5c_ItemNumber[0]",
+     "label": "Item 5: Enter Item Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5APageNumber0",
+     "fieldId": "page4.form10Subform2P4Line5APageNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line5a_PageNumber[0]",
+     "label": "Item 5: Enter Page Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5BPartNumber0",
+     "fieldId": "page4.form10Subform2P4Line5BPartNumber0",
+     "pdfField": "form1[0].#subform[2].P4_Line5b_PartNumber[0]",
+     "label": "Item 4: Enter Part Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5DAdditionalInfo1",
+     "fieldId": "page4.form10Subform2P4Line5DAdditionalInfo1",
+     "pdfField": "form1[0].#subform[2].P4_Line5d_AdditionalInfo[1]",
+     "label": "Item 6: Enter Additional Information",
+     "type": "textarea",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5CItemNumber1",
+     "fieldId": "page4.form10Subform2P4Line5CItemNumber1",
+     "pdfField": "form1[0].#subform[2].P4_Line5c_ItemNumber[1]",
+     "label": "Item 6: Enter Item Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5APageNumber1",
+     "fieldId": "page4.form10Subform2P4Line5APageNumber1",
+     "pdfField": "form1[0].#subform[2].P4_Line5a_PageNumber[1]",
+     "label": "Item 6: Enter Page Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    },
+    {
+     "id": "form:page4.form10Subform2P4Line5BPartNumber1",
+     "fieldId": "page4.form10Subform2P4Line5BPartNumber1",
+     "pdfField": "form1[0].#subform[2].P4_Line5b_PartNumber[1]",
+     "label": "Item 6: Enter Part Number",
+     "type": "number",
+     "section": "Page 4",
+     "pageNumber": 3,
+     "required": false
+    }
+   ]
+  },
+  "edges": [
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform0P1Line1AFamilyName0",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.lastName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0P1Line1AFamilyName0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line1a_FamilyName[0]",
+    "targetLabel": "Item 1: Enter Family Name (Last Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.465Z",
+    "fallback": "person.lastName",
+    "partyRule": "beneficiary.lastName"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform0P1Line1BGivenName0",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.firstName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0P1Line1BGivenName0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line1b_GivenName[0]",
+    "targetLabel": "Item 1: Enter Given Name (First Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.465Z",
+    "fallback": "person.firstName",
+    "partyRule": "beneficiary.firstName"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform0P1Line1CMiddleName0",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.middleName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0P1Line1CMiddleName0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line1c_MiddleName[0]",
+    "targetLabel": "Item 1: Enter Middle Name",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.465Z",
+    "fallback": "person.middleName",
+    "partyRule": "beneficiary.middleName"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform0P1Line3DaytimeTelephone0",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.primaryPhone",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0P1Line3DaytimeTelephone0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line3_DaytimeTelephone[0]",
+    "targetLabel": "Item 3: Enter Requestor's Daytime Telephone Number",
+    "targetType": "phone",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "phone"
+    },
+    "createdAt": "2026-09-25T03:32:12.465Z",
+    "fallback": "contact.phone",
+    "partyRule": "beneficiary.primaryPhone"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform0P1Line5Email0",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.email",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0P1Line5Email0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line5_Email[0]",
+    "targetLabel": "Item 5: Enter Requestor's Email Address, if any",
+    "targetType": "email",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "nested",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.465Z",
+    "fallback": "contact.email",
+    "partyRule": "beneficiary.email"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform2P1Line1AFamilyName1",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.lastName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform2P1Line1AFamilyName1",
+    "targetPdfField": "form1[0].#subform[2].P1_Line1a_FamilyName[1]",
+    "targetLabel": "Item 1: Enter Family Name (Last Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 3,
+    "mappingType": "direct",
+    "confidence": 90,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.494Z",
+    "partyRule": "beneficiary.lastName",
+    "note": "Verified G-1041A rule: beneficiary.lastName"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform2P1Line1BGivenName1",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.firstName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform2P1Line1BGivenName1",
+    "targetPdfField": "form1[0].#subform[2].P1_Line1b_GivenName[1]",
+    "targetLabel": "Item 1: Enter Given Name (First Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 3,
+    "mappingType": "direct",
+    "confidence": 90,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.495Z",
+    "partyRule": "beneficiary.firstName",
+    "note": "Verified G-1041A rule: beneficiary.firstName"
+   },
+   {
+    "mappingId": "G-1041A:2024-04-01:page1.form10Subform2P1Line1CMiddleName1",
+    "formCode": "G-1041A",
+    "version": "2024-04-01",
+    "sourcePath": "beneficiary.middleName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform2P1Line1CMiddleName1",
+    "targetPdfField": "form1[0].#subform[2].P1_Line1c_MiddleName[1]",
+    "targetLabel": "Item 1: Enter Middle Name",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 3,
+    "mappingType": "direct",
+    "confidence": 90,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:12.495Z",
+    "partyRule": "beneficiary.middleName",
+    "note": "Verified G-1041A rule: beneficiary.middleName"
+   }
+  ],
+  "unmappedTargets": [],
+  "summary": {
+   "sourceFields": 55,
+   "formFields": 82,
+   "mappedFields": 8,
+   "activeMappings": 8,
+   "reviewRequired": 0,
+   "mappingCoverage": 10
+  },
+  "validation": {
+   "valid": true,
+   "readyForActivation": true,
+   "errors": [],
+   "warnings": [
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10PageSet0Page10Pdf417BarCode10"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10PageSet0Page11Pdf417BarCode10"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10PageSet0Page12Pdf417BarCode10"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line4MobileTelephone0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2BStreetNumberName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2CUnit0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2CUnit1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2CAptSteFlrNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2CUnit2"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2DCityOrTown0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2AInCareofName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line2AFamilyName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line2BGivenName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line2CMiddleName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2GProvince0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2HPostalCode0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2FZipCode0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2EState0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line2ICountry0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0Area0P2Chbx1Ayesno0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0Area0P2Chbx1Ayesno1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0P1Line6BRequesterSignDate0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform0P4Line1BMedicalLicenseNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line3AFamilyName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line3BGivenName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform0P2Line3CMiddleName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page5.form10Subform0P5Line6ASignatureofApplicant0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line1BDateOfNat0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line1CCourt0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line1DCity0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line1DCounty0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line1ACertNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line2ACertNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line2BDateOfIssu0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line3BFee0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line4BFee0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1P2Line4ADateofBirth0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "part2.form10Subform1Area3Part2Line4BActual0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "part2.form10Subform1Area3Part2Line4BEstimated0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1P2Line5ACityOrTown0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1P2Line5BProvince0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1P2Line5CCountry0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "part2.form10Subform1Area4Part2Line1AlienNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line5AVisaNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line5BDateOfEntry0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line5CPortOfEntry0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line5DShip0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line6TotalFees0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line6ARegistryFile0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line5EChbx0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line6BChbx0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1P3Line4AAFileNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1Area7P3Line1FChbx0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page3.form10Subform1Area7P3Line1FChbx1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line3CItemNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line3APageNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line3BPartNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line3DAdditionalInfo0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line4CItemNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line4APageNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line4BPartNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line4DAdditionalInfo0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line2CItemNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line2APageNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line2BPartNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line2DAdditionalInfo0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5DAdditionalInfo0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5CItemNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5APageNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5BPartNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5DAdditionalInfo1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5CItemNumber1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5APageNumber1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page4.form10Subform2P4Line5BPartNumber1"
+    }
+   ],
+   "summary": {
+    "errors": 0,
+    "warnings": 74,
+    "reviewRequired": 0,
+    "unmapped": 0
+   }
+  },
+  "mappingVersion": 2,
+  "intentionallyUnmapped": [
+   {
+    "targetFieldId": "page1.form10Subform0P1Line4MobileTelephone0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line4_MobileTelephone[0]",
+    "label": "Item 4: Enter Requestor's Mobile Telephone Number, if any",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2BStreetNumberName0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2b_StreetNumberName[0]",
+    "label": "Item 2: Enter Street Number and Name",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2CUnit0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2c_unit[0]",
+    "label": "Item 2: Select Suite",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2CUnit1",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2c_unit[1]",
+    "label": "Item 2: Select Floor",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2CAptSteFlrNumber0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2c_AptSteFlrNumber[0]",
+    "label": "Item 2: Enter Apartment, Suite or Floor Number",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2CUnit2",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2c_unit[2]",
+    "label": "Item 2: Select Apartment",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2DCityOrTown0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2d_CityOrTown[0]",
+    "label": "Item 2: Enter City or Town",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2AInCareofName0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2a_InCareofName[0]",
+    "label": "Item 2: Enter In Care Of Name, if any",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line2AFamilyName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line2a_FamilyName[0]",
+    "label": "Item 2: Enter Family Name (Last Name)",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line2BGivenName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line2b_GivenName[0]",
+    "label": "Item 2: Enter Given Name (First Name)",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line2CMiddleName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line2c_MiddleName[0]",
+    "label": "Item 2: Enter Middle Name",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2GProvince0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2g_Province[0]",
+    "label": "Item 2: Enter Province",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2HPostalCode0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2h_PostalCode[0]",
+    "label": "Item 2: Enter Postal Code",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2FZipCode0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2f_ZipCode[0]",
+    "label": "Item 2: Enter Zip Code",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2EState0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2e_State[0]",
+    "label": "Item 2: Select State from List of States",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line2ICountry0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line2i_Country[0]",
+    "label": "Item 2: Enter Country",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0Area0P2Chbx1Ayesno0",
+    "targetPdfField": "form1[0].#subform[0].#area[0].P2_chbx1ayesno[0]",
+    "label": "Item 1: If you answered \"Yes,\" provide the Genealogy Index Search Request case numbers in Item Number 1 B",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0Area0P2Chbx1Ayesno1",
+    "targetPdfField": "form1[0].#subform[0].#area[0].P2_chbx1ayesno[1]",
+    "label": "Item 1: Select No",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0P1Line6BRequesterSignDate0",
+    "targetPdfField": "form1[0].#subform[0].P1_Line6b_RequesterSignDate[0]",
+    "label": "Item 6: Enter as 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform0P4Line1BMedicalLicenseNumber0",
+    "targetPdfField": "form1[0].#subform[0].P4_Line1b_Medical_License_Number[0]",
+    "label": "Item 1: Enter Genealogy Index Search Case Number",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line3AFamilyName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line3a_FamilyName[0]",
+    "label": "Item 3: Enter Family Name (Last Name)",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line3BGivenName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line3b_GivenName[0]",
+    "label": "Item 3: Enter Given Name (First Name)",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform0P2Line3CMiddleName0",
+    "targetPdfField": "form1[0].#subform[0].P2_Line3c_MiddleName[0]",
+    "label": "Item 3: Enter Middle Name",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page5.form10Subform0P5Line6ASignatureofApplicant0",
+    "targetPdfField": "form1[0].#subform[0].P5_Line6a_SignatureofApplicant[0]",
+    "label": "Item 6: The name of the requestor can not be typewritten into this space",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line1BDateOfNat0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line1b_DateOfNat[0]",
+    "label": "Item 1: Enter as 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line1CCourt0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line1c_Court[0]",
+    "label": "Item 1: Enter Court",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line1DCity0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line1d_City[0]",
+    "label": "Item 1: Enter City",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line1DCounty0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line1d_County[0]",
+    "label": "Item 1: Enter County",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line1ACertNumber0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line1a_Cert-Number[0]",
+    "label": "Item 1: Enter Certificate Number",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line2ACertNumber0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line2a_Cert-Number[0]",
+    "label": "Item 2: Enter Number as Shown on Certificate",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line2BDateOfIssu0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line2b_DateOfIssu[0]",
+    "label": "Item 2: Enter as 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line3BFee0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line3b_Fee[0]",
+    "label": "Item 3: Select 80 dollars (Copy Format - Microfilm)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line4BFee0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line4b_Fee[0]",
+    "label": "Item 4: Select 80 dollars (Copy Format - Hard Copy)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1P2Line4ADateofBirth0",
+    "targetPdfField": "form1[0].#subform[1].P2_Line4a_DateofBirth[0]",
+    "label": "Item 4: See the Who Should Use Form G-1041A section of these Instructions for examples of acceptable documentary proof of death",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "part2.form10Subform1Area3Part2Line4BActual0",
+    "targetPdfField": "form1[0].#subform[1].#area[3].Pt2Line4b_actual[0]",
+    "label": "Item 4: Select Actual",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "part2.form10Subform1Area3Part2Line4BEstimated0",
+    "targetPdfField": "form1[0].#subform[1].#area[3].Pt2Line4b_estimated[0]",
+    "label": "Item 4: Select Estimated",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1P2Line5ACityOrTown0",
+    "targetPdfField": "form1[0].#subform[1].P2_Line5a_CityOrTown[0]",
+    "label": "Item 5: Enter Town or Village",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1P2Line5BProvince0",
+    "targetPdfField": "form1[0].#subform[1].P2_Line5b_Province[0]",
+    "label": "Item 5: Enter Province",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1P2Line5CCountry0",
+    "targetPdfField": "form1[0].#subform[1].P2_Line5c_Country[0]",
+    "label": "Item 5: Enter Country",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "part2.form10Subform1Area4Part2Line1AlienNumber0",
+    "targetPdfField": "form1[0].#subform[1].#area[4].Pt2Line1_AlienNumber[0]",
+    "label": "Item 3: R",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line5AVisaNumber0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line5a_Visa_Number[0]",
+    "label": "Item 5: Enter Visa Number",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line5BDateOfEntry0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line5b_DateOfEntry[0]",
+    "label": "Item 5: Enter as 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line5CPortOfEntry0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line5c_PortOfEntry[0]",
+    "label": "Item 5: Enter Port of Entry",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line5DShip0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line5d_Ship[0]",
+    "label": "Item 5: Enter Ship (seaport arrivals only)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line6TotalFees0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line6_TotalFees[0]",
+    "label": "Enter Total Fees Due / Attached",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line6ARegistryFile0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line6a_RegistryFile[0]",
+    "label": "Item 6: R",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line5EChbx0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line5e_chbx[0]",
+    "label": "Item 5: Select 80 dollars (Copy Format - Hard Copy)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line6BChbx0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line6b_chbx[0]",
+    "label": "Item 6: Select 80 dollars (Copy Format - Hard Copy)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1P3Line4AAFileNumber0",
+    "targetPdfField": "form1[0].#subform[1].P3_Line4a_A-File_Number[0]",
+    "label": "Item 4: A",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1Area7P3Line1FChbx0",
+    "targetPdfField": "form1[0].#subform[1].#area[7].P3_line1f_chbx[0]",
+    "label": "Item 1: Select 80 dollars (Microfilm)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page3.form10Subform1Area7P3Line1FChbx1",
+    "targetPdfField": "form1[0].#subform[1].#area[7].P3_line1f_chbx[1]",
+    "label": "Item 1: Select 80 dollars (Hard Copy)",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line3CItemNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line3c_ItemNumber[0]",
+    "label": "Item 3: Enter Item Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line3APageNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line3a_PageNumber[0]",
+    "label": "Item 3: Enter Page Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line3BPartNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line3b_PartNumber[0]",
+    "label": "Item 3: Enter Part Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line3DAdditionalInfo0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line3d_AdditionalInfo[0]",
+    "label": "Item 3: Enter Additional Information",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line4CItemNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line4c_ItemNumber[0]",
+    "label": "Item 4: Enter Item Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line4APageNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line4a_PageNumber[0]",
+    "label": "Item 4: Enter Page Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line4BPartNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line4b_PartNumber[0]",
+    "label": "Item 4: Enter Part Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line4DAdditionalInfo0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line4d_AdditionalInfo[0]",
+    "label": "Item 4: Enter Additional Information",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line2CItemNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line2c_ItemNumber[0]",
+    "label": "Item 2: Enter Item Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line2APageNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line2a_PageNumber[0]",
+    "label": "Item 2: Enter Page Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line2BPartNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line2b_PartNumber[0]",
+    "label": "Item 2: Enter Part Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line2DAdditionalInfo0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line2d_AdditionalInfo[0]",
+    "label": "Item 2: Enter Additional Information",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5DAdditionalInfo0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5d_AdditionalInfo[0]",
+    "label": "Item 5: Enter Additional Information",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5CItemNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5c_ItemNumber[0]",
+    "label": "Item 5: Enter Item Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5APageNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5a_PageNumber[0]",
+    "label": "Item 5: Enter Page Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5BPartNumber0",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5b_PartNumber[0]",
+    "label": "Item 4: Enter Part Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5DAdditionalInfo1",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5d_AdditionalInfo[1]",
+    "label": "Item 6: Enter Additional Information",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5CItemNumber1",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5c_ItemNumber[1]",
+    "label": "Item 6: Enter Item Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5APageNumber1",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5a_PageNumber[1]",
+    "label": "Item 6: Enter Page Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page4.form10Subform2P4Line5BPartNumber1",
+    "targetPdfField": "form1[0].#subform[2].P4_Line5b_PartNumber[1]",
+    "label": "Item 6: Enter Part Number",
+    "pageNumber": 3,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   }
+  ]
+ }
+}

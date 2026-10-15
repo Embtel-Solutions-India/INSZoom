@@ -81,12 +81,25 @@ export function isLongQuestion(question, value) {
   return text.length > LONG_VALUE_CHARS || text.includes('\n')
 }
 
-function AnswerRow({ label, value, extra = null }) {
+// Mirrors the client portal's isQuestionRequired (static part): a question the case manager asked for, or flagged required / with a "required"
+// rule, is compulsory unless metadata.optional. Conditional (requireWhen) questions are not marked - they are only required for some answers.
+export function isQuestionRequired(question) {
+  if (question?.metadata?.requestedByStaff) return true
+  if (question?.metadata?.optional) return false
+  if (question?.required) return true
+  return (question?.validationRules || []).some((rule) => rule.type === 'required')
+}
+
+function RequiredMark({ question }) {
+  return isQuestionRequired(question) ? <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span> : null
+}
+
+function AnswerRow({ label, value, extra = null, required = false }) {
   const answered = value !== undefined && value !== null && value !== ''
   return (
     <div className="min-w-0">
       <div className="mb-1 flex items-start justify-between gap-2">
-        <span className="min-w-0 text-[13px] font-medium leading-snug text-foreground">{label}</span>
+        <span className="min-w-0 text-[13px] font-medium leading-snug text-foreground">{label}{required && <span className="ml-1 text-base font-extrabold leading-none text-red-600" aria-label="required">*</span>}</span>
         {extra && <span className="shrink-0">{extra}</span>}
       </div>
       <div
@@ -160,7 +173,7 @@ function RepeatingGroupRows({ question, rows: rawRows, requestControl = null }) 
     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
       {requestControl && (
         <div className="flex items-start justify-between gap-2 md:col-span-2">
-          <p className="min-w-0 text-sm font-semibold text-foreground">{question.label}</p>
+          <p className="min-w-0 text-sm font-semibold text-foreground">{question.label}<RequiredMark question={question} /></p>
           <span className="shrink-0">{requestControl}</span>
         </div>
       )}
@@ -272,7 +285,7 @@ function FileAnswerRow({ question, files, questionnaireId, onAdd, onRemove, requ
   return (
     <div className="rounded-lg border border-border bg-muted p-3 text-sm">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-semibold text-foreground">{question.label}{current.length > 1 ? ` (${current.length})` : ''}</p>
+        <p className="font-semibold text-foreground">{question.label}<RequiredMark question={question} />{current.length > 1 ? ` (${current.length})` : ''}</p>
         {requestControl}
       </div>
       {current.length ? (
@@ -447,7 +460,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                 const renderPlain = (question) => (
                     editing && EDITABLE_SCALAR_TYPES.has(question.type) ? (
                       <div key={question.key}>
-                        <label className="mb-1 block text-xs text-muted-foreground">{question.label}</label>
+                        <label className="mb-1 block text-xs text-muted-foreground">{question.label}<RequiredMark question={question} /></label>
                         <EditableAnswerInput
                           question={question}
                           value={draft[question.key]}
@@ -455,7 +468,7 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                         />
                       </div>
                     ) : (
-                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
+                      <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} required={isQuestionRequired(question)} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                     )
                 )
                 return (

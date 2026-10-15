@@ -1,0 +1,1015 @@
+{
+ "formCode": "G-1256",
+ "version": "2015-08-10",
+ "status": "review",
+ "mappingStatus": "active",
+ "pdfStorageKey": "government/uscis/G-1256/2015-08-10/067157cb41218f54a759286b06907b35168d4fe524a3723947aaebadca073474/form.pdf",
+ "fieldCount": 28,
+ "graph": {
+  "templateId": "6ab5eb65e0763f40f842def0",
+  "formCode": "G-1256",
+  "formName": "G-1256, Declaration for Interpreted USCIS Interview",
+  "version": "2015-08-10",
+  "generatedAt": "2026-09-25T03:32:57.316Z",
+  "nodes": {
+   "canonical": [
+    {
+     "id": "canonical:person.firstName",
+     "path": "person.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.middleName",
+     "path": "person.middleName",
+     "label": "middleName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.lastName",
+     "path": "person.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.fullName",
+     "path": "person.fullName",
+     "label": "fullName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.dob",
+     "path": "person.dob",
+     "label": "dob",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.gender",
+     "path": "person.gender",
+     "label": "gender",
+     "type": "boolean"
+    },
+    {
+     "id": "canonical:person.maritalStatus",
+     "path": "person.maritalStatus",
+     "label": "maritalStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.citizenship",
+     "path": "person.citizenship",
+     "label": "citizenship",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.countryOfBirth",
+     "path": "person.countryOfBirth",
+     "label": "countryOfBirth",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.alienNumber",
+     "path": "person.alienNumber",
+     "label": "alienNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.ssn",
+     "path": "person.ssn",
+     "label": "ssn",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.number",
+     "path": "person.passport.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.country",
+     "path": "person.passport.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.issueDate",
+     "path": "person.passport.issueDate",
+     "label": "issueDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.passport.expirationDate",
+     "path": "person.passport.expirationDate",
+     "label": "expirationDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:contact.email",
+     "path": "contact.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:contact.phone",
+     "path": "contact.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:contact.address.line1",
+     "path": "contact.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.line2",
+     "path": "contact.address.line2",
+     "label": "line2",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.city",
+     "path": "contact.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.state",
+     "path": "contact.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.zip",
+     "path": "contact.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.country",
+     "path": "contact.address.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseNumber",
+     "path": "case.caseNumber",
+     "label": "caseNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseType",
+     "path": "case.caseType",
+     "label": "caseType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.visaType",
+     "path": "case.visaType",
+     "label": "visaType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.priorityDate",
+     "path": "case.priorityDate",
+     "label": "priorityDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:company.name",
+     "path": "company.name",
+     "label": "name",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.legalName",
+     "path": "company.legalName",
+     "label": "legalName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.ein",
+     "path": "company.ein",
+     "label": "ein",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.phone",
+     "path": "company.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:company.email",
+     "path": "company.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:company.address.line1",
+     "path": "company.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.city",
+     "path": "company.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.state",
+     "path": "company.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.zip",
+     "path": "company.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:employment[].employerName",
+     "path": "employment[].employerName",
+     "label": "employerName",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].jobTitle",
+     "path": "employment[].jobTitle",
+     "label": "jobTitle",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].startDate",
+     "path": "employment[].startDate",
+     "label": "startDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].endDate",
+     "path": "employment[].endDate",
+     "label": "endDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:education[].institution",
+     "path": "education[].institution",
+     "label": "institution",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].degree",
+     "path": "education[].degree",
+     "label": "degree",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].fieldOfStudy",
+     "path": "education[].fieldOfStudy",
+     "label": "fieldOfStudy",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].graduationDate",
+     "path": "education[].graduationDate",
+     "label": "graduationDate",
+     "type": "date",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:family.spouse.firstName",
+     "path": "family.spouse.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.spouse.lastName",
+     "path": "family.spouse.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.children[].firstName",
+     "path": "family.children[].firstName",
+     "label": "firstName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:family.children[].lastName",
+     "path": "family.children[].lastName",
+     "label": "lastName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:immigration.currentStatus",
+     "path": "immigration.currentStatus",
+     "label": "currentStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.i94.number",
+     "path": "immigration.i94.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.sevisNumber",
+     "path": "immigration.sevisNumber",
+     "label": "sevisNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.receiptNumbers[]",
+     "path": "immigration.receiptNumbers[]",
+     "label": "receiptNumbers",
+     "type": "text",
+     "repeatable": "receiptNumbers"
+    },
+    {
+     "id": "canonical:travelHistory[].arrivalDate",
+     "path": "travelHistory[].arrivalDate",
+     "label": "arrivalDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:travelHistory[].departureDate",
+     "path": "travelHistory[].departureDate",
+     "label": "departureDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:documents[].type",
+     "path": "documents[].type",
+     "label": "type",
+     "type": "text",
+     "repeatable": "documents"
+    },
+    {
+     "id": "canonical:beneficiary.lastName",
+     "path": "beneficiary.lastName",
+     "label": "beneficiary.lastName",
+     "type": "text"
+    }
+   ],
+   "form": [
+    {
+     "id": "form:page1.form10Subform0IntervieweeName0",
+     "fieldId": "page1.form10Subform0IntervieweeName0",
+     "pdfField": "form1[0].#subform[0].IntervieweeName[0]",
+     "label": "Enter Interviewee's Name",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0IntervieweeAlienNumber0",
+     "fieldId": "page1.form10Subform0IntervieweeAlienNumber0",
+     "pdfField": "form1[0].#subform[0].IntervieweeAlienNumber[0]",
+     "label": "Enter Interviewee's Alien Registration Number (A-Number) (if any)",
+     "type": "alienNumber",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0IntervieweeNativeLanguage0",
+     "fieldId": "page1.form10Subform0IntervieweeNativeLanguage0",
+     "pdfField": "form1[0].#subform[0].IntervieweeNativeLanguage[0]",
+     "label": "Enter Interviewee's Native Language or Languages",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0InterpreterName0",
+     "fieldId": "page1.form10Subform0InterpreterName0",
+     "pdfField": "form1[0].#subform[0].InterpreterName[0]",
+     "label": "Enter Interpreter's Name",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0InterpreterAddress0",
+     "fieldId": "page1.form10Subform0InterpreterAddress0",
+     "pdfField": "form1[0].#subform[0].InterpreterAddress[0]",
+     "label": "Enter Interpreter's Address",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0Area0DocumentAttached0",
+     "fieldId": "page1.form10Subform0Area0DocumentAttached0",
+     "pdfField": "form1[0].#subform[0].#area[0].DocumentAttached[0]",
+     "label": "Check this box for Yes",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0Area0DocumentAttached1",
+     "fieldId": "page1.form10Subform0Area0DocumentAttached1",
+     "pdfField": "form1[0].#subform[0].#area[0].DocumentAttached[1]",
+     "label": "Check this box for No",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0LanguagesUsed0",
+     "fieldId": "page1.form10Subform0LanguagesUsed0",
+     "pdfField": "form1[0].#subform[0].LanguagesUsed[0]",
+     "label": "Enter Languages Used by Interpreter",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0IntervieweeSignature0",
+     "fieldId": "page1.form10Subform0IntervieweeSignature0",
+     "pdfField": "form1[0].#subform[0].IntervieweeSignature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "signature",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Subform0InterpreterTelephoneNumber0",
+     "fieldId": "page1.form10Subform0InterpreterTelephoneNumber0",
+     "pdfField": "form1[0].#subform[0].InterpreterTelephoneNumber[0]",
+     "label": "Enter Interpreter's Telephone Number",
+     "type": "phone",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1Date0",
+     "fieldId": "page2.form10Subform1Date0",
+     "pdfField": "form1[0].#subform[1].Date[0]",
+     "label": "Enter 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisOfficerSignature0",
+     "fieldId": "page2.form10Subform1UscisOfficerSignature0",
+     "pdfField": "form1[0].#subform[1].USCISOfficerSignature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "signature",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisPrintedName0",
+     "fieldId": "page2.form10Subform1UscisPrintedName0",
+     "pdfField": "form1[0].#subform[1].USCISPrintedName[0]",
+     "label": "Enter USCIS Officer's Typed or Printed Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:part1.form10Subform1Part1Line1FamilyName0",
+     "fieldId": "part1.form10Subform1Part1Line1FamilyName0",
+     "pdfField": "form1[0].#subform[1].Pt1Line1_FamilyName[0]",
+     "label": "The interpreter was disqualified for the following reasons: Enter the reason",
+     "type": "textarea",
+     "section": "Part 1",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1IntervieweeName1",
+     "fieldId": "page2.form10Subform1IntervieweeName1",
+     "pdfField": "form1[0].#subform[1].IntervieweeName[1]",
+     "label": "I understand that I may request that my interview be rescheduled for the purposes of finding a qualified interpreter",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1Area2Reschedule0",
+     "fieldId": "page2.form10Subform1Area2Reschedule0",
+     "pdfField": "form1[0].#subform[1].#area[2].Reschedule[0]",
+     "label": "Check this box for Yes",
+     "type": "checkbox",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1Area2Reschedule1",
+     "fieldId": "page2.form10Subform1Area2Reschedule1",
+     "pdfField": "form1[0].#subform[1].#area[2].Reschedule[1]",
+     "label": "Check this box for No",
+     "type": "checkbox",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisOffSingature0",
+     "fieldId": "page2.form10Subform1UscisOffSingature0",
+     "pdfField": "form1[0].#subform[1].USCISOffSingature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisTypedName0",
+     "fieldId": "page2.form10Subform1UscisTypedName0",
+     "pdfField": "form1[0].#subform[1].USCISTypedName[0]",
+     "label": "Enter USCIS Officer's Typed or Printed Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1SupervisorySignature0",
+     "fieldId": "page2.form10Subform1SupervisorySignature0",
+     "pdfField": "form1[0].#subform[1].SupervisorySignature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "signature",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1SupervisoryPrintedName0",
+     "fieldId": "page2.form10Subform1SupervisoryPrintedName0",
+     "pdfField": "form1[0].#subform[1].SupervisoryPrintedName[0]",
+     "label": "Enter Supervisory USCIS Officer's Typed or Printed Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisSignature0",
+     "fieldId": "page2.form10Subform1UscisSignature0",
+     "pdfField": "form1[0].#subform[1].USCISSignature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "signature",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1UscisTypePrintName0",
+     "fieldId": "page2.form10Subform1UscisTypePrintName0",
+     "pdfField": "form1[0].#subform[1].USCISTypePrintName[0]",
+     "label": "Enter USCIS Officer's Typed or Printed Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1IntervieweeSig0",
+     "fieldId": "page2.form10Subform1IntervieweeSig0",
+     "pdfField": "form1[0].#subform[1].IntervieweeSig[0]",
+     "label": "This form can not be electronically signed",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1IntervieweeTypePrintName0",
+     "fieldId": "page2.form10Subform1IntervieweeTypePrintName0",
+     "pdfField": "form1[0].#subform[1].IntervieweeTypePrintName[0]",
+     "label": "Enter Interviewee's Typed or Printed Name",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1InterpreterSignature0",
+     "fieldId": "page2.form10Subform1InterpreterSignature0",
+     "pdfField": "form1[0].#subform[1].InterpreterSignature[0]",
+     "label": "This form can not be electronically signed",
+     "type": "signature",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1InterpreterSigDate0",
+     "fieldId": "page2.form10Subform1InterpreterSigDate0",
+     "pdfField": "form1[0].#subform[1].InterpreterSigDate[0]",
+     "label": "Enter 2 digit month, 2 digit day and 4 digit year",
+     "type": "date",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    },
+    {
+     "id": "form:page2.form10Subform1FieldLocation0",
+     "fieldId": "page2.form10Subform1FieldLocation0",
+     "pdfField": "form1[0].#subform[1].FieldLocation[0]",
+     "label": "Enter Field Office Location",
+     "type": "text",
+     "section": "Page 2",
+     "pageNumber": 2,
+     "required": false
+    }
+   ]
+  },
+  "edges": [
+   {
+    "mappingId": "G-1256:2015-08-10:page1.form10Subform0IntervieweeAlienNumber0",
+    "formCode": "G-1256",
+    "version": "2015-08-10",
+    "sourcePath": "person.alienNumber",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0IntervieweeAlienNumber0",
+    "targetPdfField": "form1[0].#subform[0].IntervieweeAlienNumber[0]",
+    "targetLabel": "Enter Interviewee's Alien Registration Number (A-Number) (if any)",
+    "targetType": "alienNumber",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:57.301Z"
+   },
+   {
+    "mappingId": "G-1256:2015-08-10:page1.form10Subform0InterpreterTelephoneNumber0",
+    "formCode": "G-1256",
+    "version": "2015-08-10",
+    "sourcePath": "contact.phone",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Subform0InterpreterTelephoneNumber0",
+    "targetPdfField": "form1[0].#subform[0].InterpreterTelephoneNumber[0]",
+    "targetLabel": "Enter Interpreter's Telephone Number",
+    "targetType": "phone",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:57.304Z"
+   },
+   {
+    "mappingId": "G-1256:2015-08-10:part1.form10Subform1Part1Line1FamilyName0",
+    "formCode": "G-1256",
+    "version": "2015-08-10",
+    "sourcePath": "beneficiary.lastName",
+    "sourceType": "canonical",
+    "targetFieldId": "part1.form10Subform1Part1Line1FamilyName0",
+    "targetPdfField": "form1[0].#subform[1].Pt1Line1_FamilyName[0]",
+    "targetLabel": "The interpreter was disqualified for the following reasons: Enter the reason",
+    "targetType": "textarea",
+    "section": "Part 1",
+    "pageNumber": 2,
+    "mappingType": "direct",
+    "confidence": 90,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:32:57.308Z",
+    "partyRule": "beneficiary.lastName",
+    "note": "Verified G-1256 rule: beneficiary.lastName"
+   }
+  ],
+  "unmappedTargets": [],
+  "summary": {
+   "sourceFields": 55,
+   "formFields": 28,
+   "mappedFields": 3,
+   "activeMappings": 3,
+   "reviewRequired": 0,
+   "mappingCoverage": 11
+  },
+  "validation": {
+   "valid": true,
+   "readyForActivation": true,
+   "errors": [],
+   "warnings": [
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0IntervieweeName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0IntervieweeNativeLanguage0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0InterpreterName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0InterpreterAddress0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0Area0DocumentAttached0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0Area0DocumentAttached1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0LanguagesUsed0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Subform0IntervieweeSignature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1Date0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisOfficerSignature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisPrintedName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1IntervieweeName1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1Area2Reschedule0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1Area2Reschedule1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisOffSingature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisTypedName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1SupervisorySignature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1SupervisoryPrintedName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisSignature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1UscisTypePrintName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1IntervieweeSig0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1IntervieweeTypePrintName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1InterpreterSignature0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1InterpreterSigDate0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page2.form10Subform1FieldLocation0"
+    }
+   ],
+   "summary": {
+    "errors": 0,
+    "warnings": 25,
+    "reviewRequired": 0,
+    "unmapped": 0
+   }
+  },
+  "mappingVersion": 2,
+  "intentionallyUnmapped": [
+   {
+    "targetFieldId": "page1.form10Subform0IntervieweeName0",
+    "targetPdfField": "form1[0].#subform[0].IntervieweeName[0]",
+    "label": "Enter Interviewee's Name",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0IntervieweeNativeLanguage0",
+    "targetPdfField": "form1[0].#subform[0].IntervieweeNativeLanguage[0]",
+    "label": "Enter Interviewee's Native Language or Languages",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0InterpreterName0",
+    "targetPdfField": "form1[0].#subform[0].InterpreterName[0]",
+    "label": "Enter Interpreter's Name",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0InterpreterAddress0",
+    "targetPdfField": "form1[0].#subform[0].InterpreterAddress[0]",
+    "label": "Enter Interpreter's Address",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0Area0DocumentAttached0",
+    "targetPdfField": "form1[0].#subform[0].#area[0].DocumentAttached[0]",
+    "label": "Check this box for Yes",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0Area0DocumentAttached1",
+    "targetPdfField": "form1[0].#subform[0].#area[0].DocumentAttached[1]",
+    "label": "Check this box for No",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0LanguagesUsed0",
+    "targetPdfField": "form1[0].#subform[0].LanguagesUsed[0]",
+    "label": "Enter Languages Used by Interpreter",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page1.form10Subform0IntervieweeSignature0",
+    "targetPdfField": "form1[0].#subform[0].IntervieweeSignature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 1,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1Date0",
+    "targetPdfField": "form1[0].#subform[1].Date[0]",
+    "label": "Enter 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisOfficerSignature0",
+    "targetPdfField": "form1[0].#subform[1].USCISOfficerSignature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisPrintedName0",
+    "targetPdfField": "form1[0].#subform[1].USCISPrintedName[0]",
+    "label": "Enter USCIS Officer's Typed or Printed Name",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1IntervieweeName1",
+    "targetPdfField": "form1[0].#subform[1].IntervieweeName[1]",
+    "label": "I understand that I may request that my interview be rescheduled for the purposes of finding a qualified interpreter",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1Area2Reschedule0",
+    "targetPdfField": "form1[0].#subform[1].#area[2].Reschedule[0]",
+    "label": "Check this box for Yes",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1Area2Reschedule1",
+    "targetPdfField": "form1[0].#subform[1].#area[2].Reschedule[1]",
+    "label": "Check this box for No",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisOffSingature0",
+    "targetPdfField": "form1[0].#subform[1].USCISOffSingature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisTypedName0",
+    "targetPdfField": "form1[0].#subform[1].USCISTypedName[0]",
+    "label": "Enter USCIS Officer's Typed or Printed Name",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1SupervisorySignature0",
+    "targetPdfField": "form1[0].#subform[1].SupervisorySignature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1SupervisoryPrintedName0",
+    "targetPdfField": "form1[0].#subform[1].SupervisoryPrintedName[0]",
+    "label": "Enter Supervisory USCIS Officer's Typed or Printed Name",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisSignature0",
+    "targetPdfField": "form1[0].#subform[1].USCISSignature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1UscisTypePrintName0",
+    "targetPdfField": "form1[0].#subform[1].USCISTypePrintName[0]",
+    "label": "Enter USCIS Officer's Typed or Printed Name",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1IntervieweeSig0",
+    "targetPdfField": "form1[0].#subform[1].IntervieweeSig[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1IntervieweeTypePrintName0",
+    "targetPdfField": "form1[0].#subform[1].IntervieweeTypePrintName[0]",
+    "label": "Enter Interviewee's Typed or Printed Name",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1InterpreterSignature0",
+    "targetPdfField": "form1[0].#subform[1].InterpreterSignature[0]",
+    "label": "This form can not be electronically signed",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1InterpreterSigDate0",
+    "targetPdfField": "form1[0].#subform[1].InterpreterSigDate[0]",
+    "label": "Enter 2 digit month, 2 digit day and 4 digit year",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   },
+   {
+    "targetFieldId": "page2.form10Subform1FieldLocation0",
+    "targetPdfField": "form1[0].#subform[1].FieldLocation[0]",
+    "label": "Enter Field Office Location",
+    "pageNumber": 2,
+    "reason": "no verified rule - left for the case manager / retained as case information"
+   }
+  ]
+ }
+}

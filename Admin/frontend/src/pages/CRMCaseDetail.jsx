@@ -9,7 +9,7 @@ import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 import InfoModal from '../components/InfoModal'
 import ConfirmModal from '../components/ConfirmModal'
-import ChecklistApprovalCard from '../components/ChecklistApprovalCard'
+import ChecklistApprovalCard, { isPremiumChecklist } from '../components/ChecklistApprovalCard'
 import { uscisFormsApi, eligibilityApi, casesApi, lifecycleApi, clientIntakeApi, questionnairesApi, familyWorkflowApi, formGenerationApi, invalidateCachedGet, documentsApi, readFormWarnings, ghlApi } from '../services/api'
 import QuestionnaireAnswersPanel from '../components/QuestionnaireAnswersPanel'
 import ApprovedChecklistPanel from '../components/ApprovedChecklistPanel'
@@ -498,7 +498,7 @@ const CRMCaseDetail = () => {
   // its key and pinned by referenceId so it never displaces the case's own checklist).
   const isPremiumProcessingCase = caseData?.visaType === 'Premium Processing'
   const premiumProcessingQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', { enabled: documentsActive && isPremiumProcessingCase })
-  const premiumAddonEntry = checklistsProgress.find((item) => item.key === 'i907_premium_processing_profile' && item.staffRequest)
+  const premiumAddonEntry = checklistsProgress.find(isPremiumChecklist)
   const premiumAddonQuestionnaire = useCaseQuestionnaire(caseData?._id, 'client', {
     enabled: documentsActive && !isPremiumProcessingCase && Boolean(premiumAddonEntry),
     referenceId: premiumAddonEntry?.referenceId,
@@ -508,17 +508,43 @@ const CRMCaseDetail = () => {
   const [premiumConfirmOpen, setPremiumConfirmOpen] = useState(false)
   const [upgradingPremium, setUpgradingPremium] = useState(false)
   const [premiumError, setPremiumError] = useState('')
+  // After an upgrade the Form I-907 checklist is a draft: the client gets it (and the email + browser push) only when it is approved here.
+  const premiumAwaitingApproval = premiumAddonEntry?.clientApproval === 'draft'
+  const [premiumApprovalOpen, setPremiumApprovalOpen] = useState(false)
+  const [approvingPremium, setApprovingPremium] = useState(false)
+  const [premiumApprovalError, setPremiumApprovalError] = useState('')
+  const handleApprovePremium = async () => {
+    if (!premiumAddonEntry) return
+    setApprovingPremium(true)
+    setPremiumApprovalError('')
+    try {
+      await questionnairesApi.approveCaseChecklists(caseData._id, { checklistIds: [premiumAddonEntry.checklistId] })
+      setPremiumApprovalOpen(false)
+      await reloadCaseChecklists()
+      setInfoModal({ title: 'Sent to the client', message: 'The Form I-907 checklist was approved and sent to the client. They have been told their case is upgraded to Premium Processing.' })
+    } catch (err) {
+      setPremiumApprovalError(err.response?.data?.message || err.message || 'Could not approve the checklist. Please try again.')
+    } finally {
+      setApprovingPremium(false)
+    }
+  }
   const handleUpgradePremium = async () => {
     setUpgradingPremium(true)
     setPremiumError('')
     try {
-      await casesApi.upgradePremiumProcessing(caseData._id)
+      const upgraded = await casesApi.upgradePremiumProcessing(caseData._id)
+      const result = upgraded?.data ?? upgraded
       setPremiumConfirmOpen(false)
       invalidateCachedGet(`/questionnaires/case/${caseData._id}`)
       await fetchCaseDetail()
       fetchChecklistsProgress(caseData._id)
       fetchCaseForms(true)
-      setInfoModal({ title: 'Upgraded to Premium Processing', message: 'The Form I-907 checklist is now assigned to the client, and Form I-907 has been added to this case.' })
+      if (result?.awaitingApproval) {
+        setPremiumApprovalError('')
+        setPremiumApprovalOpen(true)
+      } else {
+        setInfoModal({ title: 'Upgraded to Premium Processing', message: 'This case is upgraded to Premium Processing and Form I-907 has been added to it.' })
+      }
     } catch (err) {
       setPremiumError(err.response?.data?.message || err.message || 'Could not upgrade this case. Please try again.')
     } finally {
@@ -2680,11 +2706,17 @@ const CRMCaseDetail = () => {
               <h3 className="text-lg font-semibold text-foreground">Premium Processing</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {hasPremiumAddon
-                  ? 'This case has been upgraded. The Form I-907 checklist is with the client and Form I-907 is on the Forms tab.'
-                  : 'Expedite the related petition or application. Assigns the Form I-907 checklist to the client and adds Form I-907 to this case.'}
+                  ? (premiumAwaitingApproval
+                    ? 'This case has been upgraded. Approve the Form I-907 checklist (listed in "Checklists for this case" above, where you can also edit it) to send it to the client. Form I-907 is on the Forms tab.'
+                    : 'This case has been upgraded. The Form I-907 checklist is with the client and Form I-907 is on the Forms tab.')
+                  : 'Expedite the related petition or application. Adds the Form I-907 checklist for you to approve before it goes to the client, and adds Form I-907 to this case.'}
               </p>
             </div>
-            {hasPremiumAddon ? (
+            {hasPremiumAddon && premiumAwaitingApproval ? (
+              <button type="button" onClick={() => { setPremiumApprovalError(''); setPremiumApprovalOpen(true) }} className="btn-primary inline-flex items-center gap-2 text-sm">
+                <Zap className="h-4 w-4" aria-hidden="true" /> Approve checklist
+              </button>
+            ) : hasPremiumAddon ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
                 <CheckCircle className="h-4 w-4" aria-hidden="true" /> Upgraded
               </span>
@@ -3761,13 +3793,26 @@ const CRMCaseDetail = () => {
       {premiumConfirmOpen && (
         <ConfirmModal
           title="Upgrade to Premium Processing?"
-          message={'Are you sure you want to upgrade this case to Premium Processing?\n\nThe Form I-907 checklist will be assigned to the client, and Form I-907 will be added to this case.'}
+          message={'Are you sure you want to upgrade this case to Premium Processing?\n\nThe Form I-907 checklist will be added for you to review and approve, and Form I-907 will be added to this case. The client is told only after you approve the checklist.'}
           confirmLabel="Yes, upgrade"
           cancelLabel="No"
           busy={upgradingPremium}
           error={premiumError}
           onConfirm={handleUpgradePremium}
           onCancel={() => setPremiumConfirmOpen(false)}
+        />
+      )}
+
+      {premiumApprovalOpen && (
+        <ConfirmModal
+          title="Upgraded to Premium Processing"
+          message={'This case has been upgraded to Premium Processing.\n\nApprove the Form I-907 checklist to send it to the client. Only then will the client get the "upgraded to Premium Processing" email and a browser notification. You can edit the checklist first in "Checklists for this case".'}
+          confirmLabel="Approve & send to client"
+          cancelLabel="Review first"
+          busy={approvingPremium}
+          error={premiumApprovalError}
+          onConfirm={handleApprovePremium}
+          onCancel={() => setPremiumApprovalOpen(false)}
         />
       )}
 

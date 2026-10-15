@@ -265,3 +265,41 @@ test("P2 RC7: updateProgress mutates caseForm.completion/sectionProgress/validat
   assert.deepEqual(caseForm.validationErrors.populationWarnings, []);
   assert.ok(caseForm.validationErrors.fields["form1[0].#subform[0].Line2_Name[0]"]);
 });
+
+test("overlapping saves to one form run one at a time, so a later save cannot overwrite an earlier one with a stale copy", async () => {
+  const stored = {};
+  const original = InteractiveFormReviewService.saveFieldUnlocked;
+  // mimics the real flow: load the whole object, wait (the DB round trips), write the whole object back
+  InteractiveFormReviewService.saveFieldUnlocked = async (caseId, formId, payload) => {
+    const snapshot = { ...stored };
+    await new Promise((resolve) => setTimeout(resolve, payload.delay));
+    snapshot[payload.fieldName] = payload.value;
+    Object.keys(stored).forEach((key) => delete stored[key]);
+    Object.assign(stored, snapshot);
+  };
+  try {
+    await Promise.all([
+      InteractiveFormReviewService.saveField("c1", "form1", { fieldName: "familyName", value: "Embtel Solutions Pvt Ltd", delay: 30 }),
+      InteractiveFormReviewService.saveField("c1", "form1", { fieldName: "givenName", value: "Acme Analytics Inc", delay: 5 }),
+    ]);
+    assert.deepEqual(stored, { familyName: "Embtel Solutions Pvt Ltd", givenName: "Acme Analytics Inc" });
+  } finally {
+    InteractiveFormReviewService.saveFieldUnlocked = original;
+  }
+});
+
+test("a failed save does not block the saves queued behind it", async () => {
+  const original = InteractiveFormReviewService.saveFieldUnlocked;
+  InteractiveFormReviewService.saveFieldUnlocked = async (caseId, formId, payload) => {
+    if (payload.fail) throw new Error("boom");
+    return payload.value;
+  };
+  try {
+    const first = InteractiveFormReviewService.saveField("c1", "form2", { fail: true });
+    const second = InteractiveFormReviewService.saveField("c1", "form2", { value: "ok" });
+    await assert.rejects(first, /boom/);
+    assert.equal(await second, "ok");
+  } finally {
+    InteractiveFormReviewService.saveFieldUnlocked = original;
+  }
+});

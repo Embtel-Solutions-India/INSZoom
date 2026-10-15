@@ -47,6 +47,7 @@ const TEMPLATE_AUDIENCE = {
   "case-manager-assigned": "team_member",
   "case-manager-reassigned": "team_member",
   "case-closed": "client",
+  "premium-processing-upgraded": "client",
   "additional-info-requested": "client",
   "new-message-received": "client",
 };
@@ -99,6 +100,7 @@ const TEMPLATES = {
   "case-manager-assigned": require("./templates/case-manager-assigned"),
   "case-manager-reassigned": require("./templates/case-manager-reassigned"),
   "case-closed": require("./templates/case-closed"),
+  "premium-processing-upgraded": require("./templates/premium-processing-upgraded"),
   "additional-info-requested": require("./templates/additional-info-requested"),
   "new-message-received": require("./templates/new-message-received"),
   "questionnaire-progress-saved": require("./templates/questionnaire-progress-saved"),

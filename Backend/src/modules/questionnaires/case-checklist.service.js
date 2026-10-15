@@ -16,6 +16,12 @@ const Questionnaire = require("../../models/Questionnaire");
 const caseService = require("../cases/case.service");
 const { baseKey, isCaseCopyKey, caseCopyKey, isGated, isApproved, checklistId: gateChecklistId } = require("./checklist-gate");
 
+// The Premium Processing (Form I-907) add-on is a staff-requested checklist, but a case manager reviews / edits / approves it in the same
+// "Checklists for this case" card as the automatic ones: the client gets it (and the "upgraded" email + push) only on approval.
+const PREMIUM_PROCESSING_KEY = "i907_premium_processing_profile";
+const PREMIUM_PROCESSING_CHECKLIST_ID = gateChecklistId({ key: PREMIUM_PROCESSING_KEY, targetRole: "client" });
+const isPremiumEntry = (entry) => Boolean(entry?.staffRequest) && baseKey(entry.questionnaire?.key) === PREMIUM_PROCESSING_KEY;
+
 const EDITABLE_TYPES = new Set(["text", "textarea", "number", "date", "radio", "select", "file", "email", "phone"]);
 
 function httpError(status, message, code) {
@@ -55,7 +61,7 @@ async function loadCase(caseId, user) {
 
 async function findEntry(caseId, wantedId) {
   const entries = await service().resolveCaseQuestionnaires(caseId);
-  const entry = entries.find((item) => !item.staffRequest && gateChecklistId(gateEntry(item)) === wantedId);
+  const entry = entries.find((item) => (!item.staffRequest || isPremiumEntry(item)) && gateChecklistId(gateEntry(item)) === wantedId);
   if (!entry) throw httpError(404, "Checklist not found on this case");
   return entry;
 }
@@ -68,6 +74,26 @@ async function reconcileMixedVisa(principalId) {
   } catch (error) {
     require("../../utils/logger").error("mixed_visa_reconcile_failed", { caseId: String(principalId), error: error.message });
   }
+}
+
+// Releases the held Premium Processing checklist to the client of THIS case (never cascaded to employee cases): the checklist becomes
+// visible and answerable, and the person the case belongs to gets the "upgraded to Premium Processing" email, in-app alert and browser push.
+async function releasePremiumProcessingChecklist(caseId, user, req) {
+  const fresh = await Case.findById(caseId);
+  if (!fresh || !(fresh.checklistApproval?.heldStaffChecklists || []).includes(PREMIUM_PROCESSING_CHECKLIST_ID)) return null;
+  fresh.checklistApproval.heldStaffChecklists = fresh.checklistApproval.heldStaffChecklists.filter((id) => id !== PREMIUM_PROCESSING_CHECKLIST_ID);
+  const now = new Date();
+  (fresh.questionnaireReferences || []).forEach((reference) => {
+    if (reference.staffRequest && reference.active !== false && /i-?907|premium processing/i.test(String(reference.title || ""))) reference.sentAt = now;
+  });
+  const addon = (fresh.addons || []).find((item) => item.key === "premium_processing_i907" && item.status !== "cancelled");
+  if (addon) addon.history.push({ status: addon.status, note: "Form I-907 checklist approved and sent to the client", by: user._id });
+  caseService.addTimelineEvent(fresh, "questionnaire", "Premium Processing Checklist Approved", "The Form I-907 checklist was approved and sent to the client.", user, { checklistId: PREMIUM_PROCESSING_CHECKLIST_ID });
+  caseService.addAuditEntry(fresh, "approve_checklist", "Premium Processing checklist approved for the client", user, { checklistId: PREMIUM_PROCESSING_CHECKLIST_ID }, req);
+  await fresh.save();
+  broadcastChecklistsChanged(fresh, "approved", user);
+  await require("../email/premiumProcessingNotice").notifyPremiumProcessingUpgrade(fresh, { triggeredBy: user._id });
+  return { caseId: String(fresh._id), checklistId: PREMIUM_PROCESSING_CHECKLIST_ID, title: "Form I-907 Information Checklist" };
 }
 
 // ── approval ────────────────────────────────────────────────────────────
@@ -83,6 +109,10 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
   if (cascadeToChildren && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
 
   const approved = [];
+  if (all || checklistIds.includes(PREMIUM_PROCESSING_CHECKLIST_ID)) {
+    const released = await releasePremiumProcessingChecklist(principal._id, user, req);
+    if (released) approved.push(released);
+  }
   for (const target of targets) {
     if (!isGated(target)) continue;
     const entries = (await service().resolveCaseQuestionnaires(target._id)).filter((entry) => !entry.staffRequest);

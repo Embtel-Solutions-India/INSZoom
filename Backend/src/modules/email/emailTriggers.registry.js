@@ -57,6 +57,7 @@ const TRIGGERS = [
   t("case-stage-changed", "Case Status Changed", "Case Status", "client", "The case moved to a new stage.", { groups: ["Client", "Case", "Case Manager"] }),
   t("case-approved", "Case Approved", "Case Status", "client", "USCIS approved the case.", { groups: ["Client", "Case", "Case Manager", "Attorney"] }),
   t("case-denied", "Case Denied", "Case Status", "client", "USCIS denied the case.", { groups: ["Client", "Case", "Case Manager", "Attorney"] }),
+  t("premium-processing-upgraded", "Upgraded to Premium Processing", "Case Status", "client", "The case was upgraded to Premium Processing (Form I-907).", { groups: ["Client", "Case"] }),
   t("case-closed", "Case Closed", "Case Status", "client", "The case was closed.", { groups: ["Client", "Case", "Case Manager"] }),
 ];
 

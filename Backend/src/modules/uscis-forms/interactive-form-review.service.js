@@ -35,6 +35,21 @@ const REVIEW_ROLES = new Set(["super_admin", "admin", "team_lead", "case_manager
 const APPROVE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 const UNLOCK_ROLES = new Set(["super_admin", "admin", "team_lead"]);
 
+// Saves to ONE CaseForm run one at a time (inside this process). Every save loads the form and writes back the whole filledData /
+// manualOverrides / fieldValues objects, so two saves overlapping (a user moving quickly from one field to the next autosaves both)
+// let the later one overwrite the earlier with a stale copy - the first field's value was recorded in the history but vanished from the
+// form. Queued, each save loads the form AFTER the previous one has been written. A failed save never blocks the ones behind it.
+const caseFormSaveChains = new Map();
+function withCaseFormLock(caseFormId, task) {
+  const lockKey = String(caseFormId);
+  const previous = caseFormSaveChains.get(lockKey) || Promise.resolve();
+  const run = previous.then(task);
+  const tail = run.catch(() => null);
+  caseFormSaveChains.set(lockKey, tail);
+  tail.then(() => { if (caseFormSaveChains.get(lockKey) === tail) caseFormSaveChains.delete(lockKey); });
+  return run;
+}
+
 function clone(value, fallback = {}) {
   if (value === undefined || value === null) return fallback;
   return JSON.parse(JSON.stringify(value));
@@ -558,7 +573,11 @@ class InteractiveFormReviewService {
     };
   }
 
-  static async saveField(caseId, caseFormId, payload, user, req) {
+  static saveField(caseId, caseFormId, payload, user, req) {
+    return withCaseFormLock(caseFormId, () => this.saveFieldUnlocked(caseId, caseFormId, payload, user, req));
+  }
+
+  static async saveFieldUnlocked(caseId, caseFormId, payload, user, req) {
     const { caseData, caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
     const rawFieldName = payload.fieldName || payload.fieldId;
@@ -646,7 +665,11 @@ class InteractiveFormReviewService {
     return updated;
   }
 
-  static async saveSection(caseId, caseFormId, payload, user, req) {
+  static saveSection(caseId, caseFormId, payload, user, req) {
+    return withCaseFormLock(caseFormId, () => this.saveSectionUnlocked(caseId, caseFormId, payload, user, req));
+  }
+
+  static async saveSectionUnlocked(caseId, caseFormId, payload, user, req) {
     const { caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
     const allowedFields = new Set(this.sectionFieldNames(template, payload.sectionKey));
@@ -701,7 +724,11 @@ class InteractiveFormReviewService {
   // manual overrides so a later autofill/sync never wipes what the case manager typed. Accepts keys as raw AcroForm
   // names or fieldIds, flat or nested. (The old saveCaseForm replaced filledData with the flat fieldValues map, which
   // left the typed values unreachable by the PDF filler: the form looked saved but downloaded blank.)
-  static async saveFieldValues(caseId, caseFormId, input, user, req, { status = "draft", sectionKey, reason = "Form saved", action = "FORM_SAVED" } = {}) {
+  static saveFieldValues(caseId, caseFormId, input, user, req, options = {}) {
+    return withCaseFormLock(caseFormId, () => this.saveFieldValuesUnlocked(caseId, caseFormId, input, user, req, options));
+  }
+
+  static async saveFieldValuesUnlocked(caseId, caseFormId, input, user, req, { status = "draft", sectionKey, reason = "Form saved", action = "FORM_SAVED" } = {}) {
     const { caseForm, template } = await this.load(caseId, caseFormId, user);
     this.assertEditable(caseForm, user);
     const flat = {};

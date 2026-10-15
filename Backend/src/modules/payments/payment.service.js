@@ -14,6 +14,7 @@ const pricingService = require("./pricing.service");
 const paymentGateway = require("./payment.gateway");
 const { normalizePackageName } = require("../../config/packages");
 const logger = require("../../utils/logger");
+const { notifyPremiumProcessingUpgrade } = require("../email/premiumProcessingNotice");
 
 const FINANCE_ROLES = ["super_admin", "admin"];
 const MANUAL_PAYMENT_ROLES = [...FINANCE_ROLES, "team_lead"];
@@ -497,6 +498,7 @@ async function syncCasePlanPayment(payment) {
     const addon = caseData?.addons?.find((item) => String(item.payment) === String(payment._id) || item.key === "premium_processing_i907");
     if (addon) {
       addon.paymentStatus = payment.paymentStatus === "paid" ? "paid" : payment.paymentStatus || addon.paymentStatus;
+      const firstPaid = payment.paymentStatus === "paid" && !addon.paidAt;
       if (payment.paymentStatus === "paid") {
         addon.status = "waiting_for_information";
         addon.paidAt = addon.paidAt || new Date();
@@ -511,7 +513,8 @@ async function syncCasePlanPayment(payment) {
           createdAt: new Date(),
         });
       }
-      await caseData.save().catch(() => {});
+      const saved = await caseData.save().then(() => true).catch(() => false);
+      if (saved && firstPaid) await notifyPremiumProcessingUpgrade(caseData);
     }
     payment._casePlanSync = undefined;
     return;

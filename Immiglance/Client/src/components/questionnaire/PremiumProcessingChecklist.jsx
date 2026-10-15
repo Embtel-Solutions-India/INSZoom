@@ -10,6 +10,8 @@ import { questionKey, sectionKey, isEmptyValue, isWideQuestion, isQuestionRequir
 // the case's regular checklists - never as one of them. A standalone "Premium Processing" case does
 // not use this: there the checklist is the case's own and renders on the main checklist page.
 export const PREMIUM_PROCESSING_CHECKLIST_KEY = "i907_premium_processing_profile";
+// an edited copy of the checklist (a case manager customised it for this case) carries a "__case_<id>" suffix on its key
+export const isPremiumProcessingChecklist = (checklist) => String(checklist?.key || "").split("__case_")[0] === PREMIUM_PROCESSING_CHECKLIST_KEY;
 
 export default function PremiumProcessingChecklist({ caseId, checklist }) {
   const qa = useQuestionnaireAnswers(caseId, checklist.targetRole, { referenceId: checklist.referenceId });
@@ -66,6 +68,7 @@ export default function PremiumProcessingChecklist({ caseId, checklist }) {
                   <div key={key} className={`rounded-xl border border-border bg-background p-3 ${isWideQuestion(question) ? "md:col-span-2" : ""}`}>
                     <p className="text-sm font-semibold text-foreground">
                       {question.label}
+                      {isQuestionRequired(question, qa.answers) && <span className="ml-1 text-destructive" aria-hidden="true">*</span>}
                     </p>
                     {(question.description || question.helpText) && <p className="mb-2 mt-0.5 text-xs text-muted-foreground">{question.description || question.helpText}</p>}
                     <QuestionInput
