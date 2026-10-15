@@ -9,8 +9,8 @@ This is the ONE document that records the implementation of the approved plan in
 | Phase | Status | Approval needed to start |
 |---|---|---|
 | **Release 0a** - read-only pre-rollout report + redirect-chain crawl | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
-| Release 0b-1 - evidence-resolution path, no enforcement | Not started | your review of 0a + separate approval |
-| Release 0b-2 - fail-closed gate wired into every entry point | Not started | separate approval after the 0b-1 readiness gate |
+| **Release 0b-1** - evidence-resolution path, no enforcement | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
+| Release 0b-2 - fail-closed gate wired into every entry point | Not started | separate approval after your 0b-1 review, the unrun index script and the database walkthrough |
 | Phase 0 remainder (frozen-status module, cache fix, job locks, ...) | Not started | per the plan's sequence |
 | Phases 1 - 6 | Not started | each separately |
 
@@ -126,6 +126,116 @@ Per the plan, Release 0b may start only after you have reviewed this report (inc
 
 ---
 
+# Release 0b-1 - evidence-resolution path (no enforcement)
+
+## 1. Scope and authorization
+You told me to continue with 0b-1 on 2026-10-16. The plan defines 0b-1 as the evidence-resolution path **without wiring the gate into any activation path**: the decision / source models, the redirect-safe fetcher, verbatim-quote verification, explicit reviewer confirmation, immutable audit, the `admin` / `team_lead` API, and a minimal Admin screen. **Nothing is enforced. No existing feature, workflow or file behavior changed.** Release 0b-2 (the fail-closed gate at every entry point) is not started and needs its own approval.
+
+## 2. What was built
+
+**Backend (`Backend/src/`)**
+
+| File | Purpose |
+|---|---|
+| `models/FormEditionDecision.js` | One row per `{formCode, editionIdentifier}` (unique index): decision, status, effective / rejection / grace dates, evidence references, decider, review-by date, version. No `acceptedEditionDates[]`. |
+| `models/FormEditionSource.js` | IMMUTABLE evidence snapshots: URLs, redirect chain, status, fetch time, sha256 of the extracted text, the text itself. |
+| `models/FormEditionAuditEvent.js` | PERMANENT append-only audit trail (no TTL), the plan's six event types linked by `evidenceCaseId`. |
+| `models/helpers/appendOnly.js` | Refuses every update, delete and non-insert bulk write on the two append-only models. |
+| `modules/form-edition-policy/officialUrl.js` | The ONE URL validator (https, uscis.gov / *.uscis.gov, no credentials, no IP, default port). The Release 0a crawl now imports it instead of keeping its own copy. |
+| `modules/form-edition-policy/OfficialSourceFetcher.js` | Rule H fetcher: manual redirects, every hop checked BEFORE it is requested, loop and hop limits, timeout, size cap while reading, content-type allow-list, no cookies. |
+| `modules/form-edition-policy/htmlText.js` | Stable HTML to text extraction (the text is hashed as evidence). |
+| `modules/form-edition-policy/EvidenceVerifier.js` | Eight checks (see 4), outcome `verified` / `conflicting` / `unverifiable`. |
+| `modules/form-edition-policy/EditionPolicyGate.js` | `check(formCode, editionIdentifier)` -> `{allowed, decision, status, reasons}`; fail closed; looked up by the exact edition. **Wired into nothing.** |
+| `modules/form-edition-policy/EvidenceService.js` | submit evidence, record decision, read a case, list editions. Roles, confirmation, four-eyes, audit. |
+| `modules/form-edition-policy/EditionPolicyStore.js` | The Mongoose persistence behind the service (light projections only). |
+| `modules/form-edition-policy/form-edition-policy.{routes,controller}.js` | The API, mounted at `/api/form-edition-policy` (one line added to `routes/index.js`). |
+| `scripts/createFormEditionPolicyIndexes.js` | Creates the unique indexes. **Dry-run by default; NOT run** (a database change needs your approval). |
+
+**Admin (`Admin/frontend/src/`)** - `components/FormEditionEvidenceSection.jsx` (a section of the Form Governance page), `services/api.js` (`formEditionPolicyApi`), and two small additions to `pages/FormGovernance.jsx` (a "Show Edition Evidence" button and the section, both only for admin / team_lead).
+
+**Tests** - 75 backend tests in `modules/form-edition-policy/tests/` and 8 Admin tests; none touches a database or the network.
+
+## 3. How safety was kept
+- **No enforcement, no behavior change.** Three tests fail if anything outside the new module (and the routes file, models and the 0a crawl) imports the gate or the service, or if any form-pipeline file (import, lifecycle, registry, mapping, generation, forms) mentions the module.
+- **Exactly `admin` and `team_lead`.** The route guard is the exact-match `authorizeRoles`; `authorizePermissions` is not used (it would admit super_admin and wildcard holders). The service re-checks the role on every call, the Admin section checks it again and Form Governance renders it only for those two roles. Tests cover admin and team_lead allowed and super_admin, case_manager, attorney, paralegal, finance, hr, client, reviewer, employer, professor, other-case and empty roles refused, both in the guard and over real HTTP.
+- **A typed claim never decides anything.** The system fetches the page itself; the quote must appear word for word (whitespace collapsed only) in the system's own snapshot; the edition must be named in it; the template, the page edition and the official PDF must agree; claimed dates must appear in the quote.
+- **Explicit confirmation required.** No decision is written without a confirmation naming the same decision, form and edition. A matching quote proves only that the text exists on the official page; the conclusion is the reviewer's.
+- **Four-eyes.** An `accepted` decision needs verified evidence AND a decider different from the submitter. `held` and `not_accepted` (which only restrict) may be recorded by one person; `not_accepted` additionally needs a quote the system found that names the edition.
+- **`not_accepted` is final for these roles:** an explicitly not-accepted edition can never be marked accepted by an admin or team lead.
+- **Fail closed.** The gate returns held for a missing record, an error, a bad input or a throwing store; it never throws and never allows by default.
+- **Immutable audit.** Five of the six events are written (`OUTCOME_RECORDED` belongs to entry points that do not exist until 0b-2); each is also copied best-effort to the existing `AuditLog` (2-year TTL), which never blocks the permanent record.
+- **Database impact.** The three new collections do not exist yet and nothing was written. The application runs with indexes off, so the unique indexes need the (unrun) index script; until then the service serializes writes per edition, re-reads inside the lock and checks versions on update.
+
+## 4. Verification
+
+| Check | Result |
+|---|---|
+| Release 0b-1 backend tests | **75 / 75** (fetcher 11, verifier + gate 20, service 24, routes and wiring 9, models 6, end-to-end readiness 5) |
+| Release 0a tests after the crawl refactor | **50 / 50** |
+| Admin tests | **127 / 127** (119 existing + 8 new) |
+| Existing backend regression (79 tests: form review, invites, checklist gate, emails, GHL) | **79 / 79** |
+| Four app builds | **4 / 4** |
+| Live backend | healthy; new endpoints answer 401 without a login; an existing endpoint unchanged |
+| Database connections opened by the tests | **0** |
+
+**The eight verifier checks:** source is an https uscis.gov address (every hop), source fetched within 24 h, quote verbatim in the snapshot, edition named in the snapshot, quote itself names the edition (advisory only), template edition date matches (and is not `version_backfill`, and matches a recorded page edition), official PDF sha256 equals the imported PDF's, claimed dates appear in the quote.
+
+**Readiness gate (DB-free, through the real HTTP handlers):** submit -> verification results -> explicit confirmation -> decision persisted -> gate re-run and returned, by a different reviewer; the submitter is refused; no confirmation is refused; every ambiguous case (quote not on the page, page not fetchable, backfilled template date, PDF mismatch, no template, dates not in the quote) stays held and cannot be accepted; `not_accepted` cannot be reversed; every other role gets 403.
+
+**Live read-only dry run against real data** (real uscis.gov page and PDF, real template, in-memory store, nothing written): G-1055 edition 2026-10-07, quote taken from the real page - all eight checks passed, a second reviewer's acceptance flipped the gate to "would allow", five audit events in order.
+
+## 5. Expected vs actual
+
+| Item | Expected (plan) | Actual |
+|---|---|---|
+| Behavior of existing features | Unchanged | Unchanged: 0 existing source files changed except the 0a crawl's validator import, one route line and Form Governance (button + section) |
+| Evidence path usable on day one | Resolves every supported hold end to end | Proven DB-free end to end and by a live dry run; **real use also needs the unrun indexes script, a database walkthrough on a test record (your approval) and the screen's first run** |
+| Role restriction | Exactly admin and team_lead | Enforced in the route, the service and the screen; super_admin refused |
+| Gate wired into nothing | Yes | Yes, enforced by tests |
+| PDF checksum check | Re-downloaded official PDF equals imported PDF | **First attempt failed against live data (0 of 45).** Cause: the template holds two checksums and I compared the wrong one (the normalized stored copy's). Fixed to the raw-download checksum with a test; **41 of 45 now match** |
+| Where the screen lives | "A minimal Admin screen" | You asked why it was a separate page; moved into **Form Governance** as a section (no new route or menu item) |
+| Editions that can take evidence | All tracked editions | **34 of 58.** 24 have no edition date on file (see 7) |
+
+## 6. Problems found and fixed during the work
+- **Wrong checksum compared (found only by checking live data).** `artifacts.form.checksum` is the sha256 of the qpdf-normalized copy the app stores (1.46 MB for I-90), while `importMetadata.checksum` / `lifecycle.sourceChecksum` are the sha256 of the raw download (508 KB) and equal today's re-download. With the wrong field every submission would have been "conflicting" and the screen unusable. Fixed, with a test using the live shape (the two checksums differ).
+- **Two concurrent decisions could both pass the "already decided" check.** The case is now re-read inside the per-edition lock.
+- **Duplicate URL validator removed.** The 0a crawl now imports the shared one (its 50 tests still pass).
+- **Screen location** changed after your question (see section 5).
+- Several of my own test expectations were wrong at first (an IP literal correctly trips two rules; Mongoose adds its own update hooks for timestamps); corrected without weakening any product behavior.
+
+## 7. Findings for your review
+1. **24 of 58 editions have no edition date** (20 in `review`: AR-11 x2, G-1041, G-1041A, G-1055, G-1145, G-1256, G-1450, G-1566, G-1650, G-1651, G-28, G-28I, I-130A, I-485A, I-864A, I-918 and its two supplements, I-956F; 2 in `draft`: I-918SUPA / SUPB; 2 `retired`: I-485 supplements A and J). The evidence path needs the edition date to bind a decision to an edition, so **these cannot take evidence yet** - they are precisely the imported-but-unpromoted forms. Setting a date from a verified source (PDF or page) is a decision for you; I did not invent one.
+2. **3 live editions have a backfilled date** (G-28, I-131, I-589): evidence for them would come back "conflicting" until the date is corrected.
+3. **4 official PDFs differ from what was imported** (G-1055 review, I-485A review, and the retired I-485 supplements A and J): these would correctly come back "conflicting" (held). I first guessed they were sliced copies; the slicing check (section 9) showed that is wrong: the I-485 supplements have their own PDFs and USCIS has re-published all four files since they were imported (G-1055's official file is now 60 pages / 66 fields versus the 58 / 64 imported, matching the 2026-10-07 edition; the I-485 files changed bytes and need qpdf normalization to be read, as usual for these PDFs).
+4. **USCIS pages rarely say "accepted".** The live dry run's quote was "we published a new edition of Form G-1055". It verified, but whether that means "accepted for filing" is a human judgment - which is why the confirmation step exists. Until real notice fixtures exist (Phase 2) nearly every acceptance is a human decision, as the plan predicted.
+5. **Four-eyes needs two eligible reviewers.** With one admin or team lead nobody can record an `accepted` decision; holds and not-accepted still work.
+6. **Assumptions I made (please confirm or change):** snapshot freshness window 24 h; a decision's review-by date 90 days after it is recorded; sources must be HTML pages on uscis.gov (PDF or other content stays held); the quote must be 25-2000 characters; one decision per evidence case (new evidence to change it); effective / rejection / grace dates come only from the verified claim, never from the decision request.
+
+## 8. What was NOT done
+Wiring the gate into any entry point (0b-2); the `grandfathered` rows for the 30 live editions (a database write; belongs with 0b-2 and needs your confirmation of the list in Release 0a's Appendix A); creating the indexes (script written, not run); DB-backed tests and the walkthrough on a test record (separate approval); machine auto-acceptance (stays off by plan); certify-on-demand; the scheduled refresh and notice scanner (Phase 2); the fresh official re-fetch just before promotion (it belongs to the entry points).
+
+## 9. Slicing check (you asked for it)
+How slicing works: a "component" (for example I-129's H classification supplement) is a page range inside ONE parent PDF, defined per parent template edition (`USCISFormComponentDefinition`). At render time the page resolver keeps only those pages and **throws if there is no ACTIVE definition for the exact edition a case form uses (it never falls back to the full form)**. A new edition therefore needs its components discovered again before it goes live (the certification's `components_slice` check and the readiness check cover that). Checked read-only against the real data:
+
+| Check | Result |
+|---|---|
+| Component definitions | 19, **all ACTIVE, all I-129** (10 on the retired 2026-02-27 edition, 9 on the live 2026-09-09 edition) |
+| Live I-129 (2026-09-09): fields vs pages | 980 fields = **218 on the core form + 762 across 9 components**; for every component: 0 fields missing from the template, 0 outside its pages, 0 on its pages but not owned; **0 fields owned by two components** |
+| Live vs previous edition | the same 9 page ranges (9-10, 11-12, 13-20, 21-23, 24-27, 28-30, 31, 32-36, 37-38) |
+| Page ranges | all valid and inside the parent's 38 pages |
+| Certification's slicing check | **16 of 16 certified templates passed `components_slice`** (the only failed certification checks, 4 each of `mapping_valid`, `fill_roundtrip`, `viewer_download`, are on not-yet-live review / draft forms, not slicing) |
+| Case forms that are components | **0 exist today**, so none can fail to slice right now |
+| Overlap | the retired 2026-02-27 edition has two ACTIVE definitions on the same pages (`I129_E_1_E_2_CLASSIFICATION_S` and `I129_E_CLASSIFICATION_SUPPLEM`, both pages 9-10, 79 fields); the live edition has only the second, so nothing live is affected |
+| I-485 supplements A / J, I-485A, I-918 supplements, I-539A | **not sliced components**: they are standalone templates with their own PDFs (no component definitions exist for them) |
+
+What this means for the evidence path: evidence is recorded per FORM edition (for example I-129), so it covers that form's components automatically; no slicing code was touched. Two things to keep in mind: (a) because a missing definition is a hard failure, promoting a new I-129 edition without re-discovering its components would break component case forms, which is exactly the kind of check Release 0b-2's certification requirement must keep; (b) nothing exercises slicing in the current data (0 component case forms), so a live render test of a real component form is still worth doing when you next create an H-1B case.
+
+## 10. Gate before the next release
+The plan requires, before Release 0b-2: (1) the end-to-end readiness proof - done DB-free; the walkthrough on a test record needs your approval for database writes (and the index script run first); (2) your review of this report; (3) confirmation of the grandfather list and of the assumptions in 7.6; (4) a decision on finding 7.1 (the 24 editions without a date). Release 0b-2 then needs its own approval.
+
+
+---
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -193,3 +303,4 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 | Date | Phase | Summary | Files |
 |---|---|---|---|
 | 2026-10-16 | Release 0a | Read-only pre-rollout report, redirect-chain crawl, read-only DB wrapper, 50 tests, this document | `Backend/src/scripts/formEditionPolicyRolloutReport.js`, `formSourceRedirectCrawl.js`, `lib/readOnlyDb.js`, `tests/*.test.js`, `docs/FORM_PIPELINE_IMPLEMENTATION_REPORT.md` |
+| 2026-10-16 | Release 0b-1 | Evidence-resolution path: 3 models (2 append-only), redirect-safe fetcher, verifier, fail-closed gate (wired into nothing), evidence service + admin/team_lead API, evidence section in Form Governance, unrun index script, 75 backend + 8 Admin tests, slicing check | `Backend/src/models/FormEdition*.js`, `models/helpers/appendOnly.js`, `modules/form-edition-policy/*`, `routes/index.js` (1 line), `scripts/createFormEditionPolicyIndexes.js`, `scripts/formSourceRedirectCrawl.js` (shared validator), `Admin/frontend/src/components/FormEditionEvidenceSection.jsx`, `services/api.js`, `pages/FormGovernance.jsx` |

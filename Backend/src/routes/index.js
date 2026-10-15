@@ -39,6 +39,8 @@ router.use("/cases", require("../modules/form-mapping/routes/autoFillRoutes"));
 router.use("/cases", require("../modules/form-registry/form-registry.routes"));
 router.use("/form-registry", require("../modules/form-registry/registry-lookup.routes"));
 router.use("/form-mappings", require("../modules/form-mapping/routes/mappingGraphRoutes"));
+// Release 0b-1: evidence-resolution path for USCIS form edition acceptance (admin / team_lead only; not wired into any activation path)
+router.use("/form-edition-policy", require("../modules/form-edition-policy/form-edition-policy.routes"));
 router.use("/case-managers", require("../modules/cases/case-manager.routes"));
 router.use("/employment-workflow", require("../modules/employment-workflow/employment-workflow.routes"));
 // Phase 9 — the sole read/write path for EmployerProfile/EmployeeProfile

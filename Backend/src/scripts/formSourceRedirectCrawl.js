@@ -22,27 +22,8 @@ const ALLOWED_CONTENT_TYPES = ["text/html", "application/pdf"];
 const DEFAULTS = { maxHops: 5, timeoutMs: 15000, maxBytes: 50 * 1024 * 1024, concurrency: 2, delayMs: 250 };
 const USER_AGENT = "Immiglance-FormPipeline-Crawl/0a (read-only)";
 
-// ---- url validation (pure) ---------------------------------------------------------------------------------------------------------------------
-
-/** Is this an acceptable place to send a request to? Returns { ok, violations: [..], url } - nothing is requested here. */
-function checkUrl(raw) {
-  let url;
-  try {
-    url = new URL(raw);
-  } catch {
-    return { ok: false, violations: ["invalid_url"], url: null };
-  }
-  const violations = [];
-  if (url.protocol !== "https:") violations.push("not_https");
-  const host = url.hostname.toLowerCase();
-  if (host !== "uscis.gov" && !host.endsWith(".uscis.gov")) violations.push("host_not_uscis");
-  if (url.username || url.password) violations.push("credentials_in_url");
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":") || host.startsWith("[")) violations.push("ip_literal");
-  if (url.port && url.port !== "443") violations.push("non_default_port");
-  return { ok: violations.length === 0, violations, url };
-}
-
-const normalize = (url) => `${url.protocol}//${url.host}${url.pathname}${url.search}`;
+// ---- url validation: the ONE shared definition (what the crawl proved safe is exactly what the evidence fetcher enforces)
+const { checkUrl, normalizeUrl: normalize } = require("../modules/form-edition-policy/officialUrl");
 
 // ---- one url -----------------------------------------------------------------------------------------------------------------------------------
 
