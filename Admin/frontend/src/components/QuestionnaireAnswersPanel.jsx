@@ -69,6 +69,18 @@ function sectionTitleFor(questionnaire, sectionKey) {
 
 // One answer, laid out like the edit form: the question on the left and the Request control on the right of the same row, and below them
 // the answer in a read-only box ("Needed" when the client has not answered).
+// A question is LONG when its wording or its answer will not sit comfortably in half a row: a long label, a text-area, or a long / multi-line
+// answer. Long ones take a full row each and are listed together; short ones pair up two to a row and are listed together. The test uses the
+// stored answer (not what is being typed), so the layout does not jump while editing.
+const LONG_LABEL_CHARS = 52
+const LONG_VALUE_CHARS = 48
+export function isLongQuestion(question, value) {
+  if (question.type === 'textarea') return true
+  if (String(question.label || '').length > LONG_LABEL_CHARS) return true
+  const text = value === undefined || value === null ? '' : (Array.isArray(value) ? value.join(', ') : String(value))
+  return text.length > LONG_VALUE_CHARS || text.includes('\n')
+}
+
 function AnswerRow({ label, value, extra = null }) {
   const answered = value !== undefined && value !== null && value !== ''
   return (
@@ -429,9 +441,10 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                 <p className="text-sm font-semibold text-foreground">{sectionTitleFor(questionnaire, sectionKey)}</p>
                 {typeof onAutofill === 'function' && plainQuestions.some((q) => PASSPORT_FIELD_KEY.test(q.key)) && <PassportScanButton onAutofill={onAutofill} />}
               </div>
-              {plainQuestions.length > 0 && (
-                <div className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm md:grid-cols-2">
-                  {plainQuestions.map((question) => (
+              {plainQuestions.length > 0 && (() => {
+                const shortQuestions = plainQuestions.filter((q) => !isLongQuestion(q, answerMap?.[q.key]))
+                const longQuestions = plainQuestions.filter((q) => isLongQuestion(q, answerMap?.[q.key]))
+                const renderPlain = (question) => (
                     editing && EDITABLE_SCALAR_TYPES.has(question.type) ? (
                       <div key={question.key}>
                         <label className="mb-1 block text-xs text-muted-foreground">{question.label}</label>
@@ -444,9 +457,22 @@ export default function QuestionnaireAnswersPanel({ title, questionnaire, fieldQ
                     ) : (
                       <AnswerRow key={question.key} label={question.label} value={formatAnswerValue(question, answerMap?.[question.key])} extra={requests ? <ItemRequestControl question={question} requests={requests} /> : null} />
                     )
-                  ))}
-                </div>
-              )}
+                )
+                return (
+                  <>
+                    {shortQuestions.length > 0 && (
+                      <div className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm md:grid-cols-2" data-testid="short-questions">
+                        {shortQuestions.map(renderPlain)}
+                      </div>
+                    )}
+                    {longQuestions.length > 0 && (
+                      <div className={`grid grid-cols-1 gap-y-3 text-sm ${shortQuestions.length > 0 ? 'mt-3' : ''}`} data-testid="long-questions">
+                        {longQuestions.map(renderPlain)}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
               {fileQuestions.length > 0 && (
                 <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                   {fileQuestions.map((question) => (

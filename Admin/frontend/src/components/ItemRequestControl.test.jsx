@@ -113,6 +113,32 @@ describe('QuestionnaireAnswersPanel with the Request control', () => {
     expect(answeredHeader.nextElementSibling.getAttribute('data-answered')).toBe('true')
   })
 
+  it('short questions pair up two to a row and come together; long ones take a full row each and come together after them', () => {
+    const questions = [
+      { key: 'q_short_1', label: 'Last Name', type: 'text', sectionKey: 's' },
+      { key: 'q_long_label', label: 'Do you or any other person in this petition have a valid passport (Yes/No)?', type: 'text', sectionKey: 's' },
+      { key: 'q_short_2', label: 'First Name', type: 'text', sectionKey: 's' },
+      { key: 'q_area', label: 'Current U.S. address', type: 'textarea', sectionKey: 's' },
+      { key: 'q_long_value', label: 'Job location', type: 'text', sectionKey: 's' },
+      { key: 'q_short_3', label: 'Country of birth', type: 'text', sectionKey: 's' },
+    ]
+    const answerMap = { q_short_1: 'Oberoi', q_short_2: 'Ishaan', q_short_3: 'India', q_long_value: '1600 Amphitheatre Parkway, Mountain View, California 94043, United States' }
+    render(<QuestionnaireAnswersPanel questionnaire={questionnaire} fieldQuestions={questions} documentQuestions={[]} answerMap={answerMap} filesByKey={{}} requests={baseRequests()} />)
+    const shortGroup = screen.getByTestId('short-questions')
+    const longGroup = screen.getByTestId('long-questions')
+    expect(shortGroup.className).toContain('md:grid-cols-2') // two to a row
+    expect(shortGroup.textContent).toContain('Last Name')
+    expect(shortGroup.textContent).toContain('First Name')
+    expect(shortGroup.textContent).toContain('Country of birth')
+    expect(shortGroup.textContent).not.toContain('Current U.S. address')
+    expect(longGroup.className).not.toContain('md:grid-cols-2') // one per row
+    ;['valid passport', 'Current U.S. address', 'Job location'].forEach((label) => expect(longGroup.textContent).toContain(label))
+    // the short group comes first, the long group after it
+    expect(shortGroup.compareDocumentPosition(longGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // order inside each group is the checklist's own order
+    expect(longGroup.textContent.indexOf('valid passport')).toBeLessThan(longGroup.textContent.indexOf('Current U.S. address'))
+  })
+
   it('is unchanged without the request context', () => {
     render(<QuestionnaireAnswersPanel {...props} />)
     expect(screen.queryByRole('button', { name: /Request/ })).toBeNull()

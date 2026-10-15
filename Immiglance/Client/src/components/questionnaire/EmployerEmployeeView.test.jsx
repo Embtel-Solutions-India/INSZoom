@@ -38,10 +38,12 @@ describe("employee card of an INVITED employee", () => {
     await waitFor(() => expect(screen.getByTestId("employee-progress")).toBeTruthy());
     expect(listCaseChecklists).toHaveBeenCalledWith("c1");
     const bars = screen.getByTestId("employee-progress").textContent;
-    expect(bars).toContain("Documents");
-    expect(bars).toContain("56% · 5 of 9");
-    expect(bars).toContain("Information");
-    expect(bars).toContain("43% · 9 of 21");
+    expect(screen.getByRole("progressbar", { name: "Documents" }).getAttribute("aria-valuenow")).toBe("56");
+    expect(bars).toContain("56%");
+    expect(bars).toContain("5 of 9");
+    expect(screen.getByRole("progressbar", { name: "Information" }).getAttribute("aria-valuenow")).toBe("43");
+    expect(bars).toContain("43%");
+    expect(bars).toContain("9 of 21");
   });
 
   it("a started employee is 'In Progress'; opening the card's main button is the READ ONLY view", async () => {
@@ -57,7 +59,8 @@ describe("employee card of an INVITED employee", () => {
   it("an invited employee who has not started yet still shows 0% (no invented numbers) and 'Invited'", async () => {
     listCaseChecklists.mockResolvedValue({ checklists: [checklist({ progress: { percent: 0, answeredTotal: 0, totalQuestions: 30 }, documentProgress: { percent: 0, answeredTotal: 0, totalQuestions: 9 }, textProgress: { percent: 0, answeredTotal: 0, totalQuestions: 21 } })] });
     renderDashboard(invitedChild);
-    await waitFor(() => expect(screen.getByTestId("employee-progress").textContent).toContain("0% · 0 of 9"));
+    await waitFor(() => expect(screen.getByTestId("employee-progress").textContent).toContain("0 of 9"));
+    expect(screen.getByRole("progressbar", { name: "Documents" }).getAttribute("aria-valuenow")).toBe("0");
     expect(screen.getByText("Invited")).toBeTruthy();
   });
 
