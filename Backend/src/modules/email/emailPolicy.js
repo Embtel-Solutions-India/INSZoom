@@ -118,6 +118,7 @@ const SEND_RULES = {
   "rfe-received": { when: "The USCIS tracking status changes to 'RFE issued' - sent to the client.", unless: "The status did not change." },
   "case-approved": { when: "The USCIS tracking status changes to 'approved' - sent to the client.", unless: "The status did not change." },
   "case-denied": { when: "The USCIS tracking status changes to 'denied' - sent to the client.", unless: "The status did not change." },
+  "premium-processing-upgraded": { when: "A case manager approves the Form I-907 checklist of a case upgraded to Premium Processing (or the client's own I-907 payment is received) - sent to the person the case belongs to.", unless: "The case was already upgraded, or the person has no email address." },
   "case-closed": { when: "The USCIS tracking status changes to 'closed' - sent to the client.", unless: "The status did not change." },
   "case-stage-changed": { when: "The USCIS tracking status changes to another notable stage - sent to the client.", unless: "The status did not change." },
 

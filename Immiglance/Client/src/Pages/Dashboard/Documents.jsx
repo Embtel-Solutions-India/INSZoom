@@ -172,7 +172,7 @@ export default function Documents() {
   const { checklists: assignedChecklists, loading: checklistsLoading, refetch: refetchChecklists } = useCaseChecklists(activeCaseId);
   // The Premium Processing (Form I-907) add-on checklist has its own section below the checklists
   // (StaffRequestedItems -> PremiumProcessingChecklist), so it never becomes a tab/role here.
-  const pageChecklists = assignedChecklists.filter((item) => !(item.staffRequest && item.key === "i907_premium_processing_profile"));
+  const pageChecklists = assignedChecklists.filter((item) => !(item.staffRequest && String(item.key || "").split("__case_")[0] === "i907_premium_processing_profile"));
   const visibleChecklists = allowedRoles ? pageChecklists.filter((item) => allowedRoles.includes(item.targetRole)) : pageChecklists;
 
   // The new simultaneous multi-role page (handoff junction, rail grouping)
@@ -876,8 +876,10 @@ export default function Documents() {
           <h1 className="text-lg font-semibold text-foreground mb-6">
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
+          {/* Premium Processing (Form I-907) is added by the case manager: it sits ABOVE the case's own checklists */}
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="premium" className="mb-6 space-y-4" />
           <FamilyWorkflowCaseView activeCase={activeCase} allowedRoles={allowedRoles} onCaseChanged={refetchActiveCase} />
-          <StaffRequestedItems caseId={activeCaseId} user={user} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="requested" />
         </div>
       </div>
     );
@@ -897,8 +899,10 @@ export default function Documents() {
           <h1 className="text-lg font-semibold text-foreground mb-6">
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
+          {/* Premium Processing (Form I-907) is added by the case manager: it sits ABOVE the case's own checklists */}
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="premium" className="mb-6 space-y-4" />
           <PrincipalCaseWorkspace activeCase={activeCase} />
-          <StaffRequestedItems caseId={activeCaseId} user={user} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="requested" />
         </div>
       </div>
     );
@@ -911,8 +915,10 @@ export default function Documents() {
           <h1 className="text-lg font-semibold text-foreground mb-6">
             {visaType ? `${visaType} intake` : "Your case checklist"}
           </h1>
+          {/* Premium Processing (Form I-907) is added by the case manager: it sits ABOVE the case's own checklists */}
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="premium" className="mb-6 space-y-4" />
           <EmployeeSelfServiceView activeCase={activeCase} />
-          <StaffRequestedItems caseId={activeCaseId} user={user} />
+          <StaffRequestedItems caseId={activeCaseId} user={user} section="requested" />
         </div>
       </div>
     );

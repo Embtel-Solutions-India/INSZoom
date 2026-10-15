@@ -1,0 +1,771 @@
+{
+ "formCode": "G-1650",
+ "version": "2025-06-03",
+ "status": "review",
+ "mappingStatus": "needs_review",
+ "pdfStorageKey": "government/uscis/G-1650/2025-06-03/f9761dca890ca5d404c1f4b5494531e329f9d423f004272fe00f167dadaf9fa7/form.pdf",
+ "fieldCount": 17,
+ "graph": {
+  "templateId": "6ab5eb93e0763f40f842e53f",
+  "formCode": "G-1650",
+  "formName": "G-1650, Authorization for ACH Transactions",
+  "version": "2025-06-03",
+  "generatedAt": "2026-09-25T03:33:42.438Z",
+  "nodes": {
+   "canonical": [
+    {
+     "id": "canonical:person.firstName",
+     "path": "person.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.middleName",
+     "path": "person.middleName",
+     "label": "middleName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.lastName",
+     "path": "person.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.fullName",
+     "path": "person.fullName",
+     "label": "fullName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.dob",
+     "path": "person.dob",
+     "label": "dob",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.gender",
+     "path": "person.gender",
+     "label": "gender",
+     "type": "boolean"
+    },
+    {
+     "id": "canonical:person.maritalStatus",
+     "path": "person.maritalStatus",
+     "label": "maritalStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.citizenship",
+     "path": "person.citizenship",
+     "label": "citizenship",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.countryOfBirth",
+     "path": "person.countryOfBirth",
+     "label": "countryOfBirth",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.alienNumber",
+     "path": "person.alienNumber",
+     "label": "alienNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.ssn",
+     "path": "person.ssn",
+     "label": "ssn",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.number",
+     "path": "person.passport.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.country",
+     "path": "person.passport.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:person.passport.issueDate",
+     "path": "person.passport.issueDate",
+     "label": "issueDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:person.passport.expirationDate",
+     "path": "person.passport.expirationDate",
+     "label": "expirationDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:contact.email",
+     "path": "contact.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:contact.phone",
+     "path": "contact.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:contact.address.line1",
+     "path": "contact.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.line2",
+     "path": "contact.address.line2",
+     "label": "line2",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.city",
+     "path": "contact.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.state",
+     "path": "contact.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.zip",
+     "path": "contact.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:contact.address.country",
+     "path": "contact.address.country",
+     "label": "country",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseNumber",
+     "path": "case.caseNumber",
+     "label": "caseNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.caseType",
+     "path": "case.caseType",
+     "label": "caseType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.visaType",
+     "path": "case.visaType",
+     "label": "visaType",
+     "type": "text"
+    },
+    {
+     "id": "canonical:case.priorityDate",
+     "path": "case.priorityDate",
+     "label": "priorityDate",
+     "type": "date"
+    },
+    {
+     "id": "canonical:company.name",
+     "path": "company.name",
+     "label": "name",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.legalName",
+     "path": "company.legalName",
+     "label": "legalName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.ein",
+     "path": "company.ein",
+     "label": "ein",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.phone",
+     "path": "company.phone",
+     "label": "phone",
+     "type": "phone"
+    },
+    {
+     "id": "canonical:company.email",
+     "path": "company.email",
+     "label": "email",
+     "type": "email"
+    },
+    {
+     "id": "canonical:company.address.line1",
+     "path": "company.address.line1",
+     "label": "line1",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.city",
+     "path": "company.address.city",
+     "label": "city",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.state",
+     "path": "company.address.state",
+     "label": "state",
+     "type": "text"
+    },
+    {
+     "id": "canonical:company.address.zip",
+     "path": "company.address.zip",
+     "label": "zip",
+     "type": "text"
+    },
+    {
+     "id": "canonical:employment[].employerName",
+     "path": "employment[].employerName",
+     "label": "employerName",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].jobTitle",
+     "path": "employment[].jobTitle",
+     "label": "jobTitle",
+     "type": "text",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].startDate",
+     "path": "employment[].startDate",
+     "label": "startDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:employment[].endDate",
+     "path": "employment[].endDate",
+     "label": "endDate",
+     "type": "date",
+     "repeatable": "employment"
+    },
+    {
+     "id": "canonical:education[].institution",
+     "path": "education[].institution",
+     "label": "institution",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].degree",
+     "path": "education[].degree",
+     "label": "degree",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].fieldOfStudy",
+     "path": "education[].fieldOfStudy",
+     "label": "fieldOfStudy",
+     "type": "text",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:education[].graduationDate",
+     "path": "education[].graduationDate",
+     "label": "graduationDate",
+     "type": "date",
+     "repeatable": "education"
+    },
+    {
+     "id": "canonical:family.spouse.firstName",
+     "path": "family.spouse.firstName",
+     "label": "firstName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.spouse.lastName",
+     "path": "family.spouse.lastName",
+     "label": "lastName",
+     "type": "text"
+    },
+    {
+     "id": "canonical:family.children[].firstName",
+     "path": "family.children[].firstName",
+     "label": "firstName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:family.children[].lastName",
+     "path": "family.children[].lastName",
+     "label": "lastName",
+     "type": "text",
+     "repeatable": "children"
+    },
+    {
+     "id": "canonical:immigration.currentStatus",
+     "path": "immigration.currentStatus",
+     "label": "currentStatus",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.i94.number",
+     "path": "immigration.i94.number",
+     "label": "number",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.sevisNumber",
+     "path": "immigration.sevisNumber",
+     "label": "sevisNumber",
+     "type": "text"
+    },
+    {
+     "id": "canonical:immigration.receiptNumbers[]",
+     "path": "immigration.receiptNumbers[]",
+     "label": "receiptNumbers",
+     "type": "text",
+     "repeatable": "receiptNumbers"
+    },
+    {
+     "id": "canonical:travelHistory[].arrivalDate",
+     "path": "travelHistory[].arrivalDate",
+     "label": "arrivalDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:travelHistory[].departureDate",
+     "path": "travelHistory[].departureDate",
+     "label": "departureDate",
+     "type": "date",
+     "repeatable": "travelHistory"
+    },
+    {
+     "id": "canonical:documents[].type",
+     "path": "documents[].type",
+     "label": "type",
+     "type": "text",
+     "repeatable": "documents"
+    }
+   ],
+   "form": [
+    {
+     "id": "form:page1.form10PageSet0Page10Pdf417BarCode10",
+     "fieldId": "page1.form10PageSet0Page10Pdf417BarCode10",
+     "pdfField": "form1[0].#pageSet[0].Page1[0].PDF417BarCode1[0]",
+     "label": "Form 1 0 Page Set 0 Page 1 0 Pdf 417 Bar Code 1 0",
+     "type": "textarea",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfApplicantPetitionerName0GivenName0",
+     "fieldId": "page1.form10Pg10SfApplicantPetitionerName0GivenName0",
+     "pdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].GivenName[0]",
+     "label": "Enter Given Name (First Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfApplicantPetitionerName0MiddleName0",
+     "fieldId": "page1.form10Pg10SfApplicantPetitionerName0MiddleName0",
+     "pdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].MiddleName[0]",
+     "label": "Enter Middle Name (if any)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfApplicantPetitionerName0FamilyName0",
+     "fieldId": "page1.form10Pg10SfApplicantPetitionerName0FamilyName0",
+     "pdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].FamilyName[0]",
+     "label": "Enter Family Name (Last Name)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountHolderInfo0GivenName0",
+     "fieldId": "page1.form10Pg10SfBankAccountHolderInfo0GivenName0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].GivenName[0]",
+     "label": "Enter Given Name (First Name) as it appears on the Credit Card",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountHolderInfo0MiddleName0",
+     "fieldId": "page1.form10Pg10SfBankAccountHolderInfo0MiddleName0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].MiddleName[0]",
+     "label": "Enter the Middle Name (if any) as it appears on the Credit Card",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountHolderInfo0FamilyName0",
+     "fieldId": "page1.form10Pg10SfBankAccountHolderInfo0FamilyName0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].FamilyName[0]",
+     "label": "Enter the Family Name (Last Name) as it appears on the Credit Card",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountHolderInfo0CbAccountType0",
+     "fieldId": "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].CB_AccountType[0]",
+     "label": "Select this box for Business Account",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountHolderInfo0CbAccountType1",
+     "fieldId": "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType1",
+     "pdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].CB_AccountType[1]",
+     "label": "Select this box for Personal Account",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0CbCreditCardType0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0CbCreditCardType0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].CB_CreditCardType[0]",
+     "label": "Select this box for Master Card",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0CbCreditCardType1",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0CbCreditCardType1",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].CB_CreditCardType[1]",
+     "label": "Select this box for Visa",
+     "type": "checkbox",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0AuthorizedPaymentAmt0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0AuthorizedPaymentAmt0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].AuthorizedPaymentAmt[0]",
+     "label": "Enter the authorized payment amount in dollars no cents (for example, 1234 or 1,234)",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0BankName0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0BankName0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].BankName[0]",
+     "label": "Enter Given Name (First Name) as it appears on the Credit Card",
+     "type": "text",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0RoutingNumber0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0RoutingNumber0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].RoutingNumber[0]",
+     "label": "Enter Given Name (First Name) as it appears on the Credit Card",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0AccountNumber0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0AccountNumber0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].AccountNumber[0]",
+     "label": "Enter Given Name (First Name) as it appears on the Credit Card",
+     "type": "number",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10SfBankAccountInformation0BusinessName0",
+     "fieldId": "page1.form10Pg10SfBankAccountInformation0BusinessName0",
+     "pdfField": "form1[0].PG1[0].sfBankAccountInformation[0].BusinessName[0]",
+     "label": "BusinessName",
+     "type": "ssn",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    },
+    {
+     "id": "form:page1.form10Pg10AuthorizationandSignature0SignatureOfApplicant0",
+     "fieldId": "page1.form10Pg10AuthorizationandSignature0SignatureOfApplicant0",
+     "pdfField": "form1[0].PG1[0].AuthorizationandSignature[0].SignatureOfApplicant[0]",
+     "label": "The name of the Credit Card Holder can not be typewritten into this space",
+     "type": "signature",
+     "section": "Page 1",
+     "pageNumber": 1,
+     "required": false
+    }
+   ]
+  },
+  "edges": [
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfApplicantPetitionerName0GivenName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "person.firstName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfApplicantPetitionerName0GivenName0",
+    "targetPdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].GivenName[0]",
+    "targetLabel": "Enter Given Name (First Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.427Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfApplicantPetitionerName0MiddleName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "person.middleName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfApplicantPetitionerName0MiddleName0",
+    "targetPdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].MiddleName[0]",
+    "targetLabel": "Enter Middle Name (if any)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.427Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfApplicantPetitionerName0FamilyName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "person.lastName",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfApplicantPetitionerName0FamilyName0",
+    "targetPdfField": "form1[0].PG1[0].sfApplicantPetitionerName[0].FamilyName[0]",
+    "targetLabel": "Enter Family Name (Last Name)",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 100,
+    "status": "active",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.427Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0GivenName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "company.name",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfBankAccountHolderInfo0GivenName0",
+    "targetPdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].GivenName[0]",
+    "targetLabel": "Enter Given Name (First Name) as it appears on the Credit Card",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 36,
+    "status": "needs_review",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.428Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0MiddleName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "company.name",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfBankAccountHolderInfo0MiddleName0",
+    "targetPdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].MiddleName[0]",
+    "targetLabel": "Enter the Middle Name (if any) as it appears on the Credit Card",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 36,
+    "status": "needs_review",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.429Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0FamilyName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "company.name",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfBankAccountHolderInfo0FamilyName0",
+    "targetPdfField": "form1[0].PG1[0].sfBankAccountHolderInfo[0].FamilyName[0]",
+    "targetLabel": "Enter the Family Name (Last Name) as it appears on the Credit Card",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 36,
+    "status": "needs_review",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.429Z"
+   },
+   {
+    "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountInformation0BankName0",
+    "formCode": "G-1650",
+    "version": "2025-06-03",
+    "sourcePath": "company.name",
+    "sourceType": "canonical",
+    "targetFieldId": "page1.form10Pg10SfBankAccountInformation0BankName0",
+    "targetPdfField": "form1[0].PG1[0].sfBankAccountInformation[0].BankName[0]",
+    "targetLabel": "Enter Given Name (First Name) as it appears on the Credit Card",
+    "targetType": "text",
+    "section": "Page 1",
+    "pageNumber": 1,
+    "mappingType": "direct",
+    "confidence": 36,
+    "status": "needs_review",
+    "transform": {
+     "type": "direct"
+    },
+    "createdAt": "2026-09-25T03:33:42.435Z"
+   }
+  ],
+  "unmappedTargets": [
+   "page1.form10PageSet0Page10Pdf417BarCode10",
+   "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType0",
+   "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType1",
+   "page1.form10Pg10SfBankAccountInformation0CbCreditCardType0",
+   "page1.form10Pg10SfBankAccountInformation0CbCreditCardType1",
+   "page1.form10Pg10SfBankAccountInformation0AuthorizedPaymentAmt0",
+   "page1.form10Pg10SfBankAccountInformation0RoutingNumber0",
+   "page1.form10Pg10SfBankAccountInformation0AccountNumber0",
+   "page1.form10Pg10SfBankAccountInformation0BusinessName0",
+   "page1.form10Pg10AuthorizationandSignature0SignatureOfApplicant0"
+  ],
+  "summary": {
+   "sourceFields": 55,
+   "formFields": 17,
+   "mappedFields": 7,
+   "activeMappings": 3,
+   "reviewRequired": 4,
+   "mappingCoverage": 41
+  },
+  "validation": {
+   "valid": true,
+   "readyForActivation": false,
+   "errors": [],
+   "warnings": [
+    {
+     "code": "LOW_CONFIDENCE_MAPPING",
+     "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0GivenName0",
+     "confidence": 36
+    },
+    {
+     "code": "LOW_CONFIDENCE_MAPPING",
+     "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0MiddleName0",
+     "confidence": 36
+    },
+    {
+     "code": "LOW_CONFIDENCE_MAPPING",
+     "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountHolderInfo0FamilyName0",
+     "confidence": 36
+    },
+    {
+     "code": "LOW_CONFIDENCE_MAPPING",
+     "mappingId": "G-1650:2025-06-03:page1.form10Pg10SfBankAccountInformation0BankName0",
+     "confidence": 36
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10PageSet0Page10Pdf417BarCode10"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountHolderInfo0CbAccountType1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0CbCreditCardType0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0CbCreditCardType1"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0AuthorizedPaymentAmt0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0RoutingNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0AccountNumber0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10SfBankAccountInformation0BusinessName0"
+    },
+    {
+     "code": "MISSING_FIELD_MAPPING",
+     "targetFieldId": "page1.form10Pg10AuthorizationandSignature0SignatureOfApplicant0"
+    }
+   ],
+   "summary": {
+    "errors": 0,
+    "warnings": 14,
+    "reviewRequired": 4,
+    "unmapped": 10
+   }
+  },
+  "mappingVersion": 1
+ }
+}

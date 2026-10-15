@@ -86,6 +86,7 @@ const PREMIUM_PROCESSING_ADDON = {
 };
 
 const I907_QUESTIONNAIRE_KEY = "i907_premium_processing_profile";
+const PREMIUM_PROCESSING_CHECKLIST_ID = `${I907_QUESTIONNAIRE_KEY}|client`; // baseKey|targetRole, see questionnaires/checklist-gate.js
 const PREMIUM_PROCESSING_VISA_TYPE = "Premium Processing";
 const CASE_PLAN_STATUSES = new Set(["not_started", "pending", "failed"]);
 const PHASE5_CASE_CREATE_ROLES = new Set(["super_admin", "admin", "team_lead"]);
@@ -729,6 +730,13 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
       return res.status(404).json({ success: false, code: "TEMPLATE_NOT_FOUND", message: "No Form I-907 checklist template found" });
     }
 
+    // The checklist is HELD, not sent: it shows up in the case manager's "Checklists for this case" card as a draft, and the client
+    // gets it - plus the "upgraded to Premium Processing" email and push - only when the case manager approves it
+    // (case-checklist.service.js approveChecklists). Held BEFORE the assignment so the assignment itself notifies nobody.
+    if (!hasAddon(caseData, PREMIUM_PROCESSING_ADDON.key)) {
+      await Case.updateOne({ _id: caseData._id }, { $addToSet: { "checklistApproval.heldStaffChecklists": PREMIUM_PROCESSING_CHECKLIST_ID } });
+    }
+
     // assignQuestionnaire works on its own copy of the case - assign first, then re-load.
     await questionnaireService.assignQuestionnaireIfNotActive(
       questionnaire,
@@ -792,6 +800,7 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
     res.status(alreadyUpgraded ? 200 : 201).json({
       success: true,
       alreadyUpgraded,
+      awaitingApproval: (refreshed.checklistApproval?.heldStaffChecklists || []).includes(PREMIUM_PROCESSING_CHECKLIST_ID),
       formStatus,
       case: refreshed,
       addon: (refreshed.addons || []).find((addon) => addon.key === PREMIUM_PROCESSING_ADDON.key && addon.status !== "cancelled") || null,

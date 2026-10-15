@@ -4,6 +4,10 @@ import { questionnairesApi, invalidateCachedGet } from '../services/api'
 import ConfirmModal from './ConfirmModal'
 import ChecklistEditorModal from './ChecklistEditorModal'
 
+// The Premium Processing (Form I-907) add-on is a staff-requested checklist, but it is listed, edited and approved here like the automatic
+// ones (its key can carry the per-case "__case_" suffix once edited). It cannot be rejected/deleted: the upgrade itself is recorded on the case.
+export const isPremiumChecklist = (item) => Boolean(item?.staffRequest) && String(item?.key || '').split('__case_')[0] === 'i907_premium_processing_profile'
+
 const ROLE_LABEL = { employer: 'Employer', employee: 'Employee', client: 'Client', petitioner: 'Petitioner', beneficiary: 'Beneficiary', joint_sponsor: 'Joint sponsor', business_plan: 'Business plan' }
 
 // "Checklists for this case": every checklist the case got automatically starts as a DRAFT - the client can't see it
@@ -17,7 +21,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
   const [removing, setRemoving] = useState(null)
   const [removeReason, setRemoveReason] = useState('')
 
-  const items = checklists.filter((item) => !item.staffRequest)
+  const items = checklists.filter((item) => !item.staffRequest || isPremiumChecklist(item))
   if (!items.length) return null
   const drafts = items.filter((item) => item.clientApproval === 'draft')
 
@@ -90,9 +94,11 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
               <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs" data-testid={`edit-checklist-${item.checklistId}`} onClick={() => setEditing(item)}>
                 <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit
               </button>
-              <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs text-rose-700" data-testid={`delete-checklist-${item.checklistId}`} onClick={() => { setError(''); setRemoving(item) }}>
-                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {item.clientApproval === 'draft' ? 'Reject' : 'Delete'}
-              </button>
+              {!isPremiumChecklist(item) && (
+                <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs text-rose-700" data-testid={`delete-checklist-${item.checklistId}`} onClick={() => { setError(''); setRemoving(item) }}>
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> {item.clientApproval === 'draft' ? 'Reject' : 'Delete'}
+                </button>
+              )}
               {item.clientApproval === 'draft' && (
                 <button type="button" className="btn-primary text-xs" data-testid={`approve-checklist-${item.checklistId}`} onClick={() => { setError(''); setConfirm({ all: false, checklist: item }) }}>
                   Approve
@@ -108,7 +114,9 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
           title={confirm.all ? 'Approve all checklists?' : 'Approve this checklist?'}
           message={confirm.all
             ? 'Every draft checklist on this case (and its employee cases) will be sent to the client. They will be notified and can start answering.'
-            : `"${confirm.checklist.title}" will be sent to the client. They will be notified and can start answering.${confirm.checklist.targetRole === 'employee' ? ' The employee checklist is approved for every employee case under this case too - no need to approve it on each one.' : ''}`}
+            : isPremiumChecklist(confirm.checklist)
+              ? `"${confirm.checklist.title}" will be sent to the client. They will get the "upgraded to Premium Processing" email and a browser notification, and can start answering.`
+              : `"${confirm.checklist.title}" will be sent to the client. They will be notified and can start answering.${confirm.checklist.targetRole === 'employee' ? ' The employee checklist is approved for every employee case under this case too - no need to approve it on each one.' : ''}`}
           confirmLabel="Yes, approve"
           cancelLabel="No"
           busy={busy}

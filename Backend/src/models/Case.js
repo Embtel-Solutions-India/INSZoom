@@ -845,6 +845,9 @@ const caseSchema = new mongoose.Schema(
     // fully approved (deliberately no schema default, which would also flip them on load).
     checklistApproval: {
       required: { type: Boolean },
+      // checklistIds (baseKey|targetRole) of staff-requested checklists a case manager has not released to the client yet
+      // (the Premium Processing / Form I-907 checklist after an upgrade). See checklist-gate.js.
+      heldStaffChecklists: [{ type: String }],
       approvals: [
         {
           checklistId: { type: String, required: true }, // baseKey|targetRole

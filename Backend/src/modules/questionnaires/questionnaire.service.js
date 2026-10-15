@@ -24,7 +24,7 @@ const { SINGLE_PARTY_FILING_DEFINITIONS } = require("./singlePartyChecklists");
 const { GREEN_CARD_RENEWAL_DEFINITIONS } = require("./greenCardRenewalChecklist");
 const { PREMIUM_PROCESSING_DEFINITIONS } = require("./premiumProcessingChecklist");
 const { GC_NVC_DEFINITIONS } = require("./gcNvcChecklist");
-const { isGated, isApproved, isClientSideUser, checklistId: gateChecklistId, isCaseCopyKey, caseCopyKey, baseKey } = require("./checklist-gate");
+const { isGated, needsGate, isApproved, isClientSideUser, checklistId: gateChecklistId, isCaseCopyKey, caseCopyKey, baseKey } = require("./checklist-gate");
 const { I131_CHECKLIST_DEFINITION } = require("./i131Checklist");
 const { N565_CHECKLIST_DEFINITION } = require("./n565Checklist");
 const { N400_CHECKLIST_DEFINITION } = require("./n400Checklist");
@@ -915,7 +915,7 @@ async function assignQuestionnaire(questionnaire, payload, user, req) {
   await questionnaire.save();
   // A gated case's auto-assigned checklist is a draft: nothing is sent to the client until a case manager approves
   // it (case-checklist.service.js approveChecklists calls notifyChecklistAssigned then).
-  if (!isGated(caseData) || isApproved(caseData, { key: questionnaire.key, targetRole, staffRequest: payload.staffRequest })) {
+  if (!needsGate(caseData) || isApproved(caseData, { key: questionnaire.key, targetRole, staffRequest: payload.staffRequest })) {
     await notifyChecklistAssigned(questionnaire, caseData, { assignedTo, message: payload.message, responseId }, user, req);
   }
   return { responseId, case: caseData, questionnaire };
@@ -1367,11 +1367,13 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
     error.status = 403;
     throw error;
   }
-  if (requestedCaseData && isGated(requestedCaseData) && isClientSideUser(user)) {
+  if (requestedCaseData && needsGate(requestedCaseData) && isClientSideUser(user)) {
     const gateRole = payload.targetRole || questionnaire.checklistRole;
-    const gateKey = { key: questionnaire.key, targetRole: gateRole };
+    // a held staff-requested checklist (Premium Processing) is released on THIS case only - never by the principal's approvals
+    const heldStaffRequest = (requestedCaseData.questionnaireReferences || []).some((reference) => reference.staffRequest && reference.active !== false && (String(reference.questionnaireId) === String(questionnaire._id) || String(reference.questionnaireTemplateId || "") === String(questionnaire._id)));
+    const gateKey = { key: questionnaire.key, targetRole: gateRole, staffRequest: heldStaffRequest };
     let approved = isApproved(requestedCaseData, gateKey);
-    if (!approved && requestedCaseData.parentCase) {
+    if (!approved && !heldStaffRequest && requestedCaseData.parentCase) {
       const parent = await Case.findById(requestedCaseData.parentCase).select("checklistApproval");
       approved = Boolean(parent) && isApproved(parent, gateKey);
     }
@@ -1800,7 +1802,7 @@ function withRowLock(lockKey, task) {
 // An employee case is released by approving its checklist on the employee case OR on its principal (employer) case - the Admin approves from the principal workspace.
 async function isApprovedIncludingParent(caseData, entry) {
   if (isApproved(caseData, entry)) return true;
-  if (!caseData?.parentCase) return false;
+  if (entry?.staffRequest || !caseData?.parentCase) return false;
   const parent = await Case.findById(caseData.parentCase).select("checklistApproval").lean();
   return Boolean(parent) && isApproved(parent, entry);
 }
@@ -3011,7 +3013,7 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
     error.status = 404;
     throw error;
   }
-  if (isGated(referenceCase) && isClientSideUser(user) && !(await isApprovedIncludingParent(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest }))) {
+  if (needsGate(referenceCase) && isClientSideUser(user) && !(await isApprovedIncludingParent(referenceCase, { key: questionnaire.key, targetRole: targetRole || questionnaire.checklistRole, staffRequest: activeReference?.staffRequest }))) {
     const error = new Error("Your case manager is still preparing this checklist. You will be notified when it is ready.");
     error.status = 403;
     error.code = "CHECKLIST_NOT_APPROVED";
@@ -3295,8 +3297,8 @@ async function listCaseChecklists(caseId, user) {
   let resolved = await resolveCaseQuestionnaires(caseId);
   const gateEntry = (entry) => ({ key: entry.questionnaire.key, targetRole: entry.targetRole || entry.questionnaire.checklistRole, staffRequest: entry.staffRequest });
   const parentCaseForGate = caseData?.parentCase ? await Case.findById(caseData.parentCase).select("checklistApproval informationRequests").lean() : null;
-  const approvedHere = (entry) => isApproved(caseData, gateEntry(entry)) || Boolean(parentCaseForGate && isApproved(parentCaseForGate, gateEntry(entry)));
-  if (isGated(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => approvedHere(entry));
+  const approvedHere = (entry) => isApproved(caseData, gateEntry(entry)) || Boolean(!entry.staffRequest && parentCaseForGate && isApproved(parentCaseForGate, gateEntry(entry)));
+  if (needsGate(caseData) && isClientSideUser(user)) resolved = resolved.filter((entry) => approvedHere(entry));
   timer.mark("questionnaire_resolution", { count: resolved.length });
   const responseIds = resolved.map((entry) => entry.responseId).filter(Boolean);
   const answers = responseIds.length ? await Answer.find({ responseId: { $in: responseIds } }).lean() : [];

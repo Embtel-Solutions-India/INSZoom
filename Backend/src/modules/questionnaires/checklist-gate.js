@@ -34,12 +34,20 @@ const isRemoved = (caseData, entry) => (caseData?.checklistApproval?.removed || 
 
 // Staff-requested checklists (Additional Requested Information, the Premium Processing add-on) were explicitly
 // added by a case manager - they are not part of the automatic assignment and are never gated.
+// ...with one exception: a staff-requested checklist can be HELD for approval (Case.checklistApproval.heldStaffChecklists, e.g. the
+// Premium Processing / Form I-907 checklist right after a case manager upgrades a case). Until a case manager releases it the client
+// side does not see it, is not notified and cannot answer it. A case with nothing held behaves exactly as before.
+const isHeld = (caseData, entry) => (caseData?.checklistApproval?.heldStaffChecklists || []).includes(checklistId(entry));
+
+// True when the client-side gate has anything to check on this case: a gated case, or one with a held staff checklist.
+const needsGate = (caseData) => isGated(caseData) || (caseData?.checklistApproval?.heldStaffChecklists || []).length > 0;
+
 function isApproved(caseData, entry) {
+  if (entry?.staffRequest) return !isHeld(caseData, entry);
   if (!isGated(caseData)) return true;
-  if (entry?.staffRequest) return true;
   return Boolean(approvalFor(caseData, entry));
 }
 
 module.exports = {
-  CASE_COPY_SEPARATOR, baseKey, isCaseCopyKey, caseCopyKey, isClientSideUser, isGated, checklistId, approvalFor, isApproved, isRemoved,
+  CASE_COPY_SEPARATOR, baseKey, isCaseCopyKey, caseCopyKey, isClientSideUser, isGated, needsGate, isHeld, checklistId, approvalFor, isApproved, isRemoved,
 };
