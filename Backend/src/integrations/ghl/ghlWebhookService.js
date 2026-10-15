@@ -14,7 +14,7 @@ const { decideInboundStage, firstValidDate } = require("./ghlStageDecision");
 const { resolveUnifiedStage } = require("./ghlPipelineService");
 const { getOpportunity } = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
-const { createCaseFromOpportunity, findCaseByOpportunity } = require("./ghlCaseFactory");
+const { createCaseFromOpportunity, findCaseByOpportunity, syncCardName } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
 const auxOutbound = require("./ghlAuxOutbound");
 
@@ -243,6 +243,7 @@ async function handleOpportunityEvent(event, config) {
   }
 
   await recheckPendingVisa(existing, opportunity, config, pipeline);
+  await syncCardName(existing, opportunity);
   return applyStageChange(event, existing, opportunity, pipeline, mapping);
 }
 
@@ -354,7 +355,8 @@ async function handleContactEvent(event) {
       continue;
     }
     const set = {};
-    if (name && name !== caseDoc.clientName) set.clientName = name;
+    // an individual case is named after its GHL CARD (see ghlCaseFactory.syncCardName), so the contact's name never renames it
+    if (name && name !== caseDoc.clientName && caseDoc.integrations?.ghl?.role !== "individual") set.clientName = name;
     if (email && email !== caseDoc.clientEmail) {
       // The client's LOGIN is tied to the original email; never rewrite a linked account from a CRM sync.
       if (caseDoc.user) set["integrations.ghl.flags.needsAttention"] = true;

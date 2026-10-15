@@ -52,6 +52,8 @@ const CRMCases = () => {
   const [appliedSearch, setAppliedSearch] = useState(searchTerm)
   const [stageFilter, setStageFilter] = useState(searchParams.get('stage') || '')
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '')
+  // Newest / Oldest: the API sorts by creation order (GET /cases sortOrder), so it holds across every page, not just the one on screen.
+  const [sortOrder, setSortOrder] = useState('desc') // 'desc' = newest first, 'asc' = oldest first
   // Deep-link-only filters from the case manager analytics panel's
   // Attention cards (rfeOverdue / attention) and visa-type breakdown - not
   // exposed as dropdowns, just forwarded straight through to the API.
@@ -64,7 +66,7 @@ const CRMCases = () => {
   const [totalPages, setTotalPages] = useState(1)
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 5,
+    limit: 15,
     total: 0,
     totalPages: 1,
     hasNextPage: false,
@@ -75,7 +77,7 @@ const CRMCases = () => {
   // P12-S2: replaces the browser-native alert() previously shown here — see
   // handleCaseCreated below.
   const [createdCaseNumber, setCreatedCaseNumber] = useState(null)
-  const limit = 5
+  const limit = 15 // rows per page: timed against 5 - the list query costs the same (dominated by the database round trip), the payload is gzip-compressed
 
   // Phase 7 — Pending Assignment queue, sourced from the team-lead dashboard
   // endpoint (already scoped to the calling team lead's own cases, or all
@@ -103,7 +105,7 @@ const CRMCases = () => {
 
   useEffect(() => {
     fetchCases()
-  }, [stageFilter, statusFilter, page, appliedSearch])
+  }, [stageFilter, statusFilter, page, appliedSearch, sortOrder])
 
   // Search now happens server-side (the API already supported it) instead of
   // filtering only the current page's rows in the browser — debounced, and
@@ -125,12 +127,15 @@ const CRMCases = () => {
   // "My Assigned Cases" should update the instant a Team Lead assigns a new
   // case to this case manager, or a client submits information on one of
   // their cases, without needing a manual refresh.
+  // These listeners are registered once, so they must call the LATEST fetchCases (through this ref) - calling the one from the render they were
+  // registered in would refetch with that render's old sort / page / filters and flip the list back (e.g. to Newest while Oldest is selected).
+  const fetchCasesRef = useRef(null)
   useEffect(() => {
     if (!connected) return
-    const unsubscribeAssigned = subscribe('case:assigned', () => { fetchCases(); fetchPendingQueue() })
-    const unsubscribeSubmitted = subscribe('case:client_submitted', () => fetchCases())
+    const unsubscribeAssigned = subscribe('case:assigned', () => { fetchCasesRef.current?.(); fetchPendingQueue() })
+    const unsubscribeSubmitted = subscribe('case:client_submitted', () => fetchCasesRef.current?.())
     // A card moved on the Pipeline, through Update Stage, or in GoHighLevel: the Stage column follows it.
-    const unsubscribeStage = subscribe('ghl:pipeline:updated', () => fetchCases())
+    const unsubscribeStage = subscribe('ghl:pipeline:updated', () => fetchCasesRef.current?.())
     return () => {
       unsubscribeAssigned()
       unsubscribeSubmitted()
@@ -190,6 +195,7 @@ const CRMCases = () => {
       if (stageFilter) params.stage = stageFilter
       if (statusFilter) params.status = statusFilter
       if (appliedSearch) params.search = appliedSearch
+      params.sortOrder = sortOrder
 
       const response = await api.get('/cases', { params, signal: controller.signal })
       if (seq !== activeFetchRef.current.seq) return
@@ -217,6 +223,8 @@ const CRMCases = () => {
     }
   }
 
+  fetchCasesRef.current = fetchCases
+
   // Reset to the first page whenever filters change
   const handleStageFilter = (value) => {
     setPage(1)
@@ -226,6 +234,15 @@ const CRMCases = () => {
   const handleStatusFilter = (value) => {
     setPage(1)
     setStatusFilter(value)
+  }
+
+  const handleSortOrder = (value) => {
+    if (value === sortOrder) return
+    // switching Newest <-> Oldest shows the full "Loading cases..." state instead of leaving the old order on screen while the new one loads
+    hasLoadedOnce.current = false
+    setLoading(true)
+    setPage(1)
+    setSortOrder(value)
   }
 
   const handleRefreshCases = () => {
@@ -456,6 +473,27 @@ const CRMCases = () => {
             ]}
           />
         </FilterBar>
+        {/* Newest / Oldest: two buttons side by side sharing the middle border, on the right just under the Stage / Status boxes */}
+        <div className="mt-3 flex justify-end">
+        <div className="inline-flex" role="group" aria-label="Sort cases by creation date">
+          <button
+            type="button"
+            onClick={() => handleSortOrder('desc')}
+            aria-pressed={sortOrder === 'desc'}
+            className={`rounded-l-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${sortOrder === 'desc' ? 'border-primary-600 bg-primary-600 text-white' : 'border-border bg-card text-muted-foreground hover:text-foreground'}`}
+          >
+            Newest
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSortOrder('asc')}
+            aria-pressed={sortOrder === 'asc'}
+            className={`-ml-px rounded-r-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${sortOrder === 'asc' ? 'border-primary-600 bg-primary-600 text-white' : 'border-border bg-card text-muted-foreground hover:text-foreground'}`}
+          >
+            Oldest
+          </button>
+        </div>
+        </div>
       </Card>
 
       {/* Cases Table */}

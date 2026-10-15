@@ -19,7 +19,7 @@ const pipelineService = require("./ghlPipelineService");
 const syncService = require("./ghlSyncService");
 const opportunityService = require("./ghlOpportunityService");
 const { resolveContact } = require("./ghlContactService");
-const { createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink } = require("./ghlCaseFactory");
+const { createCaseFromOpportunity, findCaseByOpportunity, isOrphanedLink, syncCardName } = require("./ghlCaseFactory");
 const visaService = require("./ghlVisaService");
 const { GHLApiError } = require("./ghlClient");
 const deletedInGhl = require("./ghlDeletedInGhl");
@@ -74,6 +74,8 @@ async function reconcilePipeline(pipeline, config, client, summary) {
       }
       // A flagged "deleted in GHL" case that is back: clear the flag.
       if (existing.integrations?.ghl?.flags?.deletedInGhl) await deletedInGhl.clearDeletedInGhl(existing._id);
+      await fillMissingClientEmail(existing, opportunity);
+      await syncCardName(existing, opportunity);
       const decision = await applyStageChange({ deferrals: 0, eventTimestamp: null }, existing, opportunity, pipeline, mapping);
       if (decision.outcome === "processed") result.stageUpdated += 1; else result.unchanged += 1;
     } catch (error) {
@@ -84,6 +86,18 @@ async function reconcilePipeline(pipeline, config, client, summary) {
     if (PACE_MS) await sleep(PACE_MS);
   }
   return seen;
+}
+
+// The card's Primary Email is its GHL contact's email. A case imported while that contact had none takes it as soon as GHL has one (this is the
+// fallback for a ContactUpdate webhook that never arrived). Same rules as the webhook: only fills an EMPTY clientEmail, never an employee card
+// (the contact is the employer), a family case (clientEmail is the beneficiary's) or a case whose client already has a login.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function fillMissingClientEmail(existing, opportunity) {
+  const email = String(opportunity?.contact?.email || "").trim().toLowerCase();
+  if (!email || !EMAIL_PATTERN.test(email)) return;
+  if (existing.clientEmail || existing.user || existing.caseRole === "employee" || existing.integrations?.ghl?.role === "family") return;
+  await Case.updateOne({ _id: existing._id, $or: [{ clientEmail: { $exists: false } }, { clientEmail: "" }], user: { $exists: false } }, { $set: { clientEmail: email } })
+    .catch((error) => logger.error("ghl_fill_client_email_failed", { caseId: String(existing._id), error: error.message }));
 }
 
 // Linked opportunities that no pipeline returned: confirm each one is really gone (404) before flagging it.
@@ -151,4 +165,4 @@ async function reconcile({ client, full = false } = {}) {
   return summary;
 }
 
-module.exports = { reconcile };
+module.exports = { fillMissingClientEmail, reconcile };

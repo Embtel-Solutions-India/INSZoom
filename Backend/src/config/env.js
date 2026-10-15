@@ -209,9 +209,9 @@ const env = {
     // Informational: the URL configured in GHL (shown on the setup/health views).
     webhookPublicUrl: process.env.GHL_WEBHOOK_PUBLIC_URL || "",
     webhookToleranceSeconds: Number(process.env.GHL_WEBHOOK_TOLERANCE_SECONDS || 86400),
-    // Historical opportunities imported by "Sync now" never send emails unless
-    // this is explicitly turned on.
-    importSendsEmails: process.env.GHL_IMPORT_SENDS_EMAILS === "true",
+    // The case-creation email is sent to imported cards in the "Case Onboarded" stage only (new cases); cards in any other stage are old
+    // cases and never email the client (see ghlCaseFactory.js). Set GHL_IMPORT_SENDS_EMAILS=false to switch even those off.
+    importSendsEmails: process.env.GHL_IMPORT_SENDS_EMAILS !== "false",
   },
   redisUrl: process.env.REDIS_URL || null,
   qpdfPath: process.env.QPDF_PATH || "qpdf",

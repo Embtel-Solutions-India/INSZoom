@@ -118,3 +118,6 @@ ehthumbs.db
 *.pid
 *.seed
 f2-chain-report.json
+
+# generated form-import backups (written by the form pipeline, not source)
+Backend/backups/forms/
