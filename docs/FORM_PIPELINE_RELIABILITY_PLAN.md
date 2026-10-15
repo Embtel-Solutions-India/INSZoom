@@ -1,5 +1,7 @@
 # Plan (rev 9): reliable form import, accurate mapping, safe release
 
+**UPDATE 2026-10-16: the user authorized implementation, starting with Release 0a. Release 0a is DONE; progress, results and findings are in [FORM_PIPELINE_IMPLEMENTATION_REPORT.md](FORM_PIPELINE_IMPLEMENTATION_REPORT.md). Everything after 0a still needs the separate approvals described below; the text below is the original approval record and is otherwise unchanged.**
+
 STATUS (2026-10-15): **PLAN APPROVED (rev 9) - IMPLEMENTATION DEFERRED.** This document is the saved reference copy of the approved plan. **Do NOT implement anything from it - not even Release 0a - until the user explicitly says to implement it.** Until then no application code, database, deployment, worker, migration, load test or email change is authorized. When the user says to implement, begin with Release 0a only (see "Approval scope"), and every later release/phase still needs its own explicit approval. Source: the approved plan file reviewed over rounds 1-9; Appendix A below is the summary report.
 
 ## Approval scope (read this first)
