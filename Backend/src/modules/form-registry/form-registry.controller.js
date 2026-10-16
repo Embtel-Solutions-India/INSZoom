@@ -337,7 +337,12 @@ exports.fetchFormFromUSCIS = async (req, res, next) => {
     if (mapping.agency !== "USCIS") {
       throw Object.assign(new Error(`${formCode.toUpperCase()} is a ${mapping.agency} form, not a downloadable USCIS PDF - it can't be fetched from uscis.gov.`), { status: 422, code: "USCIS_FORM_WRONG_AGENCY" });
     }
-    const result = await OnDemandFormAcquisitionService.acquireAndActivate(formCode, req.user, req);
+    const result = await require("../form-pipeline/FormPipeline").runForm({
+      formCode, trigger: "admin_fetch", user: req.user, req, options: { forceCheck: true }, direct: () => OnDemandFormAcquisitionService.acquireAndActivate(formCode, req.user, req),
+    });
+    if (result.queued) { // FORM_PIPELINE_MODE=queued: answer immediately with the job to poll (GET /api/form-pipeline/jobs/:id)
+      return res.status(202).json({ success: true, data: { queued: true, jobId: result.jobId, state: result.state, message: "The fetch was queued; follow its progress in the pipeline jobs." } });
+    }
     res.json({
       success: true,
       data: {
@@ -566,6 +571,9 @@ exports.deleteFormFromCatalog = async (req, res, next) => {
     // never pull a template out from under an import / edition-upgrade / monitoring / autopilot run
     const busy = await runningJobs();
     if (busy.length) throw Object.assign(new Error("A USCIS form import job is running right now; try deleting this form again when it has finished."), { status: 409, code: "FORM_PIPELINE_JOB_RUNNING", details: { jobs: busy } });
+    // ...nor out from under a durable pipeline job that is running for THIS form right now
+    const runningForThisForm = await require("../../models/FormPipelineJob").exists({ formCode: formCode.toUpperCase(), state: "running" }).catch(() => null);
+    if (runningForThisForm) throw Object.assign(new Error(`${formCode.toUpperCase()} is being imported right now; try deleting it again when that has finished.`), { status: 409, code: "FORM_PIPELINE_JOB_RUNNING" });
     const escaped = formCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const templates = await USCISFormTemplate.find({ formCode: new RegExp(`^${escaped}$`, "i") }).select("_id").lean();
     const templateIds = templates.map((t) => t._id);

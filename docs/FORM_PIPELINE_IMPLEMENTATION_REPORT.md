@@ -12,7 +12,9 @@ This is the ONE document that records the implementation of the approved plan in
 | **Release 0b-1** - evidence-resolution path, no enforcement | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Release 0b-2** - automatic evidence + fail-closed gate wired into the pipeline (Rule J not enforced) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 (indexes created; no other real-DB write) |
 | **Phase 0 remainder** (frozen-status module, cache fix, certification on activate, job locks, one retire, e2e script safety, AI infra) | **DONE 2026-10-16 - awaiting your review** (test isolation deferred: needs an approved local test DB) | given 2026-10-16 |
-| Phases 1 - 6 | Not started | each separately |
+| **Test isolation (local database)** | **DONE 2026-10-16** | given 2026-10-16 |
+| **Phase 1** - durable, resumable, fenced pipeline (worker/PM2 production rollout and queued mode NOT switched on) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
+| Phases 2 - 6 | Not started | each separately |
 
 ---
 
@@ -429,6 +431,55 @@ Rule J; the local test database; the PM2 worker; an exhaustive sweep of silent c
 ## 6. Gate before the next phase
 Your review of section 3. Next in the plan: Phase 1 (durable, resumable, fenced pipeline).
 
+# Test isolation in a local database + Phase 1 - durable, resumable, fenced pipeline
+
+## 1. Scope and authorization
+You asked for the test isolation in a local database and the next phase, one after another. Test isolation first, then Phase 1. The only writes to the real (shared) database were the indexes of the new `formpipelinejobs` collection (index-only, `createFormPipelineIndexes.js --apply`); no case, user or company was created, and no form template was touched.
+
+## 2. Test isolation (plan Phase 0 item, deferred until now)
+Verified read-only first, as the plan requires: the MongoDB on this machine (8.0.15, a Windows service on 127.0.0.1:27017) is the local one, separate from the remote shared database, and holds your own databases (`immigration_crm`, `inszoom_crm`, `usais_db`, the older `immigrationcrm_test`, ...), which are never touched.
+- `src/test-utils/pipelineDb.js`: DB-backed pipeline tests connect ONLY to a local database whose name starts with `form_pipeline_test` or ends `_test`, and never to the application's own database (the guard is a pure function with its own tests: remote hosts, replica lists with one remote member, `mongodb+srv`, non-test names and the app database are all refused).
+- Each test **process** gets its own throwaway database (`form_pipeline_test_<pid>_<random>`) and drops it when it finishes - needed because Node runs test files in parallel and files sharing a database were deleting each other's jobs (found when the folder was run together). `MONGODB_PIPELINE_TEST_URI` overrides it with a database of your choice (never dropped; run one file at a time).
+- Unique `ZZ-PIPE-*` form codes, recorded-id / by-code cleanup, `assertNoCaseFormReferences`, indexes and collections built explicitly for only the models a test names.
+- With no local MongoDB (or an unsafe URI) the DB-backed tests are SKIPPED, not failed.
+- First use: `policy.localdb.test.js` runs the Release 0b-2 and Phase 0 behavior on the REAL models and real indexes: unique decision per edition, append-only audit trail, held activation leaves the live edition untouched, automatic acceptance, activation after acceptance, certification required, `not_accepted` is final, two racing checks leave one decision row.
+
+## 3. Phase 1 - what was built
+
+| Plan item | Result |
+|---|---|
+| `FormPipelineJob` | `models/FormPipelineJob.js`: state `pending / running / blocked / held / dead_letter / done`; per-stage `{status, attempts, startedAt, finishedAt, error}`; `currentStage`, `nextAttemptAt`; lease `{lockedUntil, token, fence}`; `lastError{class, code, stage, message}`; `repairsTried[{strategy, outcome, verification, at}]`; artifact ids; `editionKey`; `shadow`; alert-dedupe list; capped history; `schemaVersion`; TTL on finished jobs. **A form has at most one open job**, enforced by a partial unique index (`one_open_job_per_form`, created on the real database). |
+| Atomic claim, heartbeat, lease reclaim, fence | `FormPipelineJobService`: `claimNext` is one atomic update (`fence++`, `attempts++`); every later write is conditional on token AND fence, so a worker that lost its lease can change nothing (`LeaseLostError`); `recoverExpired` returns a dead worker's job to the queue or dead-letters it when its attempts are used up. Tested with two racing claimers and a stale worker waking up. |
+| Re-check before any commit | The `promote` stage re-reads the job (state, token, fence, unexpired lease, same edition key) before it runs, takes the per-form promotion mutex (`form-promote:<code>`), re-checks inside the mutex, and only then calls the EXISTING guarded activation (certification + readiness + approval + the edition-policy gate). A lost lease or a busy mutex means the promotion code never runs. No new promotion logic. |
+| Stages wrap existing services | `ensureCurrentUSCISForm` / `activateOrPromote` take an optional job context and report `detect, import, map, certify, promote, migrate_cases, finalize`. With no context every hook is a plain pass-through (the existing tests prove the old path is unchanged). `activateOrPromote` was NOT split into new functions - splitting a long, swallow-and-continue function was the riskier way to get the same stage records. |
+| Edition identity, idempotence | `editionKey = formCode|editionDate|checksum` is recorded once known; one open job per form; repeated requests return the same job. |
+| Entry points | Admin Fetch, the mapping-save flow, the 12-hour catalog sync and the edition-upgrade job go through `FormPipeline.runForm`. **`FORM_PIPELINE_MODE=inline` (default): the caller gets exactly the result or exception it always did**; the run is also recorded, a failed run is retried by the worker, and if the job cannot be claimed the original call is made unrecorded. **`queued`: the caller only enqueues** (Admin Fetch answers 202 with the job id) and the worker does the work. Not yet routed: `acquireForCase` and the form-generation check (case-scoped, user waiting; a later step). |
+| Worker | `FormPipelineWorker`: one job at a time, bounded jobs per pass, jittered start, alive marker, graceful stop. Runs embedded in the API (default: where the work always ran) or as its own process: `src/workers/formPipelineWorker.js` with `FORM_PIPELINE_WORKER=external`. The API alerts when jobs wait more than 15 minutes and no worker marker is fresh; there is no inline fallback in queued mode. |
+| Recovery | Errors are classified (`errorClassifier.js`): transient -> exponential backoff with jitter, then dead-letter after the attempt limit; blocked (bad / missing PDF, page not found) -> slow retry (24 h); held (edition-policy hold reported by the existing activation) -> re-checked every 12 h behind the same gate, attempts not used up; lease lost -> stop quietly. A repair framework (repair, VERIFY, retry once, per-strategy limit, recorded on the job) is in and tested with injected strategies; **no concrete repair strategy is registered yet** (they belong with certification in Phase 3). |
+| Visibility | `GET /api/form-pipeline/status`, `GET /jobs?state=&formCode=`, `GET /jobs/:id` (admin, team lead, super admin), `POST /jobs/:id/retry` (admin, super admin); the lease token never leaves the server. No Admin screen was added (the plan asks for the endpoint; the Admin UI change needs your confirmation). |
+| Developer alerts | Failure / blocked / dead-letter alerts: recipient `FORM_PIPELINE_ALERT_EMAIL` (default `ishaan@embtelsolutions.com`), template `form-pipeline-alert` on the existing email service, one alert per job per (kind, stage, error class, code), switch `FORM_PIPELINE_EMAIL_FAILURE`, in-app notice for admins when no mail provider is configured or emails are off, alert failures never affect the pipeline, messages carry only a sanitized class / code / one-line message. A BLOCKED result of a run a person started (admin Fetch, mapping save) is not emailed - they already see the error. Success, held and digest emails are Phase 5. |
+| Related guards | Deleting a form from the catalog is also refused while a pipeline job for that form is running; the standalone worker, PM2 snippet and `.env.example` settings are documented. |
+
+## 4. Behavior you should know about
+1. **Nothing changes for callers by default.** In `inline` mode every entry point returns what it always returned; the difference is that each run is recorded and a failure is retried later by the worker with backoff.
+2. **Failures can now email the developer address** (that is the feature you asked for). The email service's `EMAIL_SUPPRESS_STAFF_AND_ATTORNEY` setting still applies if you switch it on.
+3. **Held editions**: a job whose edition the gate refused waits and is re-checked every 12 hours; it can only ever be promoted through the gate.
+4. Real database: one new collection (`formpipelinejobs`, 0 documents) with its indexes.
+
+## 5. Verification
+327 backend tests pass across the touched areas (new this phase: 12 job-service + 13 runner/alerts/entry/worker + 2 real-pipeline-hook + 8 wiring + 7 classifier + 6 test-isolation, all DB-backed ones on throwaway local databases). The real `ensureCurrentUSCISForm` code ran inside a job against a local database with only uscis.gov and the mapping services stubbed. Found and fixed by those tests: a summary bug (a not-promoted edition was reported "activated"), cross-file interference in a shared test database, and `key=` secrets slipping through message sanitizing. The live backend restarted by itself, answers `/api/health` 200, and the new endpoints return 401 without a token; the embedded worker is writing its alive marker. No local databases are left behind.
+
+Known pre-existing issue, not caused by this phase: `ensureCurrentUSCISForm.test.js` still stalls on its third test (it calls un-mocked models without a connection); its first two tests pass.
+
+## 6. Production prerequisites NOT done (each needs its own approval, per the plan)
+Running the worker as a separate PM2 process and the deploy-workflow change that restarts both apps in lockstep (`max_memory_restart`); switching the live system to `FORM_PIPELINE_MODE=queued` and `FORM_PIPELINE_WORKER=external`; the Admin UI for enqueue + status polling; a check of whether the API runs PM2 cluster or single instance; a real test email.
+
+## 7. What was NOT done
+Concrete repair strategies; routing `acquireForCase` / form generation through the job layer; Phase 5 emails; the performance-budget measurement for the worker; the Admin screen.
+
+## 8. Gate before the next phase
+Your review of sections 3, 4 and 6. Next in the plan: Phase 2 (mapping contract, validator, coverage report, edition policy model).
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -499,3 +550,4 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 | 2026-10-16 | Release 0b-1 | Evidence-resolution path: 3 models (2 append-only), redirect-safe fetcher, verifier, fail-closed gate (wired into nothing), evidence service + admin/team_lead API, evidence section in Form Governance, unrun index script, 75 backend + 8 Admin tests, slicing check | `Backend/src/models/FormEdition*.js`, `models/helpers/appendOnly.js`, `modules/form-edition-policy/*`, `routes/index.js` (1 line), `scripts/createFormEditionPolicyIndexes.js`, `scripts/formSourceRedirectCrawl.js` (shared validator), `Admin/frontend/src/components/FormEditionEvidenceSection.jsx`, `services/api.js`, `pages/FormGovernance.jsx` |
 | 2026-10-16 | Release 0b-2 | Automatic evidence from the official USCIS page (explicit statements only), `POST /auto-check`, fail-closed enforcer wired into 4 services, 11 seeds and the replace script, narrowed rescue, Admin screen now "Check now" (no manual entry), unique indexes created, read-only coverage dry run (8 of 31 editions auto-accept), 181 backend + 127 Admin tests | `Backend/src/modules/form-edition-policy/{filingEligibility,EditionPolicyEnforcer,EvidenceService}.js`, controller/routes, gated pipeline files, `tests/*`, `Admin/frontend/src/components/FormEditionEvidenceSection.jsx(+test)`, `services/api.js` |
 | 2026-10-16 | Phase 0 remainder | Shared frozen-status module, activate certifies + drops cache, one retire, job locks on edition-upgrade/monitoring, delete refused while a job runs, safe end-to-end import script, AI jobs recovered from `processing`, outputSchema enforced, Gemini timeout; 267 tests | `form-mapping/config/caseFormFreeze.js`, `VersionManagementService.js`, `uscis-form.service.js`, `USCISEditionUpgradeJob.js`, `USCISMonitoringJob.js`, `utils/jobLock.js`, `form-registry.controller.js`, `scripts/verifyFormImportEndToEnd.js`, `modules/ai/outputSchema.js`, `ai-orchestration.service.js`, `gemini.service.js`, tests |
+| 2026-10-16 | Test isolation + Phase 1 | Local throwaway-database test harness with guards; FormPipelineJob (one open job per form, lease + fence), job service, runner, worker (embedded or separate process), stage hooks in the existing pipeline, inline/queued entry modes, classified recovery, developer alerts, pipeline API; 327 tests | `test-utils/pipelineDb.js`, `models/FormPipelineJob.js`, `modules/form-pipeline/*`, `workers/formPipelineWorker.js`, `scripts/createFormPipelineIndexes.js`, `OnDemandFormAcquisitionService.js` (hooks), catalog sync / upgrade / admin fetch / mapping-save entry points, `email/templates/form-pipeline-alert.js`, `server.js`, `routes/index.js` |

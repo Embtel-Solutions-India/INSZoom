@@ -20,7 +20,10 @@ async function upgradeOne(formCode, user, req, { maxAttempts, retryDelayMs }) {
   const activeBefore = String((await USCISFormTemplate.findOne({ formCode, status: "active" }).select("_id").lean())?._id || "");
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const result = await OnDemandFormAcquisitionService.ensureCurrentUSCISForm(formCode, user, req, { forceCheck: true });
+      const result = await require("../../form-pipeline/FormPipeline").runForm({
+        formCode, trigger: "edition_upgrade", user, req, options: { forceCheck: true }, direct: () => OnDemandFormAcquisitionService.ensureCurrentUSCISForm(formCode, user, req, { forceCheck: true }),
+      });
+      if (result?.queued) return { formCode, status: "queued", attempts: attempt, jobId: result.jobId };
       if (result.checkError) { last = { status: "uscis_unreachable", detail: result.checkError }; }
       else if (!result.versionChanged) return { formCode, status: "up_to_date", attempts: attempt };
       // the scanner also reports a duplicate of the installed edition as "changed"; only a different live template is an upgrade

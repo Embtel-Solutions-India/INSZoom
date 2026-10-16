@@ -19,7 +19,9 @@ Rev 9 below is the original approval record and is kept unchanged for history. *
 | 12-hourly edition check attached to the policy subsystem (`EditionPolicyScheduler`) | **Done**; the 12-hour catalog sync itself already existed |
 | Rule J (the four filing-ready case steps) | **Not started** - user chose "pipeline only" |
 | **Phase 0 remainder** (shared frozen-status module, activate certifies + drops the cache, one retire, job locks, safe e2e script, AI infra) | **Done** (2026-10-16; test isolation deferred until a local test DB is approved) |
-| Phases 1-3, 5, 6 | Not started |
+| **Test isolation (local database)** | **Done** (2026-10-16: per-process throwaway local databases, guarded) |
+| **Phase 1** (durable, resumable, fenced pipeline: job model, lease + fence, worker, stage hooks, inline/queued modes, recovery, alerts, pipeline API) | **Done in code** (2026-10-16); PM2 worker rollout and `queued` mode are NOT switched on |
+| Phases 2-3, 5, 6 | Not started |
 | Phase 4 - Gemini mapping | **Not started and not part of the 12-hour pipeline** (see C7) |
 
 ### Changes from rev 9
