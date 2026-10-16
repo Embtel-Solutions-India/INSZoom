@@ -2,6 +2,7 @@ const AuditLog = require("../../../models/AuditLog");
 const CaseForm = require("../../../models/CaseForm");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const notificationService = require("../../notifications/notification.service");
+const { requireAcceptedEdition } = require("../../form-edition-policy/EditionPolicyEnforcer");
 
 class VersionManagementService {
   static userId(user) {
@@ -89,6 +90,9 @@ class VersionManagementService {
     if (template.officialStatus === "deprecated") {
       throw Object.assign(new Error("A deprecated USCIS edition cannot be activated for new cases"), { status: 409 });
     }
+    // Release 0b-2: an edition becomes the live one only when USCIS's acceptance of THIS edition is on record (fail closed, nothing is changed before this
+    // passes: the current live edition stays live). Deliberately not inside a try/catch that carries on.
+    await requireAcceptedEdition(template, { entryPoint: "VersionManagementService.activate", actor: user });
     const impact = await this.impactAnalysis(versionId);
     await USCISFormTemplate.updateMany(
       { formCode: template.formCode, _id: { $ne: template._id }, status: "active" },

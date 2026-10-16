@@ -10,7 +10,7 @@ This is the ONE document that records the implementation of the approved plan in
 |---|---|---|
 | **Release 0a** - read-only pre-rollout report + redirect-chain crawl | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Release 0b-1** - evidence-resolution path, no enforcement | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
-| Release 0b-2 - fail-closed gate wired into every entry point | Not started | separate approval after your 0b-1 review, the unrun index script and the database walkthrough |
+| **Release 0b-2** - automatic evidence + fail-closed gate wired into the pipeline (Rule J not enforced) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 (indexes created; no other real-DB write) |
 | Phase 0 remainder (frozen-status module, cache fix, job locks, ...) | Not started | per the plan's sequence |
 | Phases 1 - 6 | Not started | each separately |
 
@@ -236,6 +236,160 @@ The plan requires, before Release 0b-2: (1) the end-to-end readiness proof - don
 
 ---
 
+# Release 0b-2 - automatic evidence and the gate wired into the pipeline
+
+## 1. Scope and authorization
+
+Authorized by you on 2026-10-16: (a) nobody submits a USCIS page URL or quote any more - **everything is fetched automatically**; (b) enforcement is wired in; (c) run the unique-index script; (d) **do not write to the real database** - if a write is ever needed, one single case only, and all later tests on that case only. Your answers to my questions: automatic evidence = "fully automatic acceptance"; enforcement = "pipeline only".
+
+Interpretation you should confirm: "fully automatic" is implemented as **automatic only when USCIS's own page says so explicitly**. The system fetches the form's official page itself and records `accepted` or `not_accepted` only if the page contains an explicit statement naming the edition (patterns below). If the page is silent, ambiguous, cannot be fetched, or the stored PDF differs from the official one, **nothing is recorded and the edition stays held** - I did not make "all checks passed" equal "accepted", because that would let the system file a form USCIS may have stopped accepting. Rule J (blocking the four filing-ready case steps) is **not** enforced (you chose "pipeline only").
+
+## 2. What was built
+
+| Area | Change |
+|---|---|
+| Statement detector | `form-edition-policy/filingEligibility.js` - `filingEligibilityStatement({text, formCode, editionIdentifier})` returns `accepted` / `not_accepted` / `none`. Patterns: `current_acceptable_edition` (the page points at its "Edition Date" section for the current edition), `explicit_accept` ("will accept / continues to accept ... edition"), `explicit_reject` ("is not accepting / will not accept / no longer accepts / rejects"). Accept and reject for the same edition => `none` (ambiguous). Effective dates are never taken from the page (always null) so a future date can never make an edition usable early. 13 real USCIS pages are stored as fixtures. |
+| Automatic check | `EvidenceService.runAutomaticCheck` + `autoCheck`: finds the official page (stored `sourcePageUrl`, else the form's standard page), fetches it through the redirect-safe fetcher, runs the detector and the existing verifier. `accepted` needs the whole verification to pass (incl. PDF checksum); `not_accepted` only restricts, so it needs the quote, the edition and an official source. Everything is computed in memory; **a write happens only when a decision is recorded** (snapshot + 5 audit events + decision row, machine actor `pipeline:official_source`). An existing `not_accepted` is never overturned automatically. |
+| API | `POST /form-edition-policy/auto-check` `{formCode, editionIdentifier}` - exactly `admin` / `team_lead` (6 routes now). No URL, quote or dates are accepted from the user. |
+| Admin screen | Form Governance > Form Edition Evidence: the URL / quote / date form is gone; each edition has **Check now** and the result is shown in plain words (accepted / not accepted / nothing recorded and why). |
+| Enforcer | `EditionPolicyEnforcer.requireAcceptedEdition(template, {entryPoint})` - fail closed, no disable switch; throws `EditionPolicyHeldError` (HTTP 409, `EDITION_POLICY_HELD`) **before** the caller changes anything; any internal error is also a hold. |
+| Entry points gated | `VersionManagementService.activate`; `uscis-form-importer.service.activateVersion`; `CaseFormEditionMigrationService.migrateCaseFormsToEdition`; `importLocalForm.js`; **11 bootstrap seeds** (`i129, i129f, i130, i134, i140, i485, i485supj, i539, i539a, i693, i907`); `scripts/replaceFormEdition.js`. |
+| Rescue narrowed | `OnDemandFormAcquisitionService` used to reactivate "the most recently retired edition" without any check. It now restores only the exact edition that was live before the attempt (`_id: liveBefore._id`). |
+| Pipeline-triggered checks | `FORM_EDITION_AUTO_EVIDENCE=true` makes the enforcer run the automatic check itself when an activation is attempted. **Default OFF** (see section 5). With it off, the system never writes by itself; an admin/team lead clicks Check now. |
+| Indexes | `scripts/createFormEditionPolicyIndexes.js` was run with your permission. Verified read-only afterwards: unique `{formCode, editionIdentifier}` on decisions, unique `{evidenceCaseId, seq}` on audit events, supporting indexes on sources/audit; all three collections hold **0 documents**. |
+
+## 3. How "do not write on the real database" was kept
+
+- No test in this release touches the real database: every new test uses the in-memory store and injected fetchers/models. I did **not** run the tests that connect to the real DB (`h0-i129-seed`, `registryAgencyGate`, `FormEditionComparisonService` and similar).
+- The coverage dry run used the Release 0a **read-only database handle** (any write throws) for reading templates, real outbound GETs to uscis.gov, and an in-memory store for the decisions.
+- The only real-database change in the whole release is the index creation you authorized. No case, user, company or decision row was created, so there was nothing to clean up and the "one test case" allowance was not used.
+
+## 4. Verification
+
+| Check | Result |
+|---|---|
+| form-edition-policy + scripts tests | 181 pass, 0 fail (detector 19, automatic evidence 15, enforcer 9, entry-point matrix 14 incl. a static scan that fails if a NEW file makes a form edition live without calling the gate, routes/wiring) |
+| Entry-point behavior | for VersionManagementService, the importer and case migration: held => throws, nothing mutated; a throwing gate => held; accepted => proceeds |
+| Admin | vitest 127 pass (13 files); `npm run build` OK |
+| Live backend | `/api/health` 200; `POST /form-edition-policy/auto-check` and `GET /editions` return 401 without a token |
+| `ensureCurrentUSCISForm.test.js` | **did not finish in my run (timed out at 100 s)**. Its test 2 passed after 53 s and test 3 (auto-activate off, never reaches the gate) is where it stalls, in the mapping-migration code that talks to an unmocked Mongoose; I did not change that code. I could not confirm against the previous commit (a clean worktree failed to check out), so treat "pre-existing" as likely, not proven. |
+| Not run | Client, Landing and Attorney builds (no file in them changed); the other DB-connected backend suites (by design, section 3) |
+
+## 5. Real-data coverage (read-only dry run, 31 editions, 2026-10-16)
+
+What the automatic check would do today against uscis.gov:
+
+| Outcome | Editions | Forms |
+|---|---|---|
+| **Accepted automatically** | 8 | I-129 (2026-09-09), I-765 (2025-08-21), I-864 (2026-08-24), I-864EZ (2026-08-24), I-90, I-829, N-565, N-600 |
+| Held - page has no explicit statement | 14 | I-130, I-134, I-907, I-140, N-400, I-129S, I-360, I-526, I-526E, I-612, I-751, I-824, G-325A, ... |
+| Held - statement found but the stored PDF does not match the official PDF (`pdf_checksum_matches`) | 4 | I-129F, I-539, I-693, I-485 |
+| Held - no standalone USCIS page (HTTP 404) | 2 | I-539A, I-485J |
+| Held - edition date from an untrusted source | 3 | I-589, I-131, G-28 |
+| Not accepted | 0 | - |
+
+Nothing was written. The 4 checksum mismatches are a correct hold (the PDF we store may not be the accepted one) and are worth a look by someone who knows those forms.
+
+## 6. Expected vs actual
+
+| Expected | Actual |
+|---|---|
+| Admin/team lead submits nothing | Done - no URL/quote input anywhere; the API ignores any |
+| "Fully automatic acceptance" | **Deviation:** automatic only for explicit USCIS statements (8 of 31 editions today); the rest stay held on purpose |
+| Gate in every entry point | Done for 4 services/scripts + 11 seeds + replace script; static scan guards future additions |
+| Held edition leaves the live one untouched | Done and tested; the rescue can no longer revive an unrelated retired edition |
+| Pipeline writes decisions by itself | **Not enabled:** `FORM_EDITION_AUTO_EVIDENCE` defaults to off to honor "do not write on the real database" |
+| Rule J (filing-ready steps) | Not enforced - "pipeline only" |
+
+## 7. Findings for your review
+
+1. **Behavior change that is live now:** the running backend (nodemon) already enforces the gate. Any **new** edition that is promoted/activated/migrated-to is held until a decision exists. Editions already live keep serving cases. Until someone clicks Check now (or you enable the flag), new editions simply wait.
+2. A held edition is re-driven by the existing 12-hourly sync, so each cycle re-attempts and is held again (cheap: one decision lookup). With the flag on, each attempt also does one page fetch.
+3. Coverage is limited by what USCIS publishes: only some pages state acceptance explicitly. For the rest a person must still decide - there is no screen for that any more (the manual path was removed from the UI per your instruction; the API route `POST /evidence` still exists for admin/team_lead).
+4. 14 editions had no statement at all; I-130/I-140/I-907 (the bootstrap forms) will stay held on any new edition until USCIS words it explicitly.
+
+## 8. What was NOT done
+
+Rule J enforcement; the PM2 worker; enabling `FORM_EDITION_AUTO_EVIDENCE`; any real-database write other than the indexes; a decision for any of the 31 editions.
+
+## 9. Gate before the next release
+
+Your review of sections 1, 5 and 7, a decision on enabling `FORM_EDITION_AUTO_EVIDENCE=true` (the first automatic writes to the real database: decision/audit rows for the 8 accepted editions above), and a decision on what should resolve editions USCIS does not state explicitly.
+
+
+## 10. Addendum (same day, your two follow-ups)
+
+**"The edition date is written at the bottom of every form page."** Correct, and the importer was not reading it. `FormMetadataService` called `pdf-parse` with its old (v1) API while the installed package is v2, the error was swallowed, and the printed edition was therefore never extracted: no template in the database has `editionDateSource = "pdf"`. Fixed (code only, no database writes): the PDF is now read with the v2 API and the edition comes from the footer wording `Edition MM/DD/YY` - the most frequent value across the pages wins, a tie yields nothing. The old fallbacks `Expires` (the OMB approval date) and `Rev.` were removed because neither is an edition and they would have become live once parsing worked. The PDF footer still wins over the date USCIS shows on its page, as the code always intended. New tests: `PrintedEdition.test.js` (5, using in-memory PDFs).
+
+Read-only measurement of the 54 stored editions (44 have an official PDF URL; the official PDFs were downloaded and the footer compared with the stored edition date):
+
+| Result | Editions |
+|---|---|
+| Footer matches the stored date | 18 |
+| Footer differs from the stored date | 2 - **I-589** stored 2026-09-15, footer 2026-07-28; **I-131** stored 2026-09-18, footer 2025-01-20 (both stored dates were `version_backfill`, i.e. import dates, not editions) |
+| Footer found, no date stored (review / draft rows) | 17 (e.g. I-918, I-864A, I-130A, G-1055, I-485A) |
+| No footer edition in the PDF | 7 (e.g. G-28, AR-11, G-1145) |
+| No official PDF URL on the template (not checked) | 10 (I-129F, I-130, I-134, I-539, I-539A, I-907, I-140, I-693, I-485J, I-485) |
+
+**Not applied:** correcting the stored dates (I-589, I-131) and filling the 17 missing ones is a write to live templates, and changing a live template's edition date can make the catalog sync see a "new" edition. It needs your approval; the footer reading is what makes it safe to do.
+
+**"The check after the 12-hour background job is also attached to this subsystem only."** Done: `form-edition-policy/EditionPolicyScheduler.js` - `runScheduledEditionChecks()` asks the official USCIS page about every distinct edition on file (live or pending, trusted date only) through the same `runAutomaticCheck` the Check-now button and the gate use, tagged `scheduled_sync`. `USCISCatalogSyncJob` calls it right after `runCatalogSync` and contains no acceptance logic of its own (a test asserts this). One edition failing never stops the rest and the run never throws. It follows the same switch as the pipeline check: **it does nothing until `FORM_EDITION_AUTO_EVIDENCE=true`**, because a recorded decision is a database write. Tests: `scheduler.test.js` (4); the entry-point matrix now lists the job as the only non-enforcer importer.
+
+Verification after both changes: 194 backend tests pass (form-edition-policy, scripts, PrintedEdition, EditionDate); backend `/api/health` 200 after the reload. `PDFFieldScannerService.test.js` has one failure that is not from these changes: it still expects the old `01/17/2025` version format while the code has produced `yyyy-mm-dd` since the version-normalisation change.
+
+## 11. Addendum 2 (same day): edition dates corrected from the PDF, automatic checks switched on
+
+You lifted the database rule ("you can write in the database, just do not create a case"). No case was created. All writes below are to form templates, their stored files and the three FormEdition* collections.
+
+**I-589 and I-131 corrected to the edition printed in the footer of their own stored PDF** (`scripts/correctEditionFromPdfFooter.js`, dry run first, then `--apply`; the stored PDF is copied to the new name and verified byte for byte before the template is pointed at it; the old file is kept; the update only applies while the version is unchanged; idempotent - a re-run reports "already correct").
+
+| Form | Before | After | Stored file |
+|---|---|---|---|
+| I-589 | edition/version 2026-09-15 (import date) | **2026-07-28**, source `pdf` | `government/uscis/I-589/2026-07-28/<sha256>/i-589_2026-07-28.pdf` |
+| I-131 | edition/version 2026-09-18 (import date) | **2025-01-20**, source `pdf` | `government/uscis/I-131/2025-01-20/<sha256>/i-131_2025-01-20.pdf` |
+
+Changed with the edition: `editionDate`, `version`, `registryId`, `pdfStorageKey`, `pdfTemplatePath`, `localPdfPath`, `artifacts.form.storageKey/storagePath`, `importMetadata.editionDateSource` and the certification's version label (so the next autopilot run does not re-certify for a label change). Nothing was deleted.
+
+**One collision, and what I did about it:** I-131 already had a retired template with version `2025-01-20` (uploaded by hand earlier, status `retired`, no case forms; the unique `formCode+version` and `registryId` indexes would reject a second one). Only that retired row's **label** moved aside: version `2025-01-20` -> `2025-01-20-manual-upload`, registryId `I-131:2025-01-20` -> `I-131:2025-01-20-manual-upload`. Its mapping versions, its file and its status are untouched; the previous values are in this report if you want it reversed. The script does this only with `--relabelRetiredDuplicate`, only for a retired template with zero case forms.
+
+Left as they were: the mapping versions keep their old, immutable `formVersion` label (they are found through the template, not through that label); `mappingConfiguration.version` was not changed (not an edition).
+
+**Missing edition dates filled from the PDF footer** (`scripts/fillMissingEditionDatesFromPdfFooter.js`): 19 templates (the 17 review/draft rows plus two retired I-485 supplements) got `editionDate` and source `pdf`, e.g. I-918 2025-01-20, I-864A 2026-08-24, I-130A 2024-04-01, I-485A 2026-09-18, G-325R 2026-09-04. Only the date was set - not the version, file name or status. Six templates stay without a date because their PDF prints no unambiguous edition: G-28 (review), G-28I, G-1145, G-1256, G-1650, AR-11 (the 2026-02-01 row).
+
+**Automatic checks switched on:** `FORM_EDITION_AUTO_EVIDENCE=true` in `Backend/.env` (git-ignored) and `.env.example`; the backend was restarted to pick it up and answers `/api/health` 200. I then ran one sweep through the scheduler (the same function the 12-hour job calls) to prove it end to end: 47 editions checked - **14 accepted** (G-1041, G-1041A, G-1566, I-129, I-765, I-829, I-864, I-864A, I-864EZ, I-90, I-918, I-956F, N-565, N-600), 21 no explicit statement, 4 held because the stored PDF differs from the official one (I-129F, I-539, I-693, I-485), 6 fetch failed and 2 without an official page (supplements with no standalone page); nothing was recorded as not accepted. Written: 14 decision rows (actor `pipeline:official_source`), 14 snapshots, 70 audit events. **I-589 and I-131 got no decision** - USCIS's pages do not state their acceptance explicitly - so any new edition of them stays held; their currently live editions keep serving.
+
+From now on the check also runs by itself ten minutes after backend start and every 12 hours after the catalog sync, and at every activation attempt.
+
+Tests: 6 new (`correctEditionFromPdfFooter.test.js`); 191 pass across form-edition-policy and scripts.
+
+## 12. Addendum 3 (same day): the published edition IS the accepted edition
+
+**Your decision:** the 12-hourly edition-date check removes the need for USCIS to state acceptance in words. The edition USCIS publishes as current on a form's page (its own "Edition Date" field) is accepted unless the page refuses it. This reverses the plan's "silence never creates acceptance" rule on your instruction.
+
+**What the 12-hour job already does (unchanged, nothing was rebuilt):** `USCISCatalogSyncJob` -> `FormCatalogSyncService.runCatalogSync` every 12 h (10 min after start): lists every form on uscis.gov, compares each page's edition date with the installed one, does nothing for unchanged forms, and for new/changed editions runs the existing pipeline (fetch with retry -> qpdf normalise / XFA removal -> import -> carry the mapping forward or apply authored rules -> certification -> promote only if everything passes, otherwise the installed edition keeps serving). It is pure code with no AI. **Gemini is not part of that pipeline** - field mapping uses the earlier edition's mapping graph or the authored `partyFieldRules` crosswalks, and Gemini appears only in document intelligence (passports, resumes). Using Gemini for mapping was a later phase of the plan, gated behind a golden set; it is not built and was not changed here.
+
+**What changed now**
+- `filingEligibility.js`: new pattern `current_official_edition` - accepted when the page's own "Edition Date" equals this edition and no sentence refuses it (a refusal still wins; an edition the page does NOT list as current stays held; contradictory statements stay ambiguous). The quote kept in the audit trail is the page's own "Edition Date <D>" text, verified verbatim in the snapshot.
+- Verification stays mandatory: official https uscis.gov source, fresh fetch, the page names the edition, the template's edition matches. For the stored-PDF comparison: if a checksum was compared it must match (a difference always holds the edition); **if no checksum can be compared** (no stored checksum / no official PDF URL on the template) the edition printed in the footer of the stored PDF must equal the edition (`pdf_printed_edition_matches`). New `readPrintedEdition` dependency; tests added (21 detector + 4 new automatic-evidence tests; 196 pass in form-edition-policy + scripts).
+
+**Correction of something I told you earlier:** I reported four forms (I-129F, I-539, I-693, I-485) as "stored PDF differs from the official PDF". That was wrong. They were held because those seeded templates have **no stored checksum to compare with** (and no official PDF URL), not because the PDFs differ. With the footer check they now pass. Sections 5, 7 and 10 above carry the old wording.
+
+**Read-only dry run after the change (49 editions on file, real uscis.gov pages, memory store): 38 accepted** (9 `current_acceptable_edition`, 9 `explicit_accept`, 20 `current_official_edition`), 0 not accepted. Not accepted by the automatic check, correctly: I-539A, I-130A, I-485J, I-485A, I-918 Supplements A/B (HTTP 404 - supplements have no page of their own; the parent form's page governs), I-918SUPA/B drafts (no official page known), G-28 (edition date from an import date and its PDF prints no edition), and two older review rows (G-1055 2026-09-09, G-325R 2026-09-04: not the page's current edition).
+
+## 13. Addendum 4 (same day): every form checked, supplements resolved from their own PDF, manual path removed
+
+**Footer reader improved.** Older forms print the footer as `Form G-28 09/17/18  Page 1 of 4` (no word "Edition"; G-1145 even has a stray letter before "Page"); that shape is now read too. Still footer-only: OMB `Expires` and EOIR `Rev.` / `Exp.` are never read.
+
+**Supplements and forms without a page of their own** (I-130A, I-485J, I-485A, I-539A, I-918 Supplements A/B): their parent form's page is used when it lists them; otherwise the **official PDF at its stable uscis.gov address** (`.../forms/i-130a.pdf`, `i-485supj.pdf`, `i-918supa.pdf`) is the source - its own footer prints the edition, and that footer line is the quote in the audit trail (pattern `current_official_pdf`). If that PDF prints a different edition the result is `official_pdf_edition_differs` and nothing is recorded.
+
+**All 60 templates compared (stored-PDF footer vs stored edition date):** 53 match, 1 corrected (G-28 active: 2026-09-22 import date -> **2018-09-17** from its footer; file now `g-28_2018-09-17.pdf`), 4 review rows still without a date by your instruction (G-1145 2014-09-26, G-1256 2015-08-10, G-1650 2025-06-03, G-28I 2018-05-23 - footers found, nothing written; the fill command had already written them when your instruction arrived and I put them back exactly as they were), 2 review rows whose stored PDF is not a USCIS form at all (**AR-11 and G-28 review rows hold "Form EOIR-29 Rev. 02/2026"** - wrongly imported), 1 retired I-485 row (stored 2026-04-09, footer 2026-09-04; not touched).
+
+**Sweep result:** 46 of 49 editions recorded as accepted (all 8 supplements included, G-28 2018-09-17 included). Not accepted automatically: G-1055 2026-09-09 and G-325R 2026-09-04 (older review rows, not the page's current edition) and I-485A (review row: the stored PDF's checksum differs from the official i-485supa.pdf although the footer edition is the same - a re-posted file).
+
+**Manual path removed.** `POST /evidence`, `GET /evidence/:id` and `POST /evidence/:id/decision` are no longer routed; only `GET /editions`, `GET /gate` and `POST /auto-check` (runs the same automatic check on demand) remain, and the Admin API client lost the three methods. The service code behind them stays as internal, unrouted code with its tests.
+
+Tests: 211 backend (policy, scripts, footer reader), 8 Admin component tests.
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -304,3 +458,4 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 |---|---|---|---|
 | 2026-10-16 | Release 0a | Read-only pre-rollout report, redirect-chain crawl, read-only DB wrapper, 50 tests, this document | `Backend/src/scripts/formEditionPolicyRolloutReport.js`, `formSourceRedirectCrawl.js`, `lib/readOnlyDb.js`, `tests/*.test.js`, `docs/FORM_PIPELINE_IMPLEMENTATION_REPORT.md` |
 | 2026-10-16 | Release 0b-1 | Evidence-resolution path: 3 models (2 append-only), redirect-safe fetcher, verifier, fail-closed gate (wired into nothing), evidence service + admin/team_lead API, evidence section in Form Governance, unrun index script, 75 backend + 8 Admin tests, slicing check | `Backend/src/models/FormEdition*.js`, `models/helpers/appendOnly.js`, `modules/form-edition-policy/*`, `routes/index.js` (1 line), `scripts/createFormEditionPolicyIndexes.js`, `scripts/formSourceRedirectCrawl.js` (shared validator), `Admin/frontend/src/components/FormEditionEvidenceSection.jsx`, `services/api.js`, `pages/FormGovernance.jsx` |
+| 2026-10-16 | Release 0b-2 | Automatic evidence from the official USCIS page (explicit statements only), `POST /auto-check`, fail-closed enforcer wired into 4 services, 11 seeds and the replace script, narrowed rescue, Admin screen now "Check now" (no manual entry), unique indexes created, read-only coverage dry run (8 of 31 editions auto-accept), 181 backend + 127 Admin tests | `Backend/src/modules/form-edition-policy/{filingEligibility,EditionPolicyEnforcer,EvidenceService}.js`, controller/routes, gated pipeline files, `tests/*`, `Admin/frontend/src/components/FormEditionEvidenceSection.jsx(+test)`, `services/api.js` |

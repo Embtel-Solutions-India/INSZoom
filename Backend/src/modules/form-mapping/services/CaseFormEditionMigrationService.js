@@ -67,6 +67,8 @@ function carryBag(bag, match, flatOutput, forceFlat) {
 }
 
 async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = newTemplate.formCode }) {
+  // Release 0b-2: never move cases onto an edition USCIS's acceptance of which is not on record (fail closed; throws before any case form is touched)
+  await require("../../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(newTemplate, { entryPoint: "migrateCaseFormsToEdition", actor });
   const result = { considered: 0, migrated: 0, skippedFrozen: 0, valuesCarried: 0, valuesArchived: 0, valuesRestoredAfterAutofill: 0, failed: [] };
   const priorEditions = await USCISFormTemplate.find({ formCode, _id: { $ne: newTemplate._id } }).lean();
   const priorById = new Map(priorEditions.map((template) => [String(template._id), template]));

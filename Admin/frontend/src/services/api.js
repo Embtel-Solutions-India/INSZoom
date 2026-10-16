@@ -625,9 +625,7 @@ export const uscisFormsApi = {
 export const formEditionPolicyApi = {
   editions: () => api.get('/form-edition-policy/editions'),
   gate: (formCode, edition) => api.get('/form-edition-policy/gate', { params: { formCode, edition } }),
-  submitEvidence: (payload) => api.post('/form-edition-policy/evidence', payload),
-  evidenceCase: (evidenceCaseId) => api.get(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}`),
-  recordDecision: (evidenceCaseId, payload) => api.post(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}/decision`, payload),
+  autoCheck: (formCode, editionIdentifier) => api.post('/form-edition-policy/auto-check', { formCode, editionIdentifier }),
 }
 
 export const formGovernanceApi = {

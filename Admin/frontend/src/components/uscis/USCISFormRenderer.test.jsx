@@ -24,7 +24,8 @@ vi.mock('react-pdf', () => ({
       <div data-testid={`pdf-page-${pageNumber}`}>
         <div className="annotationLayer">
           <input title="First Name" name="beneficiary.firstName" defaultValue="" />
-          <input title="Last Name" name="beneficiary.lastName" defaultValue="Smith" />
+          <input title="Last Name" name="beneficiary.lastName" defaultValue="Smith" maxLength={10} />
+          <input title="Comb Field" name="beneficiary.combField" defaultValue="" maxLength={5} className="comb" />
         </div>
       </div>
     )
@@ -214,7 +215,39 @@ describe('USCISFormRenderer', () => {
 
   // Phase 3 (§I.4) - conflict resolution actions
 
-  // Phase 3 (§I.5) - autosave reliability
+  // Explicit Save (no autosave) + save reliability
+  it('does not save on blur - the edit stays a local draft until Save is pressed', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    fireEvent.blur(input)
+
+    expect(await screen.findByText('1 unsaved')).toBeTruthy()
+    expect(saveWorkspaceFieldApi).not.toHaveBeenCalled()
+  })
+
+  it('the Save button is disabled until there is an unsaved change, then saves it', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    const saveButton = screen.getByRole('button', { name: /^Save$/ })
+    expect(saveButton.disabled).toBe(true)
+
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    await vi.waitFor(() => expect(saveButton.disabled).toBe(false))
+    fireEvent.click(saveButton)
+
+    await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
+    expect(saveWorkspaceFieldApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', value: 'Johnson' })
+    expect(await screen.findByText(/Other case managers, team leads and admins can now see your changes/)).toBeTruthy()
+  })
+
   it('retries a failed save with backoff and eventually shows "Saved ✓"', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
@@ -225,9 +258,10 @@ describe('USCISFormRenderer', () => {
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
     const input = await screen.findByTitle('Last Name')
-    fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'Johnson' } })
-    fireEvent.blur(input)
+    const saveButton = screen.getByRole('button', { name: /^Save$/ })
+    await vi.waitFor(() => expect(saveButton.disabled).toBe(false))
+    fireEvent.click(saveButton)
 
     // 500ms + 1000ms of backoff between the 3 attempts - well under vitest's default 5000ms test
     // timeout, but over findBy*'s default 1000ms wait, hence the explicit timeout below.
@@ -235,23 +269,104 @@ describe('USCISFormRenderer', () => {
     expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(3)
   })
 
-  it('the before-unload guard warns when there is an unsaved change in flight', async () => {
+  // Typing smoothness: a stored value must never be written back over the box being typed in
+  it('never overwrites the focused box with a stored value while the case manager is typing or deleting', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-    saveWorkspaceFieldApi.mockImplementation(() => new Promise(() => {})) // never resolves - save stays in flight
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
     const input = await screen.findByTitle('Last Name')
-    fireEvent.focus(input)
+    input.focus()
     fireEvent.change(input, { target: { value: 'Johnson' } })
-    fireEvent.blur(input)
+    // A character typed (or deleted) that React state has not caught up with yet:
+    input.value = 'Johnsonxyz'
+    await new Promise((resolve) => setTimeout(resolve, 500)) // past the state-commit delay -> re-sync runs
+
+    expect(input.value).toBe('Johnsonxyz')
+  })
+
+  it('a deleted value stays deleted and is saved as an empty value on Save', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    input.focus()
+    fireEvent.change(input, { target: { value: '' } })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(input.value).toBe('')
+
+    const saveButton = screen.getByRole('button', { name: /^Save$/ })
+    await vi.waitFor(() => expect(saveButton.disabled).toBe(false))
+    fireEvent.click(saveButton)
     await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
+    expect(saveWorkspaceFieldApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', value: '' })
+  })
+
+  it('does not retry a save the server rejected outright (4xx) and shows the server message', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+    saveWorkspaceFieldApi.mockRejectedValue({ response: { status: 400, data: { message: 'Unknown USCIS form field' } } })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    const saveButton = screen.getByRole('button', { name: /^Save$/ })
+    await vi.waitFor(() => expect(saveButton.disabled).toBe(false))
+    fireEvent.click(saveButton)
+
+    expect(await screen.findByText('Unknown USCIS form field')).toBeTruthy()
+    expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1)
+  })
+
+  it('an edit made while a save is in flight stays unsaved (and is not reloaded over)', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+    let finishSave
+    saveWorkspaceFieldApi.mockImplementation(() => new Promise((resolve) => { finishSave = () => resolve({}) }))
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    const saveButton = screen.getByRole('button', { name: /^Save$/ })
+    await vi.waitFor(() => expect(saveButton.disabled).toBe(false))
+    fireEvent.click(saveButton)
+    await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(input, { target: { value: 'Johnsonville' } }) // typed while the request is in flight
+    finishSave()
+
+    expect(await screen.findByText('1 unsaved')).toBeTruthy()
+    expect(input.value).toBe('Johnsonville')
+    expect(workspaceApi).toHaveBeenCalledTimes(1) // no reload over the newer edit
+  })
+
+  it('the before-unload guard warns when there is an unsaved change', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    await screen.findByText('1 unsaved')
 
     const event = new Event('beforeunload', { cancelable: true })
     Object.defineProperty(event, 'returnValue', { writable: true, value: '' })
     window.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
+  })
+
+  // Character limits
+  it('removes the PDF maxlength from free-text inputs but keeps it on comb fields', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+
+    await vi.waitFor(() => expect(input.hasAttribute('maxlength')).toBe(false))
+    expect(screen.getByTitle('Comb Field').getAttribute('maxlength')).toBe('5')
   })
 
   // Forms Download overhaul - single "Download Official Form" button, no status gate

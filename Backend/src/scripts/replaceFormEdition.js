@@ -84,6 +84,8 @@ async function run({ formCode, toVersion, apply, acknowledgeEditionChanges }) {
   const registryVisaTypes = await deriveVisaTypesFromRegistry(formCode);
   const carriedVisaTypes = oldTemplates.flatMap((t) => t.visaTypes || []);
   fresh.visaTypes = Array.from(new Set([...(fresh.visaTypes || []), ...carriedVisaTypes, ...registryVisaTypes]));
+  // Release 0b-2: the swap happens only for an edition whose acceptance is on record (fail closed; thrown before anything above is saved as active)
+  await require("../modules/form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(fresh, { entryPoint: "replaceFormEdition", actor });
   fresh.status = "active";
   fresh.activeFlag = true;
   fresh.officialStatus = "current";

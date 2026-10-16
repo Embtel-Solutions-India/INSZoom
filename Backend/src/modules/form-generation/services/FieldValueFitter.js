@@ -10,9 +10,10 @@
 //     digits (drops a country-code prefix such as +91 / 1)
 //   - ZIP: keep digits only, then the first maxLength digits (ZIP+4 forms have
 //     a separate 4-digit field)
-// Anything else (names, emails, street lines, ...) is NEVER truncated - a cut
-// email or legal name is worse than a blank the case manager can see and
-// complete - so it is reported as "dropped" and left empty.
+// Anything else (names, emails, street lines, ...) is cut to the first
+// maxLength characters so the form still carries as much of the entry as fits,
+// and the cut is reported as an "adjusted" write so the download warns the case
+// manager to double-check that field.
 const PHONE_FIELD = /(phone|mobile|fax)/i;
 const ZIP_FIELD = /zip/i;
 
@@ -29,7 +30,7 @@ function fitTextValue({ pdfField, value, maxLength }) {
     const digits = text.replace(/\D/g, "");
     if (digits.length) return { value: digits.slice(0, maxLength), status: "adjusted", reason: `ZIP shortened to ${maxLength} digits` };
   }
-  return { value: "", status: "dropped", reason: `value is ${text.length} characters but the PDF field allows ${maxLength}; left blank` };
+  return { value: text.slice(0, maxLength), status: "adjusted", reason: `value is ${text.length} characters but the PDF field allows ${maxLength}; cut to the first ${maxLength} characters` };
 }
 
 // ---- dropdown / radio / option-list fields --------------------------------

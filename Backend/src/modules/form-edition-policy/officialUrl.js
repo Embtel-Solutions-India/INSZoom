@@ -25,4 +25,21 @@ function checkUrl(raw) {
 /** A url reduced to what identifies a request (used to detect redirect loops). */
 const normalizeUrl = (url) => `${url.protocol}//${url.host}${url.pathname}${url.search}`;
 
-module.exports = { checkUrl, normalizeUrl };
+const FORMS_BASE = "https://www.uscis.gov/sites/default/files/document/forms/";
+
+/**
+ * Pure. The stable uscis.gov addresses of a form's own PDF, most likely first: the template's known one, then "<code>.pdf" ("i-130a.pdf", "i-539a.pdf") and, for a
+ * lettered supplement of a form, "<form>sup<letter>.pdf" ("i-485supj.pdf"); "I-918 SUPPLEMENT A" becomes "i-918supa.pdf". Nothing is requested here.
+ */
+function officialPdfCandidates(formCode, knownUrl) {
+  const out = knownUrl ? [knownUrl] : [];
+  const compact = String(formCode || "").trim().toLowerCase().replace(/\s*supplement\s*/g, "sup").replace(/\s+/g, "");
+  if (/^[a-z]{1,3}-\d+[a-z]*$/.test(compact)) {
+    out.push(`${FORMS_BASE}${compact}.pdf`);
+    const lettered = compact.match(/^([a-z]{1,3}-\d+)([a-z])$/);
+    if (lettered) out.push(`${FORMS_BASE}${lettered[1]}sup${lettered[2]}.pdf`);
+  }
+  return [...new Set(out)];
+}
+
+module.exports = { checkUrl, normalizeUrl, officialPdfCandidates, FORMS_BASE };

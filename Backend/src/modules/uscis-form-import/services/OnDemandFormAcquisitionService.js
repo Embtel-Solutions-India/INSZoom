@@ -292,6 +292,8 @@ async function activateOrPromote(template, user, req) {
     if (template.status !== "review") {
       template = await VersionManagementService.approve(template._id, user, req);
     }
+    // the edition that is live right now (if any): the only one the rescue below may ever put back
+    const liveBefore = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
     try {
       // VersionManagementService.activate returns { template, impact, componentDiscovery } - keep the document itself (a later step persists against it)
       const activated = await versionService.activate(template._id, user, req);
@@ -309,10 +311,12 @@ async function activateOrPromote(template, user, req) {
       // the template stays at "review" and this is reported back as
       // requiresActivation, not silently swallowed or forced through.
       activationBlockedReason = error.message;
-      // never leave a form without a live edition: put the previous one back if activation died half-way
+      // never leave a form without a live edition: put the edition that WAS live back if activation died half-way (e.g. a failed save after the old one
+      // was retired). Release 0b-2: only that exact edition - never "the most recently retired one", which could be an older edition no policy ever
+      // accepted. (The acceptance gate runs inside activate() BEFORE anything is retired, so a policy hold never reaches this point.)
       const stillActive = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
-      if (!stillActive) {
-        const previousEdition = await USCISFormTemplate.findOne({ formCode: template.formCode, _id: { $ne: template._id }, status: "retired" }).sort({ retiredAt: -1 });
+      if (!stillActive && liveBefore) {
+        const previousEdition = await USCISFormTemplate.findOne({ _id: liveBefore._id, status: "retired" });
         if (previousEdition) { previousEdition.status = "active"; previousEdition.currentStatus = "active"; previousEdition.activeFlag = true; await previousEdition.save(); }
       }
       logger.info("uscis_form_mapping_review_required", { formCode: template.formCode, templateId: String(template._id), reason: error.message });

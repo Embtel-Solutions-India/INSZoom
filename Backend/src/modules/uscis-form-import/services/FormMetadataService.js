@@ -1,4 +1,4 @@
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 const { PDFDocument } = require("pdf-lib");
 const _ = require("lodash");
 
@@ -52,18 +52,54 @@ function extractFormNumber(text = "") {
   return candidates[0]?.[1]?.replace(/\s+/g, "-").toUpperCase();
 }
 
+// The edition USCIS prints in the footer of every page. Current forms print "Form I-131  Edition 01/20/25  Page 1 of 14"; older ones print "Form G-28  09/17/18  Page 1 of 4"
+// (or "Page 1 of 1  Form G-1650 06/03/25") without the word Edition. Only those footer shapes count: "Expires" is the OMB approval date and "Rev." / "Exp." (EOIR forms) are not
+// USCIS editions, so none of them is read. Every page repeats the footer, so the most frequent date wins; a tie is ambiguous and yields nothing.
+const EDITION_WORD_FOOTER = /Edition\s+(?:Date\s*)?:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/gi;
+const PLAIN_FOOTERS = [
+  /\bForm\s+[A-Z]{1,4}-?\d+[A-Z]*\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})(?:\s+[A-Za-z])?\s+Page\s+\d+\s+of\s+\d+/gi,
+  /Page\s+\d+\s+of\s+\d+\s+Form\s+[A-Z]{1,4}-?\d+[A-Z]*\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/gi,
+];
 function extractEditionDate(text = "") {
-  const patterns = [
-    /Edition\s+(?:Date\s*)?:?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
-    /Expires\s+(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
-    /Rev(?:ision)?\.?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    const parsed = parseEditionDate(match?.[1]);
-    if (parsed) return parsed;
+  const source = String(text);
+  const editionWord = [...source.matchAll(EDITION_WORD_FOOTER)];
+  const matches = editionWord.length ? editionWord : PLAIN_FOOTERS.flatMap((pattern) => [...source.matchAll(pattern)]);
+  const counts = new Map();
+  const counted = new Set(); // one footer can match two shapes; count each printed date once, by position
+  for (const match of matches) {
+    const at = match.index + match[0].lastIndexOf(match[1]);
+    if (counted.has(at)) continue;
+    counted.add(at);
+    const parsed = parseEditionDate(match[1]);
+    if (parsed) counts.set(parsed.getTime(), (counts.get(parsed.getTime()) || 0) + 1);
   }
-  return undefined;
+  const ranked = [...counts.entries()].sort((x, y) => y[1] - x[1]);
+  if (!ranked.length || (ranked[1] && ranked[1][1] === ranked[0][1])) return undefined;
+  return new Date(ranked[0][0]);
+}
+
+// The footer line itself ("Form I-485 Sup J  Edition 09/18/26"), verbatim, for an edition; null when no footer prints it. Used as the quote in the audit trail.
+function footerEditionQuote(text = "", editionIso) {
+  const source = String(text);
+  const editionWord = [...source.matchAll(EDITION_WORD_FOOTER)];
+  const matches = editionWord.length ? editionWord : PLAIN_FOOTERS.flatMap((pattern) => [...source.matchAll(pattern)]);
+  for (const match of matches) {
+    const parsed = parseEditionDate(match[1]);
+    if (!parsed || parsed.toISOString().slice(0, 10) !== editionIso) continue;
+    const before = source.slice(Math.max(0, match.index - 30), match.index).split(/\r?\n/).pop();
+    return `${before}${match[0]}`.replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
+// pdf-parse v2 API (the same call USCISFormComponentDiscoveryService uses). The buffer is copied because pdf.js may detach the one it is given.
+async function readPdfText(buffer) {
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    return (await parser.getText()).text || "";
+  } finally {
+    await parser.destroy();
+  }
 }
 
 function extractTitle(text = "", formNumber) {
@@ -108,10 +144,7 @@ class FormMetadataService {
     let pdfVersion;
     let info = {};
     try {
-      const parsed = await pdfParse(buffer);
-      parsedText = parsed.text || "";
-      info = parsed.info || {};
-      pdfVersion = parsed.version;
+      parsedText = await readPdfText(buffer);
     } catch {
       parsedText = "";
     }
@@ -175,3 +208,6 @@ module.exports.resolveEdition = resolveEdition;
 module.exports.normalizeVersion = normalizeVersion;
 module.exports.isoDate = isoDate;
 module.exports.parseEditionDate = parseEditionDate;
+module.exports.extractEditionDate = extractEditionDate;
+module.exports.readPdfText = readPdfText;
+module.exports.footerEditionQuote = footerEditionQuote;

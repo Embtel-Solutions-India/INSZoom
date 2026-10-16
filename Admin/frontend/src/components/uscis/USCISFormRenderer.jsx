@@ -30,6 +30,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
   SkipForward,
@@ -71,7 +72,20 @@ const MIN_PAGE_RENDER_WIDTH = 612
 // matching the delays the task spec calls for. A field stays in dirtyFieldsRef until it actually
 // succeeds - a failed/retrying save is never quietly dropped, and the existing before-unload guard
 // (dirtyFieldsRef.current.size, further down this file) already covers both states for free.
-const AUTOSAVE_RETRY_DELAYS_MS = [500, 1000, 2000]
+const AUTOSAVE_RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 8000, 8000, 8000, 8000]
+// A save that still fails after every retry above (server/network trouble) is re-attempted in the
+// background at this interval until it goes through, so a Save the case manager asked for is never
+// quietly abandoned. A 4xx (validation/permission) error is not retried - repeating it cannot succeed.
+const BACKGROUND_RETRY_MS = 10000
+const isRetryableSaveError = (error) => {
+  const status = error?.response?.status
+  return !status || status >= 500 || status === 408 || status === 429
+}
+// Typing updates the live draft (valuesRef) instantly; React state - which drives page-wide
+// re-rendering - is only brought up to date in batches this far apart, so typing never lags.
+const VALUES_COMMIT_DELAY_MS = 200
+// Keystrokes in the same field closer together than this are one Undo step.
+const UNDO_COALESCE_MS = 1000
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const getByPath = (source, path) => {
@@ -81,15 +95,14 @@ const getByPath = (source, path) => {
 }
 
 const setByPath = (source, path, value) => {
-  const next = structuredClone(source || {})
   // AcroForm field names (e.g. "form1[0].#subform[0].Line1_FamilyName[0]")
   // contain "[" and are FLAT keys in the values store, never nested paths -
   // splitting one on "." (below) destroys it. Set directly and return before
-  // any of that logic runs.
-  if (String(path).includes('[')) {
-    next[path] = value
-    return next
-  }
+  // any of that logic runs. A shallow copy is enough here (the value is
+  // replaced, never mutated in place) and keeps every keystroke cheap - a deep
+  // clone of the whole form's values per keystroke is what made typing lag.
+  if (String(path).includes('[')) return { ...(source || {}), [path]: value }
+  const next = structuredClone(source || {})
   // Genuine dotted canonical paths (e.g. "applicant.lastName"): remove any
   // stale flat key with the same literal name before creating the nested entry.
   if (String(path).includes('.') && Object.prototype.hasOwnProperty.call(next, path)) delete next[path]
@@ -374,11 +387,15 @@ const applyNativeFieldValue = (element, value) => {
   const type = String(element.type || '').toLowerCase()
   if (type === 'checkbox' || type === 'radio') {
     const exportValue = element.value && element.value !== 'on' ? element.value : element.getAttribute?.('data-export-value')
-    element.checked = Boolean(nextValue) && (exportValue ? String(nextValue) === String(exportValue) : true)
+    const checked = Boolean(nextValue) && (exportValue ? String(nextValue) === String(exportValue) : true)
+    if (element.checked !== checked) element.checked = checked
     return
   }
-  element.value = Array.isArray(nextValue) ? nextValue.join(', ') : String(nextValue)
+  const text = Array.isArray(nextValue) ? nextValue.join(', ') : String(nextValue)
+  if (element.value !== text) element.value = text
 }
+
+const NATIVE_FIELD_CLASSES = ['canonical', 'override', 'session', 'conflict', 'error', 'saving', 'unmapped'].map((name) => `native-field-${name}`)
 
 const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit }) => {
   if (!root) return
@@ -394,12 +411,28 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
         ? 'saving'
         : fieldSourceTone(field, value, Boolean(validationErrors[fieldName]?.length), sessionEditedFields.has(fieldName))
 
-    element.dataset.fieldName = fieldName
-    element.classList.remove('native-field-canonical', 'native-field-override', 'native-field-session', 'native-field-conflict', 'native-field-error', 'native-field-saving', 'native-field-unmapped')
-    if (!field) element.classList.add('native-field-unmapped')
-    if (tone) element.classList.add(`native-field-${tone}`)
-    element.disabled = !canEdit || Boolean(field?.readOnly || field?.readonly)
-    applyNativeFieldValue(element, value)
+    if (element.dataset.fieldName !== fieldName) element.dataset.fieldName = fieldName
+    const wanted = new Set()
+    if (!field) wanted.add('native-field-unmapped')
+    if (tone) wanted.add(`native-field-${tone}`)
+    NATIVE_FIELD_CLASSES.forEach((className) => {
+      const has = element.classList.contains(className)
+      if (wanted.has(className) && !has) element.classList.add(className)
+      else if (!wanted.has(className) && has) element.classList.remove(className)
+    })
+    const disabled = !canEdit || Boolean(field?.readOnly || field?.readonly)
+    if (element.disabled !== disabled) element.disabled = disabled
+    // pdf.js copies the PDF field's own /MaxLen onto the input, which silently
+    // stops typing/pasting at that length. Free-text fields must accept any
+    // length, so lift it. Comb fields (one character per printed box) keep it -
+    // their layout is built around exactly that many characters.
+    if (element.hasAttribute('maxlength') && !element.classList.contains('comb')) element.removeAttribute('maxlength')
+    // Never write a stored value into the box the case manager is typing in: a stale value
+    // (state lags the keyboard) would overwrite what they just typed or deleted, which is the
+    // "deleted characters keep coming back" bug. The live DOM value IS the newest value there.
+    const type = String(element.type || '').toLowerCase()
+    const isEditing = typeof document !== 'undefined' && document.activeElement === element && type !== 'checkbox' && type !== 'radio'
+    if (!isEditing) applyNativeFieldValue(element, value)
   })
 }
 
@@ -407,14 +440,16 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
 // with every in-scope field's overlay positioned on top of it at its real
 // coordinates - this IS the "legit form" look Task 2 asks for, replacing
 // the flat per-field list this component used to render exclusively.
-function PdfFormPage({ pdfPageNumber, displayPageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, fieldsByName, values, validationErrors, canEdit, selectedFieldName, onSelectField, onNativeFieldInput, onNativeFieldCommit, registerPageRef, showBackground = true, sessionEditedFields, fieldSaveStatus }) {
+function PdfFormPage({ pdfPageNumber, displayPageNumber, pdfPageWidth, pdfPageHeight, renderWidth, fields, fieldsByName, values, validationErrors, canEdit, selectedFieldName, onSelectField, onNativeFieldInput, onNativeFieldCommit, registerPageRef, showBackground = true, sessionEditedFields, fieldSaveStatus, liveValuesRef }) {
   const scale = pdfPageWidth ? renderWidth / pdfPageWidth : 1
   const renderHeight = pdfPageHeight ? pdfPageHeight * scale : undefined
   const pageRef = useRef(null)
 
   const syncNativeFields = useCallback(() => {
-    applyNativeFieldStateStyles(pageRef.current, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit })
-  }, [canEdit, fieldSaveStatus, fieldsByName, sessionEditedFields, validationErrors, values])
+    // Prefer the live draft over the `values` prop: the prop trails the keyboard by a short commit
+    // delay, and writing that older value into a box would undo what was just typed.
+    applyNativeFieldStateStyles(pageRef.current, { fieldsByName, values: liveValuesRef?.current || values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit })
+  }, [canEdit, fieldSaveStatus, fieldsByName, liveValuesRef, sessionEditedFields, validationErrors, values])
 
   useEffect(() => {
     syncNativeFields()
@@ -552,6 +587,11 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const valuesRef = useRef({})
   const dirtyFieldsRef = useRef(new Set())
   const saveStateTimer = useRef(null)
+  const valuesCommitTimer = useRef(null)
+  const lastUndoRef = useRef({ fieldName: '', at: 0 })
+  const saveInflightRef = useRef(null)
+  const savePendingRef = useRef(null)
+  const backgroundRetryTimer = useRef(null)
   const pageRefs = useRef(new Map())
   const viewerRef = useRef(null)
   const pdfDocumentRef = useRef(null)
@@ -562,15 +602,21 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       const response = await uscisFormsApi.workspace(caseId, caseForm._id)
       const next = response.data
       setWorkspace(next)
-      const nextValues = next.values || next.caseForm?.fieldValues || {}
-      setValues(nextValues)
+      const serverValues = next.values || next.caseForm?.fieldValues || {}
+      lastSaved.current = structuredClone(serverValues)
+      // A background reload (after a save/action) must never throw away what the case manager has
+      // typed since - those unsaved fields keep their local value and stay unsaved.
+      const unsaved = silent ? [...dirtyFieldsRef.current] : []
+      let nextValues = serverValues
+      unsaved.forEach((fieldName) => { nextValues = setByPath(nextValues, fieldName, getByPath(valuesRef.current, fieldName)) })
+      if (valuesCommitTimer.current) { clearTimeout(valuesCommitTimer.current); valuesCommitTimer.current = null }
       valuesRef.current = nextValues
-      lastSaved.current = structuredClone(nextValues)
-      dirtyFieldsRef.current = new Set()
-      setDirtyCount(0)
+      setValues(nextValues)
+      if (!unsaved.length) dirtyFieldsRef.current = new Set()
+      setDirtyCount(dirtyFieldsRef.current.size)
       setFieldSaveStatus({})
       setSessionEditedFields(new Set())
-      setSaveState('saved')
+      setSaveState(unsaved.length ? 'dirty' : 'saved')
       setActiveSection((current) => current || next.template?.sections?.[0]?.key || '')
       setErrorMessage('')
     } catch (error) {
@@ -584,9 +630,27 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     loadWorkspace()
   }, [loadWorkspace])
 
-  useEffect(() => {
-    valuesRef.current = values
-  }, [values])
+  // valuesRef is the single source of truth for the live draft; `values` (state) trails it by at
+  // most VALUES_COMMIT_DELAY_MS. Copying state back into the ref here would overwrite newer
+  // keystrokes with older ones, so every writer goes through writeDraftValue instead.
+  const writeDraftValue = useCallback((fieldName, value, { immediate = false } = {}) => {
+    valuesRef.current = setByPath(valuesRef.current, fieldName, value)
+    if (immediate) {
+      if (valuesCommitTimer.current) { clearTimeout(valuesCommitTimer.current); valuesCommitTimer.current = null }
+      setValues(valuesRef.current)
+      return
+    }
+    if (valuesCommitTimer.current) return
+    valuesCommitTimer.current = setTimeout(() => {
+      valuesCommitTimer.current = null
+      setValues(valuesRef.current)
+    }, VALUES_COMMIT_DELAY_MS)
+  }, [])
+
+  // Undo/redo can target the box that currently has focus, which the DOM sync deliberately skips.
+  const pushValueToDom = useCallback((fieldName, value) => {
+    viewerRef.current?.querySelectorAll(`[data-field-name="${escapeSelector(fieldName)}"]`).forEach((element) => applyNativeFieldValue(element, value))
+  }, [])
 
   useEffect(() => {
     const node = viewerRef.current
@@ -601,6 +665,8 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
 
   useEffect(() => () => {
     if (saveStateTimer.current) clearTimeout(saveStateTimer.current)
+    if (valuesCommitTimer.current) clearTimeout(valuesCommitTimer.current)
+    if (backgroundRetryTimer.current) clearTimeout(backgroundRetryTimer.current)
   }, [])
 
   useEffect(() => {
@@ -817,10 +883,14 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             if (key === adapted.fieldName) return
             if (sameValue(getByPath(lastSaved.current, key), fieldValue)) return
             lastSaved.current = setByPath(lastSaved.current, key, fieldValue)
-            setValues((current) => setByPath(current, key, fieldValue))
+            // Never overwrite a field the case manager has edited but not saved yet.
+            if (dirtyFieldsRef.current.has(key)) return
+            writeDraftValue(key, fieldValue, { immediate: true })
           })
         }
-        dirtyFieldsRef.current.delete(adapted.fieldName)
+        // Only clean once the saved value is still what is on screen - the case manager may have
+        // kept typing in this field while the request was in flight.
+        if (sameValue(getByPath(valuesRef.current, adapted.fieldName), value)) dirtyFieldsRef.current.delete(adapted.fieldName)
         setDirtyCount(dirtyFieldsRef.current.size)
         setFieldSaveStatus((current) => ({ ...current, [adapted.fieldName]: 'saved' }))
         setSessionEditedFields((current) => new Set([...current, adapted.fieldName]))
@@ -831,7 +901,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
         onSaved?.()
         return true
       } catch (err) {
-        if (attempt === AUTOSAVE_RETRY_DELAYS_MS.length) {
+        if (attempt === AUTOSAVE_RETRY_DELAYS_MS.length || !isRetryableSaveError(err)) {
           updateFieldSaveStatus(adapted.fieldName, 'error')
           setSaveState('error')
           setErrorMessage(err.response?.data?.message || 'Unable to save this PDF field. Please try again.')
@@ -841,7 +911,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
       }
     }
     return false
-  }, [canEdit, caseId, caseForm._id, fieldsByName, onSaved, updateFieldSaveStatus])
+  }, [canEdit, caseId, caseForm._id, fieldsByName, onSaved, updateFieldSaveStatus, writeDraftValue])
 
   const adaptPdfChange = useCallback((event, reason = 'Native PDF field edit') => convertPdfFieldChange(event, caseForm._id, valuesRef.current, {
     fieldMetaByName,
@@ -859,27 +929,26 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     if (!field || !canEdit) return
     const previousValue = getByPath(valuesRef.current, field.fieldName)
     if (!sameValue(previousValue, adapted.value)) {
-      setUndoStack((current) => [...current.slice(-49), { fieldName: field.fieldName, value: previousValue, sectionKey: field.sectionKey }])
-      setRedoStack([])
-      dirtyFieldsRef.current.add(field.fieldName)
-      setDirtyCount(dirtyFieldsRef.current.size)
+      const now = Date.now()
+      const lastUndo = lastUndoRef.current
+      if (lastUndo.fieldName !== field.fieldName || now - lastUndo.at > UNDO_COALESCE_MS) {
+        setUndoStack((current) => [...current.slice(-49), { fieldName: field.fieldName, value: previousValue, sectionKey: field.sectionKey }])
+        setRedoStack((current) => (current.length ? [] : current))
+      }
+      lastUndoRef.current = { fieldName: field.fieldName, at: now }
+      if (!dirtyFieldsRef.current.has(field.fieldName)) {
+        dirtyFieldsRef.current.add(field.fieldName)
+        setDirtyCount(dirtyFieldsRef.current.size)
+      }
       setSaveState('dirty')
-      setValues((current) => {
-        const next = setByPath(current, field.fieldName, adapted.value)
-        valuesRef.current = next
-        return next
-      })
+      writeDraftValue(field.fieldName, adapted.value)
     }
-  }, [adaptPdfChange, canEdit, fieldsByName, updateFieldSaveStatus])
+  }, [adaptPdfChange, canEdit, fieldsByName, updateFieldSaveStatus, writeDraftValue])
 
-  const handleNativeFieldCommit = useCallback(async (event) => {
-    const adapted = adaptPdfChange(event)
-    if (adapted.error) {
-      if (adapted.fieldName) updateFieldSaveStatus(adapted.fieldName, 'error')
-      return
-    }
-    await persistAdaptedField(adapted)
-  }, [adaptPdfChange, persistAdaptedField, updateFieldSaveStatus])
+  // Blur / checkbox / select changes only update the local draft. Nothing is sent to the server
+  // (and so nothing becomes visible to other case managers, team leads or admins) until the case
+  // manager presses Save - see handleSave below.
+  const handleNativeFieldCommit = handleNativeFieldInput
 
   // Phase 3 (§I.5): retries a single field's save up to AUTOSAVE_RETRY_DELAYS_MS.length times with
   // exponential backoff before giving up. savePendingChanges' own try/catch (below) is unchanged -
@@ -896,8 +965,9 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     await persistAdaptedField(adapted)
   }, [allFields, canEdit, caseForm._id, fieldMetaByName, knownFieldNames, persistAdaptedField])
 
-  const savePendingChanges = useCallback(async (reason = 'Auto-save before action', options = {}) => {
+  const savePendingChangesNow = useCallback(async (reason = 'Auto-save before action', options = {}) => {
     if (!canEdit || !dirtyFieldsRef.current.size) return true
+    if (backgroundRetryTimer.current) { clearTimeout(backgroundRetryTimer.current); backgroundRetryTimer.current = null }
     setSaveState('saving')
     setBusy((current) => current || 'auto-save')
     setErrorMessage('')
@@ -913,33 +983,60 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
         }
         await saveFieldByName(fieldName, value, reason)
       }
-      setSaveState('saved')
+      // Edits typed while the request was in flight are still unsaved - leave them marked so the
+      // Save button stays live, and don't reload over them.
+      const stillUnsaved = dirtyFieldsRef.current.size > 0
+      setSaveState(stillUnsaved ? 'dirty' : 'saved')
       setNotice('Saved')
       if (saveStateTimer.current) clearTimeout(saveStateTimer.current)
-      saveStateTimer.current = setTimeout(() => setSaveState('idle'), 1800)
-      if (options.reload !== false) await loadWorkspace(true)
+      if (!stillUnsaved) saveStateTimer.current = setTimeout(() => setSaveState('idle'), 1800)
+      if (options.reload !== false && !stillUnsaved) await loadWorkspace(true)
       onSaved?.()
       return true
     } catch (error) {
       setSaveState('error')
       setErrorMessage(error.response?.data?.message || 'Unable to save changes. Please try again.')
+      // Keep going in the background until the server accepts the save (unless it was rejected
+      // outright, which retrying cannot fix). The unsaved fields stay marked meanwhile.
+      if (isRetryableSaveError(error)) {
+        backgroundRetryTimer.current = setTimeout(() => {
+          backgroundRetryTimer.current = null
+          savePendingRef.current?.('Automatic retry of a failed save', { reload: options.reload })
+        }, BACKGROUND_RETRY_MS)
+      }
       return false
     } finally {
       setBusy((current) => current === 'auto-save' ? '' : current)
     }
   }, [canEdit, loadWorkspace, onSaved, saveFieldByName])
 
-  const scrollToPage = useCallback(async (pageNumber) => {
-    if (!(await savePendingChanges('Auto-save before page change'))) return
-    pageRefs.current.get(pageNumber)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // One save at a time: a second Save / Ctrl+S / action that starts while a save is running waits for
+  // it and then saves whatever is still unsaved, so the same field is never sent twice at once.
+  const savePendingChanges = useCallback((reason, options = {}) => {
+    const previous = saveInflightRef.current
+    const promise = (async () => {
+      if (previous) await previous.catch(() => null)
+      return savePendingChangesNow(reason, options)
+    })()
+    saveInflightRef.current = promise
+    promise.finally(() => { if (saveInflightRef.current === promise) saveInflightRef.current = null }).catch(() => null)
+    return promise
+  }, [savePendingChangesNow])
+
+  useEffect(() => {
+    savePendingRef.current = savePendingChanges
   }, [savePendingChanges])
 
+  // Explicit Save: pushes every locally edited field to the server in one go. This is the only
+  // way a plain field edit reaches the shared case form.
+  const handleSave = useCallback(async () => {
+    if (!canEdit || !dirtyFieldsRef.current.size) return
+    const saved = await savePendingChanges('Saved by case manager')
+    if (saved) setNotice('Form saved. Other case managers, team leads and admins can now see your changes.')
+  }, [canEdit, savePendingChanges])
+
   const selectField = async (field) => {
-    if (editingFieldName && editingFieldName !== field.fieldName) {
-      const saved = await savePendingChanges('Auto-save before selecting another field')
-      if (!saved) return false
-      setEditingFieldName('')
-    }
+    if (editingFieldName && editingFieldName !== field.fieldName) setEditingFieldName('')
     setSelectedFieldName(field.fieldName)
     setActiveSection(field.sectionKey)
     return true
@@ -1067,37 +1164,29 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const undo = async () => {
     const entry = undoStack[undoStack.length - 1]
     if (!entry) return
-    const field = allFields.find((item) => item.fieldName === entry.fieldName)
-    const currentValue = getByPath(values, entry.fieldName)
+    const currentValue = getByPath(valuesRef.current, entry.fieldName)
     setUndoStack((current) => current.slice(0, -1))
     setRedoStack((current) => [...current, { ...entry, value: currentValue }])
+    lastUndoRef.current = { fieldName: '', at: 0 }
     dirtyFieldsRef.current.add(entry.fieldName)
     setDirtyCount(dirtyFieldsRef.current.size)
     setSaveState('dirty')
-    setValues((current) => {
-      const next = setByPath(current, entry.fieldName, entry.value)
-      valuesRef.current = next
-      return next
-    })
-    await saveField(field, entry.value)
+    writeDraftValue(entry.fieldName, entry.value, { immediate: true })
+    pushValueToDom(entry.fieldName, entry.value)
   }
 
   const redo = async () => {
     const entry = redoStack[redoStack.length - 1]
     if (!entry) return
-    const field = allFields.find((item) => item.fieldName === entry.fieldName)
-    const currentValue = getByPath(values, entry.fieldName)
+    const currentValue = getByPath(valuesRef.current, entry.fieldName)
     setRedoStack((current) => current.slice(0, -1))
     setUndoStack((current) => [...current, { ...entry, value: currentValue }])
+    lastUndoRef.current = { fieldName: '', at: 0 }
     dirtyFieldsRef.current.add(entry.fieldName)
     setDirtyCount(dirtyFieldsRef.current.size)
     setSaveState('dirty')
-    setValues((current) => {
-      const next = setByPath(current, entry.fieldName, entry.value)
-      valuesRef.current = next
-      return next
-    })
-    await saveField(field, entry.value)
+    writeDraftValue(entry.fieldName, entry.value, { immediate: true })
+    pushValueToDom(entry.fieldName, entry.value)
   }
 
   const saveSection = async (section) => {
@@ -1278,7 +1367,6 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }
 
   const nextProblem = async () => {
-    if (!(await savePendingChanges('Auto-save before moving to next issue'))) return
     const problemFields = allFields.filter((field) => validationErrors[field.fieldName]?.length || !hasValue(getByPath(values, field.fieldName)) && field.required)
     if (!problemFields.length) return
     const currentIndex = problemFields.findIndex((field) => field.fieldName === selectedFieldName)
@@ -1290,7 +1378,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }
 
   const handleClose = async () => {
-    if (!(await savePendingChanges('Auto-save before closing form'))) return
+    if (dirtyFieldsRef.current.size && !window.confirm('You have unsaved changes that other users cannot see yet. Leave without saving? They will be lost.')) return
     onClose?.()
   }
 
@@ -1308,7 +1396,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     const onKeyDown = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
         event.preventDefault()
-        if (canEdit) savePendingChanges('Manual keyboard save')
+        handleSave()
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault()
@@ -1373,6 +1461,18 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${saveState === 'saving' ? 'bg-primary-50 text-primary' : saveState === 'retrying' ? 'bg-amber-50 text-amber-700' : saveState === 'dirty' ? 'bg-amber-50 text-amber-700' : 'bg-primary-50 text-primary'}`}>
                 {saveState === 'saving' ? 'Saving...' : saveState === 'retrying' ? 'Retrying save…' : saveState === 'dirty' ? `${dirtyCount || 1} unsaved` : 'Saved ✓'}
               </span>
+            )}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={dirtyCount === 0 || saveState === 'saving' || saveState === 'retrying' || busy === 'auto-save'}
+                className="flex items-center gap-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 text-xs font-semibold disabled:opacity-50"
+                title="Save your changes to the form so other case managers, team leads and admins can see them (Ctrl+S)"
+              >
+                <Save className="h-3.5 w-3.5" />
+                {saveState === 'saving' || saveState === 'retrying' ? 'Saving…' : 'Save'}
+              </button>
             )}
             <button type="button" onClick={undo} disabled={!undoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Undo</button>
             <button type="button" onClick={redo} disabled={!redoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Redo</button>
@@ -1491,6 +1591,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       registerPageRef={registerPageRef}
                       sessionEditedFields={sessionEditedFields}
                       fieldSaveStatus={fieldSaveStatus}
+                      liveValuesRef={valuesRef}
                     />
                   </div>
                 )
@@ -1527,6 +1628,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                       showBackground={false}
                       sessionEditedFields={sessionEditedFields}
                       fieldSaveStatus={fieldSaveStatus}
+                      liveValuesRef={valuesRef}
                     />
                   </div>
                 )
