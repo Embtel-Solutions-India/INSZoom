@@ -19,6 +19,14 @@ exports.generate = async (req, res, next) => {
   }
 };
 
+exports.coverage = async (req, res, next) => {
+  try {
+    send(res, await MappingGraphService.coverage(req.params.templateId));
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.validate = async (req, res, next) => {
   try {
     const result = await MappingGraphService.validate(req.params.templateId, req.body || {});

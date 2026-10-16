@@ -1,0 +1,299 @@
+{
+  "version": 1,
+  "note": "Classification of form-field defaultValue for the live templates. Autofill behavior is unchanged; a change here is a visible, reviewed event.",
+  "templates": 30,
+  "fieldsWithDefault": 4020,
+  "totals": {
+    "checkbox_unchecked": 3119,
+    "empty_dropdown": 228,
+    "empty_value": 312,
+    "barcode_token": 347,
+    "constant": 5,
+    "party_looking": 0,
+    "other": 9
+  },
+  "perForm": {
+    "G-28": {
+      "checkbox_unchecked": 23,
+      "empty_dropdown": 2,
+      "empty_value": 0,
+      "barcode_token": 4,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "G-325A": {
+      "checkbox_unchecked": 24,
+      "empty_dropdown": 2,
+      "empty_value": 0,
+      "barcode_token": 6,
+      "constant": 1,
+      "party_looking": 0,
+      "other": 6
+    },
+    "I-129": {
+      "checkbox_unchecked": 333,
+      "empty_dropdown": 24,
+      "empty_value": 0,
+      "barcode_token": 38,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-129F": {
+      "checkbox_unchecked": 140,
+      "empty_dropdown": 16,
+      "empty_value": 0,
+      "barcode_token": 12,
+      "constant": 2,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-129S": {
+      "checkbox_unchecked": 42,
+      "empty_dropdown": 3,
+      "empty_value": 0,
+      "barcode_token": 8,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-130": {
+      "checkbox_unchecked": 128,
+      "empty_dropdown": 20,
+      "empty_value": 0,
+      "barcode_token": 12,
+      "constant": 2,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-131": {
+      "checkbox_unchecked": 143,
+      "empty_dropdown": 7,
+      "empty_value": 0,
+      "barcode_token": 14,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-134": {
+      "checkbox_unchecked": 52,
+      "empty_dropdown": 10,
+      "empty_value": 0,
+      "barcode_token": 10,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-140": {
+      "checkbox_unchecked": 79,
+      "empty_dropdown": 3,
+      "empty_value": 171,
+      "barcode_token": 8,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-360": {
+      "checkbox_unchecked": 165,
+      "empty_dropdown": 11,
+      "empty_value": 0,
+      "barcode_token": 19,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-485": {
+      "checkbox_unchecked": 398,
+      "empty_dropdown": 10,
+      "empty_value": 0,
+      "barcode_token": 24,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-485J": {
+      "checkbox_unchecked": 22,
+      "empty_dropdown": 3,
+      "empty_value": 0,
+      "barcode_token": 8,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-526": {
+      "checkbox_unchecked": 138,
+      "empty_dropdown": 13,
+      "empty_value": 0,
+      "barcode_token": 18,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-526E": {
+      "checkbox_unchecked": 172,
+      "empty_dropdown": 11,
+      "empty_value": 0,
+      "barcode_token": 16,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-539": {
+      "checkbox_unchecked": 61,
+      "empty_dropdown": 4,
+      "empty_value": 0,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-539A": {
+      "checkbox_unchecked": 37,
+      "empty_dropdown": 1,
+      "empty_value": 0,
+      "barcode_token": 5,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-589": {
+      "checkbox_unchecked": 120,
+      "empty_dropdown": 0,
+      "empty_value": 0,
+      "barcode_token": 12,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-612": {
+      "checkbox_unchecked": 49,
+      "empty_dropdown": 7,
+      "empty_value": 141,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-693": {
+      "checkbox_unchecked": 138,
+      "empty_dropdown": 5,
+      "empty_value": 0,
+      "barcode_token": 14,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-751": {
+      "checkbox_unchecked": 126,
+      "empty_dropdown": 12,
+      "empty_value": 0,
+      "barcode_token": 11,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-765": {
+      "checkbox_unchecked": 38,
+      "empty_dropdown": 4,
+      "empty_value": 0,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-824": {
+      "checkbox_unchecked": 23,
+      "empty_dropdown": 4,
+      "empty_value": 0,
+      "barcode_token": 6,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-829": {
+      "checkbox_unchecked": 118,
+      "empty_dropdown": 13,
+      "empty_value": 0,
+      "barcode_token": 10,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-864": {
+      "checkbox_unchecked": 41,
+      "empty_dropdown": 3,
+      "empty_value": 0,
+      "barcode_token": 12,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 1
+    },
+    "I-864EZ": {
+      "checkbox_unchecked": 30,
+      "empty_dropdown": 3,
+      "empty_value": 0,
+      "barcode_token": 8,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 2
+    },
+    "I-90": {
+      "checkbox_unchecked": 78,
+      "empty_dropdown": 6,
+      "empty_value": 0,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "I-907": {
+      "checkbox_unchecked": 29,
+      "empty_dropdown": 5,
+      "empty_value": 0,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "N-400": {
+      "checkbox_unchecked": 198,
+      "empty_dropdown": 5,
+      "empty_value": 0,
+      "barcode_token": 14,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "N-565": {
+      "checkbox_unchecked": 36,
+      "empty_dropdown": 2,
+      "empty_value": 0,
+      "barcode_token": 7,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    },
+    "N-600": {
+      "checkbox_unchecked": 138,
+      "empty_dropdown": 19,
+      "empty_value": 0,
+      "barcode_token": 16,
+      "constant": 0,
+      "party_looking": 0,
+      "other": 0
+    }
+  },
+  "flagged": [
+    "G-325A|page2.form10PageSet0Page20TextField10|other",
+    "G-325A|page3.form10PageSet0Page30TextField10|other",
+    "G-325A|page3.form10PageSet0Page31TextField10|other",
+    "G-325A|page3.form10PageSet0Page32TextField10|other",
+    "G-325A|page3.form10PageSet0Page33TextField10|other",
+    "G-325A|page3.form10PageSet0Page34TextField10|other",
+    "I-864EZ|page4.form10Subform2P4Line1ATotalNumberofImmigrants0|other",
+    "I-864EZ|page4.form10Subform2P4Line1FAddTogether0|other",
+    "I-864|page5.form10Subform4P5Line2Yourself0|other"
+  ],
+  "contentHash": "ce99e4620f8dab1f9788feec13c8c3f8739cb139fc761b7639f86432be88c7d5"
+}

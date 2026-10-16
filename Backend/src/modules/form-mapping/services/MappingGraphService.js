@@ -4,6 +4,8 @@ const QuestionLibraryItem = require("../../../models/QuestionLibraryItem");
 const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const CanonicalFieldRegistryService = require("./CanonicalFieldRegistryService");
+const contract = require("../contract");
+const logger = require("../../../utils/logger");
 
 class MappingGraphService {
   static userId(user) {
@@ -109,6 +111,7 @@ class MappingGraphService {
       transform: this.buildTransform(mappingType, sourceField, targetField),
       condition: this.inferCondition(sourceField, targetField, template),
       repeatable: sourceField.repeatable ? { sourceCollection: sourceField.repeatable, targetGroup: targetField.groupId || targetField.section } : undefined,
+      origin: "scored",
       createdAt: new Date(),
     };
     Object.keys(edge).forEach((key) => edge[key] === undefined && delete edge[key]);
@@ -250,6 +253,7 @@ class MappingGraphService {
   static graphToFieldMappings(graph = {}) {
     const byTarget = new Map();
     (graph.edges || []).forEach((edge) => {
+      if (!contract.isProjectable(edge)) return; // Rule A: only active edges reach autofill
       if (!byTarget.has(edge.targetFieldId)) byTarget.set(edge.targetFieldId, []);
       byTarget.get(edge.targetFieldId).push({
         source: "canonical",
@@ -346,7 +350,60 @@ class MappingGraphService {
     return mappings;
   }
 
+  /** The graph's contract verdict merged into the ordinary validation: enforced (new / changed) edges can make it invalid, legacy edges are only reported. */
+  static async validateWithContract(graph, template) {
+    const base = this.validateGraph(graph, template);
+    let result;
+    try {
+      result = contract.validateGraphContract(graph, template, { universe: await contract.loadPathUniverse(), getTemplateFields: (item) => this.getTemplateFields(item) });
+    } catch (error) {
+      // a broken validator must not silently wave NEW edges through: with any enforced edge present the graph is refused; an all-legacy graph is left as it was
+      logger.warn("mapping_contract_check_failed", { formCode: template?.formCode, error: error.message });
+      const enforced = (graph.edges || []).some((edge) => contract.originOf(edge) !== "legacy");
+      if (!enforced) return base;
+      const errors = [...base.errors, { code: "CONTRACT_CHECK_FAILED", message: error.message }];
+      return { ...base, valid: false, readyForActivation: false, errors, summary: { ...base.summary, errors: errors.length } };
+    }
+    const errors = [...base.errors, ...result.errors.map((item) => ({ ...item, source: "contract" }))];
+    const valid = errors.length === 0;
+    return {
+      ...base,
+      valid,
+      readyForActivation: valid && base.summary.reviewRequired === 0 && base.summary.unmapped === 0,
+      errors,
+      contract: { valid: result.valid, summary: result.summary, unmapped: result.unmapped, legacySample: result.legacy.slice(0, 25) },
+      summary: { ...base.summary, errors: errors.length, contractLegacyViolations: result.summary.legacyViolations },
+    };
+  }
+
+  /**
+   * Phase 2 / Rule A, applied to every graph that is about to be stored: origins are stamped (an edge with unknown provenance is `legacy`), a lower-ranked edge cannot
+   * replace a higher-ranked live one (the attempt is recorded in conflicts[]), a NEW scored / ai suggestion is review-only, and the contract verdict + a coverage report
+   * are attached to the graph's validation. It never removes an edge that has no competitor and never changes the status of an existing edge.
+   */
+  static async applyMappingPolicy(template, graph) {
+    const previousVersion = await USCISMappingVersion.findOne({ template: template._id, status: "active" }).sort({ mappingVersion: -1 }).select("graph.edges").lean();
+    const previousGraph = previousVersion?.graph || null;
+    const { graph: reconciled } = contract.reconcile(previousGraph, graph);
+    const previousByTarget = new Map((previousGraph?.edges || []).map((edge) => [edge.targetFieldId, edge]));
+    reconciled.edges = reconciled.edges.map((edge) => {
+      const before = previousByTarget.get(edge.targetFieldId);
+      const unchanged = before && before.sourcePath === edge.sourcePath;
+      return unchanged ? edge : contract.admitNewEdge(edge);
+    });
+    const verdict = await this.validateWithContract(reconciled, template);
+    reconciled.validation = { ...(graph.validation || {}), ...verdict };
+    try {
+      reconciled.validation.coverage = contract.computeCoverage({ template, graph: reconciled, universe: await contract.loadPathUniverse(), getTemplateFields: (item) => this.getTemplateFields(item) });
+      reconciled.validation.coverage.generatedAt = new Date().toISOString();
+    } catch (error) {
+      logger.warn("mapping_coverage_failed", { formCode: template?.formCode, error: error.message });
+    }
+    return reconciled;
+  }
+
   static async persistVersion(template, graph, user) {
+    Object.assign(graph, await this.applyMappingPolicy(template, graph));
     this.applyGraphToTemplate(template, graph);
     const status = graph.validation?.readyForActivation ? "draft" : "needs_review";
     // template.mappingVersion (just bumped above) can drift from what's
@@ -424,6 +481,17 @@ class MappingGraphService {
       });
     }
     return { templateId: template._id, graph };
+  }
+
+  /** Read-only coverage report for a form's current mapping (nothing is written; certification stores the persisted copy with the mapping version). */
+  static async coverage(templateId) {
+    const template = await this.loadTemplateOrThrow(templateId);
+    if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
+    const graph = await this.loadCurrentGraph(template);
+    const libraryItems = await QuestionLibraryItem.find({ "sources.formTemplate": template._id, active: true }).select("canonicalPath").lean().catch(() => []);
+    const report = contract.computeCoverage({ template, graph, universe: await contract.loadPathUniverse(), getTemplateFields: (item) => this.getTemplateFields(item), libraryItems });
+    report.generatedAt = new Date().toISOString();
+    return { templateId, coverage: report };
   }
 
   static async validate(templateId, payload = {}) {
@@ -562,8 +630,17 @@ class MappingGraphService {
       repeatable: payload.repeatable,
       confidence: Number(payload.confidence ?? 100),
       status: payload.status || "active",
+      origin: "authored",
+      reviewedBy: this.userId(user) || undefined,
+      reviewedAt: new Date(),
       updatedAt: new Date(),
     };
+    if (edge.status === "active") {
+      const violations = contract.checkEdge(edge, { universe: await contract.loadPathUniverse(), target: targetField });
+      if (violations.length) {
+        throw Object.assign(new Error(`This mapping cannot go live: ${violations.map((item) => item.reason || item.code).join("; ")}`), { status: 422, code: "MAPPING_CONTRACT_VIOLATION", details: violations });
+      }
+    }
     graph.edges = (graph.edges || []).filter((item) => item.targetFieldId !== targetField.targetFieldId);
     graph.edges.push(edge);
     graph.unmappedTargets = this.getTemplateFields(template)
@@ -597,7 +674,7 @@ class MappingGraphService {
       error.status = 404;
       throw error;
     }
-    const validation = this.validateGraph(await this.loadCurrentGraph(template), template);
+    const validation = await this.validateWithContract(await this.loadCurrentGraph(template), template);
     if (!validation.readyForActivation) {
       const error = new Error("Cannot activate mapping until every USCIS field has an approved Master Case Data mapping");
       error.status = 422;

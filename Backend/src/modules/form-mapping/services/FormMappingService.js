@@ -2,6 +2,10 @@ const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const MappingResolver = require("./MappingResolver");
 const ValidationService = require("./ValidationService");
+const { isProjectable } = require("../contract/MappingPolicy");
+const logger = require("../../../utils/logger");
+
+let legacyMappingWarned = false;
 
 class FormMappingService {
   static normalizeFormType(formType = "") {
@@ -12,6 +16,7 @@ class FormMappingService {
     if (!mappingVersion?.graph?.edges) return template;
     const mappingsByTarget = new Map();
     mappingVersion.graph.edges.forEach((edge) => {
+      if (!isProjectable(edge)) return; // Rule A: only active edges reach autofill
       if (!mappingsByTarget.has(edge.targetFieldId)) mappingsByTarget.set(edge.targetFieldId, []);
       mappingsByTarget.get(edge.targetFieldId).push({
         mappingId: edge.mappingId,
@@ -96,7 +101,10 @@ class FormMappingService {
   static normalizeMappings(field = {}) {
     const mappings = [];
     if (Array.isArray(field.mappings) && field.mappings.length) mappings.push(...field.mappings);
-    if (field.mapping) {
+    if (field.mapping && Object.keys(field.mapping).length && mappings.length) {
+      // the mapping graph is the one source of truth: a legacy field.mapping{} never adds to (or overrides) a field that already has graph mappings
+      if (!legacyMappingWarned) { legacyMappingWarned = true; logger.warn("legacy_field_mapping_ignored", { fieldId: field.fieldId || field.fieldName }); }
+    } else if (field.mapping) {
       if (field.mapping.masterDataPath) mappings.push({ source: "canonical", path: field.mapping.masterDataPath });
       if (field.mapping.canonicalPath) mappings.push({ source: "canonical", path: field.mapping.canonicalPath });
       if (field.mapping.beneficiaryField) mappings.push({ source: "beneficiary", path: field.mapping.beneficiaryField });

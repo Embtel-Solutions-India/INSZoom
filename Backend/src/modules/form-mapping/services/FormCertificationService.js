@@ -69,7 +69,7 @@ async function certify(template, { previous = null, persist = true } = {}) {
 
   await run(checks, "mapping_valid", async () => {
     if (!(graph.edges || []).length) fail("the mapping graph is empty");
-    const validation = MappingGraphService.validateGraph(graph, template);
+    const validation = await MappingGraphService.validateWithContract(graph, template);
     if (validation.errors?.length) fail(`${validation.errors.length} mapping errors, first: ${JSON.stringify(validation.errors[0]).slice(0, 200)}`);
     const dangling = graph.edges.filter((edge) => edge.status === "active" && edge.targetPdfField && fieldNames.size && !fieldNames.has(edge.targetPdfField));
     if (dangling.length) fail(`${dangling.length} active edges point at PDF fields that do not exist (e.g. ${dangling[0].targetPdfField})`);
@@ -78,7 +78,7 @@ async function certify(template, { previous = null, persist = true } = {}) {
       const unverified = graph.edges.filter((edge) => edge.status === "active" && !edge.partyRule);
       if (unverified.length) fail(`${unverified.length} active edges are not backed by a verified rule`);
     }
-    return `${graph.edges.length} edges`;
+    return `${graph.edges.length} edges${validation.contract?.summary?.legacyViolations ? `, ${validation.contract.summary.legacyViolations} legacy findings (report only)` : ""}`;
   });
 
   let filledBytes = null;
@@ -118,6 +118,17 @@ async function certify(template, { previous = null, persist = true } = {}) {
   });
 
   const report = { passed: checks.every((check) => check.passed), certifiedAt: new Date(), version: template.version, checks };
+  // the coverage report of the mapping that was just certified is kept with its mapping version (never on the template document: I-129 is near the 16 MB limit)
+  if (persist) {
+    try {
+      const contract = require("../contract");
+      const coverage = contract.computeCoverage({ template, graph, universe: await contract.loadPathUniverse(), getTemplateFields: (item) => MappingGraphService.getTemplateFields(item) });
+      coverage.generatedAt = new Date().toISOString();
+      await contract.persistCoverage(template.activeMappingVersionId || template.latestMappingVersionId, coverage);
+    } catch (error) {
+      logger.info("form_coverage_persist_failed", { formCode: template.formCode, error: error.message });
+    }
+  }
   if (persist && template.save) {
     try {
       template.importMetadata = template.importMetadata || {};

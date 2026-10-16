@@ -110,6 +110,7 @@ function plan(template, graph, options = {}) {
         fallback: existing.sourcePath && existing.sourcePath !== sourcePath ? existing.sourcePath : existing.fallback,
         transform: nextTransform,
         partyRule: rule.to,
+        profileOwner: rule.to.startsWith("petitioner") ? "employer" : "employee",
       };
       if (nextCondition) out[index].condition = nextCondition; else delete out[index].condition;
       if (isBox) out[index].mappingType = "checkbox";
@@ -119,6 +120,7 @@ function plan(template, graph, options = {}) {
         if (!rule.fallback) delete out[index].fallback;
         out[index].status = "active";
         out[index].confidence = 90;
+        out[index].origin = rule.inferred ? "inferred" : "authored";
         out[index].note = `Verified ${formCode} rule: ${rule.to}`;
       }
       report.rewired += 1;
@@ -146,6 +148,7 @@ function plan(template, graph, options = {}) {
       profileOwner: rule.to.startsWith("petitioner") ? "employer" : "employee",
       allowsOccurrenceOverride: false,
       partyRule: rule.to,
+      origin: rule.inferred ? "inferred" : "authored",
       createdAt: new Date(),
     });
     report.created += 1;

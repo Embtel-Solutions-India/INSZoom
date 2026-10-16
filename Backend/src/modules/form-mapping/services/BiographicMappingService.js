@@ -64,7 +64,8 @@ function generateBiographicGraph(template) {
       .sort((left, right) => right.score - left.score)[0];
     const confidence = best ? Math.round(best.score * 100) : 0;
     if (best && confidence >= BIOGRAPHIC_CONFIDENCE_THRESHOLD) {
-      edges.push(MappingGraphService.buildEdge(best.sourceField, targetField, template, confidence));
+      // the biographic tier is deterministic, threshold-gated identity mapping: `inferred`, not a review-only score
+      edges.push({ ...MappingGraphService.buildEdge(best.sourceField, targetField, template, confidence), origin: "inferred", evidence: { tier: "biographic", rawScore: best.score } });
       usedTargets.add(targetField.targetFieldId);
     }
     // Below-threshold or no match at all: deliberately left unmapped

@@ -10,6 +10,8 @@
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const MappingGraphService = require("./MappingGraphService");
+const { findRenamedTarget } = require("../contract/fieldEquivalence");
+const { originOf } = require("../contract/MappingPolicy");
 
 // formCode -> () => { buildCrosswalkGraph(template) }; add a form here only when it has an authored crosswalk
 const CROSSWALK_BUILDERS = {
@@ -38,17 +40,38 @@ function carryForwardGraph(previousGraph, template) {
   const formCode = template.formCode || template.formNumber;
   const edges = [];
   const lostEdges = [];
+  const renamedEdges = [];
   const claimed = new Set();
 
-  for (const edge of previousGraph.edges || []) {
+  // pass 1: an edge follows the field with the same PDF name (or id) - exactly as before
+  const previousEdges = previousGraph.edges || [];
+  const exact = previousEdges.map((edge) => {
     const target = byPdfName.get(norm(edge.targetPdfField)) || byId.get(norm(edge.targetFieldId));
-    if (!target || claimed.has(target.targetFieldId)) {
-      lostEdges.push({ mappingId: edge.mappingId, sourcePath: edge.sourcePath, targetPdfField: edge.targetPdfField, targetLabel: edge.targetLabel });
-      continue;
-    }
+    if (!target || claimed.has(target.targetFieldId)) return null;
     claimed.add(target.targetFieldId);
+    return target;
+  });
+  // pass 2: an edge whose field is gone may follow a RENAMED field, but only one that is provably the same (same type, same printed label, same section, and the
+  // only such field). It is carried as needs_review - a person confirms it - and never as active.
+  const renames = previousEdges.map((edge, index) => {
+    if (exact[index]) return null;
+    const unclaimed = targetFields.filter((field) => !claimed.has(field.targetFieldId));
+    const found = findRenamedTarget({ label: edge.targetLabel, type: edge.targetType, section: edge.section }, unclaimed.map((field) => ({ ...field, type: field.type, label: field.label, section: field.section })));
+    if (found?.target) claimed.add(found.target.targetFieldId);
+    return found?.target ? found : null;
+  });
+
+  previousEdges.forEach((edge, index) => {
+    const renamed = renames[index];
+    const target = exact[index] || renamed?.target;
+    if (!target) {
+      lostEdges.push({ mappingId: edge.mappingId, sourcePath: edge.sourcePath, targetPdfField: edge.targetPdfField, targetLabel: edge.targetLabel });
+      return;
+    }
+    if (renamed) renamedEdges.push({ mappingId: edge.mappingId, sourcePath: edge.sourcePath, from: edge.targetPdfField, to: target.targetPdfField, label: edge.targetLabel, similarity: renamed.similarity });
     edges.push({
       ...edge,
+      ...(renamed ? { status: "needs_review", confidence: Math.min(Number(edge.confidence ?? 60), 60), origin: originOf(edge), evidence: { ...(edge.evidence || {}), renamedFrom: { pdfField: edge.targetPdfField, label: edge.targetLabel }, similarity: renamed.similarity }, note: `Carried over from a renamed field (${edge.targetPdfField}); a person must confirm it` } : {}),
       mappingId: `${formCode}:${version}:${target.targetFieldId}`,
       formCode,
       editionDate: template.editionDate,
@@ -61,7 +84,7 @@ function carryForwardGraph(previousGraph, template) {
       pageNumber: target.pageNumber ?? edge.pageNumber,
       createdAt: new Date(),
     });
-  }
+  });
 
   const sourcePaths = new Set(edges.map((edge) => edge.sourcePath));
   const oldCanonical = new Map((previousGraph.nodes?.canonical || []).map((node) => [node.path, node]));
@@ -97,7 +120,7 @@ function carryForwardGraph(previousGraph, template) {
     carriedForwardFrom: previousGraph.version,
   };
   graph.validation = MappingGraphService.validateGraph(graph, template);
-  return { graph, lostEdges };
+  return { graph, lostEdges, renamedEdges };
 }
 
 // Pre-activation readiness: the new edition must be fully usable BEFORE it replaces the live one. Checked without activating anything:
@@ -140,6 +163,7 @@ async function migrateMappingToEdition(template, user, req, options = {}) {
   const crosswalk = CROSSWALK_BUILDERS[template.formCode];
   let graph;
   let lostEdges = [];
+  let renamedEdges = [];
   let source;
 
   if (crosswalk) {
@@ -148,7 +172,7 @@ async function migrateMappingToEdition(template, user, req, options = {}) {
   } else if (previous) {
     const previousGraph = await MappingGraphService.loadCurrentGraph(previous);
     if (!previousGraph?.edges?.length) return { migrated: false, reason: "previous_edition_has_no_mapping" };
-    ({ graph, lostEdges } = carryForwardGraph(previousGraph, template));
+    ({ graph, lostEdges, renamedEdges } = carryForwardGraph(previousGraph, template));
     source = `edition ${previous.version}`;
   } else {
     return { migrated: false, reason: "no_previous_edition_or_crosswalk" };
@@ -168,17 +192,17 @@ async function migrateMappingToEdition(template, user, req, options = {}) {
     await template.save();
   }
 
-  const summary = { source, edges: graph.edges.length, formFields: graph.summary.formFields, lost: lostEdges.length, validation: graph.validation.summary };
+  const summary = { source, edges: graph.edges.length, formFields: graph.summary.formFields, lost: lostEdges.length, renamed: renamedEdges.length, validation: graph.validation.summary };
   const lossless = lostEdges.length === 0 && graph.validation.readyForActivation;
   if (!lossless || options.activate === false) {
-    return { migrated: true, activated: false, reason: lostEdges.length ? "fields_removed_in_new_edition" : "graph_not_ready", mappingVersion: version.mappingVersion, lostEdges, summary };
+    return { migrated: true, activated: false, reason: lostEdges.length ? "fields_removed_in_new_edition" : "graph_not_ready", mappingVersion: version.mappingVersion, lostEdges, renamedEdges, summary };
   }
   try {
     await MappingGraphService.activate(template._id, user, req);
   } catch (error) {
     return { migrated: true, activated: false, reason: error.code || "activation_refused", message: error.message, mappingVersion: version.mappingVersion, lostEdges, summary };
   }
-  return { migrated: true, activated: true, mappingVersion: version.mappingVersion, lostEdges, summary };
+  return { migrated: true, activated: true, mappingVersion: version.mappingVersion, lostEdges, renamedEdges, summary };
 }
 
 module.exports = { migrateMappingToEdition, carryForwardGraph, findPreviousEdition, checkEditionReady };
