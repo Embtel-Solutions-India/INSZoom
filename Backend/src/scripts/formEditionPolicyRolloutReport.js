@@ -21,7 +21,7 @@ const fs = require("fs");
 const { readOnlyDb } = require("./lib/readOnlyDb");
 
 // Rule G's single frozen rule (the union of the three existing hard-coded lists, to be centralized in Phase 0). Defined here only to REPORT with it.
-const FROZEN_CASE_FORM_STATUSES = ["finalized", "filed", "approved", "generated", "ready_for_pdf", "locked", "receipt_received", "archived"];
+const { FROZEN_CASE_FORM_STATUSES } = require("../modules/form-mapping/config/caseFormFreeze");
 const FROZEN = new Set(FROZEN_CASE_FORM_STATUSES);
 // Not worked on any more: finalized / filed / archived. "Open" = every other case form (still being prepared, reviewed or generated).
 const FINISHED = new Set(["finalized", "filed", "archived"]);

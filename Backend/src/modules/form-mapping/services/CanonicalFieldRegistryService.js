@@ -255,7 +255,24 @@ class CanonicalFieldRegistryService {
       id: `canonical:${field.path}`,
       label: field.label || field.path.split(".").pop().replace(/\[\]/g, ""),
       tokens: this.tokenize([field.path, ...(field.aliases || [])].join(" ")),
+      // additive metadata (Phase 2): optional on an entry, otherwise derived from the path
+      role: field.role || this.defaultRole(field.path),
+      description: field.description || field.label || field.path.split(".").pop().replace(/\[\]/g, ""),
+      cardinality: field.cardinality || (/\[\]/.test(field.path) ? "many" : "one"),
     }));
+  }
+
+  /** Who a path is about, from its first segment (an entry may override it with its own `role`). */
+  static defaultRole(path = "") {
+    const root = String(path).split(".")[0];
+    const roles = { person: "applicant", contact: "applicant", beneficiary: "beneficiary", petitioner: "petitioner", company: "employer", employer: "employer", employee: "beneficiary", case: "case", immigration: "applicant", employment: "employer" };
+    return roles[root] || "other";
+  }
+
+  /** What the registry knows about one path (exact entry only): { path, role, description, cardinality, type } or null. */
+  static describe(path) {
+    const found = this.list().find((field) => field.path === path);
+    return found ? { path: found.path, role: found.role, description: found.description, cardinality: found.cardinality, type: found.type } : null;
   }
 }
 

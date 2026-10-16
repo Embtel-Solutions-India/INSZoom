@@ -36,7 +36,9 @@ class PDFValidationService {
     const target = isRequired ? errors : warnings;
     const severity = isRequired ? "error" : "warning";
     if (MappingResolver.isEmpty(value)) return;
-    if (rules.maxLength && String(value).length > Number(rules.maxLength)) this.addIssue(target, severity, "FIELD_TOO_LONG", `${label} exceeds ${rules.maxLength} characters`, { fieldId });
+    // No FIELD_TOO_LONG check: rules.maxLength is only the PDF field's own /MaxLen, and free-text fields
+    // are written in full (FullTextFieldGuard.liftTextLengthLimits); fields that keep a limit are cut and
+    // reported at render time instead of blocking generation.
     if (rules.minLength && String(value).length < Number(rules.minLength)) this.addIssue(target, severity, "FIELD_TOO_SHORT", `${label} must be at least ${rules.minLength} characters`, { fieldId });
     if ((fieldType === "date" || rules.date || normalizedName.includes("date")) && Number.isNaN(new Date(value).getTime())) this.addIssue(target, severity, "INVALID_DATE", `${label} must be a valid date`, { fieldId });
     if ((fieldType === "email" || rules.email || normalizedName.includes("email")) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value))) this.addIssue(target, severity, "INVALID_EMAIL", `${label} must be a valid email address`, { fieldId });

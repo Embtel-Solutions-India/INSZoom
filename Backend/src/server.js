@@ -229,10 +229,12 @@ connectDB()
     const reminderGeneration = startReminderGeneration();
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
-    const uscisMonitoring = startUSCISMonitoringJob();
-    const uscisEditionUpgrade = startUSCISEditionUpgradeJob();
+    const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
+    const uscisEditionUpgrade = startUSCISEditionUpgradeJob(withJobLock);
     // every 12 h: compare EVERY uscis.gov form (installed or not) with the installed edition and auto-import new / changed ones
     const uscisCatalogSync = require("./modules/uscis-lifecycle/jobs/USCISCatalogSyncJob").startUSCISCatalogSyncJob(withJobLock);
+    // durable form pipeline (Phase 1): the worker that runs queued / retried / recovered jobs (embedded unless FORM_PIPELINE_WORKER=external|off) and the "no worker is running" alert
+    const formPipeline = require("./modules/form-pipeline").startFormPipeline({ withJobLock });
     // keeps the form registry / rule-driven mappings / certification correct by code (registry gap-fill, component linking, per-form certification)
     const formAutopilot = require("./modules/form-registry/FormPipelineAutopilot").startFormPipelineAutopilot(withJobLock);
     const settingsRetentionMaintenance = startSettingsRetentionMaintenance();
@@ -270,6 +272,7 @@ connectDB()
       if (uscisEditionUpgrade) clearInterval(uscisEditionUpgrade);
       if (uscisCatalogSync) clearInterval(uscisCatalogSync);
       if (formAutopilot) clearInterval(formAutopilot);
+      formPipeline.stop().catch((error) => logger.error("form_pipeline_stop_failed", { error }));
       clearInterval(settingsRetentionMaintenance);
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);

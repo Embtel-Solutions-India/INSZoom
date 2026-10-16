@@ -10,9 +10,12 @@ This is the ONE document that records the implementation of the approved plan in
 |---|---|---|
 | **Release 0a** - read-only pre-rollout report + redirect-chain crawl | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Release 0b-1** - evidence-resolution path, no enforcement | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
-| Release 0b-2 - fail-closed gate wired into every entry point | Not started | separate approval after your 0b-1 review, the unrun index script and the database walkthrough |
-| Phase 0 remainder (frozen-status module, cache fix, job locks, ...) | Not started | per the plan's sequence |
-| Phases 1 - 6 | Not started | each separately |
+| **Release 0b-2** - automatic evidence + fail-closed gate wired into the pipeline (Rule J not enforced) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 (indexes created; no other real-DB write) |
+| **Phase 0 remainder** (frozen-status module, cache fix, certification on activate, job locks, one retire, e2e script safety, AI infra) | **DONE 2026-10-16 - awaiting your review** (test isolation deferred: needs an approved local test DB) | given 2026-10-16 |
+| **Test isolation (local database)** | **DONE 2026-10-16** | given 2026-10-16 |
+| **Phase 1** - durable, resumable, fenced pipeline (worker/PM2 production rollout and queued mode NOT switched on) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
+| **Phase 2** - mapping contract, policy, validator, coverage (live autofill unchanged) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
+| Phases 3 - 6 | Not started | each separately |
 
 ---
 
@@ -236,6 +239,304 @@ The plan requires, before Release 0b-2: (1) the end-to-end readiness proof - don
 
 ---
 
+# Release 0b-2 - automatic evidence and the gate wired into the pipeline
+
+## 1. Scope and authorization
+
+Authorized by you on 2026-10-16: (a) nobody submits a USCIS page URL or quote any more - **everything is fetched automatically**; (b) enforcement is wired in; (c) run the unique-index script; (d) **do not write to the real database** - if a write is ever needed, one single case only, and all later tests on that case only. Your answers to my questions: automatic evidence = "fully automatic acceptance"; enforcement = "pipeline only".
+
+Interpretation you should confirm: "fully automatic" is implemented as **automatic only when USCIS's own page says so explicitly**. The system fetches the form's official page itself and records `accepted` or `not_accepted` only if the page contains an explicit statement naming the edition (patterns below). If the page is silent, ambiguous, cannot be fetched, or the stored PDF differs from the official one, **nothing is recorded and the edition stays held** - I did not make "all checks passed" equal "accepted", because that would let the system file a form USCIS may have stopped accepting. Rule J (blocking the four filing-ready case steps) is **not** enforced (you chose "pipeline only").
+
+## 2. What was built
+
+| Area | Change |
+|---|---|
+| Statement detector | `form-edition-policy/filingEligibility.js` - `filingEligibilityStatement({text, formCode, editionIdentifier})` returns `accepted` / `not_accepted` / `none`. Patterns: `current_acceptable_edition` (the page points at its "Edition Date" section for the current edition), `explicit_accept` ("will accept / continues to accept ... edition"), `explicit_reject` ("is not accepting / will not accept / no longer accepts / rejects"). Accept and reject for the same edition => `none` (ambiguous). Effective dates are never taken from the page (always null) so a future date can never make an edition usable early. 13 real USCIS pages are stored as fixtures. |
+| Automatic check | `EvidenceService.runAutomaticCheck` + `autoCheck`: finds the official page (stored `sourcePageUrl`, else the form's standard page), fetches it through the redirect-safe fetcher, runs the detector and the existing verifier. `accepted` needs the whole verification to pass (incl. PDF checksum); `not_accepted` only restricts, so it needs the quote, the edition and an official source. Everything is computed in memory; **a write happens only when a decision is recorded** (snapshot + 5 audit events + decision row, machine actor `pipeline:official_source`). An existing `not_accepted` is never overturned automatically. |
+| API | `POST /form-edition-policy/auto-check` `{formCode, editionIdentifier}` - exactly `admin` / `team_lead` (6 routes now). No URL, quote or dates are accepted from the user. |
+| Admin screen | Form Governance > Form Edition Evidence: the URL / quote / date form is gone; each edition has **Check now** and the result is shown in plain words (accepted / not accepted / nothing recorded and why). |
+| Enforcer | `EditionPolicyEnforcer.requireAcceptedEdition(template, {entryPoint})` - fail closed, no disable switch; throws `EditionPolicyHeldError` (HTTP 409, `EDITION_POLICY_HELD`) **before** the caller changes anything; any internal error is also a hold. |
+| Entry points gated | `VersionManagementService.activate`; `uscis-form-importer.service.activateVersion`; `CaseFormEditionMigrationService.migrateCaseFormsToEdition`; `importLocalForm.js`; **11 bootstrap seeds** (`i129, i129f, i130, i134, i140, i485, i485supj, i539, i539a, i693, i907`); `scripts/replaceFormEdition.js`. |
+| Rescue narrowed | `OnDemandFormAcquisitionService` used to reactivate "the most recently retired edition" without any check. It now restores only the exact edition that was live before the attempt (`_id: liveBefore._id`). |
+| Pipeline-triggered checks | `FORM_EDITION_AUTO_EVIDENCE=true` makes the enforcer run the automatic check itself when an activation is attempted. **Default OFF** (see section 5). With it off, the system never writes by itself; an admin/team lead clicks Check now. |
+| Indexes | `scripts/createFormEditionPolicyIndexes.js` was run with your permission. Verified read-only afterwards: unique `{formCode, editionIdentifier}` on decisions, unique `{evidenceCaseId, seq}` on audit events, supporting indexes on sources/audit; all three collections hold **0 documents**. |
+
+## 3. How "do not write on the real database" was kept
+
+- No test in this release touches the real database: every new test uses the in-memory store and injected fetchers/models. I did **not** run the tests that connect to the real DB (`h0-i129-seed`, `registryAgencyGate`, `FormEditionComparisonService` and similar).
+- The coverage dry run used the Release 0a **read-only database handle** (any write throws) for reading templates, real outbound GETs to uscis.gov, and an in-memory store for the decisions.
+- The only real-database change in the whole release is the index creation you authorized. No case, user, company or decision row was created, so there was nothing to clean up and the "one test case" allowance was not used.
+
+## 4. Verification
+
+| Check | Result |
+|---|---|
+| form-edition-policy + scripts tests | 181 pass, 0 fail (detector 19, automatic evidence 15, enforcer 9, entry-point matrix 14 incl. a static scan that fails if a NEW file makes a form edition live without calling the gate, routes/wiring) |
+| Entry-point behavior | for VersionManagementService, the importer and case migration: held => throws, nothing mutated; a throwing gate => held; accepted => proceeds |
+| Admin | vitest 127 pass (13 files); `npm run build` OK |
+| Live backend | `/api/health` 200; `POST /form-edition-policy/auto-check` and `GET /editions` return 401 without a token |
+| `ensureCurrentUSCISForm.test.js` | **did not finish in my run (timed out at 100 s)**. Its test 2 passed after 53 s and test 3 (auto-activate off, never reaches the gate) is where it stalls, in the mapping-migration code that talks to an unmocked Mongoose; I did not change that code. I could not confirm against the previous commit (a clean worktree failed to check out), so treat "pre-existing" as likely, not proven. |
+| Not run | Client, Landing and Attorney builds (no file in them changed); the other DB-connected backend suites (by design, section 3) |
+
+## 5. Real-data coverage (read-only dry run, 31 editions, 2026-10-16)
+
+What the automatic check would do today against uscis.gov:
+
+| Outcome | Editions | Forms |
+|---|---|---|
+| **Accepted automatically** | 8 | I-129 (2026-09-09), I-765 (2025-08-21), I-864 (2026-08-24), I-864EZ (2026-08-24), I-90, I-829, N-565, N-600 |
+| Held - page has no explicit statement | 14 | I-130, I-134, I-907, I-140, N-400, I-129S, I-360, I-526, I-526E, I-612, I-751, I-824, G-325A, ... |
+| Held - statement found but the stored PDF does not match the official PDF (`pdf_checksum_matches`) | 4 | I-129F, I-539, I-693, I-485 |
+| Held - no standalone USCIS page (HTTP 404) | 2 | I-539A, I-485J |
+| Held - edition date from an untrusted source | 3 | I-589, I-131, G-28 |
+| Not accepted | 0 | - |
+
+Nothing was written. The 4 checksum mismatches are a correct hold (the PDF we store may not be the accepted one) and are worth a look by someone who knows those forms.
+
+## 6. Expected vs actual
+
+| Expected | Actual |
+|---|---|
+| Admin/team lead submits nothing | Done - no URL/quote input anywhere; the API ignores any |
+| "Fully automatic acceptance" | **Deviation:** automatic only for explicit USCIS statements (8 of 31 editions today); the rest stay held on purpose |
+| Gate in every entry point | Done for 4 services/scripts + 11 seeds + replace script; static scan guards future additions |
+| Held edition leaves the live one untouched | Done and tested; the rescue can no longer revive an unrelated retired edition |
+| Pipeline writes decisions by itself | **Not enabled:** `FORM_EDITION_AUTO_EVIDENCE` defaults to off to honor "do not write on the real database" |
+| Rule J (filing-ready steps) | Not enforced - "pipeline only" |
+
+## 7. Findings for your review
+
+1. **Behavior change that is live now:** the running backend (nodemon) already enforces the gate. Any **new** edition that is promoted/activated/migrated-to is held until a decision exists. Editions already live keep serving cases. Until someone clicks Check now (or you enable the flag), new editions simply wait.
+2. A held edition is re-driven by the existing 12-hourly sync, so each cycle re-attempts and is held again (cheap: one decision lookup). With the flag on, each attempt also does one page fetch.
+3. Coverage is limited by what USCIS publishes: only some pages state acceptance explicitly. For the rest a person must still decide - there is no screen for that any more (the manual path was removed from the UI per your instruction; the API route `POST /evidence` still exists for admin/team_lead).
+4. 14 editions had no statement at all; I-130/I-140/I-907 (the bootstrap forms) will stay held on any new edition until USCIS words it explicitly.
+
+## 8. What was NOT done
+
+Rule J enforcement; the PM2 worker; enabling `FORM_EDITION_AUTO_EVIDENCE`; any real-database write other than the indexes; a decision for any of the 31 editions.
+
+## 9. Gate before the next release
+
+Your review of sections 1, 5 and 7, a decision on enabling `FORM_EDITION_AUTO_EVIDENCE=true` (the first automatic writes to the real database: decision/audit rows for the 8 accepted editions above), and a decision on what should resolve editions USCIS does not state explicitly.
+
+
+## 10. Addendum (same day, your two follow-ups)
+
+**"The edition date is written at the bottom of every form page."** Correct, and the importer was not reading it. `FormMetadataService` called `pdf-parse` with its old (v1) API while the installed package is v2, the error was swallowed, and the printed edition was therefore never extracted: no template in the database has `editionDateSource = "pdf"`. Fixed (code only, no database writes): the PDF is now read with the v2 API and the edition comes from the footer wording `Edition MM/DD/YY` - the most frequent value across the pages wins, a tie yields nothing. The old fallbacks `Expires` (the OMB approval date) and `Rev.` were removed because neither is an edition and they would have become live once parsing worked. The PDF footer still wins over the date USCIS shows on its page, as the code always intended. New tests: `PrintedEdition.test.js` (5, using in-memory PDFs).
+
+Read-only measurement of the 54 stored editions (44 have an official PDF URL; the official PDFs were downloaded and the footer compared with the stored edition date):
+
+| Result | Editions |
+|---|---|
+| Footer matches the stored date | 18 |
+| Footer differs from the stored date | 2 - **I-589** stored 2026-09-15, footer 2026-07-28; **I-131** stored 2026-09-18, footer 2025-01-20 (both stored dates were `version_backfill`, i.e. import dates, not editions) |
+| Footer found, no date stored (review / draft rows) | 17 (e.g. I-918, I-864A, I-130A, G-1055, I-485A) |
+| No footer edition in the PDF | 7 (e.g. G-28, AR-11, G-1145) |
+| No official PDF URL on the template (not checked) | 10 (I-129F, I-130, I-134, I-539, I-539A, I-907, I-140, I-693, I-485J, I-485) |
+
+**Not applied:** correcting the stored dates (I-589, I-131) and filling the 17 missing ones is a write to live templates, and changing a live template's edition date can make the catalog sync see a "new" edition. It needs your approval; the footer reading is what makes it safe to do.
+
+**"The check after the 12-hour background job is also attached to this subsystem only."** Done: `form-edition-policy/EditionPolicyScheduler.js` - `runScheduledEditionChecks()` asks the official USCIS page about every distinct edition on file (live or pending, trusted date only) through the same `runAutomaticCheck` the Check-now button and the gate use, tagged `scheduled_sync`. `USCISCatalogSyncJob` calls it right after `runCatalogSync` and contains no acceptance logic of its own (a test asserts this). One edition failing never stops the rest and the run never throws. It follows the same switch as the pipeline check: **it does nothing until `FORM_EDITION_AUTO_EVIDENCE=true`**, because a recorded decision is a database write. Tests: `scheduler.test.js` (4); the entry-point matrix now lists the job as the only non-enforcer importer.
+
+Verification after both changes: 194 backend tests pass (form-edition-policy, scripts, PrintedEdition, EditionDate); backend `/api/health` 200 after the reload. `PDFFieldScannerService.test.js` has one failure that is not from these changes: it still expects the old `01/17/2025` version format while the code has produced `yyyy-mm-dd` since the version-normalisation change.
+
+## 11. Addendum 2 (same day): edition dates corrected from the PDF, automatic checks switched on
+
+You lifted the database rule ("you can write in the database, just do not create a case"). No case was created. All writes below are to form templates, their stored files and the three FormEdition* collections.
+
+**I-589 and I-131 corrected to the edition printed in the footer of their own stored PDF** (`scripts/correctEditionFromPdfFooter.js`, dry run first, then `--apply`; the stored PDF is copied to the new name and verified byte for byte before the template is pointed at it; the old file is kept; the update only applies while the version is unchanged; idempotent - a re-run reports "already correct").
+
+| Form | Before | After | Stored file |
+|---|---|---|---|
+| I-589 | edition/version 2026-09-15 (import date) | **2026-07-28**, source `pdf` | `government/uscis/I-589/2026-07-28/<sha256>/i-589_2026-07-28.pdf` |
+| I-131 | edition/version 2026-09-18 (import date) | **2025-01-20**, source `pdf` | `government/uscis/I-131/2025-01-20/<sha256>/i-131_2025-01-20.pdf` |
+
+Changed with the edition: `editionDate`, `version`, `registryId`, `pdfStorageKey`, `pdfTemplatePath`, `localPdfPath`, `artifacts.form.storageKey/storagePath`, `importMetadata.editionDateSource` and the certification's version label (so the next autopilot run does not re-certify for a label change). Nothing was deleted.
+
+**One collision, and what I did about it:** I-131 already had a retired template with version `2025-01-20` (uploaded by hand earlier, status `retired`, no case forms; the unique `formCode+version` and `registryId` indexes would reject a second one). Only that retired row's **label** moved aside: version `2025-01-20` -> `2025-01-20-manual-upload`, registryId `I-131:2025-01-20` -> `I-131:2025-01-20-manual-upload`. Its mapping versions, its file and its status are untouched; the previous values are in this report if you want it reversed. The script does this only with `--relabelRetiredDuplicate`, only for a retired template with zero case forms.
+
+Left as they were: the mapping versions keep their old, immutable `formVersion` label (they are found through the template, not through that label); `mappingConfiguration.version` was not changed (not an edition).
+
+**Missing edition dates filled from the PDF footer** (`scripts/fillMissingEditionDatesFromPdfFooter.js`): 19 templates (the 17 review/draft rows plus two retired I-485 supplements) got `editionDate` and source `pdf`, e.g. I-918 2025-01-20, I-864A 2026-08-24, I-130A 2024-04-01, I-485A 2026-09-18, G-325R 2026-09-04. Only the date was set - not the version, file name or status. Six templates stay without a date because their PDF prints no unambiguous edition: G-28 (review), G-28I, G-1145, G-1256, G-1650, AR-11 (the 2026-02-01 row).
+
+**Automatic checks switched on:** `FORM_EDITION_AUTO_EVIDENCE=true` in `Backend/.env` (git-ignored) and `.env.example`; the backend was restarted to pick it up and answers `/api/health` 200. I then ran one sweep through the scheduler (the same function the 12-hour job calls) to prove it end to end: 47 editions checked - **14 accepted** (G-1041, G-1041A, G-1566, I-129, I-765, I-829, I-864, I-864A, I-864EZ, I-90, I-918, I-956F, N-565, N-600), 21 no explicit statement, 4 held because the stored PDF differs from the official one (I-129F, I-539, I-693, I-485), 6 fetch failed and 2 without an official page (supplements with no standalone page); nothing was recorded as not accepted. Written: 14 decision rows (actor `pipeline:official_source`), 14 snapshots, 70 audit events. **I-589 and I-131 got no decision** - USCIS's pages do not state their acceptance explicitly - so any new edition of them stays held; their currently live editions keep serving.
+
+From now on the check also runs by itself ten minutes after backend start and every 12 hours after the catalog sync, and at every activation attempt.
+
+Tests: 6 new (`correctEditionFromPdfFooter.test.js`); 191 pass across form-edition-policy and scripts.
+
+## 12. Addendum 3 (same day): the published edition IS the accepted edition
+
+**Your decision:** the 12-hourly edition-date check removes the need for USCIS to state acceptance in words. The edition USCIS publishes as current on a form's page (its own "Edition Date" field) is accepted unless the page refuses it. This reverses the plan's "silence never creates acceptance" rule on your instruction.
+
+**What the 12-hour job already does (unchanged, nothing was rebuilt):** `USCISCatalogSyncJob` -> `FormCatalogSyncService.runCatalogSync` every 12 h (10 min after start): lists every form on uscis.gov, compares each page's edition date with the installed one, does nothing for unchanged forms, and for new/changed editions runs the existing pipeline (fetch with retry -> qpdf normalise / XFA removal -> import -> carry the mapping forward or apply authored rules -> certification -> promote only if everything passes, otherwise the installed edition keeps serving). It is pure code with no AI. **Gemini is not part of that pipeline** - field mapping uses the earlier edition's mapping graph or the authored `partyFieldRules` crosswalks, and Gemini appears only in document intelligence (passports, resumes). Using Gemini for mapping was a later phase of the plan, gated behind a golden set; it is not built and was not changed here.
+
+**What changed now**
+- `filingEligibility.js`: new pattern `current_official_edition` - accepted when the page's own "Edition Date" equals this edition and no sentence refuses it (a refusal still wins; an edition the page does NOT list as current stays held; contradictory statements stay ambiguous). The quote kept in the audit trail is the page's own "Edition Date <D>" text, verified verbatim in the snapshot.
+- Verification stays mandatory: official https uscis.gov source, fresh fetch, the page names the edition, the template's edition matches. For the stored-PDF comparison: if a checksum was compared it must match (a difference always holds the edition); **if no checksum can be compared** (no stored checksum / no official PDF URL on the template) the edition printed in the footer of the stored PDF must equal the edition (`pdf_printed_edition_matches`). New `readPrintedEdition` dependency; tests added (21 detector + 4 new automatic-evidence tests; 196 pass in form-edition-policy + scripts).
+
+**Correction of something I told you earlier:** I reported four forms (I-129F, I-539, I-693, I-485) as "stored PDF differs from the official PDF". That was wrong. They were held because those seeded templates have **no stored checksum to compare with** (and no official PDF URL), not because the PDFs differ. With the footer check they now pass. Sections 5, 7 and 10 above carry the old wording.
+
+**Read-only dry run after the change (49 editions on file, real uscis.gov pages, memory store): 38 accepted** (9 `current_acceptable_edition`, 9 `explicit_accept`, 20 `current_official_edition`), 0 not accepted. Not accepted by the automatic check, correctly: I-539A, I-130A, I-485J, I-485A, I-918 Supplements A/B (HTTP 404 - supplements have no page of their own; the parent form's page governs), I-918SUPA/B drafts (no official page known), G-28 (edition date from an import date and its PDF prints no edition), and two older review rows (G-1055 2026-09-09, G-325R 2026-09-04: not the page's current edition).
+
+## 13. Addendum 4 (same day): every form checked, supplements resolved from their own PDF, manual path removed
+
+**Footer reader improved.** Older forms print the footer as `Form G-28 09/17/18  Page 1 of 4` (no word "Edition"; G-1145 even has a stray letter before "Page"); that shape is now read too. Still footer-only: OMB `Expires` and EOIR `Rev.` / `Exp.` are never read.
+
+**Supplements and forms without a page of their own** (I-130A, I-485J, I-485A, I-539A, I-918 Supplements A/B): their parent form's page is used when it lists them; otherwise the **official PDF at its stable uscis.gov address** (`.../forms/i-130a.pdf`, `i-485supj.pdf`, `i-918supa.pdf`) is the source - its own footer prints the edition, and that footer line is the quote in the audit trail (pattern `current_official_pdf`). If that PDF prints a different edition the result is `official_pdf_edition_differs` and nothing is recorded.
+
+**All 60 templates compared (stored-PDF footer vs stored edition date):** 53 match, 1 corrected (G-28 active: 2026-09-22 import date -> **2018-09-17** from its footer; file now `g-28_2018-09-17.pdf`), 4 review rows still without a date by your instruction (G-1145 2014-09-26, G-1256 2015-08-10, G-1650 2025-06-03, G-28I 2018-05-23 - footers found, nothing written; the fill command had already written them when your instruction arrived and I put them back exactly as they were), 2 review rows whose stored PDF is not a USCIS form at all (**AR-11 and G-28 review rows hold "Form EOIR-29 Rev. 02/2026"** - wrongly imported), 1 retired I-485 row (stored 2026-04-09, footer 2026-09-04; not touched).
+
+**Sweep result:** 46 of 49 editions recorded as accepted (all 8 supplements included, G-28 2018-09-17 included). Not accepted automatically: G-1055 2026-09-09 and G-325R 2026-09-04 (older review rows, not the page's current edition) and I-485A (review row: the stored PDF's checksum differs from the official i-485supa.pdf although the footer edition is the same - a re-posted file).
+
+**Manual path removed.** `POST /evidence`, `GET /evidence/:id` and `POST /evidence/:id/decision` are no longer routed; only `GET /editions`, `GET /gate` and `POST /auto-check` (runs the same automatic check on demand) remain, and the Admin API client lost the three methods. The service code behind them stays as internal, unrouted code with its tests.
+
+Tests: 211 backend (policy, scripts, footer reader), 8 Admin component tests.
+
+# Phase 0 remainder - immediate safety fixes (no new behavior for any single form: every change is form-agnostic)
+
+## 1. Scope and authorization
+You said "now implement the next phase" after 0b-2, which in the plan is Phase 0 remainder ("Immediate safety fixes + test isolation"). Code only; no database writes were made in this phase and no case was created. Each item below was checked against the current code first and only what was still wrong was changed.
+
+## 2. What was built
+
+| Plan item | Result |
+|---|---|
+| `VersionManagementService.activate` invalidates the template cache itself | **Done.** The lifecycle and import routes never did; the registry console did it on its own. Now `activate` and `retire` both drop the cache (non-fatal if it cannot). |
+| `activate` requires a passing certification, or an audited non-critical override | **Done.** No certification on record -> refused (409, "certify first", not overridable). A failed critical check (`pdf_fillable`, `mapping_valid`, `fill_roundtrip`) -> refused. Only failed non-critical checks (`viewer_download`, `components_slice`) can be overridden, with `overrideReason` (10+ characters) in the request body; the reason, who and when are stored on the template (`lifecycle.certificationOverride`) and in the audit log. The automatic pipeline always certifies before it promotes, so its behavior is unchanged. Legacy live editions are untouched. |
+| `activate` calls the edition gate | Already done in 0b-2 (runs after the certification check, before anything is changed). |
+| One frozen-status rule (Rule G) | **Done.** `form-mapping/config/caseFormFreeze.js` exports `FROZEN_CASE_FORM_STATUSES` (finalized, filed, approved, generated, ready_for_pdf, locked, receipt_received, archived) and `isFrozen(caseForm)` (status on the list OR `isLocked`). `CaseFormEditionMigrationService`, `scripts/replaceFormEdition.js`, `scripts/applyPartyMappingsToExistingCases.js` and the rollout report now import it. A test fails if any other hard-coded list appears (the five lists with other meanings are named in the test). `receipt_received` is not a real `CaseForm.status`; kept defensively and asserted as the only such value. |
+| Fix the "new_cases_only" impact text | **Done.** The stored impact now says `futureCasesAffected: "new_case_forms"` and states that open case forms stay on their edition until migrated (the automatic pipeline migrates them with all answers; frozen forms never). Nothing read the old value. |
+| `withJobLock` on the edition-upgrade and monitoring jobs | **Done** (`uscis-edition-upgrade`, `uscis-monitoring`, 3 h lease like the catalog sync; `server.js` passes it in; without it the job just runs, so nothing else breaks). Their failures now go to the logger instead of `console.error`. |
+| Merge the two `retire` implementations | **Done.** `VersionManagementService.retire` is the only one; it sets status, currentStatus and activeFlag together (the lifecycle route used to leave `activeFlag` true) and drops the cache. The registry console's `retireTemplate` delegates to it. |
+| `deleteFormFromCatalog` refuses while a job runs | **Done.** 409 `FORM_PIPELINE_JOB_RUNNING` when the catalog sync, edition upgrade, monitoring or autopilot lock is held; checked before anything is looked up or deleted. If the lock store cannot be read the delete is not blocked. |
+| `verifyFormImportEndToEnd.js`: record created ids, `--cleanup` only those, refuse if the code pre-existed or a case form references it, dry run | **Done, and it fixed a real hazard:** the old `--cleanup` deleted every template under the form code, including real ones. It now records the ids it created in a run file, deletes only those, refuses when nothing was recorded, an id belongs to another form code, or any case form references one; `--dry-run` changes nothing. |
+| Failure paths log warn/error | **Partly.** The lifecycle audit and notification calls and the two job failures now log; this is not an exhaustive sweep of every `.catch(() => null)` in the codebase. |
+| AI: crashed `AIJob` in `processing` recovered | **Done.** `recoverStuckProcessingJobs` (runs inside the existing 60-second recovery tick under its lock): a job untouched for 15 minutes (`AI_JOB_STUCK_MS`) goes back to the queue (attempts left) or is failed (none left), claimed atomically. |
+| AI: `outputSchema` enforced | **Done.** It was passed to the provider but never checked. `modules/ai/outputSchema.js`: wrong type -> retryable 502; missing keys get their empty value; numbers/booleans sent as strings ("85") are converted, not rejected; keys not in the schema are kept; no schema -> untouched. |
+| AI: timeout / AbortController on `gemini.service` | **Done** (the AI provider registry already had one). Every attempt has a deadline (`GEMINI_TIMEOUT_MS`, default 90 s); a timeout or dropped connection is retried like a 503 and ends as a clear 504. |
+| Test isolation (`MONGODB_TEST_URI`, `test-utils/db.js`) | **Not built.** The plan makes it conditional on approval of a local test database. Until then every new test is DB-free, as in all earlier releases. |
+
+## 3. Behavior changes you should know about
+1. Activating an edition by hand now needs a passing certification (or the audited override above); an uncertified edition that used to activate now gets a 409 with the reason. The Admin screen shows the message; there is no override field in the UI yet (API only).
+2. Case-form migration and the party-mapping re-apply now also skip `approved`, `generated` and `ready_for_pdf` forms (the approved union); `replaceFormEdition` now also skips `archived` and explicitly locked forms.
+3. Retiring through the lifecycle route now also clears `activeFlag`.
+4. Model answers that are the wrong type now fail with a retryable 502 instead of being stored; the common harmless case (a number as a string) is converted.
+
+## 4. Verification
+267 backend tests pass (form-edition-policy, scripts, uscis-lifecycle, frozen module, AI infra, existing AI platform and form-registry tests, footer reader); new this phase: certification rules (4), frozen module (3), job locks and delete refusal (5), end-to-end script safety (4), AI infrastructure (7). Backend restarted on its own after the edits and answers `/api/health` 200; `/api/form-edition-policy/editions` still 401 without a token. No test connects to the real database. Not run: the Admin, Client, Landing and Attorney builds (no frontend file changed in this phase).
+
+## 5. What was NOT done
+Rule J; the local test database; the PM2 worker; an exhaustive sweep of silent catches; a UI field for the certification override.
+
+## 6. Gate before the next phase
+Your review of section 3. Next in the plan: Phase 1 (durable, resumable, fenced pipeline).
+
+# Test isolation in a local database + Phase 1 - durable, resumable, fenced pipeline
+
+## 1. Scope and authorization
+You asked for the test isolation in a local database and the next phase, one after another. Test isolation first, then Phase 1. The only writes to the real (shared) database were the indexes of the new `formpipelinejobs` collection (index-only, `createFormPipelineIndexes.js --apply`); no case, user or company was created, and no form template was touched.
+
+## 2. Test isolation (plan Phase 0 item, deferred until now)
+Verified read-only first, as the plan requires: the MongoDB on this machine (8.0.15, a Windows service on 127.0.0.1:27017) is the local one, separate from the remote shared database, and holds your own databases (`immigration_crm`, `inszoom_crm`, `usais_db`, the older `immigrationcrm_test`, ...), which are never touched.
+- `src/test-utils/pipelineDb.js`: DB-backed pipeline tests connect ONLY to a local database whose name starts with `form_pipeline_test` or ends `_test`, and never to the application's own database (the guard is a pure function with its own tests: remote hosts, replica lists with one remote member, `mongodb+srv`, non-test names and the app database are all refused).
+- Each test **process** gets its own throwaway database (`form_pipeline_test_<pid>_<random>`) and drops it when it finishes - needed because Node runs test files in parallel and files sharing a database were deleting each other's jobs (found when the folder was run together). `MONGODB_PIPELINE_TEST_URI` overrides it with a database of your choice (never dropped; run one file at a time).
+- Unique `ZZ-PIPE-*` form codes, recorded-id / by-code cleanup, `assertNoCaseFormReferences`, indexes and collections built explicitly for only the models a test names.
+- With no local MongoDB (or an unsafe URI) the DB-backed tests are SKIPPED, not failed.
+- First use: `policy.localdb.test.js` runs the Release 0b-2 and Phase 0 behavior on the REAL models and real indexes: unique decision per edition, append-only audit trail, held activation leaves the live edition untouched, automatic acceptance, activation after acceptance, certification required, `not_accepted` is final, two racing checks leave one decision row.
+
+## 3. Phase 1 - what was built
+
+| Plan item | Result |
+|---|---|
+| `FormPipelineJob` | `models/FormPipelineJob.js`: state `pending / running / blocked / held / dead_letter / done`; per-stage `{status, attempts, startedAt, finishedAt, error}`; `currentStage`, `nextAttemptAt`; lease `{lockedUntil, token, fence}`; `lastError{class, code, stage, message}`; `repairsTried[{strategy, outcome, verification, at}]`; artifact ids; `editionKey`; `shadow`; alert-dedupe list; capped history; `schemaVersion`; TTL on finished jobs. **A form has at most one open job**, enforced by a partial unique index (`one_open_job_per_form`, created on the real database). |
+| Atomic claim, heartbeat, lease reclaim, fence | `FormPipelineJobService`: `claimNext` is one atomic update (`fence++`, `attempts++`); every later write is conditional on token AND fence, so a worker that lost its lease can change nothing (`LeaseLostError`); `recoverExpired` returns a dead worker's job to the queue or dead-letters it when its attempts are used up. Tested with two racing claimers and a stale worker waking up. |
+| Re-check before any commit | The `promote` stage re-reads the job (state, token, fence, unexpired lease, same edition key) before it runs, takes the per-form promotion mutex (`form-promote:<code>`), re-checks inside the mutex, and only then calls the EXISTING guarded activation (certification + readiness + approval + the edition-policy gate). A lost lease or a busy mutex means the promotion code never runs. No new promotion logic. |
+| Stages wrap existing services | `ensureCurrentUSCISForm` / `activateOrPromote` take an optional job context and report `detect, import, map, certify, promote, migrate_cases, finalize`. With no context every hook is a plain pass-through (the existing tests prove the old path is unchanged). `activateOrPromote` was NOT split into new functions - splitting a long, swallow-and-continue function was the riskier way to get the same stage records. |
+| Edition identity, idempotence | `editionKey = formCode|editionDate|checksum` is recorded once known; one open job per form; repeated requests return the same job. |
+| Entry points | Admin Fetch, the mapping-save flow, the 12-hour catalog sync and the edition-upgrade job go through `FormPipeline.runForm`. **`FORM_PIPELINE_MODE=inline` (default): the caller gets exactly the result or exception it always did**; the run is also recorded, a failed run is retried by the worker, and if the job cannot be claimed the original call is made unrecorded. **`queued`: the caller only enqueues** (Admin Fetch answers 202 with the job id) and the worker does the work. Not yet routed: `acquireForCase` and the form-generation check (case-scoped, user waiting; a later step). |
+| Worker | `FormPipelineWorker`: one job at a time, bounded jobs per pass, jittered start, alive marker, graceful stop. Runs embedded in the API (default: where the work always ran) or as its own process: `src/workers/formPipelineWorker.js` with `FORM_PIPELINE_WORKER=external`. The API alerts when jobs wait more than 15 minutes and no worker marker is fresh; there is no inline fallback in queued mode. |
+| Recovery | Errors are classified (`errorClassifier.js`): transient -> exponential backoff with jitter, then dead-letter after the attempt limit; blocked (bad / missing PDF, page not found) -> slow retry (24 h); held (edition-policy hold reported by the existing activation) -> re-checked every 12 h behind the same gate, attempts not used up; lease lost -> stop quietly. A repair framework (repair, VERIFY, retry once, per-strategy limit, recorded on the job) is in and tested with injected strategies; **no concrete repair strategy is registered yet** (they belong with certification in Phase 3). |
+| Visibility | `GET /api/form-pipeline/status`, `GET /jobs?state=&formCode=`, `GET /jobs/:id` (admin, team lead, super admin), `POST /jobs/:id/retry` (admin, super admin); the lease token never leaves the server. No Admin screen was added (the plan asks for the endpoint; the Admin UI change needs your confirmation). |
+| Developer alerts | Failure / blocked / dead-letter alerts: recipient `FORM_PIPELINE_ALERT_EMAIL` (default `ishaan@embtelsolutions.com`), template `form-pipeline-alert` on the existing email service, one alert per job per (kind, stage, error class, code), switch `FORM_PIPELINE_EMAIL_FAILURE`, in-app notice for admins when no mail provider is configured or emails are off, alert failures never affect the pipeline, messages carry only a sanitized class / code / one-line message. A BLOCKED result of a run a person started (admin Fetch, mapping save) is not emailed - they already see the error. Success, held and digest emails are Phase 5. |
+| Related guards | Deleting a form from the catalog is also refused while a pipeline job for that form is running; the standalone worker, PM2 snippet and `.env.example` settings are documented. |
+
+## 4. Behavior you should know about
+1. **Nothing changes for callers by default.** In `inline` mode every entry point returns what it always returned; the difference is that each run is recorded and a failure is retried later by the worker with backoff.
+2. **Failures can now email the developer address** (that is the feature you asked for). The email service's `EMAIL_SUPPRESS_STAFF_AND_ATTORNEY` setting still applies if you switch it on.
+3. **Held editions**: a job whose edition the gate refused waits and is re-checked every 12 hours; it can only ever be promoted through the gate.
+4. Real database: one new collection (`formpipelinejobs`, 0 documents) with its indexes.
+
+## 5. Verification
+327 backend tests pass across the touched areas (new this phase: 12 job-service + 13 runner/alerts/entry/worker + 2 real-pipeline-hook + 8 wiring + 7 classifier + 6 test-isolation, all DB-backed ones on throwaway local databases). The real `ensureCurrentUSCISForm` code ran inside a job against a local database with only uscis.gov and the mapping services stubbed. Found and fixed by those tests: a summary bug (a not-promoted edition was reported "activated"), cross-file interference in a shared test database, and `key=` secrets slipping through message sanitizing. The live backend restarted by itself, answers `/api/health` 200, and the new endpoints return 401 without a token; the embedded worker is writing its alive marker. No local databases are left behind.
+
+Known pre-existing issue, not caused by this phase: `ensureCurrentUSCISForm.test.js` still stalls on its third test (it calls un-mocked models without a connection); its first two tests pass.
+
+## 6. Production prerequisites NOT done (each needs its own approval, per the plan)
+Running the worker as a separate PM2 process and the deploy-workflow change that restarts both apps in lockstep (`max_memory_restart`); switching the live system to `FORM_PIPELINE_MODE=queued` and `FORM_PIPELINE_WORKER=external`; the Admin UI for enqueue + status polling; a check of whether the API runs PM2 cluster or single instance; a real test email.
+
+## 7. What was NOT done
+Concrete repair strategies; routing `acquireForCase` / form generation through the job layer; Phase 5 emails; the performance-budget measurement for the worker; the Admin screen.
+
+## 8. Gate before the next phase
+Your review of sections 3, 4 and 6. Next in the plan: Phase 2 (mapping contract, validator, coverage report, edition policy model).
+
+# Phase 2 - mapping contract, policy, validator, coverage (additive; live autofill is provably unchanged)
+
+## 1. Scope and authorization
+You said "make the changes to the specific phases and run phase 2". The plan's Phase 0 and Phase 1 sections now carry an "As built" note of what was implemented and where it differs from the text (see the plan). Phase 2 was then implemented. No write to the real database was made in this phase (only reads for calibration); no case was created; every change is form-agnostic.
+
+## 2. What was measured first (read-only, real data)
+- 59 active mapping versions, 1,404 edges: **every edge is `active`**, none has an `origin`, and **no field uses the legacy `field.mapping{}`** - so restricting projections to active edges and ignoring legacy `mapping{}` change nothing for any live form today.
+- Of the 1,404 live source paths, every one resolves once the real path universe is used (registry + the party aliases + the profile maps + the question library + the authored party rules + children of registered object paths). The first, naive "registry only" reading would have flagged 31 paths falsely (e.g. `petitioner.signatory.*`, `employment.offSiteWorkLocations`), which is why the universe is built from all of these.
+- The new contract run over every live edge reports **35 findings in 3 forms**: I-907 (23) and G-28 (10) have edges whose `profileOwner` is `employee` while the path is `petitioner.*` (stale derived metadata), and I-539 (2) has a field whose label says "Beneficiary or Applicant" but whose PDF name says "Petitioner" and reads `company.name`. These are real findings for a person to review; they are legacy edges, so they are **reported, never blocking**.
+- The pipeline's own rule step (`PartyFieldMappingService.plan`) was simulated in memory against all 30 live forms and judged by the new contract in the strictest (enforced) mode: **0 errors, 0 policy conflicts**. That run found the missing "authored rules are a verified source of paths" input (12 false errors on I-129) before anything shipped.
+- After the change, all 30 live forms projected exactly as many field mappings as they have edges (1,355 = 1,355).
+
+## 3. What was built
+| Plan item | Result |
+|---|---|
+| Additive edge fields and statuses | Edges (the graph is a Mixed object, so no migration) gain `origin` (authored / legacy / inferred / ai / scored), optional `evidence`, `reviewedBy/At`; status `rejected` is valid next to `active` / `needs_review`. |
+| `MappingPolicy` (Rule A) | `contract/MappingPolicy.js`: ranking authored < legacy < inferred < ai < scored; a lower-ranked edge never replaces a live higher-ranked one (the attempt goes to `conflicts[]`); a NEW scored / ai suggestion is stored `needs_review`; edges of unknown provenance are `legacy` and are never bulk-deactivated; applied at `persistVersion`. |
+| Both projections filtered | `graphToFieldMappings` and `FormMappingService.applyMappingGraph` project only `active` edges. |
+| Legacy `mapping{}` guard | It never adds to a field that already has graph mappings; with none it still works and a one-time warning is logged (no live field uses it). |
+| `defaultValue` classification | `defaultValueClassifier.js` (checkbox_unchecked, empty_dropdown, empty_value, barcode_token, constant, party_looking, other); committed snapshot `config/defaultValueSnapshot.json` of the 4,020 live defaults (3,119 unchecked checkboxes, 228 empty dropdowns, 312 empty values, 347 barcode tokens, 5 `PRESENT`, 0 person-shaped, 9 flagged `other` for review: G-325A, I-864EZ text/total fields); `scripts/defaultValueReport.js` compares live data with the snapshot (read-only, exit 1 on drift, `--write` refreshes it); a test proves autofill output for every category is unchanged (a default is used only when a field has no mapping). Behavior is preserved; nothing was restricted. |
+| Registry metadata | `role`, `description`, `cardinality` (derived from the path unless an entry sets them) and `describe(path)` on `CanonicalFieldRegistryService`; all existing keys untouched. |
+| `MappingContractValidator` | `contract/MappingContractValidator.js`: path resolvable, type compatibility (clear contradictions only), supported transform and its referenced paths, supported condition operator and its paths, fallback path, repeating / arrayItem references, party contradiction (the form field speaks about one side, the path belongs to the other), stale derived metadata (`partyRule`, `profileOwner`), valid status and origin; unmapped fields classified intentional / out-of-scope / unresolved / optional. The transform and operator lists are read from `MappingResolver` by a test, so they cannot drift. **New / changed edges are enforced (errors); legacy edges are report-only.** Wired into `validateWithContract`, used by `persistVersion`, `MappingGraphService.activate` (hard gate), the certification `mapping_valid` check and the manual edit API. |
+| `MappingCoverageService` | One compact report (fields mapped / required-unmapped, unmapped by class, edges by status and origin, checklist questions with no PDF field, unpopulated sources, unreachable conditions, duplicate targets, contract summary, default classes). Stored on the **mapping version** (`validation.coverage`, never on the template: the I-129 template is ~15.85 MB of the 16 MB limit); read-only route `GET /api/form-mapping/templates/:templateId/coverage`. (Deviation from the plan text: it said `validationSummary.coverage` on the template.) |
+| `carryForwardGraph` with equivalence | Exact PDF-name / id matches are claimed first, exactly as before. An edge whose field disappeared may follow a renamed field only when it is provably the same (same type, same printed label ignoring numbering, same section, and the only such field); it is carried as `needs_review` (a person confirms it), reported as `renamedEdges`, and the edition is not auto-activated. Anything else is lost, as before. (The weak FieldDiffService similarity is not trusted to decide.) |
+| Origins on the writers | Party rules: `authored` (or `inferred`) and the derived `profileOwner` is recomputed when a rule rewires an edge; admin edits: `authored` + `reviewedBy/At`; scored suggestions: `scored`; the biographic tier: `inferred` (so it stays usable); everything else: `legacy`. |
+| Manual edit API | An active edge that breaks the contract is refused with 422 `MAPPING_CONTRACT_VIOLATION` and the reasons; it may still be stored as a `needs_review` suggestion. |
+| Edition policy extensions (plan's last bullet) | Delivered earlier (Release 0b-2 and its addenda): automatic evidence from official pages and PDFs, the 12-hourly refresh, stale detection (a decision past its review date is re-checked), Form Governance integration. **Not built:** a separate "scanner-notice early warning" hold - an explicit refusal on the page is already recorded as `not_accepted` by the automatic check. |
+
+## 4. Behavior you should know about
+1. Live autofill and live mapping versions do not change (section 2). New behavior applies to NEW graphs: scored / ai suggestions are review-only, a new or changed edge must satisfy the contract before a mapping version can be activated, and a rewired party-rule edge carries a recomputed owner.
+2. A mapping that can no longer be activated automatically now stays in review with the contract's reasons (instead of going live with a questionable edge); the previous edition keeps serving.
+3. The 35 legacy findings are listed per form in the coverage report; fixing them is per-form work (not done here).
+4. `MappingGraphService generates canonical-to-form relationships...` (a scoring test) fails; it asserts which registry path the scorer prefers for "Date of Birth" and does not depend on anything changed here (it was not in the earlier regression runs).
+
+## 5. Verification
+565 backend tests pass, 1 fails (the scoring test above). New this phase: 11 policy / path-universe / drift tests, 16 validator / coverage / default-value tests, 10 carry-forward / projection / writer / registry tests, 7 DB-backed tests on real models (throwaway local database: stamping, review-only suggestions, conflict keeping, hard-gate activation, manual edits, read-time projection, coverage). Existing mapping, registry and form tests that do not touch a database all still pass. The live backend restarted by itself and answers `/api/health` 200.
+
+## 6. What was NOT done
+Fixing the 35 legacy findings; routing `acquireForCase` through the job layer (Phase 1 note); the Admin screen for the coverage report; a concrete repair strategy for certification; the golden set (a Phase 2 deliverable in the plan that needs a named domain reviewer); the gate for Gemini mapping (Phase 4).
+
+## 7. Gate before the next phase
+Your review of sections 2, 4 and 6 and the decision on the golden-set reviewer. Next in the plan: Phase 3 (certification, edition safety, release gate).
+
+## 8. Phase 2 addendum - closing the items section 6 left open (2026-10-16)
+
+| Item | Result |
+|---|---|
+| 35 legacy contract findings | Fixed and applied live (I-907 v10, G-28 v9, I-539 v13) by `scripts/repairLegacyMappingFindings.js` (dry-run by default, backup to `Backend/backups/forms/`, then a new mapping version + normal activation). It recomputes `profileOwner` from the edge's party rule (derived, never typed) and records two reviewed exceptions (I-539 `P3_Line4_NameofPetitioner[0|1]`, reason stored on the edge; an exception counts only with a reason of 10+ characters). Filled values are identical before and after (tested through `FormMappingService.resolveField`). A read-only scan afterwards: 0 contract violations on all 1,404 live edges, all active, no legacy `mapping{}`. |
+| Failing scoring test | Fixed at its cause: the scorer no longer lets the tail word "date" outrank an exact alias. `scoreField` adds `aliasBoost` (+0.3) when the form label equals a registry alias ("Date of Birth" -> `person.dob`). |
+| Golden set draft | 424 plain-language entries over 14 forms, generated read-only from the live active mappings (`scripts/buildGoldenSetDraft.js`), each with an example run through the real resolver for a fictional sample client. Meets the plan's bar (>=300 entries, >=25 per box type, >=3 forms in employment / family / single, held-out form I-131). No technical id appears in anything a reviewer sees (tested). |
+| Golden set review | `GoldenSetReview` / `GoldenSetSignOff` models, `/api/golden-set` (summary, entries, review, sign-off, CSV export). Answers and sign-off only for the reviewer(s) in `GOLDEN_SET_REVIEWERS` (default `admin@immiglance.com`); an answer is tied to the entry's content hash, so a reworded entry needs a new answer and an old sign-off shows out of date. Sign-off is refused while any box is unanswered / "Not sure" or the Right entries fall below the plan's minimum. Reviewer steps: `docs/GOLDEN_SET_REVIEW_GUIDE.md`. |
+| Admin screens | In Form Governance: **Import Progress** (pipeline jobs, plain states and stages, why a job is stuck, Retry for admin / super_admin, auto-refresh, and a queued-fetch (202) message instead of a false "already active"), **Golden Set Review**, and a **Mapping coverage** panel on each form's detail page. |
+| Tests | Backend: 12 golden draft (DB-free) + 7 review (throwaway local DB) + 6 repair tests; the named form-mapping files all pass (61 of 61 in the final run). Admin: 150 of 150, build passes. |
+
+Still open: the reviewer has not yet answered the 424 entries (that is the human step); `ensureCurrentUSCISForm.test.js` still stalls on its 3rd test (pre-existing, unmocked mongoose); Phase 3.
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -304,3 +605,8 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 |---|---|---|---|
 | 2026-10-16 | Release 0a | Read-only pre-rollout report, redirect-chain crawl, read-only DB wrapper, 50 tests, this document | `Backend/src/scripts/formEditionPolicyRolloutReport.js`, `formSourceRedirectCrawl.js`, `lib/readOnlyDb.js`, `tests/*.test.js`, `docs/FORM_PIPELINE_IMPLEMENTATION_REPORT.md` |
 | 2026-10-16 | Release 0b-1 | Evidence-resolution path: 3 models (2 append-only), redirect-safe fetcher, verifier, fail-closed gate (wired into nothing), evidence service + admin/team_lead API, evidence section in Form Governance, unrun index script, 75 backend + 8 Admin tests, slicing check | `Backend/src/models/FormEdition*.js`, `models/helpers/appendOnly.js`, `modules/form-edition-policy/*`, `routes/index.js` (1 line), `scripts/createFormEditionPolicyIndexes.js`, `scripts/formSourceRedirectCrawl.js` (shared validator), `Admin/frontend/src/components/FormEditionEvidenceSection.jsx`, `services/api.js`, `pages/FormGovernance.jsx` |
+| 2026-10-16 | Release 0b-2 | Automatic evidence from the official USCIS page (explicit statements only), `POST /auto-check`, fail-closed enforcer wired into 4 services, 11 seeds and the replace script, narrowed rescue, Admin screen now "Check now" (no manual entry), unique indexes created, read-only coverage dry run (8 of 31 editions auto-accept), 181 backend + 127 Admin tests | `Backend/src/modules/form-edition-policy/{filingEligibility,EditionPolicyEnforcer,EvidenceService}.js`, controller/routes, gated pipeline files, `tests/*`, `Admin/frontend/src/components/FormEditionEvidenceSection.jsx(+test)`, `services/api.js` |
+| 2026-10-16 | Phase 0 remainder | Shared frozen-status module, activate certifies + drops cache, one retire, job locks on edition-upgrade/monitoring, delete refused while a job runs, safe end-to-end import script, AI jobs recovered from `processing`, outputSchema enforced, Gemini timeout; 267 tests | `form-mapping/config/caseFormFreeze.js`, `VersionManagementService.js`, `uscis-form.service.js`, `USCISEditionUpgradeJob.js`, `USCISMonitoringJob.js`, `utils/jobLock.js`, `form-registry.controller.js`, `scripts/verifyFormImportEndToEnd.js`, `modules/ai/outputSchema.js`, `ai-orchestration.service.js`, `gemini.service.js`, tests |
+| 2026-10-16 | Test isolation + Phase 1 | Local throwaway-database test harness with guards; FormPipelineJob (one open job per form, lease + fence), job service, runner, worker (embedded or separate process), stage hooks in the existing pipeline, inline/queued entry modes, classified recovery, developer alerts, pipeline API; 327 tests | `test-utils/pipelineDb.js`, `models/FormPipelineJob.js`, `modules/form-pipeline/*`, `workers/formPipelineWorker.js`, `scripts/createFormPipelineIndexes.js`, `OnDemandFormAcquisitionService.js` (hooks), catalog sync / upgrade / admin fetch / mapping-save entry points, `email/templates/form-pipeline-alert.js`, `server.js`, `routes/index.js` |
+| 2026-10-16 | Phase 2 | Mapping policy (origins, ranking, review-only suggestions, conflicts), projections filtered to active edges, contract validator (new edges enforced, legacy report-only), coverage report on the mapping version + route, default-value classes + committed snapshot + drift script, rename equivalence in edition carry-forward, registry metadata; calibrated on live data; 565 tests (1 unrelated scoring test fails) | `form-mapping/contract/*`, `MappingGraphService.js`, `FormMappingService.js`, `EditionMigrationService.js`, `PartyFieldMappingService.js`, `BiographicMappingService.js`, `FormCertificationService.js`, `CanonicalFieldRegistryService.js`, `mappingGraphRoutes.js`, `scripts/defaultValueReport.js`, `config/defaultValueSnapshot.json`, tests |
+| 2026-10-16 | Phase 2 addendum | Legacy findings repaired live, scorer alias fix, golden set draft (424 plain-language entries) + reviewer API/models + sign-off, Admin screens (Import Progress, Golden Set Review, Mapping coverage), reviewer guide | `scripts/repairLegacyMappingFindings.js`, `scripts/buildGoldenSetDraft.js`, `form-mapping/golden/*`, `models/GoldenSet{Review,SignOff}.js`, `form-mapping/routes/goldenSetRoutes.js`, `routes/index.js`, `MappingGraphService.js`, `contract/MappingContractValidator.js`, `Admin/frontend/src/components/{FormPipelineJobsSection,GoldenSetReviewSection,MappingCoveragePanel}.jsx(+tests)`, `services/api.js`, `pages/FormGovernance*.jsx`, `docs/GOLDEN_SET_REVIEW_GUIDE.md`, `docs/golden-set/GOLDEN_SET_DRAFT.csv` |

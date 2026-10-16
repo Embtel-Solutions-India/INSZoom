@@ -14,6 +14,8 @@ const crypto = require("crypto");
 const { fetchOfficialSource } = require("./OfficialSourceFetcher");
 const { htmlToText, collapseWhitespace } = require("./htmlText");
 const { verifyEvidence } = require("./EvidenceVerifier");
+const { filingEligibilityStatement, parentFormCodeOf, pageMentionsForm } = require("./filingEligibility");
+const { officialPdfCandidates } = require("./officialUrl");
 const gate = require("./EditionPolicyGate");
 const C = require("./editionPolicy.constants");
 
@@ -76,7 +78,21 @@ function validateSubmission(input = {}) {
  * Builds the service. Everything with a side effect is injected so tests run with no database and no network:
  *   store (see EditionPolicyStore), fetchHtml / fetchPdf (the official-source fetcher), now(), newId(), auditSink(event) (secondary AuditLog copy)
  */
-function createEvidenceService({ store, fetchHtml, fetchPdf, now = () => new Date(), newId = () => crypto.randomUUID(), auditSink = null } = {}) {
+// the official page of a standalone form (https://www.uscis.gov/<form-code>); required lazily because that module sits above the activation code
+const defaultPageUrl = (formCode) => require("../uscis-form-import/services/OnDemandFormAcquisitionService").guessedFormPageUrl(formCode);
+
+// the edition printed in the footer of the template's own stored PDF (ISO) or null; lazy requires keep the PDF reader out of everything that never needs it
+async function defaultPrintedEdition(template) {
+  if (!template?.pdfStorageKey) return null;
+  const { extractEditionDate, readPdfText } = require("../uscis-form-import/services/FormMetadataService");
+  const buffer = await require("../uploads/storage.service").readBuffer(template.pdfStorageKey);
+  return isoDay(extractEditionDate(await readPdfText(buffer)));
+}
+
+const defaultPdfText = (bytes) => require("../uscis-form-import/services/FormMetadataService").readPdfText(bytes);
+const footerEditionQuote = (text, edition) => require("../uscis-form-import/services/FormMetadataService").footerEditionQuote(text, edition);
+
+function createEvidenceService({ store, fetchHtml, fetchPdf, readPrintedEdition = defaultPrintedEdition, readPdfTextOf = defaultPdfText, resolvePageUrl = defaultPageUrl, now = () => new Date(), newId = () => crypto.randomUUID(), auditSink = null } = {}) {
   if (!store) throw new Error("createEvidenceService needs a store");
   const html = fetchHtml || ((url) => fetchOfficialSource(url, { accept: "html" }));
   const pdf = fetchPdf || ((url) => fetchOfficialSource(url, { accept: "pdf" }));
@@ -257,6 +273,143 @@ function createEvidenceService({ store, fetchHtml, fetchPdf, now = () => new Dat
     });
   }
 
+  /**
+   * Release 0b-2: AUTOMATIC evidence. Nobody supplies a URL or a quote: the system finds the form's official uscis.gov page itself, fetches it with the
+   * redirect-safe fetcher, looks for an EXPLICIT statement about this exact edition (FilingEligibilityStatement) and verifies it exactly like submitted
+   * evidence. Only then does it record a machine decision (decidedBy pipeline:official_source). It never decides from a page that merely names or
+   * publishes an edition: no explicit statement -> nothing is written and the edition stays held.
+   *
+   * Writes happen ONLY when a machine decision is actually recorded (snapshot + audit events + decision row); every other outcome is read-only.
+   * Outcomes: accepted | not_accepted | unchanged | locked_not_accepted | held_unverified | no_explicit_statement | no_template | edition_date_not_trusted |
+   *           no_official_page | fetch_failed | supplement_not_listed | official_pdf_edition_differs
+   */
+  async function runAutomaticCheck(formCode, editionIdentifier, { trigger = "manual" } = {}) {
+    if (!formCode || !C.EDITION_IDENTIFIER_PATTERN.test(String(editionIdentifier || ""))) return { outcome: "no_template", formCode, editionIdentifier, reason: "invalid edition identifier" };
+    return withLock(`${formCode}|${editionIdentifier}`, async () => {
+      const base = { formCode, editionIdentifier, trigger };
+      const template = await findTemplate(formCode, editionIdentifier);
+      if (!template) return { ...base, outcome: "no_template" };
+      if (template.importMetadata?.editionDateSource === "version_backfill") return { ...base, outcome: "edition_date_not_trusted" };
+      // 1) the form's own page; a supplement with no page of its own (I-539A, I-485J, I-918 Supplement A, ...) is covered by its parent form's page.
+      // 2) when no page can speak for the form, the official PDF at its stable uscis.gov address is the source: it prints its own edition in the footer of every page
+      const resolveFromPage = async () => {
+        const parent = parentFormCodeOf(formCode);
+        const own = [template.lifecycle?.sourcePageUrl || resolvePageUrl(formCode)].filter(Boolean);
+        const parentPage = parent ? resolvePageUrl(parent) : null;
+        const candidates = [...own, ...(parentPage && !own.includes(parentPage) ? [parentPage] : [])];
+        if (!candidates.length) return { outcome: "no_official_page" };
+        let sourceUrl = candidates[0];
+        let fetched = null;
+        for (const candidate of candidates) {
+          sourceUrl = candidate;
+          fetched = await html(candidate);
+          if (fetched.ok) break;
+        }
+        if (!fetched.ok) return { outcome: "fetch_failed", sourceUrl, error: fetched.error || (fetched.violations || []).map((item) => item.type).join(", ") };
+        const pageText = htmlToText(fetched.bytes.toString("utf8")).slice(0, C.LIMITS.snapshotTextMax);
+        // a parent's page only speaks for the supplement if it actually lists it
+        if (!own.includes(sourceUrl) && !pageMentionsForm(pageText, formCode)) return { outcome: "supplement_not_listed", sourceUrl };
+        return { ok: true, sourceUrl, fetched, text: pageText, eligibility: filingEligibilityStatement({ text: pageText, formCode, editionIdentifier }) };
+      };
+      const resolveFromPdf = async () => {
+        let official = null;
+        let officialUrl = null;
+        for (const candidate of officialPdfCandidates(formCode, template.officialPdfUrl)) {
+          const got = await pdf(candidate);
+          if (got.ok && got.bytes) { official = got; officialUrl = candidate; break; }
+        }
+        if (!official) return null;
+        const pdfText = (await Promise.resolve().then(() => readPdfTextOf(official.bytes)).catch(() => "")).slice(0, C.LIMITS.snapshotTextMax);
+        const quote = footerEditionQuote(pdfText, editionIdentifier);
+        if (!quote) return { outcome: "official_pdf_edition_differs", sourceUrl: officialUrl };
+        const eligibility = { verdict: "accepted", pattern: "current_official_pdf", quote, dates: { effectiveDate: null, rejectionDate: null, graceUntil: null }, evidence: [], ambiguous: false };
+        return { ok: true, sourceUrl: officialUrl, fetched: official, text: pdfText, eligibility, officialBytes: official.bytes };
+      };
+      let source = await resolveFromPage();
+      if (!source.ok && ["no_official_page", "fetch_failed", "supplement_not_listed"].includes(source.outcome)) source = (await resolveFromPdf()) || source;
+      if (!source.ok) return { ...base, ...source };
+      const { sourceUrl, fetched, text, eligibility } = source;
+      if (eligibility.verdict === "none") return { ...base, outcome: "no_explicit_statement", sourceUrl, ambiguous: eligibility.ambiguous };
+
+      // everything is computed in memory first; nothing is written unless a decision will be recorded
+      const claimedDates = { effectiveDate: eligibility.dates.effectiveDate, rejectionDate: eligibility.dates.rejectionDate, graceUntil: eligibility.dates.graceUntil };
+      const at = now();
+      const snapshotHash = sha256(text);
+      const stored = template.importMetadata?.checksum || template.lifecycle?.sourceChecksum || null;
+      let fetchedChecksum = null;
+      if (stored && source.officialBytes) {
+        fetchedChecksum = sha256(source.officialBytes);
+      } else if (stored && template.officialPdfUrl) {
+        const downloaded = await pdf(template.officialPdfUrl);
+        if (downloaded.ok && downloaded.bytes) fetchedChecksum = sha256(downloaded.bytes);
+      }
+      // the footer of the stored PDF is read only when the checksum comparison is impossible (it then stands in for it)
+      let pdfPrintedEdition = null;
+      if (!stored || !fetchedChecksum) pdfPrintedEdition = await Promise.resolve().then(() => readPrintedEdition(template)).catch(() => null);
+      const artifact = {
+        template: true, editionDate: isoDay(template.editionDate), editionDateSource: template.importMetadata?.editionDateSource || null,
+        publishedEditionDate: isoDay(template.importMetadata?.publishedEditionDate), pdfChecksumStored: stored, pdfChecksumFetched: fetchedChecksum, pdfPrintedEdition,
+      };
+      const submission = { formCode, editionIdentifier, quote: collapseWhitespace(eligibility.quote), claimedDates };
+      const verification = verifyEvidence({ submission, snapshot: { finalUrl: fetched.finalUrl, redirectChain: fetched.chain, fetchedAt: at, extractedText: text }, artifact, now: at });
+      const checks = Object.fromEntries(verification.checks.map((item) => [item.name, item.passed]));
+      const decision = eligibility.verdict;
+      // accepted needs everything verified; not_accepted only restricts, so it needs just the quote and the edition to be in the official page
+      const supported = decision === "accepted" ? verification.overall === C.VERIFICATION_RESULTS.VERIFIED : Boolean(checks.quote_verbatim && checks.edition_in_snapshot && checks.source_official);
+      if (!supported) return { ...base, outcome: "held_unverified", sourceUrl, pattern: eligibility.pattern, verification: { overall: verification.overall, failed: verification.failed } };
+
+      const existing = await store.findDecision(formCode, editionIdentifier);
+      if (existing?.decision === "not_accepted" && decision === "accepted") return { ...base, outcome: "locked_not_accepted", sourceUrl };
+      const farOff = existing?.reviewBy && new Date(existing.reviewBy).getTime() - at.getTime() > 30 * 24 * 60 * 60 * 1000;
+      if (existing && existing.decision === decision && existing.status === "verified" && farOff && existing.quote === submission.quote) return { ...base, outcome: "unchanged", sourceUrl, decision: existing };
+
+      // a decision is going to be recorded: now (and only now) write the snapshot, the audit events and the decision row
+      const machine = { userId: null, role: "system", label: "pipeline:official_source" };
+      const caseState = { id: newId(), seq: 0, formCode, editionIdentifier };
+      await writeEvent(caseState, "EVIDENCE_SUBMITTED", { automatic: true, trigger, sourceUrl, claimedEdition: editionIdentifier, claimedDates, quote: submission.quote, pattern: eligibility.pattern }, machine);
+      const snapshotRow = await store.insertSnapshot({
+        sourceUrl, finalUrl: fetched.finalUrl, redirectChain: fetched.chain, httpStatus: fetched.status, contentType: fetched.contentType, fetchedAt: at,
+        snapshotHash, extractedText: text, textLength: text.length, fetchedBy: { userId: null, role: "system" }, evidenceCaseId: caseState.id,
+      });
+      await writeEvent(caseState, "SOURCE_FETCHED", { ok: true, finalUrl: fetched.finalUrl, redirectChain: fetched.chain, httpStatus: fetched.status, contentType: fetched.contentType, snapshotId: idOf(snapshotRow), snapshotHash, fetchedAt: at, violations: [], error: null }, { userId: null, role: "system", label: "system:official_source_fetch" });
+      await writeEvent(caseState, "VERIFICATION_COMPLETED", { overall: verification.overall, checks: verification.checks, failed: verification.failed, snapshotHash }, { userId: null, role: "system", label: "system:verification" });
+
+      const rationale = `Automatic: USCIS's own page states this edition is ${decision === "accepted" ? "accepted" : "not accepted"} (${eligibility.pattern}).`;
+      const row = {
+        formCode, editionIdentifier, decision, status: "verified",
+        effectiveDate: claimedDates.effectiveDate ? new Date(claimedDates.effectiveDate) : null,
+        rejectionDate: claimedDates.rejectionDate ? new Date(claimedDates.rejectionDate) : null,
+        graceUntil: claimedDates.graceUntil ? new Date(claimedDates.graceUntil) : null,
+        evidenceRefs: [...(existing?.evidenceRefs || []), { sourceId: idOf(snapshotRow), snapshotHash, evidenceCaseId: caseState.id, recordedAt: at }],
+        decidedBy: machine, decidedAt: at, reviewBy: new Date(at.getTime() + C.REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+        holdReason: "", rationale, quote: submission.quote,
+      };
+      const saved = await store.saveDecision(row, existing ? existing.version : null);
+      await writeEvent(caseState, "DECISION_RECORDED", {
+        decision, automatic: true, pattern: eligibility.pattern, effectiveDate: claimedDates.effectiveDate, rejectionDate: claimedDates.rejectionDate, graceUntil: claimedDates.graceUntil,
+        quote: submission.quote, rationale, explicitConfirmation: false, restrictsOnly: decision === "not_accepted", snapshotHash, verification: verification.overall, decisionVersion: saved.version,
+      }, machine);
+      const result = await gateFor(formCode, editionIdentifier);
+      await writeEvent(caseState, "GATE_RECALCULATED", { inputs: { formCode, editionIdentifier }, result, decisionVersion: saved.version }, { userId: null, role: "system", label: "system:gate" });
+      return { ...base, outcome: decision, sourceUrl, pattern: eligibility.pattern, evidenceCaseId: caseState.id, decision: saved, gate: result };
+    });
+  }
+
+  /** Audit event OUTCOME_RECORDED: what an entry point did with the gate's answer. Only when a decision (and so an evidence case) exists; best effort. */
+  async function recordOutcome({ formCode, editionIdentifier, outcome, entryPoint, actor, reasons = [] }) {
+    try {
+      const row = await store.findDecision(formCode, editionIdentifier);
+      const evidenceCaseId = row?.evidenceRefs?.length ? row.evidenceRefs[row.evidenceRefs.length - 1].evidenceCaseId : null;
+      if (!evidenceCaseId) return null;
+      const events = await store.listEvents(evidenceCaseId);
+      if (!events.length) return null;
+      const state = { id: evidenceCaseId, seq: events[events.length - 1].seq, formCode, editionIdentifier };
+      return await writeEvent(state, "OUTCOME_RECORDED", { outcome, entryPoint, reasons, decisionVersion: row.version }, { userId: actor?._id || actor?.userId || null, role: actor?.role || "system", label: actor?.label || (actor?._id ? undefined : "system") });
+    } catch {
+      return null; // an audit failure must never change what the entry point does
+    }
+  }
+
   /** Every stored edition with its decision and what the gate says now (one pass, no per-row queries). */
   async function listEditions(user) {
     assertRole(user);
@@ -286,7 +439,13 @@ function createEvidenceService({ store, fetchHtml, fetchPdf, now = () => new Dat
     return gateFor(String(formCode || ""), String(editionIdentifier || ""));
   }
 
-  return { submitEvidence, recordDecision, getCase, listEditions, gateCheck, assertRole };
+  /** The admin / team lead "Check now" button: the same automatic check, run on request. Role re-checked here. */
+  async function autoCheck(user, formCode, editionIdentifier) {
+    assertRole(user);
+    return runAutomaticCheck(String(formCode || ""), String(editionIdentifier || ""), { trigger: `manual:${user.role}` });
+  }
+
+  return { submitEvidence, recordDecision, getCase, listEditions, gateCheck, assertRole, runAutomaticCheck, autoCheck, recordOutcome };
 }
 
 // The application's instance: Mongoose-backed, with a best-effort copy of every event in the existing AuditLog.

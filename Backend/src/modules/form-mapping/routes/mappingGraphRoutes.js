@@ -9,6 +9,8 @@ router.use(authenticate);
 router.post("/templates/:templateId/generate", authorizePermissions("forms:update"), controller.generate);
 router.post("/templates/:templateId/validate", authorizePermissions("forms:read"), controller.validate);
 router.get("/templates/:templateId/preview", authorizePermissions("forms:read"), controller.preview);
+// Phase 2: how well the current mapping covers the form (contract findings, unmapped fields by class, questions without a field, default-value classes)
+router.get("/templates/:templateId/coverage", authorizePermissions("forms:read"), controller.coverage);
 router.get("/templates/:templateId/autofill-preview", authorizePermissions("forms:read"), controller.autofillPreview);
 router.get("/templates/:templateId/search", authorizePermissions("forms:read"), controller.search);
 router.get("/templates/:templateId/versions", authorizePermissions("forms:read"), controller.versions);

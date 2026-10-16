@@ -625,9 +625,24 @@ export const uscisFormsApi = {
 export const formEditionPolicyApi = {
   editions: () => api.get('/form-edition-policy/editions'),
   gate: (formCode, edition) => api.get('/form-edition-policy/gate', { params: { formCode, edition } }),
-  submitEvidence: (payload) => api.post('/form-edition-policy/evidence', payload),
-  evidenceCase: (evidenceCaseId) => api.get(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}`),
-  recordDecision: (evidenceCaseId, payload) => api.post(`/form-edition-policy/evidence/${encodeURIComponent(evidenceCaseId)}/decision`, payload),
+  autoCheck: (formCode, editionIdentifier) => api.post('/form-edition-policy/auto-check', { formCode, editionIdentifier }),
+}
+
+// Phase 1: the form import pipeline's durable jobs (what is running, what is stuck, why). Responses are { success, data }.
+export const formPipelineApi = {
+  status: () => api.get('/form-pipeline/status'),
+  jobs: (params) => api.get('/form-pipeline/jobs', { params }),
+  job: (jobId) => api.get(`/form-pipeline/jobs/${jobId}`),
+  retry: (jobId) => api.post(`/form-pipeline/jobs/${jobId}/retry`),
+}
+
+// Phase 2: the golden set - the answer key a named reviewer confirms in plain language. Responses are { success, data }.
+export const goldenSetApi = {
+  summary: () => api.get('/golden-set/summary'),
+  entries: (params) => api.get('/golden-set/entries', { params }),
+  review: (entryId, payload) => api.put(`/golden-set/entries/${entryId}/review`, payload),
+  signOff: () => api.post('/golden-set/sign-off', { confirm: true }),
+  exportCsv: () => api.get('/golden-set/export.csv', { responseType: 'blob' }),
 }
 
 export const formGovernanceApi = {
@@ -651,6 +666,8 @@ export const formGovernanceApi = {
   // same endpoints family as the checklist-trace calls above.
   governanceDefects: (templateId) => api.get(`/form-mappings/templates/${templateId}/checklist-trace/defects`),
   checklistHealth: () => api.get('/form-mappings/checklist-health'),
+  // Phase 2: how well this form's mapping covers the form (contract findings, unmapped boxes by class, questions without a box, default values)
+  mappingCoverage: (templateId) => api.get(`/form-mappings/templates/${templateId}/coverage`),
   // "Add case type" - maps this template's form to another visa type, with
   // an assignment type (Automatic = AUTO_CREATE, Conditional = CONDITIONAL).
   // Reuses the existing per-template VisaFormMapping CRUD (also used by the

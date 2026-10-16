@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
 import UploadFormModal from '../components/UploadFormModal'
 import FormEditionEvidenceSection, { EVIDENCE_ROLES } from '../components/FormEditionEvidenceSection'
+import FormPipelineJobsSection, { READ_ROLES as PIPELINE_READ_ROLES } from '../components/FormPipelineJobsSection'
+import GoldenSetReviewSection from '../components/GoldenSetReviewSection'
 import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2 } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
@@ -67,6 +69,9 @@ const FormGovernance = () => {
   const isAdmin = ['super_admin', 'admin'].includes(user?.role)
   const canRecordEvidence = EVIDENCE_ROLES.includes(user?.role) // exactly admin and team_lead (never super_admin)
   const [showEvidence, setShowEvidence] = useState(false)
+  const canSeeStaffReviews = PIPELINE_READ_ROLES.includes(user?.role) // super_admin, admin, team_lead (the same roles the API allows)
+  const [showPipeline, setShowPipeline] = useState(false)
+  const [showGolden, setShowGolden] = useState(false)
   const [forms, setForms] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -183,7 +188,13 @@ const FormGovernance = () => {
     setFetchResult(null)
     try {
       const response = await formGovernanceApi.fetchFromUSCIS(formCode)
-      const { requiresActivation, biographicReady, activationBlockedReason } = response.data.data
+      const { requiresActivation, biographicReady, activationBlockedReason, queued, message } = response.data.data
+      if (response.status === 202 || queued) {
+        // queued mode: a worker does the fetch in the background (see "Import Progress"); nothing has been fetched yet
+        setFetchResult({ tone: 'green', message: `${formCode}: ${message || 'the fetch was queued.'} Open "Import Progress" to follow it.` })
+        setShowPipeline(true)
+        return
+      }
       setFetchResult({
         tone: 'green',
         message: requiresActivation
@@ -241,6 +252,16 @@ const FormGovernance = () => {
               <FileCheck2 className="w-4 h-4" /> {showEvidence ? 'Hide' : 'Show'} Edition Evidence
             </button>
           )}
+          {canSeeStaffReviews && (
+            <button onClick={() => setShowPipeline((open) => !open)} className="btn-secondary text-sm flex items-center gap-1 shrink-0">
+              <FileCheck2 className="w-4 h-4" /> {showPipeline ? 'Hide' : 'Show'} Import Progress
+            </button>
+          )}
+          {canSeeStaffReviews && (
+            <button onClick={() => setShowGolden((open) => !open)} className="btn-secondary text-sm flex items-center gap-1 shrink-0">
+              <FileCheck2 className="w-4 h-4" /> {showGolden ? 'Hide' : 'Show'} Golden Set Review
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setShowUpload(true)} className="btn-primary text-sm flex items-center gap-1 shrink-0">
               <Upload className="w-4 h-4" /> Upload Form
@@ -250,6 +271,8 @@ const FormGovernance = () => {
       </div>
 
       {canRecordEvidence && showEvidence && <FormEditionEvidenceSection />}
+      {canSeeStaffReviews && showPipeline && <FormPipelineJobsSection />}
+      {canSeeStaffReviews && showGolden && <GoldenSetReviewSection />}
 
       {showCoverage && (
         <div className="card">

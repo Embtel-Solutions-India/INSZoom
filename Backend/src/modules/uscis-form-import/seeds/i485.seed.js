@@ -84,6 +84,8 @@ async function seedI485Template({ file } = {}) {
     ? storedFieldCount(template)
     : await verifyFillable(template.pdfStorageKey);
 
+  // Release 0b-2: same fail-closed rule as every other activation path (a bootstrap seed is not a way around the acceptance gate)
+  await require("../../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(template, { entryPoint: "seed:i485" });
   template.status = "active";
   template.activeFlag = true;
   template.officialStatus = "current";

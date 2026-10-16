@@ -46,7 +46,9 @@ const check = (name, passed, { category, severity = "blocking", detail }) => ({ 
 /**
  * submission: { formCode, editionIdentifier (YYYY-MM-DD), quote, claimedDates: { effectiveDate, rejectionDate, graceUntil } (ISO or null) }
  * snapshot:   { finalUrl, redirectChain: [{url}], fetchedAt, extractedText } | null (the fetch failed)
- * artifact:   { template: bool, editionDate, editionDateSource, publishedEditionDate, pdfChecksumStored, pdfChecksumFetched } | null
+ * artifact:   { template: bool, editionDate, editionDateSource, publishedEditionDate, pdfChecksumStored, pdfChecksumFetched, pdfPrintedEdition } | null
+ *             pdfPrintedEdition = the edition printed in the footer of the STORED pdf (ISO) or null; it stands in for the checksum comparison only when that
+ *             comparison is impossible (no stored checksum / no official pdf to download) - a checksum that was compared and differs always fails.
  */
 function verifyEvidence({ submission, snapshot, artifact, now = new Date() }) {
   const checks = [];
@@ -87,10 +89,11 @@ function verifyEvidence({ submission, snapshot, artifact, now = new Date() }) {
         : !samePage ? `the USCIS page edition recorded at import was ${artifact.publishedEditionDate}, not ${submission.editionIdentifier}`
         : "template edition date, page edition and the claimed edition agree",
     }));
-    if (!artifact.pdfChecksumStored) {
-      checks.push(check("pdf_checksum_matches", false, { category: U, detail: "the template has no stored PDF checksum to compare with" }));
-    } else if (!artifact.pdfChecksumFetched) {
-      checks.push(check("pdf_checksum_matches", false, { category: U, detail: "the official PDF could not be re-downloaded to compare checksums" }));
+    const footerMatches = Boolean(artifact.pdfPrintedEdition) && artifact.pdfPrintedEdition === submission.editionIdentifier;
+    if (!artifact.pdfChecksumStored || !artifact.pdfChecksumFetched) {
+      const why = !artifact.pdfChecksumStored ? "the template has no stored PDF checksum to compare with" : "the official PDF could not be re-downloaded to compare checksums";
+      if (footerMatches) checks.push(check("pdf_printed_edition_matches", true, { category: U, detail: `${why}; the stored PDF itself prints edition ${submission.editionIdentifier} in its footer` }));
+      else checks.push(check("pdf_checksum_matches", false, { category: U, detail: `${why}${artifact.pdfPrintedEdition ? `; the stored PDF prints edition ${artifact.pdfPrintedEdition}` : ""}` }));
     } else {
       const same = artifact.pdfChecksumStored === artifact.pdfChecksumFetched;
       checks.push(check("pdf_checksum_matches", same, { category: C, detail: same ? "the official PDF's sha256 equals the imported PDF's" : "the official PDF's sha256 differs from the imported PDF's for this edition" }));

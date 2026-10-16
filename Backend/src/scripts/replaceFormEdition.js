@@ -29,7 +29,7 @@ const MAPPING_HOOKS = {
 };
 
 // Legal-record statuses: never moved off the edition they were generated/filed on.
-const FROZEN_STATUSES = ["finalized", "filed", "approved", "generated", "ready_for_pdf", "locked", "receipt_received"];
+const { isFrozen } = require("../modules/form-mapping/config/caseFormFreeze");
 
 function parseArgs(argv) {
   const args = {};
@@ -84,6 +84,8 @@ async function run({ formCode, toVersion, apply, acknowledgeEditionChanges }) {
   const registryVisaTypes = await deriveVisaTypesFromRegistry(formCode);
   const carriedVisaTypes = oldTemplates.flatMap((t) => t.visaTypes || []);
   fresh.visaTypes = Array.from(new Set([...(fresh.visaTypes || []), ...carriedVisaTypes, ...registryVisaTypes]));
+  // Release 0b-2: the swap happens only for an edition whose acceptance is on record (fail closed; thrown before anything above is saved as active)
+  await require("../modules/form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(fresh, { entryPoint: "replaceFormEdition", actor });
   fresh.status = "active";
   fresh.activeFlag = true;
   fresh.officialStatus = "current";
@@ -118,7 +120,7 @@ async function run({ formCode, toVersion, apply, acknowledgeEditionChanges }) {
   summary.caseForms.considered = caseForms.length;
   for (const caseForm of caseForms) {
     // (formVersionLock.lockedBy only records who pinned the edition at creation - it is not a "form locked" flag.)
-    if (FROZEN_STATUSES.includes(caseForm.status)) {
+    if (isFrozen(caseForm)) {
       summary.caseForms.skippedFrozen += 1;
       continue;
     }

@@ -276,6 +276,8 @@ async function activateVersion(templateId, user, req) {
     error.statusCode = 404;
     throw error;
   }
+  // Release 0b-2: same fail-closed rule as VersionManagementService.activate (this legacy path has no callers today; it must not be a way around the gate)
+  await require("../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(template, { entryPoint: "uscis-form-importer.activateVersion", actor: user });
   await USCISFormTemplate.updateMany({ formCode: template.formCode, _id: { $ne: template._id }, status: "active" }, { status: "archived" });
   template.status = "active";
   template.approvedBy = user?._id;

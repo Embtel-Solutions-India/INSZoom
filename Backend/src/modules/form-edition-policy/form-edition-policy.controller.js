@@ -14,5 +14,6 @@ const handle = (action) => async (req, res, next) => {
 exports.listEditions = handle((service, req) => service.listEditions(req.user));
 exports.checkGate = handle((service, req) => service.gateCheck(req.user, req.query.formCode, req.query.edition));
 exports.submitEvidence = handle((service, req) => service.submitEvidence(req.user, req.body));
+exports.autoCheck = handle((service, req) => service.autoCheck(req.user, req.body && req.body.formCode, req.body && req.body.editionIdentifier));
 exports.getEvidenceCase = handle((service, req) => service.getCase(req.user, req.params.evidenceCaseId));
 exports.recordDecision = handle((service, req) => service.recordDecision(req.user, req.params.evidenceCaseId, req.body));

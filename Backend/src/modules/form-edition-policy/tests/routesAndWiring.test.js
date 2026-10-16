@@ -1,4 +1,4 @@
-// Release 0b-1: the API is restricted to EXACTLY admin and team_lead, and the gate is NOT wired into anything (no enforcement, no behavior change).
+// Releases 0b-1 / 0b-2: the API is restricted to EXACTLY admin and team_lead; the pipeline reaches the gate only through EditionPolicyEnforcer.
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -10,10 +10,8 @@ const { EVIDENCE_ROLES } = require("../editionPolicy.constants");
 
 const routes = () => router.stack.filter((layer) => layer.route).map((layer) => `${Object.keys(layer.route.methods)[0].toUpperCase()} ${layer.route.path}`);
 
-test("the five evidence endpoints exist and nothing else is exposed", () => {
-  assert.deepEqual(routes().sort(), [
-    "GET /editions", "GET /evidence/:evidenceCaseId", "GET /gate", "POST /evidence", "POST /evidence/:evidenceCaseId/decision",
-  ].sort());
+test("only the listing, the gate answer and the automatic check are exposed: nobody submits evidence or decides by hand", () => {
+  assert.deepEqual(routes().sort(), ["GET /editions", "GET /gate", "POST /auto-check"].sort());
 });
 
 test("the allowed roles are exactly admin and team_lead", () => {
@@ -58,7 +56,7 @@ test("the guard is the exact-match authorizeRoles, NOT a permission check (which
   assert.equal(/authorizePermissions/.test(code), false, "authorizePermissions must not be used on this router");
 });
 
-// ---- no enforcement: the gate is wired into NOTHING ----
+// ---- enforcement (0b-2): pipeline files reach the gate ONLY through EditionPolicyEnforcer ----
 const SRC = path.join(__dirname, "..", "..", "..");
 function walk(dir, files = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -72,35 +70,23 @@ function walk(dir, files = []) {
 const rel = (file) => path.relative(SRC, file).split(path.sep).join("/");
 // code only: comments may talk about the module; what matters is what a file actually imports
 const codeOf = (file) => fs.readFileSync(file, "utf8").split(/\r?\n/).filter((line) => !line.trim().startsWith("//")).join("\n");
-const importsModule = (file) => /require\([^)]*form-edition-policy/.test(codeOf(file));
 
-test("nothing outside the form-edition-policy module (and its tests) imports the gate or the evidence service", () => {
+test("nothing outside the form-edition-policy module imports the gate, the store or the evidence service directly (the enforcer is the only door)", () => {
   const offenders = [];
   for (const file of walk(SRC)) {
     const name = rel(file);
     if (name.startsWith("modules/form-edition-policy/")) continue;
     if (/EditionPolicyGate|EvidenceService|EditionPolicyStore/.test(codeOf(file))) offenders.push(name);
   }
-  assert.deepEqual(offenders, [], "the gate must not be wired into any activation / promotion / migration path in Release 0b-1");
+  assert.deepEqual(offenders, []);
 });
 
-test("the only things that IMPORT the module are: the route registration, the three models (constants), and the Release 0a crawl (shared url check)", () => {
-  const referencing = [];
-  for (const file of walk(SRC)) {
-    const name = rel(file);
-    if (name.startsWith("modules/form-edition-policy/")) continue;
-    if (importsModule(file)) referencing.push(name);
-  }
-  assert.deepEqual(referencing.sort(), [
-    "models/FormEditionAuditEvent.js", "models/FormEditionDecision.js", "routes/index.js", "scripts/formSourceRedirectCrawl.js",
-  ].sort());
-});
-
-test("no existing form pipeline file (import, lifecycle, registry, mapping, generation, forms) mentions the new module", () => {
+test("pipeline files (import, lifecycle, registry, mapping, generation, forms) mention only the enforcer", () => {
   for (const dir of ["modules/uscis-forms", "modules/uscis-form-import", "modules/uscis-lifecycle", "modules/form-registry", "modules/form-mapping", "modules/form-generation"]) {
     for (const file of walk(path.join(SRC, dir))) {
       if (file.includes(`${path.sep}tests${path.sep}`)) continue;
-      assert.equal(/form-edition-policy|EditionPolicyGate/.test(codeOf(file)), false, `${rel(file)} must not reference the evidence module`);
+      const code = codeOf(file).replace(/EditionPolicyEnforcer/g, "").replace(/form-edition-policy\/EditionPolicyEnforcer/g, "");
+      assert.equal(/EditionPolicyGate|EvidenceService|EditionPolicyStore|FormEditionDecision|FormEditionSource/.test(code), false, `${rel(file)} must use the enforcer only`);
     }
   }
 });

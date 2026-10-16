@@ -298,8 +298,9 @@ function attemptSelfHealAcquisition(formCode, user, req) {
   const lastAttempt = lastAcquisitionAttempt.get(formCode) || 0;
   if (now - lastAttempt < ACQUISITION_COOLDOWN_MS) return;
   lastAcquisitionAttempt.set(formCode, now);
-  require("../uscis-form-import/services/OnDemandFormAcquisitionService")
-    .ensureCurrentUSCISForm(formCode, user, req)
+  const acquisition = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
+  require("../form-pipeline/FormPipeline")
+    .runForm({ formCode, trigger: "mapping_save", user, req, options: { forceCheck: false }, direct: () => acquisition.ensureCurrentUSCISForm(formCode, user, req) })
     .catch((error) => {
       require("../../utils/logger").error("uscis_form_self_heal_acquisition_failed", { formCode, error: error.message });
     });

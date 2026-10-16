@@ -224,12 +224,15 @@ async function inferenceAllowed(template) {
   }
 }
 
-async function activateOrPromote(template, user, req) {
+// `pipeline` (optional, Phase 1): the job context of the durable pipeline. With it each major step is recorded as a stage of the job and the promotion step is
+// lease-checked and mutex-guarded; without it every stage() below simply runs its function, so behavior is exactly what it was.
+async function activateOrPromote(template, user, req, pipeline = null) {
+  const stage = (name, fn) => (pipeline ? pipeline.stage(name, fn) : fn());
   // Carry the field mapping onto this edition automatically (previous edition's graph, or the form's authored crosswalk). A lossless result
   // activates the mapping, and the edition is then activated below so every visa uses it; a lossy one leaves the old edition in service.
   let migration = null;
   try {
-    migration = await migrateMappingToEdition(template, user, req);
+    migration = await stage("map", () => migrateMappingToEdition(template, user, req));
     if (migration.migrated) {
       template = await USCISFormTemplate.findById(template._id);
       logger.info("uscis_form_mapping_migrated", { formCode: template.formCode, templateId: String(template._id), activated: migration.activated, reason: migration.reason, lost: migration.lostEdges?.length || 0, source: migration.summary?.source });
@@ -243,7 +246,7 @@ async function activateOrPromote(template, user, req) {
   // (a form with no authored rules gets conservative rules inferred from its own PDF field names - FieldRuleInferenceService - so ANY imported form is mapped by code)
   {
     try {
-      ruleMapping = await retryUntilSuccess(async () => PartyFieldMappingService.apply(template, user, req, { allowInference: await inferenceAllowed(template) }), { attempts: 4, label: `rules:${template.formCode}`, onRetry: (info) => logger.info("uscis_form_rule_mapping_retry", { formCode: template.formCode, attempt: info.attempt, error: info.error.message }) });
+      ruleMapping = await stage("map", () => retryUntilSuccess(async () => PartyFieldMappingService.apply(template, user, req, { allowInference: await inferenceAllowed(template) }), { attempts: 4, label: `rules:${template.formCode}`, onRetry: (info) => logger.info("uscis_form_rule_mapping_retry", { formCode: template.formCode, attempt: info.attempt, error: info.error.message }) }));
       logger.info("uscis_form_rule_mapping_applied", { formCode: template.formCode, saved: ruleMapping.saved, activated: ruleMapping.activated, matched: ruleMapping.matched, skipped: ruleMapping.skipped, error: ruleMapping.error, validation: ruleMapping.validation });
       template = await USCISFormTemplate.findById(template._id);
     } catch (error) {
@@ -272,15 +275,19 @@ async function activateOrPromote(template, user, req) {
   // the backup snapshot is written first and the edition being replaced stays in service until then.
   let certification = null;
   try {
-    const previousEdition = await findPreviousEdition(template);
-    certification = await FormCertificationService.certify(template, { previous: previousEdition });
-    await FormCertificationService.backupTemplate(template, await MappingGraphService.loadCurrentGraph(template).catch(() => null));
+    certification = await stage("certify", async () => {
+      const previousEdition = await findPreviousEdition(template);
+      const certified = await FormCertificationService.certify(template, { previous: previousEdition });
+      await FormCertificationService.backupTemplate(template, await MappingGraphService.loadCurrentGraph(template).catch(() => null));
+      return certified;
+    });
   } catch (error) {
     certification = { passed: false, checks: [{ name: "certification", passed: false, detail: error.message }] };
   }
   const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
   const autoActivate = readyToPromote || (String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true" && Boolean(certification?.passed));
   let activationBlockedReason = null;
+  let activationBlockedCode = null; // e.g. EDITION_POLICY_HELD: lets the pipeline job tell "waiting for a decision" from an ordinary failure
   if (autoActivate && template.status !== "active") {
     // VersionManagementService.activate() requires the edition to already
     // be approved (confirmed live: activating a freshly-imported draft
@@ -292,9 +299,11 @@ async function activateOrPromote(template, user, req) {
     if (template.status !== "review") {
       template = await VersionManagementService.approve(template._id, user, req);
     }
+    // the edition that is live right now (if any): the only one the rescue below may ever put back
+    const liveBefore = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
     try {
       // VersionManagementService.activate returns { template, impact, componentDiscovery } - keep the document itself (a later step persists against it)
-      const activated = await versionService.activate(template._id, user, req);
+      const activated = await stage("promote", () => versionService.activate(template._id, user, req));
       template = activated?.template || (await USCISFormTemplate.findById(template._id));
       logger.info("uscis_form_activated", { formCode: template.formCode, templateId: String(template._id), version: template.version });
     } catch (error) {
@@ -309,10 +318,13 @@ async function activateOrPromote(template, user, req) {
       // the template stays at "review" and this is reported back as
       // requiresActivation, not silently swallowed or forced through.
       activationBlockedReason = error.message;
-      // never leave a form without a live edition: put the previous one back if activation died half-way
+      activationBlockedCode = error.code || null;
+      // never leave a form without a live edition: put the edition that WAS live back if activation died half-way (e.g. a failed save after the old one
+      // was retired). Release 0b-2: only that exact edition - never "the most recently retired one", which could be an older edition no policy ever
+      // accepted. (The acceptance gate runs inside activate() BEFORE anything is retired, so a policy hold never reaches this point.)
       const stillActive = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
-      if (!stillActive) {
-        const previousEdition = await USCISFormTemplate.findOne({ formCode: template.formCode, _id: { $ne: template._id }, status: "retired" }).sort({ retiredAt: -1 });
+      if (!stillActive && liveBefore) {
+        const previousEdition = await USCISFormTemplate.findOne({ _id: liveBefore._id, status: "retired" });
         if (previousEdition) { previousEdition.status = "active"; previousEdition.currentStatus = "active"; previousEdition.activeFlag = true; await previousEdition.save(); }
       }
       logger.info("uscis_form_mapping_review_required", { formCode: template.formCode, templateId: String(template._id), reason: error.message });
@@ -327,7 +339,7 @@ async function activateOrPromote(template, user, req) {
       const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
       const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
       if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
-      caseMigration = await migrateCaseFormsToEdition({ newTemplate: template, actor: user, req });
+      caseMigration = await stage("migrate_cases", () => migrateCaseFormsToEdition({ newTemplate: template, actor: user, req }));
       logger.info("uscis_form_cases_migrated", { formCode: template.formCode, ...caseMigration, failed: caseMigration.failed.length });
     } catch (error) {
       logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
@@ -344,7 +356,7 @@ async function activateOrPromote(template, user, req) {
   // this template was already promoted by a prior acquisition.
   let biographicMapping = null;
   if (template.status !== "active") {
-    biographicMapping = await BiographicMappingService.ensureBiographicMapping(template, user, req);
+    biographicMapping = await stage("finalize", () => BiographicMappingService.ensureBiographicMapping(template, user, req));
     if (!biographicMapping.skipped) template = biographicMapping.template;
   }
 
@@ -353,6 +365,7 @@ async function activateOrPromote(template, user, req) {
     template,
     requiresActivation: template.status !== "active",
     activationBlockedReason,
+    activationBlockedCode,
     biographicReady: template.mappingStatus === "biographic_active",
     coverage: biographicMapping?.coverage || null,
     migration,
@@ -362,15 +375,32 @@ async function activateOrPromote(template, user, req) {
   };
 }
 
+// Tells the durable pipeline job which edition it is working on (form + edition date + file checksum) and which templates are involved. Best effort: the
+// pipeline must never fail because it could not record its own bookkeeping.
+async function recordEdition(pipeline, formCode, template, previous) {
+  if (!pipeline?.recordEdition || !template) return;
+  try {
+    const editionDate = template.editionDate ? new Date(template.editionDate).toISOString().slice(0, 10) : String(template.version || "");
+    const checksum = template.importMetadata?.checksum || template.lifecycle?.sourceChecksum || "";
+    await pipeline.recordEdition({
+      editionKey: `${formCode}|${editionDate}|${checksum}`, newTemplateId: template._id, previousTemplateId: previous?._id, checksum: checksum || undefined,
+      storageKey: template.pdfStorageKey || template.artifacts?.form?.storageKey || undefined,
+    });
+  } catch (error) {
+    if (error?.name === "LeaseLostError") throw error;
+    logger.info("uscis_form_pipeline_record_failed", { formCode, error: error.message });
+  }
+}
+
 // The "form has never been acquired at all" path — resolve → download →
 // import (via the existing, unmodified USCISFormImporterService) →
 // activateOrPromote. Extracted from the original acquireAndActivate (no
 // behavior change) so ensureCurrentUSCISForm's "missing" branch and the
 // legacy acquireAndActivate entry point share one implementation.
-async function acquireMissingForm(formCode, user, req) {
+async function acquireMissingForm(formCode, user, req, pipeline = null) {
   logger.info("uscis_form_download_started", { formCode });
   // resolve + download + normalize + import is retried (re-resolving the official PDF each attempt) until it succeeds or the bounded attempts run out
-  const importResult = await retryUntilSuccess(async () => {
+  const importResult = await (pipeline ? (fn) => pipeline.stage("import", fn) : (fn) => fn())(() => retryUntilSuccess(async () => {
     const resolved = await resolveOfficialPdf(formCode);
     return USCISFormImporterService.importFromUrl(
       {
@@ -383,9 +413,10 @@ async function acquireMissingForm(formCode, user, req) {
       user,
       req
     );
-  }, { attempts: 5, label: `import:${formCode}`, onRetry: (info) => logger.info("uscis_form_import_retry", { formCode, attempt: info.attempt, delay: info.delay, error: info.error.message }) });
+  }, { attempts: 5, label: `import:${formCode}`, onRetry: (info) => logger.info("uscis_form_import_retry", { formCode, attempt: info.attempt, delay: info.delay, error: info.error.message }) }));
   logger.info("uscis_form_download_completed", { formCode, templateId: String(importResult.template._id) });
-  const activation = await activateOrPromote(importResult.template, user, req);
+  await recordEdition(pipeline, formCode, importResult.template, null);
+  const activation = await activateOrPromote(importResult.template, user, req, pipeline);
   return { ...activation, alreadyActive: false };
 }
 
@@ -422,12 +453,13 @@ async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
 
 async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
   const forceCheck = Boolean(options.forceCheck);
+  const pipeline = options.pipeline || null;
   const ttlMs = Number(process.env.USCIS_ENSURE_CHECK_TTL_MS || 12 * 60 * 60 * 1000);
   const existing = await uscisFormService.findLatestActiveTemplate(formCode);
 
   if (!existing) {
     logger.info("uscis_form_check_started", { formCode, reason: "missing" });
-    const result = await acquireMissingForm(formCode, user, req);
+    const result = await acquireMissingForm(formCode, user, req, pipeline);
     logger.info("uscis_form_check_completed", { formCode, outcome: "acquired" });
     return result;
   }
@@ -448,7 +480,7 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
   logger.info("uscis_form_check_started", { formCode, reason: forceCheck ? "forced" : "ttl_expired" });
   let scanResult;
   try {
-    scanResult = await USCISScannerService.scanForm({ formType: formCode, pageUrl }, user, req);
+    scanResult = await (pipeline ? pipeline.stage("detect", () => USCISScannerService.scanForm({ formType: formCode, pageUrl }, user, req)) : USCISScannerService.scanForm({ formType: formCode, pageUrl }, user, req));
   } catch (error) {
     // USCIS unreachable — the existing, previously-validated template is
     // still safe to keep serving. Never let a network failure here break a
@@ -474,7 +506,8 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
   // version — reuse that comparison report rather than re-deriving it.
   logger.info("uscis_form_version_detected", { formCode, previousTemplateId: String(existing._id), newTemplateId: String(scanResult.templateId) });
   const newTemplate = await USCISFormTemplate.findById(scanResult.templateId);
-  const activation = await activateOrPromote(newTemplate, user, req);
+  await recordEdition(pipeline, formCode, newTemplate, existing);
+  const activation = await activateOrPromote(newTemplate, user, req, pipeline);
   if (activation.template.status === "active") {
     logger.info("uscis_form_mapping_migrated", { formCode, templateId: String(activation.template._id) });
   }
@@ -488,6 +521,7 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
     alreadyActive: false,
     requiresActivation: activation.requiresActivation,
     activationBlockedReason: activation.activationBlockedReason,
+    activationBlockedCode: activation.activationBlockedCode,
     biographicReady: activation.biographicReady,
     coverage: activation.coverage,
     comparisonReport: scanResult.comparisonReport,

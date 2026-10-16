@@ -13,7 +13,9 @@ const FieldDiffService = require("../../uscis-lifecycle/services/FieldDiffServic
 const MappingResolver = require("./MappingResolver");
 const AutoFillService = require("./AutoFillService");
 
-const FROZEN_STATUSES = ["finalized", "filed", "locked", "receipt_received", "archived"];
+const { FROZEN_CASE_FORM_STATUSES, isFrozen } = require("../config/caseFormFreeze");
+
+const FROZEN_STATUSES = FROZEN_CASE_FORM_STATUSES; // kept as an export name; the list lives in ONE place (Rule G)
 
 const fieldKeys = (field) => [field.fieldId, field.id, field.fieldName, field.pdfFieldName, field.normalizedName].filter(Boolean);
 const stripSubform = (name) => String(name).replace(/#subform\[\d+\]\./g, "");
@@ -67,6 +69,8 @@ function carryBag(bag, match, flatOutput, forceFlat) {
 }
 
 async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = newTemplate.formCode }) {
+  // Release 0b-2: never move cases onto an edition USCIS's acceptance of which is not on record (fail closed; throws before any case form is touched)
+  await require("../../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(newTemplate, { entryPoint: "migrateCaseFormsToEdition", actor });
   const result = { considered: 0, migrated: 0, skippedFrozen: 0, valuesCarried: 0, valuesArchived: 0, valuesRestoredAfterAutofill: 0, failed: [] };
   const priorEditions = await USCISFormTemplate.find({ formCode, _id: { $ne: newTemplate._id } }).lean();
   const priorById = new Map(priorEditions.map((template) => [String(template._id), template]));
@@ -75,7 +79,7 @@ async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = n
   result.considered = caseForms.length;
 
   for (const caseForm of caseForms) {
-    if (caseForm.isLocked || FROZEN_STATUSES.includes(caseForm.status)) { result.skippedFrozen += 1; continue; }
+    if (isFrozen(caseForm)) { result.skippedFrozen += 1; continue; }
     try {
       const previous = priorById.get(String(caseForm.formTemplateId));
       const match = buildMatcher(previous, newTemplate);

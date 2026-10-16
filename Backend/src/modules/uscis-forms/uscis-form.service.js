@@ -954,7 +954,9 @@ function validateField(field, value) {
   if (hasValue(value) && field.fieldType === "phone" && !/^[0-9+().\-\s]{7,25}$/.test(String(value))) errors.push("Invalid phone number");
   if (hasValue(value) && (field.fieldName.toLowerCase().includes("passport") || rules.passport) && !/^[a-z0-9-]{5,20}$/i.test(String(value))) errors.push("Invalid passport format");
   if (hasValue(value) && rules.minLength && String(value).length < Number(rules.minLength)) errors.push(`Minimum length is ${rules.minLength}`);
-  if (hasValue(value) && rules.maxLength && String(value).length > Number(rules.maxLength)) errors.push(`Maximum length is ${rules.maxLength}`);
+  // No maximum-length check: rules.maxLength is just the PDF field's own /MaxLen (copied by the
+  // field scanner), and case managers may enter free text of any length. An over-long value is
+  // handled at PDF-generation time (FieldValueFitter reports it) instead of blocking the editor.
   if (hasValue(value) && rules.min !== undefined && Number(value) < Number(rules.min)) errors.push(`Minimum value is ${rules.min}`);
   if (hasValue(value) && rules.max !== undefined && Number(value) > Number(rules.max)) errors.push(`Maximum value is ${rules.max}`);
   if (hasValue(value) && rules.pattern && !new RegExp(rules.pattern).test(String(value))) errors.push(rules.message || "Invalid format");
@@ -1328,26 +1330,10 @@ async function activateTemplate(templateId, user, req) {
 }
 
 async function retireTemplate(templateId, user, req) {
-  const template = await USCISFormTemplate.findById(templateId);
-  if (!template) throw Object.assign(new Error("USCIS form template not found"), { statusCode: 404 });
-  template.status = "retired";
-  template.currentStatus = "retired";
-  template.activeFlag = false;
-  template.retiredAt = new Date();
-  template.lifecycle = { ...(template.lifecycle?.toObject?.() || template.lifecycle || {}), retiredBy: user?._id };
-  await template.save();
-  await AuditLog.create({
-    userId: user?._id,
-    action: "uscis_form_template_retired",
-    entityType: "uscis_form_template",
-    entityId: idOf(template),
-    changes: { formCode: template.formCode, version: template.version },
-    ipAddress: req?.ip,
-    userAgent: req?.headers?.["user-agent"],
-    description: `Retired ${template.formCode} ${template.version}`,
-  }).catch(() => null);
+  // one implementation of "retire" (VersionManagementService.retire); it also drops the template cache
+  const retired = await VersionManagementService.retire(templateId, user, req);
   invalidateTemplateCache();
-  return template;
+  return retired;
 }
 
 async function createCaseForm(caseId, payload, user, req) {

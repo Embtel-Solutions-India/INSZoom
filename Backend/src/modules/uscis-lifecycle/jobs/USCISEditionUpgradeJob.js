@@ -1,8 +1,10 @@
 const User = require("../../../models/User");
+const logger = require("../../../utils/logger");
 const { upgradeTrackedForms } = require("../../uscis-form-import/services/FormEditionUpgradeService");
 
 // Daily, off by default outside production (same gate as the monitoring job); USCIS_EDITION_UPGRADE_ENABLED=true turns it on anywhere.
-function startUSCISEditionUpgradeJob() {
+// withJobLock (utils/jobLock) makes a tick skip when another instance - or the catalog sync - already holds the lock; without it (tests) the job just runs.
+function startUSCISEditionUpgradeJob(withJobLock) {
   const configured = process.env.USCIS_EDITION_UPGRADE_ENABLED;
   const enabled = configured === "true" || (configured === undefined && process.env.NODE_ENV === "production");
   if (!enabled) return null;
@@ -13,10 +15,13 @@ function startUSCISEditionUpgradeJob() {
     if (running) return;
     running = true;
     try {
-      const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
-      await upgradeTrackedForms({ user: actor || { role: "super_admin" } });
+      const task = async () => {
+        const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
+        return upgradeTrackedForms({ user: actor || { role: "super_admin" } });
+      };
+      await (withJobLock ? withJobLock("uscis-edition-upgrade", 3 * 60 * 60 * 1000, task) : task());
     } catch (error) {
-      console.error("USCIS edition upgrade failed:", error.message);
+      logger.error("uscis_edition_upgrade_failed", { error: error.message });
     } finally {
       running = false;
     }

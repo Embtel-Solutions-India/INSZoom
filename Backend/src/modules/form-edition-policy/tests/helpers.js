@@ -69,7 +69,7 @@ const okFetch = (text = PAGE_TEXT, extra = {}) => async (url) => ({
   bytes: Buffer.from(pageHtml(text)), violations: [], error: null,
 });
 const failFetch = (error = "no response within 15000 ms", violations = []) => async () => ({ ok: false, finalUrl: null, status: null, contentType: null, chain: [], bytes: null, violations, error });
-const pdfFetch = (bytes = PDF_BYTES) => async () => ({ ok: true, finalUrl: "x", status: 200, contentType: "application/pdf", chain: [], bytes, violations: [], error: null });
+const pdfFetch = (bytes = PDF_BYTES) => async (url = "https://www.uscis.gov/sites/default/files/document/forms/form.pdf") => ({ ok: true, finalUrl: url, status: 200, contentType: "application/pdf", chain: [{ url, status: 200, location: null }], bytes, violations: [], error: null });
 const noPdf = async () => ({ ok: false, bytes: null, violations: [], error: "down" });
 
 // a clock the tests can move
@@ -82,10 +82,10 @@ const user = (role, id = role) => ({ _id: `user-${id}`, role });
 const admin = user("admin");
 const lead = user("team_lead");
 
-function build({ templates = [template()], html = okFetch(), pdf = pdfFetch(), time = clock(), auditSink = null } = {}) {
+function build({ templates = [template()], html = okFetch(), pdf = pdfFetch(), time = clock(), auditSink = null, resolvePageUrl, readPrintedEdition, readPdfTextOf } = {}) {
   const store = memoryStore({ templates });
   let counter = 0;
-  const service = createEvidenceService({ store, fetchHtml: html, fetchPdf: pdf, now: time.now, newId: () => `case-${++counter}`, auditSink });
+  const service = createEvidenceService({ store, fetchHtml: html, fetchPdf: pdf, now: time.now, newId: () => `case-${++counter}`, auditSink, ...(resolvePageUrl ? { resolvePageUrl } : {}), readPrintedEdition: readPrintedEdition || (async () => null), ...(readPdfTextOf ? { readPdfTextOf } : {}) });
   return { store, service, time };
 }
 

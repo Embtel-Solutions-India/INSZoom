@@ -50,13 +50,33 @@ async function generateStructuredJson({ prompt, buffer, mimeType, model = DEFAUL
   const attempts = Math.max(1, Number(process.env.GEMINI_MAX_ATTEMPTS || 5));
   let response;
   let payload;
+  // every attempt has a deadline (AbortController): a Gemini call that never answers must not hang a document scan, a queue worker or an AI job forever.
+  // A timeout or a dropped connection is retried like a 503; after the last attempt it fails with a clear 504.
+  const timeoutMs = Math.max(1000, Number(process.env.GEMINI_TIMEOUT_MS || 90000));
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: requestBody,
-    });
-    payload = await response.json().catch(() => ({}));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: requestBody,
+        signal: controller.signal,
+      });
+      payload = await response.json().catch(() => ({}));
+    } catch (networkError) {
+      const timedOut = controller.signal.aborted || networkError?.name === "AbortError";
+      if (attempt === attempts) {
+        const error = new Error(timedOut ? `Gemini did not answer within ${Math.round(timeoutMs / 1000)}s` : `Gemini request failed: ${networkError?.message || "network error"}`);
+        error.statusCode = timedOut ? 504 : 503;
+        throw error;
+      }
+      response = null;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * attempt, 10000)));
+      continue;
+    } finally {
+      clearTimeout(timer);
+    }
     if (response.ok || !RETRYABLE.has(response.status) || attempt === attempts) break;
     await new Promise((resolve) => setTimeout(resolve, Math.min(2000 * attempt, 10000)));
   }

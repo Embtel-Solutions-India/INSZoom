@@ -59,6 +59,9 @@ async function activateTemplate(template, { editionDate, title, visaTypes }) {
     error.code = "FORM_TEMPLATE_NOT_FILLABLE";
     throw error;
   }
+  // Release 0b-2: same fail-closed rule as every other activation path (the edition date is set first so the gate can look the edition up)
+  if (editionDate) template.editionDate = new Date(editionDate);
+  await require("../../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition(template, { entryPoint: "importLocalForm" });
   template.status = "active";
   template.activeFlag = true;
   template.officialStatus = "current";

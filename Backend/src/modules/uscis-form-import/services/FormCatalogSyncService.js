@@ -65,7 +65,10 @@ function defaultDeps() {
     async stampPublishedEdition(formCode, editionDate) {
       await USCISFormTemplate.updateOne({ formCode, status: "active", "importMetadata.publishedEditionDate": { $exists: false } }, { $set: { "importMetadata.publishedEditionDate": editionDate } });
     },
-    importForm: (formCode, user, req) => Acquisition.ensureCurrentUSCISForm(formCode, user, req, { forceCheck: true }),
+    // through the durable pipeline (Phase 1): recorded as a job; in the default inline mode the caller gets exactly the result it always did
+    importForm: (formCode, user, req) => require("../../form-pipeline/FormPipeline").runForm({
+      formCode, trigger: "catalog_sync", user, req, options: { forceCheck: true }, direct: () => Acquisition.ensureCurrentUSCISForm(formCode, user, req, { forceCheck: true }),
+    }),
   };
 }
 
@@ -115,6 +118,11 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   for (const item of queue) { // sequential: one form's failure can never affect another
     try {
       const result = await deps.importForm(item.formCode, options.user, req);
+      if (result?.queued) { // FORM_PIPELINE_MODE=queued: the worker does the work; the next run sees the outcome
+        summary.results.push({ formCode: item.formCode, action: item.action, outcome: "queued", detail: `job ${result.jobId}` });
+        logger.info("uscis_catalog_sync_form", summary.results.at(-1));
+        continue;
+      }
       // an edition check that found nothing new proves the installed edition IS the published one: record the page's date so it compares normally from now on
       if ((item.action === "check_edition" || item.action === "upgrade") && result?.alreadyActive && !result?.versionChanged && !result?.checkError && item.editionDate && deps.stampPublishedEdition) await deps.stampPublishedEdition(item.formCode, item.editionDate);
       const promoted = Boolean(result?.template && result.template.status === "active" && !result.requiresActivation);

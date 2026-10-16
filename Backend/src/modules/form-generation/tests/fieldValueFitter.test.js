@@ -23,11 +23,11 @@ test("an over-long ZIP is shortened to its digits", () => {
   assert.equal(fitTextValue({ pdfField: zip, value: "12345-6789", maxLength: 5 }).value, "12345");
 });
 
-test("an over-long email (or any other text) is never truncated - it is dropped and reported", () => {
+test("an over-long email (or any other text) is cut to the field's length and reported", () => {
   const result = fitTextValue({ pdfField: email, value: "vishu@embtelsolutions.com", maxLength: 15 });
-  assert.equal(result.status, "dropped");
-  assert.equal(result.value, "");
-  assert.match(result.reason, /25 characters.*allows 15/);
+  assert.equal(result.status, "adjusted");
+  assert.equal(result.value, "vishu@embtelsol");
+  assert.match(result.reason, /25 characters.*allows 15.*cut to the first 15/);
 });
 
 test("fidelity sampling skips deliberately-blank fields", () => {
