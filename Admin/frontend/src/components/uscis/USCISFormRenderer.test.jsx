@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 import { useEffect } from 'react'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 
 // react-pdf needs a real PDF.js worker/canvas, neither of which exist in
 // jsdom - these tests only care about what USCISFormRenderer decides to put
@@ -53,6 +53,10 @@ vi.mock('../../services/api', () => ({
     downloadForm: (...args) => downloadFormApi(...args),
   },
 }))
+
+// Live updates: the hook is replaced so a test can play "another team member changed this form" by calling the callback the renderer registered.
+const live = vi.hoisted(() => ({ onRemoteChange: null }))
+vi.mock('../../hooks/useCaseFormLiveUpdates', () => ({ useCaseFormLiveUpdates: (options) => { live.onRemoteChange = options.onRemoteChange } }))
 
 import USCISFormRenderer from './USCISFormRenderer'
 
@@ -138,6 +142,19 @@ function makeWorkspaceWithField(fieldOverrides = {}) {
 }
 
 describe('USCISFormRenderer', () => {
+  it("re-reads the form quietly when another team member changes it, and says who", async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspace() })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    await screen.findByTitle('First Name')
+    const loadsBefore = workspaceApi.mock.calls.length
+    workspaceApi.mockResolvedValue({ data: makeWorkspace({ values: { 'beneficiary.firstName': 'Maria' } }) })
+    await act(async () => { live.onRemoteChange({ actorName: 'Raj Patel', actorId: 'raj' }) })
+    expect(workspaceApi.mock.calls.length).toBe(loadsBefore + 1)
+    expect(await screen.findByText('Raj Patel updated this form')).toBeTruthy()
+    expect(screen.queryByText(/Unable to open/)).toBeFalsy() // the form stays open and working
+  })
+
   it('renders the form header and native PDF field once the workspace and template PDF both load', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspace() })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })

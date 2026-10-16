@@ -4,6 +4,7 @@ const authorizeRoles = require("../../middleware/authorizeRoles");
 const authorizePermissions = require("../../middleware/authorizePermissions");
 const ctrl = require("./uscis-form.controller");
 const accessService = require("./uscis-form-access.service");
+const { broadcastCaseFormChanges } = require("./caseFormLiveUpdates");
 
 router.get("/", authenticate, authorizePermissions("forms:read"), ctrl.list);
 router.post("/", authenticate, authorizeRoles("super_admin"), authorizePermissions("forms:create"), ctrl.create);
@@ -25,6 +26,8 @@ router.get("/case", authenticate, authorizePermissions("forms:read"), ctrl.getAl
 router.get("/case/:caseId", authenticate, authorizePermissions("forms:read"), ctrl.getCaseForms);
 router.post("/case/:caseId", authenticate, authorizePermissions("forms:create"), ctrl.createCaseForm);
 router.get("/case/:caseId/:formId/render", authenticate, authorizePermissions("forms:read"), ctrl.renderCaseForm);
+// live updates for other team members who have this form open (socket only; runs after the response, never affects the request)
+router.use("/case/:caseId/:formId", broadcastCaseFormChanges());
 router.post("/case/:caseId/:formId/autofill", authenticate, authorizePermissions("forms:update"), ctrl.autofillCaseForm);
 router.get("/case/:caseId/:formId/validation", authenticate, authorizePermissions("forms:read"), ctrl.validateCaseForm);
 router.get("/case/:caseId/:formId/comparison", authenticate, authorizePermissions("forms:read"), ctrl.compareCaseForm);
