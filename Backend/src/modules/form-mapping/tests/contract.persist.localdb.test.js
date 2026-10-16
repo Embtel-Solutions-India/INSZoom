@@ -159,3 +159,46 @@ test("the coverage report for a stored mapping lists what is missing, by class, 
   assert.equal(await USCISMappingVersion.countDocuments(), before, "read-only");
   await assert.rejects(MappingGraphService.coverage(new mongoose.Types.ObjectId()), (error) => error.status === 404 || /not found/i.test(error.message));
 });
+
+test("Keep blank on real models: saved as a new version, survives a rebuild from scratch, blocks a suggestion, is not a gap for activation, and mapping the box again takes it back", async (t) => {
+  if (!db.ok) return t.skip(db.reason);
+  const template = await newTemplate();
+  await MappingGraphService.persistVersion(template, graphOf(template, [edge(template, "given", "person.firstName", { origin: "authored" }), edge(template, "dob", "person.dob", { targetType: "date", origin: "authored" })]), admin);
+  await MappingGraphService.activate(template._id, admin, null).catch(() => null); // may need review in this tiny template; the kept-blank save below is what is tested
+
+  // 1. the box "dob" is kept blank: its mapping is gone, the decision is stored with who / why, and it is a new mapping version
+  const result = await MappingGraphService.setKeepBlank(template._id, { targetFieldId: "dob", keepBlank: true, reason: "USCIS: leave empty" }, admin, null);
+  assert.equal(result.removedMapping, "person.dob");
+  const saved = await stored({ _id: result.mappingVersionId });
+  assert.deepEqual(saved.graph.edges.map((item) => item.targetFieldId), ["given"]);
+  assert.equal(saved.graph.keepBlank[0].targetFieldId, "dob");
+  assert.equal(saved.graph.keepBlank[0].reason, "USCIS: leave empty");
+  assert.equal(saved.validation.coverage.fields.keptBlank, 1);
+
+  // 2. a graph rebuilt from scratch that knows nothing of the decision (auto-suggest) cannot bring the box back: it inherits the list and its edge is dropped
+  const fresh = template.toObject ? await USCISFormTemplate.findById(template._id) : template;
+  const rebuilt = graphOf(fresh, [edge(fresh, "given", "person.firstName", { origin: "authored" }), edge(fresh, "dob", "person.dob", { targetType: "date", origin: "scored", status: "needs_review" })]);
+  await USCISMappingVersion.updateMany({ template: template._id }, { $set: { status: "retired" } });
+  await USCISMappingVersion.updateOne({ _id: result.mappingVersionId }, { $set: { status: "active" } });
+  const again = await MappingGraphService.persistVersion(fresh, rebuilt, admin);
+  const savedAgain = await stored(again);
+  assert.deepEqual(savedAgain.graph.edges.map((item) => item.targetFieldId), ["given"]);
+  assert.equal(savedAgain.graph.keepBlank.length, 1);
+  assert.ok(savedAgain.graph.conflicts.some((item) => item.code === "KEPT_BLANK" && item.targetFieldId === "dob"));
+  assert.equal(savedAgain.validation.summary.unmapped, 0); // a kept-blank box is not a gap
+
+  // 3. the live projection gives that box no mapping and no default value
+  const projected = FormMappingService.applyMappingGraph({ formFields: [{ fieldId: "dob", defaultValue: "01/01/1900" }, { fieldId: "given" }] }, savedAgain);
+  assert.equal(projected.formFields[0].keepBlank, true);
+  assert.deepEqual(FormMappingService.normalizeMappings(projected.formFields[0]), []);
+
+  // 4. mapping the box on purpose takes the decision back
+  const mappedAgain = await MappingGraphService.upsertMapping(template._id, { targetFieldId: "dob", sourcePath: "person.dob", mappingType: "direct" }, admin, null);
+  assert.deepEqual(mappedAgain.graph.keepBlank, []);
+  assert.ok(mappedAgain.graph.edges.some((item) => item.targetFieldId === "dob"));
+
+  // 5. and the decision can be withdrawn without mapping
+  await MappingGraphService.setKeepBlank(template._id, { targetFieldId: "box", keepBlank: true }, admin, null);
+  const withdrawn = await MappingGraphService.setKeepBlank(template._id, { targetFieldId: "box", keepBlank: false }, admin, null);
+  assert.deepEqual(withdrawn.graph.keepBlank, []);
+});

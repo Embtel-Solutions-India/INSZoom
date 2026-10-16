@@ -38,10 +38,16 @@ class FormMappingService {
         status: edge.status,
       });
     });
-    template.formFields = (template.formFields || []).map((field) => ({
-      ...field,
-      mappings: mappingsByTarget.get(field.fieldId || field.id || field.fieldName) || [],
-    }));
+    // "Keep blank": a person decided these boxes stay EMPTY. They get no mappings, their template default value is ignored (see normalizeMappings) and they are not
+    // required, so nothing is ever filled in or reported missing for them.
+    const keptBlank = new Set((mappingVersion.graph.keepBlank || []).map((entry) => entry.targetFieldId));
+    template.formFields = (template.formFields || []).map((field) => {
+      const id = field.fieldId || field.id || field.fieldName;
+      if (keptBlank.has(id)) {
+        return { ...field, mappings: [], keepBlank: true, required: false, ...(field.validation ? { validation: { ...field.validation, required: false } } : {}), ...(field.validationRules ? { validationRules: { ...field.validationRules, required: false } } : {}) };
+      }
+      return { ...field, mappings: mappingsByTarget.get(id) || [] };
+    });
     template.mappingGraph = mappingVersion.graph;
     template.mappingVersion = mappingVersion.mappingVersion;
     template.mappingVersionId = mappingVersion._id;
@@ -99,6 +105,7 @@ class FormMappingService {
   }
 
   static normalizeMappings(field = {}) {
+    if (field.keepBlank) return []; // a person decided this box stays empty: no mapping, no default value, nothing
     const mappings = [];
     if (Array.isArray(field.mappings) && field.mappings.length) mappings.push(...field.mappings);
     if (field.mapping && Object.keys(field.mapping).length && mappings.length) {
@@ -120,6 +127,7 @@ class FormMappingService {
 
   static resolveField(field, canonicalData, filledData) {
     const mappings = this.normalizeMappings(field);
+    if (field.keepBlank) return { value: undefined, source: "keep_blank", sourceField: "", confidence: 100, warnings: [] };
     if (!mappings.length) return { value: undefined, source: "unmapped", sourceField: "", confidence: 0, warnings: [{ code: "MISSING_MAPPING", fieldId: field.fieldId || field.fieldName }] };
 
     const warnings = [];

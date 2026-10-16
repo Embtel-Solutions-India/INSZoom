@@ -8,7 +8,7 @@ import { goldenSetApi } from '../services/api'
 export const READ_ROLES = ['super_admin', 'admin', 'team_lead']
 const PAGE = 20
 
-const STATUS_FILTERS = [{ key: 'unanswered', label: 'Not answered yet' }, { key: 'unsure', label: 'Marked Not sure' }, { key: 'wrong', label: 'Marked Wrong' }, { key: 'right', label: 'Marked Right' }, { key: '', label: 'All boxes' }]
+const STATUS_FILTERS = [{ key: 'unanswered', label: 'Not answered yet' }, { key: 'unsure', label: 'Marked Not sure' }, { key: 'wrong', label: 'Marked Wrong' }, { key: 'blank', label: 'Marked Keep blank' }, { key: 'right', label: 'Marked Right' }, { key: '', label: 'All boxes' }]
 const BOX_KIND_TEXT = { text: 'text box', date: 'date box', checkbox: 'tick box', radio: 'option button', dropdown: 'drop-down list' }
 
 const errorMessage = (error, fallback) => {
@@ -21,20 +21,29 @@ const Badge = ({ tone = 'gray', children }) => {
   return <span className={`px-2 py-0.5 text-xs font-medium rounded-full whitespace-nowrap ${tones[tone] || tones.gray}`}>{children}</span>
 }
 
-const VERDICT = { right: { label: 'Right', tone: 'green' }, wrong: { label: 'Wrong', tone: 'red' }, unsure: { label: 'Not sure', tone: 'amber' } }
+const VERDICT = { right: { label: 'Right', tone: 'green' }, wrong: { label: 'Wrong', tone: 'red' }, unsure: { label: 'Not sure', tone: 'amber' }, blank: { label: 'Keep blank', tone: 'blue' } }
 
 const Line = ({ label, children }) => (children ? <div className="text-sm"><span className="text-muted-foreground">{label}: </span><span className="text-foreground">{children}</span></div> : null)
 
 export function EntryCard({ entry, canReview, onSave, saving }) {
   const current = entry.review
   const [wrongOpen, setWrongOpen] = useState(current?.verdict === 'wrong')
+  const [blankOpen, setBlankOpen] = useState(false)
+  const [reason, setReason] = useState(current?.reason || '')
   const [correction, setCorrection] = useState(current?.correction || '')
+  const [shouldBeBlank, setShouldBeBlank] = useState(Boolean(current?.shouldBeBlank))
   const [note, setNote] = useState(current?.note || '')
   const [localError, setLocalError] = useState('')
 
-  const answer = (verdict) => onSave(entry, { verdict, correction: verdict === 'wrong' ? correction : '', note })
+  const answer = (verdict) => onSave(entry, verdict === 'wrong' ? { verdict, reason, correction: shouldBeBlank ? '' : correction, shouldBeBlank, note } : verdict === 'blank' ? { verdict, reason, note } : { verdict, note })
+  const saveBlank = () => {
+    if (reason.trim().length < 3) { setLocalError('Please say why this box should stay blank.'); return }
+    setLocalError('')
+    answer('blank')
+  }
   const saveWrong = () => {
-    if (correction.trim().length < 3) { setLocalError('Please say what this box should be filled with.'); return }
+    if (reason.trim().length < 3) { setLocalError('Please say why this is wrong.'); return }
+    if (!shouldBeBlank && correction.trim().length < 3) { setLocalError('Please say what this box should be filled with instead, or tick that it should be left blank.'); return }
     setLocalError('')
     answer('wrong')
   }
@@ -63,15 +72,34 @@ export function EntryCard({ entry, canReview, onSave, saving }) {
       {canReview ? (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2" role="group" aria-label={`Your answer for ${entry.ref}`}>
-            <button type="button" disabled={saving} onClick={() => { setWrongOpen(false); answer('right') }} aria-pressed={current?.verdict === 'right'} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'right' ? 'bg-green-600 text-white border-green-600' : 'border-green-600 text-green-700 hover:bg-green-50'}`}>Right</button>
-            <button type="button" disabled={saving} onClick={() => setWrongOpen(true)} aria-pressed={current?.verdict === 'wrong' || wrongOpen} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'wrong' ? 'bg-red-600 text-white border-red-600' : 'border-red-600 text-red-700 hover:bg-red-50'}`}>Wrong</button>
-            <button type="button" disabled={saving} onClick={() => { setWrongOpen(false); answer('unsure') }} aria-pressed={current?.verdict === 'unsure'} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'unsure' ? 'bg-amber-500 text-white border-amber-500' : 'border-amber-500 text-amber-700 hover:bg-amber-50'}`}>Not sure</button>
+            <button type="button" disabled={saving} onClick={() => { setWrongOpen(false); setBlankOpen(false); answer('right') }} aria-pressed={current?.verdict === 'right'} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'right' ? 'bg-green-600 text-white border-green-600' : 'border-green-600 text-green-700 hover:bg-green-50'}`}>Right</button>
+            <button type="button" disabled={saving} onClick={() => { setBlankOpen(false); setWrongOpen(true) }} aria-pressed={current?.verdict === 'wrong' || wrongOpen} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'wrong' ? 'bg-red-600 text-white border-red-600' : 'border-red-600 text-red-700 hover:bg-red-50'}`}>Wrong</button>
+            <button type="button" disabled={saving} onClick={() => { setWrongOpen(false); setBlankOpen(true) }} aria-pressed={current?.verdict === 'blank' || blankOpen} title="This box must stay empty: no information is stored in it and no case data is mapped to it" className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'blank' ? 'bg-primary text-primary-foreground border-primary' : 'border-primary text-primary hover:bg-primary/10'}`}>Keep blank</button>
+            <button type="button" disabled={saving} onClick={() => { setWrongOpen(false); setBlankOpen(false); answer('unsure') }} aria-pressed={current?.verdict === 'unsure'} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${current?.verdict === 'unsure' ? 'bg-amber-500 text-white border-amber-500' : 'border-amber-500 text-amber-700 hover:bg-amber-50'}`}>Not sure</button>
           </div>
+          {blankOpen && (
+            <div className="space-y-2">
+              <label className="block text-sm text-foreground">Why should this box stay blank?
+                <textarea className="input-field w-full mt-1" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example: USCIS says to leave this box empty" />
+              </label>
+              <label className="block text-sm text-foreground">Notes (optional)
+                <input className="input-field w-full mt-1" value={note} onChange={(event) => setNote(event.target.value)} />
+              </label>
+              {localError && <p role="alert" className="text-sm text-red-600">{localError}</p>}
+              <button type="button" className="btn-primary text-sm" disabled={saving} onClick={saveBlank}>Save "Keep blank"</button>
+            </div>
+          )}
           {wrongOpen && (
             <div className="space-y-2">
-              <label className="block text-sm text-foreground">What should this box be filled with instead?
-                <textarea className="input-field w-full mt-1" rows={2} value={correction} onChange={(event) => setCorrection(event.target.value)} placeholder="For example: the employer's last name, not the worker's" />
+              <label className="block text-sm text-foreground">Why is this wrong?
+                <textarea className="input-field w-full mt-1" rows={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example: this box is for the worker, not the employer" />
               </label>
+              <label className="flex items-start gap-2 text-sm text-foreground"><input type="checkbox" className="mt-1" checked={shouldBeBlank} onChange={(event) => setShouldBeBlank(event.target.checked)} /> This box should be left blank (no information in it)</label>
+              {!shouldBeBlank && (
+                <label className="block text-sm text-foreground">What should this box be filled with instead?
+                  <textarea className="input-field w-full mt-1" rows={2} value={correction} onChange={(event) => setCorrection(event.target.value)} placeholder="For example: the employer's last name" />
+                </label>
+              )}
               <label className="block text-sm text-foreground">Notes (optional)
                 <input className="input-field w-full mt-1" value={note} onChange={(event) => setNote(event.target.value)} />
               </label>
@@ -79,9 +107,10 @@ export function EntryCard({ entry, canReview, onSave, saving }) {
               <button type="button" className="btn-primary text-sm" disabled={saving} onClick={saveWrong}>Save "Wrong"</button>
             </div>
           )}
-          {current?.verdict === 'wrong' && !wrongOpen && current.correction && <p className="text-sm text-muted-foreground">You said it should be: {current.correction}</p>}
+          {current?.verdict === 'blank' && !blankOpen && <p className="text-sm text-muted-foreground">You said this box should be left blank{current.reason ? `: ${current.reason}` : ''}.</p>}
+          {current?.verdict === 'wrong' && !wrongOpen && <p className="text-sm text-muted-foreground">You said it is wrong: {current.reason}. {current.shouldBeBlank ? 'It should be left blank.' : `It should be: ${current.correction}`}</p>}
         </div>
-      ) : current?.verdict === 'wrong' && current.correction ? <p className="text-sm text-muted-foreground">Reviewer says it should be: {current.correction}</p> : null}
+      ) : current?.verdict === 'blank' ? <p className="text-sm text-muted-foreground">Reviewer says this box should be left blank{current.reason ? `: ${current.reason}` : ''}.</p> : current?.verdict === 'wrong' ? <p className="text-sm text-muted-foreground">Reviewer says it is wrong: {current.reason}. {current.shouldBeBlank ? 'It should be left blank.' : `It should be: ${current.correction}`}</p> : null}
     </div>
   )
 }
@@ -194,7 +223,7 @@ const GoldenSetReviewSection = () => {
           <div>
             <div className="flex items-baseline justify-between text-sm"><span>Answered</span><strong>{summary.answered} of {summary.total} ({percent}%)</strong></div>
             <div className="h-2 rounded-full bg-muted mt-1" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}><div className="h-2 rounded-full bg-primary-600" style={{ width: `${percent}%` }} /></div>
-            <p className="text-xs text-muted-foreground mt-1">Right: {summary.counts.right} · Wrong: {summary.counts.wrong} · Not sure: {summary.counts.unsure} · Not answered: {summary.counts.unanswered}</p>
+            <p className="text-xs text-muted-foreground mt-1">Right: {summary.counts.right} · Keep blank: {summary.counts.blank ?? 0} · Wrong: {summary.counts.wrong} · Not sure: {summary.counts.unsure} · Not answered: {summary.counts.unanswered}</p>
           </div>
 
           {summary.signOff && <p className="text-sm" data-testid="signed-off"><Badge tone={summary.signOff.upToDate ? 'green' : 'amber'}>{summary.signOff.upToDate ? 'Signed off' : 'Sign-off out of date'}</Badge> by {summary.signOff.reviewerEmail} on {new Date(summary.signOff.signedAt).toLocaleString()}{summary.signOff.upToDate ? '' : ' - the list changed since, so it needs a new review and sign-off.'}</p>}
@@ -243,7 +272,7 @@ const GoldenSetReviewSection = () => {
             <ul className="text-sm text-muted-foreground list-disc pl-5">{summary.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul>
           ) : (
             <>
-              <label className="flex items-start gap-2 text-sm text-foreground"><input type="checkbox" className="mt-1" checked={confirm} onChange={(event) => setConfirm(event.target.checked)} /> I have checked every answer in this golden set against the official USCIS form and confirm that the answers marked Right are correct.</label>
+              <label className="flex items-start gap-2 text-sm text-foreground"><input type="checkbox" className="mt-1" checked={confirm} onChange={(event) => setConfirm(event.target.checked)} /> I have checked every answer in this golden set against the official USCIS form and confirm that the answers marked Right (or Keep blank) are correct.</label>
               <button type="button" className="btn-primary text-sm" disabled={!confirm || signing} onClick={signOff}>{signing ? 'Signing...' : 'Sign off the golden set'}</button>
             </>
           )}

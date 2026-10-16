@@ -656,6 +656,8 @@ export const formGovernanceApi = {
   generateMapping: (templateId, persist = true) => api.post(`/form-mappings/templates/${templateId}/generate`, { persist }),
   upsertMapping: (templateId, targetFieldId, payload) => api.put(`/form-mappings/templates/${templateId}/mappings/${encodeURIComponent(targetFieldId)}`, payload),
   activateMapping: (templateId) => api.post(`/form-mappings/templates/${templateId}/activate`),
+  // "Keep blank": this box must stay EMPTY (no canonical field, no default value). keepBlank:false takes the decision back.
+  keepBlank: (templateId, targetFieldId, payload) => api.put(`/form-mappings/templates/${templateId}/mappings/${encodeURIComponent(targetFieldId)}/keep-blank`, payload),
   autofillPreview: (templateId, caseId) => api.get(`/form-mappings/templates/${templateId}/autofill-preview`, { params: { caseId } }),
   // Checklist <-> field traceability (Visa-Form-Checklist intelligence
   // layer) - which checklist question(s) feed each mapped PDF field, and

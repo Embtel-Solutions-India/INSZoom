@@ -146,10 +146,12 @@ function validateGraphContract(graph = {}, template = {}, { universe, getTemplat
     if (originOf(edge) === "legacy") { legacyEdges += 1; legacy.push(...violations.map((violation) => ({ ...violation, remediation: "needs_fix" }))); } else { enforcedEdges += 1; errors.push(...violations); }
   }
   const mapped = new Set((graph.edges || []).filter((edge) => edge.status === "active").map((edge) => edge.targetFieldId));
-  const unmapped = { intentional: 0, out_of_scope: 0, optional: 0, unresolved: 0, unresolvedFields: [] };
+  const unmapped = { intentional: 0, out_of_scope: 0, optional: 0, unresolved: 0, keptBlank: 0, unresolvedFields: [] };
+  const keptBlank = new Set((graph.keepBlank || []).map((entry) => entry.targetFieldId));
   for (const field of fields) {
     const id = field.targetFieldId || field.fieldId || field.id || field.fieldName;
     if (!id || mapped.has(id)) continue;
+    if (keptBlank.has(id)) { unmapped.keptBlank += 1; continue; } // a person decided this box stays empty
     const kind = classifyUnmapped(field);
     unmapped[kind] += 1;
     if (kind === "unresolved" && unmapped.unresolvedFields.length < 50) unmapped.unresolvedFields.push(id);

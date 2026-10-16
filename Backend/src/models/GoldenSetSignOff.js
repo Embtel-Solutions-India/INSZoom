@@ -8,7 +8,7 @@ const goldenSetSignOffSchema = new mongoose.Schema(
     reviewer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     signedAt: { type: Date, default: Date.now, index: true },
     entriesChecksum: { type: String, required: true },
-    counts: { total: Number, right: Number, wrong: Number },
+    counts: { total: Number, right: Number, blank: Number, wrong: Number },
     verifiedByKind: { type: Map, of: Number },
     verifiedByForm: { type: Map, of: Number },
     statement: { type: String, default: "" },

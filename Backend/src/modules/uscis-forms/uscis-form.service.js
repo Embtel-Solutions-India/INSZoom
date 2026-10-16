@@ -239,6 +239,7 @@ function isGraphMapping(item) {
 }
 
 function resolveMappedValue(field, context = {}) {
+  if (field.keepBlank) return { value: undefined, source: "keep_blank", sourceField: undefined, mappingUsed: null }; // a person decided this box stays empty
   // A mapping-graph edge is NOT a plain "read this path" instruction: checkbox edges
   // are conditional (tick only the box that matches the answer), dates/SSNs/A-numbers/
   // address parts carry a transform, and shared-graph edges carry a canonical fallback.

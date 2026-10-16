@@ -7,8 +7,10 @@ const goldenSetReviewSchema = new mongoose.Schema(
     entryId: { type: String, required: true, unique: true, index: true },
     contentHash: { type: String, required: true },
     formCode: { type: String, required: true, index: true },
-    verdict: { type: String, enum: ["right", "wrong", "unsure"], required: true },
-    correction: { type: String, default: "", maxlength: 2000 },
+    verdict: { type: String, enum: ["right", "wrong", "unsure", "blank"], required: true },
+    reason: { type: String, default: "", maxlength: 2000 }, // why it is wrong (required for "wrong")
+    correction: { type: String, default: "", maxlength: 2000 }, // what the box should be filled with instead
+    shouldBeBlank: { type: Boolean, default: false }, // the box should be left empty (no information stored in it)
     note: { type: String, default: "", maxlength: 2000 },
     reviewerEmail: { type: String, required: true },
     reviewer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

@@ -71,17 +71,26 @@ test("runningJobs reports held pipeline locks, and a lock-store error only ever 
   assert.deepEqual(await runningJobs(), []);
 });
 
-test("deleting a form from the catalog is refused (409) while a pipeline job is running, before anything is looked up or deleted", async (t) => {
+test("a recurring job holding its lock does NOT block deleting a form (they run most of the day); the delete goes ahead and clears that form's waiting jobs", async (t) => {
   const USCISFormTemplate = require("../../../models/USCISFormTemplate");
+  const VisaFormMapping = require("../../../models/VisaFormMapping");
+  const FormPipelineJob = require("../../../models/FormPipelineJob");
   const controller = require("../../form-registry/form-registry.controller");
-  t.mock.method(JobLock, "find", () => ({ select: () => ({ lean: async () => [{ name: "uscis-edition-upgrade" }] }) }));
-  let touched = 0;
-  t.mock.method(USCISFormTemplate, "find", () => { touched += 1; return { select: () => ({ lean: async () => [] }) }; });
-  t.mock.method(USCISFormTemplate, "deleteMany", async () => { touched += 1; return { deletedCount: 0 }; });
+  t.mock.method(JobLock, "find", () => ({ select: () => ({ lean: async () => [{ name: "uscis-edition-upgrade" }, { name: "form-pipeline-autopilot" }] }) }));
+  t.mock.method(FormPipelineJob, "exists", async () => null); // nothing is running for THIS form
+  let cleared;
+  t.mock.method(FormPipelineJob, "deleteMany", async (filter) => { cleared = filter; return { deletedCount: 1 }; });
+  t.mock.method(USCISFormTemplate, "find", () => ({ select: () => ({ lean: async () => [{ _id: "t1" }] }) }));
+  t.mock.method(require("../../../models/CaseForm"), "countDocuments", async () => 0);
+  t.mock.method(VisaFormMapping, "countDocuments", async () => 1);
+  t.mock.method(VisaFormMapping, "deleteMany", async () => ({ deletedCount: 1 }));
+  t.mock.method(require("../../../models/USCISMappingVersion"), "deleteMany", async () => ({ deletedCount: 1 }));
+  t.mock.method(require("../../../models/USCISFormComponentDefinition"), "deleteMany", async () => ({ deletedCount: 0 }));
+  t.mock.method(USCISFormTemplate, "deleteMany", async () => ({ deletedCount: 1 }));
+  let body = null;
   let failure = null;
-  await controller.deleteFormFromCatalog({ params: { formCode: "I-131" }, user: { _id: "u" } }, { json() { throw new Error("must not respond"); } }, (error) => { failure = error; });
-  assert.ok(failure, "the request was refused");
-  assert.equal(failure.status, 409);
-  assert.equal(failure.code, "FORM_PIPELINE_JOB_RUNNING");
-  assert.equal(touched, 0, "nothing was looked up or deleted");
+  await controller.deleteFormFromCatalog({ params: { formCode: "ds-117" }, user: { _id: "u" } }, { json(value) { body = value; } }, (error) => { failure = error; });
+  assert.equal(failure, null);
+  assert.equal(body.success, true);
+  assert.deepEqual(cleared, { formCode: "DS-117", state: { $in: ["pending", "blocked", "held"] } });
 });

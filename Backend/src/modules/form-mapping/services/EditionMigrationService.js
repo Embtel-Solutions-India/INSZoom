@@ -12,6 +12,7 @@ const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const MappingGraphService = require("./MappingGraphService");
 const { findRenamedTarget } = require("../contract/fieldEquivalence");
 const { originOf } = require("../contract/MappingPolicy");
+const { carryKeepBlank } = require("../contract/keepBlank");
 
 // formCode -> () => { buildCrosswalkGraph(template) }; add a form here only when it has an authored crosswalk
 const CROSSWALK_BUILDERS = {
@@ -108,6 +109,7 @@ function carryForwardGraph(previousGraph, template) {
       })),
     },
     edges,
+    keepBlank: carryKeepBlank(previousGraph, targetFields, norm),
     unmappedTargets: [],
     summary: {
       sourceFields: sourcePaths.size,

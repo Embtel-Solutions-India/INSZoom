@@ -3,9 +3,10 @@
 const defaultDraft = () => require("./goldenSet.draft.json");
 const { summarize, checkAgainstPlan } = require("./buildDraft");
 
-const VERDICTS = ["right", "wrong", "unsure"];
-const VERDICT_LABEL = { right: "Right", wrong: "Wrong", unsure: "Not sure" };
-const SIGN_OFF_STATEMENT = "I have checked every answer in this golden set against the official USCIS form and confirm that the answers marked Right are correct.";
+// "blank" = Keep blank: the verified answer is that this box must stay EMPTY (no canonical field mapped, nothing stored in it)
+const VERDICTS = ["right", "wrong", "unsure", "blank"];
+const VERDICT_LABEL = { right: "Right", wrong: "Wrong", unsure: "Not sure", blank: "Keep blank" };
+const SIGN_OFF_STATEMENT = "I have checked every answer in this golden set against the official USCIS form and confirm that the answers marked Right (or Keep blank) are correct.";
 
 const httpError = (status, message, code) => Object.assign(new Error(message), { status, code });
 
@@ -34,7 +35,7 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
     id: entry.id, ref: entry.ref, formCode: entry.formCode, formName: entry.formName, familyLabel: entry.familyLabel, heldOut: entry.heldOut, where: entry.where, boxLabel: entry.boxLabel,
     boxKind: entry.boxKind, belongsTo: entry.belongsTo, fillsWith: entry.fillsWith, writtenAs: entry.writtenAs, onlyWhen: entry.onlyWhen, ifEmpty: entry.ifEmpty, appearsTimes: entry.appearsTimes,
     example: entry.example, sentence: entry.sentence,
-    review: review ? { verdict: review.verdict, correction: review.correction, note: review.note, reviewerEmail: review.reviewerEmail, reviewedAt: review.reviewedAt } : null,
+    review: review ? { verdict: review.verdict, reason: review.reason || "", correction: review.correction, shouldBeBlank: Boolean(review.shouldBeBlank), note: review.note, reviewerEmail: review.reviewerEmail, reviewedAt: review.reviewedAt } : null,
   });
 
   async function currentSignOff() {
@@ -45,23 +46,23 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
 
   async function summary(user) {
     const { valid, stale } = await validReviews();
-    const counts = { right: 0, wrong: 0, unsure: 0, unanswered: 0 };
+    const counts = { right: 0, wrong: 0, unsure: 0, blank: 0, unanswered: 0 };
     const perForm = {};
     const rightEntries = [];
     for (const entry of entries) {
       const review = valid.get(entry.id);
       counts[review ? review.verdict : "unanswered"] += 1;
-      const form = (perForm[entry.formCode] ||= { formCode: entry.formCode, formName: entry.formName, familyLabel: entry.familyLabel, heldOut: entry.heldOut, total: 0, answered: 0, right: 0, wrong: 0, unsure: 0 });
+      const form = (perForm[entry.formCode] ||= { formCode: entry.formCode, formName: entry.formName, familyLabel: entry.familyLabel, heldOut: entry.heldOut, total: 0, answered: 0, right: 0, wrong: 0, unsure: 0, blank: 0 });
       form.total += 1;
       if (review) { form.answered += 1; form[review.verdict] += 1; }
-      if (review?.verdict === "right") rightEntries.push(entry);
+      if (review?.verdict === "right" || review?.verdict === "blank") rightEntries.push(entry); // both are VERIFIED answers: a box and what it should hold (or that it holds nothing)
     }
     const verified = summarize(rightEntries);
     const plan = checkAgainstPlan(verified);
     const blockers = [];
     if (counts.unanswered) blockers.push(`${counts.unanswered} box(es) have no answer yet`);
     if (counts.unsure) blockers.push(`${counts.unsure} box(es) are marked "Not sure" - find out and change them to Right or Wrong`);
-    if (!plan.ok) blockers.push(`the entries marked Right do not yet reach the plan's minimum: ${Object.entries(plan.results).filter(([, ok]) => !ok).map(([name]) => name).join("; ")}`);
+    if (!plan.ok) blockers.push(`the verified entries (Right or Keep blank) do not yet reach the plan's minimum: ${Object.entries(plan.results).filter(([, ok]) => !ok).map(([name]) => name).join("; ")}`);
     return {
       title: draft.title, note: draft.note, total: entries.length, counts, answered: entries.length - counts.unanswered, staleAnswers: stale, entriesChecksum: draft.entriesChecksum,
       perForm: Object.values(perForm), verified: { total: verified.total, byKind: verified.byKind, byFamily: verified.byFamily }, plan, canSignOff: blockers.length === 0, blockers,
@@ -76,7 +77,7 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
       if (formCode && entry.formCode !== String(formCode).toUpperCase()) return false;
       const review = valid.get(entry.id);
       if (status === "unanswered" && review) return false;
-      if (["right", "wrong", "unsure"].includes(status) && review?.verdict !== status) return false;
+      if (VERDICTS.includes(status) && review?.verdict !== status) return false;
       if (term && !`${entry.boxLabel} ${entry.fillsWith} ${entry.sentence} ${entry.where}`.toLowerCase().includes(term)) return false;
       return true;
     });
@@ -85,16 +86,23 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
     return { total: wanted.length, offset: start, limit: size, entries: wanted.slice(start, start + size).map((entry) => present(entry, valid.get(entry.id))) };
   }
 
-  async function setReview(entryId, { verdict, correction = "", note = "" } = {}, user) {
+  async function setReview(entryId, { verdict, reason = "", correction = "", shouldBeBlank = false, note = "" } = {}, user) {
     if (!canReview(user)) throw httpError(403, `Only ${reviewers().join(" / ")} can answer the golden set review`, "NOT_THE_REVIEWER");
     const entry = byId.get(entryId);
     if (!entry) throw httpError(404, "That golden-set entry does not exist", "ENTRY_NOT_FOUND");
     if (!VERDICTS.includes(verdict)) throw httpError(400, 'The answer must be "right", "wrong" or "unsure"', "BAD_VERDICT");
+    const why = String(reason || "").trim();
     const fix = String(correction || "").trim();
-    if (verdict === "wrong" && fix.length < 3) throw httpError(400, 'When you answer "Wrong", say what the box should be filled with', "CORRECTION_REQUIRED");
+    const blank = shouldBeBlank === true;
+    if (verdict === "blank" && why.length < 3) throw httpError(400, 'When you answer "Keep blank", say why this box should stay blank', "REASON_REQUIRED");
+    if (verdict === "wrong") {
+      if (why.length < 3) throw httpError(400, 'When you answer "Wrong", say why it is wrong', "REASON_REQUIRED");
+      if (!blank && fix.length < 3) throw httpError(400, 'When you answer "Wrong", say what the box should be filled with instead - or tick that it should be left blank', "CORRECTION_REQUIRED");
+    }
+    const wrong = verdict === "wrong";
     const row = await Review.findOneAndUpdate(
       { entryId },
-      { $set: { contentHash: entry.contentHash, formCode: entry.formCode, verdict, correction: verdict === "wrong" ? fix : "", note: String(note || "").trim().slice(0, 2000), reviewerEmail: String(user.email).toLowerCase(), reviewer: user._id, reviewedAt: now() } },
+      { $set: { contentHash: entry.contentHash, formCode: entry.formCode, verdict, reason: wrong || verdict === "blank" ? why.slice(0, 2000) : "", correction: wrong && !blank ? fix.slice(0, 2000) : "", shouldBeBlank: wrong && blank, note: String(note || "").trim().slice(0, 2000), reviewerEmail: String(user.email).toLowerCase(), reviewer: user._id, reviewedAt: now() } },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     ).lean();
     return present(entry, row);
@@ -109,11 +117,11 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
     const verifiedByKind = {};
     const verifiedByForm = {};
     for (const entry of entries) {
-      if (valid.get(entry.id)?.verdict !== "right") continue;
+      if (!["right", "blank"].includes(valid.get(entry.id)?.verdict)) continue;
       verifiedByKind[entry.boxKind] = (verifiedByKind[entry.boxKind] || 0) + 1;
       verifiedByForm[entry.formCode] = (verifiedByForm[entry.formCode] || 0) + 1;
     }
-    const row = await SignOff.create({ reviewerEmail: String(user.email).toLowerCase(), reviewer: user._id, signedAt: now(), entriesChecksum: draft.entriesChecksum, counts: { total: status.total, right: status.counts.right, wrong: status.counts.wrong }, verifiedByKind, verifiedByForm, statement: SIGN_OFF_STATEMENT });
+    const row = await SignOff.create({ reviewerEmail: String(user.email).toLowerCase(), reviewer: user._id, signedAt: now(), entriesChecksum: draft.entriesChecksum, counts: { total: status.total, right: status.counts.right, blank: status.counts.blank, wrong: status.counts.wrong }, verifiedByKind, verifiedByForm, statement: SIGN_OFF_STATEMENT });
     return { signedAt: row.signedAt, reviewerEmail: row.reviewerEmail, counts: row.counts };
   }
 
@@ -122,7 +130,7 @@ function createGoldenSetService({ draft = defaultDraft(), Review = require("../.
     const { valid } = await validReviews();
     return entries.map((entry) => {
       const review = valid.get(entry.id);
-      return { ...entry, technical: undefined, verdictLabel: review ? VERDICT_LABEL[review.verdict] : "", correction: review?.correction || "", note: review?.note || "" };
+      return { ...entry, technical: undefined, verdictLabel: review ? VERDICT_LABEL[review.verdict] : "", reason: review?.reason || "", correction: review?.shouldBeBlank ? "Should be left blank" : review?.correction || "", note: review?.note || "" };
     });
   }
 

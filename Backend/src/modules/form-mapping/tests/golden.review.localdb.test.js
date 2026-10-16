@@ -35,16 +35,21 @@ test("only the named reviewer can answer; the email match ignores case", async (
   assert.equal(saved.technical, undefined);
 });
 
-test("validation: unknown entry, bad verdict, a Wrong answer needs the correct value", async (t) => {
+test("validation: unknown entry, bad verdict, a Wrong answer needs a reason and what it should be (or blank)", async (t) => {
   if (!db.ok) return t.skip(db.reason);
   const svc = service([entry(1)]);
   await assert.rejects(svc.setReview("nope", { verdict: "right" }, reviewer), (error) => error.status === 404);
   await assert.rejects(svc.setReview("e1", { verdict: "maybe" }, reviewer), (error) => error.code === "BAD_VERDICT");
-  await assert.rejects(svc.setReview("e1", { verdict: "wrong" }, reviewer), (error) => error.code === "CORRECTION_REQUIRED");
-  const wrong = await svc.setReview("e1", { verdict: "wrong", correction: "the sponsor's last name" }, reviewer);
+  await assert.rejects(svc.setReview("e1", { verdict: "wrong", correction: "the last name" }, reviewer), (error) => error.code === "REASON_REQUIRED");
+  await assert.rejects(svc.setReview("e1", { verdict: "wrong", reason: "wrong person" }, reviewer), (error) => error.code === "CORRECTION_REQUIRED");
+  const wrong = await svc.setReview("e1", { verdict: "wrong", reason: "this is the worker's box", correction: "the sponsor's last name" }, reviewer);
+  assert.equal(wrong.review.reason, "this is the worker's box");
   assert.equal(wrong.review.correction, "the sponsor's last name");
-  const back = await svc.setReview("e1", { verdict: "right", correction: "ignored" }, reviewer);
-  assert.equal(back.review.correction, "");
+  const blank = await svc.setReview("e1", { verdict: "wrong", reason: "USCIS says leave empty", shouldBeBlank: true, correction: "ignored" }, reviewer);
+  assert.equal(blank.review.shouldBeBlank, true);
+  assert.equal(blank.review.correction, "");
+  const back = await svc.setReview("e1", { verdict: "right", reason: "ignored", correction: "ignored", shouldBeBlank: true }, reviewer);
+  assert.deepEqual([back.review.reason, back.review.correction, back.review.shouldBeBlank], ["", "", false]);
   assert.equal(await GoldenSetReview.countDocuments({ entryId: "e1" }), 1); // changing your mind updates, never duplicates
 });
 
@@ -54,7 +59,7 @@ test("progress counts, filters and plain-language-only output", async (t) => {
   await svc.setReview("e1", { verdict: "right" }, reviewer);
   await svc.setReview("e2", { verdict: "unsure" }, reviewer);
   const summary = await svc.summary(reviewer);
-  assert.deepEqual(summary.counts, { right: 1, wrong: 0, unsure: 1, unanswered: 1 });
+  assert.deepEqual(summary.counts, { right: 1, wrong: 0, unsure: 1, blank: 0, unanswered: 1 });
   assert.equal(summary.you.canReview, true);
   assert.equal((await svc.summary(someoneElse)).you.canReview, false);
   assert.equal(summary.perForm.find((form) => form.formCode === "I-130").answered, 2);
@@ -109,10 +114,29 @@ test("with the plan's bar met, sign-off is recorded and goes out of date when th
 test("export has the answers in words and no technical details", async (t) => {
   if (!db.ok) return t.skip(db.reason);
   const svc = service([entry(1), entry(2)]);
-  await svc.setReview("e1", { verdict: "wrong", correction: "the last name", note: "see page 2" }, reviewer);
+  await svc.setReview("e1", { verdict: "wrong", reason: "wrong person", correction: "the last name", note: "see page 2" }, reviewer);
   const rows = await svc.exportRows();
   assert.equal(rows[0].verdictLabel, "Wrong");
   assert.equal(rows[0].correction, "the last name");
+  assert.equal(rows[0].reason, "wrong person");
   assert.equal(rows[1].verdictLabel, "");
   assert.ok(rows.every((row) => row.technical === undefined));
+});
+
+test("Keep blank is a verified answer that needs a reason: counts as answered, is filtered and exported in words, and does not block sign-off", async (t) => {
+  if (!db.ok) return t.skip(db.reason);
+  const svc = service([entry(1), entry(2)]);
+  await assert.rejects(svc.setReview("e1", { verdict: "blank" }, reviewer), (error) => error.code === "REASON_REQUIRED");
+  const saved = await svc.setReview("e1", { verdict: "blank", reason: "USCIS says leave this empty" }, reviewer);
+  assert.equal(saved.review.verdict, "blank");
+  assert.equal(saved.review.reason, "USCIS says leave this empty");
+  await svc.setReview("e2", { verdict: "right" }, reviewer);
+  const summary = await svc.summary(reviewer);
+  assert.deepEqual(summary.counts, { right: 1, wrong: 0, unsure: 0, blank: 1, unanswered: 0 });
+  assert.equal(summary.verified.total, 2); // both are verified answers
+  assert.equal((await svc.list({ status: "blank" })).total, 1);
+  const rows = await svc.exportRows();
+  assert.deepEqual([rows[0].verdictLabel, rows[0].reason], ["Keep blank", "USCIS says leave this empty"]);
+  const back = await svc.setReview("e1", { verdict: "wrong", reason: "no, fill it", correction: "the name" }, reviewer);
+  assert.equal(back.review.verdict, "wrong");
 });

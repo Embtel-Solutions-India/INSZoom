@@ -3,10 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
 import UploadFormModal from '../components/UploadFormModal'
+import ConfirmModal from '../components/ConfirmModal'
 import FormEditionEvidenceSection, { EVIDENCE_ROLES } from '../components/FormEditionEvidenceSection'
 import FormPipelineJobsSection, { READ_ROLES as PIPELINE_READ_ROLES } from '../components/FormPipelineJobsSection'
 import GoldenSetReviewSection from '../components/GoldenSetReviewSection'
-import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2 } from 'lucide-react'
+import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2, X } from 'lucide-react'
+
+export const RESULT_BANNER_MS = 10000
 
 const readErrorMessage = (error, fallback) => {
   const message = error?.response?.data?.message
@@ -79,7 +82,15 @@ const FormGovernance = () => {
   const [filter, setFilter] = useState('all')
   const [fetchingCode, setFetchingCode] = useState(null)
   const [deletingCode, setDeletingCode] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null) // the form waiting for the delete confirmation
   const [fetchResult, setFetchResult] = useState(null)
+
+  // the result banner (fetched / deleted / failed) hides itself after 10 seconds; the cross hides it sooner
+  useEffect(() => {
+    if (!fetchResult) return undefined
+    const timer = setTimeout(() => setFetchResult(null), RESULT_BANNER_MS)
+    return () => clearTimeout(timer)
+  }, [fetchResult])
   const [showUpload, setShowUpload] = useState(false)
   const [coverage, setCoverage] = useState(null)
   const [coverageLoading, setCoverageLoading] = useState(false)
@@ -209,9 +220,11 @@ const FormGovernance = () => {
     }
   }
 
-  const deleteForm = async (form) => {
-    const ok = window.confirm(`Permanently delete ${form.formCode} and all of its mappings (template, field mappings and visa-type associations)? This cannot be undone.`)
-    if (!ok) return
+  const deleteForm = (form) => setDeleteTarget(form)
+
+  const confirmDeleteForm = async () => {
+    const form = deleteTarget
+    if (!form) return
     setDeletingCode(form.formCode)
     setFetchResult(null)
     try {
@@ -224,11 +237,23 @@ const FormGovernance = () => {
       setFetchResult({ tone: 'red', message: readErrorMessage(err, `Could not delete ${form.formCode}.`) })
     } finally {
       setDeletingCode(null)
+      setDeleteTarget(null)
     }
   }
 
   return (
     <div className="space-y-6">
+      {deleteTarget && (
+        <ConfirmModal
+          tone="danger"
+          title={`Delete ${deleteTarget.formCode}?`}
+          message={`This permanently deletes ${deleteTarget.formCode} and all of its mappings (template, field mappings and visa-type associations). This cannot be undone.`}
+          confirmLabel="Delete permanently"
+          busy={deletingCode === deleteTarget.formCode}
+          onConfirm={confirmDeleteForm}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><FileCheck2 className="w-6 h-6" /> Form Governance</h1>
@@ -438,8 +463,11 @@ const FormGovernance = () => {
       )}
 
       {fetchResult && (
-        <div className={`card ${fetchResult.tone === 'red' ? 'border-red-300' : 'border-green-300'}`}>
-          <p className={fetchResult.tone === 'red' ? 'text-red-700' : 'text-green-700'}>{fetchResult.message}</p>
+        <div role="status" className={`card flex items-start justify-between gap-3 ${fetchResult.tone === 'red' ? 'border-red-300' : 'border-primary'}`}>
+          <p className={fetchResult.tone === 'red' ? 'text-red-700' : 'text-primary'}>{fetchResult.message}</p>
+          <button type="button" onClick={() => setFetchResult(null)} aria-label="Dismiss message" className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
