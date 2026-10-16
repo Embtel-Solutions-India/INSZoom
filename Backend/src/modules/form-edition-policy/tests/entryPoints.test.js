@@ -22,7 +22,7 @@ const accepted = () => ({ formCode: "I-131", editionIdentifier: "2025-01-20", de
 function fakeTemplate(over = {}) {
   const doc = {
     _id: "t1", formCode: "I-131", version: "2025-01-20", editionDate: day("2025-01-20"), status: "review", currentStatus: "review", activeFlag: false,
-    approvedAt: new Date(), approvedBy: "u1", mappingStatus: "active", officialStatus: "unknown", importMetadata: { editionDateSource: "uscis_page" }, lifecycle: {},
+    approvedAt: new Date(), approvedBy: "u1", mappingStatus: "active", officialStatus: "unknown", importMetadata: { editionDateSource: "uscis_page", validationSummary: { certification: { passed: true, checks: [] } } }, lifecycle: {},
     saves: 0, async save() { this.saves += 1; return this; }, ...over,
   };
   return doc;
@@ -67,7 +67,7 @@ test("VersionManagementService.activate: a throwing gate changes nothing either 
 });
 
 test("VersionManagementService.activate: an edition with no usable edition date, or a backfilled one, is held before anything changes", async () => {
-  for (const over of [{ editionDate: null }, { importMetadata: { editionDateSource: "version_backfill" } }]) {
+  for (const over of [{ editionDate: null }, { importMetadata: { editionDateSource: "version_backfill", validationSummary: { certification: { passed: true, checks: [] } } } }]) {
     const template = fakeTemplate(over);
     const calls = stubModels(template);
     setDepsForTests(deps([accepted()]));

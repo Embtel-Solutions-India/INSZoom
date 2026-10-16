@@ -1,10 +1,12 @@
 const USCISScannerService = require("../services/USCISScannerService");
+const logger = require("../../../utils/logger");
 
 async function runUSCISMonitoringJob(options = {}, user, req) {
   return USCISScannerService.scanAll(options, user, req);
 }
 
-function startUSCISMonitoringJob() {
+// withJobLock (utils/jobLock) makes a tick skip when another instance already holds the lock; without it (tests) the job just runs.
+function startUSCISMonitoringJob(withJobLock) {
   // Confirmed empirically (this ran, unattended, against real uscis.gov):
   // scanAll()'s full crawl walks the ENTIRE "all-forms" directory (up to
   // USCIS_SYNC_MAX_PAGES pages) and attempts to import every form code it
@@ -27,9 +29,10 @@ function startUSCISMonitoringJob() {
     if (running) return;
     running = true;
     try {
-      await runUSCISMonitoringJob({ trigger: "scheduled" });
+      const task = () => runUSCISMonitoringJob({ trigger: "scheduled" });
+      await (withJobLock ? withJobLock("uscis-monitoring", 3 * 60 * 60 * 1000, task) : task());
     } catch (error) {
-      console.error("USCIS monitoring failed:", error.message);
+      logger.error("uscis_monitoring_failed", { error: error.message });
     } finally {
       running = false;
     }

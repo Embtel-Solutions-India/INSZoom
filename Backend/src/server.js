@@ -229,8 +229,8 @@ connectDB()
     const reminderGeneration = startReminderGeneration();
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
-    const uscisMonitoring = startUSCISMonitoringJob();
-    const uscisEditionUpgrade = startUSCISEditionUpgradeJob();
+    const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
+    const uscisEditionUpgrade = startUSCISEditionUpgradeJob(withJobLock);
     // every 12 h: compare EVERY uscis.gov form (installed or not) with the installed edition and auto-import new / changed ones
     const uscisCatalogSync = require("./modules/uscis-lifecycle/jobs/USCISCatalogSyncJob").startUSCISCatalogSyncJob(withJobLock);
     // keeps the form registry / rule-driven mappings / certification correct by code (registry gap-fill, component linking, per-form certification)

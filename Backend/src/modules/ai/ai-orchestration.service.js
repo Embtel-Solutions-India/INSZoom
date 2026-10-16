@@ -4,6 +4,7 @@ const AIProviderConfig = require("../../models/AIProviderConfig");
 const AuditLog = require("../../models/AuditLog");
 const User = require("../../models/User");
 const providerRegistry = require("./ai-provider.registry");
+const { enforceOutputSchema } = require("./outputSchema");
 const promptService = require("./ai-prompt.service");
 const contextService = require("./ai-context.service");
 const searchService = require("../search/search.service");
@@ -201,8 +202,10 @@ async function callModel(job, promptKey, variables, user, req) {
   job.model = response.model;
   const currentUsage = job.usage?.toObject ? job.usage.toObject() : (job.usage || {});
   job.usage = { ...currentUsage, ...response.usage };
-  cache.set(promptHash, { output: response.data, expiresAt: Date.now() + CACHE_TTL_MS });
-  return response.data;
+  // the template's outputSchema is enforced here (wrong type => retryable failure; missing keys => their empty value), before anything is cached or stored
+  const data = enforceOutputSchema(response.data, template.outputSchema);
+  cache.set(promptHash, { output: data, expiresAt: Date.now() + CACHE_TTL_MS });
+  return data;
 }
 
 async function execute(job, user, req) {
@@ -374,7 +377,29 @@ async function updateProvider(key, payload, user) {
   return AIProviderConfig.findOneAndUpdate({ key }, { ...payload, key, updatedBy: user._id }, { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }).select("-metadata.secret -metadata.apiKey");
 }
 
+// A backend that dies mid-job leaves it in "processing" forever (recoverQueuedJobs only looks at "queued"). A job nobody has touched for AI_JOB_STUCK_MS is put back
+// in the queue (attempts left) or failed (none left) - one atomic update per job, so two ticks or instances can never both take it.
+async function recoverStuckProcessingJobs(now = new Date()) {
+  const stuckMs = Number(process.env.AI_JOB_STUCK_MS || 15 * 60 * 1000);
+  const cutoff = new Date(now.getTime() - stuckMs);
+  const stuck = await AIJob.find({ status: "processing", updatedAt: { $lt: cutoff } }).select("_id attempts maxAttempts").limit(50).lean();
+  let requeued = 0;
+  let failed = 0;
+  for (const item of stuck) {
+    const retry = (item.attempts || 0) < (item.maxAttempts || 3);
+    const update = retry
+      ? { $set: { status: "queued", nextAttemptAt: new Date(now.getTime() + 5000), error: { code: "AI_JOB_INTERRUPTED", message: "The job was interrupted (the server restarted while it was running) and was queued again", retryable: true } } }
+      : { $set: { status: "failed", error: { code: "AI_JOB_INTERRUPTED", message: "The job was interrupted and has no attempts left", retryable: false } } };
+    const claimed = await AIJob.findOneAndUpdate({ _id: item._id, status: "processing", updatedAt: { $lt: cutoff } }, update, { new: true });
+    if (!claimed) continue;
+    if (retry) requeued += 1; else failed += 1;
+  }
+  if (requeued || failed) logger.warn("ai_jobs_recovered_from_processing", { requeued, failed });
+  return { requeued, failed };
+}
+
 async function recoverQueuedJobs() {
+  await recoverStuckProcessingJobs().catch((error) => logger.error("ai_stuck_job_recovery_failed", { error }));
   const candidates = await AIJob.find({ status: "queued", $or: [{ nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: new Date() } }] })
     .select("_id requestedBy")
     .limit(20)
@@ -428,4 +453,4 @@ async function recoverOne(candidate) {
   await execute(job, user, null).catch(() => null);
 }
 
-module.exports = { applyTaskSuggestions, deterministicFindings, listJobs, listProviders, recoverQueuedJobs, review, run, updateProvider, usage };
+module.exports = { applyTaskSuggestions, deterministicFindings, listJobs, listProviders, recoverQueuedJobs, recoverStuckProcessingJobs, review, run, updateProvider, usage };

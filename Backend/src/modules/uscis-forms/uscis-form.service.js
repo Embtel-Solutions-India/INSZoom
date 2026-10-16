@@ -1330,26 +1330,10 @@ async function activateTemplate(templateId, user, req) {
 }
 
 async function retireTemplate(templateId, user, req) {
-  const template = await USCISFormTemplate.findById(templateId);
-  if (!template) throw Object.assign(new Error("USCIS form template not found"), { statusCode: 404 });
-  template.status = "retired";
-  template.currentStatus = "retired";
-  template.activeFlag = false;
-  template.retiredAt = new Date();
-  template.lifecycle = { ...(template.lifecycle?.toObject?.() || template.lifecycle || {}), retiredBy: user?._id };
-  await template.save();
-  await AuditLog.create({
-    userId: user?._id,
-    action: "uscis_form_template_retired",
-    entityType: "uscis_form_template",
-    entityId: idOf(template),
-    changes: { formCode: template.formCode, version: template.version },
-    ipAddress: req?.ip,
-    userAgent: req?.headers?.["user-agent"],
-    description: `Retired ${template.formCode} ${template.version}`,
-  }).catch(() => null);
+  // one implementation of "retire" (VersionManagementService.retire); it also drops the template cache
+  const retired = await VersionManagementService.retire(templateId, user, req);
   invalidateTemplateCache();
-  return template;
+  return retired;
 }
 
 async function createCaseForm(caseId, payload, user, req) {

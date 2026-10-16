@@ -29,7 +29,7 @@ const MAPPING_HOOKS = {
 };
 
 // Legal-record statuses: never moved off the edition they were generated/filed on.
-const FROZEN_STATUSES = ["finalized", "filed", "approved", "generated", "ready_for_pdf", "locked", "receipt_received"];
+const { isFrozen } = require("../modules/form-mapping/config/caseFormFreeze");
 
 function parseArgs(argv) {
   const args = {};
@@ -120,7 +120,7 @@ async function run({ formCode, toVersion, apply, acknowledgeEditionChanges }) {
   summary.caseForms.considered = caseForms.length;
   for (const caseForm of caseForms) {
     // (formVersionLock.lockedBy only records who pinned the edition at creation - it is not a "form locked" flag.)
-    if (FROZEN_STATUSES.includes(caseForm.status)) {
+    if (isFrozen(caseForm)) {
       summary.caseForms.skippedFrozen += 1;
       continue;
     }

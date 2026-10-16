@@ -11,7 +11,7 @@ This is the ONE document that records the implementation of the approved plan in
 | **Release 0a** - read-only pre-rollout report + redirect-chain crawl | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Release 0b-1** - evidence-resolution path, no enforcement | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Release 0b-2** - automatic evidence + fail-closed gate wired into the pipeline (Rule J not enforced) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 (indexes created; no other real-DB write) |
-| Phase 0 remainder (frozen-status module, cache fix, job locks, ...) | Not started | per the plan's sequence |
+| **Phase 0 remainder** (frozen-status module, cache fix, certification on activate, job locks, one retire, e2e script safety, AI infra) | **DONE 2026-10-16 - awaiting your review** (test isolation deferred: needs an approved local test DB) | given 2026-10-16 |
 | Phases 1 - 6 | Not started | each separately |
 
 ---
@@ -390,6 +390,45 @@ Tests: 6 new (`correctEditionFromPdfFooter.test.js`); 191 pass across form-editi
 
 Tests: 211 backend (policy, scripts, footer reader), 8 Admin component tests.
 
+# Phase 0 remainder - immediate safety fixes (no new behavior for any single form: every change is form-agnostic)
+
+## 1. Scope and authorization
+You said "now implement the next phase" after 0b-2, which in the plan is Phase 0 remainder ("Immediate safety fixes + test isolation"). Code only; no database writes were made in this phase and no case was created. Each item below was checked against the current code first and only what was still wrong was changed.
+
+## 2. What was built
+
+| Plan item | Result |
+|---|---|
+| `VersionManagementService.activate` invalidates the template cache itself | **Done.** The lifecycle and import routes never did; the registry console did it on its own. Now `activate` and `retire` both drop the cache (non-fatal if it cannot). |
+| `activate` requires a passing certification, or an audited non-critical override | **Done.** No certification on record -> refused (409, "certify first", not overridable). A failed critical check (`pdf_fillable`, `mapping_valid`, `fill_roundtrip`) -> refused. Only failed non-critical checks (`viewer_download`, `components_slice`) can be overridden, with `overrideReason` (10+ characters) in the request body; the reason, who and when are stored on the template (`lifecycle.certificationOverride`) and in the audit log. The automatic pipeline always certifies before it promotes, so its behavior is unchanged. Legacy live editions are untouched. |
+| `activate` calls the edition gate | Already done in 0b-2 (runs after the certification check, before anything is changed). |
+| One frozen-status rule (Rule G) | **Done.** `form-mapping/config/caseFormFreeze.js` exports `FROZEN_CASE_FORM_STATUSES` (finalized, filed, approved, generated, ready_for_pdf, locked, receipt_received, archived) and `isFrozen(caseForm)` (status on the list OR `isLocked`). `CaseFormEditionMigrationService`, `scripts/replaceFormEdition.js`, `scripts/applyPartyMappingsToExistingCases.js` and the rollout report now import it. A test fails if any other hard-coded list appears (the five lists with other meanings are named in the test). `receipt_received` is not a real `CaseForm.status`; kept defensively and asserted as the only such value. |
+| Fix the "new_cases_only" impact text | **Done.** The stored impact now says `futureCasesAffected: "new_case_forms"` and states that open case forms stay on their edition until migrated (the automatic pipeline migrates them with all answers; frozen forms never). Nothing read the old value. |
+| `withJobLock` on the edition-upgrade and monitoring jobs | **Done** (`uscis-edition-upgrade`, `uscis-monitoring`, 3 h lease like the catalog sync; `server.js` passes it in; without it the job just runs, so nothing else breaks). Their failures now go to the logger instead of `console.error`. |
+| Merge the two `retire` implementations | **Done.** `VersionManagementService.retire` is the only one; it sets status, currentStatus and activeFlag together (the lifecycle route used to leave `activeFlag` true) and drops the cache. The registry console's `retireTemplate` delegates to it. |
+| `deleteFormFromCatalog` refuses while a job runs | **Done.** 409 `FORM_PIPELINE_JOB_RUNNING` when the catalog sync, edition upgrade, monitoring or autopilot lock is held; checked before anything is looked up or deleted. If the lock store cannot be read the delete is not blocked. |
+| `verifyFormImportEndToEnd.js`: record created ids, `--cleanup` only those, refuse if the code pre-existed or a case form references it, dry run | **Done, and it fixed a real hazard:** the old `--cleanup` deleted every template under the form code, including real ones. It now records the ids it created in a run file, deletes only those, refuses when nothing was recorded, an id belongs to another form code, or any case form references one; `--dry-run` changes nothing. |
+| Failure paths log warn/error | **Partly.** The lifecycle audit and notification calls and the two job failures now log; this is not an exhaustive sweep of every `.catch(() => null)` in the codebase. |
+| AI: crashed `AIJob` in `processing` recovered | **Done.** `recoverStuckProcessingJobs` (runs inside the existing 60-second recovery tick under its lock): a job untouched for 15 minutes (`AI_JOB_STUCK_MS`) goes back to the queue (attempts left) or is failed (none left), claimed atomically. |
+| AI: `outputSchema` enforced | **Done.** It was passed to the provider but never checked. `modules/ai/outputSchema.js`: wrong type -> retryable 502; missing keys get their empty value; numbers/booleans sent as strings ("85") are converted, not rejected; keys not in the schema are kept; no schema -> untouched. |
+| AI: timeout / AbortController on `gemini.service` | **Done** (the AI provider registry already had one). Every attempt has a deadline (`GEMINI_TIMEOUT_MS`, default 90 s); a timeout or dropped connection is retried like a 503 and ends as a clear 504. |
+| Test isolation (`MONGODB_TEST_URI`, `test-utils/db.js`) | **Not built.** The plan makes it conditional on approval of a local test database. Until then every new test is DB-free, as in all earlier releases. |
+
+## 3. Behavior changes you should know about
+1. Activating an edition by hand now needs a passing certification (or the audited override above); an uncertified edition that used to activate now gets a 409 with the reason. The Admin screen shows the message; there is no override field in the UI yet (API only).
+2. Case-form migration and the party-mapping re-apply now also skip `approved`, `generated` and `ready_for_pdf` forms (the approved union); `replaceFormEdition` now also skips `archived` and explicitly locked forms.
+3. Retiring through the lifecycle route now also clears `activeFlag`.
+4. Model answers that are the wrong type now fail with a retryable 502 instead of being stored; the common harmless case (a number as a string) is converted.
+
+## 4. Verification
+267 backend tests pass (form-edition-policy, scripts, uscis-lifecycle, frozen module, AI infra, existing AI platform and form-registry tests, footer reader); new this phase: certification rules (4), frozen module (3), job locks and delete refusal (5), end-to-end script safety (4), AI infrastructure (7). Backend restarted on its own after the edits and answers `/api/health` 200; `/api/form-edition-policy/editions` still 401 without a token. No test connects to the real database. Not run: the Admin, Client, Landing and Attorney builds (no frontend file changed in this phase).
+
+## 5. What was NOT done
+Rule J; the local test database; the PM2 worker; an exhaustive sweep of silent catches; a UI field for the certification override.
+
+## 6. Gate before the next phase
+Your review of section 3. Next in the plan: Phase 1 (durable, resumable, fenced pipeline).
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -459,3 +498,4 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 | 2026-10-16 | Release 0a | Read-only pre-rollout report, redirect-chain crawl, read-only DB wrapper, 50 tests, this document | `Backend/src/scripts/formEditionPolicyRolloutReport.js`, `formSourceRedirectCrawl.js`, `lib/readOnlyDb.js`, `tests/*.test.js`, `docs/FORM_PIPELINE_IMPLEMENTATION_REPORT.md` |
 | 2026-10-16 | Release 0b-1 | Evidence-resolution path: 3 models (2 append-only), redirect-safe fetcher, verifier, fail-closed gate (wired into nothing), evidence service + admin/team_lead API, evidence section in Form Governance, unrun index script, 75 backend + 8 Admin tests, slicing check | `Backend/src/models/FormEdition*.js`, `models/helpers/appendOnly.js`, `modules/form-edition-policy/*`, `routes/index.js` (1 line), `scripts/createFormEditionPolicyIndexes.js`, `scripts/formSourceRedirectCrawl.js` (shared validator), `Admin/frontend/src/components/FormEditionEvidenceSection.jsx`, `services/api.js`, `pages/FormGovernance.jsx` |
 | 2026-10-16 | Release 0b-2 | Automatic evidence from the official USCIS page (explicit statements only), `POST /auto-check`, fail-closed enforcer wired into 4 services, 11 seeds and the replace script, narrowed rescue, Admin screen now "Check now" (no manual entry), unique indexes created, read-only coverage dry run (8 of 31 editions auto-accept), 181 backend + 127 Admin tests | `Backend/src/modules/form-edition-policy/{filingEligibility,EditionPolicyEnforcer,EvidenceService}.js`, controller/routes, gated pipeline files, `tests/*`, `Admin/frontend/src/components/FormEditionEvidenceSection.jsx(+test)`, `services/api.js` |
+| 2026-10-16 | Phase 0 remainder | Shared frozen-status module, activate certifies + drops cache, one retire, job locks on edition-upgrade/monitoring, delete refused while a job runs, safe end-to-end import script, AI jobs recovered from `processing`, outputSchema enforced, Gemini timeout; 267 tests | `form-mapping/config/caseFormFreeze.js`, `VersionManagementService.js`, `uscis-form.service.js`, `USCISEditionUpgradeJob.js`, `USCISMonitoringJob.js`, `utils/jobLock.js`, `form-registry.controller.js`, `scripts/verifyFormImportEndToEnd.js`, `modules/ai/outputSchema.js`, `ai-orchestration.service.js`, `gemini.service.js`, tests |

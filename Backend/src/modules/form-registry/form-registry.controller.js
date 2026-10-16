@@ -7,6 +7,7 @@ const caseService = require("../cases/case.service");
 const visaFormMappingService = require("./visaFormMapping.service");
 const USCISMappingVersion = require("../../models/USCISMappingVersion");
 const { recordAuditEvent } = require("../audit/audit.service");
+const { runningJobs } = require("../../utils/jobLock");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
 
 function handleError(error, next) {
@@ -562,6 +563,9 @@ exports.deleteFormFromCatalog = async (req, res, next) => {
   try {
     const formCode = String(req.params.formCode || "").trim();
     if (!formCode) throw Object.assign(new Error("Form code is required"), { status: 400 });
+    // never pull a template out from under an import / edition-upgrade / monitoring / autopilot run
+    const busy = await runningJobs();
+    if (busy.length) throw Object.assign(new Error("A USCIS form import job is running right now; try deleting this form again when it has finished."), { status: 409, code: "FORM_PIPELINE_JOB_RUNNING", details: { jobs: busy } });
     const escaped = formCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const templates = await USCISFormTemplate.find({ formCode: new RegExp(`^${escaped}$`, "i") }).select("_id").lean();
     const templateIds = templates.map((t) => t._id);

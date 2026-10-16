@@ -78,4 +78,19 @@ async function withJobLock(name, ttlMs, fn) {
   }
 }
 
-module.exports = { withJobLock };
+// The recurring jobs that import / change USCIS form editions. Deleting a form from the catalog while one of them is mid-run could pull a template out from
+// under it, so the delete refuses until they are idle.
+const FORM_PIPELINE_JOBS = Object.freeze(["uscis-catalog-sync", "uscis-edition-upgrade", "uscis-monitoring", "form-pipeline-autopilot"]);
+
+/** Names (from `names`) whose lock is held right now. Never throws: if the lock store cannot be read the answer is "none" (it only ever adds a refusal). */
+async function runningJobs(names = FORM_PIPELINE_JOBS) {
+  try {
+    const rows = await JobLock.find({ name: { $in: names }, lockedUntil: { $gt: new Date() } }).select("name").lean();
+    return rows.map((row) => row.name);
+  } catch (error) {
+    logger.error("job_lock_status_failed", { error });
+    return [];
+  }
+}
+
+module.exports = { withJobLock, runningJobs, FORM_PIPELINE_JOBS };

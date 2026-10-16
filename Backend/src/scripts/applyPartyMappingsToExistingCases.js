@@ -26,7 +26,7 @@ const flag = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : und
 const apply = args.includes("--apply");
 const formCodes = (flag("--forms") || "I-129,I-907,I-539,G-28").split(",").map((code) => code.trim().toUpperCase());
 const onlyCase = flag("--case");
-const FROZEN = ["finalized", "filed", "locked", "receipt_received", "archived"];
+const { isFrozen } = require("../modules/form-mapping/config/caseFormFreeze");
 
 async function refreshQuestionPaths() {
   const out = { questionnaires: 0, questionsUpdated: 0 };
@@ -56,7 +56,7 @@ async function refreshForms(actor) {
     const caseForms = await CaseForm.find(filter);
     for (const caseForm of caseForms) {
       out.considered += 1;
-      if (caseForm.isLocked || FROZEN.includes(caseForm.status)) { out.skippedFrozen += 1; continue; }
+      if (isFrozen(caseForm)) { out.skippedFrozen += 1; continue; }
       // nothing a person or the client entered may be lost: snapshot the form's data first (also saved to a backup file)
       const before = JSON.parse(JSON.stringify({ filledData: caseForm.filledData || {}, fieldValues: caseForm.fieldValues || {}, manualOverrides: caseForm.manualOverrides || {} }));
       backup.push({ _id: String(caseForm._id), formCode: caseForm.formCode, caseId: String(caseForm.caseId), mappingVersion: caseForm.mappingVersion, ...before });
