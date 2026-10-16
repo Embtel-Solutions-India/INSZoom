@@ -22,6 +22,7 @@ const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
 const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
 const { fitTextValue } = require("./FieldValueFitter");
+const { liftTextLengthLimits, shrinkLongTextToFit } = require("./FullTextFieldGuard");
 const { toAdobeRanges } = require("./ViewerPdfPreparationService");
 
 function classifyField(field) {
@@ -71,6 +72,8 @@ class AdobeFormRenderer {
     const { PDFDocument } = PDFRenderer.loadPdfLib();
     const sourcePdf = await PDFRenderer.loadTemplatePdf(template, PDFDocument);
     const sourceForm = sourcePdf.getForm();
+    // Free-text fields take the entry in full; the lifted copy is what is sent to Adobe.
+    liftTextLengthLimits(sourceForm);
     const sourceFields = sourceForm.getFields();
     const sourceFieldNames = new Set(sourceFields.map((f) => f.getName()));
     const fieldByName = new Map(sourceFields.map((f) => [f.getName(), f]));
@@ -189,6 +192,10 @@ class AdobeFormRenderer {
     // own output ever carries a residual XFA reference, the slice call
     // below must not be the one to discover that the hard way.
     purgeOrphanedXfaObjects(adobeOutputDoc);
+    // Long entries were sent in full (limits lifted on the upload copy); shrink their font so the
+    // whole text is visible in the box. Adobe's output carries NeedAppearances, so viewers redraw
+    // each field using this reduced size.
+    const shrunkTextFields = await shrinkLongTextToFit(adobeOutputDoc, adobeOutputDoc.getForm());
 
     // Page slicing - same shared resolver PDFRenderer.render() uses (both
     // component AND core-boundary resolution, Phase 2 add-on). Adobe is the
@@ -251,6 +258,7 @@ class AdobeFormRenderer {
         skippedFields,
         flattenedBarcodeFields,
         disabledRichTextFields,
+        shrunkTextFields,
         // Never even reaches jsonFormFieldsData - PDFFieldMapper.mapFields()
         // already excludes these (see ProtectedFieldPolicy.js) before this
         // function ever sees mappedFields. Surfaced here only for audit

@@ -423,10 +423,15 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
     const disabled = !canEdit || Boolean(field?.readOnly || field?.readonly)
     if (element.disabled !== disabled) element.disabled = disabled
     // pdf.js copies the PDF field's own /MaxLen onto the input, which silently
-    // stops typing/pasting at that length. Free-text fields must accept any
-    // length, so lift it. Comb fields (one character per printed box) keep it -
-    // their layout is built around exactly that many characters.
-    if (element.hasAttribute('maxlength') && !element.classList.contains('comb')) element.removeAttribute('maxlength')
+    // stops typing/pasting at that length. No field may restrict the number of
+    // characters, so lift it everywhere. A comb field (one character per printed
+    // box) is shown as ordinary text instead, since its letter-spacing layout
+    // only works for exactly that many characters.
+    if (element.hasAttribute('maxlength')) element.removeAttribute('maxlength')
+    if (element.classList.contains('comb')) {
+      element.classList.remove('comb')
+      element.style.letterSpacing = ''
+    }
     // Never write a stored value into the box the case manager is typing in: a stale value
     // (state lags the keyboard) would overwrite what they just typed or deleted, which is the
     // "deleted characters keep coming back" bug. The live DOM value IS the newest value there.
@@ -945,10 +950,13 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     }
   }, [adaptPdfChange, canEdit, fieldsByName, updateFieldSaveStatus, writeDraftValue])
 
-  // Blur / checkbox / select changes only update the local draft. Nothing is sent to the server
-  // (and so nothing becomes visible to other case managers, team leads or admins) until the case
-  // manager presses Save - see handleSave below.
-  const handleNativeFieldCommit = handleNativeFieldInput
+  // Autosave: leaving a box (blur) or changing a checkbox/radio/dropdown saves the edit to the server
+  // in the background. Typing itself stays a local draft until then, so it is never interrupted.
+  // savePendingChanges is single-flight, so rapid commits never send the same field twice.
+  const handleNativeFieldCommit = useCallback((event) => {
+    handleNativeFieldInput(event)
+    if (dirtyFieldsRef.current.size) savePendingRef.current?.('Native PDF field edit', { reload: false })
+  }, [handleNativeFieldInput])
 
   // Phase 3 (§I.5): retries a single field's save up to AUTOSAVE_RETRY_DELAYS_MS.length times with
   // exponential backoff before giving up. savePendingChanges' own try/catch (below) is unchanged -
@@ -1032,11 +1040,15 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   const handleSave = useCallback(async () => {
     if (!canEdit || !dirtyFieldsRef.current.size) return
     const saved = await savePendingChanges('Saved by case manager')
-    if (saved) setNotice('Form saved. Other case managers, team leads and admins can now see your changes.')
+    if (saved) setNotice('Form saved')
   }, [canEdit, savePendingChanges])
 
   const selectField = async (field) => {
-    if (editingFieldName && editingFieldName !== field.fieldName) setEditingFieldName('')
+    if (editingFieldName && editingFieldName !== field.fieldName) {
+      const saved = await savePendingChanges('Auto-save before selecting another field', { reload: false })
+      if (!saved) return false
+      setEditingFieldName('')
+    }
     setSelectedFieldName(field.fieldName)
     setActiveSection(field.sectionKey)
     return true
@@ -1173,6 +1185,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     setSaveState('dirty')
     writeDraftValue(entry.fieldName, entry.value, { immediate: true })
     pushValueToDom(entry.fieldName, entry.value)
+    savePendingChanges('Undo/redo', { reload: false })
   }
 
   const redo = async () => {
@@ -1187,6 +1200,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     setSaveState('dirty')
     writeDraftValue(entry.fieldName, entry.value, { immediate: true })
     pushValueToDom(entry.fieldName, entry.value)
+    savePendingChanges('Undo/redo', { reload: false })
   }
 
   const saveSection = async (section) => {
@@ -1378,7 +1392,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   }
 
   const handleClose = async () => {
-    if (dirtyFieldsRef.current.size && !window.confirm('You have unsaved changes that other users cannot see yet. Leave without saving? They will be lost.')) return
+    if (!(await savePendingChanges('Auto-save before closing form'))) return
     onClose?.()
   }
 
@@ -1468,7 +1482,7 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
                 onClick={handleSave}
                 disabled={dirtyCount === 0 || saveState === 'saving' || saveState === 'retrying' || busy === 'auto-save'}
                 className="flex items-center gap-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 text-xs font-semibold disabled:opacity-50"
-                title="Save your changes to the form so other case managers, team leads and admins can see them (Ctrl+S)"
+                title="Save your changes now (changes are also saved automatically when you leave a field) - Ctrl+S"
               >
                 <Save className="h-3.5 w-3.5" />
                 {saveState === 'saving' || saveState === 'retrying' ? 'Saving…' : 'Save'}

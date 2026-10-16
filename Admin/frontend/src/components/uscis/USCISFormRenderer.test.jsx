@@ -216,7 +216,7 @@ describe('USCISFormRenderer', () => {
   // Phase 3 (§I.4) - conflict resolution actions
 
   // Explicit Save (no autosave) + save reliability
-  it('does not save on blur - the edit stays a local draft until Save is pressed', async () => {
+  it('autosaves when the case manager leaves the box (blur), without pressing Save', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
@@ -225,6 +225,19 @@ describe('USCISFormRenderer', () => {
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: 'Johnson' } })
     fireEvent.blur(input)
+
+    await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
+    expect(saveWorkspaceFieldApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', value: 'Johnson' })
+    expect(await screen.findByText('Saved ✓')).toBeTruthy()
+  })
+
+  it('does not save while the case manager is still typing (before blur)', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.change(input, { target: { value: 'Johnson' } })
 
     expect(await screen.findByText('1 unsaved')).toBeTruthy()
     expect(saveWorkspaceFieldApi).not.toHaveBeenCalled()
@@ -245,7 +258,7 @@ describe('USCISFormRenderer', () => {
 
     await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
     expect(saveWorkspaceFieldApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', value: 'Johnson' })
-    expect(await screen.findByText(/Other case managers, team leads and admins can now see your changes/)).toBeTruthy()
+    expect(await screen.findByText('Form saved')).toBeTruthy()
   })
 
   it('retries a failed save with backoff and eventually shows "Saved ✓"', async () => {
@@ -358,7 +371,7 @@ describe('USCISFormRenderer', () => {
   })
 
   // Character limits
-  it('removes the PDF maxlength from free-text inputs but keeps it on comb fields', async () => {
+  it('removes the PDF maxlength from every input, comb fields included', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
@@ -366,7 +379,9 @@ describe('USCISFormRenderer', () => {
     const input = await screen.findByTitle('Last Name')
 
     await vi.waitFor(() => expect(input.hasAttribute('maxlength')).toBe(false))
-    expect(screen.getByTitle('Comb Field').getAttribute('maxlength')).toBe('5')
+    const comb = screen.getByTitle('Comb Field')
+    expect(comb.hasAttribute('maxlength')).toBe(false)
+    expect(comb.classList.contains('comb')).toBe(false)
   })
 
   // Forms Download overhaul - single "Download Official Form" button, no status gate

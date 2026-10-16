@@ -1,5 +1,6 @@
 const storageService = require("../../uploads/storage.service");
 const { fitTextValue, fitChoiceValue } = require("./FieldValueFitter");
+const { liftTextLengthLimits, shrinkLongTextToFit } = require("./FullTextFieldGuard");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
@@ -140,6 +141,7 @@ class PDFRenderer {
     const { PDFDocument, PDFName, PDFBool } = this.loadPdfLib();
     const pdf = await this.loadTemplatePdf(template, PDFDocument);
     const form = pdf.getForm();
+    liftTextLengthLimits(form);
     // Confirmed root cause of 2 historical "generated" CaseForm records that
     // turned out to be 883-byte, 1-page, 0-field stubs: the template asset
     // they were rendered from (since deleted/replaced) apparently exposed no
@@ -171,6 +173,9 @@ class PDFRenderer {
         if (mappedField.renderError) failedFieldWrites.push({ pdfField: mappedField.pdfField, caseField: mappedField.caseField, message: mappedField.renderError });
       }
     });
+    // Text longer than a box normally holds is written in full (limits lifted above); shrink its font
+    // so the whole entry is visible in the box instead of clipped. Must run before flatten()/save().
+    const shrunkTextFields = await shrinkLongTextToFit(pdf, form);
     // ISSUE-003 follow-up: must run BEFORE the flatten()/NeedAppearances
     // decision below - see BarcodeAppearanceGuard.js for the full root
     // cause. Bakes each barcode field's own untouched, correct appearance
@@ -245,6 +250,7 @@ class PDFRenderer {
         protectedFields,
         flattenedBarcodeFields,
         disabledRichTextFields,
+        shrunkTextFields,
         flattened: Boolean(flatten),
         watermark: WatermarkService.normalize(watermark),
         componentCode: caseForm.componentCode || null,
