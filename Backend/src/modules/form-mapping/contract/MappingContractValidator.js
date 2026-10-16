@@ -103,7 +103,16 @@ function checkEdge(edge, ctx) {
 
   if (edge.status !== undefined && !EDGE_STATUSES.includes(edge.status)) add(CODES.STATUS_INVALID, { status: edge.status });
   if (edge.origin !== undefined && !ORIGINS.includes(edge.origin)) add(CODES.ORIGIN_INVALID, { origin: edge.origin });
-  return found;
+  return found.filter((violation) => !isAcknowledged(edge, violation.code));
+}
+
+/**
+ * A person has looked at this finding on this edge and decided it is not a defect (for example a form field whose extracted label names one party while its real PDF
+ * name and the authored note name the other). Recorded ON the edge as { code, reason, at, by } so the decision is visible, dated and reversible; it silences ONLY that
+ * code on ONLY that edge, and an exception with no written reason does not count.
+ */
+function isAcknowledged(edge, code) {
+  return (edge.contractExceptions || []).some((item) => item && item.code === code && String(item.reason || "").trim().length >= 10);
 }
 
 const SKIP_TYPES = new Set(["signature", "button", "barcode", "image", "pushbutton"]);
@@ -156,4 +165,4 @@ function validateGraphContract(graph = {}, template = {}, { universe, getTemplat
   };
 }
 
-module.exports = { CODES, checkEdge, validateGraphContract, classifyUnmapped, partyOfText, partyOfPath, conditionPaths };
+module.exports = { CODES, isAcknowledged, checkEdge, validateGraphContract, classifyUnmapped, partyOfText, partyOfPath, conditionPaths };

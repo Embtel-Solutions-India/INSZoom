@@ -59,7 +59,11 @@ class MappingGraphService {
     const targetText = this.normalizeText([targetField.targetFieldId, targetField.targetPdfField, targetField.label].join(" "));
     const exactBoost = targetText.includes(this.normalizeText(sourceTail)) ? 0.2 : 0;
     const typeBoost = this.typesCompatible(sourceField.type, targetField.type) ? 0.12 : 0;
-    return Math.min(1, overlap / Math.max(sourceTokens.size, targetTokens.size) + exactBoost + typeBoost);
+    // a registry alias that IS the whole printed label ("Date of Birth" = person.dob's alias "date of birth") is the strongest evidence there is: without it the single
+    // shared word in a path's tail ("...adjustmentOfStatus.date") could outrank the path whose own alias is the label
+    const label = this.normalizeText(targetField.label || "");
+    const aliasBoost = label && (sourceField.aliases || []).some((alias) => this.normalizeText(alias) === label) ? 0.3 : 0;
+    return Math.min(1, overlap / Math.max(sourceTokens.size, targetTokens.size) + exactBoost + typeBoost + aliasBoost);
   }
 
   static typesCompatible(sourceType = "text", targetType = "text") {

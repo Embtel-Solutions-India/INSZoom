@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
 import { associationLabel } from './FormGovernance'
 import UploadFormModal from '../components/UploadFormModal'
+import MappingCoveragePanel from '../components/MappingCoveragePanel'
 import { ArrowLeft, ExternalLink, Wand2, CheckCircle2, RefreshCw, PlayCircle, Plus, Upload } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
@@ -467,6 +468,8 @@ const FormGovernanceDetail = () => {
               )}
             </div>
           )}
+
+          <MappingCoveragePanel templateId={viewedTemplateId} />
 
           <div className="card overflow-hidden">
             <div className="px-2 pb-3">
