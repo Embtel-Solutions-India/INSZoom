@@ -40,6 +40,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { formGenerationApi, uscisFormsApi, readFormWarnings } from '../../services/api'
+import { useCaseFormLiveUpdates } from '../../hooks/useCaseFormLiveUpdates'
 import { convert as convertPdfFieldChange, extractFieldName, buildWidgetIndex, prePopulateById } from '../../utils/PDFFieldChangeAdapter'
 import { buildPageSlots, pageMismatch } from './viewerPageSlots'
 
@@ -634,6 +635,16 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
   useEffect(() => {
     loadWorkspace()
   }, [loadWorkspace])
+
+  // Another team member changed this form: re-read it quietly. The silent reload keeps anything typed here that is not saved yet, so it never interrupts typing.
+  useCaseFormLiveUpdates({
+    caseId,
+    caseFormId: caseForm._id,
+    onRemoteChange: (event) => {
+      loadWorkspace(true)
+      if (event?.actorName) setNotice(`${event.actorName} updated this form`)
+    },
+  })
 
   // valuesRef is the single source of truth for the live draft; `values` (state) trails it by at
   // most VALUES_COMMIT_DELAY_MS. Copying state back into the ref here would overwrite newer

@@ -14,6 +14,9 @@ export const useAuth = () => {
 }
 
 
+// Like useAuth, but returns null instead of throwing when there is no AuthProvider.
+export const useOptionalAuth = () => useContext(AuthContext) || null
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)

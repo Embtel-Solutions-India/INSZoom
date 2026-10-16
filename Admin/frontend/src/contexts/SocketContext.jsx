@@ -21,6 +21,9 @@ export const useSocket = () => {
 // proxied to the backend. Absolute URLs are returned unchanged.
 const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:7000/api').replace(/\/api\/?$/, '') || window.location.origin
 
+// Like useSocket, but returns null instead of throwing when there is no SocketProvider (a component that only wants live updates as a bonus must keep working without one).
+export const useOptionalSocket = () => useContext(SocketContext) || null
+
 export const SocketProvider = ({ children }) => {
   const { token, user } = useAuth()
   const [connected, setConnected] = useState(false)

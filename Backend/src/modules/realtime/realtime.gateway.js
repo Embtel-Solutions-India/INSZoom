@@ -135,6 +135,26 @@ function init(httpServer, options = {}) {
         if (typeof callback === "function") callback({ ok: false, code: "CONVERSATION_ACCESS_DENIED" });
       }
     });
+    // Live form updates: a staff user with the form open joins its room (access re-checked, same rules as opening the form). A failure only means no live
+    // updates for that screen - the form itself keeps working exactly as before.
+    socket.on("caseForm:join", async (payload, callback) => {
+      try {
+        const { authorizeJoin, roomOf } = require("../uscis-forms/caseFormLiveUpdates");
+        const verdict = await authorizeJoin({ user: socket.data.user, caseId: payload?.caseId, caseFormId: payload?.caseFormId });
+        if (verdict.ok) socket.join(roomOf(payload.caseFormId));
+        if (typeof callback === "function") callback(verdict.ok ? { ok: true } : { ok: false, code: verdict.code });
+      } catch {
+        if (typeof callback === "function") callback({ ok: false, code: "FORM_JOIN_FAILED" });
+      }
+    });
+    socket.on("caseForm:leave", (payload) => {
+      try {
+        const { roomOf } = require("../uscis-forms/caseFormLiveUpdates");
+        if (payload?.caseFormId) socket.leave(roomOf(payload.caseFormId));
+      } catch {
+        // nothing to clean up
+      }
+    });
     socket.on("conversation:leave", (conversationId) => {
       if (mongoose.Types.ObjectId.isValid(conversationId)) socket.leave(`conversation:${conversationId}`);
     });
@@ -189,6 +209,12 @@ function emitToConversation(conversationId, event, payload) {
   return true;
 }
 
+function emitToCaseForm(caseFormId, event, payload) {
+  if (!io || !caseFormId) return false;
+  io.to(`caseForm:${caseFormId}`).emit(event, payload);
+  return true;
+}
+
 function getIO() {
   return io;
 }
@@ -211,6 +237,7 @@ function joinUserToConversation(userId, conversationId) {
 }
 
 module.exports = {
+  emitToCaseForm,
   emitToConversation,
   emitToRole,
   emitToUser,
