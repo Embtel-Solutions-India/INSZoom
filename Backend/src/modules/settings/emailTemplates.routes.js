@@ -78,10 +78,11 @@ const defaultTo = (trigger) => (RULE_TYPES.has(trigger?.audience) ? trigger.audi
 // first entry resolves per recipient at send time to THEIR portal, deep-linked.
 const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
 function linkPresets() {
-  const client = trimSlash(env.clientUrl);
-  const admin = trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002");
-  const attorney = trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174");
-  const landing = trimSlash(process.env.LANDING_URL || "http://localhost:5173");
+  const { portalUrl } = require("../email/portalUrls");
+  const client = portalUrl("client");
+  const admin = portalUrl("admin");
+  const attorney = portalUrl("attorney");
+  const landing = portalUrl("landing");
   return [
     { label: "Recipient's own portal (opens their case)", value: "[system.portal_link]", text: "Open in Immiglance" },
     { label: "Client portal - dashboard", value: `${client}/dashboard`, text: "Go to My Portal" },

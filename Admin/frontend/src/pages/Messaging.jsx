@@ -17,16 +17,22 @@ import {
   Paperclip,
   FileText,
   X,
-  Clock,
-  ArrowLeft,
-  Download
+  CornerUpLeft,
+  ArrowLeft
 } from 'lucide-react'
-
-const FILTERS = [
-  { key: 'all', label: 'All Messages' },
-  { key: 'unread', label: 'Unread' },
-  { key: 'internal', label: 'Internal Only' }
-]
+import ChatAttachment from '../components/ChatAttachment'
+import { MAX_ATTACHMENTS_PER_MESSAGE, formatFileSize, isChunkedFile } from '../utils/chunkedUpload'
+import {
+  THUMBNAIL_MAX_BYTES,
+  acceptNewFiles,
+  attachmentKind,
+  discardStagedUploads,
+  isCanceledError,
+  isRetryableError,
+  orderForSending,
+  sendErrorMessage,
+  uploadChunkedFiles
+} from '../utils/chatAttachments'
 
 const INTERNAL_CONTACT_ROLES = ['super_admin', 'admin', 'team_lead', 'case_manager', 'paralegal', 'finance', 'hr', 'reviewer']
 
@@ -50,6 +56,49 @@ const getInitials = (name) => {
 
 const idOf = (ref) => (ref && typeof ref === 'object' ? ref._id : ref)
 
+// Shared by every bubble that has no per-sender palette (kept as constants so
+// the memo'd bubbles get a stable `style` prop).
+const SELF_STYLE = { key: 'self' }
+const OTHER_STYLE = { key: 'other' }
+
+const RETRY_DELAYS_MS = [2000, 5000, 10000]
+
+const newClientMessageId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+const isCanceled = isCanceledError
+const isRetryable = isRetryableError
+
+// Resolves after `ms`, or as soon as `signal` aborts (so cancelling an upload never waits out a retry delay).
+const sleep = (ms, signal) => new Promise((resolve) => {
+  const done = () => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve() }
+  const timer = setTimeout(done, ms)
+  signal?.addEventListener('abort', done)
+})
+
+const postWithRetry = async (post, signal) => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await post()
+    } catch (err) {
+      if (attempt >= RETRY_DELAYS_MS.length || !isRetryable(err)) throw err
+      await sleep(RETRY_DELAYS_MS[attempt], signal)
+      if (signal?.aborted) throw Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })
+    }
+  }
+}
+
+const senderNameOf = (m) => m?.senderId?.name || m?.senderId?.displayName || m?.senderId?.email || m?.senderName || ''
+
+// Keeps the local object URLs of a just-sent image on the saved message so it
+// doesn't flicker into a network refetch.
+const adoptLocalAttachmentUrls = (saved, local) => ({
+  ...saved,
+  attachments: (saved.attachments || []).map((serverAttachment, index) => ({
+    ...serverAttachment,
+    __localUrl: local.attachments?.[index]?.originalName === serverAttachment.originalName ? local.attachments[index].__localUrl : undefined
+  }))
+})
+
 const messagesEqual = (a, b) => (
   a.message === b.message &&
   a.isInternal === b.isInternal &&
@@ -69,6 +118,7 @@ const messagesEqual = (a, b) => (
 const mergeMessagesById = (prevMessages, incomingMessages) => {
   const prevById = new Map(prevMessages.map((m) => [idOf(m._id), m]))
   const incomingIds = new Set(incomingMessages.map((m) => idOf(m._id)))
+  const incomingClientIds = new Set(incomingMessages.map((m) => m.clientMessageId).filter(Boolean))
 
   let changed = false
   const merged = incomingMessages.map((incoming) => {
@@ -78,157 +128,32 @@ const mergeMessagesById = (prevMessages, incomingMessages) => {
     return incoming
   })
 
-  const stillInFlight = prevMessages.filter((m) => (m.__pending || m.__failed) && !incomingIds.has(idOf(m._id)))
+  // A still-sending temp whose saved copy already arrived (same clientMessageId) is superseded by it.
+  const stillInFlight = prevMessages.filter((m) => (
+    (m.__pending || m.__failed) &&
+    !incomingIds.has(idOf(m._id)) &&
+    !(m.__clientMessageId && incomingClientIds.has(m.__clientMessageId))
+  ))
   if (!changed && stillInFlight.length === 0 && merged.length === prevMessages.length) {
     return prevMessages
   }
   return [...merged, ...stillInFlight]
 }
 
-const formatFileSize = (bytes) => {
-  if (!bytes) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 // Attachment bytes are served through an authenticated endpoint (not a plain
-// static URL), so each one is fetched once as a blob and the object URL is
-// reused for the life of the page instead of re-fetching on every re-render.
-const attachmentBlobCache = new Map()
+// static URL); ChatAttachment fetches them through this and caches thumbnails.
+const fetchAttachmentBlob = (messageId, attachmentId, onProgress, signal) => (
+  api.get(`/messages/${messageId}/attachments/${attachmentId}`, {
+    responseType: 'blob',
+    signal,
+    timeout: 0,
+    onDownloadProgress: onProgress
+      ? (event) => { if (event.total) onProgress(event.loaded / event.total) }
+      : undefined
+  }).then((response) => response.data)
+)
 
-const loadAttachmentBlobUrl = async (messageId, attachmentId) => {
-  const cacheKey = `${messageId}:${attachmentId}`
-  if (attachmentBlobCache.has(cacheKey)) return attachmentBlobCache.get(cacheKey)
-  const response = await api.get(`/messages/${messageId}/attachments/${attachmentId}`, { responseType: 'blob' })
-  const url = URL.createObjectURL(response.data)
-  attachmentBlobCache.set(cacheKey, url)
-  return url
-}
-
-const triggerBlobDownload = (url, filename) => {
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename || 'download'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-}
-
-// Renders an inline image thumbnail (click to open a full-size lightbox with
-// a soft fade/scale-in transition) or a file chip — both sides of a
-// conversation can download anything either party attached. A pending,
-// not-yet-uploaded attachment already carries its own local object URL
-// (__localUrl) and skips the network fetch entirely.
-const AttachmentItem = ({ messageId, attachment }) => {
-  const isImage = (attachment.mimeType || '').startsWith('image/')
-  const [url, setUrl] = useState(attachment.__localUrl || null)
-  const [status, setStatus] = useState(attachment.__localUrl ? 'ready' : 'idle')
-  const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [lightboxVisible, setLightboxVisible] = useState(false)
-
-  const ensureLoaded = useCallback(async () => {
-    if (url) return url
-    setStatus('loading')
-    try {
-      const loaded = await loadAttachmentBlobUrl(messageId, attachment._id)
-      setUrl(loaded)
-      setStatus('ready')
-      return loaded
-    } catch {
-      setStatus('error')
-      return null
-    }
-  }, [messageId, attachment._id, url])
-
-  useEffect(() => {
-    if (isImage && !url) ensureLoaded()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isImage])
-
-  // Mount the lightbox invisible, then flip to visible a frame later so the
-  // opacity/scale transition actually has something to animate from.
-  useEffect(() => {
-    if (!lightboxOpen) return
-    const raf = requestAnimationFrame(() => setLightboxVisible(true))
-    return () => cancelAnimationFrame(raf)
-  }, [lightboxOpen])
-
-  const closeLightbox = () => {
-    setLightboxVisible(false)
-    setTimeout(() => setLightboxOpen(false), 150)
-  }
-
-  const handleOpen = async () => {
-    const loaded = await ensureLoaded()
-    if (!loaded) return
-    if (isImage) setLightboxOpen(true)
-    else triggerBlobDownload(loaded, attachment.originalName)
-  }
-
-  const handleDownload = async (e) => {
-    e?.stopPropagation()
-    const loaded = await ensureLoaded()
-    if (loaded) triggerBlobDownload(loaded, attachment.originalName)
-  }
-
-  if (isImage) {
-    return (
-      <>
-        <button
-          type="button"
-          onClick={handleOpen}
-          className="block w-40 h-32 rounded-xl overflow-hidden border border-border bg-secondary hover:brightness-95 transition"
-        >
-          {status === 'ready' ? (
-            <img src={url} alt={attachment.originalName} className="w-full h-full object-cover" />
-          ) : (
-            <span className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground">
-              {status === 'error' ? "Couldn't load image" : 'Loading…'}
-            </span>
-          )}
-        </button>
-        {lightboxOpen && (
-          <div
-            className={`fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-6 transition-opacity duration-200 ${lightboxVisible ? 'opacity-100' : 'opacity-0'}`}
-            onClick={closeLightbox}
-          >
-            <img
-              src={url}
-              alt={attachment.originalName}
-              className={`max-w-full max-h-full rounded-lg shadow-2xl transition-all duration-200 ease-out ${lightboxVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <div className="absolute top-5 right-5 flex items-center gap-4">
-              <button type="button" onClick={handleDownload} title="Download" className="text-white/80 hover:text-white">
-                <Download className="w-5 h-5" />
-              </button>
-              <button type="button" onClick={closeLightbox} title="Close" className="text-white/80 hover:text-white">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-        )}
-      </>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={handleOpen}
-      disabled={status === 'loading'}
-      className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-full hover:bg-blue-100 transition disabled:opacity-60"
-    >
-      <FileText className="w-3.5 h-3.5" />
-      {attachment.originalName}
-      {attachment.size ? <span className="text-blue-400 font-normal">{formatFileSize(attachment.size)}</span> : null}
-      <Download className="w-3 h-3" />
-      {status === 'loading' && ' · Downloading…'}
-      {status === 'error' && ' · Failed to download'}
-    </button>
-  )
-}
+const formatClock = (date) => new Date(date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 
 const formatTime = (date) => {
   if (!date) return ''
@@ -275,118 +200,167 @@ const DayDivider = ({ label }) => (
 // — only bubbles for genuinely new/changed messages do any work. This also
 // means the parent's other state (reply textarea, attach picker, etc.) can
 // re-render freely without repainting the whole thread, as long as the
-// `message`/`style`/`onRetry` props it receives stay referentially stable.
-const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style, senderName, onRetry, onCancelUpload }) {
+// `message`/`style`/`parent`/`onRetry` props it receives stay referentially stable.
+const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style, senderName, parent, onReply, onRetry, onCancelUpload, onDiscard }) {
   const senderId = idOf(m.senderId)
-  const avatarClasses = style.key === 'self'
-    ? 'bg-blue-500 text-white'
+  const isSelf = style.key === 'self'
+  // Own, non-internal messages use the softened navy bubble; internal notes keep their orange one.
+  const onNavy = isSelf && !m.isInternal
+  const avatarClasses = isSelf
+    ? 'bg-primary/80 text-primary-foreground dark:bg-primary/25 dark:text-primary'
     : style.key === 'extra'
       ? style.palette.avatar
       : 'bg-muted text-muted-foreground'
+  // Dark mode: own bubbles are a muted tint of the brand colour with light text (the solid brand colour is too bright for a large surface).
   const bubbleClasses = m.isInternal
     ? 'bg-orange-50 text-orange-900 border border-orange-200'
-    : style.key === 'self'
-      ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+    : isSelf
+      ? 'bg-primary/80 text-primary-foreground dark:bg-primary/20 dark:text-foreground dark:border dark:border-primary/30'
       : style.key === 'extra'
         ? style.palette.bubble
         : 'bg-secondary text-foreground border border-border'
+  const metaClasses = onNavy ? 'text-primary-foreground/70 dark:text-muted-foreground' : 'text-muted-foreground'
+  const quoteClasses = onNavy
+    ? 'bg-black/20 border-l-primary-foreground/60 dark:border-l-primary'
+    : m.isInternal
+      ? 'bg-orange-100/70 border-l-orange-400'
+      : style.key === 'extra'
+        ? 'bg-black/5 border-l-primary'
+        : 'bg-background border-l-primary'
+  const quoteNameClasses = onNavy ? 'text-primary-foreground dark:text-primary' : m.isInternal ? 'text-orange-900' : 'text-primary'
+  const quoteTextClasses = onNavy ? 'text-primary-foreground/80 dark:text-muted-foreground' : m.isInternal ? 'text-orange-800/80' : 'text-muted-foreground'
   const readNames = (m.readBy || [])
     .filter((r) => idOf(r.userId) !== senderId)
     .map((r) => (r.userId?.name || r.userId?.displayName))
     .filter(Boolean)
+  const seen = readNames.length > 0
   const isPending = Boolean(m.__pending)
   const isFailed = Boolean(m.__failed)
+  const attachments = m.attachments || []
+  const isUploading = isPending && attachments.some((a) => typeof a.__progress === 'number')
+  // Text, a quoted reply and attachments all live inside the one bubble (with the time/tick footer at its bottom).
+  const hasBubble = Boolean(m.message || parent || attachments.length > 0)
+  const messageId = idOf(m._id)
+
+  // Time (and delivery state for our own messages) at the bottom-right, like
+  // WhatsApp. Two states we can honestly distinguish from the data we have:
+  // sent (muted double-check) and read (light-blue double-check). There's no
+  // real delivery-ack pipeline, so a fake "delivered" tick in between would
+  // just be theater — this skips it rather than lie. Who has seen it stays
+  // available as a tooltip on the footer.
+  const footer = (
+    <div
+      title={outgoing && !isFailed ? (seen ? `Seen by ${readNames.join(', ')}` : 'Sent') : undefined}
+      className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap pr-1 text-[10px] leading-none ${hasBubble ? metaClasses : 'text-muted-foreground'}`}
+    >
+      <span>{formatClock(m.createdAt)}</span>
+      {outgoing && !isFailed && (
+        <CheckCheck
+          strokeWidth={2.25}
+          className={`w-4 h-4 shrink-0 overflow-visible ${seen ? (onNavy && hasBubble ? 'text-sky-300' : 'text-sky-500') : ''}`}
+          aria-label={seen ? 'Seen' : 'Sent'}
+        />
+      )}
+    </div>
+  )
 
   return (
-    // Time/internal badge sits on its own row above the avatar+bubble
-    // row so the avatar always bottom-aligns with the bubble itself —
-    // not with the "Seen by" line, which is a separate row below.
-    <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'}`}>
-      <div className="flex items-center gap-2 mb-1 px-1">
-        {m.isInternal && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-orange-100 text-orange-700">
-            <Lock className="w-3 h-3" />
-            Internal
-          </span>
-        )}
-        <span className="text-[11px] text-muted-foreground">
-          {formatTime(m.createdAt)}
-        </span>
-      </div>
-
-      <div className={`flex items-end gap-2 max-w-[78%] ${outgoing ? 'flex-row-reverse' : ''}`}>
+    <div className={`flex flex-col ${outgoing ? 'items-end' : 'items-start'} group`}>
+      <div className={`flex items-end gap-2 max-w-[88%] sm:max-w-[78%] ${outgoing ? 'flex-row-reverse' : ''}`}>
         <div
           className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 shadow-sm ${avatarClasses}`}
           title={senderName}
         >
           {getInitials(senderName)}
         </div>
-        <div className="flex flex-col gap-1.5">
-          {m.attachments?.length > 0 && (
-            <div className={`flex flex-wrap gap-1.5 ${isPending ? 'opacity-60' : ''}`}>
-              {m.attachments.map((attachment, index) => (
-                <AttachmentItem key={attachment._id || index} messageId={idOf(m._id)} attachment={attachment} />
-              ))}
+        <div className="flex flex-col gap-1.5 min-w-0">
+          {(!outgoing || m.isInternal) && (
+            <div className={`flex items-center gap-2 px-1 ${outgoing ? 'justify-end' : ''}`}>
+              {!outgoing && senderName && senderName !== '?' && (
+                <p className="text-[11px] font-semibold text-muted-foreground truncate">{senderName}</p>
+              )}
+              {m.isInternal && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-orange-100 text-orange-700">
+                  <Lock className="w-3 h-3" />
+                  Internal
+                </span>
+              )}
             </div>
           )}
-          {isPending && typeof m.__uploadProgress === 'number' && (
-            <div className="flex items-center gap-2 w-40">
-              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 transition-all"
-                  style={{ width: `${m.__uploadProgress}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-muted-foreground shrink-0">{m.__uploadProgress}%</span>
-              <button
-                type="button"
-                onClick={() => onCancelUpload?.(m._id)}
-                title="Cancel upload"
-                className="text-muted-foreground hover:text-red-500 shrink-0"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
-          {m.message && (
+          {hasBubble ? (
             <div
               onClick={isFailed ? () => onRetry(m) : undefined}
-              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm transition-opacity ${bubbleClasses} ${isPending ? 'opacity-60' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
+              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-3 pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
             >
-              {m.message}
+              {parent && (
+                <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
+                  <p className={`text-[11px] font-semibold truncate ${quoteNameClasses}`}>{senderNameOf(parent) || 'Unknown'}</p>
+                  <p className={`text-[12px] line-clamp-2 break-words ${quoteTextClasses}`}>
+                    {parent.message || parent.messageBody || 'Attachment'}
+                  </p>
+                </div>
+              )}
+              {attachments.length > 0 && (
+                <div className={`flex flex-wrap items-start gap-1.5 ${m.message ? 'mb-1.5' : ''}`}>
+                  {attachments.map((attachment, index) => (
+                    <ChatAttachment
+                      key={attachment._id || index}
+                      attachment={attachment}
+                      cacheKey={`${messageId}:${attachment._id}`}
+                      fetchBlob={(onProgress, signal) => fetchAttachmentBlob(messageId, attachment._id, onProgress, signal)}
+                    />
+                  ))}
+                </div>
+              )}
+              {isUploading && (
+                <div className={`mb-1 flex items-center justify-between gap-3 text-[11px] ${metaClasses}`}>
+                  <span>Uploading...</span>
+                  <button
+                    type="button"
+                    onClick={(event) => { event.stopPropagation(); onCancelUpload?.(m._id) }}
+                    title="Cancel upload"
+                    aria-label="Cancel upload"
+                    className="inline-flex items-center gap-1 font-semibold hover:text-red-500"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {m.message && <p className="whitespace-pre-wrap break-words">{m.message}</p>}
+              {footer}
             </div>
-          )}
+          ) : footer}
         </div>
+        {!isPending && !isFailed && (
+          <button
+            type="button"
+            onClick={() => onReply(m)}
+            title="Reply"
+            aria-label="Reply"
+            className="mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
+          >
+            <CornerUpLeft className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
-      {outgoing && (
-        <div className="mt-1 mr-10 flex items-center gap-1 text-[11px] min-h-[14px]">
-          {isFailed ? (
-            <button
-              type="button"
-              onClick={() => onRetry(m)}
-              className="text-red-500 font-medium hover:underline"
-            >
-              Failed to send · Tap to retry
-            </button>
-          ) : isPending ? (
-            <span className="flex items-center gap-1 text-muted-foreground">
-              <Clock className="w-3 h-3" />
-              Sending…
-            </span>
-          ) : (
-            // Two states we can honestly distinguish from the data we have:
-            // sent (grey double-check) and read (blue double-check). There's
-            // no real delivery-ack pipeline, so a fake "delivered" tick in
-            // between would just be theater — this skips it rather than lie.
-            <span
-              className={`flex items-center gap-1 ${readNames.length > 0 ? 'text-blue-500' : 'text-muted-foreground'}`}
-              title={readNames.length > 0 ? `Seen by ${readNames.join(', ')}` : 'Sent'}
-            >
-              <CheckCheck className="w-3.5 h-3.5" />
-              {readNames.length > 0 ? `Seen by ${readNames.join(', ')}` : 'Sent'}
-            </span>
-          )}
+      {outgoing && isFailed && (
+        <div className="mt-0.5 mr-10 flex items-center gap-2 text-[11px]">
+          <button
+            type="button"
+            onClick={() => onRetry(m)}
+            className="text-red-500 font-medium hover:underline"
+          >
+            Failed to send · Tap to retry
+          </button>
+          <button
+            type="button"
+            onClick={() => onDiscard?.(m)}
+            className="text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Discard
+          </button>
         </div>
       )}
     </div>
@@ -410,6 +384,11 @@ const Messaging = () => {
   const [isDraggingFiles, setIsDraggingFiles] = useState(false)
   const dragCounterRef = useRef(0)
   const abortControllersRef = useRef(new Map())
+  // Finished chunk uploads per message being sent (tempId -> { fileIndex: { uploadId, ready } }), so a retry only re-sends what is missing.
+  const uploadStoresRef = useRef(new Map())
+  // One promise chain per thread: sends are delivered in the order they were typed, and the composer is never locked while one is in flight.
+  const sendQueuesRef = useRef(new Map())
+  const selectedGroupRef = useRef(null)
   const messagesFetchInFlightRef = useRef(false)
 
   // Tab state: 'conversations' or 'contacts'
@@ -417,12 +396,13 @@ const Messaging = () => {
   
   const [selectedCaseId, setSelectedCaseId] = useState(null)
   const [selectedUserId, setSelectedUserId] = useState(null)
-  const [filter, setFilter] = useState('all')
 
   const [replyText, setReplyText] = useState('')
   const [isInternal, setIsInternal] = useState(false)
   const [sendError, setSendError] = useState(null)
   const [attachFiles, setAttachFiles] = useState([])
+  const [attachNotice, setAttachNotice] = useState('') // why a picked/dropped file was not added
+  const [replyingTo, setReplyingTo] = useState(null) // message being replied to (quoted inside the new bubble)
   const [typingUserName, setTypingUserName] = useState(null)
   const [presence, setPresence] = useState(null) // { isOnline, lastSeenAt } for the other party in the open thread
   const [hasMoreOlder, setHasMoreOlder] = useState(false)
@@ -533,6 +513,16 @@ const Messaging = () => {
     return subscribe('message:new', (message) => {
       setMessages((prev) => {
         if (prev.some((m) => idOf(m._id) === idOf(message._id))) return prev
+        // Echo of a message this tab is still sending: it replaces the temp
+        // bubble instead of appearing next to it.
+        const tempIndex = message.clientMessageId
+          ? prev.findIndex((m) => m.__clientMessageId === message.clientMessageId && (m.__pending || m.__failed))
+          : -1
+        if (tempIndex !== -1) {
+          const next = [...prev]
+          next[tempIndex] = adoptLocalAttachmentUrls(message, prev[tempIndex])
+          return next
+        }
         return [...prev, message]
       })
       fetchUnreadMessageCount()
@@ -761,11 +751,26 @@ const Messaging = () => {
     return null
   }, [contactUsers, groups, selectedUserId, selectedCaseId, location.state?.caseNumber, location.state?.clientName])
 
-  const threadMessages = selectedGroup
-    ? filter === 'internal'
-      ? selectedGroup.messages.filter((m) => m.isInternal)
-      : selectedGroup.messages
-    : []
+  selectedGroupRef.current = selectedGroup
+
+  const threadMessages = selectedGroup ? selectedGroup.messages : []
+
+  // A reply's quoted original: the local copy when it's loaded (full sender
+  // info), else the populated `replyTo` the API returns with every message.
+  const threadById = useMemo(
+    () => new Map((selectedGroup?.messages || []).map((m) => [String(idOf(m._id)), m])),
+    [selectedGroup]
+  )
+  const parentOf = (m) => {
+    if (m.__parent) return m.__parent
+    if (!m.replyTo) return null
+    return threadById.get(String(idOf(m.replyTo))) || (typeof m.replyTo === 'object' ? m.replyTo : null)
+  }
+
+  // Replying to a message from another thread makes no sense — drop it when the thread changes.
+  useEffect(() => {
+    setReplyingTo(null)
+  }, [selectedCaseId, selectedUserId])
 
   // Loads the next page of older history for the open case conversation and
   // prepends it, compensating scrollTop by the exact height the prepend
@@ -953,126 +958,172 @@ const Messaging = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGroup?._id, selectedGroup?.caseId, selectedGroup?.userId])
 
-  // Renders the message in the thread immediately (optimistically) and lets
-  // the network request reconcile in the background, so sending never feels
-  // gated on round-trip latency. The temp id is swapped for the real message
-  // on success; the live socket listener already dedupes by id, so if its
-  // own copy of this same message arrives a moment later nothing double-
-  // renders — the dedupe filter below is just a safety net for the reverse
-  // race (socket delivers before this request resolves).
-  const dispatchMessage = useCallback(async (body, internalFlag, files = []) => {
-    if (!selectedGroup || (!body && files.length === 0)) return
+  // The message shows up in the thread (as sent) the moment it is submitted;
+  // delivery to the backend happens in the background. Sends go through one
+  // queue per thread so they reach the server in the order they were typed,
+  // and the composer is never locked while one is in flight. A failed delivery
+  // is retried automatically (network / 5xx only); once those retries run out
+  // the bubble turns red and can be re-sent by tapping it. Every attempt
+  // carries the same clientMessageId, so the backend never stores a message
+  // twice. The temp id is swapped for the saved message on success; the live
+  // socket listener and mergeMessagesById dedupe by id AND clientMessageId, so
+  // if this message's own echo arrives first nothing double-renders.
+  // `opts` is only used when re-sending a failed bubble (same temp id, same
+  // clientMessageId, same target thread).
+  const dispatchMessage = useCallback((body, internalFlag, pickedFiles = [], opts = {}) => {
+    const group = selectedGroupRef.current
+    const target = opts.target || (group
+      ? { type: group.type, caseId: group.caseId, caseNumber: group.caseNumber, userId: group.userId }
+      : null)
+    if (!target || (!body && pickedFiles.length === 0)) return
 
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    // Attach local object URLs immediately so image attachments render
-    // in the thread before the upload even starts — no network round-trip
-    // needed to show what the user just picked.
-    const optimisticAttachments = files.map((file, index) => ({
+    const files = orderForSending(pickedFiles)
+    const parent = opts.parent || null
+    const tempId = opts.tempId || `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const clientMessageId = opts.clientMessageId || newClientMessageId()
+    // Internal notes only exist in case threads; direct messages are never internal.
+    const internalMessage = target.type === 'case' ? Boolean(internalFlag) : false
+    // Every attachment shows up in the thread immediately (name + size, openable from the local file);
+    // images also get a local object URL so the thumbnail needs no network round-trip.
+    const optimisticAttachments = opts.attachments || files.map((file, index) => ({
       _id: `temp-att-${tempId}-${index}`,
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
-      __localUrl: file.type?.startsWith('image/') ? URL.createObjectURL(file) : null
+      __file: file,
+      __localUrl: attachmentKind(file.type, file.name) === 'image' && file.size <= THUMBNAIL_MAX_BYTES ? URL.createObjectURL(file) : null
     }))
     const optimisticMessage = {
       _id: tempId,
       message: body,
-      isInternal: internalFlag,
-      createdAt: new Date().toISOString(),
+      isInternal: internalMessage,
+      createdAt: opts.createdAt || new Date().toISOString(),
       senderId: user,
-      receiverId: selectedGroup.type === 'user' ? selectedGroup.userId : undefined,
-      caseId: selectedGroup.type === 'case' ? { _id: selectedGroup.caseId, caseNumber: selectedGroup.caseNumber } : undefined,
+      receiverId: target.type === 'user' ? target.userId : undefined,
+      caseId: target.type === 'case' ? { _id: target.caseId, caseNumber: target.caseNumber } : undefined,
+      replyTo: parent?._id,
       readBy: [],
-      attachments: optimisticAttachments,
+      attachments: optimisticAttachments.map((attachment) => ({ ...attachment, __progress: files.length > 0 ? 0 : undefined })),
+      __parent: parent,
       __pending: true,
       __files: files,
-      __uploadProgress: files.length > 0 ? 0 : null
+      __clientMessageId: clientMessageId,
+      __target: target
     }
 
-    setMessages((prev) => [...prev, optimisticMessage])
+    setMessages((prev) => [...prev.filter((m) => m._id !== tempId), optimisticMessage])
     setSendError(null)
 
     const controller = new AbortController()
     if (files.length > 0) abortControllersRef.current.set(tempId, controller)
+    if (files.length > 0 && !uploadStoresRef.current.has(tempId)) uploadStoresRef.current.set(tempId, {})
+    const uploadStore = uploadStoresRef.current.get(tempId)
 
-    try {
-      let response
+    // Per-file progress shown inside the bubble (only re-rendered when the whole percent changes).
+    const shownProgress = {}
+    const setFileProgress = (index, fraction) => {
+      const percent = Math.max(0, Math.min(100, Math.round(fraction * 100)))
+      if (shownProgress[index] === percent) return
+      shownProgress[index] = percent
+      setMessages((prev) => prev.map((m) => (
+        m._id !== tempId
+          ? m
+          : { ...m, attachments: (m.attachments || []).map((attachment, i) => (i === index ? { ...attachment, __progress: percent } : attachment)) }
+      )))
+    }
+
+    const postOnce = async () => {
+      if (target.type !== 'case' && !(target.type === 'user' && target.userId)) {
+        throw Object.assign(new Error('Invalid conversation type'), { retryable: false })
+      }
       if (files.length > 0) {
+        const smallIndexes = files.map((file, index) => (isChunkedFile(file) ? -1 : index)).filter((index) => index !== -1)
+        // Big files go up first, in chunks (cancellable, resumable); the message then just references them by id.
+        const uploadIds = await uploadChunkedFiles({ api, files, store: uploadStore, signal: controller.signal, onFileProgress: setFileProgress })
         const formData = new FormData()
         formData.append('message', body)
-        formData.append('isInternal', String(selectedGroup.type === 'case' ? internalFlag : false))
+        formData.append('isInternal', String(internalMessage))
         formData.append('sender', 'case_manager')
-        if (selectedGroup.type === 'case') formData.append('caseId', selectedGroup.caseId)
-        else if (selectedGroup.type === 'user' && selectedGroup.userId) formData.append('receiverId', selectedGroup.userId)
-        else throw new Error('Invalid conversation type')
-        files.forEach((file) => formData.append('attachments', file))
-        response = await api.post('/messages', formData, {
+        formData.append('clientMessageId', clientMessageId)
+        if (parent?._id) formData.append('replyTo', parent._id)
+        if (target.type === 'case') formData.append('caseId', target.caseId)
+        else formData.append('receiverId', target.userId)
+        smallIndexes.forEach((index) => formData.append('attachments', files[index]))
+        if (uploadIds.length > 0) formData.append('uploadIds', JSON.stringify(uploadIds))
+        smallIndexes.forEach((index) => setFileProgress(index, 0))
+        return api.post('/messages', formData, {
           signal: controller.signal,
           onUploadProgress: (progressEvent) => {
             if (!progressEvent.total) return
-            const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100)
-            setMessages((prev) => prev.map((m) => (m._id === tempId ? { ...m, __uploadProgress: percent } : m)))
+            // Stay just under 100 until the server confirms, so a bar never claims "done" early.
+            const fraction = Math.min(0.99, progressEvent.loaded / progressEvent.total)
+            smallIndexes.forEach((index) => setFileProgress(index, fraction))
           }
         })
-      } else if (selectedGroup.type === 'case') {
-        response = await api.post('/messages', {
-          caseId: selectedGroup.caseId,
-          message: body,
-          isInternal: internalFlag,
-          sender: 'case_manager'
-        })
-      } else if (selectedGroup.type === 'user' && selectedGroup.userId) {
-        response = await api.post('/messages', {
-          receiverId: selectedGroup.userId,
-          message: body,
-          isInternal: false,
-          sender: 'case_manager'
-        })
-      } else {
-        throw new Error('Invalid conversation type')
       }
-
-      abortControllersRef.current.delete(tempId)
-      const sentMessage = response?.data?.message
-      setMessages((prev) => {
-        const next = prev.map((m) => {
-          if (m._id !== tempId) return m
-          if (!sentMessage) return { ...m, __pending: false }
-          // Keep the local object URLs on the reconciled message so images
-          // that are already rendering don't flicker into a network refetch.
-          const mergedAttachments = (sentMessage.attachments || []).map((serverAttachment, index) => ({
-            ...serverAttachment,
-            __localUrl: m.attachments?.[index]?.__localUrl
-          }))
-          return { ...sentMessage, attachments: mergedAttachments }
-        })
-        const seen = new Set()
-        return next.filter((m) => {
-          const id = idOf(m._id)
-          if (seen.has(id)) return false
-          seen.add(id)
-          return true
-        })
+      return api.post('/messages', {
+        ...(target.type === 'case' ? { caseId: target.caseId } : { receiverId: target.userId }),
+        message: body,
+        isInternal: internalMessage,
+        sender: 'case_manager',
+        clientMessageId,
+        ...(parent?._id ? { replyTo: parent._id } : {})
       })
-      fetchUnreadMessageCount()
-    } catch (err) {
-      abortControllersRef.current.delete(tempId)
-      if (err.code === 'ERR_CANCELED') {
-        // User-initiated cancel — drop the pending bubble entirely rather
-        // than showing a "failed" state for something they chose to stop.
-        setMessages((prev) => prev.filter((m) => m._id !== tempId))
-        return
-      }
-      console.error('Error sending message:', err)
-      setSendError(err.response?.data?.message || err.message || 'Failed to send message')
-      setMessages((prev) => prev.map((m) => (m._id === tempId ? { ...m, __pending: false, __failed: true } : m)))
     }
+
+    const queueKey = target.type === 'case' ? `case:${target.caseId}` : `user:${target.userId}`
+    const queued = (sendQueuesRef.current.get(queueKey) || Promise.resolve()).then(async () => {
+      try {
+        // Cancelled while still waiting its turn behind earlier sends.
+        if (controller.signal.aborted) throw Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })
+        const response = await postWithRetry(postOnce, controller.signal)
+        abortControllersRef.current.delete(tempId)
+        uploadStoresRef.current.delete(tempId)
+        const sentMessage = response?.data?.message
+        setMessages((prev) => {
+          const next = prev.map((m) => {
+            if (m._id !== tempId) return m
+            if (!sentMessage) return { ...m, __pending: false }
+            return adoptLocalAttachmentUrls(sentMessage, m)
+          })
+          const seen = new Set()
+          return next.filter((m) => {
+            const id = idOf(m._id)
+            if (seen.has(id)) return false
+            seen.add(id)
+            return true
+          })
+        })
+        fetchUnreadMessageCount()
+      } catch (err) {
+        abortControllersRef.current.delete(tempId)
+        if (isCanceled(err)) {
+          // User-initiated cancel — drop the pending bubble entirely rather
+          // than showing a "failed" state for something they chose to stop.
+          discardStagedUploads(api, uploadStoresRef.current.get(tempId))
+          uploadStoresRef.current.delete(tempId)
+          setMessages((prev) => prev.filter((m) => m._id !== tempId))
+          return
+        }
+        console.error('Error sending message:', err)
+        setSendError(sendErrorMessage(err, 'Failed to send message'))
+        setMessages((prev) => prev.map((m) => (m._id === tempId ? { ...m, __pending: false, __failed: true } : m)))
+      }
+    })
+    sendQueuesRef.current.set(queueKey, queued)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGroup, user, fetchUnreadMessageCount])
+  }, [user, fetchUnreadMessageCount])
 
   const cancelUpload = useCallback((tempId) => {
     const controller = abortControllersRef.current.get(tempId)
     if (controller) controller.abort()
+  }, [])
+
+  // Drops a failed bubble the user gave up on (and any big-file uploads that were staged for it).
+  const discardMessage = useCallback((failedMessage) => {
+    discardStagedUploads(api, uploadStoresRef.current.get(failedMessage._id))
+    uploadStoresRef.current.delete(failedMessage._id)
+    setMessages((prev) => prev.filter((m) => m._id !== failedMessage._id))
   }, [])
 
   const handleSend = (e) => {
@@ -1083,23 +1134,60 @@ const Messaging = () => {
 
     const internalFlag = isInternal
     const files = attachFiles
+    const parent = replyingTo
     setReplyText('')
     setIsInternal(false)
     setAttachFiles([])
+    setReplyingTo(null)
     emitTyping(false)
-    dispatchMessage(body, internalFlag, files)
+    // Your own message always scrolls into view, even if you'd scrolled up.
+    isNearBottomRef.current = true
+    setAttachNotice('')
+    dispatchMessage(body, internalFlag, files, { parent })
   }
 
+  // Applies the size / count rules, then adds what is allowed; whatever was refused is explained inline.
+  const addAttachFiles = useCallback((picked) => {
+    if (!picked.length) return
+    setAttachFiles((prev) => {
+      const { accepted, notice } = acceptNewFiles(prev, picked)
+      setAttachNotice(notice)
+      return accepted.length ? [...prev, ...accepted] : prev
+    })
+  }, [])
+
   const handleFileSelect = (e) => {
-    const picked = Array.from(e.target.files || [])
-    if (picked.length) setAttachFiles((prev) => [...prev, ...picked])
+    addAttachFiles(Array.from(e.target.files || []))
     e.target.value = ''
   }
 
+  const startReply = useCallback((message) => {
+    setReplyingTo(message)
+    replyTextAreaRef.current?.focus()
+  }, [])
+
+  // Re-sends a failed bubble in place: same temp id (so it keeps its spot),
+  // same clientMessageId (so a copy that did land is never duplicated) and the
+  // same thread it was written in, wherever the user is looking now.
   const retryMessage = useCallback((failedMessage) => {
-    setMessages((prev) => prev.filter((m) => m._id !== failedMessage._id))
-    dispatchMessage(failedMessage.message, failedMessage.isInternal, failedMessage.__files || [])
+    dispatchMessage(failedMessage.message, failedMessage.isInternal, failedMessage.__files || [], {
+      target: failedMessage.__target,
+      tempId: failedMessage._id,
+      clientMessageId: failedMessage.__clientMessageId,
+      parent: failedMessage.__parent,
+      createdAt: failedMessage.createdAt,
+      attachments: failedMessage.attachments
+    })
   }, [dispatchMessage])
+
+  // Single-line composer that grows with its content (up to its max-height).
+  const hasThread = Boolean(selectedGroup)
+  useEffect(() => {
+    const el = replyTextAreaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [replyText, hasThread])
 
   const handleReplyKeyDown = (e) => {
     if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent?.isComposing) return
@@ -1109,44 +1197,16 @@ const Messaging = () => {
   }
 
   return (
-    <div className="space-y-2">
-      {/* Header — kept to a single compact line so the conversation pane below gets the vertical space instead */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h1 className="text-base font-bold text-foreground leading-tight shrink-0">Messages</h1>
-          <p className="text-xs text-muted-foreground truncate">
-            {selectedGroup?.type === 'user'
-              ? `Chat with ${selectedGroup.userName}`
-              : location.state?.openChat && location.state?.clientName
-                ? `Chat with ${location.state.clientName} - Case ${location.state.caseNumber}`
-                : 'Communicate with cases and team members'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
-                filter === f.key
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-secondary text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <div>
       {/* Split pane */}
-      <div className="card p-0 overflow-hidden">
+      {/* Fills the viewport under the app header: main's padding (p-3 / sm:p-4 / lg:p-6) plus the sticky header (~61px) are subtracted, so there is no gap under the card. */}
+      <div className="card !p-0 overflow-hidden h-[calc(100vh-5.5rem)] sm:h-[calc(100vh-6.25rem)] lg:h-[calc(100vh-7rem)] min-h-[420px]">
         {loading ? (
-          <div className="flex items-center justify-center h-96 text-muted-foreground">
+          <div className="flex items-center justify-center h-full text-muted-foreground">
             Loading messages...
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-96 text-center px-6">
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
             <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
             <p className="text-muted-foreground mb-4">{error}</p>
             <button onClick={fetchMessages} className="btn-primary">
@@ -1154,12 +1214,13 @@ const Messaging = () => {
             </button>
           </div>
         ) : (
-          <div className="flex h-[calc(100vh-11.5rem)] min-h-[500px]">
+          <div className="flex h-full">
             {/* Left panel - unified conversations list */}
             <div className={`w-full sm:w-80 border-r border-border flex-col shrink-0 ${showMobileThread ? 'hidden sm:flex' : 'flex'}`}>
-              {/* Search */}
+              {/* Title, tabs and search */}
               <div className="p-3 border-b border-border">
                 <div>
+                  <h1 className="text-base font-semibold text-foreground leading-tight mb-2.5">Messages</h1>
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2">
                       <button
@@ -1167,7 +1228,7 @@ const Messaging = () => {
                         onClick={() => setActiveTab('conversations')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'conversations'
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-primary/15 text-primary'
                             : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
@@ -1178,7 +1239,7 @@ const Messaging = () => {
                         onClick={() => setActiveTab('contacts')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                           activeTab === 'contacts'
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-primary/15 text-primary'
                             : 'bg-secondary text-muted-foreground hover:bg-muted'
                         }`}
                       >
@@ -1188,7 +1249,7 @@ const Messaging = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTab('contacts')}
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
                       title="Start a new chat"
                     >
                       <Plus className="w-4 h-4" />
@@ -1201,7 +1262,7 @@ const Messaging = () => {
                       placeholder={activeTab === 'contacts' ? 'Search contacts...' : 'Search conversations...'}
                       value={newChatSearch}
                       onChange={(e) => setNewChatSearch(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full pl-10 pr-4 py-2 border border-border rounded-lg text-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     />
                   </div>
                 </div>
@@ -1247,7 +1308,7 @@ const Messaging = () => {
                         className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
                           (conv.type === 'case' && selectedCaseId === conv.caseId) || 
                           (conv.type === 'user' && selectedUserId === conv.userId)
-                            ? 'bg-blue-50 border-l-4 border-l-blue-500'
+                            ? 'bg-primary/10 border-l-4 border-l-primary'
                             : 'hover:bg-muted border-l-4 border-l-transparent'
                         }`}
                       >
@@ -1257,7 +1318,7 @@ const Messaging = () => {
                           </span>
                           <div className="flex items-center gap-2">
                             {conv.type === 'user' && (
-                              <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+                              <span className="text-xs px-2 py-1 rounded-full bg-primary/15 text-primary">
                                 {conv.userRole}
                               </span>
                             )}
@@ -1271,7 +1332,7 @@ const Messaging = () => {
                             {conv.type === 'case' ? conv.clientName : `${conv.userRole} • ${conv.last?.message || 'No messages yet'}`}
                           </span>
                           {conv.unreadCount > 0 && (
-                            <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-semibold rounded-full bg-blue-500 text-white">
+                            <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-semibold rounded-full bg-primary text-primary-foreground">
                               {conv.unreadCount}
                             </span>
                           )}
@@ -1318,7 +1379,7 @@ const Messaging = () => {
                                 }}
                                 className={`w-full text-left px-4 py-3 border-b border-border transition-colors ${
                                   selectedUserId === idOf(contact._id)
-                                    ? 'bg-blue-50 border-l-4 border-l-blue-500'
+                                    ? 'bg-primary/10 border-l-4 border-l-primary'
                                     : 'hover:bg-muted border-l-4 border-l-transparent'
                                 }`}
                               >
@@ -1329,7 +1390,7 @@ const Messaging = () => {
                                   <span className={`text-xs px-2 py-1 rounded-full ${
                                     contact.role === 'client'
                                       ? 'bg-slate-200 text-slate-700'
-                                      : 'bg-blue-100 text-blue-700'
+                                      : 'bg-primary/15 text-primary'
                                   }`}>
                                     {contact.role}
                                   </span>
@@ -1380,14 +1441,13 @@ const Messaging = () => {
                 e.preventDefault()
                 dragCounterRef.current = 0
                 setIsDraggingFiles(false)
-                const dropped = Array.from(e.dataTransfer.files || [])
-                if (dropped.length) setAttachFiles((prev) => [...prev, ...dropped])
+                addAttachFiles(Array.from(e.dataTransfer.files || []))
               }}
             >
               {isDraggingFiles && (
-                <div className="absolute inset-0 z-20 bg-blue-50/90 border-2 border-dashed border-blue-400 rounded-lg flex flex-col items-center justify-center pointer-events-none">
-                  <Paperclip className="w-8 h-8 text-blue-500 mb-2" />
-                  <p className="text-blue-700 font-semibold">Drop files to attach</p>
+                <div className="absolute inset-0 z-20 bg-primary/10 backdrop-blur-[1px] border-2 border-dashed border-primary rounded-lg flex flex-col items-center justify-center pointer-events-none">
+                  <Paperclip className="w-8 h-8 text-primary mb-2" />
+                  <p className="text-primary font-semibold">Drop files to attach</p>
                 </div>
               )}
               {!selectedGroup ? (
@@ -1417,7 +1477,7 @@ const Messaging = () => {
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       {typingUserName ? (
-                        <span className="text-blue-600 font-medium">{typingUserName} is typing…</span>
+                        <span className="text-primary font-medium">{typingUserName} is typing…</span>
                       ) : presenceLabel(presence) ? (
                         <span className={presence?.isOnline ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}>
                           {presenceLabel(presence)}
@@ -1430,7 +1490,7 @@ const Messaging = () => {
                   </div>
 
                   {/* Messages */}
-                  <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-5 space-y-3 bg-muted">
+                  <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4 space-y-4 bg-muted">
                     {threadMessages.length === 0 ? (
                       <div className="text-center text-muted-foreground py-12">
                         <MessageSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
@@ -1455,7 +1515,7 @@ const Messaging = () => {
                       <>
                         {loadingOlder && (
                           <div className="flex items-center justify-center py-2">
-                            <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                            <div className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                           </div>
                         )}
                         {(() => {
@@ -1466,7 +1526,7 @@ const Messaging = () => {
                           lastDayKey = dayKey
                           const senderId = idOf(m.senderId)
                           const outgoing = senderId === currentUserId
-                          const style = senderStyles.get(senderId) || { key: outgoing ? 'self' : 'other' }
+                          const style = senderStyles.get(senderId) || (outgoing ? SELF_STYLE : OTHER_STYLE)
                           const senderName = m.senderId?.name || m.senderId?.displayName || m.senderId?.email || (outgoing ? (user?.name || user?.displayName || 'You') : '?')
                           return (
                             <Fragment key={m._id}>
@@ -1476,8 +1536,11 @@ const Messaging = () => {
                                 outgoing={outgoing}
                                 style={style}
                                 senderName={senderName}
+                                parent={parentOf(m)}
+                                onReply={startReply}
                                 onRetry={retryMessage}
                                 onCancelUpload={cancelUpload}
+                                onDiscard={discardMessage}
                               />
                             </Fragment>
                           )
@@ -1487,94 +1550,143 @@ const Messaging = () => {
                     )}
                   </div>
 
-                  {/* Reply box */}
-                  <form onSubmit={handleSend} className="border-t border-border p-2.5 space-y-2">
+                  {/* Reply box — one slim row (attach, text, send); notes/chips only take a line above it while active */}
+                  <form onSubmit={handleSend} className="border-t border-border bg-card px-3 py-2 sm:px-4 space-y-1.5 shrink-0">
                     {sendError && (
-                      <div className="flex items-center gap-2 text-sm text-red-600">
-                        <AlertCircle className="w-4 h-4" />
+                      <div role="alert" className="flex items-center gap-2 text-xs text-red-600">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
                         {sendError}
                       </div>
                     )}
+                    {replyingTo && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg bg-secondary border border-border px-3 py-1.5">
+                        <p className="text-xs text-muted-foreground truncate">
+                          Replying to <span className="font-semibold text-foreground">{senderNameOf(replyingTo) || 'Unknown'}</span>
+                          {replyingTo.message ? <span> · {replyingTo.message}</span> : null}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setReplyingTo(null)}
+                          className="shrink-0 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                    {isInternal && selectedGroup.type === 'case' && (
+                      <div className="flex items-center justify-between gap-2 rounded-lg bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900 px-3 py-1.5">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-orange-700 dark:text-orange-300">
+                          <Lock className="w-3.5 h-3.5" />
+                          Internal note (not synced to client)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsInternal(false)}
+                          className="shrink-0 text-xs font-semibold text-orange-700 dark:text-orange-300 hover:underline"
+                        >
+                          Turn off
+                        </button>
+                      </div>
+                    )}
+                    {attachNotice && (
+                      <div role="alert" className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span className="min-w-0 flex-1">{attachNotice}</span>
+                        <button type="button" onClick={() => setAttachNotice('')} aria-label="Dismiss" className="shrink-0 hover:opacity-70">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                     {attachFiles.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5" data-testid="attach-chips">
                         {attachFiles.map((file, index) => (
                           <span
                             key={`${file.name}-${index}`}
-                            className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full"
+                            className="inline-flex items-center gap-1.5 max-w-[16rem] text-xs font-medium text-foreground bg-secondary border border-border px-2.5 py-1 rounded-full"
                           >
-                            <FileText className="w-3.5 h-3.5" />
-                            {file.name}
+                            <FileText className="w-3.5 h-3.5 shrink-0 text-primary" />
+                            <span className="truncate">{file.name}</span>
+                            <span className="shrink-0 text-muted-foreground font-normal">{formatFileSize(file.size)}</span>
                             <button
                               type="button"
-                              onClick={() => setAttachFiles((prev) => prev.filter((_, i) => i !== index))}
-                              className="text-blue-400 hover:text-red-500"
+                              onClick={() => { setAttachFiles((prev) => prev.filter((_, i) => i !== index)); setAttachNotice('') }}
+                              aria-label={`Remove ${file.name}`}
+                              className="shrink-0 text-muted-foreground hover:text-red-500"
                             >
                               <X className="w-3 h-3" />
                             </button>
                           </span>
                         ))}
+                        <span className="text-[11px] text-muted-foreground">{attachFiles.length}/{MAX_ATTACHMENTS_PER_MESSAGE}</span>
                       </div>
                     )}
-                    <textarea
-                      ref={replyTextAreaRef}
-                      value={replyText}
-                      onChange={(e) => {
-                        setReplyText(e.target.value)
-                        emitTyping(e.target.value.trim().length > 0)
-                      }}
-                      onKeyDown={handleReplyKeyDown}
-                      placeholder={
-                        location.state?.openChat && location.state.clientName
-                          ? `Write a message to ${location.state.clientName}...`
-                          : selectedGroup?.type === 'user' && selectedGroup?.userName
-                            ? `Write a message to ${selectedGroup.userName}...`
-                            : selectedGroup?.type === 'case' && selectedGroup?.clientName
-                              ? `Write a message to ${selectedGroup.clientName}...`
-                              : isInternal 
-                                ? 'Write an internal note...' 
-                                : 'Write a message...'
-                      }
-                      rows={2}
-                      className="input-field resize-none text-sm leading-5 min-h-[46px] max-h-24"
-                    />
-                    <div className="flex items-center justify-between">
-                      <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={isInternal}
-                          onChange={(e) => setIsInternal(e.target.checked)}
-                          className="w-4 h-4 rounded border-border text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="inline-flex items-center gap-1">
-                          <Lock className="w-3.5 h-3.5 text-orange-500" />
-                          Internal note (not synced to client)
-                        </span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={handleFileSelect}
-                        />
+                    <label htmlFor="admin-message-text" className="sr-only">Message</label>
+                    <div className="flex items-end gap-1 rounded-lg border border-input bg-background px-1.5 py-1 focus-within:ring-2 focus-within:ring-ring focus-within:border-ring transition-all">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Attach file"
+                        aria-label="Attach file"
+                        className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+                      {selectedGroup.type === 'case' && (
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          title="Attach file"
-                          className="w-9 h-9 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center hover:bg-muted transition-colors"
+                          onClick={() => setIsInternal((prev) => !prev)}
+                          title={isInternal ? 'Internal note: on (not synced to client)' : 'Make this an internal note (not synced to client)'}
+                          aria-label="Internal note"
+                          aria-pressed={isInternal}
+                          className={`shrink-0 p-1.5 rounded-md transition-colors ${
+                            isInternal
+                              ? 'text-orange-600 bg-orange-100 dark:bg-orange-950/40'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                          }`}
                         >
-                          <Paperclip className="w-4 h-4" />
+                          <Lock className="w-4 h-4" />
                         </button>
-                        <button
-                          type="submit"
-                          disabled={!replyText.trim() && attachFiles.length === 0}
-                          className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Send className="w-4 h-4" />
-                          Send
-                        </button>
-                      </div>
+                      )}
+                      <textarea
+                        id="admin-message-text"
+                        ref={replyTextAreaRef}
+                        value={replyText}
+                        onChange={(e) => {
+                          setReplyText(e.target.value)
+                          emitTyping(e.target.value.trim().length > 0)
+                        }}
+                        onKeyDown={handleReplyKeyDown}
+                        placeholder={
+                          isInternal && selectedGroup.type === 'case'
+                            ? 'Write an internal note...'
+                            : location.state?.openChat && location.state.clientName
+                              ? `Write a message to ${location.state.clientName}...`
+                              : selectedGroup?.type === 'user' && selectedGroup?.userName
+                                ? `Write a message to ${selectedGroup.userName}...`
+                                : selectedGroup?.type === 'case' && selectedGroup?.clientName
+                                  ? `Write a message to ${selectedGroup.clientName}...`
+                                  : 'Write a message...'
+                        }
+                        rows={1}
+                        className="block flex-1 min-w-0 resize-none !border-0 !bg-transparent px-1 py-1.5 text-base sm:text-[13px] leading-5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-0 max-h-32"
+                      />
+                      {/* Never locked while an earlier message is still being delivered — only empty disables it. */}
+                      <button
+                        type="submit"
+                        disabled={!replyText.trim() && attachFiles.length === 0}
+                        title={replyingTo ? 'Send reply' : 'Send'}
+                        aria-label={replyingTo ? 'Send reply' : 'Send'}
+                        className="shrink-0 p-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
                     </div>
                   </form>
                 </>

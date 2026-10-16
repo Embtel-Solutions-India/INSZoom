@@ -100,26 +100,36 @@ export const authApi = {
 // conversation here on purpose: the general client-inclusive Messages
 // system (Backend/src/modules/messages) was deliberately NOT extended to
 // attorneys, so a client can never end up in the same thread.
-function toFeedbackFormData(message, files) {
+function toFeedbackFormData(message, files, clientMessageId, uploadIds) {
   const form = new FormData()
   if (message) form.append('message', message)
+  // Idempotency key: lets the backend de-duplicate when the same send is retried.
+  if (clientMessageId) form.append('clientMessageId', clientMessageId)
   ;(files || []).forEach((file) => form.append('attachments', file))
+  // Big files were already uploaded in chunks (utils/chunkedUpload.js); the
+  // backend attaches the assembled files named here.
+  if (uploadIds?.length) form.append('uploadIds', JSON.stringify(uploadIds))
   return form
 }
+
+// Up to 5 small files (<= 4 MB each) ride in this request; give a slow link more than the 2-minute default.
+const feedbackPostConfig = (files) => (files?.length ? { timeout: 300_000 } : undefined)
 
 export const attorneyApi = {
   dashboard: () => api.get('/attorney/dashboard'),
   cases: (params = {}) => api.get('/attorney/cases', { params }),
   case: (caseId) => api.get(`/attorney/cases/${caseId}`),
   feedback: (caseId) => api.get(`/attorney/cases/${caseId}/feedback`),
-  sendFeedback: (caseId, message, files = []) => api.post(`/attorney/cases/${caseId}/feedback`, toFeedbackFormData(message, files)),
-  replyFeedback: (caseId, feedbackId, message, files = []) =>
-    api.post(`/attorney/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files)),
+  sendFeedback: (caseId, message, files = [], clientMessageId, uploadIds = []) =>
+    api.post(`/attorney/cases/${caseId}/feedback`, toFeedbackFormData(message, files, clientMessageId, uploadIds), feedbackPostConfig(files)),
+  replyFeedback: (caseId, feedbackId, message, files = [], clientMessageId, uploadIds = []) =>
+    api.post(`/attorney/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files, clientMessageId, uploadIds), feedbackPostConfig(files)),
   markFeedbackRead: (caseId) => api.patch(`/attorney/cases/${caseId}/feedback/mark-read`),
   attachmentUrl: (caseId, feedbackId, attachmentId) =>
     `${api.defaults.baseURL}/attorney/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`,
-  downloadAttachment: (caseId, feedbackId, attachmentId) =>
-    api.get(`/attorney/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob' }),
+  // `config` lets the viewer pass { signal, onDownloadProgress }; big files can take longer than the default timeout.
+  downloadAttachment: (caseId, feedbackId, attachmentId, config = {}) =>
+    api.get(`/attorney/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob', timeout: 0, ...config }),
 }
 
 // Case sub-resources reuse the SAME endpoints the staff portal uses — the

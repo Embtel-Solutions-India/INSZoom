@@ -3,7 +3,7 @@
 // are visible to them. An employee who never finished setting up their account gets the same password-setup link as a first invitation.
 const env = require("../../../config/env");
 
-const FRONTEND_URL = env.clientUrl;
+const FRONTEND_URL = require("../portalUrls").portalUrl("client");
 
 function subject(data = {}) {
   return `${data.employerName || "Your employer"} has given you access to your case information again`;

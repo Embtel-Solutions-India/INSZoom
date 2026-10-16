@@ -2122,6 +2122,8 @@ async function submitResponse(payload, user, req) {
       await workflowService.triggerWorkflow("questionnaire.submitted", { caseId: caseData._id, questionnaireId: payload.questionnaireId, responseId: result.responseId }, user, req);
       // The assigned case manager's own alert (in-app + browser push); the workflow rule above is a role-wide broadcast.
       require("../notifications/triggerEvents.service").emitInBackground("questionnaire.submitted", { caseId: caseData._id, actor: user, req });
+      // Email naming the answered questions + push to the team lead; the case manager already gets the push from the event above.
+      require("./progress-alert.service").notifySubmitted({ caseId: caseData._id, checklistName: questionnaire?.title, skipCaseManagerPush: true }, user, req).catch(() => null);
       // Dynamic checklist assignment: evaluate this questionnaire's
       // checklistTriggers against the full answer set (not just what was in
       // this submit's payload - earlier autosaves may hold the triggering

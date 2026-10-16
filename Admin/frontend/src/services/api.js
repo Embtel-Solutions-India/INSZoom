@@ -294,21 +294,26 @@ export const usersApi = {
 // header comment. Mirrors the Attorney portal's attorneyApi.* shape exactly
 // (Attorney/src/services/api.js) so both sides of the same thread are driven
 // by symmetric client code.
-function toFeedbackFormData(message, files) {
+function toFeedbackFormData(message, files, clientMessageId, uploadIds) {
   const form = new FormData()
   if (message) form.append('message', message)
+  if (clientMessageId) form.append('clientMessageId', clientMessageId)
+  // Big files are uploaded in chunks beforehand (utils/chunkedUpload.js) and referenced by id.
+  if (uploadIds?.length) form.append('uploadIds', JSON.stringify(uploadIds))
   ;(files || []).forEach((file) => form.append('attachments', file))
   return form
 }
 
+// `options`: { uploadIds, ...axiosConfig } - e.g. signal / onUploadProgress for the multipart part.
 export const feedbackApi = {
   list: (caseId) => api.get(`/cases/${caseId}/feedback`),
-  send: (caseId, message, files = []) => api.post(`/cases/${caseId}/feedback`, toFeedbackFormData(message, files)),
-  reply: (caseId, feedbackId, message, files = []) =>
-    api.post(`/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files)),
+  send: (caseId, message, files = [], clientMessageId, { uploadIds, ...config } = {}) =>
+    api.post(`/cases/${caseId}/feedback`, toFeedbackFormData(message, files, clientMessageId, uploadIds), config),
+  reply: (caseId, feedbackId, message, files = [], clientMessageId, { uploadIds, ...config } = {}) =>
+    api.post(`/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files, clientMessageId, uploadIds), config),
   markRead: (caseId) => api.patch(`/cases/${caseId}/feedback/mark-read`),
-  downloadAttachment: (caseId, feedbackId, attachmentId) =>
-    api.get(`/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob' }),
+  downloadAttachment: (caseId, feedbackId, attachmentId, config = {}) =>
+    api.get(`/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob', ...config }),
 }
 
 export const lifecycleApi = {

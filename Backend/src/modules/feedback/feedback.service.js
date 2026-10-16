@@ -3,6 +3,7 @@ const Feedback = require("../../models/Feedback");
 const Case = require("../../models/Case");
 const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
+const chunkedUploads = require("../chunked-uploads/chunkedUpload.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const logger = require("../../utils/logger");
 const { allCaseManagerIds } = require("../cases/caseManagerAccess");
@@ -105,7 +106,20 @@ async function listFeedback(caseId) {
     .lean();
 }
 
-async function createFeedback({ caseId, author, message, parentFeedbackId = null, files = [] }) {
+async function findByClientMessageId(authorId, clientMessageId) {
+  return Feedback.findOne({ authorId, clientMessageId }).populate("authorId", "name displayName email role").lean();
+}
+
+async function createFeedback({ caseId, author, message, parentFeedbackId = null, files: multipartFiles = [], clientMessageId = null, uploadIds = null }) {
+  let files = multipartFiles;
+  const stagedIds = chunkedUploads.normalizeUploadIds(uploadIds);
+  clientMessageId = typeof clientMessageId === "string" && clientMessageId.trim() ? clientMessageId.trim().slice(0, 64) : null;
+  // A retry of a send that already landed: hand back the stored message, don't post it twice.
+  if (clientMessageId) {
+    const existing = await findByClientMessageId(author._id, clientMessageId);
+    if (existing) return existing;
+  }
+
   const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers attorneyAccess");
   if (!caseDoc) {
     const error = new Error("Case not found");
@@ -113,7 +127,7 @@ async function createFeedback({ caseId, author, message, parentFeedbackId = null
     throw error;
   }
 
-  if (!message?.trim() && !files.length) {
+  if (!message?.trim() && !files.length && !stagedIds.length) {
     const error = new Error("Message text or an attachment is required");
     error.status = 400;
     throw error;
@@ -134,20 +148,34 @@ async function createFeedback({ caseId, author, message, parentFeedbackId = null
     }
   }
 
+  // Big files arrive ahead of the message through the chunked-upload API and are referenced here by id.
+  if (stagedIds.length) files = [...multipartFiles, ...(await chunkedUploads.loadStaged(author._id, stagedIds))];
   const attachments = await storeAttachments(files, { caseId: caseDoc._id, userId: author._id });
 
-  const feedback = await Feedback.create({
-    caseId: caseDoc._id,
-    authorId: author._id,
-    authorRole: author.role,
-    message: message?.trim() || "",
-    parentFeedbackId: parentFeedback?._id || null,
-    attachments,
-    // The author has by definition read their own message — this keeps
-    // unread counts from counting a user's own messages against them.
-    readBy: [{ userId: author._id, readAt: new Date() }],
-  });
+  let feedback;
+  try {
+    feedback = await Feedback.create({
+      caseId: caseDoc._id,
+      authorId: author._id,
+      authorRole: author.role,
+      message: message?.trim() || "",
+      parentFeedbackId: parentFeedback?._id || null,
+      attachments,
+      ...(clientMessageId ? { clientMessageId } : {}),
+      // The author has by definition read their own message — this keeps
+      // unread counts from counting a user's own messages against them.
+      readBy: [{ userId: author._id, readAt: new Date() }],
+    });
+  } catch (error) {
+    // Two copies of the same send raced each other; the other one won.
+    if (error?.code === 11000 && clientMessageId) {
+      const existing = await findByClientMessageId(author._id, clientMessageId);
+      if (existing) return existing;
+    }
+    throw error;
+  }
 
+  if (stagedIds.length) chunkedUploads.discard(stagedIds); // the bytes now live in permanent storage
   const recipients = await resolveRecipients(caseDoc, author, parentFeedback);
   // Populated for the live socket append (see notifyRecipients) - `feedback`
   // itself only has a bare authorId ObjectId (Feedback.create()'s own

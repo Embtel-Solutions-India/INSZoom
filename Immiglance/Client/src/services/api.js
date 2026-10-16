@@ -91,7 +91,8 @@ const longRequest = () => ({ signal: AbortSignal.timeout(LONG_REQUEST_TIMEOUT_MS
 async function request(path, options = {}, retry = true) {
   const headers = { ...options.headers };
 
-  if (!(options.body instanceof FormData)) {
+  // A caller that sends raw bytes (chunked uploads) sets its own Content-Type.
+  if (!(options.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -169,6 +170,7 @@ async function request(path, options = {}, retry = true) {
     const error = new Error(specificMessage || err.message || "Request failed");
     error.status = res.status;
     if (err.code) error.code = err.code;
+    error.data = err; // the full error body (e.g. a 409's `missingChunks` list)
     throw error;
   }
 
@@ -178,7 +180,7 @@ async function request(path, options = {}, retry = true) {
 }
 
 export const api = {
-  get: (path) => request(path, { method: "GET" }),
+  get: (path, options) => request(path, { method: "GET", ...options }),
   post: (path, body, options) =>
     request(path, {
       method: "POST",
@@ -201,6 +203,45 @@ export const api = {
       method: "DELETE",
       ...(body !== undefined ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {}),
     }),
+};
+
+// Axios-shaped adapter over request() for utils/chunkedUpload.js, which was written for an axios `api`
+// (baseURL ending in /api; get/post/put/delete resolving { data }). It reuses request()'s auth + token refresh and
+// adds what chunk traffic needs: an AbortSignal, raw Blob bodies, and no 25 s timeout for the chunk/complete calls
+// (those get CHUNK_TIMEOUT_MS instead). Failures are thrown axios-shaped (error.response.status / .data,
+// error.cancelled for an abort) so the helper's retry and 409 CHUNKS_MISSING handling work unchanged.
+const CHUNK_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function chunkRequest(method, path, body, { signal, headers, timeout } = {}) {
+  const budget = AbortSignal.timeout(timeout === 0 ? CHUNK_TIMEOUT_MS : REQUEST_TIMEOUT_MS);
+  const combined = signal ? (AbortSignal.any ? AbortSignal.any([signal, budget]) : signal) : budget;
+  const isRaw = typeof Blob !== "undefined" && body instanceof Blob;
+  try {
+    const data = await request(path, {
+      method,
+      signal: combined,
+      headers,
+      ...(body === undefined ? {} : { body: isRaw ? body : JSON.stringify(body) }),
+    });
+    return { data, status: 200 };
+  } catch (error) {
+    if (signal?.aborted) {
+      const cancelled = new Error("Upload cancelled");
+      cancelled.name = "AbortError";
+      cancelled.code = "ERR_CANCELED";
+      cancelled.cancelled = true;
+      throw cancelled;
+    }
+    if (error.status) error.response = { status: error.status, data: error.data || { message: error.message } };
+    throw error;
+  }
+}
+
+export const chunkApi = {
+  get: (path, config) => chunkRequest("GET", path, undefined, config),
+  post: (path, body, config) => chunkRequest("POST", path, body, config),
+  put: (path, body, config) => chunkRequest("PUT", path, body, config),
+  delete: (path, config) => chunkRequest("DELETE", path, undefined, config),
 };
 
 // ── Auth ────────────────────────────────────────────
@@ -595,7 +636,12 @@ profileApi.selectPlan = (plan) =>
 // go through this instead of the shared request() helper. Plain text-only
 // sends keep using request()/fetch (and its 401-refresh-retry logic) since
 // there's nothing to show progress for.
-function uploadWithProgress(path, formData, { onProgress, signal } = {}) {
+async function uploadWithProgress(path, formData, { onProgress, signal } = {}) {
+  // A long chunked upload can outlive the access token; get a fresh one before the final send.
+  if (!tokenStore.getAccess() && tokenStore.hasSession()) {
+    if (!refreshPromise) refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+    try { await refreshPromise; } catch { /* the send below fails with a 401 and surfaces it */ }
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${BASE_URL}${path}`);
@@ -619,7 +665,11 @@ function uploadWithProgress(path, formData, { onProgress, signal } = {}) {
         reject(err);
       }
     };
-    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.onerror = () => {
+      const err = new Error("Network error");
+      err.isNetworkError = true; // the request never got an answer - safe to retry (same as request()'s fetch failure)
+      reject(err);
+    };
     xhr.onabort = () => {
       const err = new Error("Upload canceled");
       err.code = "ERR_CANCELED";
@@ -644,20 +694,26 @@ export const messagesApi = {
     return api.get(`/messages/${threadId}${q ? "?" + q : ""}`);
   },
   getUnreadCount:   ()           => api.get("/messages/unread-count"),
-  sendMessage:      (threadId, body, files = [], isInternalNote = false, { onProgress, signal } = {}) => {
+  // `clientMessageId` identifies one send across automatic retries: the backend returns the already-stored message for a repeated
+  // (sender, clientMessageId) instead of posting it twice.
+  // `files` ride along as multipart (small ones); `uploadIds` reference big files already staged through chunkApi.
+  sendMessage:      (threadId, body, files = [], isInternalNote = false, { onProgress, signal, clientMessageId, uploadIds = [] } = {}) => {
     const fd = new FormData();
     fd.append("messageBody", body);
     fd.append("isInternalNote", String(isInternalNote));
+    if (clientMessageId) fd.append("clientMessageId", clientMessageId);
+    if (uploadIds.length > 0) fd.append("uploadIds", JSON.stringify(uploadIds));
     files.forEach((f) => fd.append("attachments", f));
     if (files.length > 0 && (onProgress || signal)) {
       return uploadWithProgress(`/messages/${threadId}`, fd, { onProgress, signal });
     }
-    return api.post(`/messages/${threadId}`, fd);
+    return api.post(`/messages/${threadId}`, fd, signal ? { signal } : undefined);
   },
   // Returns the raw fetch Response (not JSON) — the server responds with the
   // file's own Content-Type, so the shared request() helper skips json()
   // parsing for us and hands the Response straight through.
-  getAttachment:    (messageId, attachmentId) => api.get(`/messages/${messageId}/attachments/${attachmentId}`),
+  // `options.signal` lets the viewer abort a big download when it is closed.
+  getAttachment:    (messageId, attachmentId, options) => api.get(`/messages/${messageId}/attachments/${attachmentId}`, options),
   typing:           (threadId, isTyping) => api.post(`/messages/conversations/${threadId}/typing`, { isTyping }),
 };
 

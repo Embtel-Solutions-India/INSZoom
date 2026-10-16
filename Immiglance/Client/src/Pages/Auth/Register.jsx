@@ -264,14 +264,14 @@ export default function Register() {
                 409. The token never appears here; only a fresh invite email
                 is (re)sent. */}
             {pendingInvite && (
-              <div role="alert" className="mt-3 mb-1 text-sm text-accent-foreground bg-accent border border-accent-foreground/20 rounded-xl px-4 py-3">
+              <div role="alert" className="mt-3 mb-1 text-sm text-foreground bg-primary/15 border border-primary/50 rounded-xl px-4 py-3">
                 {resendSent ? (
                   <p>A new invitation has been sent to <span className="font-semibold">{form.email}</span>. Check your email to set your password.</p>
                 ) : (
                   <>
                     <p className="mb-2">You've been invited to Immiglance already — set your password to continue instead of creating a new account.</p>
                     <button type="button" onClick={handleResendInvite} disabled={resendingInvite}
-                      className="text-sm font-bold underline disabled:opacity-60 cursor-pointer">
+                      className="text-sm font-bold underline text-primary disabled:opacity-60 cursor-pointer">
                       {resendingInvite ? "Sending…" : "Resend invitation email"}
                     </button>
                   </>

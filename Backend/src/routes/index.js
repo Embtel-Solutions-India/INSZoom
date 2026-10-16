@@ -64,6 +64,7 @@ router.use("/eligibility", require("../modules/eligibility-engine/routes/eligibi
 router.use("/lifecycle", require("../modules/immigration-lifecycle/routes/lifecycleRoutes"));
 router.use("/notifications", require("../modules/notifications/notification.routes"));
 router.use("/messages", require("../modules/messages/message.routes"));
+router.use("/chunked-uploads", require("../modules/chunked-uploads/chunkedUpload.routes"));
 router.use("/appointments", require("../modules/appointments/appointment.routes"));
 router.use("/calendar", require("../modules/calendar/calendar.routes"));
 router.use("/payments", require("../modules/payments/payment.routes"));

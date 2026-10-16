@@ -371,6 +371,10 @@ async function dispatchPushChannel(notification, payload, actor) {
 }
 
 async function createNotification(payload, actor, req) {
+  // Internal staff are told about a case only when they work it (its case manager(s) + team lead); see caseAudience.js.
+  const caseRef = payload?.caseId || payload?.case;
+  const targetUser = payload?.userId || payload?.user || payload?.recipient;
+  if (caseRef && targetUser && await require("./caseAudience").isOutsideCaseTeam({ userId: targetUser, caseId: caseRef, type: payload.type })) return null;
   const renderedPayload = await renderTemplate(payload.templateKey, payload);
   if (renderedPayload.dedupeKey) {
     const existing = await Notification.findOne({ dedupeKey: renderedPayload.dedupeKey, deletedAt: { $exists: false } });
@@ -403,36 +407,31 @@ const CASE_BOUND_ROLES = new Set(["client", "case_manager", "team_lead", "attorn
 // Users on `caseId` for the given case-bound roles:
 //   client        the case's client / petitioner / beneficiary
 //   case_manager  every case manager on the case - primary + additional (falls back to the team lead if unassigned)
-//   team_lead     the assigned team lead (unassigned cases go to all team leads, who triage them)
+//   team_lead     the case's team lead (a case with none has the default team lead, teamlead@immiglance.com - never "every team lead")
 //   attorney      attorneys with active access, plus the legacy assigned attorney
 async function resolveCaseBoundUsers(caseId, boundRoles) {
   const Case = require("../../models/Case");
   const caseDoc = await Case.findById(caseId)
-    .select("user petitionerUser beneficiaryUser assignedCaseManager additionalCaseManagers primaryOwner assignedTeamLead assignedAttorney attorneyAccess")
+    .select("user petitionerUser beneficiaryUser assignedCaseManager additionalCaseManagers primaryOwner assignedTeamLead createdBy assignedAttorney attorneyAccess")
     .lean();
   if (!caseDoc) return [];
   const ids = new Set();
   const add = (value) => { if (value) ids.add(String(value)); };
-  let teamLeadFallback = false;
+  const teamLeadId = (boundRoles.includes("case_manager") || boundRoles.includes("team_lead")) ? await require("./caseTeam").effectiveTeamLeadId(caseDoc) : "";
   if (boundRoles.includes("client")) { add(caseDoc.user); add(caseDoc.petitionerUser); add(caseDoc.beneficiaryUser); }
   if (boundRoles.includes("case_manager")) {
     const manager = caseDoc.assignedCaseManager || caseDoc.primaryOwner;
     // Every case manager on the case (primary + additional) is addressed.
     if (manager) { add(manager); (caseDoc.additionalCaseManagers || []).forEach(add); }
-    else if (caseDoc.assignedTeamLead) add(caseDoc.assignedTeamLead);
-    else teamLeadFallback = true;
+    else add(teamLeadId);
   }
-  if (boundRoles.includes("team_lead")) {
-    if (caseDoc.assignedTeamLead) add(caseDoc.assignedTeamLead);
-    else teamLeadFallback = true;
-  }
+  if (boundRoles.includes("team_lead")) add(teamLeadId);
   if (boundRoles.includes("attorney")) {
     (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active").forEach((grant) => add(grant.attorneyId));
     add(caseDoc.assignedAttorney);
   }
   const clauses = [];
   if (ids.size) clauses.push({ _id: { $in: [...ids] } });
-  if (teamLeadFallback) clauses.push({ role: "team_lead" });
   if (!clauses.length) return [];
   return User.find({ $or: clauses, isActive: { $ne: false } }).select("_id role companyId teamId");
 }
@@ -440,7 +439,8 @@ async function resolveCaseBoundUsers(caseId, boundRoles) {
 async function createForRoles(roles, payload, actor, req) {
   const normalizedRoles = roles.map(normalizeRole);
   const boundRoles = payload.caseId ? normalizedRoles.filter((role) => CASE_BOUND_ROLES.has(role)) : [];
-  const openRoles = normalizedRoles.filter((role) => !boundRoles.includes(role));
+  // A notice about a case never goes to every admin / super admin: only the case's own team hears about it (caseAudience.js).
+  const openRoles = normalizedRoles.filter((role) => !boundRoles.includes(role) && !(payload.caseId && (role === "admin" || role === "super_admin")));
   const found = [];
   if (openRoles.length) found.push(...await User.find({ role: { $in: openRoles }, isActive: { $ne: false } }).select("_id role companyId teamId"));
   if (boundRoles.length) found.push(...await resolveCaseBoundUsers(payload.caseId, boundRoles));
@@ -461,7 +461,7 @@ async function createForRoles(roles, payload, actor, req) {
     const batchResults = await Promise.all(
       batch.map((user) => createNotification({ ...payload, userId: user._id, recipientRole: normalizeRole(user.role) }, actor, req))
     );
-    notifications.push(...batchResults);
+    notifications.push(...batchResults.filter(Boolean)); // null = this person is not on the case's team
   }
   return notifications;
 }

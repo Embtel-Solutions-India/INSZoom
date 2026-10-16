@@ -9,7 +9,7 @@ const env = require("../../../config/env");
 // one flow; a staff account resetting their password still ends up here,
 // then AuthGate's existing isStaff redirect sends them on to Admin once
 // logged in.
-const FRONTEND_URL = env.clientUrl;
+const FRONTEND_URL = require("../portalUrls").portalUrl("client");
 
 function subject() {
   return "Reset your Immiglance password";

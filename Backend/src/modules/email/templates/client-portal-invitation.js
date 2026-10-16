@@ -3,7 +3,7 @@ const env = require("../../../config/env");
 // env.clientUrl is the Client portal's own origin (CLIENT_URL env var) —
 // /accept-invite lives there (ported from Landing so Client is a fully
 // self-contained portal, matching Admin/Attorney).
-const FRONTEND_URL = env.clientUrl;
+const FRONTEND_URL = require("../portalUrls").portalUrl("client");
 
 function subject(data = {}) {
   return `Your immigration case has been created${data.caseNumber ? ` — ${data.caseNumber}` : ""}`;

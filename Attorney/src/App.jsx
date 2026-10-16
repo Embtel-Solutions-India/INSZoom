@@ -19,7 +19,6 @@ import TrackingTab from './pages/Cases/CaseDetail/TrackingTab'
 import FeedbackTab from './pages/Cases/CaseDetail/FeedbackTab'
 import TimelineTab from './pages/Cases/CaseDetail/TimelineTab'
 import MessagesPage from './pages/Messages/MessagesPage'
-import MessageThreadPage from './pages/Messages/MessageThreadPage'
 import TasksPage from './pages/Tasks/TasksPage'
 import usePushNotifications from './hooks/usePushNotifications'
 
@@ -66,9 +65,10 @@ export default function App() {
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/cases" element={<CaseListPage />} />
                 {/* Messages is top-level only — never nested under a case's
-                    own tab navigation (see MessageThreadPage's header comment). */}
+                    own tab navigation (see MessagesPage's header comment).
+                    Both routes render the same split list + chat page. */}
                 <Route path="/messages" element={<MessagesPage />} />
-                <Route path="/messages/:caseId" element={<MessageThreadPage />} />
+                <Route path="/messages/:caseId" element={<MessagesPage />} />
                 <Route path="/tasks" element={<TasksPage />} />
                 <Route path="/cases/:caseId" element={<CaseDetailLayout />}>
                   <Route index element={<Navigate to="overview" replace />} />

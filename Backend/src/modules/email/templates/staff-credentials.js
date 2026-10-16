@@ -4,14 +4,13 @@
 // role plus the login email and the password that was set - there is no
 // "activate your account" step.
 const PORTAL_BY_ROLE = {
-  attorney: { label: "Attorney Portal", envKey: "ATTORNEY_PORTAL_URL", fallback: "http://localhost:5174" },
-  default: { label: "Admin Portal", envKey: "ADMIN_PORTAL_URL", fallback: "http://localhost:3002" },
+  attorney: { label: "Attorney Portal", portal: "attorney" },
+  default: { label: "Admin Portal", portal: "admin" },
 };
 
 function portalFor(role) {
   const portal = PORTAL_BY_ROLE[role] || PORTAL_BY_ROLE.default;
-  const base = String(process.env[portal.envKey] || portal.fallback).replace(/\/+$/, "");
-  return { label: portal.label, url: `${base}/login` };
+  return { label: portal.label, url: `${require("../portalUrls").portalUrl(portal.portal)}/login` };
 }
 
 function escapeHtml(value) {

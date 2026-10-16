@@ -3,6 +3,8 @@
 const assert = require("node:assert/strict");
 const { test, mock } = require("node:test");
 const User = require("../../../models/User");
+const Case = require("../../../models/Case");
+const caseAudience = require("../caseAudience");
 const notificationService = require("../notification.service");
 const realtimeGateway = require("../../realtime/realtime.gateway");
 const emailService = require("../../email/email.service");
@@ -65,11 +67,18 @@ test("offline attorney, client, employee, case manager and team lead each get th
   assert.equal(first.data.messagePreview, "Please upload your passport copy.");
 });
 
-test("admins and super admins are never emailed (they still get the push/in-app alert)", async (t) => {
-  const { emails, notifications } = harness(t);
+test("admins and super admins are never emailed", async (t) => {
+  const { emails } = harness(t);
   await run(["u-admin", "u-super"]);
   assert.equal(emails.length, 0);
-  assert.equal(notifications.length, 2);
+});
+
+test("staff who are not on the case's team (another team lead, any admin / super admin) get no push, bell or email for that case's messages", async (t) => {
+  const { emails, notifications } = harness(t);
+  mock.method(caseAudience, "isOutsideCaseTeam", async ({ userId }) => ["u-admin", "u-super", "u-tl"].includes(userId));
+  await run(["u-admin", "u-super", "u-tl", "u-cm", "u-cli"]);
+  assert.deepEqual(notifications.map((n) => n.userId).sort(), ["u-cli", "u-cm"]);
+  assert.deepEqual(emails.map((e) => e.to).sort(), ["client@example.com", "cm@example.com"]);
 });
 
 test("an online recipient gets the push/in-app alert but no email", async (t) => {
@@ -96,4 +105,59 @@ test("the email is a registered template on the Email Templates page, and never 
   const trigger = triggerRegistry.getTrigger("new-message-received");
   assert.ok(trigger, "registered so it appears on the Email Templates page");
   assert.equal(trigger.label, "New Message Received (while offline)");
+});
+
+// ── a CLIENT writes: case manager + team lead are alerted (push + their own email, once per 30 minutes) ──
+const CLIENT_SENDER = { _id: "u-cli", name: "John Smith", role: "client" };
+const CASE_DOC = { _id: "case-1", assignedCaseManager: "u-cm", assignedTeamLead: "u-tl", createdBy: "u-tl" };
+
+test("a client's message pushes to the team lead even when not a participant, and emails case manager + team lead with the team alert", async (t) => {
+  const { notifications, emails } = harness(t, { online: ["u-cm"] });
+  mock.method(Case, "findById", () => ({ select: () => ({ lean: async () => CASE_DOC }) }));
+  mock.method(User, "find", () => ({ select: () => ({ lean: async () => [USERS.cm, USERS.lead] }) }));
+  // only the case manager is a conversation participant; the team lead is added from the case
+  await notifyNewMessage({ recipientIds: ["u-cm"], sender: CLIENT_SENDER, caseId: "case-1", caseNumber: "B193-A", text: "Hello team", link: "/messages/c1", conversationId: "c1", messageId: "m1" });
+  assert.deepEqual(notifications.map((n) => n.userId).sort(), ["u-cm", "u-tl"]);
+  assert.ok(notifications.every((n) => n.title === "John Smith" && n.channels.includes("push")));
+  assert.deepEqual(emails.map((e) => e.key), ["client-message-team-alert", "client-message-team-alert"], "sent even to an online case manager: the 30-minute limit is what stops a flood");
+  assert.deepEqual(emails.map((e) => e.to).sort(), ["cm@example.com", "tl@example.com"]);
+  assert.equal(emails[0].data.senderName, "John Smith");
+  assert.equal(emails[0].data.senderRole, "Client");
+});
+
+test("the team email names the sender, their registered email and which party they are (employer / employee / petitioner / beneficiary)", async (t) => {
+  for (const [sender, caseFields, role] of [
+    [{ _id: "u-e1", name: "Jane Doe", email: "jane@x-mail.com", role: "employee" }, { employeeUser: "u-e1" }, "Employee"],
+    [{ _id: "u-e2", name: "Acme HR", email: "hr@acme-corp.com", role: "employer" }, { employerUser: "u-e2" }, "Employer"],
+    [{ _id: "u-p", name: "Pat Petitioner", email: "pat@x-mail.com", role: "client" }, { petitionerUser: "u-p" }, "Petitioner"],
+    [{ _id: "u-b", name: "Bea Beneficiary", email: "bea@x-mail.com", role: "client" }, { beneficiaryUser: "u-b" }, "Beneficiary"],
+  ]) {
+    const { emails } = harness(t);
+    mock.method(Case, "findById", () => ({ select: () => ({ lean: async () => ({ ...CASE_DOC, ...caseFields }) }) }));
+    mock.method(User, "find", () => ({ select: () => ({ lean: async () => [USERS.cm] }) }));
+    await notifyNewMessage({ recipientIds: ["u-cm"], sender, caseId: "case-1", caseNumber: "B193-A", text: "Hello", conversationId: "c1", messageId: "m1" });
+    assert.equal(emails[0].data.senderName, sender.name);
+    assert.equal(emails[0].data.senderEmail, sender.email);
+    assert.equal(emails[0].data.senderRole, role);
+    mock.restoreAll();
+  }
+});
+
+test("a client's message never emails admins, and a staff sender keeps the old behaviour (no team lookup)", async (t) => {
+  const { emails } = harness(t);
+  mock.method(Case, "findById", () => ({ select: () => ({ lean: async () => CASE_DOC }) }));
+  mock.method(User, "find", () => ({ select: () => ({ lean: async () => [USERS.cm, USERS.lead] }) }));
+  await notifyNewMessage({ recipientIds: ["u-admin", "u-super"], sender: CLIENT_SENDER, caseId: "case-1", text: "x", conversationId: "c1" });
+  assert.deepEqual(emails.map((e) => e.to).sort(), ["cm@example.com", "tl@example.com"], "only the case team, never the administrators");
+  emails.length = 0;
+  mock.method(Case, "findById", () => { throw new Error("must not be looked up for staff senders"); });
+  await run(["u-cm"]);
+  assert.equal(emails[0].key, "new-message-received");
+});
+
+test("a failed case lookup never blocks the message alert", async (t) => {
+  const { notifications } = harness(t);
+  mock.method(Case, "findById", () => { throw new Error("db down"); });
+  await notifyNewMessage({ recipientIds: ["u-cm"], sender: CLIENT_SENDER, caseId: "case-1", text: "x", conversationId: "c1" });
+  assert.deepEqual(notifications.map((n) => n.userId), ["u-cm"]);
 });

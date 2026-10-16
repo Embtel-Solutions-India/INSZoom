@@ -550,6 +550,8 @@ exports.submitParticipantInfo = async (req, res, next) => {
     caseService.addTimelineEvent(caseData, role, `${role === "petitioner" ? "Petitioner" : "Beneficiary"} Information ${alreadySubmitted ? "Updated" : "Submitted"}`, `${role} ${alreadySubmitted ? "updated" : "submitted"} their portion of the family case.`, req.user);
     await caseData.save();
     await Promise.all(allCaseManagerIds(caseData).map((managerId) => notifyUser(managerId, { title: `Family Case Information ${alreadySubmitted ? "Updated" : "Submitted"}`, message: `${role} ${alreadySubmitted ? "updated" : "submitted"} information for ${caseData.caseNumber}.`, link: `/crm-cases/${caseData._id}`, caseId: caseData._id }, req.user, req)));
+    // Email + push to the case manager(s) and team lead, naming what was submitted. Best effort, never blocks or fails the submit.
+    require("../questionnaires/progress-alert.service").notifySubmitted({ caseId: caseData._id }, req.user, req).catch(() => null);
     res.json({ success: true, case: caseData });
   } catch (error) {
     next(error);

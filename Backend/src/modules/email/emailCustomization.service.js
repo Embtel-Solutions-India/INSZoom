@@ -34,14 +34,16 @@ async function buildContext({ data = {}, caseId } = {}) {
   const ctx = { data, caseContext: {} };
   if (!caseId) return ctx;
   const caseDoc = await Case.findById(caseId)
-    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager additionalCaseManagers assignedTeamLead attorneyAccess companyId employerUser isDemoData")
+    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager additionalCaseManagers assignedTeamLead createdBy attorneyAccess companyId employerUser isDemoData")
     .lean();
   if (!caseDoc) return ctx;
   ctx.isDemoData = Boolean(caseDoc.isDemoData);
 
   const activeAttorneyIds = (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active").map((grant) => grant.attorneyId);
   const attorneyId = activeAttorneyIds[0];
-  const ids = [caseDoc.user, caseDoc.petitionerUser, caseDoc.assignedCaseManager, caseDoc.assignedTeamLead, ...activeAttorneyIds].filter(Boolean);
+  // The case's team lead; a case with none has the default team lead (teamlead@immiglance.com).
+  const teamLeadId = await require("../notifications/caseTeam").effectiveTeamLeadId(caseDoc);
+  const ids = [caseDoc.user, caseDoc.petitionerUser, caseDoc.assignedCaseManager, teamLeadId, ...activeAttorneyIds].filter(Boolean);
   const [users, company] = await Promise.all([
     User.find({ _id: { $in: ids } }).select("name displayName email").lean(),
     caseDoc.companyId ? Company.findById(caseDoc.companyId).select("name contact hrContact").lean() : null,
@@ -50,7 +52,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   const pick = (id) => (id ? byId.get(String(id)) : null);
   const clientUser = pick(caseDoc.user);
   const caseManager = pick(caseDoc.assignedCaseManager);
-  const teamLead = pick(caseDoc.assignedTeamLead);
+  const teamLead = pick(teamLeadId);
   const attorney = pick(attorneyId);
 
   ctx.caseContext = {
@@ -65,7 +67,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   ctx.people = {
     client: [caseDoc.user, caseDoc.petitionerUser].filter(Boolean).map(String),
     case_manager: allCaseManagerIds(caseDoc), // primary + additional
-    team_lead: caseDoc.assignedTeamLead ? [String(caseDoc.assignedTeamLead)] : [],
+    team_lead: teamLeadId ? [String(teamLeadId)] : [],
     attorney: activeAttorneyIds.map(String),
   };
   return ctx;
@@ -129,7 +131,7 @@ function tokenProxy() {
     get(_, prop) {
       if (typeof prop !== "string") return undefined;
       // The two client-page links are shown as the real address in the editor (the invite token stays a variable: it is per client).
-      const origin = String(require("../../config/env").clientUrl || "").replace(/\/+$/, "");
+      const origin = require("./portalUrls").portalUrl("client");
       if (prop === "loginLink") return `${origin}/login`;
       if (prop === "setPasswordLink") return `${origin}/accept-invite?token=[system.invite_token]`;
       const variable = registry.variableForDataKey(prop);

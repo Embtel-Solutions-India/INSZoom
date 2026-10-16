@@ -2,10 +2,12 @@ const EmailLog = require("../../models/EmailLog");
 const { getProvider } = require("./providers");
 const env = require("../../config/env");
 const logger = require("../../utils/logger");
-const { layoutHtml, renderCustom } = require("./emailRenderer");
+const { layoutHtml, renderCustom, adminLoginText } = require("./emailRenderer");
 const customization = require("./emailCustomization.service");
 const triggerRegistry = require("./emailTriggers.registry");
 const emailPolicy = require("./emailPolicy");
+const { portalUrl, productionizeLinks } = require("./portalUrls");
+const caseAudience = require("../notifications/caseAudience");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
 // comment for the why). Every template's INTRINSIC recipient — the person
@@ -51,6 +53,8 @@ const TEMPLATE_AUDIENCE = {
   "premium-processing-upgraded": "client",
   "additional-info-requested": "client",
   "new-message-received": "client",
+  "questionnaire-submitted-team": "team_member",
+  "client-message-team-alert": "team_member",
 };
 
 // recipientRole (an actual User.role, when the caller has it handy) always
@@ -105,6 +109,8 @@ const TEMPLATES = {
   "additional-info-requested": require("./templates/additional-info-requested"),
   "new-message-received": require("./templates/new-message-received"),
   "questionnaire-progress-saved": require("./templates/questionnaire-progress-saved"),
+  "questionnaire-submitted-team": require("./templates/questionnaire-submitted-team"),
+  "client-message-team-alert": require("./templates/client-message-team-alert"),
   "form-pipeline-alert": require("./templates/form-pipeline-alert"),
 };
 
@@ -115,11 +121,11 @@ function isConfigured() {
   return getProvider().isConfigured();
 }
 
-function wrapHtml(subjectText, lines = []) {
+function wrapHtml(subjectText, lines = [], { adminLogin = false } = {}) {
   const paragraphs = lines
     .map((line) => `<p style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${line}</p>`)
     .join("");
-  return layoutHtml({ title: subjectText, heading: subjectText, innerHtml: paragraphs });
+  return layoutHtml({ title: subjectText, heading: subjectText, innerHtml: paragraphs, adminLogin });
 }
 
 /**
@@ -129,6 +135,8 @@ function wrapHtml(subjectText, lines = []) {
  * throwing so callers never need try/catch around email sends).
  */
 async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
+  // Emails only ever carry production links: a localhost address from any call site becomes the real portal address.
+  subject = productionizeLinks(subject); html = productionizeLinks(html); text = productionizeLinks(text);
   const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
 
   const provider = getProvider();
@@ -168,9 +176,9 @@ async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, c
 // their own text when no link is passed - this makes sure they never do.)
 const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
 const PORTAL_OF_AUDIENCE = {
-  client: () => `${trimSlash(env.clientUrl)}/dashboard`,
-  attorney: (caseId) => `${trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174")}${caseId ? `/cases/${caseId}` : "/dashboard"}`,
-  staff: (caseId) => `${trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002")}${caseId ? `/crm-cases/${caseId}` : "/dashboard"}`,
+  client: () => `${portalUrl("client")}/dashboard`,
+  attorney: (caseId) => `${portalUrl("attorney")}${caseId ? `/cases/${caseId}` : "/dashboard"}`,
+  staff: (caseId) => `${portalUrl("admin")}${caseId ? `/crm-cases/${caseId}` : "/dashboard"}`,
 };
 function defaultPortalLink(templateKey, recipientRole, caseId) {
   let audience;
@@ -187,7 +195,7 @@ function defaultPortalLink(templateKey, recipientRole, caseId) {
 // exactly as before" - when there is no active customization for this key,
 // the key is locked, or ANYTHING goes wrong while resolving/rendering it:
 // customization is an enhancement and must never be able to block a send.
-async function resolveCustomization(templateKey, { to, data, caseId }) {
+async function resolveCustomization(templateKey, { to, data, caseId, adminLogin = false }) {
   try {
     const trigger = triggerRegistry.getTrigger(templateKey);
     if (!trigger || trigger.locked) return null;
@@ -202,7 +210,7 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
     }
     if (!custom) return null;
     const ctx = await customization.buildContext({ data, caseId });
-    const rendered = renderCustom(custom, ctx);
+    const rendered = renderCustom(custom, ctx, { adminLogin });
     const recipients = await customization.applyRecipientRules(custom, to, ctx, { toFromRules: Boolean(trigger.builtIn) });
     return { ...rendered, recipients, customTemplateId: custom._id };
   } catch (error) {
@@ -219,7 +227,7 @@ async function resolveCustomization(templateKey, { to, data, caseId }) {
 async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userId, triggeredBy, source = "shared", attachments, recipientRole } = {}) {
   data = { ...data, portalLink: data.portalLink || defaultPortalLink(templateKey, recipientRole, caseId) };
   // [system.set_password_link] / [system.login_link]: the exact pages the client's email button opens.
-  const clientOrigin = String(env.clientUrl || "").replace(/\/+$/, "");
+  const clientOrigin = portalUrl("client");
   if (templateKey === "client-portal-invitation" && !data.setPasswordLink && data.token) data = { ...data, setPasswordLink: `${clientOrigin}/accept-invite?token=${data.token}` };
   if (templateKey === "case-created-client" && !data.loginLink) data = { ...data, loginLink: `${clientOrigin}/login` };
   const builtIn = TEMPLATES[templateKey];
@@ -242,6 +250,11 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   // in a short window (retried requests, bursts). Credential/invite mails are exempt.
   const badAddress = emailPolicy.undeliverableReason(to);
   if (badAddress) return skip(badAddress, badAddress === "invalid_address" ? "invalid email address" : "placeholder/test email domain");
+  // Internal staff outside this case's team (another team lead / case manager, any admin / super admin) never get the case's emails.
+  if (caseId && !emailPolicy.NEVER_THROTTLED.has(templateKey) && !triggerRegistry.getTrigger(templateKey)?.locked) {
+    const outside = await caseAudience.isOutsideCaseTeam({ userId, email: to, caseId }).catch(() => false);
+    if (outside) return skip("not_case_team", "the recipient is not on this case's team");
+  }
   if (caseId && !emailPolicy.NEVER_THROTTLED.has(templateKey)) {
     const windowMs = triggerRegistry.getTrigger(templateKey)?.cooldownMs || emailPolicy.DEFAULT_COOLDOWN_MS;
     const repeated = await emailPolicy.recentlySent({ templateKey, to, caseId, windowMs }).catch(() => false);
@@ -267,7 +280,9 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     }
   }
 
-  const custom = await resolveCustomization(templateKey, { to, data, caseId });
+  // Internal staff (case manager, team lead, admin, super admin) always get a "Log in to Admin" button; security emails stay as they are.
+  const adminLogin = resolveAudience(templateKey, recipientRole) === "team_member" && !triggerRegistry.getTrigger(templateKey)?.locked;
+  const custom = await resolveCustomization(templateKey, { to, data, caseId, adminLogin });
   if (custom?.suppressed) return skip("disabled_by_admin", "This email is switched off on the Email Templates page");
   if (custom) {
     const deliverable = (list) => list.filter((address) => !emailPolicy.undeliverableReason(address));
@@ -284,8 +299,9 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
 
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
-  const html = wrapHtml(subject, lines);
-  const text = lines.join("\n\n");
+  const html = wrapHtml(subject, lines, { adminLogin });
+  const bodyText = lines.join("\n\n");
+  const text = [bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n");
 
   return dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source, attachments });
 }

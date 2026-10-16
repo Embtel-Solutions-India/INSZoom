@@ -74,11 +74,11 @@ test("catalog: unique keys, valid variables, nothing unbuildable listed, no dupl
 });
 
 // ── dispatcher ──────────────────────────────────────────────────────────
-test("RFE received alerts team lead, every admin and the attorneys with access - in-app + socket + push, and emails them automatically", async (t) => {
+test("RFE received alerts the case's team lead and attorneys with access - never every admin - in-app + socket + push, and emails them automatically", async (t) => {
   const { created, emails } = setup(t);
   await triggerEvents.emit("rfe.received", { caseId: freshCase(), actor: { _id: "someone" }, data: { rfeDeadline: "Dec 15, 2026" } });
   const byUser = Object.fromEntries(created.map((p) => [p.userId, p]));
-  assert.deepEqual(Object.keys(byUser).sort(), ["a1", "a2", "att1", "att2", "tl1"]);
+  assert.deepEqual(Object.keys(byUser).sort(), ["att1", "att2", "tl1"], "admins / super admins are not told about a case they do not work");
   created.forEach((payload) => {
     assert.deepEqual(payload.channels, ["in_app", "socket", "push", "email"]);
     assert.match(payload.emailTemplate, /^rfe\.received:/);
@@ -93,7 +93,7 @@ test("RFE received alerts team lead, every admin and the attorneys with access -
 
 test("operational events are push + in-app only by default (no email noise)", async (t) => {
   const { created } = setup(t);
-  await triggerEvents.emit("case.created", { caseId: freshCase(), actor: { _id: "someone" } });
+  await triggerEvents.emit("case.cm_assigned", { caseId: freshCase(), actor: { _id: "someone" } });
   assert.ok(created.length > 0);
   created.forEach((payload) => { assert.deepEqual(payload.channels, ["in_app", "socket", "push"]); assert.equal(payload.emailTemplate, undefined); });
 });
@@ -109,14 +109,14 @@ test("the actor is never notified of their own action, and nobody is notified tw
 test("covered audiences get no second notification; users listed in skipUserIds are skipped", async (t) => {
   const { created } = setup(t);
   await triggerEvents.emit("rfe.received", { caseId: freshCase(), skipUserIds: ["att1", "tl1"] });
-  assert.deepEqual(created.map((p) => p.userId).sort(), ["a1", "a2", "att2"]);
+  assert.deepEqual(created.map((p) => p.userId).sort(), ["att2"]);
 });
 
 test("recipients can be pinned (only the attorney just assigned, not every attorney), and an empty pin means nobody", async (t) => {
   const { created } = setup(t);
   await triggerEvents.emit("attorney.assigned", { caseId: freshCase(), recipients: { attorney: ["att2"] }, data: { attorneyName: "Att Two" }, covered: { attorney: { notified: false, emailed: true } } });
   const byAudienceUser = created.map((p) => p.userId).sort();
-  assert.deepEqual(byAudienceUser, ["a1", "a2", "att2", "cl1"]); // attorney (pinned), client, both admins
+  assert.deepEqual(byAudienceUser, ["att2", "cl1"]); // attorney (pinned) and client - not the admins
   assert.match(created.find((p) => p.userId === "cl1").message, /Att Two has been assigned/);
   created.length = 0;
   await triggerEvents.emit("attorney.feedback", { caseId: freshCase(), recipients: { case_manager: ["cm1"], attorney: [] }, covered: { case_manager: { notified: true, emailed: false }, attorney: { notified: true, emailed: false } } });
@@ -127,14 +127,14 @@ test("a non-automatic trigger emails only once an admin ACTIVATES a template", a
   const { created } = setup(t, { custom: { key: "case.cm_assigned:team_lead", _id: "c1" } });
   await triggerEvents.emit("case.cm_assigned", { caseId: freshCase() });
   assert.deepEqual(created.find((p) => p.userId === "tl1").channels, ["in_app", "socket", "push", "email"]);
-  assert.deepEqual(created.find((p) => p.userId === "a1").channels, ["in_app", "socket", "push"], "admin audience has no active template");
+  assert.ok(!created.some((p) => p.userId === "a1"), "admins are not told about a case they do not work");
 });
 
 test("sendEmail:false (admin switched the email off) keeps the alert but removes the email", async (t) => {
   const { created } = setup(t, { custom: { key: "rfe.received:team_lead", _id: "c1", sendEmail: false } });
   await triggerEvents.emit("rfe.received", { caseId: freshCase() });
   assert.deepEqual(created.find((p) => p.userId === "tl1").channels, ["in_app", "socket", "push"]);
-  assert.deepEqual(created.find((p) => p.userId === "a1").channels, ["in_app", "socket", "push", "email"]);
+  assert.ok(!created.some((p) => p.userId === "a1"), "admins are not told about a case they do not work");
 });
 
 test("who is NOT emailed: pending clients, demo data, placeholder domains - but they still get the in-app/push alert", async (t) => {
@@ -327,6 +327,6 @@ test("each audience's email button deep-links into its own portal and case", asy
   await triggerEvents.emit("rfe.received", { caseId: freshCase(), actor: { _id: "x" } });
   const link = (user, event) => created.find((p) => p.userId === user && p.metadata.event === event)?.emailData.portalLink;
   assert.match(link("cl1", "attorney.assigned"), /\/dashboard$/);
-  assert.match(link("a1", "rfe.received"), /^https:\/\/admin\.example\.com\/crm-cases\/case-/);
+  assert.match(link("tl1", "rfe.received"), /^https:\/\/admin\.example\.com\/crm-cases\/case-/); // staff go to the Admin portal
   assert.match(link("att1", "rfe.received"), /^https:\/\/attorney\.example\.com\/cases\/case-/);
 });

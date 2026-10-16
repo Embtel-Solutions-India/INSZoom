@@ -8,7 +8,7 @@ const logger = require("../../utils/logger");
 // Manager / Admin side (Admin), never by an attorney.
 
 function attorneyPortalUrl() {
-  return process.env.ATTORNEY_PORTAL_URL || process.env.ATTORNEY_PORTAL_DEV_URL || "http://localhost:5174";
+  return require("../email/portalUrls").portalUrl("attorney");
 }
 
 async function listAccess(caseId) {
