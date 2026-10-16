@@ -1,20 +1,22 @@
 import { useEffect, useRef } from 'react'
-import { Zap } from 'lucide-react'
+import { Zap, AlertTriangle } from 'lucide-react'
 
 // Themed confirmation dialog, centered on screen (same look as InfoModal). Closes on Escape or
-// a click outside; `busy` locks both buttons while the confirmed action is running.
+// a click outside; `busy` locks both buttons while the confirmed action is running. `tone="danger"` (red icon and button) is for destructive actions such as a permanent delete.
 export default function ConfirmModal({
   title,
   message,
   confirmLabel = 'Yes',
   cancelLabel = 'Cancel',
   busy = false,
+  tone = 'default',
   error = '',
   children = null,
   onConfirm,
   onCancel,
 }) {
   const confirmRef = useRef(null)
+  const danger = tone === 'danger'
   const titleId = 'confirm-modal-title'
   const descriptionId = 'confirm-modal-description'
 
@@ -40,8 +42,8 @@ export default function ConfirmModal({
         aria-describedby={descriptionId}
         className="w-full max-w-sm rounded-2xl bg-card p-6 text-center shadow-2xl"
       >
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-          <Zap className="h-8 w-8" aria-hidden="true" />
+        <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${danger ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
+          {danger ? <AlertTriangle className="h-8 w-8" aria-hidden="true" /> : <Zap className="h-8 w-8" aria-hidden="true" />}
         </div>
         <h2 id={titleId} className="text-xl font-bold text-foreground">{title}</h2>
         <p id={descriptionId} className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">{message}</p>
@@ -51,7 +53,7 @@ export default function ConfirmModal({
           <button type="button" onClick={onCancel} disabled={busy} className="btn-secondary flex-1 justify-center disabled:opacity-50">
             {cancelLabel}
           </button>
-          <button ref={confirmRef} type="button" onClick={onConfirm} disabled={busy} className="btn-primary flex-1 justify-center disabled:opacity-50">
+          <button ref={confirmRef} type="button" onClick={onConfirm} disabled={busy} className={`${danger ? 'inline-flex items-center rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700' : 'btn-primary'} flex-1 justify-center disabled:opacity-50`}>
             {busy ? 'Working…' : confirmLabel}
           </button>
         </div>

@@ -65,7 +65,7 @@ class ValidationService {
       const result = this.validateField(field, value, sourceAttribution[fieldId]);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
-      if (!field.mappings?.length && !field.mapping && !field.defaultValue && !field.required) {
+      if (!field.keepBlank && !field.mappings?.length && !field.mapping && !field.defaultValue && !field.required) {
         warnings.push({ fieldId, code: "MISSING_MAPPING", message: `${fieldId} has no mapping metadata` });
       }
     });

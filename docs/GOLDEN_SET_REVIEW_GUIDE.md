@@ -25,7 +25,8 @@ Nothing you do here changes how any form is filled today. Your answers only grad
    - Read the **Example**: fictional client Maria Gonzalez (worker/relative) and Daniel Carter (employer/sponsor). It shows what the box would contain for them. If a box depends on a condition, the example says "(for a client where this applies)".
    - Find that box in the official PDF and decide:
      - **Right** — the box really should contain that. Click **Right**. Saved immediately.
-     - **Wrong** — click **Wrong**, then write what the box should contain instead (e.g. "the employer's last name, not the worker's"). A short note is optional. Click **Save "Wrong"**. This is required; it is how we find real mistakes.
+     - **Wrong** — click **Wrong**, then answer two questions: **Why is this wrong?** (e.g. "this box is for the worker, not the employer") and **What should this box be filled with instead?** (e.g. "the employer's last name"). If the box should have **no information at all**, tick **This box should be left blank** instead of writing a replacement. A short note is optional. Click **Save "Wrong"**. Both answers are required; this is how we find real mistakes.
+     - **Keep blank** — the box must stay empty: no information is stored in it and no case data is mapped to it. Click **Keep blank**, say why (e.g. "USCIS says to leave this box empty"), then click **Save "Keep blank"**. It counts as a verified answer, like Right.
      - **Not sure** — you cannot tell. Click **Not sure**. You must later turn every "Not sure" into Right or Wrong before signing off. Ask a colleague or check USCIS instructions.
 6. The card disappears from the "Not answered" list once answered. Use **Marked Not sure / Marked Wrong / Marked Right / All boxes** to look at your earlier answers and change any of them.
 7. Use the search box to find a word, and the form buttons to work one form at a time.

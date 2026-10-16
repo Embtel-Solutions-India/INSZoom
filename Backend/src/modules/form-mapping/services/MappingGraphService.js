@@ -213,6 +213,7 @@ class MappingGraphService {
     const sourcePaths = new Set((graph.nodes?.canonical || []).map((node) => node.path));
     const targetIds = new Set((graph.nodes?.form || this.getTemplateFields(template)).map((node) => node.fieldId || node.targetFieldId));
     const targetCounts = {};
+    const keptBlank = new Set((graph.keepBlank || []).map((entry) => entry.targetFieldId));
 
     (graph.edges || []).forEach((edge) => {
       targetCounts[edge.targetFieldId] = (targetCounts[edge.targetFieldId] || 0) + 1;
@@ -230,7 +231,7 @@ class MappingGraphService {
     (template.formFields || [])
       .forEach((field) => {
         const fieldId = field.fieldId || field.id || field.fieldName;
-        if (!targetCounts[fieldId]) warnings.push({
+        if (!targetCounts[fieldId] && !keptBlank.has(fieldId)) warnings.push({
           code: field.required || field.validation?.required || field.validationRules?.required
             ? "MISSING_REQUIRED_MAPPING"
             : "MISSING_FIELD_MAPPING",
@@ -239,7 +240,7 @@ class MappingGraphService {
       });
 
     const reviewRequired = (graph.edges || []).filter((edge) => edge.status !== "active").length;
-    const unmapped = (graph.unmappedTargets || []).length;
+    const unmapped = (graph.unmappedTargets || []).filter((target) => !keptBlank.has(typeof target === "string" ? target : target?.targetFieldId)).length;
     return {
       valid: errors.length === 0,
       readyForActivation: errors.length === 0 && reviewRequired === 0 && unmapped === 0,
@@ -386,9 +387,15 @@ class MappingGraphService {
    * are attached to the graph's validation. It never removes an edge that has no competitor and never changes the status of an existing edge.
    */
   static async applyMappingPolicy(template, graph) {
-    const previousVersion = await USCISMappingVersion.findOne({ template: template._id, status: "active" }).sort({ mappingVersion: -1 }).select("graph.edges").lean();
+    const previousVersion = await USCISMappingVersion.findOne({ template: template._id, status: "active" }).sort({ mappingVersion: -1 }).select("graph.edges graph.keepBlank").lean();
     const previousGraph = previousVersion?.graph || null;
-    const { graph: reconciled } = contract.reconcile(previousGraph, graph);
+    // a graph built from scratch (auto-suggest, bio forms ...) does not know the kept-blank decisions: it inherits the live ones; only an explicit list (even an empty one) replaces them
+    const withDecisions = Array.isArray(graph.keepBlank) ? graph : { ...graph, keepBlank: previousGraph?.keepBlank || [] };
+    const { graph: reconciled } = contract.reconcile(previousGraph, withDecisions);
+    // a box a person decided to keep blank stays blank whatever wrote the graph (scoring, inference, party rules, edition carry-forward): its edges are dropped here
+    const { graph: kept, removed: droppedForBlank } = contract.enforceKeepBlank(reconciled);
+    Object.assign(reconciled, { edges: kept.edges, unmappedTargets: kept.unmappedTargets, keepBlank: reconciled.keepBlank });
+    if (droppedForBlank.length) reconciled.conflicts = [...(reconciled.conflicts || []), ...droppedForBlank.map((edge) => ({ code: "KEPT_BLANK", targetFieldId: edge.targetFieldId, sourcePath: edge.sourcePath, origin: edge.origin, at: new Date().toISOString() }))].slice(-200);
     const previousByTarget = new Map((previousGraph?.edges || []).map((edge) => [edge.targetFieldId, edge]));
     reconciled.edges = reconciled.edges.map((edge) => {
       const before = previousByTarget.get(edge.targetFieldId);
@@ -647,8 +654,10 @@ class MappingGraphService {
     }
     graph.edges = (graph.edges || []).filter((item) => item.targetFieldId !== targetField.targetFieldId);
     graph.edges.push(edge);
+    // mapping a box on purpose means it is no longer kept blank
+    graph.keepBlank = (graph.keepBlank || []).filter((entry) => entry.targetFieldId !== targetField.targetFieldId);
     graph.unmappedTargets = this.getTemplateFields(template)
-      .filter((field) => !graph.edges.some((item) => item.targetFieldId === field.targetFieldId))
+      .filter((field) => !graph.edges.some((item) => item.targetFieldId === field.targetFieldId) && !graph.keepBlank.some((entry) => entry.targetFieldId === field.targetFieldId))
       .map((field) => field.targetFieldId);
     graph.summary = {
       ...(graph.summary || {}),
@@ -664,6 +673,38 @@ class MappingGraphService {
     const version = await this.persistVersion(template, graph, user);
     await this.audit("MAPPING_UPDATED", template, user, req, { mappingId, mappingVersion: template.mappingVersion, targetFieldId: payload.targetFieldId, sourcePath });
     return { templateId, mappingVersionId: version._id, mappingVersion: template.mappingVersion, edge, graph };
+  }
+
+  /**
+   * "Keep blank": a person decides this box must stay EMPTY - nothing is ever stored in it, no canonical field is mapped, a template default value is not used, and
+   * automatic suggestions, party rules and new editions leave it empty. `keepBlank: false` takes the decision back (the box is simply unmapped again).
+   * Saved as a new mapping version like any other edit; it goes live when the mapping is activated.
+   */
+  static async setKeepBlank(templateId, payload = {}, user, req) {
+    const template = await this.loadTemplateOrThrow(templateId);
+    if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
+    const targetField = this.getTemplateFields(template).find((field) => field.targetFieldId === payload.targetFieldId);
+    if (!targetField) throw Object.assign(new Error("USCIS target field not found"), { status: 404 });
+    const keepBlank = payload.keepBlank !== false;
+    const graph = JSON.parse(JSON.stringify(await this.loadCurrentGraph(template)));
+    const before = (graph.edges || []).find((edge) => edge.targetFieldId === targetField.targetFieldId);
+    const next = contract.setKeepBlank(graph, targetField, { keepBlank, reason: payload.reason, by: this.userId(user) ? String(this.userId(user)) : undefined });
+    const fields = this.getTemplateFields(template);
+    const blank = new Set((next.keepBlank || []).map((entry) => entry.targetFieldId));
+    next.unmappedTargets = fields.filter((field) => !(next.edges || []).some((edge) => edge.targetFieldId === field.targetFieldId) && !blank.has(field.targetFieldId)).map((field) => field.targetFieldId);
+    next.summary = {
+      ...(next.summary || {}),
+      formFields: fields.length,
+      mappedFields: (next.edges || []).length,
+      activeMappings: (next.edges || []).filter((edge) => edge.status === "active").length,
+      reviewRequired: (next.edges || []).filter((edge) => edge.status !== "active").length,
+      keptBlank: blank.size,
+      mappingCoverage: fields.length ? Math.round((((next.edges || []).length + blank.size) / fields.length) * 100) : 100,
+    };
+    next.validation = this.validateGraph(next, template);
+    const version = await this.persistVersion(template, next, user);
+    await this.audit(keepBlank ? "MAPPING_KEPT_BLANK" : "MAPPING_KEEP_BLANK_REMOVED", template, user, req, { mappingVersion: template.mappingVersion, targetFieldId: targetField.targetFieldId, removedMapping: before ? before.sourcePath : undefined, reason: payload.reason });
+    return { templateId, mappingVersionId: version._id, mappingVersion: template.mappingVersion, keepBlank, targetFieldId: targetField.targetFieldId, removedMapping: before?.sourcePath, graph: next };
   }
 
   static async versions(templateId) {

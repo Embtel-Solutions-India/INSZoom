@@ -5,6 +5,7 @@ import { formGovernanceApi } from '../services/api'
 import { associationLabel } from './FormGovernance'
 import UploadFormModal from '../components/UploadFormModal'
 import MappingCoveragePanel from '../components/MappingCoveragePanel'
+import ConfirmModal from '../components/ConfirmModal'
 import { ArrowLeft, ExternalLink, Wand2, CheckCircle2, RefreshCw, PlayCircle, Plus, Upload } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
@@ -35,6 +36,8 @@ const FormGovernanceDetail = () => {
   const [error, setError] = useState(null)
   const [banner, setBanner] = useState(null)
   const [savingFieldId, setSavingFieldId] = useState(null)
+  const [blankTarget, setBlankTarget] = useState(null) // the box waiting for the "keep blank" confirmation
+  const [blankReason, setBlankReason] = useState('')
   const [busy, setBusy] = useState(false)
 
   const [previewCaseId, setPreviewCaseId] = useState('')
@@ -128,7 +131,8 @@ const FormGovernanceDetail = () => {
   const fieldsWithMapping = useMemo(() => {
     if (!graph) return []
     const edgesByTarget = new Map((graph.edges || []).map((edge) => [edge.targetFieldId, edge]))
-    return (graph.nodes?.form || []).map((field) => ({ field, edge: edgesByTarget.get(field.fieldId) }))
+    const keptBlank = new Set((graph.keepBlank || []).map((entry) => entry.targetFieldId))
+    return (graph.nodes?.form || []).map((field) => ({ field, edge: edgesByTarget.get(field.fieldId), keptBlank: keptBlank.has(field.fieldId) }))
   }, [graph])
 
   const canonicalOptions = graph?.nodes?.canonical || []
@@ -180,6 +184,24 @@ const FormGovernanceDetail = () => {
       setBanner({ tone: 'red', message: readErrorMessage(err, 'Could not save that mapping.') })
     } finally {
       setSavingFieldId(null)
+    }
+  }
+
+  // "Keep blank": this box must stay empty - no information stored, no canonical field mapped. Undo takes the decision back (the box is then unmapped again).
+  const setKeepBlank = async (field, keepBlank, reason = '') => {
+    if (!viewedTemplateId) return
+    setSavingFieldId(field.fieldId)
+    setBanner(null)
+    try {
+      const response = await formGovernanceApi.keepBlank(viewedTemplateId, field.fieldId, { keepBlank, reason })
+      setGraph(response.data.graph)
+      setBanner({ tone: 'green', message: keepBlank ? `"${field.label}" will be kept blank. Activate the mapping for it to take effect.` : `"${field.label}" is no longer kept blank - it is unmapped again.` })
+    } catch (err) {
+      setBanner({ tone: 'red', message: readErrorMessage(err, 'Could not change that box.') })
+    } finally {
+      setSavingFieldId(null)
+      setBlankTarget(null)
+      setBlankReason('')
     }
   }
 
@@ -261,6 +283,20 @@ const FormGovernanceDetail = () => {
 
   return (
     <div className="space-y-6">
+      {blankTarget && (
+        <ConfirmModal
+          title={`Keep "${blankTarget.field.label}" blank?`}
+          message={`Nothing will ever be stored in this box and no case data will be mapped to it${blankTarget.edge ? ` (its current mapping, ${blankTarget.edge.sourcePath}, is removed)` : ''}. Automatic suggestions and new editions will leave it empty too. Case managers can still type in it by hand.`}
+          confirmLabel="Keep blank"
+          busy={savingFieldId === blankTarget.field.fieldId}
+          onConfirm={() => setKeepBlank(blankTarget.field, true, blankReason)}
+          onCancel={() => { setBlankTarget(null); setBlankReason('') }}
+        >
+          <label className="mt-4 block text-left text-sm text-foreground">Why? (optional)
+            <input className="input-field w-full mt-1" value={blankReason} onChange={(event) => setBlankReason(event.target.value)} placeholder="For example: USCIS says to leave this empty" />
+          </label>
+        </ConfirmModal>
+      )}
       <button onClick={() => navigate('/form-governance')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="w-4 h-4" /> Back to Form Governance
       </button>
@@ -489,7 +525,7 @@ const FormGovernanceDetail = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {fieldsWithMapping.map(({ field, edge }) => (
+                  {fieldsWithMapping.map(({ field, edge, keptBlank }) => (
                     <tr key={field.fieldId} className="border-b hover:bg-muted">
                       <td className="px-4 py-2">
                         <div className="font-medium text-foreground text-sm">{field.label}</div>
@@ -503,14 +539,21 @@ const FormGovernanceDetail = () => {
                           disabled={savingFieldId === field.fieldId}
                           className="w-full max-w-xs border rounded px-2 py-1 text-sm"
                         >
-                          <option value="">— not mapped —</option>
+                          <option value="">{keptBlank ? '— kept blank —' : '— not mapped —'}</option>
                           {canonicalOptions.map((option) => (
                             <option key={option.path} value={option.path}>{option.path}</option>
                           ))}
                         </select>
+                        {keptBlank ? (
+                          <button type="button" className="ml-2 text-xs text-primary underline disabled:opacity-50" disabled={savingFieldId === field.fieldId} onClick={() => setKeepBlank(field, false)}>Undo keep blank</button>
+                        ) : (
+                          <button type="button" className="ml-2 rounded border border-border px-2 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50" disabled={savingFieldId === field.fieldId} onClick={() => { setBlankReason(''); setBlankTarget({ field, edge }) }} title="Leave this box empty: nothing is stored in it and no case data is mapped to it">Keep blank</button>
+                        )}
                       </td>
                       <td className="px-4 py-2">
-                        {edge ? (
+                        {keptBlank ? (
+                          <Badge tone="gray">Kept blank</Badge>
+                        ) : edge ? (
                           <Badge tone={edge.status === 'active' ? 'green' : 'amber'}>{edge.status === 'active' ? 'Mapped' : 'Needs review'}</Badge>
                         ) : (
                           <Badge tone="gray">Unmapped</Badge>

@@ -7,4 +7,5 @@ module.exports = {
   ...require("./defaultValueClassifier"),
   ...require("./fieldEquivalence"),
   ...require("./transformTypes"),
+  ...require("./keepBlank"),
 };

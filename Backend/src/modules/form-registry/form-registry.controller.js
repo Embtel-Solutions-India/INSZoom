@@ -7,7 +7,6 @@ const caseService = require("../cases/case.service");
 const visaFormMappingService = require("./visaFormMapping.service");
 const USCISMappingVersion = require("../../models/USCISMappingVersion");
 const { recordAuditEvent } = require("../audit/audit.service");
-const { runningJobs } = require("../../utils/jobLock");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
 
 function handleError(error, next) {
@@ -568,11 +567,10 @@ exports.deleteFormFromCatalog = async (req, res, next) => {
   try {
     const formCode = String(req.params.formCode || "").trim();
     if (!formCode) throw Object.assign(new Error("Form code is required"), { status: 400 });
-    // never pull a template out from under an import / edition-upgrade / monitoring / autopilot run
-    const busy = await runningJobs();
-    if (busy.length) throw Object.assign(new Error("A USCIS form import job is running right now; try deleting this form again when it has finished."), { status: 409, code: "FORM_PIPELINE_JOB_RUNNING", details: { jobs: busy } });
-    // ...nor out from under a durable pipeline job that is running for THIS form right now
-    const runningForThisForm = await require("../../models/FormPipelineJob").exists({ formCode: formCode.toUpperCase(), state: "running" }).catch(() => null);
+    // Only a pipeline job that is working on THIS form right now blocks its deletion. (The recurring catalog / edition / monitoring / autopilot jobs hold their lock almost
+    // all day while they work through OTHER forms, so refusing on those locks made every delete fail; none of them is tied to one form.)
+    const FormPipelineJob = require("../../models/FormPipelineJob");
+    const runningForThisForm = await FormPipelineJob.exists({ formCode: formCode.toUpperCase(), state: "running" }).catch(() => null);
     if (runningForThisForm) throw Object.assign(new Error(`${formCode.toUpperCase()} is being imported right now; try deleting it again when that has finished.`), { status: 409, code: "FORM_PIPELINE_JOB_RUNNING" });
     const escaped = formCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const templates = await USCISFormTemplate.find({ formCode: new RegExp(`^${escaped}$`, "i") }).select("_id").lean();
@@ -587,6 +585,8 @@ exports.deleteFormFromCatalog = async (req, res, next) => {
       Promise.resolve(templateIds.length),
     ]);
     if (!mappingCount && !templateCount) throw Object.assign(new Error(`Form "${formCode}" was not found`), { status: 404 });
+    // jobs still waiting for this form (pending / blocked / held) have nothing left to work on; remove them so the worker does not re-import a form that was deleted on purpose
+    await FormPipelineJob.deleteMany({ formCode: formCode.toUpperCase(), state: { $in: ["pending", "blocked", "held"] } }).catch(() => null);
     const [mappingResult, versionResult, componentResult, templateResult] = await Promise.all([
       VisaFormMapping.deleteMany(mappingFilter),
       templateIds.length ? USCISMappingVersion.deleteMany({ template: { $in: templateIds } }) : { deletedCount: 0 },

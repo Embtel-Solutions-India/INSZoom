@@ -48,19 +48,46 @@ describe('GoldenSetReviewSection', () => {
     await screen.findByText(/Family Name/)
     expect(api.entries).toHaveBeenCalledWith(expect.objectContaining({ status: 'unanswered' }))
     fireEvent.click(screen.getByRole('button', { name: 'Right' }))
-    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'right', correction: '', note: '' }))
+    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'right', note: '' }))
   })
 
-  it('"Wrong" needs a correction before it can be saved', async () => {
+  it('"Wrong" asks why and what should be filled instead, and needs both before it can be saved', async () => {
     render(<GoldenSetReviewSection />)
     await screen.findByText(/Family Name/)
     fireEvent.click(screen.getByRole('button', { name: 'Wrong' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save "Wrong"' }))
-    expect((await screen.findByRole('alert')).textContent).toMatch(/what this box should be filled with/)
+    expect((await screen.findByRole('alert')).textContent).toMatch(/why this is wrong/)
     expect(api.review).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText(/Why is this wrong/), { target: { value: 'this is the employer, not the worker' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save "Wrong"' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/what this box should be filled with instead/)
     fireEvent.change(screen.getByLabelText(/What should this box be filled with instead/), { target: { value: "the employer's last name" } })
     fireEvent.click(screen.getByRole('button', { name: 'Save "Wrong"' }))
-    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'wrong', correction: "the employer's last name", note: '' }))
+    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'wrong', reason: 'this is the employer, not the worker', correction: "the employer's last name", shouldBeBlank: false, note: '' }))
+  })
+
+  it('"Wrong" can say the box should be left blank, which replaces the "filled with" question', async () => {
+    render(<GoldenSetReviewSection />)
+    await screen.findByText(/Family Name/)
+    fireEvent.click(screen.getByRole('button', { name: 'Wrong' }))
+    fireEvent.change(screen.getByLabelText(/Why is this wrong/), { target: { value: 'USCIS says leave it empty' } })
+    fireEvent.click(screen.getByLabelText(/should be left blank/))
+    expect(screen.queryByLabelText(/What should this box be filled with instead/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Save "Wrong"' }))
+    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'wrong', reason: 'USCIS says leave it empty', correction: '', shouldBeBlank: true, note: '' }))
+  })
+
+  it('"Keep blank" is a fourth answer: it asks why the box should stay blank, then saves', async () => {
+    render(<GoldenSetReviewSection />)
+    await screen.findByText(/Family Name/)
+    fireEvent.click(screen.getByRole('button', { name: 'Keep blank' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save "Keep blank"' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/why this box should stay blank/)
+    expect(api.review).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText(/Why should this box stay blank/), { target: { value: 'USCIS says leave it empty' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save "Keep blank"' }))
+    await waitFor(() => expect(api.review).toHaveBeenCalledWith('e1', { verdict: 'blank', reason: 'USCIS says leave it empty', note: '' }))
+    expect(screen.getByRole('button', { name: 'Marked Keep blank' })).toBeTruthy() // and it can be filtered
   })
 
   it('someone who is not the reviewer can look but gets no answer buttons and no sign-off', async () => {

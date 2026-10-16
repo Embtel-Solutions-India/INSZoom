@@ -15,11 +15,12 @@ function computeCoverage({ template = {}, graph = {}, universe, getTemplateField
 
   // required vs optional fields that no active edge fills
   const mapped = new Set(active.map((edge) => edge.targetFieldId));
+  const keptBlank = new Set((graph.keepBlank || []).map((entry) => entry.targetFieldId));
   const requiredUnmapped = [];
   let optionalUnmapped = 0;
   for (const field of fields) {
     const id = field.targetFieldId || field.fieldId || field.id || field.fieldName;
-    if (!id || mapped.has(id)) continue;
+    if (!id || mapped.has(id) || keptBlank.has(id)) continue;
     if (field.required) { if (requiredUnmapped.length < CAP) requiredUnmapped.push(id); } else optionalUnmapped += 1;
   }
 
@@ -48,6 +49,7 @@ function computeCoverage({ template = {}, graph = {}, universe, getTemplateField
       total: fields.length,
       mapped: mapped.size,
       coveragePercent: fields.length ? Math.round((mapped.size / fields.length) * 100) : 100,
+      keptBlank: keptBlank.size,
       requiredUnmapped: requiredUnmapped.length,
       requiredUnmappedFields: requiredUnmapped,
       optionalUnmapped,

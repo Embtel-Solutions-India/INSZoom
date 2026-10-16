@@ -27,6 +27,8 @@ router.put("/templates/:templateId/mappings/:targetFieldId", authorizePermission
   req.body = { ...(req.body || {}), targetFieldId: req.params.targetFieldId };
   return controller.upsertMapping(req, res, next);
 });
+// a person decides this box stays EMPTY (no canonical field, no default value); keepBlank:false takes it back
+router.put("/templates/:templateId/mappings/:targetFieldId/keep-blank", authorizePermissions("forms:update"), controller.keepBlank);
 router.delete("/templates/:templateId/mappings/:mappingId", authorizePermissions("forms:update"), controller.deleteMapping);
 
 // Checklist <-> field traceability (read-only governance queries).

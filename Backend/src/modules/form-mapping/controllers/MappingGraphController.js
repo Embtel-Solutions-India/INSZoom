@@ -81,6 +81,16 @@ exports.upsertMapping = async (req, res, next) => {
   }
 };
 
+// PUT /form-mappings/templates/:templateId/mappings/:targetFieldId/keep-blank  { keepBlank: true|false, reason? }
+exports.keepBlank = async (req, res, next) => {
+  try {
+    const result = await MappingGraphService.setKeepBlank(req.params.templateId, { ...(req.body || {}), targetFieldId: req.params.targetFieldId }, req.user, req);
+    send(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.versions = async (req, res, next) => {
   try {
     const result = await MappingGraphService.versions(req.params.templateId);

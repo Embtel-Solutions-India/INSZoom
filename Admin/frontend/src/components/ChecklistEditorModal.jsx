@@ -110,7 +110,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
             <h2 className="text-lg font-bold text-foreground">Edit checklist - {checklist.title}</h2>
             <p className="mt-1 flex items-start gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800" data-testid="case-only-notice">
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <span><b>This updates the checklist for this case only.</b> The shared template and other cases are not changed. What you edit here is what the client will see.</span>
+              <span><b>Deleting a question removes it from this case only.</b> Answers already given are kept on record.</span>
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary" aria-label="Close"><X className="h-5 w-5" /></button>
@@ -150,7 +150,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                           {busyKey === question.key ? 'Saving…' : 'Save'}
                         </button>
                         <button type="button" className="btn-secondary inline-flex items-center gap-1 text-xs text-rose-700" disabled={busyKey === question.key}
-                          onClick={() => { if (window.confirm('Remove this question from this case\'s checklist? Answers already given are kept on record.')) send(question.key, { op: 'remove', questionKey: question.key }) }}>
+                          onClick={() => send(question.key, { op: 'remove', questionKey: question.key })}>
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
                         </button>
                       </div>

@@ -3,7 +3,7 @@ const COLUMNS = [
   ["No.", (e) => e.ref], ["Form", (e) => `${e.formCode} - ${e.formName}`], ["Kind of form", (e) => e.familyLabel], ["Where on the form", (e) => e.where], ["The box asks for", (e) => e.boxLabel],
   ["Box type", (e) => e.boxKind], ["This box is about", (e) => e.belongsTo], ["We fill it with", (e) => e.fillsWith], ["How it is written", (e) => e.writtenAs], ["Only when", (e) => e.onlyWhen],
   ["If that is empty we use", (e) => e.ifEmpty], ["Appears on the form", (e) => (e.appearsTimes > 1 ? `${e.appearsTimes} times` : "once")], ["Sample client's data", (e) => e.example?.clientData], ["The box would show", (e) => e.example?.boxShows],
-  ["In one sentence", (e) => e.sentence], ["Your answer (Right / Wrong / Not sure)", (e) => e.verdictLabel || ""], ["If wrong: what should it be?", (e) => e.correction || ""], ["Your notes", (e) => e.note || ""],
+  ["In one sentence", (e) => e.sentence], ["Your answer (Right / Wrong / Not sure)", (e) => e.verdictLabel || ""], ["If wrong: why?", (e) => e.reason || ""], ["If wrong: what should be filled instead?", (e) => e.correction || ""], ["Your notes", (e) => e.note || ""],
 ];
 
 const cell = (value) => {
