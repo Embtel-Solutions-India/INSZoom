@@ -21,6 +21,7 @@ const triggers = require("../email/emailTriggers.registry");
 const registry = require("../email/emailVariables.registry");
 const customization = require("../email/emailCustomization.service");
 const emailPolicy = require("../email/emailPolicy");
+const { portalUrl } = require("../email/portalUrls");
 
 const env = require("../../config/env");
 
@@ -49,14 +50,14 @@ const linkFor = (trigger, caseId) => {
 const trimSlash = (url) => String(url || "").replace(/\/+$/, "");
 function portalLinkFor(trigger, caseId) {
   const path = linkFor(trigger, caseId);
-  if (trigger.audience === "client") return `${trimSlash(env.clientUrl)}${path}`;
-  if (trigger.audience === "attorney") return `${trimSlash(process.env.ATTORNEY_PORTAL_URL || "http://localhost:5174")}${path}`;
-  return `${trimSlash(process.env.ADMIN_PORTAL_URL || "http://localhost:3002")}${path}`;
+  if (trigger.audience === "client") return `${portalUrl("client")}${path}`;
+  if (trigger.audience === "attorney") return `${portalUrl("attorney")}${path}`;
+  return `${portalUrl("admin")}${path}`;
 }
 
 // Users for an audience. Case-scoped audiences come from the loaded case
 // context; admin / super_admin are role-wide by nature.
-async function resolveAudienceUsers(audience, ctx, onlyIds) {
+async function resolveAudienceUsers(audience, ctx, onlyIds, caseScoped = false) {
   // A call site can pin an audience to specific users (e.g. only the attorney
   // who was just assigned/removed, not every attorney on the case).
   if (Array.isArray(onlyIds)) {
@@ -64,6 +65,8 @@ async function resolveAudienceUsers(audience, ctx, onlyIds) {
     return User.find({ _id: { $in: onlyIds }, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
   }
   if (audience === "admin" || audience === "super_admin") {
+    // A notice about a CASE never goes to every admin / super admin - only the case's own team hears about it (caseAudience.js).
+    if (caseScoped) return [];
     return User.find({ role: audience, isActive: { $ne: false } }).select("_id email role name displayName isDemoData +password").lean();
   }
   const ids = ctx.people?.[audience] || [];
@@ -156,7 +159,7 @@ async function emit(event, { caseId, actor, data = {}, covered = {}, recipients 
     let delivered = 0;
 
     for (const trigger of defs) {
-      const users = await resolveAudienceUsers(trigger.audience, ctx, recipients[trigger.audience]);
+      const users = await resolveAudienceUsers(trigger.audience, ctx, recipients[trigger.audience], Boolean(caseId));
       for (const user of users) {
         const userId = idOf(user);
         if (handled.has(userId)) continue;

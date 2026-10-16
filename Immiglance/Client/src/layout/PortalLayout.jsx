@@ -143,7 +143,8 @@ export default function PortalLayout() {
           <Outlet />
         </main>
       </div>
-      <EnablePushButton />
+      {/* Its floating button would sit on top of the Messages composer's Send button. */}
+      {!location.pathname.startsWith("/dashboard/messages") && <EnablePushButton />}
     </div>
   );
 }

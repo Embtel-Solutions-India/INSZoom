@@ -71,6 +71,8 @@ const messageSchema = new mongoose.Schema(
     messageBody: String,
     normalizedBody: String,
     attachments: [attachmentSchema],
+    // Client-generated id for one send, so a retried request returns the stored message instead of posting a duplicate.
+    clientMessageId: { type: String, maxlength: 64 },
     attachmentPreviews: [
       {
         attachmentId: mongoose.Schema.Types.ObjectId,
@@ -165,6 +167,11 @@ messageSchema.pre("validate", function syncCompatibilityFields(next) {
 });
 
 messageSchema.index({ conversationId: 1, createdAt: 1 });
+// Idempotency for client retries: one stored message per (sender, clientMessageId).
+messageSchema.index(
+  { senderId: 1, clientMessageId: 1 },
+  { unique: true, partialFilterExpression: { clientMessageId: { $type: "string" } } }
+);
 messageSchema.index({ threadId: 1, createdAt: 1 });
 messageSchema.index({ caseId: 1, createdAt: -1 });
 messageSchema.index({ receiverId: 1, createdAt: -1 });

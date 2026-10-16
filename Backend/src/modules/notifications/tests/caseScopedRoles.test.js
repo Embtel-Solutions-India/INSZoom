@@ -54,16 +54,28 @@ test("a case notification to client/case manager/team lead/attorney reaches only
   assert.deepEqual(ids, ["att1", "cl1", "cm1", "tl1"]);
 });
 
-test("admin and super admin stay role-wide for case notifications", async (t) => {
-  const ids = await run(t, ["admin", "super_admin", "case_manager"], ASSIGNED, { caseId: "c1" });
-  assert.deepEqual(ids, ["ad1", "cm1", "sa1"]);
+test("admin and super admin are NOT notified about a case (only its own team is); they stay role-wide for system notices with no case", async (t) => {
+  let ids = await run(t, ["admin", "super_admin", "case_manager"], ASSIGNED, { caseId: "c1" });
+  assert.deepEqual(ids, ["cm1"]);
+  ids = await run(t, ["admin", "super_admin"], ASSIGNED, {});
+  assert.deepEqual(ids, ["ad1", "sa1"]);
 });
 
-test("a case with no assigned case manager falls back to its team lead; unassigned cases go to team leads to triage", async (t) => {
+test("a case with no assigned case manager falls back to its team lead; a case with no team lead goes to the default team lead only, never every team lead", async (t) => {
   let ids = await run(t, ["case_manager"], { user: "cl1", assignedTeamLead: "tl2" }, { caseId: "c1" });
   assert.deepEqual(ids, ["tl2"]);
+  // no team lead on the case: the default team lead (teamlead@immiglance.com) - here tl2 - and nobody else
+  const mongoose = require("mongoose");
+  const originalFindOne = User.findOne;
+  Object.defineProperty(mongoose.connection, "readyState", { get: () => 1, configurable: true });
+  User.findOne = (query) => ({ select: () => ({ lean: async () => (query.email === "teamlead@immiglance.com" ? { _id: "tl2" } : null) }) });
+  t.after(() => { User.findOne = originalFindOne; delete mongoose.connection.readyState; });
   ids = await run(t, ["case_manager", "team_lead"], { user: "cl1" }, { caseId: "c1" });
-  assert.deepEqual(ids, ["tl1", "tl2"]);
+  assert.deepEqual(ids, ["tl2"]);
+  // and if even the default team lead account does not exist, nobody is spammed
+  User.findOne = () => ({ select: () => ({ lean: async () => null }) });
+  ids = await run(t, ["case_manager", "team_lead"], { user: "cl1" }, { caseId: "c1" });
+  assert.deepEqual(ids, []);
 });
 
 test("clients only ever get their own case's alert (family cases reach petitioner and beneficiary)", async (t) => {

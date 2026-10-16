@@ -9,6 +9,7 @@ const caseService = require("../cases/case.service");
 const notificationService = require("../notifications/notification.service");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const storageService = require("../uploads/storage.service");
+const chunkedUploads = require("../chunked-uploads/chunkedUpload.service");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const { resolveCaseConversationRouting } = require("./messageRouting");
 
@@ -510,25 +511,38 @@ function scoreSpam(content = "", attachments = []) {
   return { score, flagged: score >= 50, reason: score >= 50 ? "Automated spam heuristic matched" : undefined };
 }
 
-async function sendMessage({ conversation, body, files, user, req }) {
+async function sendMessage({ conversation, body, files: multipartFiles, user, req }) {
+  let files = multipartFiles;
+  // Big files arrive ahead of the message through the chunked-upload API and are referenced here by id.
+  const stagedIds = chunkedUploads.normalizeUploadIds(body.uploadIds);
   if (!(await canAccessConversation(user, conversation))) {
     const error = new Error("Access denied");
     error.status = 403;
     throw error;
   }
   const content = body.messageBody || body.message;
-  if (!content?.trim() && !files?.length) {
+  if (!content?.trim() && !files?.length && !stagedIds.length) {
     const error = new Error("Message body or attachment is required");
     error.status = 400;
     throw error;
   }
+  const clientMessageId = typeof body.clientMessageId === "string" && body.clientMessageId.trim() ? body.clientMessageId.trim().slice(0, 64) : null;
+  // A retry of a send that already landed: hand back the stored message, don't post it twice.
+  if (clientMessageId) {
+    const existing = await Message.findOne({ senderId: user._id, clientMessageId });
+    if (existing) return populateMessage(existing);
+  }
+  if (stagedIds.length) files = [...(multipartFiles || []), ...(await chunkedUploads.loadStaged(user._id, stagedIds))];
   const internal = (body.isInternal === true || body.isInternal === "true" || body.isInternalNote === true || body.isInternalNote === "true") && isStaff(user);
   const attachments = body.attachments?.length ? body.attachments : await storeAttachments(files || [], { caseId: idOf(conversation.caseId), userId: user._id });
   const spam = scoreSpam(content || "", attachments);
   if (conversation.caseId && conversation.type === "case") {
     await syncCaseConversationParticipants(conversation);
   }
-  const message = await Message.create({
+  let message;
+  try {
+    message = await Message.create({
+    ...(clientMessageId ? { clientMessageId } : {}),
     conversationId: conversation._id,
     threadId: conversation._id,
     caseId: conversation.caseId,
@@ -568,7 +582,16 @@ async function sendMessage({ conversation, body, files, user, req }) {
     secureShare: body.secureShare || {},
     spam,
     legacySource: body.legacySource || "shared",
-  });
+    });
+  } catch (error) {
+    // Two copies of the same send raced each other; the other one won.
+    if (error?.code === 11000 && clientMessageId) {
+      const existing = await Message.findOne({ senderId: user._id, clientMessageId });
+      if (existing) return populateMessage(existing);
+    }
+    throw error;
+  }
+  if (stagedIds.length) chunkedUploads.discard(stagedIds); // the bytes now live in permanent storage
   addAuditEntry(message, "send", user, { conversationId: conversation._id }, req);
   await message.save();
   conversation.lastMessagePreview = message.messageBody.slice(0, 160);

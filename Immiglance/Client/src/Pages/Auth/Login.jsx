@@ -330,14 +330,14 @@ export default function Login() {
               )}
 
               {pendingInvite && (
-                <div role="alert" className="mb-4 px-4 py-3 bg-accent border border-accent-foreground/20 rounded-xl text-sm text-accent-foreground">
+                <div role="alert" className="mb-4 px-4 py-3 bg-primary/15 border border-primary/50 rounded-xl text-sm text-foreground">
                   {resendSent ? (
                     <p>A new invitation has been sent to <span className="font-semibold">{email}</span>. Check your email to set your password.</p>
                   ) : (
                     <>
                       <p className="mb-2">You've been invited — set your password to continue instead of logging in.</p>
                       <button type="button" onClick={handleResendInvite} disabled={resendingInvite}
-                        className="text-sm font-bold underline disabled:opacity-60 cursor-pointer">
+                        className="text-sm font-bold underline text-primary disabled:opacity-60 cursor-pointer">
                         {resendingInvite ? "Sending…" : "Resend invitation email"}
                       </button>
                     </>

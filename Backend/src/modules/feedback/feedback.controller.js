@@ -42,6 +42,8 @@ exports.createFeedback = async (req, res, next) => {
       caseId: req.params.caseId,
       author: req.user,
       message: req.body.message,
+      clientMessageId: req.body.clientMessageId,
+      uploadIds: req.body.uploadIds,
       files: req.files || [],
     });
     res.status(201).json({ success: true, feedback });
@@ -57,6 +59,8 @@ exports.replyToFeedback = async (req, res, next) => {
       caseId: req.params.caseId,
       author: req.user,
       message: req.body.message,
+      clientMessageId: req.body.clientMessageId,
+      uploadIds: req.body.uploadIds,
       parentFeedbackId: req.params.feedbackId,
       files: req.files || [],
     });

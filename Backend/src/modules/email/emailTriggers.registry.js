@@ -45,7 +45,9 @@ const TRIGGERS = [
   t("attorney-assignment", "Attorney Assigned", "Attorney", "attorney", "An attorney is granted access to a case.", { groups: ["Client", "Case", "Case Manager", "Attorney"] }),
 
   t("new-message-received", "New Message Received (while offline)", "Case", "client", "A client, attorney, case manager or team lead is sent a message while they are not signed in. Never sent to administrators.", { groups: ["Client", "Case", "Case Manager", "Team Lead", "Attorney", "System"] }),
-  t("questionnaire-progress-saved", "Questionnaire Progress Saved (Case Manager)", "Questionnaire", "team_member", "A client, employer or employee clicks Save progress on their checklist - only the case's assigned case manager is told, with a link to review it in Admin.", { groups: ["Client", "Case", "Case Manager", "Company"] }),
+  t("questionnaire-progress-saved", "Questionnaire Progress Saved (Case Manager & Team Lead)", "Questionnaire", "team_member", "A client, employer or employee clicks Save progress on their checklist - the case's assigned case manager and its team lead are told which questions were answered, with a login button to Admin.", { groups: ["Client", "Case", "Case Manager", "Team Lead", "Company"] }),
+  t("questionnaire-submitted-team", "Questionnaire Submitted (Case Manager & Team Lead)", "Questionnaire", "team_member", "A client, employer, employee or beneficiary submits their questionnaire - the case's assigned case manager and its team lead are told which questions/documents were submitted, with a login button to Admin.", { groups: ["Client", "Case", "Case Manager", "Team Lead", "Company"] }),
+  t("client-message-team-alert", "New Client Message (Case Manager & Team Lead)", "Internal Team", "team_member", "A client sends a message through the Immiglance portal - the case's case manager and team lead are told, with a login button to Admin. At most one email per person per case every 30 minutes.", { groups: ["Client", "Case", "Case Manager", "Team Lead", "System"] }),
   t("additional-info-requested", "Additional Information Requested", "Questionnaire", "client", "The team asks the client for more information.", { groups: ["Client", "Case", "Case Manager", "Document"] }),
 
   t("document-requested", "Document Requested", "Documents", "client", "A client is asked to upload a document.", { groups: ["Client", "Case", "Document"] }),
@@ -67,7 +69,7 @@ const BUILT_IN_AUDIENCE = {
   "consultation-host-notify": "admin", "quiz-lead-internal": "admin", "staff-credentials": "admin",
   "case-assigned-case-manager": "case_manager", "client-intake-submitted-case-manager": "case_manager",
   "case-manager-assigned": "client", "case-manager-reassigned": "client",
-  "questionnaire-progress-saved": "case_manager",
+  "questionnaire-progress-saved": "case_manager", "questionnaire-submitted-team": "case_manager", "client-message-team-alert": "case_manager",
 };
 const RECIPIENT_AUDIENCE = { client: "client", attorney: "attorney", team_member: "case_manager" };
 TRIGGERS.forEach((trigger) => {

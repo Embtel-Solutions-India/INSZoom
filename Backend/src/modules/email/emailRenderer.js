@@ -4,8 +4,27 @@
 // preview/test-send call renderCustom() - the same function the real send
 // path uses - so what an admin previews is exactly what recipients get.
 const { substitute, escapeHtml } = require("./emailVariables.registry");
+const { portalUrl } = require("./portalUrls");
 
-function layoutHtml({ title, heading, innerHtml }) {
+// Every email that goes to internal staff (case manager, team lead, admin, super admin) ends with a button to the Admin
+// login page. Skipped when the email already links to that page (e.g. the staff-credentials email).
+function adminLoginUrl() {
+  return `${portalUrl("admin")}/login`;
+}
+
+function adminLoginBlock(existingHtml = "") {
+  const url = adminLoginUrl();
+  if (String(existingHtml).includes(url)) return "";
+  return `<div style="margin:8px 0 16px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:700;">Log in to Admin</a></div>`;
+}
+
+function adminLoginText(existingText = "") {
+  const url = adminLoginUrl();
+  return String(existingText).includes(url) ? "" : `Log in to Admin: ${url}`;
+}
+
+function layoutHtml({ title, heading, innerHtml, adminLogin = false }) {
+  if (adminLogin) innerHtml = `${innerHtml}${adminLoginBlock(innerHtml)}`;
   const year = new Date().getFullYear();
   const headingHtml = heading
     ? `<h1 style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${heading}</h1>
@@ -88,14 +107,15 @@ function htmlToText(html) {
  * @param {{mode?:"live"|"sample"}} options
  * @returns {{subject:string, heading:string, html:string, text:string}}
  */
-function renderCustom(template, ctx = {}, { mode = "live", highlightUnknown = false } = {}) {
+function renderCustom(template, ctx = {}, { mode = "live", highlightUnknown = false, adminLogin = false } = {}) {
   const subject = substitute(template.subject, ctx, { mode, escape: false });
   const heading = template.heading ? substitute(template.heading, ctx, { mode, escape: true, highlightUnknown }) : "";
   const bodyHtml = substitute(sanitizeEmailHtml(template.body), ctx, { mode, escape: true, highlightUnknown });
   const innerHtml = wrapBody(bodyHtml);
-  const html = layoutHtml({ title: escapeHtml(subject), heading, innerHtml });
-  const text = [heading && htmlToText(heading), htmlToText(bodyHtml)].filter(Boolean).join("\n\n");
+  const html = layoutHtml({ title: escapeHtml(subject), heading, innerHtml, adminLogin });
+  const bodyText = htmlToText(bodyHtml);
+  const text = [heading && htmlToText(heading), bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n");
   return { subject, heading, html, text };
 }
 
-module.exports = { previewShells, layoutHtml, sanitizeEmailHtml, htmlToText, renderCustom };
+module.exports = { previewShells, layoutHtml, sanitizeEmailHtml, htmlToText, renderCustom, adminLoginUrl, adminLoginText };

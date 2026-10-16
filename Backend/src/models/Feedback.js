@@ -39,11 +39,18 @@ const feedbackSchema = new mongoose.Schema(
         readAt: { type: Date, default: Date.now },
       },
     ],
+    // Client-generated id for one send, so a retry of the same message (after a
+    // dropped response / timeout) returns the stored copy instead of posting a duplicate.
+    clientMessageId: { type: String, maxlength: 64 },
     deletedAt: Date,
   },
   { timestamps: true }
 );
 
 feedbackSchema.index({ caseId: 1, createdAt: 1 });
+feedbackSchema.index(
+  { authorId: 1, clientMessageId: 1 },
+  { unique: true, partialFilterExpression: { clientMessageId: { $type: "string" } } }
+);
 
 module.exports = mongoose.model("Feedback", feedbackSchema);

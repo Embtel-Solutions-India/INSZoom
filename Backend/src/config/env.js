@@ -93,7 +93,7 @@ if (storageProvider === "local" && process.env.NODE_ENV === "production") {
 
 const env = {
   nodeEnv,
-  // Team lead new cases are routed to when nobody is named (see case.service.js resolveTeamLeadForCase). Empty = least-recently-updated round robin.
+  // Team lead new cases are routed to when nobody is named (see case.service.js resolveTeamLeadForCase). Not an active team lead in the database = least-recently-updated round robin.
   // Creator-specific team leads: "creator@x.com=teamlead@x.com, other@x.com=lead2@x.com". A case created by that creator goes to that team lead.
   teamLeadByCreatorEmail: Object.fromEntries(
     (process.env.TEAM_LEAD_BY_CREATOR_EMAIL || "")
@@ -101,7 +101,8 @@ const env = {
       .map((pair) => pair.split("=").map((part) => part.trim().toLowerCase()))
       .filter(([creator, lead]) => creator && lead)
   ),
-  defaultTeamLeadEmail: (process.env.DEFAULT_TEAM_LEAD_EMAIL || "").trim().toLowerCase(),
+  // Unset = teamlead@immiglance.com: the team lead of every case that has none (admin-created without one, GoHighLevel, ...).
+  defaultTeamLeadEmail: (process.env.DEFAULT_TEAM_LEAD_EMAIL || "teamlead@immiglance.com").trim().toLowerCase(),
   port: process.env.PORT || 7000,
   // Dev/testing-phase guard: real case managers, team leads, admins, and
   // attorneys are real people with real inboxes, and every case/task/

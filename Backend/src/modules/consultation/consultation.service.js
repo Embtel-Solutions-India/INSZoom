@@ -128,9 +128,7 @@ async function getPublicSlots({ from, to } = {}) {
 // right domain because of that list's current ordering - explicit and
 // order-independent now.
 function manageUrlFor(token) {
-  const fallback = process.env.NODE_ENV === "production" ? "https://immiglance.com" : "http://localhost:5173";
-  const base = (process.env.LANDING_URL || fallback).replace(/\/+$/, "");
-  return `${base}/consultation/booking/${token}`;
+  return `${require("../email/portalUrls").portalUrl("landing")}/consultation/booking/${token}`;
 }
 
 async function notifyHost(appointment, config, lead) {

@@ -353,7 +353,9 @@ async function notifyCaseManagerOfSubmission(caseManagerId, caseData, client, us
     caseId: caseData._id,
     link: `/crm-cases/${caseData._id}`,
     priority: "high",
-    emailTemplate: caseManager?.email ? "client-intake-submitted-case-manager" : undefined,
+    // A client's own submission is emailed by the questionnaire alert (progress-alert.service.js, which also names the answered
+    // questions and reaches the team lead); this plain email remains only for staff submitting on a client's behalf.
+    emailTemplate: caseManager?.email && !require("../questionnaires/checklist-gate").isClientSideUser(user) ? "client-intake-submitted-case-manager" : undefined,
     emailTo: caseManager?.email,
     emailData: {
       caseManagerName: caseManager?.name || caseManager?.displayName || "Case Manager",
@@ -437,6 +439,8 @@ async function submitClientIntake({ user, caseId, req }) {
   notifySubmission(caseData, client, user, req).catch((error) => {
     console.error("[submitClientIntake] notifySubmission failed (non-fatal):", error?.message);
   });
+  // Email (case manager + team lead) and the team lead's push - notifySubmission above already pushes to the case manager.
+  require("../questionnaires/progress-alert.service").notifySubmitted({ caseId: caseData._id, skipCaseManagerPush: true }, user, req).catch(() => null);
   // setImmediate defers past the current event-loop iteration (i.e. past
   // res.json()) - same pattern already used for initializeCase in
   // case.controller.js. runPostClientSubmission's Drive sync/workbook
