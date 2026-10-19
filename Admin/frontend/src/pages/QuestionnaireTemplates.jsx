@@ -1,26 +1,28 @@
 import { useEffect, useMemo, useState, useRef } from 'react'
 import {
   Plus, Copy, Trash2, GripVertical, MoreVertical, Search, X, SeparatorHorizontal, Type as TypeIcon,
-  Library, ChevronLeft, ChevronRight, FileText, Lock, Pencil
+  Library, ChevronDown, ChevronRight, FileText, Lock, Pencil
 } from 'lucide-react'
-import api, { questionnairesApi, eligibilityQuizApi } from '../services/api'
+import { questionnairesApi, eligibilityQuizApi } from '../services/api'
+import ChecklistUsageCard from '../components/ChecklistUsageCard'
+import ConfirmModal from '../components/ConfirmModal'
 
 const QUESTION_TYPE_OPTIONS = [
-  { label: 'Short answer', value: 'text', icon: '—' },
-  { label: 'Long answer', value: 'textarea', icon: '≡' },
-  { label: 'Number', value: 'number', icon: '#' },
-  { label: 'Date', value: 'date', icon: '📅' },
-  { label: 'Email', value: 'email', icon: '@' },
-  { label: 'Phone number', value: 'phone', icon: '☎' },
-  { label: 'Multiple choice', value: 'radio', icon: '○' },
-  { label: 'Checkboxes', value: 'checkbox', icon: '☑' },
-  { label: 'Dropdown', value: 'select', icon: '▼' },
-  { label: 'Multi-select', value: 'multiselect', icon: '☑☑' },
-  { label: 'File upload', value: 'file', icon: '📎' },
-  { label: 'Multiple files', value: 'file-multiple', icon: '📎' },
+  { label: 'Short answer', value: 'text' },
+  { label: 'Long answer', value: 'textarea' },
+  { label: 'Number', value: 'number' },
+  { label: 'Date', value: 'date' },
+  { label: 'Email', value: 'email' },
+  { label: 'Phone number', value: 'phone' },
+  { label: 'Multiple choice', value: 'radio' },
+  { label: 'Checkboxes', value: 'checkbox' },
+  { label: 'Dropdown', value: 'select' },
+  { label: 'Multi-select', value: 'multiselect' },
+  { label: 'File upload', value: 'file' },
+  { label: 'Multiple files', value: 'file-multiple' },
 ]
 const QUESTION_TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((option) => [option.value, option.label]))
-const CHOICE_TYPES = new Set(['radio', 'checkbox', 'select', 'multiselect'])
+const CHOICE_TYPES = new Set(['radio', 'checkbox', 'select', 'multiselect', 'multi_select'])
 const OPERATORS = ['equals', 'not_equals', 'contains', 'greater_than', 'less_than', 'exists', 'not_exists']
 const EVIDENCE_CATEGORIES = ['Publication', 'Award', 'Patent', 'Press', 'Membership', 'Judging', 'High Salary', 'Education', 'Employment', 'Impact', 'National Importance']
 
@@ -64,7 +66,6 @@ const ROLE_CONFIG = {
 }
 const DEFAULT_ROLE_OPTIONS = [{ label: 'General / Client', value: 'client' }]
 
-const TARGET_ROLES = ['', 'employer', 'employee', 'petitioner', 'beneficiary', 'client', 'business_plan']
 const TARGET_ROLE_LABELS = {
   '': 'General',
   employer: 'Employer',
@@ -97,9 +98,8 @@ const emptyQuestion = {
   description: '',
   type: 'text',
   sectionKey: '',
-  order: 1,
   required: false,
-  optionsText: '',
+  options: [],
   placeholder: '',
   showIf: { field: '', operator: 'equals', value: '' },
   uscisMappingsText: '',
@@ -111,69 +111,129 @@ function slug(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-function normalizeQuestionPayload(form) {
-  const options = form.optionsText
-    ? form.optionsText.split('\n').map((line) => line.trim()).filter(Boolean).map((value) => ({ label: value, value }))
-    : []
-  const uscisMappings = form.uscisMappingsText
-    ? form.uscisMappingsText.split('\n').map((line) => line.trim()).filter(Boolean)
-    : []
+const isActiveQuestion = (question) => question.active !== false && question.isActive !== false
+// The type the designer picked: the stored type can be an alias ("multiselect" is stored as "multi_select", "file-multiple" as "file").
+const typeOf = (question) => question.metadata?.requestedType || question.type
+const pagesFrom = (sections) => (sections || []).map((section) => ({ key: section.key, title: section.title, order: section.order, sectionKeys: [section.key] }))
+const readError = (error, fallback) => {
+  const message = error?.response?.data?.message
+  return typeof message === 'string' && message.trim() ? message : fallback
+}
+
+// ── question <-> editor form ────────────────────────────────────────────
+// Options keep their stored value: renaming an option changes its label only (an answer a client already gave is stored by value). A new option's
+// value follows its label until it is saved.
+const optionRows = (options) => (options || []).map((option) => ({ label: String(option.label ?? option.value ?? ''), value: option.value ?? option.label, fixed: true }))
+
+function questionToForm(question) {
   return {
-    key: form.key || slug(form.label),
-    label: form.label,
-    description: form.description,
-    helpText: form.description,
-    type: form.type,
-    sectionKey: form.sectionKey,
-    pageKey: form.sectionKey,
-    order: Number(form.order) || 1,
-    required: Boolean(form.required),
-    options,
-    placeholder: form.placeholder,
-    showIf: form.showIf?.field ? form.showIf : undefined,
-    uscisMappings,
-    eligibilityWeight: Number(form.eligibilityWeight) || 0,
-    evidenceCategory: form.evidenceCategory,
-    isActive: true,
+    ...emptyQuestion,
+    key: question.key || '',
+    label: question.label || '',
+    description: question.description || question.helpText || '',
+    type: typeOf(question),
+    sectionKey: question.sectionKey || '',
+    required: Boolean(question.required),
+    options: optionRows(question.options),
+    placeholder: question.placeholder || '',
+    showIf: question.showIf?.field ? { field: question.showIf.field, operator: question.showIf.operator || 'equals', value: question.showIf.value ?? '' } : { field: '', operator: 'equals', value: '' },
+    uscisMappingsText: (question.uscisMappings || []).join('\n'),
+    eligibilityWeight: question.eligibilityWeight || 0,
+    evidenceCategory: question.evidenceCategory || '',
   }
 }
 
+const cleanOptionList = (rows) => (rows || [])
+  .map((row) => ({ label: String(row.label ?? '').trim(), value: row.fixed ? row.value : String(row.label ?? '').trim() }))
+  .filter((row) => row.label)
+
+const linesOf = (text) => String(text || '').split('\n').map((line) => line.trim()).filter(Boolean)
+const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right)
+
+// Only the fields the designer really changed. A save that sends the whole question back rewrote option values, dropped logic the simple editor cannot
+// show and marked every field as hand-edited.
+function buildQuestionPatch(form, original) {
+  const before = questionToForm(original)
+  const patch = {}
+  const label = form.label.trim()
+  if (label !== before.label) patch.label = label
+  if ((form.description || '') !== before.description) { patch.description = form.description || ''; patch.helpText = form.description || '' }
+  const typeChanged = form.type !== before.type
+  if (typeChanged) patch.type = form.type
+  if (Boolean(form.required) !== before.required) patch.required = Boolean(form.required)
+  if (typeChanged || !sameJson(cleanOptionList(form.options), cleanOptionList(before.options))) {
+    if (CHOICE_TYPES.has(form.type)) patch.options = cleanOptionList(form.options)
+    else if ((original.options || []).length) patch.options = [] // a type with no choices: the old choices go
+  }
+  if ((form.placeholder || '') !== before.placeholder) patch.placeholder = form.placeholder || ''
+  if (!sameJson(form.showIf, before.showIf)) {
+    if (form.showIf?.field) patch.showIf = form.showIf
+    else { patch.showIf = { field: '', operator: '', value: undefined }; patch.conditionalLogic = { mode: 'all', rules: [], groups: [] } }
+  }
+  if (!sameJson(linesOf(form.uscisMappingsText), linesOf(before.uscisMappingsText))) patch.uscisMappings = linesOf(form.uscisMappingsText)
+  if (Number(form.eligibilityWeight || 0) !== Number(before.eligibilityWeight || 0)) patch.eligibilityWeight = Number(form.eligibilityWeight) || 0
+  if ((form.evidenceCategory || '') !== before.evidenceCategory) patch.evidenceCategory = form.evidenceCategory || ''
+  return patch
+}
+
+function buildNewQuestionPayload(form) {
+  const payload = {
+    label: form.label.trim(),
+    description: form.description || '',
+    helpText: form.description || '',
+    type: form.type,
+    sectionKey: form.sectionKey,
+    pageKey: form.sectionKey,
+    required: Boolean(form.required),
+    placeholder: form.placeholder || '',
+    eligibilityWeight: Number(form.eligibilityWeight) || 0,
+    isActive: true,
+  }
+  // a key typed in "Advanced" is used; otherwise the server makes one from the text and numbers it if it is taken
+  if (form.key.trim()) payload.key = slug(form.key)
+  if (CHOICE_TYPES.has(form.type)) payload.options = cleanOptionList(form.options)
+  if (form.showIf?.field) payload.showIf = form.showIf
+  if (linesOf(form.uscisMappingsText).length) payload.uscisMappings = linesOf(form.uscisMappingsText)
+  if (form.evidenceCategory) payload.evidenceCategory = form.evidenceCategory
+  return payload
+}
+
 export default function QuestionnaireTemplates() {
-  // ── Existing state (unchanged) ──────────────────────────────────────────
   const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [selected, setSelected] = useState(null)
   const [questions, setQuestions] = useState([])
-  const [cases, setCases] = useState([])
   const [templateForm, setTemplateForm] = useState(emptyTemplate)
   const [sectionTitle, setSectionTitle] = useState('')
-  const [questionForm, setQuestionForm] = useState(emptyQuestion)
-  const [selectedQuestionId, setSelectedQuestionId] = useState('')
-  const [assignCaseId, setAssignCaseId] = useState('')
-  const [assignTargetRole, setAssignTargetRole] = useState('')
-  const [progressCaseId, setProgressCaseId] = useState('')
-  const [progress, setProgress] = useState(null)
-  const [mappings, setMappings] = useState([])
-  const [visaMappings, setVisaMappings] = useState([])
+  const [fieldMappings, setFieldMappings] = useState([])
+  const [showFieldMappings, setShowFieldMappings] = useState(false)
   const [visaOptions, setVisaOptions] = useState([])
-  const [visaToAdd, setVisaToAdd] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
 
-  // ── New state (Google Forms-style builder) ──────────────────────────────
   const [visaPathways, setVisaPathways] = useState([])
   const [createWizardOpen, setCreateWizardOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
   const [wizardForm, setWizardForm] = useState({ title: '', visaType: '', checklistRole: '' })
   const [editingCardId, setEditingCardId] = useState('') // '' | 'new' | question._id
-  const [advancedPanelOpen, setAdvancedPanelOpen] = useState(false)
+  const [questionForm, setQuestionForm] = useState(emptyQuestion)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [savingQuestion, setSavingQuestion] = useState(false)
+  const [editorError, setEditorError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [creatingVersion, setCreatingVersion] = useState(false)
   const [dragOverId, setDragOverId] = useState('')
-  const [showCaseTools, setShowCaseTools] = useState(false)
-  const cardRef = useRef(null)
+  const [removeTarget, setRemoveTarget] = useState(null) // question waiting for the delete confirmation
+  const [archiveOpen, setArchiveOpen] = useState(false)
+
+  // The editor commits from event handlers that must see the latest form, so it is also kept in a ref; the question being edited is kept as it was loaded.
+  const questionFormRef = useRef(emptyQuestion)
+  questionFormRef.current = questionForm
+  const originalRef = useRef(null)
+  const savingQuestionRef = useRef(false)
+  const loadSeq = useRef(0)
 
   const selectedTemplate = selected?.questionnaire || selected
   const isPublished = selectedTemplate?.status === 'published'
@@ -182,10 +242,12 @@ export default function QuestionnaireTemplates() {
     [...(templateForm.sections || [])].sort((a, b) => (a.order || 0) - (b.order || 0))
   ), [templateForm.sections])
 
+  const visibleQuestions = useMemo(() => questions.filter(isActiveQuestion), [questions])
+
   const visaCategoryByKey = useMemo(() => {
     // Keyed by the dashless-uppercase form ("L-1A" -> "L1A"), because a
     // checklist's visaType is stored that way ("L1A", "O1") and never matched
-    // the pathway's own dashed key — which filed L-1/O-1 under "Other".
+    // the pathway's own dashed key - which filed L-1/O-1 under "Other".
     const norm = (value) => String(value || '').replace(/[^a-z0-9]+/gi, '').toUpperCase()
     const map = {}
     visaPathways.forEach((visa) => { map[norm(visa.key)] = visa.category })
@@ -230,7 +292,7 @@ export default function QuestionnaireTemplates() {
     return groups
   }, [templates, searchQuery, visaCategoryByKey])
 
-  // ── Data loading (existing functions, unchanged) ────────────────────────
+  // ── Data loading ────────────────────────────────────────────────────────
   const loadTemplates = async () => {
     setLoading(true)
     try {
@@ -240,17 +302,10 @@ export default function QuestionnaireTemplates() {
       const rows = response.data.data || []
       setTemplates(rows)
       if (!selectedId && rows[0]?._id) setSelectedId(rows[0]._id)
+    } catch (error) {
+      setMessage(readError(error, 'Could not load the checklists.'))
     } finally {
       setLoading(false)
-    }
-  }
-
-  const loadCases = async () => {
-    try {
-      const response = await api.get('/cases', { params: { limit: 100 } })
-      setCases(response.data.cases || response.data.data || [])
-    } catch (error) {
-      console.error('Error loading cases', error)
     }
   }
 
@@ -263,31 +318,6 @@ export default function QuestionnaireTemplates() {
     }
   }
 
-  const loadSelected = async (id) => {
-    if (!id) return
-    const [templateResponse, mappingsResponse, visaMappingsResponse] = await Promise.all([
-      questionnairesApi.get(id),
-      questionnairesApi.mappings(id),
-      questionnairesApi.visaMappings(id),
-    ])
-    const data = templateResponse.data.data
-    setSelected(data)
-    setQuestions(data.questions || [])
-    setMappings(mappingsResponse.data.data || [])
-    setVisaMappings(visaMappingsResponse.data.data || [])
-    setVisaToAdd('')
-    setTemplateForm({
-      ...emptyTemplate,
-      ...data.questionnaire,
-      visaType: data.questionnaire.visaType || data.questionnaire.visaTypes?.[0] || '',
-      sections: data.questionnaire.sections || [],
-    })
-    const firstSection = data.questionnaire.sections?.[0]?.key || ''
-    setQuestionForm((prev) => ({ ...prev, sectionKey: firstSection }))
-    setAssignTargetRole(data.questionnaire.checklistRole || '')
-    setEditingCardId('')
-  }
-
   const loadVisaOptions = async () => {
     try {
       const response = await questionnairesApi.visaOptions()
@@ -297,181 +327,258 @@ export default function QuestionnaireTemplates() {
     }
   }
 
-  // Mapping a visa is metadata, so it works on published (locked) checklists too.
-  const addVisaMapping = async () => {
-    if (!selectedTemplate?._id || !visaToAdd) return
+  const loadSelected = async (id) => {
+    if (!id) return
+    const seq = ++loadSeq.current
     try {
-      const response = await questionnairesApi.addVisaMapping(selectedTemplate._id, visaToAdd)
-      setVisaMappings(response.data.data || [])
-      setVisaToAdd('')
-      setMessage(`Mapped to ${visaToAdd}. New ${visaToAdd} cases will include this checklist along with the existing ones.`)
-      await loadTemplates()
+      const response = await questionnairesApi.get(id)
+      if (seq !== loadSeq.current) return // a newer selection won
+      const data = response.data.data
+      setSelected(data)
+      setQuestions(data.questions || [])
+      setFieldMappings([])
+      setShowFieldMappings(false)
+      setTemplateForm({
+        ...emptyTemplate,
+        ...data.questionnaire,
+        visaType: data.questionnaire.visaType || data.questionnaire.visaTypes?.[0] || '',
+        sections: data.questionnaire.sections || [],
+      })
     } catch (error) {
-      setMessage(error.response?.data?.message || 'Could not add visa')
-    }
-  }
-
-  const removeVisaMapping = async (visaType) => {
-    if (!selectedTemplate?._id) return
-    if (!window.confirm(`Stop mapping this checklist to ${visaType}? Existing cases keep it; new ${visaType} cases will not get it.`)) return
-    try {
-      const response = await questionnairesApi.removeVisaMapping(selectedTemplate._id, visaType)
-      setVisaMappings(response.data.data || [])
-      await loadTemplates()
-    } catch (error) {
-      setMessage(error.response?.data?.message || 'Could not remove visa')
+      if (seq === loadSeq.current) setMessage(readError(error, 'Could not open this checklist.'))
     }
   }
 
   useEffect(() => {
     loadTemplates()
-    loadCases()
     loadVisaPathways()
     loadVisaOptions()
   }, [])
 
   useEffect(() => {
+    closeEditor()
     loadSelected(selectedId)
   }, [selectedId])
 
-  // ── Existing mutation functions (unchanged) ─────────────────────────────
-  const saveTemplate = async () => {
-    setSaving(true)
-    setMessage('')
+  // Leaving the page with a question half-edited is the one thing that loses work now.
+  useEffect(() => {
+    const warn = (event) => {
+      if (!editingCardId) return undefined
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [editingCardId])
+
+  // ── Question editor ─────────────────────────────────────────────────────
+  const closeEditor = () => {
+    setEditingCardId('')
+    setAdvancedOpen(false)
+    setEditorError('')
+    originalRef.current = null
+  }
+
+  const replaceQuestion = (saved) => setQuestions((current) => current.map((item) => (String(item._id) === String(saved._id) ? { ...item, ...saved } : item)))
+
+  // Saves what the designer changed and closes the editor. false = it stayed open (nothing typed is lost): the message says why.
+  const commitEditor = async () => {
+    if (!editingCardId) return true
+    if (savingQuestionRef.current) return false
+    const form = questionFormRef.current
+    if (editingCardId === 'new') {
+      if (!form.label.trim()) { closeEditor(); return true } // nothing typed: nothing to save
+      return saveNewQuestion(form)
+    }
+    const original = originalRef.current
+    if (!original) { closeEditor(); return true }
+    if (!form.label.trim()) { setEditorError('A question needs text.'); return false }
+    const patch = buildQuestionPatch(form, original)
+    if (!Object.keys(patch).length) { closeEditor(); return true }
+    savingQuestionRef.current = true
+    setSavingQuestion(true)
+    setEditorError('')
+    try {
+      const response = await questionnairesApi.updateQuestion(selectedTemplate._id, original._id, patch)
+      replaceQuestion(response.data.data)
+      closeEditor()
+      return true
+    } catch (error) {
+      setEditorError(readError(error, 'Could not save this question.'))
+      return false
+    } finally {
+      savingQuestionRef.current = false
+      setSavingQuestion(false)
+    }
+  }
+
+  const saveNewQuestion = async (form) => {
+    savingQuestionRef.current = true
+    setSavingQuestion(true)
+    setEditorError('')
+    try {
+      const response = await questionnairesApi.createQuestion(selectedTemplate._id, buildNewQuestionPayload(form))
+      const created = response.data.data
+      setQuestions((current) => [...current, created])
+      closeEditor()
+      return true
+    } catch (error) {
+      setEditorError(readError(error, 'Could not add this question.'))
+      return false
+    } finally {
+      savingQuestionRef.current = false
+      setSavingQuestion(false)
+    }
+  }
+
+  const beginEditQuestion = async (question) => {
+    if (editingCardId === question._id) return
+    if (!(await commitEditor())) return
+    originalRef.current = question
+    setQuestionForm(questionToForm(question))
+    setEditorError('')
+    setAdvancedOpen(false)
+    setEditingCardId(question._id)
+  }
+
+  const beginNewQuestion = async (sectionKey) => {
+    if (!(await commitEditor())) return
+    originalRef.current = null
+    setQuestionForm({ ...emptyQuestion, sectionKey: sectionKey || sections[0]?.key || '' })
+    setEditorError('')
+    setAdvancedOpen(false)
+    setEditingCardId('new')
+  }
+
+  // The order of a section's questions as shown is what is stored: positions are written per section.
+  const persistOrder = async (list) => {
+    const counters = {}
+    const rows = list.map((item) => {
+      counters[item.sectionKey] = (counters[item.sectionKey] || 0) + 1
+      return { key: item.key, order: counters[item.sectionKey], sectionKey: item.sectionKey, pageKey: item.pageKey || item.sectionKey }
+    })
+    try {
+      await questionnairesApi.reorder(selectedTemplate._id, { questionOrder: list.map((item) => item.key), questions: rows })
+    } catch (error) {
+      setMessage(readError(error, 'Could not save the new order.'))
+      await loadSelected(selectedTemplate._id)
+    }
+  }
+
+  const duplicateQuestion = async (question) => {
+    if (!(await commitEditor())) return
+    setSavingQuestion(true)
     try {
       const payload = {
-        ...templateForm,
-        key: templateForm.key || slug(templateForm.title),
-        visaTypes: [templateForm.visaType].filter(Boolean),
-        builder: {
-          ...(templateForm.builder || {}),
-          layout: 'wizard',
-          sectionOrder: (templateForm.sections || []).map((section) => section.key),
-          pageOrder: (templateForm.sections || []).map((section) => section.key),
-        },
-        pages: (templateForm.sections || []).map((section) => ({
-          key: section.key,
-          title: section.title,
-          order: section.order,
-          sectionKeys: [section.key],
-        })),
+        label: `${question.label} (copy)`,
+        description: question.description || question.helpText || '',
+        helpText: question.description || question.helpText || '',
+        type: typeOf(question),
+        sectionKey: question.sectionKey,
+        pageKey: question.pageKey || question.sectionKey,
+        required: Boolean(question.required),
+        placeholder: question.placeholder || '',
+        options: (question.options || []).map((option) => ({ label: option.label, value: option.value })),
+        isActive: true,
+        ...(question.evidenceCategory ? { evidenceCategory: question.evidenceCategory } : {}),
       }
-      if (selectedTemplate?._id) {
-        await questionnairesApi.update(selectedTemplate._id, payload)
-      } else {
-        const response = await questionnairesApi.create(payload)
-        setSelectedId(response.data.data._id)
-      }
-      await loadTemplates()
-      if (selectedId) await loadSelected(selectedId)
+      const response = await questionnairesApi.createQuestion(selectedTemplate._id, payload)
+      const created = response.data.data
+      const next = []
+      let placed = false
+      questions.forEach((item) => {
+        next.push(item)
+        if (String(item._id) === String(question._id)) { next.push(created); placed = true }
+      })
+      if (!placed) next.push(created)
+      setQuestions(next)
+      await persistOrder(next)
+      setMessage('Question duplicated.')
+    } catch (error) {
+      setMessage(readError(error, 'Could not duplicate this question.'))
     } finally {
-      setSaving(false)
+      setSavingQuestion(false)
     }
   }
 
-  const addSection = (titleOverride) => {
-    const title = (titleOverride ?? sectionTitle).trim()
-    if (!title) return
-    const next = {
-      key: slug(title) || `section_${Date.now()}`,
-      title,
-      description: '',
-      order: (templateForm.sections || []).length + 1,
-      isActive: true,
-    }
-    setTemplateForm((prev) => ({ ...prev, sections: [...(prev.sections || []), next] }))
-    setQuestionForm((prev) => ({ ...prev, sectionKey: next.key }))
-    setSectionTitle('')
-    return next
-  }
-
-  const saveQuestion = async () => {
-    if (!selectedTemplate?._id || !questionForm.label.trim()) return
-    setSaving(true)
-    try {
-      const payload = normalizeQuestionPayload(questionForm)
-      if (selectedQuestionId) {
-        await questionnairesApi.updateQuestion(selectedTemplate._id, selectedQuestionId, payload)
-      } else {
-        await questionnairesApi.createQuestion(selectedTemplate._id, payload)
-      }
-      setQuestionForm({ ...emptyQuestion, sectionKey: questionForm.sectionKey })
-      setSelectedQuestionId('')
-      await loadSelected(selectedTemplate._id)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const removeQuestion = async (question) => {
-    if (!selectedTemplate?._id) return
-    if (!window.confirm(`Remove question "${question.label}"?`)) return
+  const confirmRemoveQuestion = async () => {
+    const question = removeTarget
+    if (!question) return
     setSaving(true)
     try {
       await questionnairesApi.deleteQuestion(selectedTemplate._id, question._id)
-      if (selectedQuestionId === question._id) {
-        setSelectedQuestionId('')
-        setEditingCardId('')
-        setQuestionForm({ ...emptyQuestion, sectionKey: questionForm.sectionKey })
-      }
-      await loadSelected(selectedTemplate._id)
+      setQuestions((current) => current.map((item) => (String(item._id) === String(question._id) ? { ...item, active: false, isActive: false } : item)))
+      if (editingCardId === question._id) closeEditor()
+      setRemoveTarget(null)
+    } catch (error) {
+      setRemoveTarget(null)
+      setMessage(readError(error, 'Could not delete this question.'))
     } finally {
       setSaving(false)
     }
   }
 
-  const editQuestion = (question) => {
-    setSelectedQuestionId(question._id)
-    setQuestionForm({
-      ...emptyQuestion,
-      ...question,
-      description: question.description || question.helpText || '',
-      type: question.metadata?.requestedType || question.type,
-      optionsText: (question.options || []).map((option) => option.label || option.value).join('\n'),
-      uscisMappingsText: (question.uscisMappings || []).join('\n'),
-      showIf: question.showIf?.field ? question.showIf : { field: '', operator: 'equals', value: '' },
-    })
+  // ── Checklist header / sections ─────────────────────────────────────────
+  const saveHeaderIfChanged = async () => {
+    if (!selectedTemplate?._id || isPublished) return
+    const changed = (templateForm.title || '') !== (selectedTemplate.title || '') || (templateForm.description || '') !== (selectedTemplate.description || '')
+    if (!changed || !templateForm.title.trim()) return
+    try {
+      const response = await questionnairesApi.update(selectedTemplate._id, { title: templateForm.title.trim(), description: templateForm.description || '' })
+      setSelected((prev) => (prev ? { ...prev, questionnaire: { ...(prev.questionnaire || {}), title: response.data.data.title, description: response.data.data.description } } : prev))
+      setTemplates((current) => current.map((item) => (item._id === selectedTemplate._id ? { ...item, title: response.data.data.title } : item)))
+    } catch (error) {
+      setMessage(readError(error, 'Could not save the title.'))
+    }
+  }
+
+  const addSection = async (titleOverride) => {
+    const title = (titleOverride ?? sectionTitle).trim()
+    if (!title || !selectedTemplate?._id) return null
+    const taken = new Set((templateForm.sections || []).map((section) => section.key))
+    let key = slug(title) || `section_${Date.now()}`
+    if (taken.has(key)) { let n = 2; while (taken.has(`${key}_${n}`)) n += 1; key = `${key}_${n}` }
+    const next = { key, title, description: '', order: (templateForm.sections || []).length + 1, isActive: true }
+    const nextSections = [...(templateForm.sections || []), next]
+    try {
+      // saved right away: a question added to a section that exists only on the page would be saved against a section the checklist does not have
+      await questionnairesApi.update(selectedTemplate._id, { sections: nextSections, pages: pagesFrom(nextSections) })
+      setTemplateForm((prev) => ({ ...prev, sections: nextSections }))
+      setSectionTitle('')
+      return next
+    } catch (error) {
+      setMessage(readError(error, 'Could not add the section.'))
+      return null
+    }
   }
 
   const duplicateTemplate = async () => {
     if (!selectedTemplate?._id) return
-    const response = await questionnairesApi.duplicate(selectedTemplate._id, {
-      title: `${selectedTemplate.title} Copy`,
-      key: `${selectedTemplate.key}_copy_${Date.now()}`,
-    })
-    setSelectedId(response.data.data._id)
-    await loadTemplates()
-  }
-
-  const versionTemplate = async () => {
-    if (!selectedTemplate?._id) return
-    const response = await questionnairesApi.version(selectedTemplate._id)
-    setSelectedId(response.data.data._id)
-    await loadTemplates()
+    try {
+      const response = await questionnairesApi.duplicate(selectedTemplate._id, { title: `${selectedTemplate.title} Copy`, key: `${selectedTemplate.key}_copy_${Date.now()}` })
+      setSelectedId(response.data.data._id)
+      await loadTemplates()
+    } catch (error) {
+      setMessage(readError(error, 'Could not duplicate the checklist.'))
+    }
   }
 
   const archiveTemplate = async () => {
     if (!selectedTemplate?._id) return
-    if (!window.confirm(`Delete "${selectedTemplate.title}"? This cannot be undone.`)) return
-    await questionnairesApi.archive(selectedTemplate._id)
-    setSelectedId('')
-    setSelected(null)
-    await loadTemplates()
+    try {
+      await questionnairesApi.archive(selectedTemplate._id)
+      setArchiveOpen(false)
+      setSelectedId('')
+      setSelected(null)
+      await loadTemplates()
+    } catch (error) {
+      setArchiveOpen(false)
+      setMessage(readError(error, 'Could not delete the checklist.'))
+    }
   }
 
-  const assignTemplate = async () => {
-    if (!selectedTemplate?._id || !assignCaseId) return
-    await questionnairesApi.assign(selectedTemplate._id, { caseId: assignCaseId, targetRole: assignTargetRole || undefined })
-    setMessage('Questionnaire assigned to case')
-  }
-
-  const loadProgress = async () => {
-    if (!selectedTemplate?._id || !progressCaseId) return
-    const response = await questionnairesApi.progress(selectedTemplate._id, { caseId: progressCaseId })
-    setProgress(response.data.data.progress)
-  }
-
-  // ── New: create wizard ───────────────────────────────────────────────────
+  // ── Create wizard ───────────────────────────────────────────────────────
   const openCreateWizard = () => {
     setWizardForm({ title: '', visaType: '', checklistRole: '' })
     setWizardStep(1)
@@ -501,30 +608,36 @@ export default function QuestionnaireTemplates() {
       setSelectedId(response.data.data._id)
       await loadTemplates()
       setCreateWizardOpen(false)
-      setMessage('Checklist created — add your questions below')
+      setMessage('Checklist created. Add a section, then your questions.')
+    } catch (error) {
+      setMessage(readError(error, 'Could not create the checklist.'))
     } finally {
       setSaving(false)
     }
   }
 
-  // ── New: publish / versioning lifecycle ─────────────────────────────────
-  // Draft -> Save publishes it (live for future cases).
-  // Published -> "Edit" transparently creates a new draft version first; the
-  // subsequent Save on that draft publishes it, replacing the live version
-  // for FUTURE cases only - resolveCaseQuestionnaires already keeps existing
-  // case assignments pinned to the exact version they were given.
-  const handleSave = async () => {
+  // ── Publish / versioning ────────────────────────────────────────────────
+  // A draft is saved as you work. Publish makes this version the one new cases get (and locks it); cases that already have the checklist keep the
+  // version they were given. Editing a published checklist opens a new draft version.
+  const handlePublish = async () => {
     if (!selectedTemplate?._id) return
+    if (!(await commitEditor())) return
     setPublishing(true)
     setMessage('')
     try {
-      await saveTemplate()
+      // only what the page edits - never the visa mapping, version, history or approval, which the server owns
+      await questionnairesApi.update(selectedTemplate._id, {
+        title: templateForm.title.trim(),
+        description: templateForm.description || '',
+        sections: templateForm.sections || [],
+        pages: pagesFrom(templateForm.sections),
+      })
       await questionnairesApi.publish(selectedTemplate._id)
-      setMessage('Published — future cases will use this version')
+      setMessage('Published. New cases of the mapped visa types will use this version.')
       await loadTemplates()
       await loadSelected(selectedTemplate._id)
     } catch (error) {
-      setMessage(error?.response?.data?.message || 'Could not publish checklist')
+      setMessage(readError(error, 'Could not publish this checklist.'))
     } finally {
       setPublishing(false)
     }
@@ -536,65 +649,24 @@ export default function QuestionnaireTemplates() {
     setMessage('')
     try {
       const response = await questionnairesApi.version(selectedTemplate._id)
-      const newId = response.data.data._id
-      setSelectedId(newId)
+      setSelectedId(response.data.data._id)
       await loadTemplates()
-      setMessage(`Editing v${(selectedTemplate.version || 1) + 1} (draft) — existing cases keep using v${selectedTemplate.version || 1}`)
+      setMessage(`Editing v${(selectedTemplate.version || 1) + 1} (draft). Cases that already have this checklist keep v${selectedTemplate.version || 1}.`)
+    } catch (error) {
+      setMessage(readError(error, 'Could not open a new version.'))
     } finally {
       setCreatingVersion(false)
     }
   }
 
-  // ── New: inline question card editing ───────────────────────────────────
-  const beginNewQuestion = (sectionKey) => {
-    setSelectedQuestionId('')
-    setQuestionForm({ ...emptyQuestion, sectionKey: sectionKey || sections[0]?.key || '' })
-    setEditingCardId('new')
+  const selectTemplate = async (id) => {
+    if (id === selectedId) return
+    if (!(await commitEditor())) return
+    await saveHeaderIfChanged()
+    setSelectedId(id)
   }
 
-  const beginEditQuestion = (question) => {
-    editQuestion(question)
-    setEditingCardId(question._id)
-  }
-
-  const closeCardEditor = () => {
-    setEditingCardId('')
-    setSelectedQuestionId('')
-    setQuestionForm({ ...emptyQuestion, sectionKey: questionForm.sectionKey })
-  }
-
-  // Commits the card's edits when focus leaves the whole card (click
-  // elsewhere on the page), so changes are persisted the moment the user is
-  // done with a question - no separate "save question" button to remember.
-  const handleCardBlur = (event) => {
-    if (event.currentTarget.contains(event.relatedTarget)) return
-    if (!questionForm.label.trim()) { closeCardEditor(); return }
-    saveQuestion().then(() => setEditingCardId(''))
-  }
-
-  const handleAddOption = () => {
-    setQuestionForm((prev) => ({
-      ...prev,
-      optionsText: prev.optionsText ? `${prev.optionsText}\nOption ${prev.optionsText.split('\n').filter(Boolean).length + 1}` : 'Option 1',
-    }))
-  }
-
-  const removeOptionLine = (index) => {
-    setQuestionForm((prev) => {
-      const lines = prev.optionsText.split('\n').filter((_, i) => i !== index)
-      return { ...prev, optionsText: lines.join('\n') }
-    })
-  }
-
-  const updateOptionLine = (index, value) => {
-    setQuestionForm((prev) => {
-      const lines = prev.optionsText.split('\n')
-      lines[index] = value
-      return { ...prev, optionsText: lines.join('\n') }
-    })
-  }
-
-  // ── New: drag-and-drop reorder (HTML5 DnD, no extra library) ────────────
+  // ── Drag-and-drop reorder (HTML5 DnD, no extra library) ─────────────────
   const handleDragStart = (event, questionId) => {
     event.dataTransfer.setData('text/plain', questionId)
     event.dataTransfer.effectAllowed = 'move'
@@ -614,29 +686,51 @@ export default function QuestionnaireTemplates() {
     const sourceIndex = current.findIndex((q) => q._id === sourceId)
     const targetIndex = current.findIndex((q) => q._id === targetQuestionId)
     if (sourceIndex === -1 || targetIndex === -1) return
+    const target = current[targetIndex]
     const [moved] = current.splice(sourceIndex, 1)
-    current.splice(targetIndex, 0, moved)
+    // dropped on a question of another section: it joins that section
+    const next = { ...moved, sectionKey: target.sectionKey, pageKey: target.pageKey || target.sectionKey }
+    current.splice(targetIndex, 0, next)
     setQuestions(current)
-    try {
-      await questionnairesApi.reorder(selectedTemplate._id, { questionOrder: current.map((q) => q._id) })
-    } catch (error) {
-      console.error('Reorder failed', error)
-      await loadSelected(selectedTemplate._id)
-    }
+    await persistOrder(current)
   }
 
-  // Questions grouped by section, in section order, for card rendering.
+  // Questions grouped by section, in section order, for card rendering (deleted ones are not shown).
   const questionsBySection = useMemo(() => {
     const groups = {}
-    questions.forEach((question) => {
+    visibleQuestions.forEach((question) => {
       const key = question.sectionKey || ''
       if (!groups[key]) groups[key] = []
       groups[key].push(question)
     })
     return groups
-  }, [questions])
+  }, [visibleQuestions])
 
   const sectionsToRender = sections.length ? sections : (questionsBySection[''] ? [{ key: '', title: '', order: 0 }] : [])
+
+  const toggleFieldMappings = async () => {
+    const next = !showFieldMappings
+    setShowFieldMappings(next)
+    if (next && selectedTemplate?._id && !fieldMappings.length) {
+      try {
+        const response = await questionnairesApi.mappings(selectedTemplate._id)
+        setFieldMappings(response.data.data || [])
+      } catch (error) {
+        setFieldMappings([])
+      }
+    }
+  }
+
+  const editorProps = {
+    form: questionForm,
+    setForm: setQuestionForm,
+    saving: savingQuestion,
+    error: editorError,
+    advancedOpen,
+    setAdvancedOpen,
+    onDone: commitEditor,
+    onCancel: closeEditor,
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-5rem)] -m-3 sm:-m-4 lg:-m-6 overflow-hidden">
@@ -644,7 +738,7 @@ export default function QuestionnaireTemplates() {
       <div className="w-full md:w-72 max-h-48 md:max-h-none shrink-0 border-b md:border-b-0 md:border-r border-border bg-card flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-bold text-foreground">Checklists</h2>
-          <button onClick={openCreateWizard} className="p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700" title="Create checklist">
+          <button onClick={openCreateWizard} className="p-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90" title="Create checklist">
             <Plus className="w-4 h-4" />
           </button>
         </div>
@@ -672,8 +766,8 @@ export default function QuestionnaireTemplates() {
               {items.map((template) => (
                 <button
                   key={template._id}
-                  onClick={() => setSelectedId(template._id)}
-                  className={`w-full text-left px-4 py-3 border-l-4 hover:bg-muted transition-colors ${selectedId === template._id ? 'bg-blue-50 border-l-blue-500' : 'border-l-transparent'}`}
+                  onClick={() => selectTemplate(template._id)}
+                  className={`w-full text-left px-4 py-3 border-l-4 hover:bg-muted transition-colors ${selectedId === template._id ? 'bg-primary-50 border-l-primary' : 'border-l-transparent'}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-foreground truncate text-sm">{template.title}</span>
@@ -682,7 +776,7 @@ export default function QuestionnaireTemplates() {
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className="text-xs text-muted-foreground truncate" title={(template.visaTypes || []).join(', ')}>{template.visaType || template.visaTypes?.[0]}</span>
                     {template.checklistRole && (
-                      <span className="text-[10px] bg-indigo-100 text-indigo-700 rounded-full px-1.5 py-0.5">
+                      <span className="text-[10px] bg-primary-50 text-primary rounded-full px-1.5 py-0.5">
                         {TARGET_ROLE_LABELS[template.checklistRole] || template.checklistRole}
                       </span>
                     )}
@@ -702,7 +796,7 @@ export default function QuestionnaireTemplates() {
       {/* ── Builder area ─────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto relative">
         {message && (
-          <div className="sticky top-0 z-20 p-3 border-b border-blue-200 bg-blue-50 text-sm font-medium text-blue-700 flex items-center justify-between">
+          <div className="sticky top-0 z-20 p-3 border-b border-primary/30 bg-primary/5 text-sm font-medium text-primary flex items-center justify-between">
             {message}
             <button onClick={() => setMessage('')}><X className="w-4 h-4" /></button>
           </div>
@@ -717,28 +811,30 @@ export default function QuestionnaireTemplates() {
           <div className="max-w-3xl mx-auto py-8 px-6 space-y-4">
             {/* Header card */}
             <div className="card overflow-hidden !p-0">
-              <div className="h-2 bg-blue-600" />
+              <div className="h-2 bg-primary" />
               <div className="p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <input
-                      className="text-2xl font-bold text-foreground w-full border-b border-transparent hover:border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
+                      className="text-2xl font-bold text-foreground w-full border-b border-transparent hover:border-border focus:border-primary outline-none pb-1 bg-transparent"
                       value={templateForm.title}
                       disabled={isPublished}
                       placeholder="Checklist title"
-                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, title: e.target.value, key: prev.key || slug(e.target.value) }))}
+                      onChange={(e) => setTemplateForm((prev) => ({ ...prev, title: e.target.value }))}
+                      onBlur={saveHeaderIfChanged}
                     />
                     <input
-                      className="text-sm text-muted-foreground w-full border-b border-transparent hover:border-border focus:border-blue-500 outline-none mt-2 pb-1 bg-transparent"
+                      className="text-sm text-muted-foreground w-full border-b border-transparent hover:border-border focus:border-primary outline-none mt-2 pb-1 bg-transparent"
                       value={templateForm.description || ''}
                       disabled={isPublished}
                       placeholder="Checklist description (optional)"
                       onChange={(e) => setTemplateForm((prev) => ({ ...prev, description: e.target.value }))}
+                      onBlur={saveHeaderIfChanged}
                     />
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
                       <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2.5 py-1 font-medium">{templateForm.visaType}</span>
                       {templateForm.checklistRole && (
-                        <span className="text-xs bg-indigo-100 text-indigo-700 rounded-full px-2.5 py-1 font-medium">{TARGET_ROLE_LABELS[templateForm.checklistRole]}</span>
+                        <span className="text-xs bg-primary-50 text-primary rounded-full px-2.5 py-1 font-medium">{TARGET_ROLE_LABELS[templateForm.checklistRole]}</span>
                       )}
                       <span className="text-xs bg-secondary text-muted-foreground rounded-full px-2.5 py-1 font-medium">v{selectedTemplate.version}</span>
                       <span className={`text-xs rounded-full px-2.5 py-1 font-medium ${isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -753,8 +849,8 @@ export default function QuestionnaireTemplates() {
                         {creatingVersion ? 'Opening...' : 'Edit'}
                       </button>
                     ) : (
-                      <button onClick={handleSave} disabled={publishing || saving || !templateForm.title.trim()} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-                        {publishing ? 'Publishing...' : 'Save'}
+                      <button onClick={handlePublish} disabled={publishing || saving || !templateForm.title.trim()} className="btn-primary flex items-center gap-2 disabled:opacity-50" title="Make this version the one new cases get">
+                        {publishing ? 'Publishing...' : 'Publish'}
                       </button>
                     )}
                     <div className="relative group">
@@ -765,60 +861,40 @@ export default function QuestionnaireTemplates() {
                         <button onClick={duplicateTemplate} className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex items-center gap-2">
                           <Copy className="w-3.5 h-3.5" /> Duplicate
                         </button>
-                        <button onClick={archiveTemplate} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
+                        <button onClick={() => setArchiveOpen(true)} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
                           <Trash2 className="w-3.5 h-3.5" /> Delete
                         </button>
                       </div>
                     </div>
                   </div>
                 </div>
-                {isPublished && (
-                  <div className="mt-4 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {isPublished ? (
+                  <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted border border-border rounded-lg px-3 py-2">
                     <Lock className="w-3.5 h-3.5 shrink-0" />
-                    Published checklists are locked. Click "Edit" to open a new draft version — existing cases keep the version they already have.
+                    This version is published and locked. Click "Edit" to open a new draft version; cases that already have this checklist keep this one.
                   </div>
+                ) : (
+                  <p className="mt-4 text-xs text-muted-foreground">Draft: your changes are saved as you make them. "Publish" makes this version the one new cases get.</p>
                 )}
               </div>
             </div>
 
-            {/* USCIS mapping: which visas this checklist is assigned to */}
-            <div className="card">
-              <h3 className="font-semibold text-foreground">USCIS Mapping</h3>
-              <p className="text-xs text-muted-foreground mt-1 mb-3">
-                Cases created for any of these visas receive this checklist, alongside the checklists they already get.
-              </p>
-              <div className="flex items-center gap-2 flex-wrap">
-                {visaMappings.map((mapping) => (
-                  <span key={mapping.visaType} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-1 font-medium">
-                    {mapping.visaType}
-                    {mapping.removable && (
-                      <button onClick={() => removeVisaMapping(mapping.visaType)} title={`Remove ${mapping.visaType}`} className="hover:text-red-600">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-                {visaMappings.length === 0 && <span className="text-xs text-muted-foreground">Not mapped to any visa yet.</span>}
-              </div>
-              <div className="flex items-center gap-2 mt-3 max-w-md">
-                <select className="input-field text-sm" value={visaToAdd} onChange={(e) => setVisaToAdd(e.target.value)}>
-                  <option value="">Add visa…</option>
-                  {visaOptions
-                    .filter((option) => !visaMappings.some((mapping) => mapping.visaType.replace(/[^a-z0-9]+/gi, '').toUpperCase() === option.visaType))
-                    .map((option) => <option key={option.visaType} value={option.visaType}>{option.label}</option>)}
-                </select>
-                <button onClick={addVisaMapping} disabled={!visaToAdd} className="btn-primary shrink-0 text-sm disabled:opacity-50">Add visa</button>
-              </div>
-            </div>
+            {/* Where this checklist is used: visa types, forms, cases */}
+            <ChecklistUsageCard
+              questionnaire={selectedTemplate}
+              visaOptions={visaOptions}
+              isPublished={isPublished}
+              onChanged={loadTemplates}
+            />
 
-            {/* Question sections */}
+            {/* Question sections (draft) */}
             {!isPublished && sectionsToRender.map((section) => (
               <div key={section.key || 'default'} className="space-y-3">
                 {section.title && (
                   <div className="flex items-center gap-3 pt-2">
                     <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wide">{section.title}</h3>
                     <div className="flex-1 h-px bg-muted" />
-                    <button onClick={() => beginNewQuestion(section.key)} className="text-xs text-blue-600 font-semibold hover:underline shrink-0">
+                    <button onClick={() => beginNewQuestion(section.key)} className="text-xs text-primary font-semibold hover:underline shrink-0">
                       + Add here
                     </button>
                   </div>
@@ -829,20 +905,10 @@ export default function QuestionnaireTemplates() {
                     question={question}
                     isEditing={editingCardId === question._id}
                     isDragOver={dragOverId === question._id}
-                    questionForm={questionForm}
-                    setQuestionForm={setQuestionForm}
+                    editorProps={editorProps}
                     onOpen={() => beginEditQuestion(question)}
-                    onBlurContainer={handleCardBlur}
-                    onDuplicate={() => {
-                      setQuestionForm({ ...emptyQuestion, ...normalizeQuestionPayload(questionForm), sectionKey: question.sectionKey, key: '', label: `${question.label} (copy)` })
-                      setSelectedQuestionId('')
-                      setEditingCardId('new')
-                    }}
-                    onRemove={() => removeQuestion(question)}
-                    onAddOption={handleAddOption}
-                    onRemoveOption={removeOptionLine}
-                    onUpdateOption={updateOptionLine}
-                    onOpenAdvanced={() => setAdvancedPanelOpen(true)}
+                    onDuplicate={() => duplicateQuestion(question)}
+                    onRemove={() => setRemoveTarget(question)}
                     onDragStart={(e) => handleDragStart(e, question._id)}
                     onDragOver={(e) => handleDragOver(e, question._id)}
                     onDrop={(e) => handleDrop(e, question._id)}
@@ -850,15 +916,7 @@ export default function QuestionnaireTemplates() {
                   />
                 ))}
                 {editingCardId === 'new' && questionForm.sectionKey === section.key && (
-                  <NewQuestionCard
-                    questionForm={questionForm}
-                    setQuestionForm={setQuestionForm}
-                    onBlurContainer={handleCardBlur}
-                    onAddOption={handleAddOption}
-                    onRemoveOption={removeOptionLine}
-                    onUpdateOption={updateOptionLine}
-                    onCancel={closeCardEditor}
-                  />
+                  <QuestionEditor {...editorProps} isNew />
                 )}
               </div>
             ))}
@@ -867,7 +925,7 @@ export default function QuestionnaireTemplates() {
               <div className="card text-center py-10 text-muted-foreground text-sm space-y-3">
                 <p>No sections yet. Add one to start building this checklist.</p>
                 <div className="flex items-center justify-center gap-2 max-w-sm mx-auto">
-                  <input className="input-field" placeholder="Section title (e.g. Personal Information)" value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} />
+                  <input className="input-field" placeholder="Section title (e.g. Personal Information)" value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addSection() }} />
                   <button onClick={() => addSection()} className="btn-primary shrink-0">Add</button>
                 </div>
               </div>
@@ -875,20 +933,20 @@ export default function QuestionnaireTemplates() {
 
             {!isPublished && sections.length > 0 && (
               <div className="flex items-center gap-2 max-w-sm">
-                <input className="input-field text-sm" placeholder="New section title" value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} />
+                <input className="input-field text-sm" placeholder="New section title" value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addSection() }} />
                 <button onClick={() => addSection()} className="btn-secondary shrink-0 text-sm">
                   <SeparatorHorizontal className="w-3.5 h-3.5 inline mr-1" /> Add section
                 </button>
               </div>
             )}
 
-            {isPublished && questions.length > 0 && (
+            {isPublished && visibleQuestions.length > 0 && (
               <div className="space-y-3">
-                {questions.map((question) => (
+                {visibleQuestions.map((question) => (
                   <div key={question._id} className="card !py-3 !px-4 flex items-center justify-between opacity-80">
                     <div>
                       <p className="font-medium text-foreground text-sm">{question.label}</p>
-                      <p className="text-xs text-muted-foreground">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</p>
+                      <p className="text-xs text-muted-foreground">{QUESTION_TYPE_LABELS[typeOf(question)] || typeOf(question)}</p>
                     </div>
                     <Lock className="w-3.5 h-3.5 text-muted-foreground" />
                   </div>
@@ -896,72 +954,31 @@ export default function QuestionnaireTemplates() {
               </div>
             )}
 
-            {/* Case assignment / progress / USCIS mappings - unchanged tools, tucked below the fold */}
-            <div className="pt-6">
-              <button onClick={() => setShowCaseTools((v) => !v)} className="text-xs font-semibold text-muted-foreground hover:text-muted-foreground flex items-center gap-1">
-                {showCaseTools ? <ChevronLeft className="w-3.5 h-3.5 rotate-90" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                Case assignment, progress & USCIS mappings
+            {/* Question -> USCIS field links (read-only reference) */}
+            <div className="pt-4">
+              <button onClick={toggleFieldMappings} className="text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1">
+                {showFieldMappings ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Question → USCIS field links
               </button>
-              {showCaseTools && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-3">
-                  <div className="card">
-                    <h3 className="font-semibold text-foreground mb-4">Case Assignment &amp; Progress</h3>
-                    <div className="space-y-3">
-                      <select className="input-field" value={assignCaseId} onChange={(e) => setAssignCaseId(e.target.value)}>
-                        <option value="">Select case to assign</option>
-                        {cases.map((item) => <option key={item._id} value={item._id}>{item.caseNumber || item.caseId} - {item.clientName}</option>)}
-                      </select>
-                      <select className="input-field" value={assignTargetRole} onChange={(e) => setAssignTargetRole(e.target.value)}>
-                        {TARGET_ROLES.map((role) => <option key={role || 'general'} value={role}>{TARGET_ROLE_LABELS[role]}</option>)}
-                      </select>
-                      <button onClick={assignTemplate} disabled={!selectedTemplate?._id || !assignCaseId} className="btn-primary w-full disabled:opacity-50">Assign Questionnaire</button>
-                      <select className="input-field" value={progressCaseId} onChange={(e) => setProgressCaseId(e.target.value)}>
-                        <option value="">Select case for progress</option>
-                        {cases.map((item) => <option key={item._id} value={item._id}>{item.caseNumber || item.caseId} - {item.clientName}</option>)}
-                      </select>
-                      <button onClick={loadProgress} disabled={!selectedTemplate?._id || !progressCaseId} className="btn-secondary w-full disabled:opacity-50">Load Progress</button>
-                      {progress && (
-                        <div className="p-3 rounded-lg bg-muted border border-border">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-medium text-foreground">Overall</span>
-                            <span className="font-bold text-blue-700">{progress.completionPercentage}%</span>
+              {showFieldMappings && (
+                <div className="card mt-3">
+                  {fieldMappings.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No question of this checklist is linked to a USCIS field directly. Forms read these answers through their own field mapping (see Forms above).</p>
+                  ) : (
+                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                      {fieldMappings.map((mapping) => (
+                        <div key={mapping.questionKey} className="p-3 rounded-lg border border-border bg-muted">
+                          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                            <FileText className="w-4 h-4 text-primary" />
+                            {mapping.questionKey}
                           </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full bg-blue-500" style={{ width: `${progress.completionPercentage}%` }} />
-                          </div>
-                          <div className="mt-3 space-y-2">
-                            {(progress.sections || []).map((section) => (
-                              <div key={section.key} className="flex items-center justify-between text-sm">
-                                <span>{section.title}</span>
-                                <span className="font-medium">{section.completionPercentage}%</span>
-                              </div>
-                            ))}
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {mapping.uscisMappings.map((item) => <div key={item}>{item}</div>)}
                           </div>
                         </div>
-                      )}
+                      ))}
                     </div>
-                  </div>
-
-                  <div className="card">
-                    <h3 className="font-semibold text-foreground mb-4">USCIS Mappings</h3>
-                    {mappings.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No mappings configured.</p>
-                    ) : (
-                      <div className="space-y-2 max-h-80 overflow-y-auto">
-                        {mappings.map((mapping) => (
-                          <div key={mapping.questionKey} className="p-3 rounded-lg border border-border bg-muted">
-                            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                              <FileText className="w-4 h-4 text-blue-600" />
-                              {mapping.questionKey}
-                            </div>
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {mapping.uscisMappings.map((item) => <div key={item}>{item}</div>)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -974,7 +991,7 @@ export default function QuestionnaireTemplates() {
             <button onClick={() => beginNewQuestion(sections[sections.length - 1]?.key)} disabled={!sections.length} className="p-3 hover:bg-muted rounded-t-2xl disabled:opacity-30" title="Add question">
               <Plus className="w-5 h-5 text-muted-foreground" />
             </button>
-            <button onClick={() => { const created = addSection(sectionTitle || `Section ${sections.length + 1}`); if (created) setSectionTitle('') }} className="p-3 hover:bg-muted" title="Add section divider">
+            <button onClick={() => addSection(sectionTitle || `Section ${sections.length + 1}`)} className="p-3 hover:bg-muted" title="Add section divider">
               <SeparatorHorizontal className="w-5 h-5 text-muted-foreground" />
             </button>
             <button
@@ -995,12 +1012,25 @@ export default function QuestionnaireTemplates() {
         )}
       </div>
 
-      {/* Advanced options slide-out */}
-      {advancedPanelOpen && (editingCardId === 'new' || editingCardId) && (
-        <AdvancedOptionsPanel
-          questionForm={questionForm}
-          setQuestionForm={setQuestionForm}
-          onClose={() => setAdvancedPanelOpen(false)}
+      {removeTarget && (
+        <ConfirmModal
+          tone="danger"
+          title="Delete this question?"
+          message={`"${removeTarget.label}" is removed from this checklist. Answers clients already gave stay on record, and cases that already have this checklist keep it.`}
+          confirmLabel="Delete question"
+          busy={saving}
+          onConfirm={confirmRemoveQuestion}
+          onCancel={() => setRemoveTarget(null)}
+        />
+      )}
+      {archiveOpen && (
+        <ConfirmModal
+          tone="danger"
+          title={`Delete "${selectedTemplate?.title}"?`}
+          message="The checklist is taken out of use: it is no longer sent to new cases. Cases that already have it keep it."
+          confirmLabel="Delete checklist"
+          onConfirm={archiveTemplate}
+          onCancel={() => setArchiveOpen(false)}
         />
       )}
 
@@ -1023,75 +1053,11 @@ export default function QuestionnaireTemplates() {
   )
 }
 
-// ── Question card (display + inline edit) ───────────────────────────────
-function QuestionCard({
-  question, isEditing, isDragOver, questionForm, setQuestionForm, onOpen, onBlurContainer,
-  onDuplicate, onRemove, onAddOption, onRemoveOption, onUpdateOption, onOpenAdvanced,
-  onDragStart, onDragOver, onDrop, onDragLeave,
-}) {
+// ── Question card: the card, or its editor while it is open ──────────────
+function QuestionCard({ question, isEditing, isDragOver, editorProps, onOpen, onDuplicate, onRemove, onDragStart, onDragOver, onDrop, onDragLeave }) {
   if (isEditing) {
-    return (
-      <div
-        tabIndex={-1}
-        onBlur={onBlurContainer}
-        className="card !p-0 overflow-hidden border-l-4 border-l-blue-400 ring-1 ring-blue-100"
-      >
-        <div className="p-5 space-y-3">
-          <div className="flex items-center gap-3">
-            <input
-              autoFocus
-              className="flex-1 text-base font-medium text-foreground border-b border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
-              placeholder="Question"
-              value={questionForm.label}
-              onChange={(e) => setQuestionForm((prev) => ({ ...prev, label: e.target.value, key: prev.key || slug(e.target.value) }))}
-            />
-            <select
-              className="input-field !w-52 text-sm"
-              value={questionForm.type}
-              onChange={(e) => setQuestionForm((prev) => ({ ...prev, type: e.target.value }))}
-            >
-              {QUESTION_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </div>
-
-          <QuestionTypeBody
-            type={questionForm.type}
-            questionForm={questionForm}
-            setQuestionForm={setQuestionForm}
-            onAddOption={onAddOption}
-            onRemoveOption={onRemoveOption}
-            onUpdateOption={onUpdateOption}
-            editable
-          />
-
-          <div className="flex items-center justify-between pt-3 border-t border-border">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <button
-                type="button"
-                onClick={() => setQuestionForm((prev) => ({ ...prev, required: !prev.required }))}
-                className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-muted'}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-card transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
-              </button>
-              Required
-            </label>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={onDuplicate} title="Duplicate" className="p-2 rounded-lg hover:bg-secondary text-muted-foreground">
-                <Copy className="w-4 h-4" />
-              </button>
-              <button type="button" onClick={onRemove} title="Delete" className="p-2 rounded-lg hover:bg-red-50 text-red-500">
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button type="button" onClick={onOpenAdvanced} title="Advanced options" className="p-2 rounded-lg hover:bg-secondary text-muted-foreground">
-                <MoreVertical className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+    return <QuestionEditor {...editorProps} onDuplicate={onDuplicate} onRemove={onRemove} />
   }
-
   return (
     <div
       draggable
@@ -1100,19 +1066,19 @@ function QuestionCard({
       onDrop={onDrop}
       onDragLeave={onDragLeave}
       onClick={onOpen}
-      className={`card !py-4 !px-4 cursor-pointer hover:shadow-md transition-shadow ${isDragOver ? 'ring-2 ring-blue-400' : ''}`}
+      className={`card !py-4 !px-4 cursor-pointer hover:shadow-md transition-shadow ${isDragOver ? 'ring-2 ring-primary-300' : ''}`}
     >
       <div className="flex items-start gap-3">
         <GripVertical className="w-4 h-4 text-muted-foreground mt-1 shrink-0 cursor-grab" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-3">
             <p className="font-medium text-foreground truncate">{question.label}{question.required && <span className="text-red-500 ml-1">*</span>}</p>
-            <span className="text-xs text-muted-foreground shrink-0">{QUESTION_TYPE_LABELS[question.metadata?.requestedType || question.type] || question.type}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{QUESTION_TYPE_LABELS[typeOf(question)] || typeOf(question)}</span>
           </div>
-          {CHOICE_TYPES.has(question.type) && (question.options || []).length > 0 && (
+          {CHOICE_TYPES.has(typeOf(question)) && (question.options || []).length > 0 && (
             <div className="mt-2 space-y-1">
-              {question.options.slice(0, 4).map((option) => (
-                <div key={option.value} className="text-sm text-muted-foreground flex items-center gap-2">
+              {question.options.slice(0, 4).map((option, index) => (
+                <div key={`${option.value}-${index}`} className="text-sm text-muted-foreground flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full border border-border shrink-0" />
                   {option.label}
                 </div>
@@ -1134,75 +1100,153 @@ function QuestionCard({
   )
 }
 
-function NewQuestionCard({ questionForm, setQuestionForm, onBlurContainer, onAddOption, onRemoveOption, onUpdateOption, onCancel }) {
+// One editor for an existing and a new question. Nothing is saved behind the designer's back: "Done" saves and closes, "Cancel" (or Escape) discards,
+// and opening another question saves this one first.
+function QuestionEditor({ form, setForm, isNew, saving, error, advancedOpen, setAdvancedOpen, onDone, onCancel, onDuplicate, onRemove }) {
+  const typeOptions = QUESTION_TYPE_OPTIONS.some((option) => option.value === form.type)
+    ? QUESTION_TYPE_OPTIONS
+    : [...QUESTION_TYPE_OPTIONS, { label: `Other (${form.type})`, value: form.type }]
+  const setOption = (index, label) => setForm((prev) => ({ ...prev, options: prev.options.map((row, i) => (i === index ? { ...row, label } : row)) }))
+  const removeOption = (index) => setForm((prev) => ({ ...prev, options: prev.options.filter((_, i) => i !== index) }))
+  const addOption = () => setForm((prev) => ({ ...prev, options: [...prev.options, { label: `Option ${prev.options.length + 1}`, value: '', fixed: false }] }))
+
   return (
-    <div tabIndex={-1} onBlur={onBlurContainer} className="card !p-0 overflow-hidden border-l-4 border-l-blue-400 ring-1 ring-blue-100">
+    <div
+      className="card !p-0 overflow-hidden border-l-4 border-l-primary ring-1 ring-primary-100"
+      onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onCancel() } }}
+    >
       <div className="p-5 space-y-3">
         <div className="flex items-center gap-3">
           <input
             autoFocus
-            className="flex-1 text-base font-medium text-foreground border-b border-border focus:border-blue-500 outline-none pb-1 bg-transparent"
+            className="flex-1 text-base font-medium text-foreground border-b border-border focus:border-primary outline-none pb-1 bg-transparent"
             placeholder="Question"
-            value={questionForm.label}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, label: e.target.value, key: prev.key || slug(e.target.value) }))}
+            value={form.label}
+            onChange={(e) => setForm((prev) => ({ ...prev, label: e.target.value }))}
           />
           <select
             className="input-field !w-52 text-sm"
-            value={questionForm.type}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, type: e.target.value }))}
+            value={form.type}
+            onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value }))}
           >
-            {QUESTION_TYPE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {typeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </div>
-        <QuestionTypeBody type={questionForm.type} questionForm={questionForm} setQuestionForm={setQuestionForm} onAddOption={onAddOption} onRemoveOption={onRemoveOption} onUpdateOption={onUpdateOption} editable />
+
+        <input
+          className="w-full text-sm text-muted-foreground border-b border-transparent hover:border-border focus:border-primary outline-none py-1 bg-transparent"
+          placeholder="Help text (optional)"
+          value={form.description}
+          onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+        />
+
+        {CHOICE_TYPES.has(form.type) ? (
+          <div className="space-y-2 pl-1">
+            {form.options.map((row, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border border-border shrink-0" />
+                <input
+                  className="flex-1 text-sm border-b border-transparent hover:border-border focus:border-primary outline-none py-1 bg-transparent"
+                  value={row.label}
+                  onChange={(e) => setOption(index, e.target.value)}
+                />
+                <button type="button" onClick={() => removeOption(index)} className="text-muted-foreground hover:text-red-500" title="Remove option"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+            <button type="button" onClick={addOption} className="text-sm text-primary font-medium hover:underline pl-5">+ Add option</button>
+          </div>
+        ) : form.type === 'file' || form.type === 'file-multiple' ? (
+          <p className="text-xs text-muted-foreground pl-1">Accepted formats: PDF, DOC, JPG (all by default) · {form.type === 'file-multiple' ? 'Multiple files allowed' : 'Single file'}</p>
+        ) : (
+          <input
+            className="w-full text-sm text-muted-foreground border-b border-dashed border-border outline-none py-1 bg-transparent"
+            placeholder="Placeholder text (optional)"
+            value={form.placeholder || ''}
+            onChange={(e) => setForm((prev) => ({ ...prev, placeholder: e.target.value }))}
+          />
+        )}
+
+        {advancedOpen && <AdvancedOptions form={form} setForm={setForm} isNew={isNew} />}
+
+        {error && <p className="text-sm text-red-700">{error}</p>}
+
         <div className="flex items-center justify-between pt-3 border-t border-border">
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
             <button
               type="button"
-              onClick={() => setQuestionForm((prev) => ({ ...prev, required: !prev.required }))}
-              className={`relative w-9 h-5 rounded-full transition-colors ${questionForm.required ? 'bg-blue-600' : 'bg-muted'}`}
+              onClick={() => setForm((prev) => ({ ...prev, required: !prev.required }))}
+              className={`relative w-9 h-5 rounded-full transition-colors ${form.required ? 'bg-primary' : 'bg-muted'}`}
+              aria-pressed={Boolean(form.required)}
             >
-              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-card transition-transform ${questionForm.required ? 'translate-x-4' : ''}`} />
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-card transition-transform ${form.required ? 'translate-x-4' : ''}`} />
             </button>
             Required
           </label>
-          <button type="button" onClick={onCancel} className="text-sm text-muted-foreground hover:text-muted-foreground">Cancel</button>
+          <div className="flex items-center gap-1">
+            {!isNew && onDuplicate && (
+              <button type="button" onClick={onDuplicate} title="Duplicate" className="p-2 rounded-lg hover:bg-secondary text-muted-foreground"><Copy className="w-4 h-4" /></button>
+            )}
+            {!isNew && onRemove && (
+              <button type="button" onClick={onRemove} title="Delete" className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 className="w-4 h-4" /></button>
+            )}
+            <button type="button" onClick={() => setAdvancedOpen(!advancedOpen)} title="Advanced options" className={`p-2 rounded-lg hover:bg-secondary ${advancedOpen ? 'text-primary' : 'text-muted-foreground'}`}><MoreVertical className="w-4 h-4" /></button>
+            <button type="button" onClick={onCancel} disabled={saving} className="btn-secondary !py-1.5 text-sm ml-1 disabled:opacity-50">Cancel</button>
+            <button type="button" onClick={onDone} disabled={saving} className="btn-primary !py-1.5 text-sm disabled:opacity-50">{saving ? 'Saving…' : 'Done'}</button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function QuestionTypeBody({ type, questionForm, setQuestionForm, onAddOption, onRemoveOption, onUpdateOption }) {
-  if (CHOICE_TYPES.has(type)) {
-    const lines = questionForm.optionsText ? questionForm.optionsText.split('\n') : []
-    return (
-      <div className="space-y-2 pl-1">
-        {lines.map((line, index) => (
-          <div key={index} className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full border border-border shrink-0" />
-            <input
-              className="flex-1 text-sm border-b border-transparent hover:border-border focus:border-blue-500 outline-none py-1 bg-transparent"
-              value={line}
-              onChange={(e) => onUpdateOption(index, e.target.value)}
-            />
-            <button onClick={() => onRemoveOption(index)} className="text-muted-foreground hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
-          </div>
-        ))}
-        <button onClick={onAddOption} className="text-sm text-blue-600 font-medium hover:underline pl-5">+ Add option</button>
-      </div>
-    )
-  }
-  if (type === 'file' || type === 'file-multiple') {
-    return <p className="text-xs text-muted-foreground pl-1">Accepted formats: PDF, DOC, JPG (all by default) · {type === 'file-multiple' ? 'Multiple files allowed' : 'Single file'}</p>
-  }
+// ── Advanced options (inline under the question, not a separate panel) ───
+function AdvancedOptions({ form, setForm, isNew }) {
   return (
-    <input
-      className="w-full text-sm text-muted-foreground border-b border-dashed border-border outline-none py-1 bg-transparent"
-      placeholder="Placeholder text (optional)"
-      value={questionForm.placeholder || ''}
-      onChange={(e) => setQuestionForm((prev) => ({ ...prev, placeholder: e.target.value }))}
-    />
+    <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-4">
+      <div>
+        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">Conditional logic</h4>
+        <p className="text-xs text-muted-foreground mb-2">Show this question only when:</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input className="input-field text-sm" placeholder="Question key" value={form.showIf?.field || ''} onChange={(e) => setForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), field: e.target.value } }))} />
+          <select className="input-field text-sm" value={form.showIf?.operator || 'equals'} onChange={(e) => setForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), operator: e.target.value } }))}>
+            {OPERATORS.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
+          </select>
+          <input className="input-field text-sm" placeholder="Value" value={form.showIf?.value ?? ''} onChange={(e) => setForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), value: e.target.value } }))} />
+        </div>
+      </div>
+      <div>
+        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">USCIS field links</h4>
+        <p className="text-xs text-muted-foreground mb-2">One per line, e.g. I129.part2.fullName</p>
+        <textarea className="input-field text-sm min-h-[70px]" value={form.uscisMappingsText} onChange={(e) => setForm((prev) => ({ ...prev, uscisMappingsText: e.target.value }))} />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">Eligibility weight</h4>
+          <input type="number" className="input-field text-sm" value={form.eligibilityWeight} onChange={(e) => setForm((prev) => ({ ...prev, eligibilityWeight: e.target.value }))} />
+        </div>
+        <div>
+          <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">Evidence category</h4>
+          <select className="input-field text-sm" value={form.evidenceCategory} onChange={(e) => setForm((prev) => ({ ...prev, evidenceCategory: e.target.value }))}>
+            <option value="">None</option>
+            {EVIDENCE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">Question key</h4>
+        {isNew ? (
+          <>
+            <p className="text-xs text-muted-foreground mb-2">Made from the question text. Type one only if you need a specific key.</p>
+            <input className="input-field text-sm" value={form.key} onChange={(e) => setForm((prev) => ({ ...prev, key: e.target.value }))} />
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground mb-2">Fixed: answers, document links and form mappings refer to it.</p>
+            <input className="input-field text-sm" value={form.key} readOnly />
+          </>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -1216,7 +1260,7 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
       <div className="bg-card rounded-2xl shadow-xl w-full max-w-md p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-lg font-bold text-foreground">Create checklist</h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
         </div>
 
         {wizardStep === 1 ? (
@@ -1259,7 +1303,7 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
             <p className="text-sm font-semibold text-muted-foreground">Who completes this checklist?</p>
             <div className="space-y-2">
               {roleOptions.map((option) => (
-                <label key={option.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${wizardForm.checklistRole === option.value ? 'border-blue-500 bg-blue-50' : 'border-border hover:bg-muted'}`}>
+                <label key={option.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${wizardForm.checklistRole === option.value ? 'border-primary bg-primary-50' : 'border-border hover:bg-muted'}`}>
                   <input
                     type="radio"
                     name="checklistRole"
@@ -1278,88 +1322,6 @@ function CreateWizardModal({ wizardStep, setWizardStep, wizardForm, setWizardFor
             </div>
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-// ── Advanced options slide-out ───────────────────────────────────────────
-function AdvancedOptionsPanel({ questionForm, setQuestionForm, onClose }) {
-  return (
-    <div className="fixed inset-y-0 right-0 w-96 max-w-full bg-card shadow-2xl border-l border-border z-40 overflow-y-auto">
-      <div className="p-5 border-b border-border flex items-center justify-between sticky top-0 bg-card">
-        <h3 className="font-bold text-foreground">Advanced options</h3>
-        <button onClick={onClose} className="text-muted-foreground hover:text-muted-foreground"><X className="w-5 h-5" /></button>
-      </div>
-      <div className="p-5 space-y-6">
-        <div>
-          <h4 className="text-sm font-bold text-muted-foreground mb-2">Conditional logic</h4>
-          <p className="text-xs text-muted-foreground mb-3">Show this question only when:</p>
-          <div className="space-y-2">
-            <input
-              className="input-field text-sm"
-              placeholder="Field key"
-              value={questionForm.showIf?.field || ''}
-              onChange={(e) => setQuestionForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), field: e.target.value } }))}
-            />
-            <select
-              className="input-field text-sm"
-              value={questionForm.showIf?.operator || 'equals'}
-              onChange={(e) => setQuestionForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), operator: e.target.value } }))}
-            >
-              {OPERATORS.map((operator) => <option key={operator} value={operator}>{operator}</option>)}
-            </select>
-            <input
-              className="input-field text-sm"
-              placeholder="Value"
-              value={questionForm.showIf?.value || ''}
-              onChange={(e) => setQuestionForm((prev) => ({ ...prev, showIf: { ...(prev.showIf || {}), value: e.target.value } }))}
-            />
-          </div>
-        </div>
-
-        <div>
-          <h4 className="text-sm font-bold text-muted-foreground mb-2">USCIS field mappings</h4>
-          <p className="text-xs text-muted-foreground mb-3">One per line</p>
-          <textarea
-            className="input-field text-sm min-h-[90px]"
-            placeholder="I129.part2.fullName"
-            value={questionForm.uscisMappingsText}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, uscisMappingsText: e.target.value }))}
-          />
-        </div>
-
-        <div>
-          <h4 className="text-sm font-bold text-muted-foreground mb-2">Eligibility weight</h4>
-          <input
-            type="number"
-            className="input-field text-sm"
-            value={questionForm.eligibilityWeight}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, eligibilityWeight: e.target.value }))}
-          />
-        </div>
-
-        <div>
-          <h4 className="text-sm font-bold text-muted-foreground mb-2">Evidence category</h4>
-          <select
-            className="input-field text-sm"
-            value={questionForm.evidenceCategory}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, evidenceCategory: e.target.value }))}
-          >
-            <option value="">None</option>
-            {EVIDENCE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <h4 className="text-sm font-bold text-muted-foreground mb-2">Question key</h4>
-          <p className="text-xs text-muted-foreground mb-2">Auto-generated. Override only if needed.</p>
-          <input
-            className="input-field text-sm"
-            value={questionForm.key}
-            onChange={(e) => setQuestionForm((prev) => ({ ...prev, key: e.target.value }))}
-          />
-        </div>
       </div>
     </div>
   )

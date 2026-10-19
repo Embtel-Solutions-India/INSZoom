@@ -36,6 +36,8 @@ const YES_NO = [{ label: "Yes", value: "Yes" }, { label: "No", value: "No" }];
 const countries = COUNTRIES.map((value) => ({ label: value, value }));
 // Related filings Premium Processing is offered for (Form I-907 Part 2, Item 1). Every one is a form of the existing USCIS registry (an active
 // USCISFormTemplate and a VisaFormMapping that sits beside I-907 on the same visa types) - a test asserts that, so no form number is invented.
+// The question itself is a free-text box (the client types the form number), so this list no longer limits what can be answered: it only drives
+// which typed form numbers count as "has a beneficiary" (FORMS_WITH_BENEFICIARY) and what the registry test checks.
 const RELATED_FORMS = ["I-129", "I-140", "I-539", "I-765", "I-131"];
 // Of those, the filings that have a beneficiary distinct from the filer (I-539 / I-765 / I-131 are filed by the person themself).
 const FORMS_WITH_BENEFICIARY = ["I-129", "I-140"];
@@ -55,12 +57,17 @@ const HAS_COUNTRY = (path) => rule(path, "not_empty");
 const NOT_US = (path) => rule(path, "not_equals", "United States");
 const DIFFERS = rule(SAME, "equals", "No");
 const HAS_COMPANY = rule(COMPANY, "not_empty");
-const HAS_BENEFICIARY = rule(FORM_NUMBER, "in", FORMS_WITH_BENEFICIARY);
+// The form number is typed, so "I-129", "i-129", "I129" and "Form I-129" must all count: one "any" group of case/dash variants (the shared
+// condition evaluator already supports nested groups; "contains" is a plain substring test).
+const FORM_NUMBER_VARIANTS = FORMS_WITH_BENEFICIARY.flatMap((form) => [form, form.replace("-", ""), form.toLowerCase(), form.replace("-", "").toLowerCase()]);
+const BENEFICIARY_GROUP = { mode: "any", rules: FORM_NUMBER_VARIANTS.map((variant) => rule(FORM_NUMBER, "contains", variant)), groups: [] };
+const WHEN_BENEFICIARY = { mode: "all", rules: [], groups: [BENEFICIARY_GROUP] };
 
 const ZIP_RULE = { type: "regex", value: "^\\d{5}(-\\d{4})?$", message: "Enter a 5-digit ZIP code (or ZIP+4)." };
 const A_NUMBER_RULE = { type: "regex", value: "^[Aa]?-?\\d{7,9}$", message: "A-Number is 7 to 9 digits, for example A123456789." };
 const ONLINE_ACCOUNT_RULE = { type: "regex", value: "^\\d{12}$", message: "A USCIS Online Account Number is 12 digits." };
 const EIN_RULE = { type: "regex", value: "^\\d{2}-?\\d{7}$", message: "EIN must be 9 digits, for example 12-3456789." };
+const FORM_NUMBER_RULE = { type: "regex", value: "^\\s*(?:[Ff]orm\\s+)?[Ii]\\s?-?\\s?\\d{2,3}[A-Za-z]?\\s*$", message: "Enter the form number, for example I-129." };
 const RECEIPT_RULE = { type: "regex", value: "^[A-Za-z]{3}[- ]?\\d{2}[- ]?\\d{3}[- ]?\\d{5}$", message: "A receipt number is 3 letters followed by 10 digits, for example EAC1234567890." };
 
 // { path, label, type, required, optional, canonical, ref, ... } in the order of the specification. "required: true" is the specification's
@@ -99,13 +106,13 @@ const PHYSICAL_QUESTIONS = [
 ];
 
 const PART2_QUESTIONS = [
-  { path: FORM_NUMBER, label: "Form Number of Related Petition or Application", type: "select", required: true, options: RELATED_FORMS, canonical: "premiumProcessing.relatedCase.formNumber", ref: "Part 2, Item 1" },
+  { path: FORM_NUMBER, label: "Form Number of Related Petition or Application", type: "text", required: true, rules: [FORM_NUMBER_RULE], canonical: "premiumProcessing.relatedCase.formNumber", ref: "Part 2, Item 1" },
   { path: "i907.related_case.receipt_number", label: "Receipt Number of Related Petition or Application", type: "text", required: true, rules: [RECEIPT_RULE], canonical: "premiumProcessing.relatedCase.receiptNumbers[0]", ref: "Part 2, Item 2" },
   { path: "i907.related_case.receipt_number_2", label: "Receipt Number of Related Petition or Application", description: "A second receipt number, only if the related case has one.", type: "text", optional: true, rules: [RECEIPT_RULE], canonical: "premiumProcessing.relatedCase.receiptNumbers[1]", ref: "none (second receipt number; the form has one box)" },
   { path: "i907.petitioner.last_name", label: "Petitioner or Applicant — Family Name (Last Name)", type: "text", required: true, canonical: "premiumProcessing.relatedCase.petitionerOrApplicant.lastName", ref: "Part 2, Item 4" },
   { path: "i907.petitioner.first_name", label: "Petitioner or Applicant — Given Name (First Name)", type: "text", required: true, canonical: "premiumProcessing.relatedCase.petitionerOrApplicant.firstName", ref: "Part 2, Item 4" },
-  { path: "i907.beneficiary.last_name", label: "Beneficiary — Family Name (Last Name)", type: "text", required: true, logic: when(HAS_BENEFICIARY), canonical: "premiumProcessing.relatedCase.beneficiary.lastName", ref: "Part 2, Item 5" },
-  { path: "i907.beneficiary.first_name", label: "Beneficiary — Given Name (First Name)", type: "text", required: true, logic: when(HAS_BENEFICIARY), canonical: "premiumProcessing.relatedCase.beneficiary.firstName", ref: "Part 2, Item 5" },
+  { path: "i907.beneficiary.last_name", label: "Beneficiary — Family Name (Last Name)", type: "text", required: true, logic: WHEN_BENEFICIARY, canonical: "premiumProcessing.relatedCase.beneficiary.lastName", ref: "Part 2, Item 5" },
+  { path: "i907.beneficiary.first_name", label: "Beneficiary — Given Name (First Name)", type: "text", required: true, logic: WHEN_BENEFICIARY, canonical: "premiumProcessing.relatedCase.beneficiary.firstName", ref: "Part 2, Item 5" },
   { path: "i907.company_poc.last_name", label: "Name of Point of Contact for the Company or Organization — Family Name (Last Name)", type: "text", required: true, logic: when(HAS_COMPANY), canonical: "premiumProcessing.companyPointOfContact.lastName", ref: "Part 2, Item 6" },
   { path: "i907.company_poc.first_name", label: "Name of Point of Contact for the Company or Organization — Given Name (First Name)", type: "text", required: true, logic: when(HAS_COMPANY), canonical: "premiumProcessing.companyPointOfContact.firstName", ref: "Part 2, Item 6" },
   { path: "i907.company_poc.position_title", label: "Name of Point of Contact for the Company or Organization — Position Title", type: "text", required: true, logic: when(HAS_COMPANY), canonical: "premiumProcessing.companyPointOfContact.positionTitle", ref: "Part 2, Item 6" },

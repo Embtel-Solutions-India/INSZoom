@@ -322,13 +322,20 @@ class MappingGraphService {
   // never template.mappingGraph (see applyGraphToTemplate's comment on why
   // that field is intentionally never written). Falls back to a freshly
   // generated graph only when no version has ever been persisted.
-  static async loadCurrentGraph(template) {
+  // The stored graph of a template, or null when none was ever saved. Needs only template._id / latestMappingVersionId - never the form's field
+  // definitions (a template document can be 10-16 MB), so a caller that has only those two fields can use it.
+  static async loadStoredGraph(template) {
     if (template.latestMappingVersionId) {
       const version = await USCISMappingVersion.findById(template.latestMappingVersionId).select("graph").lean();
       if (version?.graph) return version.graph;
     }
     const latest = await USCISMappingVersion.findOne({ template: template._id }).sort({ mappingVersion: -1 }).select("graph").lean();
-    if (latest?.graph) return latest.graph;
+    return latest?.graph || null;
+  }
+
+  static async loadCurrentGraph(template) {
+    const stored = await this.loadStoredGraph(template);
+    if (stored) return stored;
     return this.generateGraph(template);
   }
 
@@ -517,13 +524,20 @@ class MappingGraphService {
   }
 
   static async preview(templateId) {
-    const template = await USCISFormTemplate.findById(templateId).lean();
+    // Only the few fields the answer and the stored-graph lookup need: the full template (form definition, rendering config, field indexes...) is
+    // 10-16 MB for the big forms and made every preview take minutes over the network. It is loaded in full only in the one case that needs it:
+    // a template that has no saved graph yet and must have one generated.
+    let template = await USCISFormTemplate.findById(templateId).select("formCode formName title editionDate version mappingVersion mappingStatus latestMappingVersionId").lean();
     if (!template) {
       const error = new Error("USCIS form template not found");
       error.status = 404;
       throw error;
     }
-    const graph = await this.loadCurrentGraph(template);
+    let graph = await this.loadStoredGraph(template);
+    if (!graph) {
+      template = await USCISFormTemplate.findById(templateId).lean();
+      graph = await this.generateGraph(template);
+    }
     return {
       template: {
         id: template._id,

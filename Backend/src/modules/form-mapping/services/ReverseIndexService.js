@@ -13,6 +13,7 @@ const MappingResolver = require("./MappingResolver");
 // an explicit composite/derived flag at crosswalk-authoring time so this
 // stops being a heuristic.
 const DERIVED_SOURCE_PATH_SUFFIXES = ["fullName"];
+const REVERSE_INDEX_TTL_MS = 5 * 60 * 1000; // even an unchanged key is rebuilt this often, so a missed invalidation can never last
 
 class ReverseIndexService {
   static _cache = new Map(); // formCode -> { mappingVersionId, entries: Map<sourcePath, Array<{formCode,pdfField,reverseSync}>> }
@@ -37,12 +38,27 @@ class ReverseIndexService {
   // active mapping graph. Loaded via FormMappingService.loadTemplate +
   // applyMappingGraph (never hand-parses the crosswalk config files) and
   // cached per {formCode, mappingVersionId} pair.
+  // A few bytes that change whenever the form's active template or its mapping changes. Reading just these is one small query; the full template
+  // (several MB, ~14 s over a remote database) used to be downloaded on EVERY call only to learn the version, so the cache never saved anything -
+  // and one field save asks for this index twice.
+  static async freshnessKey(normalizedFormType) {
+    const head = await USCISFormTemplate.findOne({ $or: [{ formCode: normalizedFormType }, { formNumber: normalizedFormType }], status: "active" })
+      .select("_id updatedAt version mappingVersion mappingVersionId activeMappingVersionId latestMappingVersionId")
+      .sort({ activeFlag: -1, editionDate: -1, effectiveDate: -1, updatedAt: -1 })
+      .lean();
+    if (!head) return null;
+    return [head._id, head.updatedAt?.getTime?.() || "", head.version || "", head.mappingVersion || "", head.mappingVersionId || "", head.activeMappingVersionId || "", head.latestMappingVersionId || ""].join("|");
+  }
+
   static async buildFormReverseIndex(formCode) {
     const normalizedFormType = FormMappingService.normalizeFormType(formCode);
+    const key = await this.freshnessKey(normalizedFormType);
+    const cachedByKey = this._cache.get(normalizedFormType);
+    if (key && cachedByKey && cachedByKey.key === key && Date.now() - cachedByKey.at < REVERSE_INDEX_TTL_MS) return cachedByKey.entries;
     const template = await FormMappingService.loadTemplate(normalizedFormType);
     const mappingVersionId = String(template.mappingVersionId || "");
     const cached = this._cache.get(normalizedFormType);
-    if (cached && cached.mappingVersionId === mappingVersionId) return cached.entries;
+    if (!key && cached && cached.mappingVersionId === mappingVersionId) return cached.entries;
 
     const entries = new Map();
     const resolvedFormCode = template.formCode || template.formNumber || normalizedFormType;
@@ -57,7 +73,7 @@ class ReverseIndexService {
         entries.get(sourcePath).push({ formCode: resolvedFormCode, pdfField, reverseSync: this.classifyReverseSync(mapping, sourcePath) });
       });
     });
-    this._cache.set(normalizedFormType, { mappingVersionId, entries });
+    this._cache.set(normalizedFormType, { mappingVersionId, key, at: Date.now(), entries });
     return entries;
   }
 

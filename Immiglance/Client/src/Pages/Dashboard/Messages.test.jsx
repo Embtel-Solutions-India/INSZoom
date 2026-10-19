@@ -18,6 +18,7 @@ vi.mock("../../context/SocketContext", () => ({ useSocket: () => mockSocket }));
 vi.mock("../../hooks/useMyCaseProfile", () => ({ useMyCase: () => ({ data: { _id: "case1" } }) }));
 
 const sendMessage = vi.fn();
+const threadState = { messages: [] };
 const chunkGet = vi.fn();
 const chunkPost = vi.fn();
 const chunkPut = vi.fn();
@@ -25,7 +26,7 @@ vi.mock("../../services/api", () => ({
   messagesApi: {
     getThreads: () => Promise.resolve({ threads: [thread] }),
     getOrCreateThread: () => Promise.resolve({ thread }),
-    getMessages: () => Promise.resolve({ messages: [], hasMore: false }),
+    getMessages: () => Promise.resolve({ messages: threadState.messages, hasMore: false }),
     typing: () => Promise.resolve({}),
     getAttachment: () => Promise.reject(new Error("no")),
     sendMessage: (...args) => sendMessage(...args),
@@ -67,6 +68,7 @@ async function openThreadAndType(text) {
 beforeEach(() => {
   vi.useFakeTimers();
   sendMessage.mockReset();
+  threadState.messages = [];
   chunkGet.mockReset();
   chunkPost.mockReset();
   chunkPut.mockReset();
@@ -225,6 +227,47 @@ describe("Messages attachments", () => {
     expect(chunkPost).toHaveBeenCalledTimes(2); // init + complete, once: the second attempt did not upload again
     expect(sendMessage).toHaveBeenCalledTimes(2);
     expect(sendMessage.mock.calls[1][4].uploadIds).toEqual(["up1"]);
+    expect(sendMessage.mock.calls[1][4].clientMessageId).toBe(sendMessage.mock.calls[0][4].clientMessageId);
+  });
+});
+
+describe("Messages replies", () => {
+  const incoming = { _id: "srv-in", messageBody: "Please send your passport", senderName: "Case Manager", senderId: { _id: "team", displayName: "Case Manager" }, createdAt: new Date().toISOString(), readBy: [], attachments: [] };
+
+  it("replies like Admin: reply bar, replyTo + clientMessageId sent, quote shown at once, bar cleared", async () => {
+    threadState.messages = [incoming];
+    sendMessage.mockImplementation((_t, body, _f, _i, opts) => Promise.resolve({ message: saved(body, opts.clientMessageId, { replyTo: { _id: "srv-in", senderName: "Case Manager", messageBody: incoming.messageBody } }) }));
+    const box = await openThreadAndType("here you go");
+    fireEvent.click(screen.getByLabelText("Reply"));
+    const bar = screen.getByTestId("reply-bar");
+    expect(bar.textContent).toMatch(/Replying to\s*Case Manager/);
+    expect(bar.textContent).toMatch(/Please send your passport/);
+    expect(document.activeElement).toBe(box);
+    fireEvent.click(screen.getByLabelText("Send"));
+    // The quote is in the user's own bubble before the server answers.
+    expect(screen.getAllByText("Please send your passport").length).toBeGreaterThan(1);
+    expect(screen.queryByTestId("reply-bar")).toBeNull();
+    await flush();
+    const opts = sendMessage.mock.calls[0][4];
+    expect(opts.replyTo).toBe("srv-in");
+    expect(opts.clientMessageId).toBeTruthy();
+    expect(screen.getAllByText("here you go")).toHaveLength(1);
+  });
+
+  it("Cancel drops the reply and a plain send carries no replyTo; a failed reply keeps it on retry", async () => {
+    threadState.messages = [incoming];
+    sendMessage.mockRejectedValueOnce(Object.assign(new Error("Bad"), { status: 400 }));
+    await openThreadAndType("one");
+    fireEvent.click(screen.getByLabelText("Reply"));
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(screen.queryByTestId("reply-bar")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Reply"));
+    fireEvent.click(screen.getByLabelText("Send"));
+    await flush();
+    sendMessage.mockImplementationOnce((_t, body, _f, _i, opts) => Promise.resolve({ message: saved(body, opts.clientMessageId) }));
+    fireEvent.click(screen.getByText(/Tap to retry/));
+    await flush();
+    expect(sendMessage.mock.calls[1][4].replyTo).toBe("srv-in");
     expect(sendMessage.mock.calls[1][4].clientMessageId).toBe(sendMessage.mock.calls[0][4].clientMessageId);
   });
 });

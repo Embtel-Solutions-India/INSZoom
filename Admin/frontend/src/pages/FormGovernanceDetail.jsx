@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { formGovernanceApi } from '../services/api'
@@ -6,6 +6,7 @@ import { associationLabel } from './FormGovernance'
 import UploadFormModal from '../components/UploadFormModal'
 import MappingCoveragePanel from '../components/MappingCoveragePanel'
 import ConfirmModal from '../components/ConfirmModal'
+import FormMappingEditor from '../components/FormMappingEditor'
 import { ArrowLeft, ExternalLink, Wand2, CheckCircle2, RefreshCw, PlayCircle, Plus, Upload } from 'lucide-react'
 
 const readErrorMessage = (error, fallback) => {
@@ -13,14 +14,15 @@ const readErrorMessage = (error, fallback) => {
   return typeof message === 'string' && message.trim() ? message : fallback
 }
 
+// Quiet status marker (dot + neutral text), the same one the Form Governance list uses.
 const Badge = ({ tone = 'gray', children }) => {
-  const tones = {
-    green: 'bg-green-100 text-green-800',
-    amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
-    gray: 'bg-gray-100 text-gray-700',
-  }
-  return <span className={`px-2 py-0.5 text-xs font-medium rounded-full whitespace-nowrap ${tones[tone] || tones.gray}`}>{children}</span>
+  const dots = { green: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-red-500', gray: 'bg-slate-300' }
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dots[tone] || dots.gray}`} aria-hidden="true" />
+      {children}
+    </span>
+  )
 }
 
 const FormGovernanceDetail = () => {
@@ -61,39 +63,65 @@ const FormGovernanceDetail = () => {
   const [viewPending, setViewPending] = useState(false)
   const [checklistTrace, setChecklistTrace] = useState(null)
 
-  const load = useCallback(async () => {
+  // This form's catalog row. Asks for just this form (the full catalog reads every template in the system); falls back to the full catalog only if that
+  // request fails (an older server, or a supplement code).
+  const fetchCatalogEntry = useCallback(async () => {
     try {
-      const catalog = await formGovernanceApi.catalog()
-      const entry = (catalog.data.data || []).find((form) => form.formCode === formCode)
+      const response = await formGovernanceApi.catalogEntry(formCode)
+      if (response?.data?.data) return response.data.data
+    } catch (err) {
+      // fall through to the full catalog
+    }
+    const catalog = await formGovernanceApi.catalog()
+    return (catalog.data.data || []).find((form) => form.formCode === formCode) || null
+  }, [formCode])
+
+  // Newest load wins: a slow answer from an earlier load (another edition, another form) never overwrites a newer one.
+  const loadSeq = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++loadSeq.current
+    const isCurrent = () => seq === loadSeq.current
+    try {
+      const entry = await fetchCatalogEntry()
+      if (!isCurrent()) return
       if (!entry) { setError(`${formCode} was not found in the form catalog.`); setLoading(false); return }
       setCatalogEntry(entry)
       const targetTemplateId = viewPending && entry.pendingTemplateId ? entry.pendingTemplateId : entry.templateId
       if (!targetTemplateId) { setError(`${formCode} has not been fetched from uscis.gov yet — go back and fetch it first.`); setLoading(false); return }
+      // The two slow diagnostics (which checklist question feeds each box, and the defect list) start now, alongside the mapping, and fill their columns in
+      // when they arrive - the page opens as soon as the mapping itself is here instead of waiting for them one after another.
+      setChecklistTrace(null)
+      setDefects(null)
+      formGovernanceApi.checklistTraceFields(targetTemplateId)
+        .then((trace) => { if (isCurrent()) setChecklistTrace(new Map((trace.data.fields || []).map((row) => [row.targetFieldId, row.checklistMatches || []]))) })
+        .catch(() => { if (isCurrent()) setChecklistTrace(new Map()) })
+      formGovernanceApi.governanceDefects(targetTemplateId)
+        .then((defectsResponse) => { if (isCurrent()) setDefects(defectsResponse.data) })
+        .catch(() => { if (isCurrent()) setDefects(null) })
       const preview = await formGovernanceApi.mappingPreview(targetTemplateId)
+      if (!isCurrent()) return
       setGraph(preview.data.graph)
       setMappingStatus(preview.data.template.mappingStatus)
       setError(null)
-      try {
-        const trace = await formGovernanceApi.checklistTraceFields(targetTemplateId)
-        const byTarget = new Map((trace.data.fields || []).map((row) => [row.targetFieldId, row.checklistMatches || []]))
-        setChecklistTrace(byTarget)
-      } catch (err) {
-        setChecklistTrace(new Map())
-      }
-      try {
-        const defectsResponse = await formGovernanceApi.governanceDefects(targetTemplateId)
-        setDefects(defectsResponse.data)
-      } catch (err) {
-        setDefects(null)
-      }
     } catch (err) {
-      setError(readErrorMessage(err, 'Unable to load this form.'))
+      if (isCurrent()) setError(readErrorMessage(err, 'Unable to load this form.'))
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
-  }, [formCode, viewPending])
+  }, [formCode, viewPending, fetchCatalogEntry])
 
   useEffect(() => { load() }, [load])
+
+  // After a save in the mapping editor: re-read just this form's catalog row (so the open editor keeps its place); the full reload runs when it closes.
+  const refreshCatalogEntry = useCallback(async () => {
+    try {
+      const entry = await fetchCatalogEntry()
+      if (entry) setCatalogEntry(entry)
+    } catch (err) {
+      // the editor already confirmed the save; a failed refresh only means the chips update on the next load
+    }
+  }, [fetchCatalogEntry])
 
   const viewedTemplateId = viewPending && catalogEntry?.pendingTemplateId ? catalogEntry.pendingTemplateId : catalogEntry?.templateId
   const viewedTemplateStatus = viewPending && catalogEntry?.pendingTemplateId ? catalogEntry.pendingTemplateStatus : catalogEntry?.templateStatus
@@ -404,42 +432,14 @@ const FormGovernanceDetail = () => {
               )}
             </div>
             {catalogEntry?.associations?.length ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs text-muted-foreground uppercase">
-                      <th className="pr-4 py-1">Case type</th>
-                      <th className="pr-4 py-1">Assignment</th>
-                      <th className="pr-4 py-1">Checklist(s) sent to the client</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catalogEntry.associations.map((assoc, index) => (
-                      <tr key={`${assoc.visaType}-${index}`} className="border-t">
-                        <td className="pr-4 py-2 font-medium text-foreground whitespace-nowrap">{assoc.visaType}</td>
-                        <td className="pr-4 py-2 whitespace-nowrap">{associationLabel(assoc)}</td>
-                        <td className="pr-4 py-2">
-                          {assoc.checklistMappings?.length ? (
-                            <div className="flex flex-wrap gap-1">
-                              {assoc.checklistMappings.map((cl) => (
-                                <span
-                                  key={cl.checklistKey}
-                                  className={`px-2 py-0.5 rounded text-xs ${cl.assignmentType === 'AUTO' ? 'bg-green-100 text-green-800' : cl.assignmentType === 'CONDITIONAL' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}
-                                  title={cl.assignmentType === 'AUTO' ? 'Sent automatically at case creation' : cl.assignmentType === 'CONDITIONAL' ? 'Sent only when its condition is met' : 'Never automatic - a case manager adds it'}
-                                >
-                                  {cl.checklistKey}{cl.role ? ` (${cl.role})` : ''} · {cl.assignmentType}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">No checklist mapped yet</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <FormMappingEditor
+                formCode={formCode}
+                templateId={catalogEntry.templateId}
+                associations={catalogEntry.associations}
+                isAdmin={isAdmin}
+                associationLabel={associationLabel}
+                onChanged={(options) => (options?.keepOpen ? refreshCatalogEntry() : load())}
+              />
             ) : (
               <span className="text-sm text-muted-foreground">No case types are mapped to this form yet.</span>
             )}
@@ -561,7 +561,8 @@ const FormGovernanceDetail = () => {
                       </td>
                       <td className="px-4 py-2">
                         {(() => {
-                          const matches = checklistTrace?.get(field.fieldId) || []
+                          if (checklistTrace === null) return <span className="text-xs text-muted-foreground">Loading…</span>
+                          const matches = checklistTrace.get(field.fieldId) || []
                           if (!matches.length) return <span className="text-xs text-muted-foreground">—</span>
                           return (
                             <div className="flex flex-col gap-0.5">

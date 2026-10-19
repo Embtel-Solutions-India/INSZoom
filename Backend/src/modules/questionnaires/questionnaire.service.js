@@ -149,7 +149,9 @@ function normalizeShowIf(showIf) {
 
 function normalizeQuestionPayload(payload = {}) {
   const normalized = { ...payload };
-  normalized.type = normalizeQuestionType(payload.type);
+  // Only when a type was sent: a partial update (deactivate, rename, reorder) used to be given type "text" here and silently changed the question's type.
+  if (payload.type !== undefined) normalized.type = normalizeQuestionType(payload.type);
+  else delete normalized.type;
   if (payload.type && payload.type !== normalized.type) {
     normalized.metadata = { ...(payload.metadata || {}), requestedType: payload.type };
   }
@@ -621,10 +623,29 @@ async function createQuestionnaire(payload, user, req) {
   return questionnaire;
 }
 
+// What a saved page echoes back but only the server may change: history, counters, version bookkeeping, approval / lock state. Taking them from the
+// page overwrote them with whatever copy the page happened to be holding (a stale audit trail, a stale analytics counter, ...).
+const SERVER_OWNED_QUESTIONNAIRE_FIELDS = [
+  "_id", "__v", "createdAt", "updatedAt", "createdBy", "updatedBy", "auditHistory", "analytics", "approval", "collaboration", "version", "latestVersion",
+  "rootQuestionnaire", "parentVersion", "sourceQuestionnaire", "publishedAt", "publishedBy", "adminVisaTypes", "generation", "importExport",
+];
+function stripServerOwnedFields(payload = {}) {
+  const copy = { ...payload };
+  SERVER_OWNED_QUESTIONNAIRE_FIELDS.forEach((field) => { delete copy[field]; });
+  return copy;
+}
+
 async function updateQuestionnaire(questionnaire, payload, user, req) {
   assertCanDesign(user, "update questionnaires");
   if (questionnaire.status === "published" && payload.status !== "archived") assertDraft(questionnaire);
-  const incoming = adminEdits.stripMarkers(payload);
+  const incoming = stripServerOwnedFields(adminEdits.stripMarkers(payload));
+  // The section / page order is derived from the sections here, on top of the builder the server already holds (its question order is kept): a page that
+  // sends sections no longer has to echo back a copy of the whole builder, which overwrote a newer question order with a stale one.
+  if (Array.isArray(incoming.sections) && !incoming.builder) {
+    const currentBuilder = questionnaire.builder?.toObject?.() || questionnaire.builder || {};
+    const keys = incoming.sections.map((section) => section.key);
+    incoming.builder = { ...currentBuilder, layout: "wizard", sectionOrder: keys, pageOrder: keys };
+  }
   // remember WHICH built-in fields the designer changed, so the definition reconciler never reverts them
   const edited = adminEdits.changedFields(questionnaire, incoming, { only: adminEdits.QUESTIONNAIRE_TRACKED_FIELDS });
   Object.assign(questionnaire, incoming, { updatedBy: user._id });
@@ -774,6 +795,18 @@ async function createQuestion(questionnaire, payload, user, req) {
       libraryVersion: libraryItem.version,
     };
   }
+  // A key that is free in this checklist (a taken one is numbered: "x", "x_2", "x_3") and a position after the section's last question - a new question
+  // used to collide with an existing key (the save failed silently) or land at position 1 beside every other new one.
+  normalizedPayload.key = await uniqueQuestionKey(questionnaire._id, normalizedPayload.key || normalizedPayload.label);
+  if (!normalizedPayload.label || !String(normalizedPayload.label).trim()) {
+    const error = new Error("A question needs text");
+    error.status = 400;
+    throw error;
+  }
+  if (!(Number(normalizedPayload.order) > 0)) {
+    const last = await Question.findOne({ questionnaire: questionnaire._id, ...(normalizedPayload.sectionKey ? { sectionKey: normalizedPayload.sectionKey } : {}) }).sort({ order: -1 }).select("order").lean();
+    normalizedPayload.order = (last?.order || 0) + 1;
+  }
   const question = await Question.create({
     ...normalizedPayload,
     adminCreated: true, // added on the Questionnaire page: never retired by the definition reconciler
@@ -788,6 +821,20 @@ async function createQuestion(questionnaire, payload, user, req) {
   await questionnaire.save();
   await writeAuditLog("add_question", "questionnaire", questionnaire, user, { questionId: question._id }, req);
   return question;
+}
+
+function slugQuestionKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "question";
+}
+
+async function uniqueQuestionKey(questionnaireId, wanted) {
+  const base = slugQuestionKey(wanted);
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const taken = new Set((await Question.find({ questionnaire: questionnaireId, key: new RegExp(`^${escaped}(_\\d+)?$`) }).select("key").lean()).map((row) => row.key));
+  if (!taken.has(base)) return base;
+  let counter = 2;
+  while (taken.has(`${base}_${counter}`)) counter += 1;
+  return `${base}_${counter}`;
 }
 
 async function bulkCreateQuestions(questionnaire, payload, user, req) {
@@ -805,11 +852,40 @@ async function updateQuestion(question, payload, user, req) {
   const questionnaire = await Questionnaire.findById(question.questionnaire);
   if (questionnaire) assertDraft(questionnaire);
   const incoming = normalizeQuestionPayload(adminEdits.stripMarkers(payload));
+  if (incoming.label !== undefined && !String(incoming.label).trim()) {
+    const error = new Error("A question needs text");
+    error.status = 400;
+    throw error;
+  }
+  // metadata holds more than the requested type (documentType, optional, strictOptions, ...): merge into it, never replace it. When the type was
+  // changed to one that is not an alias, the old requestedType ("multiselect", "file-multiple") no longer describes it and is removed - leaving it
+  // made the builder show the OLD type again, so a type change looked like it did nothing.
+  if (incoming.type !== undefined || incoming.metadata) {
+    const existingMetadata = question.metadata?.toObject?.() || question.metadata || {};
+    const nextMetadata = { ...existingMetadata, ...(incoming.metadata || {}) };
+    if (incoming.type !== undefined && !incoming.metadata?.requestedType) delete nextMetadata.requestedType;
+    incoming.metadata = nextMetadata;
+  }
   const edited = adminEdits.changedFields(question, incoming);
   Object.assign(question, incoming, { updatedBy: user._id });
   if (edited.length) question.adminEditedFields = adminEdits.mergeEditedFields(question.adminEditedFields, edited);
   await question.save();
   await writeAuditLog("update", "question", question, user, payload, req);
+  return question;
+}
+
+// "Delete" on the Questionnaire page: the question is retired, never erased (an answer a client already gave stays on record). Only this - the
+// question's type, label and the rest are left exactly as they were. The code-definition reconciler leaves a question a designer removed removed.
+async function deactivateQuestion(question, user, req) {
+  assertCanDesign(user, "manage questions");
+  const questionnaire = await Questionnaire.findById(question.questionnaire);
+  if (questionnaire) assertDraft(questionnaire);
+  question.active = false;
+  question.isActive = false;
+  question.updatedBy = user._id;
+  question.adminEditedFields = adminEdits.mergeEditedFields(question.adminEditedFields, ["active", "isActive"]);
+  await question.save();
+  await writeAuditLog("delete", "question", question, user, { questionId: question._id, key: question.key }, req);
   return question;
 }
 
@@ -3685,6 +3761,7 @@ async function getLibrary(filter = {}) {
 }
 
 module.exports = {
+  deactivateQuestion,
   // create-or-patch ONE built-in checklist template from its code definition (used by scripts/syncChecklistDefinitions.js)
   reconcileDefinition,
   // pure helpers, exported so definition tests can exercise real validation without a DB

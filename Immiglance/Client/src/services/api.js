@@ -697,11 +697,12 @@ export const messagesApi = {
   // `clientMessageId` identifies one send across automatic retries: the backend returns the already-stored message for a repeated
   // (sender, clientMessageId) instead of posting it twice.
   // `files` ride along as multipart (small ones); `uploadIds` reference big files already staged through chunkApi.
-  sendMessage:      (threadId, body, files = [], isInternalNote = false, { onProgress, signal, clientMessageId, uploadIds = [] } = {}) => {
+  sendMessage:      (threadId, body, files = [], isInternalNote = false, { onProgress, signal, clientMessageId, uploadIds = [], replyTo } = {}) => {
     const fd = new FormData();
     fd.append("messageBody", body);
     fd.append("isInternalNote", String(isInternalNote));
     if (clientMessageId) fd.append("clientMessageId", clientMessageId);
+    if (replyTo) fd.append("replyTo", replyTo); // same FormData field the Admin portal uses
     if (uploadIds.length > 0) fd.append("uploadIds", JSON.stringify(uploadIds));
     files.forEach((f) => fd.append("attachments", f));
     if (files.length > 0 && (onProgress || signal)) {

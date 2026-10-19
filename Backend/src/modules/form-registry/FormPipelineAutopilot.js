@@ -95,6 +95,8 @@ async function linkComponents() {
 }
 
 async function readinessForForm(formCode, actor) {
+  // visa scope from the registry first (add-only): also covers assignmentRules.visaTypes, which is authoritative whenever it is set
+  await require("./template-scope-sync.service").syncTemplateScopeSafely(formCode);
   const template = await USCISFormTemplate.findOne({ formCode, status: "active" }).sort({ editionDate: -1 });
   if (!template) return { formCode, skipped: "no active template" };
   const certification = template.importMetadata?.validationSummary?.certification;

@@ -366,7 +366,7 @@ exports.deleteQuestion = async (req, res, next) => {
   try {
     const question = await Question.findById(req.params.questionId);
     if (!question) return res.status(404).json({ success: false, message: "Question not found" });
-    await questionnaireService.updateQuestion(question, { active: false }, req.user, req);
+    await questionnaireService.deactivateQuestion(question, req.user, req);
     res.json({ success: true, message: "Question deactivated" });
   } catch (error) {
     next(error);
@@ -421,11 +421,27 @@ exports.assignQuestionnaire = async (req, res, next) => {
   try {
     const questionnaire = await findQuestionnaire(req.params.id, res);
     if (!questionnaire) return;
-    const result = await questionnaireService.assignQuestionnaire(questionnaire, req.body, req.user, req);
-    res.status(201).json({ success: true, data: result });
+    // one case only; a case that already holds this checklist is not given a second copy
+    const result = await require("./checklist-usage.service").assignToCase(req.params.id, req.body || {}, req.user, req);
+    res.status(result.alreadyAssigned ? 200 : 201).json({ success: true, data: result, message: result.alreadyAssigned ? "This case already has this checklist" : undefined });
   } catch (error) {
     next(error);
   }
+};
+
+// Where this checklist is used (visa types with case counts, forms, assigned cases) and the actions on it.
+const usageService = () => require("./checklist-usage.service");
+exports.getUsage = async (req, res, next) => {
+  try { res.json({ success: true, data: await usageService().getUsage(req.params.id) }); } catch (error) { next(error); }
+};
+exports.getFormOptions = async (req, res, next) => {
+  try { res.json({ success: true, data: await usageService().listFormOptions(req.params.id, { q: req.query.q, limit: req.query.limit }) }); } catch (error) { next(error); }
+};
+exports.addFormMapping = async (req, res, next) => {
+  try { res.status(201).json({ success: true, data: await usageService().addFormMapping(req.params.id, req.body || {}, req.user, req) }); } catch (error) { next(error); }
+};
+exports.removeFormMapping = async (req, res, next) => {
+  try { res.json({ success: true, data: await usageService().removeFormMapping(req.params.id, req.params.mappingId, req.user, req) }); } catch (error) { next(error); }
 };
 
 exports.getVisibleQuestions = async (req, res, next) => {

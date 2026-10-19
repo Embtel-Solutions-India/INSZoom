@@ -16,17 +16,21 @@ const readErrorMessage = (error, fallback) => {
   return typeof message === 'string' && message.trim() ? message : fallback
 }
 
-// Small, consistent color-coded pill - every status chip on this page uses
-// the same handful of tones so the page stays scannable without a legend.
+// Quiet status marker: a small dot carries the state, the text stays neutral - no coloured pills, so a long table reads as a clean ledger.
 const Badge = ({ tone = 'gray', children }) => {
-  const tones = {
-    green: 'bg-green-100 text-green-800',
-    amber: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
-    gray: 'bg-gray-100 text-gray-700',
-    blue: 'bg-primary/10 text-primary',
+  const dots = {
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    red: 'bg-red-500',
+    gray: 'bg-slate-300',
+    blue: 'bg-primary',
   }
-  return <span className={`px-2 py-0.5 text-xs font-medium rounded-full whitespace-nowrap ${tones[tone] || tones.gray}`}>{children}</span>
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dots[tone] || dots.gray}`} aria-hidden="true" />
+      {children}
+    </span>
+  )
 }
 
 const FETCH_STATUS_LABELS = {
@@ -508,8 +512,17 @@ const FormGovernance = () => {
         </div>
       ) : (
         <div className="card overflow-hidden">
-          <div>
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            {/* Fixed layout: every column but "Used by" has a set width, so the three action buttons always stay in view and "Used by" is the one that gives way (it truncates). */}
+            <table className="w-full min-w-[60rem] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[14rem]" />
+                <col className="w-[7rem]" />
+                <col className="w-[6.5rem]" />
+                <col className="w-[9.5rem]" />
+                <col />
+                <col className="w-[19rem]" />
+              </colgroup>
               <thead>
                 <tr className="bg-muted">
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Form</th>
@@ -517,52 +530,61 @@ const FormGovernance = () => {
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Template</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Mapping / Autofill</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Used by</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length ? filtered.map((form) => {
                   const fetchInfo = FETCH_STATUS_LABELS[form.fetchStatus] || FETCH_STATUS_LABELS.not_fetched
                   const mappingInfo = MAPPING_STATUS_LABELS[form.mappingStatus] || MAPPING_STATUS_LABELS.unmapped
-                  const visibleAssociations = form.associations.slice(0, 3)
+                  const visibleAssociations = form.associations.slice(0, 2)
                   const remaining = form.associations.length - visibleAssociations.length
+                  const reviewCode = form.isSupplement ? form.parentFormCode : form.formCode
+                  const canReview = Boolean(form.templateId)
+                  const stop = (handler) => (event) => { event.stopPropagation(); handler() }
                   return (
-                    <tr key={form.formCode} className="border-b hover:bg-muted">
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-foreground flex items-center gap-2">
+                    <tr
+                      key={form.formCode}
+                      onClick={canReview ? () => navigate(`/form-governance/${reviewCode}`) : undefined}
+                      onKeyDown={canReview ? (event) => { if (event.key === 'Enter' && event.target === event.currentTarget) navigate(`/form-governance/${reviewCode}`) } : undefined}
+                      tabIndex={canReview ? 0 : undefined}
+                      title={canReview ? 'Open the mapping review' : undefined}
+                      className={`border-b border-border/70 last:border-0 ${canReview ? 'cursor-pointer hover:bg-muted/60 focus:bg-muted/60 focus:outline-none' : ''}`}
+                    >
+                      <td className="px-3 py-3.5">
+                        <div className="font-medium text-foreground flex items-center gap-2 whitespace-nowrap">
                           {form.formCode}
-                          {form.isSupplement && <Badge tone="blue">Supplement</Badge>}
+                          {form.isSupplement && <span className="text-[11px] font-normal text-muted-foreground">Supplement</span>}
                         </div>
-                        <div className="text-xs text-muted-foreground max-w-[14rem] truncate">{form.title}</div>
+                        <div className="text-xs text-muted-foreground truncate" title={form.title}>{form.title}</div>
                         {form.pendingTemplateId && (
-                          <div className="text-xs text-amber-700 mt-0.5">A newer edition is awaiting review</div>
+                          <div className="text-xs text-muted-foreground">Newer edition awaiting review</div>
                         )}
                       </td>
-                      <td className="px-3 py-2"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
-                      <td className="px-3 py-2">
-                        {form.templateStatus ? <Badge tone={TEMPLATE_STATUS_TONES[form.templateStatus] || 'gray'}>{form.templateStatus}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
+                      <td className="px-3 py-3.5"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
+                      <td className="px-3 py-3.5">
+                        {form.templateStatus ? <Badge tone={TEMPLATE_STATUS_TONES[form.templateStatus] || 'gray'}>{form.templateStatus.charAt(0).toUpperCase() + form.templateStatus.slice(1)}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
                       </td>
-                      <td className="px-3 py-2"><Badge tone={mappingInfo.tone}>{mappingInfo.label}</Badge></td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
+                      <td className="px-3 py-3.5"><Badge tone={mappingInfo.tone}>{mappingInfo.label}</Badge></td>
+                      <td className="px-3 py-3.5">
+                        <div className="truncate whitespace-nowrap text-xs text-muted-foreground" title={form.associations.map((assoc) => `${assoc.visaType} · ${associationLabel(assoc)}`).join(', ')}>
                           {visibleAssociations.map((assoc, index) => (
-                            <span key={`${assoc.visaType}-${index}`} className="px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-700">
-                              {assoc.visaType} · {associationLabel(assoc)}
-                            </span>
+                            <span key={`${assoc.visaType}-${index}`}>{index > 0 && <span className="mx-1.5">|</span>}<span className="text-foreground">{assoc.visaType}</span> {associationLabel(assoc).toLowerCase()}</span>
                           ))}
-                          {remaining > 0 && <span className="text-xs text-muted-foreground">+{remaining} more</span>}
+                          {remaining > 0 && <span className="ml-1.5">+{remaining} more</span>}
+                          {!form.associations.length && '—'}
                         </div>
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          {form.fetchStatus === 'fetched' && (
-                            <button onClick={() => openPdf(form)} className="btn-secondary !px-2 !py-1 text-xs flex items-center gap-1">
-                              <ExternalLink className="w-3.5 h-3.5" /> Open
+                      <td className="px-3 py-3.5" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap">
+                          {canReview && (
+                            <button onClick={stop(() => navigate(`/form-governance/${reviewCode}`))} className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted" title="View and review this form's mapping">
+                              View
                             </button>
                           )}
-                          {form.templateId && (
-                            <button onClick={() => navigate(`/form-governance/${form.isSupplement ? form.parentFormCode : form.formCode}`)} className="btn-secondary !px-2 !py-1 text-xs flex items-center gap-1">
-                              Review mapping
+                          {form.fetchStatus === 'fetched' && (
+                            <button onClick={stop(() => openPdf(form))} className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground hover:bg-muted" title="Open the form PDF">
+                              <ExternalLink className="w-3.5 h-3.5" /> Open form
                             </button>
                           )}
                           {/* A supplement has nothing of its own to fetch - it's
@@ -570,26 +592,28 @@ const FormGovernance = () => {
                               fetched and activated, never fetched independently. */}
                           {!form.isSupplement && form.fetchStatus !== 'fetched' && form.fetchStatus !== 'not_fetchable' && (
                             <button
-                              onClick={() => fetchFromUscis(form.formCode)}
+                              onClick={stop(() => fetchFromUscis(form.formCode))}
                               disabled={fetchingCode === form.formCode}
-                              className="btn-primary !px-2 !py-1 text-xs flex items-center gap-1 disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                              title="Fetch this form from uscis.gov"
                             >
                               {fetchingCode === form.formCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                              Fetch from USCIS.gov
+                              Fetch
                             </button>
                           )}
                           {isAdmin && !form.isSupplement && (
                             <button
-                              onClick={() => deleteForm(form)}
+                              onClick={stop(() => deleteForm(form))}
                               disabled={deletingCode === form.formCode}
-                              className="!px-2 !py-1 text-xs flex items-center gap-1 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              className="inline-flex items-center rounded-md border border-border bg-card p-1.5 text-muted-foreground hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                              title={`Delete ${form.formCode}`}
+                              aria-label={`Delete ${form.formCode}`}
                             >
                               {deletingCode === form.formCode ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                              Delete
                             </button>
                           )}
                           {form.isSupplement && form.fetchStatus !== 'fetched' && (
-                            <span className="text-xs text-muted-foreground self-center">Waiting on {form.parentFormCode}</span>
+                            <span className="text-xs text-muted-foreground">Waiting on {form.parentFormCode}</span>
                           )}
                         </div>
                       </td>

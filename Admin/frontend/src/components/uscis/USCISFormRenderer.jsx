@@ -1219,28 +1219,6 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
     await action(`section:${section.key}`, () => uscisFormsApi.saveWorkspaceSection(caseId, caseForm._id, { sectionKey: section.key, fieldValues }), `${section.title} saved`)
   }
 
-  const reviewField = async (status) => {
-    if (!selectedField) return
-    if (!(await savePendingChanges('Auto-save before field review'))) return
-    action(`review:${selectedField.fieldName}`, () => uscisFormsApi.reviewWorkspaceField(caseId, caseForm._id, {
-      fieldName: selectedField.fieldName,
-      sectionKey: selectedField.sectionKey,
-      status,
-      comment: comment || undefined,
-    }), `Field marked ${labelize(status).toLowerCase()}`)
-  }
-
-  const reviewSection = async (status) => {
-    const section = sections.find((item) => item.key === activeSection)
-    if (!section) return
-    if (!(await savePendingChanges('Auto-save before section review'))) return
-    action(`section-review:${section.key}`, () => uscisFormsApi.reviewWorkspaceSection(caseId, caseForm._id, {
-      sectionKey: section.key,
-      status,
-      comment: comment || undefined,
-    }), `${section.title} marked ${labelize(status).toLowerCase()}`)
-  }
-
   const decideForm = async (decision) => {
     if (!(await savePendingChanges('Auto-save before form decision'))) return
     const statePatch = {
@@ -1491,16 +1469,34 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={dirtyCount === 0 || saveState === 'saving' || saveState === 'retrying' || busy === 'auto-save'}
+                // Clickable whenever something is unsaved. A save already running does not lock it: the click joins the queue (saves are single-flight,
+                // so nothing is sent twice) and saves whatever is still left when the running one finishes - it used to grey out for as long as a slow save ran.
+                disabled={dirtyCount === 0}
                 className="flex items-center gap-1 rounded-md bg-primary text-primary-foreground hover:opacity-90 px-3 py-2 text-xs font-semibold disabled:opacity-50"
                 title="Save your changes now (changes are also saved automatically when you leave a field) - Ctrl+S"
               >
                 <Save className="h-3.5 w-3.5" />
-                {saveState === 'saving' || saveState === 'retrying' ? 'Saving…' : 'Save'}
+                {saveState === 'saving' || saveState === 'retrying' ? `Saving… ${dirtyCount} left` : 'Save'}
               </button>
             )}
             <button type="button" onClick={undo} disabled={!undoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Undo</button>
             <button type="button" onClick={redo} disabled={!redoStack.length || !canEdit} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40">Redo</button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={async () => {
+                  // keep what was typed, then re-fill THIS form from the case's checklist data; reviewed / manually edited boxes are never overwritten
+                  if (!(await savePendingChanges('Auto-save before refreshing auto-fill', { reload: false }))) return
+                  action('refresh-autofill', () => uscisFormsApi.autofill(caseId, caseForm._id), 'Auto-fill refreshed from the case data')
+                }}
+                disabled={busy === 'refresh-autofill'}
+                className="flex items-center gap-1 rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                title="Fill this form again from the latest checklist answers and case data (boxes you edited are kept)"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${busy === 'refresh-autofill' ? 'animate-spin' : ''}`} />
+                {busy === 'refresh-autofill' ? 'Refreshing…' : 'Refresh Auto Fill'}
+              </button>
+            )}
             <button
               type="button"
               onClick={downloadOfficialForm}
@@ -1663,31 +1659,6 @@ export default function USCISFormRenderer({ caseId, caseForm, onClose, onSaved }
             )
           ) : (
             <div className="flex h-[300px] items-center justify-center text-sm text-slate-400">Loading the official USCIS form pages…</div>
-          )}
-          {selectedField && (
-            <div className="mx-auto mt-2 flex max-w-[900px] items-center justify-between gap-3 rounded-md border border-slate-300 bg-card px-4 py-2.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={selectedField.review?.status || selectedField.verificationStatus} />
-                {/* Phase 3 (§I.3): prefers the explicit syncState when present; falls back to the
-                    older manualOverride check only for a hypothetical response with no syncState
-                    at all (buildFieldView always computes one now, so this fallback is dormant in
-                    practice, not dead code removed - see docs/forms/PHASE3_BASELINE.md). */}
-                {(selectedField.syncState === 'MANUAL_OVERRIDE' || (!selectedField.syncState && selectedField.manualOverride)) && <StatusBadge status="manual_override">Manual</StatusBadge>}
-                {selectedField.syncState === 'CONFLICT' && <StatusBadge status="needs_revision">Field Conflict</StatusBadge>}
-                {/* Older, distinct concept: multiple candidate SOURCES disagreeing on this
-                    canonical field (CanonicalMergeService/rebuild), independent of the Phase 2/3
-                    per-field sync conflict above - both can be true at once, so both render. */}
-                {selectedField.conflicts?.length > 0 && <StatusBadge status="needs_revision">Conflict</StatusBadge>}
-                <span className="text-[11px] text-slate-500">{selectedField.source || 'Unmapped source'}</span>
-                {busy === `field:${selectedField.fieldName}` && <span className="text-[11px] text-primary">Saving…</span>}
-              </div>
-              {permissions.canReview && (
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => reviewSection('approved')} className="rounded border border-primary-300 bg-primary-50 px-2.5 py-1.5 text-[11px] font-semibold text-primary">Approve Section</button>
-                  <button type="button" onClick={() => reviewSection('needs_revision')} className="rounded border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-800">Needs Revision</button>
-                </div>
-              )}
-            </div>
           )}
           {(validationErrors[selectedFieldName] || []).map((item) => (
             <p key={String(item)} className="mx-auto mt-1.5 flex max-w-[900px] items-center gap-1 text-[11px] font-medium text-red-700"><AlertTriangle className="h-3 w-3" />{typeof item === 'string' ? item : item.message}</p>

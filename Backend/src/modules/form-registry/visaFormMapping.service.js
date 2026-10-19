@@ -390,6 +390,17 @@ async function buildTemplateForMapping(mapping, caseData, reasonSuffix) {
   return template;
 }
 
+// The case(s) a form is really put on. A container case (employer / family principal) has child cases and every real CaseForm belongs to a CHILD
+// case - the Forms list reads the children (uscis-form.service.listCaseForms) and case creation provisions them
+// (CaseLifecycleOrchestrator.provisionRequiredForms). A form created on the container's own id is invisible there, so single-form provisioning
+// must target the children exactly the same way. A case with no children is its own target.
+async function provisioningTargets(caseData) {
+  if (!caseData.childCases?.length) return [caseData];
+  const Case = require("../../models/Case");
+  const children = await Case.find({ _id: { $in: caseData.childCases } });
+  return children.length ? children : [caseData];
+}
+
 function assertNoClientProvidedForms(body = {}) {
   const forbidden = ["requiredForms", "formsToCreate", "formNumbersToProvision"];
   const present = forbidden.filter((key) => body[key] !== undefined);
@@ -439,7 +450,9 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
         visaType: caseData.visaType,
         processingPath: caseData.processingPath || "",
       };
-      await uscisFormService.ensureAssignedForms(caseData, user, req, { templates: [template] });
+      for (const target of await provisioningTargets(caseData)) {
+        await uscisFormService.ensureAssignedForms(target, user, req, { templates: [template] });
+      }
     }
     // The one integration point where "approved" also means "client may
     // now see the checklist" (§26 of the I-131 spec) - not every CONDITIONAL
@@ -524,7 +537,10 @@ async function provisionAvailableMapping(caseData, mappingId, user, req) {
     error.code = "TEMPLATE_NOT_AVAILABLE";
     throw error; // resolved TEMPLATE_AVAILABLE a moment ago; defensive re-check
   }
-  const created = await uscisFormService.ensureAssignedForms(caseData, user, req, { templates: [template] });
+  const created = [];
+  for (const target of await provisioningTargets(caseData)) {
+    created.push(...((await uscisFormService.ensureAssignedForms(target, user, req, { templates: [template] })) || []));
+  }
   return { mapping, templateStatus, created };
 }
 

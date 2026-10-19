@@ -314,11 +314,12 @@ set("Certificate of Citizenship", "N-565", [cm("n565_checklist", AUTO)]);
 async function seedChecklistMappings() {
   const results = { updated: 0, notFound: [] };
   for (const entry of ENTRIES) {
+    // a row an admin edited on the Form Governance page keeps the checklists they set
     const res = await VisaFormMapping.updateOne(
-      { visaType: entry.visaType, formNumber: entry.formNumber },
+      { visaType: entry.visaType, formNumber: entry.formNumber, adminManaged: { $ne: true } },
       { $set: { checklistMappings: entry.checklistMappings } }
     );
-    if (res.matchedCount === 0) results.notFound.push(`${entry.visaType} / ${entry.formNumber}`);
+    if (res.matchedCount === 0 && !(await VisaFormMapping.exists({ visaType: entry.visaType, formNumber: entry.formNumber }))) results.notFound.push(`${entry.visaType} / ${entry.formNumber}`);
     else results.updated += 1;
   }
   return results;
