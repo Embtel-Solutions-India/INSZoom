@@ -23,8 +23,10 @@ class AutoFillService {
     return user?._id || user?.id || (user && typeof user === "object" && !user._bsontype ? undefined : user);
   }
 
-  static requestMeta(req = {}) {
-    return { ipAddress: req.ip, userAgent: req.get?.("user-agent") || req.headers?.["user-agent"] };
+  static requestMeta(req) {
+    // automatic callers (workflow automation, GHL imports, scripts) pass no request at all (null): that is not an error
+    const request = req || {};
+    return { ipAddress: request.ip, userAgent: request.get?.("user-agent") || request.headers?.["user-agent"] };
   }
 
   static async audit(action, caseForm, user, req, changes = {}) {
@@ -273,8 +275,71 @@ class AutoFillService {
     };
   }
 
+  // How complete is this fill, and why not - separated into what a person has to act on. Counts only; field ids are listed for the first few so the report stays small.
+  // Additive and best-effort: a failure here never fails the autofill itself (summary is then null).
+  //   populated            written by this run
+  //   preserved            left alone because a person edited / reviewed the field
+  //   needsClientInformation   mapped, but the case's checklists / profile hold no value yet
+  //   needsStaffInput      required boxes with no mapping at all (no checklist can ever fill them)
+  //   unmapped             boxes with no mapping (optional ones too)   keptBlank   boxes a person decided stay empty
+  //   conflicts            canonical values in conflict (autofill never picks between them)   invalidValues   values the mapping flagged as invalid
+  static summarizePopulation(template, mapped, merged, readiness) {
+    try {
+      const fieldMap = this.templateFieldMap(template);
+      const populated = new Set((merged.updatedFields || []).map((item) => item.fieldId));
+      const preserved = new Set((merged.skippedFields || []).map((item) => item.fieldId));
+      const missing = new Set(merged.missingFields || []);
+      const hasValue = (fieldId) => !MappingResolver.isEmpty(merged.fieldValues?.[fieldId]);
+      const sample = (list) => list.slice(0, 15);
+      const needsClientInformation = [];
+      const unmapped = [];
+      const unmappedRequired = [];
+      const keptBlank = [];
+      const requiredMissing = [];
+      fieldMap.forEach((field, fieldId) => {
+        if (field.keepBlank) { keptBlank.push(fieldId); return; }
+        const mappings = FormMappingService.normalizeMappings(field);
+        const required = Boolean(field.required || field.validation?.required);
+        if (!mappings.length) {
+          unmapped.push(fieldId);
+          if (required && !hasValue(fieldId)) unmappedRequired.push(fieldId);
+          return;
+        }
+        if (missing.has(fieldId) && !hasValue(fieldId)) {
+          needsClientInformation.push(fieldId);
+          if (required) requiredMissing.push(fieldId);
+        }
+      });
+      const conflicts = Number(readiness?.conflictCount || 0);
+      const invalidValues = (mapped.validation?.errors || []).length;
+      const blockers = [];
+      if (unmappedRequired.length) blockers.push("REQUIRED_FIELDS_UNMAPPED");
+      if (requiredMissing.length) blockers.push("REQUIRED_FIELDS_MISSING_DATA");
+      if (invalidValues) blockers.push("INVALID_VALUES");
+      if (conflicts) blockers.push("DATA_CONFLICTS");
+      return {
+        populated: populated.size,
+        preserved: preserved.size,
+        needsClientInformation: needsClientInformation.length,
+        needsStaffInput: unmappedRequired.length,
+        unmapped: unmapped.length,
+        keptBlank: keptBlank.length,
+        conflicts,
+        invalidValues,
+        totalFields: fieldMap.size,
+        samples: { needsClientInformation: sample(needsClientInformation), needsStaffInput: sample(unmappedRequired), unmapped: sample(unmapped) },
+        blockers,
+        // "complete" only when nothing required is missing, unmapped, invalid or in conflict; an optional blank box is never a failure
+        status: blockers.length ? "needs_attention" : "complete",
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
   static buildPopulationReport(mapped, merged, readiness, options = {}) {
     return {
+      summary: options.template ? this.summarizePopulation(options.template, mapped, merged, readiness) : null,
       mode: options.selectedFieldIds?.length || options.fieldIds?.length ? "selected_fields" : options.regenerate ? "regenerate" : "generate",
       generatedAt: new Date(),
       canonicalReadiness: readiness,
@@ -321,6 +386,12 @@ class AutoFillService {
 
   static async generate(caseId, formType, user, req, options = {}) {
     const existingCaseForm = await this.findCaseForm(caseId, formType);
+    if (existingCaseForm?.status === "archived") {
+      const error = new Error(`${existingCaseForm.formCode} was removed from this case. Add it back to the case first; auto-fill does not bring a removed form back.`);
+      error.status = 409;
+      error.code = "FORM_ARCHIVED";
+      throw error;
+    }
     let template;
     let usingBiographicTier = false;
     let relockedMapping = false;
@@ -356,6 +427,10 @@ class AutoFillService {
     // already rebuilt by applyStaffEdit() earlier in that same request, so
     // forcing CanonicalBuilderService's 8-query rebuild again here is pure
     // added latency on a per-keystroke path. Read the cached profile instead.
+    // A form that does not exist on the case yet is only created here when the Case Manager's selection allows it (an existing form is never affected).
+    if (!existingCaseForm) {
+      await require("../../uscis-forms/case-form-selection.service").assertFormAllowed({ _id: caseId }, { formCode: template.formCode || template.formNumber, componentCode: null });
+    }
     const canonicalData = await CanonicalDataService.build(caseId, user, req, {
       skipRebuild: Boolean(options.selectedFieldIds?.length),
       reason: "form_mapping",
@@ -410,7 +485,7 @@ class AutoFillService {
       : null;
     const fieldIds = options.fieldIds || options.selectedFieldIds || componentFieldIds || undefined;
     const merged = this.mergeMappedFields(caseForm, template, mapped, canonicalData, { ...options, fieldIds });
-    const populationReport = this.buildPopulationReport(mapped, merged, readiness, { ...options, fieldIds, usingBiographicTier });
+    const populationReport = this.buildPopulationReport(mapped, merged, readiness, { ...options, fieldIds, usingBiographicTier, template });
     const nextVersion = (caseForm.versionNumber || 0) + 1;
     caseForm.set("formTemplateId", template._id);
     // A component CaseForm's formCode is its own componentCode (e.g.

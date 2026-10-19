@@ -1,4 +1,5 @@
 const CaseForm = require("../../../models/CaseForm");
+const { ACTIVE_FORM_FILTER } = require("../../uscis-forms/case-form-selection.service");
 const ImmigrationTimelineService = require("./ImmigrationTimelineService");
 const DeadlineService = require("./DeadlineService");
 const NotificationLifecycleService = require("./NotificationLifecycleService");
@@ -6,7 +7,7 @@ const NotificationLifecycleService = require("./NotificationLifecycleService");
 class FilingService {
   static async file(caseData, payload, user, req) {
     const lifecycle = ImmigrationTimelineService.ensure(caseData);
-    const formVersions = payload.formVersions || await CaseForm.find({ caseId: caseData._id }).select("formCode formVersion formEditionDate versionNumber generatedPdfDocument").lean();
+    const formVersions = payload.formVersions || await CaseForm.find({ caseId: caseData._id, ...ACTIVE_FORM_FILTER }).select("formCode formVersion formEditionDate versionNumber generatedPdfDocument").lean();
     const filing = {
       packageVersion: payload.packageVersion || lifecycle.filings.length + 1,
       status: payload.status || "filed",

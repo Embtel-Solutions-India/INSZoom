@@ -229,7 +229,14 @@ async function getCaseForms(req, res, next) {
 async function getAllCaseForms(req, res, next) {
   try {
     const query = {};
-    if (req.query.caseId) query.caseId = req.query.caseId;
+    if (req.query.caseId) {
+      // one case: the caller must have access to it (this list used to be readable for any case id)
+      await uscisFormService.getAccessibleCase(req.query.caseId, req.user);
+      query.caseId = req.query.caseId;
+    } else if (!["super_admin", "admin", "team_lead"].includes(String(req.user?.role || ""))) {
+      // every case form in the system: administrators only
+      return res.status(403).json({ success: false, message: "Choose a case to list its forms" });
+    }
     // Unfiltered, this lists every CaseForm in the DB. A full
     // `.populate("formTemplateId")` embeds each template's entire
     // formFields array (~1000 entries with coordinates/mapping/history for

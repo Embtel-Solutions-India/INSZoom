@@ -3275,6 +3275,7 @@ exports.addUSCISFormReference = async (req, res, next) => {
   try {
     const caseData = await getCaseOr404(req.params.id, res);
     if (!caseData) return;
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to modify this case" });
     const reference = { refId: req.body.refId, refModel: req.body.refModel || "CaseForm", label: req.body.label, status: req.body.status, addedBy: req.user._id };
     caseData.uscisFormReferences.push(reference);
     caseService.addTimelineEvent(caseData, "uscis_form", "USCIS Form Linked", reference.label || "USCIS form linked", req.user, reference);

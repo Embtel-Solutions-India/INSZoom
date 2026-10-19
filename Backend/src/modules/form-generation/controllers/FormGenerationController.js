@@ -118,6 +118,12 @@ exports.downloadForm = async (req, res) => {
 
 exports.generatePackage = async (req, res) => {
   try {
+    // the package is built for the case named in the body: the caller must be allowed to work on that case
+    const Case = require("../../../models/Case");
+    const caseService = require("../../cases/case.service");
+    const caseData = req.body?.caseId ? await Case.findById(req.body.caseId).select("-canonicalHistory") : null;
+    if (!caseData) return res.status(404).json({ success: false, message: "Case not found" });
+    if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to build a filing package for this case" });
     const data = await FilingPackageService.assemble(req.body || {}, req.user, req);
     res.status(201).json({ success: true, data });
   } catch (error) {

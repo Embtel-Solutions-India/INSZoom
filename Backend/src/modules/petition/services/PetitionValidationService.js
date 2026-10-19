@@ -37,12 +37,18 @@ class PetitionValidationService {
   // whatever requirements it's handed. definition.requiredForms/
   // requiredCertifications remain the UNCONDITIONAL, always-required list;
   // these two params are the conditional, case-specific additions.
-  static async validate({ caseId, definition, caseForms, letters = {}, exhibits = [], conditionalRequiredForms = [], requiredDocuments = [] }) {
+  static async validate({ caseId, definition, caseForms, letters = {}, exhibits = [], conditionalRequiredForms = [], requiredDocuments = [], waivedFormCodes = [] }) {
     const issues = [];
+    const waived = new Set(waivedFormCodes.map((code) => String(code).toUpperCase()));
 
     for (const requirement of [...(definition.requiredForms || []), ...conditionalRequiredForms]) {
       if (!requirement.required) continue;
       const caseForm = caseForms.find((form) => form.formCode === requirement.formCode);
+      if (!caseForm && waived.has(String(requirement.formCode).toUpperCase())) {
+        // removed from this case by a Case Manager who acknowledged that the package normally requires it: reported, never blocking
+        this.addIssue(issues, "warning", "FORM_WAIVED", `${requirement.formCode} was removed from this case by a Case Manager - it is not part of this filing`, { formCode: requirement.formCode });
+        continue;
+      }
       if (!caseForm) {
         this.addIssue(issues, "error", "FORM_NOT_FOUND", `${requirement.formCode} has not been started for this case`, { formCode: requirement.formCode });
         continue;

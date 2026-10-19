@@ -17,6 +17,7 @@ import InformationRequestPanel from '../components/InformationRequestPanel'
 import Eb1aCriteriaPanel from '../components/Eb1aCriteriaPanel'
 import CaseFeedbackChat from '../components/CaseFeedbackChat'
 import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
+import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import {
@@ -765,6 +766,8 @@ const CRMCaseDetail = () => {
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
+  const [refreshingOverview, setRefreshingOverview] = useState(false)
+  const [showManageForms, setShowManageForms] = useState(false)
   const [formsWarning, setFormsWarning] = useState('')
   // Phase 1: the full registry-resolved form set for this case's visa
   // (provisioned or not) - the Forms tab's single source of truth for "what
@@ -1273,6 +1276,22 @@ const CRMCaseDetail = () => {
     }
   }
 
+  // "Refresh" on Other Forms for This Visa: re-reads the forms on the case AND the registry's other forms. The request takes a few seconds, so the button
+  // shows it is working (it used to give no sign at all and looked dead) and says when it is done.
+  const handleRefreshOverview = async () => {
+    setRefreshingOverview(true)
+    setFormActionMessage('')
+    try {
+      setFetched(prev => ({ ...prev, forms: false }))
+      await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      setFormActionMessage('Forms list refreshed.')
+    } catch (error) {
+      setFormActionMessage(error.response?.data?.message || error.message || 'Could not refresh the forms list.')
+    } finally {
+      setRefreshingOverview(false)
+    }
+  }
+
   // "Add" for an AVAILABLE_TO_PROVISION row - single-form, conflict-
   // independent provisioning (visaFormMappingService.provisionAvailableMapping),
   // distinct from generateCaseForms' bulk endpoint, which is correctly
@@ -1309,9 +1328,16 @@ const CRMCaseDetail = () => {
     try {
       setRowActionPending(item.mappingId)
       setFormActionMessage('')
-      await uscisFormsApi.decideMapping(id, item.mappingId, decision)
+      const response = await uscisFormsApi.decideMapping(id, item.mappingId, decision)
+      // "Add" creates the form (on the case it belongs to - a container's forms live on its child cases); fill it in from the case data straight away
+      const created = decision === 'ADD' ? (response?.data?.data?.created || []) : []
       setFetched(prev => ({ ...prev, forms: false }))
       await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+      if (created.length) {
+        await Promise.all(created.map((form) => uscisFormsApi.autofill(form.caseId || id, form._id).catch(() => null)))
+        await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
+        setFormActionMessage(`${item.formNumber} was added to this case and auto-filled.`)
+      }
     } catch (error) {
       const data = error.response?.data || {}
       setFormActionMessage(data.message || error.message || `Could not update ${item.formNumber}.`)
@@ -3255,9 +3281,10 @@ const CRMCaseDetail = () => {
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-foreground">USCIS Forms ({caseForms.length})</h3>
-                <p className="text-sm text-muted-foreground">Automatically assigned, edition-locked, and populated from canonical case data.</p>
+                <p className="text-sm text-muted-foreground">Edition-locked and populated from the case's checklist and profile data. Use Manage forms to decide which forms this case has.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
                 <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
                   {tabLoading.forms ? 'Generating…' : caseForms.length ? 'Refresh Auto Fill' : 'Generate USCIS Forms'}
@@ -3269,8 +3296,15 @@ const CRMCaseDetail = () => {
                 )}
               </div>
             </div>
+            {showManageForms && (
+              <CaseFormSelectionPanel
+                caseId={id}
+                onClose={() => setShowManageForms(false)}
+                onChanged={() => { setFetched(prev => ({ ...prev, forms: false })); fetchCaseForms(true); fetchFormsOverview(true) }}
+              />
+            )}
             {formActionMessage && (
-              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)|was (added|re-autofilled)/.test(formActionMessage) ? 'border-primary/30 bg-primary/5 text-primary' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)|was (added|re-autofilled)|refreshed/.test(formActionMessage) ? 'border-primary/30 bg-primary/5 text-primary' : 'border-red-200 bg-red-50 text-red-700'}`}>
                 {formActionMessage}
               </div>
             )}
@@ -3422,7 +3456,7 @@ const CRMCaseDetail = () => {
               <div className="mt-6 pt-6 border-t border-border">
                 <div className="flex items-center justify-between mb-1">
                   <h4 className="font-semibold text-foreground">Other Forms for This Visa</h4>
-                  <button onClick={() => fetchFormsOverview(true)} className="btn-secondary text-xs">Refresh</button>
+                  <button onClick={handleRefreshOverview} disabled={refreshingOverview} className="btn-secondary text-xs disabled:opacity-60">{refreshingOverview ? 'Refreshing…' : 'Refresh'}</button>
                 </div>
                 <p className="text-sm text-muted-foreground mb-3">
                   Every other form the registry maps to {caseData?.visaType || 'this visa type'} — not yet on this case.

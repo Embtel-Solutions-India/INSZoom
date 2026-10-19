@@ -1,6 +1,7 @@
 const Answer = require("../../models/Answer");
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
+const { ACTIVE_FORM_FILTER } = require("../uscis-forms/case-form-selection.service");
 const Client = require("../../models/Client");
 const Document = require("../../models/Document");
 const Task = require("../../models/Task");
@@ -100,7 +101,7 @@ class CaseLifecycleOrchestrator {
     const [answers, documents, forms, tasks, packageDocuments] = await Promise.all([
       Answer.find({ caseId: caseData._id }).select("status completion submittedAt approvedAt").lean(),
       Document.find({ caseId: caseData._id, deletedAt: { $exists: false } }).select("documentType reviewStatus requestStatus createdAt metadata tags").lean(),
-      CaseForm.find({ caseId: caseData._id }).select("status completion reviewState generatedPdfDocument filingPackages updatedAt").lean(),
+      CaseForm.find({ caseId: caseData._id, ...ACTIVE_FORM_FILTER }).select("status completion reviewState generatedPdfDocument filingPackages updatedAt").lean(),
       Task.find({ caseId: caseData._id }).select("status category tags").lean(),
       Document.find({ caseId: caseData._id, tags: "filing-package", deletedAt: { $exists: false } }).select("_id createdAt").lean(),
     ]);
@@ -619,8 +620,17 @@ class CaseLifecycleOrchestrator {
       blockingIssues.push({ code: "CANONICAL_NEEDS_REVIEW", message: "Resolve canonical profile conflicts before generating forms.", validation: canonical, severity: "error" });
       throw Object.assign(new Error("Resolve canonical profile conflicts before generating forms."), { status: 422, code: "CANONICAL_NEEDS_REVIEW", details: { readiness, validation: canonical, blockingIssues } });
     }
+    // forms the Case Manager selected whose template was not active at the time are created now if it is (never anything they did not select)
+    try {
+      const manager = require("../uscis-forms/case-form-selection-manager.service");
+      const owners = caseData.childCases?.length ? caseData.childCases : [caseData._id];
+      for (const ownerId of owners) await manager.provisionPendingSelections({ _id: ownerId }, user, req);
+    } catch (error) {
+      require("../../utils/logger").error("pending_form_selection_sweep_failed", { caseId: String(caseId), error: error.message });
+    }
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req);
-    const forms = await CaseForm.find({ caseId });
+    // an archived / removed form is not autofilled (generate() would set it back to ai_filled, silently bringing it back)
+    const forms = await CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER });
     if (!forms.length) {
       // Structured in place of the previous bare 422: reuses
       // visaFormMapping.service.js's own resolver + diagnostics (the same
@@ -704,7 +714,7 @@ class CaseLifecycleOrchestrator {
     const caseData = await Case.findById(caseId);
     if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(user, caseData)) throw Object.assign(new Error("Not authorized to generate a filing package for this case"), { status: 403 });
-    const forms = await CaseForm.find({ caseId });
+    const forms = await CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER });
     if (!forms.length || forms.some((form) => !form.generatedPdfDocument)) {
       throw Object.assign(new Error("Generate the approved USCIS PDFs before assembling the filing package"), { status: 409 });
     }
