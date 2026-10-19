@@ -106,13 +106,20 @@ test("beneficiary questions follow the related case: only for filings that have 
   });
 });
 
-test("the related-form dropdown only offers forms of the existing USCIS registry (none invented)", () => {
+test("the related-form answer is a free-text box; the forms it recognises as having a beneficiary are existing USCIS registry forms (none invented)", () => {
   const i907Types = new Set(registrySeed.mappings.filter((row) => row.formNumber === "I-907").map((row) => row.visaType));
   RELATED_FORMS.forEach((form) => {
     assert.ok(registrySeed.mappings.some((row) => row.formNumber === form && i907Types.has(row.visaType)), `${form} is a registry form that sits beside I-907`);
   });
   assert.ok(!RELATED_FORMS.includes("Other") && !RELATED_FORMS.includes("I-290B"), "no placeholder or unregistered form numbers");
-  assert.deepEqual(byKey("i907_related_case_form_number").options.map((option) => option.value), RELATED_FORMS);
+  assert.equal(byKey("i907_related_case_form_number").type, "text", "typed, no longer a dropdown");
+  assert.equal(byKey("i907_related_case_form_number").options.length, 0);
+  assert.equal(errors("i907_related_case_form_number", "I-129"), 0);
+  assert.equal(errors("i907_related_case_form_number", "i129"), 0);
+  assert.equal(errors("i907_related_case_form_number", "not a form"), 1);
+  // typed variants still switch the beneficiary questions on
+  ["I-129", "i-129", "I129", "Form I-140"].forEach((typed) => assert.equal(visible("i907_beneficiary_last_name", { i907_related_case_form_number: typed }), true, typed));
+  ["I-539", "I-765", ""].forEach((typed) => assert.equal(visible("i907_beneficiary_last_name", { i907_related_case_form_number: typed }), false, typed));
 });
 
 test("validation: receipt numbers, A-Number, EIN, ZIP and radio options are checked; the second receipt number is optional", () => {

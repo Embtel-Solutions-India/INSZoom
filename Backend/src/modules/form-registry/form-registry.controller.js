@@ -8,6 +8,7 @@ const visaFormMappingService = require("./visaFormMapping.service");
 const USCISMappingVersion = require("../../models/USCISMappingVersion");
 const { recordAuditEvent } = require("../audit/audit.service");
 const OnDemandFormAcquisitionService = require("../uscis-form-import/services/OnDemandFormAcquisitionService");
+const checklistMappingService = require("./checklist-mapping.service");
 
 function handleError(error, next) {
   if (error.status) return next(error);
@@ -116,11 +117,22 @@ exports.getMappingsForVisa = async (req, res, next) => {
 // GOVERNMENT_DOCUMENT/REFERENCE_DOCUMENT row - DS-160, ETA-9035, I-20, or a
 // component sharing its parent's PDF) is excluded - there is nothing of its
 // own to fetch, review, or map.
-exports.getFormCatalog = async (req, res, next) => {
-  try {
-    const mappings = await VisaFormMapping.find({ active: true, formTemplateFormCode: { $ne: null } })
-      .select("visaType formNumber formTemplateFormCode provisioningType processingPaths agency checklistMappings")
-      .lean();
+// Builds the catalog. With `onlyFormCode` it reads just that one form's registry rows and templates (the detail page needs one form; reading every
+// template - several of them 10-16 MB - for it was most of its load time). The independent queries run at the same time.
+async function buildFormCatalog(onlyFormCode) {
+    const only = onlyFormCode ? String(onlyFormCode).trim() : "";
+    const escapedOnly = only.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const mappingFilter = only ? { active: true, formTemplateFormCode: only.toLowerCase() } : { active: true, formTemplateFormCode: { $ne: null } };
+    const templateFilter = only ? { formCode: new RegExp(`^${escapedOnly}$`, "i") } : {};
+    const [mappings, templates] = await Promise.all([
+      VisaFormMapping.find(mappingFilter)
+        .select("visaType formNumber formTemplateFormCode provisioningType processingPaths agency checklistMappings triggerCondition adminManaged")
+        .lean(),
+      USCISFormTemplate.find(templateFilter)
+        .select("formCode title formName status mappingStatus officialStatus editionDate approvedAt activatedAt artifacts.form.status version updatedAt createdAt")
+        .lean(),
+    ]);
+    const checklistTitles = await checklistMappingService.titlesForKeys(mappings.flatMap((mapping) => (mapping.checklistMappings || []).map((entry) => entry.checklistKey)));
     const grouped = new Map();
     for (const mapping of mappings) {
       const formCode = String(mapping.formTemplateFormCode).toUpperCase();
@@ -128,8 +140,11 @@ exports.getFormCatalog = async (req, res, next) => {
         grouped.set(formCode, { formCode, formNumber: mapping.formNumber, agency: mapping.agency, associations: [] });
       }
       grouped.get(formCode).associations.push({
+        mappingId: mapping._id,
         visaType: mapping.visaType,
         provisioningType: mapping.provisioningType,
+        triggerCondition: mapping.triggerCondition || null,
+        adminManaged: Boolean(mapping.adminManaged),
         // Surfaced as the "automatic/conditional" label the operator asked
         // for - LATER_STAGE/REFERENCE are provisioning-registry concepts
         // too niche for this page, folded into "conditional" for display
@@ -148,6 +163,9 @@ exports.getFormCatalog = async (req, res, next) => {
           checklistKey: entry.checklistKey,
           assignmentType: entry.assignmentType,
           role: entry.role || "",
+          condition: entry.condition || null,
+          notes: entry.notes || "",
+          title: checklistTitles.get(entry.checklistKey) || "",
         })),
       });
     }
@@ -158,9 +176,6 @@ exports.getFormCatalog = async (req, res, next) => {
     // type"), but it must still show up here with full mapping/approve/
     // activate access, exactly like any other form; it would otherwise be
     // invisible until someone maps it to a visa type first.
-    const templates = await USCISFormTemplate.find({})
-      .select("formCode title formName status mappingStatus officialStatus editionDate approvedAt activatedAt artifacts.form.status version updatedAt createdAt")
-      .lean();
     // More than one USCISFormTemplate can share a formCode (e.g. right after
     // "Replace Form" publishes a new draft edition alongside the still-active
     // prior one) - deterministically prefer the live, in-service ("active")
@@ -260,7 +275,7 @@ exports.getFormCatalog = async (req, res, next) => {
     // doesn't count (mirrors visaFormMapping.service.js's own
     // resolveActiveComponent semantics, re-derived here rather than reused
     // since that helper isn't exported and this is a read-only projection).
-    const componentMappings = await VisaFormMapping.find({ active: true, componentCode: { $ne: null } })
+    const componentMappings = only ? [] : await VisaFormMapping.find({ active: true, componentCode: { $ne: null } })
       .select("visaType formNumber componentCode parentForm provisioningType processingPaths agency")
       .lean();
     const componentGroups = new Map();
@@ -311,9 +326,24 @@ exports.getFormCatalog = async (req, res, next) => {
       };
     });
 
-    const catalog = [...standaloneCatalog, ...supplementCatalog].sort((left, right) => left.formCode.localeCompare(right.formCode));
+    return [...standaloneCatalog, ...supplementCatalog].sort((left, right) => left.formCode.localeCompare(right.formCode));
+}
 
-    res.json({ success: true, data: catalog });
+exports.getFormCatalog = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await buildFormCatalog() });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// GET /api/form-registry/catalog/:formCode - the same entry the catalog lists for one form, without reading every other form.
+exports.getFormCatalogEntry = async (req, res, next) => {
+  try {
+    const wanted = String(req.params.formCode || "").trim().toUpperCase();
+    const entry = wanted ? (await buildFormCatalog(wanted)).find((item) => item.formCode === wanted) : null;
+    if (!entry) throw Object.assign(new Error(`${wanted || "This form"} was not found in the form catalog.`), { status: 404 });
+    res.json({ success: true, data: entry });
   } catch (error) {
     handleError(error, next);
   }
@@ -604,6 +634,43 @@ exports.deleteFormFromCatalog = async (req, res, next) => {
         deletedVisaMappings: mappingResult.deletedCount,
       },
     });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// GET /api/form-registry/checklist-options - the checklists an admin can attach to a form on the Form Governance page.
+exports.getChecklistOptions = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await checklistMappingService.listChecklistOptions() });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// PUT /api/form-registry/mappings/:mappingId/checklists - replaces the checklists (and optionally the assignment type / condition) of one
+// visa -> form registry row. Returns the saved row plus, per checklist, how much of the form it can autofill.
+exports.updateMappingChecklists = async (req, res, next) => {
+  try {
+    const row = await checklistMappingService.setChecklistMappings(req.params.mappingId, req.body || {}, req.user, req);
+    const template = row.formTemplateFormCode
+      ? await require("../uscis-forms/uscis-form.service").findLatestActiveTemplate(row.formTemplateFormCode).catch(() => null)
+      : null;
+    const autofill = {};
+    for (const entry of row.checklistMappings || []) autofill[entry.checklistKey] = await checklistMappingService.autofillSummary(entry.checklistKey, template?._id);
+    res.json({ success: true, data: { mapping: row, autofill } });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// POST /api/form-registry/mappings/:mappingId/apply-to-cases - {dryRun:true} counts the open cases of the row's visa type; {dryRun:false, cursor}
+// assigns the row's automatic checklists to the next page of them (idempotent).
+exports.applyMappingToCases = async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const result = await checklistMappingService.applyToExistingCases(req.params.mappingId, { dryRun: body.dryRun !== false, cursor: body.cursor, limit: body.limit }, req.user, req);
+    res.json({ success: true, data: result });
   } catch (error) {
     handleError(error, next);
   }

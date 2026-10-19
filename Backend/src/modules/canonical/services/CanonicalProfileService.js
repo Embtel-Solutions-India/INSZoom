@@ -238,7 +238,8 @@ class CanonicalProfileService {
   // above for how this write is made durable across the next rebuild().
   static async applyStaffEdit(caseId, edits, actor, req) {
     if (!Array.isArray(edits) || !edits.length) throw Object.assign(new Error("At least one edit is required"), { status: 400 });
-    const caseRecord = await Case.findById(caseId);
+    // canonicalHistory is only ever appended to here ($push below), never read: leaving it out saves downloading it (1.6 MB on a real case) twice per edit
+    const caseRecord = await Case.findById(caseId).select("-canonicalHistory");
     if (!caseRecord) throw Object.assign(new Error("Case not found"), { status: 404 });
     if (!caseService.canAccessCase(actor, caseRecord)) throw Object.assign(new Error("Not authorized to edit canonical profile"), { status: 403 });
 
@@ -322,7 +323,7 @@ class CanonicalProfileService {
         },
         $push: { canonicalHistory: { $each: [historyEntry], $slice: -50 } },
       },
-      { new: true }
+      { new: true, projection: { canonicalProfile: 1 } } // only the profile is returned to the caller
     );
     if (!updated) {
       throw Object.assign(new Error("Canonical profile was updated by another edit — reload and retry"), { code: "STALE_FORM_REVISION", status: 409 });

@@ -651,6 +651,7 @@ async function createFormMapping(req, res, next) {
       active: true,
     });
 
+    await require("../form-registry/template-scope-sync.service").reconcileScopeAfterRowChange({ formCode: template.formCode, visaType: mapping.visaType, wasQualifying: false, nowQualifying: require("../form-registry/template-scope-sync.service").qualifies(mapping) });
     uscisFormService.invalidateTemplateCache();
     await writeRegistryAudit("FORM_MAPPING_CREATED", template, req, { visaType, provisioningType, mappingId: mapping._id });
     res.status(201).json({ success: true, mapping, data: mapping });
@@ -668,6 +669,8 @@ async function updateFormMapping(req, res, next) {
       error.statusCode = 404;
       throw error;
     }
+    const scopeSync = require("../form-registry/template-scope-sync.service");
+    const wasQualifying = scopeSync.qualifies(mapping);
     const { provisioningType, triggerCondition, active, displayOrder, notes } = req.body || {};
     if (provisioningType !== undefined) {
       if (!VisaFormMapping.PROVISIONING_TYPES.includes(provisioningType)) {
@@ -683,6 +686,7 @@ async function updateFormMapping(req, res, next) {
     if (notes !== undefined) mapping.notes = notes;
     await mapping.save();
 
+    await scopeSync.reconcileScopeAfterRowChange({ formCode: template.formCode, visaType: mapping.visaType, wasQualifying, nowQualifying: scopeSync.qualifies(mapping) });
     uscisFormService.invalidateTemplateCache();
     await writeRegistryAudit("FORM_MAPPING_UPDATED", template, req, { mappingId: mapping._id, visaType: mapping.visaType });
     res.json({ success: true, mapping, data: mapping });
@@ -703,9 +707,12 @@ async function deleteFormMapping(req, res, next) {
     // Deactivate rather than destroy: existing CaseForms carry
     // provisioning.mappingId, and an audit trail that dead-ends at a deleted
     // document can't explain why a form was assigned (§13/§27 spirit).
+    const scopeSync = require("../form-registry/template-scope-sync.service");
+    const wasQualifying = scopeSync.qualifies(mapping);
     mapping.active = false;
     await mapping.save();
 
+    await scopeSync.reconcileScopeAfterRowChange({ formCode: template.formCode, visaType: mapping.visaType, wasQualifying, nowQualifying: false });
     uscisFormService.invalidateTemplateCache();
     await writeRegistryAudit("FORM_MAPPING_REMOVED", template, req, { mappingId: mapping._id, visaType: mapping.visaType });
     res.json({ success: true, mapping, data: mapping });
@@ -824,9 +831,22 @@ async function openInteractiveForm(req, res, next) {
   }
 }
 
+// A save answers with the saved CaseForm. That document carries its whole populated USCIS template (about 2 MB) - sent twice, as `form` and `data` -
+// plus its full audit / version history, none of which the page reads from a save (it takes `fieldValues` and reloads the rest when it needs it). On a
+// slow link this was a large part of every field save, so the template is reduced to its id and the history arrays are left out. Same keys, same shape.
+function slimSavedForm(form) {
+  if (!form) return form;
+  const plain = typeof form.toJSON === "function" ? { ...form.toJSON() } : { ...form };
+  const template = plain.formTemplateId;
+  if (template && typeof template === "object" && template._id) plain.formTemplateId = { _id: template._id, formCode: template.formCode, version: template.version };
+  delete plain.auditHistory;
+  delete plain.versions;
+  return plain;
+}
+
 async function saveInteractiveField(req, res, next) {
   try {
-    const form = await interactiveFormReviewService.saveField(req.params.caseId, req.params.formId, req.body, req.user, req);
+    const form = slimSavedForm(await interactiveFormReviewService.saveField(req.params.caseId, req.params.formId, req.body, req.user, req));
     res.json({ success: true, form, data: form });
   } catch (error) {
     next(error);
@@ -835,7 +855,7 @@ async function saveInteractiveField(req, res, next) {
 
 async function saveInteractiveSection(req, res, next) {
   try {
-    const form = await interactiveFormReviewService.saveSection(req.params.caseId, req.params.formId, req.body, req.user, req);
+    const form = slimSavedForm(await interactiveFormReviewService.saveSection(req.params.caseId, req.params.formId, req.body, req.user, req));
     res.json({ success: true, form, data: form });
   } catch (error) {
     next(error);

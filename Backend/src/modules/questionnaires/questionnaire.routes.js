@@ -64,6 +64,10 @@ router.get("/:id/uscis-mappings", authenticate, authorizeRoles(...readerRoles), 
 router.get("/:id/visa-mappings", authenticate, authorizeRoles(...readerRoles), authorizePermissions("questionnaires:read"), ctrl.getVisaMappings);
 router.post("/:id/visa-mappings", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.addVisaMapping);
 router.delete("/:id/visa-mappings/:visaType", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.removeVisaMapping);
+router.get("/:id/usage", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getUsage);
+router.get("/:id/form-options", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:read"), ctrl.getFormOptions);
+router.post("/:id/form-mappings", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.addFormMapping);
+router.delete("/:id/form-mappings/:mappingId", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.removeFormMapping);
 router.post("/:id/assign", authenticate, authorizeRoles(...reviewerRoles), authorizePermissions("questionnaires:assign"), ctrl.assignQuestionnaire);
 router.post("/:id/questions", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.createQuestion);
 router.post("/:id/questions/bulk", authenticate, authorizeRoles(...designerRoles), authorizePermissions("questionnaires:update"), ctrl.bulkCreateQuestions);

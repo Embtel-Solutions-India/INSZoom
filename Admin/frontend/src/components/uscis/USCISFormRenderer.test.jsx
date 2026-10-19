@@ -199,15 +199,16 @@ describe('USCISFormRenderer', () => {
 
   // Phase 3 (§I.3) - sync state badges
 
-  it('renders the amber "Manual" badge when syncState is MANUAL_OVERRIDE, with no conflict panel', async () => {
+  it('no longer shows the per-section review bar (status badge, Approve Section, Needs Revision) under the form', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'MANUAL_OVERRIDE' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
     render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
 
-    expect(await screen.findByText('Manual')).toBeTruthy()
-    expect(screen.queryByText('Field Conflict')).toBeFalsy()
-    expect(screen.queryByText('Conflict detected')).toBeFalsy()
+    expect(await screen.findByTitle('Last Name')).toBeTruthy()
+    expect(screen.queryByText('Approve Section')).toBeFalsy()
+    expect(screen.queryByText('Needs Revision')).toBeFalsy()
+    expect(screen.queryByText('Manual')).toBeFalsy()
   })
 
   it('renders no override badge when syncState is SYNCED', async () => {
@@ -219,15 +220,6 @@ describe('USCISFormRenderer', () => {
     expect(await screen.findByTitle('Last Name')).toBeTruthy()
     expect(screen.queryByText('Manual')).toBeFalsy()
     expect(screen.queryByText('Field Conflict')).toBeFalsy()
-  })
-
-  it('backwards-compat: renders "Manual" for a pre-Phase-2 field with manualOverride set but no syncState at all', async () => {
-    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: undefined, manualOverride: { value: 'Smith' } }) })
-    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
-
-    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
-
-    expect(await screen.findByText('Manual')).toBeTruthy()
   })
 
   // Phase 3 (§I.4) - conflict resolution actions
@@ -245,6 +237,42 @@ describe('USCISFormRenderer', () => {
 
     await vi.waitFor(() => expect(saveWorkspaceFieldApi).toHaveBeenCalledTimes(1))
     expect(saveWorkspaceFieldApi.mock.calls[0][2]).toMatchObject({ fieldName: 'beneficiary.lastName', value: 'Johnson' })
+    expect(await screen.findByText('Saved ✓')).toBeTruthy()
+  })
+
+  it('Undo puts the previous value back in the box and Redo brings the edit back', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    const original = input.value
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    expect(input.value).toBe('Johnson')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await vi.waitFor(() => expect(screen.getByTitle('Last Name').value).toBe(original))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+    await vi.waitFor(() => expect(screen.getByTitle('Last Name').value).toBe('Johnson'))
+  })
+
+  it('Save stays clickable while a slow save is still running, and the label shows how many are left', async () => {
+    workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+    let release
+    saveWorkspaceFieldApi.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve({}) }))
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const input = await screen.findByTitle('Last Name')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'Johnson' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    const saving = await screen.findByRole('button', { name: /Saving… \d+ left/ })
+    expect(saving.disabled).toBe(false)
+    release()
     expect(await screen.findByText('Saved ✓')).toBeTruthy()
   })
 

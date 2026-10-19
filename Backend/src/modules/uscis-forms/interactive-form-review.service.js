@@ -161,6 +161,8 @@ class InteractiveFormReviewService {
       .populate("companyId", "name legalName")
       .populate("assignedCaseManager", "firstName lastName name email")
       .populate("assignedTeamLead", "firstName lastName name email")
+      // canonicalHistory is the biggest part of a case (1.6 MB of 1.9 MB on a live one) and nothing here reads it; this service never saves the case document
+      .select(caseService.CASE_OMIT_HISTORY.map((field) => `-${field}`).join(" "))
       .maxTimeMS(WORKSPACE_READ_TIMEOUT_MS);
     if (options.readOnlyOpen) caseQuery = caseQuery.read("secondaryPreferred");
     const caseData = await caseQuery;

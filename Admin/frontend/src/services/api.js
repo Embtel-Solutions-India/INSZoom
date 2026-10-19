@@ -398,6 +398,11 @@ export const questionnairesApi = {
   updateQuestion: (id, questionId, payload) => api.put(`/questionnaires/${id}/questions/${questionId}`, payload),
   deleteQuestion: (id, questionId) => api.delete(`/questionnaires/${id}/questions/${questionId}`),
   assign: (id, payload) => api.post(`/questionnaires/${id}/assign`, payload),
+  // Where a checklist is used: visa types (with open-case counts), forms and assigned cases - and the actions on them.
+  usage: (id) => api.get(`/questionnaires/${id}/usage`),
+  formOptions: (id, params = {}) => api.get(`/questionnaires/${id}/form-options`, { params }),
+  addFormMapping: (id, payload) => api.post(`/questionnaires/${id}/form-mappings`, payload),
+  removeFormMapping: (id, mappingId) => api.delete(`/questionnaires/${id}/form-mappings/${mappingId}`),
   answers: (id, params = {}) => api.get(`/questionnaires/${id}/answers`, { params }),
   // Case-manager correction of a client's already-submitted answer -
   // preserveStatus:true tells the backend to keep that answer's existing
@@ -597,10 +602,9 @@ export const uscisFormsApi = {
   autoSave: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/autosave`, payload),
   saveSection: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/section`, payload),
   review: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/review`, payload),
-  saveWorkspaceField: (caseId, formId, payload) => api.patch(`/uscis-forms/case/${caseId}/${formId}/workspace/field`, payload),
+  // a field save can legitimately run longer than the default 2 minutes on a large form; aborting it only made the page send it again while the server was still working
+  saveWorkspaceField: (caseId, formId, payload) => api.patch(`/uscis-forms/case/${caseId}/${formId}/workspace/field`, payload, { timeout: 300_000 }),
   saveWorkspaceSection: (caseId, formId, payload) => api.put(`/uscis-forms/case/${caseId}/${formId}/workspace/section`, payload),
-  reviewWorkspaceField: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/field/review`, payload),
-  reviewWorkspaceSection: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/section/review`, payload),
   decideWorkspaceForm: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/decision`, payload),
   lockWorkspaceForm: (caseId, formId, payload) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/lock`, payload),
   refreshWorkspace: (caseId, formId, payload = {}) => api.post(`/uscis-forms/case/${caseId}/${formId}/workspace/refresh`, payload),
@@ -652,6 +656,8 @@ export const goldenSetApi = {
 
 export const formGovernanceApi = {
   catalog: () => api.get('/form-registry/catalog'),
+  // one form's catalog row, without reading every other form
+  catalogEntry: (formCode) => api.get(`/form-registry/catalog/${encodeURIComponent(formCode)}`),
   fetchFromUSCIS: (formCode) => api.post(`/form-registry/catalog/${encodeURIComponent(formCode)}/fetch`),
   deleteForm: (formCode) => api.delete(`/form-registry/catalog/${encodeURIComponent(formCode)}`),
   templateUrl: (templateId) => api.get(`/uscis-forms/${templateId}/url`),
@@ -681,6 +687,12 @@ export const formGovernanceApi = {
   // legacy USCISForms.jsx "Visa mappings" panel) rather than a new endpoint.
   visaRegistry: () => api.get('/uscis-forms/registry/visa-registry'),
   addCaseType: (templateId, payload) => api.post(`/uscis-forms/${templateId}/mappings`, payload),
+  // Edit which checklist(s) a visa -> form row sends (compulsory / conditional / case-manager-added, with its condition), then optionally apply the
+  // row to the cases already in progress ({ dryRun: true } counts them first).
+  removeCaseType: (templateId, mappingId) => api.delete(`/uscis-forms/${templateId}/mappings/${mappingId}`),
+  checklistOptions: () => api.get('/form-registry/checklist-options'),
+  updateMappingChecklists: (mappingId, payload) => api.put(`/form-registry/mappings/${mappingId}/checklists`, payload),
+  applyMappingToCases: (mappingId, payload) => api.post(`/form-registry/mappings/${mappingId}/apply-to-cases`, payload),
   componentPdf: (templateId, componentCode) => api.get(`/uscis-forms/${templateId}/component-pdf/${encodeURIComponent(componentCode)}`, { responseType: 'blob' }),
   // Upload/Replace Form - reuses the existing manual-import pipeline
   // (qpdf normalization, PDF validation, AcroForm field scan, storage

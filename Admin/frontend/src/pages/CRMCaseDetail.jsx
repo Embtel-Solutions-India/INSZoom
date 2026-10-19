@@ -1289,9 +1289,9 @@ const CRMCaseDetail = () => {
       const created = response?.data?.data?.created || []
       setFetched(prev => ({ ...prev, forms: false }))
       await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
-      const newCaseFormId = created[0]?._id
-      if (newCaseFormId) {
-        await uscisFormsApi.autofill(id, newCaseFormId).catch(() => null)
+      if (created.length) {
+        // every form is autofilled on the case it belongs to (a principal's forms live on its child cases)
+        await Promise.all(created.map((form) => uscisFormsApi.autofill(form.caseId || id, form._id).catch(() => null)))
         await Promise.all([fetchCaseForms(true), fetchFormsOverview(true)])
       }
       setFormActionMessage(`${item.formNumber} was added to this case and auto-filled.`)
@@ -3270,7 +3270,7 @@ const CRMCaseDetail = () => {
               </div>
             </div>
             {formActionMessage && (
-              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)/.test(formActionMessage) ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)|was (added|re-autofilled)/.test(formActionMessage) ? 'border-primary/30 bg-primary/5 text-primary' : 'border-red-200 bg-red-50 text-red-700'}`}>
                 {formActionMessage}
               </div>
             )}

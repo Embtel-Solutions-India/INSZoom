@@ -13,7 +13,13 @@ router.get("/visa/:visaType", authenticate, ctrl.getMappingsForVisa);
 // restricted the same way template Approve/Activate already are, since it
 // creates/updates a real USCISFormTemplate record.
 router.get("/catalog", authenticate, authorizePermissions("forms:read"), ctrl.getFormCatalog);
+router.get("/catalog/:formCode", authenticate, authorizePermissions("forms:read"), ctrl.getFormCatalogEntry);
 router.post("/catalog/:formCode/fetch", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:approve"), ctrl.fetchFormFromUSCIS);
+// Edit the checklists a visa -> form row sends, their assignment type (compulsory / conditional / case-manager-added) and condition; then optionally
+// apply that to the cases already in progress. Admin only, same tier as the other registry edits.
+router.get("/checklist-options", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.getChecklistOptions);
+router.put("/mappings/:mappingId/checklists", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.updateMappingChecklists);
+router.post("/mappings/:mappingId/apply-to-cases", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:update"), ctrl.applyMappingToCases);
 router.delete("/catalog/:formCode", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("forms:delete"), ctrl.deleteFormFromCatalog);
 
 module.exports = router;

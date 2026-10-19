@@ -214,6 +214,12 @@ const visaFormMappingSchema = new mongoose.Schema(
     // authored checklist yet) - never silently defaulted to another
     // visa's checklist.
     checklistMappings: { type: [checklistMappingSchema], default: [] },
+
+    // Set when an admin changed this row (assignment type, condition or its checklists) on the Form Governance page. The seed loaders then leave
+    // those fields exactly as the admin set them instead of resetting them to the code defaults.
+    adminManaged: { type: Boolean, default: false },
+    adminManagedAt: { type: Date, default: null },
+    adminManagedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true }
 );

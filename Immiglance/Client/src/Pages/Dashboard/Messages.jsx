@@ -16,6 +16,7 @@ const Ic = {
   Back:    () => <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"/></svg>,
   Refresh: () => <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>,
   File:    () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>,
+  Reply:   () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14L4 9l5-5M4 9h10a6 6 0 016 6v4"/></svg>,
   Msg:     () => <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>,
   CheckCheck: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="shrink-0 overflow-visible"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>,
 };
@@ -133,6 +134,7 @@ function applySavedMessage(prevMessages, tempId, saved) {
   if (!optimistic) return prevMessages;
   const merged = {
     ...saved,
+    __parent: optimistic.__parent, // the quoted original of a reply, kept from the bubble the user saw
     attachments: (saved.attachments || []).map((serverAttachment, index) => ({
       ...serverAttachment,
       __localFile: optimistic.attachments?.[index]?.__localFile,
@@ -155,6 +157,7 @@ function applyIncomingMessage(prevMessages, incoming) {
   const optimistic = prevMessages[index];
   const replacement = {
     ...incoming,
+    __parent: optimistic.__parent,
     // The echo carries the sender as a bare id; keep the populated author from the optimistic bubble.
     senderId: incoming.senderId && typeof incoming.senderId === "object" ? incoming.senderId : optimistic.senderId,
     attachments: (incoming.attachments || []).map((serverAttachment, i) => ({
@@ -278,7 +281,7 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
 /* ─── Single message bubble ───────────────────────────────────────────── */
 // Memoized so a background re-sync that leaves this message's object
 // reference unchanged (see mergeMessagesById) skips re-rendering it entirely.
-const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry, onCancelUpload, onOpenAttachment }) {
+const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry, onCancelUpload, onOpenAttachment, onReply }) {
   if (msg.isInternalNote && !isAdmin) return null;
 
   const senderId = msg.senderId?._id || msg.senderId;
@@ -295,7 +298,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
     : "Sent";
 
   // A reply from the case team arrives with its original message populated.
-  const parent = msg.replyTo && typeof msg.replyTo === "object" ? msg.replyTo : null;
+  const parent = msg.__parent || (msg.replyTo && typeof msg.replyTo === "object" ? msg.replyTo : null);
 
   const note = Boolean(msg.isInternalNote);
   // Own messages: the brand colour softened (dark mode: a muted tint of it with light text — the solid colour is too bright for a large surface).
@@ -313,7 +316,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   const hasAttachments = msg.attachments?.length > 0;
 
   return (
-    <div className={`flex gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
+    <div className={`group flex gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm ${avatarClasses}`}>
         {initials(msg.senderId?.displayName || msg.senderId?.email || "?")}
       </div>
@@ -370,6 +373,12 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
           </button>
         )}
       </div>
+      {!isPending && !isFailed && onReply && (
+        <button type="button" onClick={() => onReply(msg)} title="Reply" aria-label="Reply"
+          className="self-end mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0">
+          <Ic.Reply />
+        </button>
+      )}
     </div>
   );
 });
@@ -408,6 +417,7 @@ export default function Messages() {
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [sendError, setSendError]     = useState(null);
   const [attachNotice, setAttachNotice] = useState(null); // why a file was not added (too many / too big / empty)
+  const [replyingTo, setReplyingTo] = useState(null); // { _id, senderName, messageBody } of the message being replied to
   const [viewer, setViewer]           = useState(null); // attachment open in the centered viewer
   const [loading, setLoading]         = useState(true);
   const [msgLoading, setMsgLoading]   = useState(false);
@@ -674,12 +684,13 @@ export default function Messages() {
   // once those run out the bubble turns red and a tap re-sends it. Every attempt
   // carries the same clientMessageId, so the backend never stores a message twice.
   // `resend` is a failed bubble being re-sent in place.
-  const dispatchMessage = useCallback((bodyText, internalFlag, uploadFiles, resend = null) => {
+  const dispatchMessage = useCallback((bodyText, internalFlag, uploadFiles, resend = null, replyParent = null) => {
     const threadId = resend?.__threadId || activeThread?._id;
     if (!threadId || (!bodyText && uploadFiles.length === 0)) return;
 
     const tempId = resend?._id || `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const clientMessageId = resend?.__clientMessageId || newClientMessageId();
+    const parent = resend ? resend.__parent || null : replyParent;
 
     // The server stores multipart files first, then the staged (chunked) ones: the bubble uses the same order.
     let entries = uploadEntriesRef.current.get(tempId);
@@ -700,6 +711,7 @@ export default function Messages() {
     const optimisticMessage = {
       _id: tempId,
       messageBody: bodyText,
+      __parent: parent,
       isInternalNote: internalFlag,
       createdAt: resend?.createdAt || new Date().toISOString(),
       senderId: user,
@@ -743,6 +755,7 @@ export default function Messages() {
       smallIndexes.forEach((index) => setUpload(index, { status: "uploading" }));
       return messagesApi.sendMessage(threadId, bodyText, entries.filter((e) => !e.big).map((e) => e.file), internalFlag, {
         clientMessageId,
+        replyTo: parent?._id,
         uploadIds: entries.filter((e) => e.big).map((e) => e.uploadId),
         onProgress: (percent) => smallIndexes.forEach((index) => setUpload(index, { progress: percent / 100 })),
         signal: controller.signal,
@@ -821,7 +834,9 @@ export default function Messages() {
     setAttachNotice(null);
     setInternalNote(false);
     emitTyping(false);
-    dispatchMessage(bodyText, internalFlag, uploadFiles);
+    const parent = replyingTo;
+    setReplyingTo(null);
+    dispatchMessage(bodyText, internalFlag, uploadFiles, null, parent);
   };
 
   // Re-sends a failed bubble in place, with the SAME clientMessageId as its earlier attempts.
@@ -836,6 +851,19 @@ export default function Messages() {
     uploadEntriesRef.current.delete(tempId);
     setMessages((prev) => prev.filter((m) => m._id !== tempId));
   }, []);
+
+  const startReply = useCallback((message) => {
+    const own = (message.senderId?._id || message.senderId) === user?._id;
+    setReplyingTo({
+      _id: message._id,
+      senderName: message.senderName || message.senderId?.displayName || message.senderId?.email || (own ? user?.displayName : null) || "Immiglance Case Team",
+      messageBody: message.messageBody || message.message || (message.attachments?.length ? "Attachment" : ""),
+    });
+    textareaRef.current?.focus();
+  }, [user]);
+
+  // A reply quotes a message of the open conversation: drop it when the conversation changes.
+  useEffect(() => { setReplyingTo(null); }, [activeThread?._id]);
 
   const openAttachment = useCallback((info) => setViewer(info), []);
   const closeViewer = useCallback(() => setViewer(null), []);
@@ -990,7 +1018,7 @@ export default function Messages() {
                           {showDivider && <DayDivider label={dayLabel(msg.createdAt)} />}
                           <MessageBubble msg={msg} isAdmin={isAdmin}
                             isOwn={msg.senderId?._id === user?._id || msg.senderId === user?._id}
-                            onRetry={retryMessage} onCancelUpload={cancelUpload} onOpenAttachment={openAttachment} />
+                            onRetry={retryMessage} onCancelUpload={cancelUpload} onOpenAttachment={openAttachment} onReply={startReply} />
                         </Fragment>
                       );
                     });
@@ -1027,6 +1055,18 @@ export default function Messages() {
                 </div>
               )}
 
+              {replyingTo && (
+                <div data-testid="reply-bar" className="flex items-center justify-between gap-2 rounded-lg bg-secondary border border-border px-3 py-1.5">
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    Replying to <span className="font-semibold text-foreground">{replyingTo.senderName}</span>
+                    {replyingTo.messageBody ? <span> · {replyingTo.messageBody}</span> : null}
+                  </p>
+                  <button type="button" onClick={() => setReplyingTo(null)} className="shrink-0 text-[11px] font-semibold text-muted-foreground hover:text-foreground">
+                    Cancel
+                  </button>
+                </div>
+              )}
+
               {attachNotice && (
                 <div role="status" data-testid="attach-notice" className="px-3 py-1.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300 rounded-lg bg-amber-500/10 border border-amber-500/30">
                   {attachNotice}
@@ -1060,7 +1100,7 @@ export default function Messages() {
                     placeholder:text-muted-foreground outline-none focus:ring-0 max-h-32"
                 />
                 <button type="button" onClick={handleSend} disabled={!body.trim() && files.length === 0}
-                  title="Send" aria-label="Send"
+                  title={replyingTo ? "Send reply" : "Send"} aria-label="Send"
                   className="shrink-0 p-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
                   <Ic.Send />
                 </button>

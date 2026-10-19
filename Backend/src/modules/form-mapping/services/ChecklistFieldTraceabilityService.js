@@ -228,8 +228,9 @@ class ChecklistFieldTraceabilityService {
     const { graph } = await MappingGraphService.preview(templateId);
     const checklistKeys = await this.checklistKeysForForm(template.formCode);
     const matchesByPath = new Map();
-    for (const checklistKey of checklistKeys) {
-      const { questionnaire, questions } = await this.canonicalPathsForQuestionnaire(checklistKey);
+    // every checklist is read at the same time (each read is several database round trips), then merged in the original order
+    const loadedChecklists = await Promise.all(checklistKeys.map((checklistKey) => this.canonicalPathsForQuestionnaire(checklistKey)));
+    for (const { questionnaire, questions } of loadedChecklists) {
       if (!questionnaire) continue;
       questions.forEach((question) => {
         [question.canonicalPath, question.directBindingPath].filter(Boolean).forEach((path) => {
@@ -326,11 +327,12 @@ class ChecklistFieldTraceabilityService {
   // only for categories that enum has no equivalent for. Read-only: no
   // record is created, changed, or auto-fixed by calling this.
   static async governanceDefects(templateId) {
-    const template = await USCISFormTemplate.findById(templateId).lean();
+    // formCode is all that is needed here; the full template (10-16 MB for the big forms) is loaded only when the graph carries no stored validation
+    const template = await USCISFormTemplate.findById(templateId).select("formCode").lean();
     if (!template) return null;
     const formCode = template.formCode;
     const { graph } = await MappingGraphService.preview(templateId);
-    const validation = graph.validation || MappingGraphService.validateGraph(graph, template);
+    const validation = graph.validation || MappingGraphService.validateGraph(graph, await USCISFormTemplate.findById(templateId).lean());
     const defects = [];
     const intentionalGaps = [];
 
@@ -346,6 +348,13 @@ class ChecklistFieldTraceabilityService {
     // targets this real formCode (mirrors checklistKeysForForm's own
     // scoping - never a global scan).
     const rows = await VisaFormMapping.find({ formTemplateFormCode: String(formCode || "").toLowerCase() }).lean();
+    // one query for every checklist the rows name (this used to be one query per row x checklist, each a network round trip)
+    const namedKeys = [...new Set(rows.filter((row) => row.active !== false).flatMap((row) => (row.checklistMappings || []).map((entry) => entry.checklistKey)))];
+    const namedQuestionnaires = new Map();
+    if (namedKeys.length) {
+      (await Questionnaire.find({ key: { $in: namedKeys }, latestVersion: true }).select("_id key checklistRole").lean())
+        .forEach((doc) => { if (!namedQuestionnaires.has(doc.key)) namedQuestionnaires.set(doc.key, doc); });
+    }
     for (const row of rows) {
       if (row.active === false) {
         defects.push({ category: "INACTIVE_MAPPING", visaType: row.visaType, formNumber: row.formNumber, detail: "VisaFormMapping row is inactive but still on record for this form/visa" });
@@ -362,7 +371,7 @@ class ChecklistFieldTraceabilityService {
       for (const entry of entries) {
         // Invalid checklist reference: checklistKey resolves to no real
         // Questionnaire at all.
-        const questionnaire = await Questionnaire.findOne({ key: entry.checklistKey, latestVersion: true }).select("_id checklistRole").lean();
+        const questionnaire = namedQuestionnaires.get(entry.checklistKey);
         if (!questionnaire) {
           defects.push({ category: "INVALID_CHECKLIST_REFERENCE", visaType: row.visaType, formNumber: row.formNumber, checklistKey: entry.checklistKey });
           continue;
@@ -397,10 +406,14 @@ class ChecklistFieldTraceabilityService {
       if (!edgesByPath.has(edge.sourcePath)) edgesByPath.set(edge.sourcePath, []);
       edgesByPath.get(edge.sourcePath).push(edge);
     });
-    for (const checklistKey of checklistKeys) {
+    const loadedForDefects = await Promise.all(checklistKeys.map(async (checklistKey) => {
       const { questionnaire, questions } = await this.canonicalPathsForQuestionnaire(checklistKey);
-      if (!questionnaire) continue;
+      if (!questionnaire) return { checklistKey, questionnaire: null };
       const rawQuestions = await Question.find({ questionnaire: questionnaire._id, active: { $ne: false } }).select("key type metadata").lean();
+      return { checklistKey, questionnaire, questions, rawQuestions };
+    }));
+    for (const { checklistKey, questionnaire, questions, rawQuestions } of loadedForDefects) {
+      if (!questionnaire) continue;
       const byKey = new Map(rawQuestions.map((q) => [q.key, q]));
       questions.forEach((question) => {
         const raw = byKey.get(question.questionKey);
