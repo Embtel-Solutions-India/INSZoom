@@ -95,3 +95,24 @@ test("the guard never throws, even for a form it cannot read", async () => {
   assert.equal(liftTextLengthLimits(broken), 0);
   assert.deepEqual(await shrinkLongTextToFit({}, broken), []);
 });
+
+test("a comb field whose text fits its boxes keeps its one-character-per-box layout in the PDF; a longer text is still written in full", async () => {
+  const { form } = await build();
+  // COMB has 5 boxes: "12345" fits, so combing and MaxLen stay; the other limits are lifted as before
+  const lifted = liftTextLengthLimits(form, (name) => (name === COMB ? "12345" : undefined));
+  assert.equal(lifted, 2);
+  const comb = form.getTextField(COMB);
+  assert.equal(comb.isCombed(), true);
+  assert.equal(comb.getMaxLength(), 5);
+  const mapped = write(form, COMB, "12345");
+  assert.equal(mapped.renderError, undefined);
+  assert.equal(comb.getText(), "12345");
+
+  const { form: second } = await build();
+  liftTextLengthLimits(second, (name) => (name === COMB ? "123456789" : undefined));
+  const longComb = second.getTextField(COMB);
+  assert.equal(longComb.isCombed(), false);
+  assert.equal(longComb.getMaxLength(), undefined);
+  write(second, COMB, "123456789");
+  assert.equal(longComb.getText(), "123456789");
+});

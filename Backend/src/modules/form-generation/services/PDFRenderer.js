@@ -141,7 +141,12 @@ class PDFRenderer {
     const { PDFDocument, PDFName, PDFBool } = this.loadPdfLib();
     const pdf = await this.loadTemplatePdf(template, PDFDocument);
     const form = pdf.getForm();
-    liftTextLengthLimits(form);
+    // The mapped values are needed first so a comb field whose text fits its boxes keeps its one-character-per-box layout (see liftTextLengthLimits).
+    // If mapping throws here it throws again, with the same error, at its original place below.
+    let earlyMapping = null;
+    try { earlyMapping = PDFFieldMapper.mapFields(caseForm, template); } catch (error) { earlyMapping = null; }
+    const valueByPdfField = new Map(Object.values(earlyMapping?.mappedFields || {}).map((mapped) => [mapped.pdfField, mapped.value]));
+    liftTextLengthLimits(form, (pdfField) => (valueByPdfField.has(pdfField) ? String(valueByPdfField.get(pdfField) ?? "") : undefined));
     // Confirmed root cause of 2 historical "generated" CaseForm records that
     // turned out to be 883-byte, 1-page, 0-field stubs: the template asset
     // they were rendered from (since deleted/replaced) apparently exposed no
@@ -160,7 +165,7 @@ class PDFRenderer {
       error.code = "TEMPLATE_PDF_NO_FIELDS";
       throw error;
     }
-    const { mappedFields, missingMappings, protectedFields } = PDFFieldMapper.mapFields(caseForm, template);
+    const { mappedFields, missingMappings, protectedFields } = earlyMapping || PDFFieldMapper.mapFields(caseForm, template);
     const unmappedPdfFields = [];
     const failedFieldWrites = [];
     const adjustedFieldWrites = [];

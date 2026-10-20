@@ -416,7 +416,7 @@ describe('USCISFormRenderer', () => {
   })
 
   // Character limits
-  it('removes the PDF maxlength from every input, comb fields included', async () => {
+  it('removes the PDF maxlength from every input; a comb field keeps its one-character-per-box layout while the text fits its boxes, and becomes plain text beyond them', async () => {
     workspaceApi.mockResolvedValue({ data: makeWorkspaceWithField({ syncState: 'SYNCED' }) })
     templatePdfApi.mockResolvedValue({ data: pdfBlob() })
 
@@ -426,7 +426,16 @@ describe('USCISFormRenderer', () => {
     await vi.waitFor(() => expect(input.hasAttribute('maxlength')).toBe(false))
     const comb = screen.getByTitle('Comb Field')
     expect(comb.hasAttribute('maxlength')).toBe(false)
+    // five boxes: characters stay in their boxes up to five, with no limit on what can be typed
+    expect(comb.classList.contains('comb')).toBe(true)
+    act(() => comb.focus()) // typing happens in the focused box
+    fireEvent.input(comb, { target: { value: '12345' } })
+    expect(comb.classList.contains('comb')).toBe(true)
+    fireEvent.input(comb, { target: { value: '123456789' } })
+    expect(comb.value).toBe('123456789')
     expect(comb.classList.contains('comb')).toBe(false)
+    fireEvent.input(comb, { target: { value: '123' } })
+    expect(comb.classList.contains('comb')).toBe(true)
   })
 
   // Forms Download overhaul - single "Download Official Form" button, no status gate

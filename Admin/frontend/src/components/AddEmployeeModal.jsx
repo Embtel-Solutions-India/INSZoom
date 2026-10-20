@@ -39,12 +39,10 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
     if (!visaType) { setError('Choose the employee\'s visa first.'); return }
     if (subTypes.length && !petitionSubType) { setError(`Choose the ${visaType} filing type.`); return }
     if (!pipelineCategory) { setError('Choose the GoHighLevel pipeline (Immigrant or Non-Immigrant).'); return }
-    if (!name.trim()) { setError('Enter the full name of the employee.'); return }
-    if (!email.trim()) { setError('Enter the email of the employee.'); return }
     setBusy(true)
     try {
-      await casesApi.addEmployeeSlot(principalId, { visaType, pipelineCategory, employeeName: name.trim(), employeeEmail: email.trim(), ...(subTypes.length ? { petitionSubType } : {}) })
-      onAdded(`Employee ${name.trim()} added on ${visaType}`)
+      await casesApi.addEmployeeSlot(principalId, { visaType, pipelineCategory, ...(name.trim() ? { employeeName: name.trim() } : {}), ...(email.trim() ? { employeeEmail: email.trim() } : {}), ...(subTypes.length ? { petitionSubType } : {}) })
+      onAdded(`${name.trim() ? `Employee ${name.trim()}` : 'Employee'} added on ${visaType}`)
     } catch (err) {
       setError(err.response?.data?.message || 'The employee could not be added.')
     } finally {
@@ -88,12 +86,12 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
 
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee full name *</label>
-            <input className="input-field" placeholder="As it should appear on the case and in GoHighLevel" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
+            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee full name</label>
+            <input className="input-field" placeholder="Optional - as it should appear on the case and in GoHighLevel" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee email *</label>
-            <input type="email" className="input-field" placeholder="employee@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
+            <label className="mb-1 block text-sm font-medium text-muted-foreground">Employee email</label>
+            <input type="email" className="input-field" placeholder="Optional - employee@example.com" value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} />
           </div>
         </div>
 

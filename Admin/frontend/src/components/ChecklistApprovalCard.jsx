@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CheckCircle, Pencil, Send, FileEdit, Trash2 } from 'lucide-react'
 import { questionnairesApi, invalidateCachedGet } from '../services/api'
 import ConfirmModal from './ConfirmModal'
@@ -13,7 +13,35 @@ const ROLE_LABEL = { employer: 'Employer', employee: 'Employee', client: 'Client
 // "Checklists for this case": every checklist the case got automatically starts as a DRAFT - the client can't see it
 // and hasn't been told about it. The case manager can edit it for this case only, then approve it; approval is what
 // sends it to the client (and starts the questionnaire notifications/triggers).
-export default function ChecklistApprovalCard({ caseId, checklists = [], onChanged }) {
+// On an employer matter whose employees are on DIFFERENT visas, each employee case brings its own checklists (an L-1B employee and a P employee do not share
+// one). `childCases` (the matter's employee cases) lets this card list those too, so nothing assigned is hidden; a checklist already shown for the matter is
+// not repeated. An employee checklist is approved through the matter (that approval already reaches every employee case); anything else is handled on the
+// employee case that owns it.
+const SCROLL_AFTER = 5
+
+export default function ChecklistApprovalCard({ caseId, checklists = [], childCases = [], onChanged }) {
+  const [childLists, setChildLists] = useState([]) // [{ child, checklists }]
+  const childKey = (childCases || []).filter((child) => child.status !== 'removed').map((child) => child._id).join(',')
+  const loadChildLists = async () => {
+    const children = (childCases || []).filter((child) => child.status !== 'removed')
+    if (!children.length) { setChildLists([]); return }
+    const lists = await Promise.all(children.map(async (child) => {
+      try {
+        const response = await questionnairesApi.listCaseChecklists(child._id)
+        return { child, checklists: response.data?.data?.checklists || [] }
+      } catch {
+        return { child, checklists: [] }
+      }
+    }))
+    setChildLists(lists)
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadChildLists() }, [childKey, checklists])
+  const childName = (child) => {
+    const name = child.employeeContact?.name || child.clientName || child.caseNumber
+    const email = child.employeeContact?.email || child.clientEmail
+    return email ? `${name} (${email})` : name
+  }
   const [confirm, setConfirm] = useState(null) // { all, checklist }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -21,20 +49,39 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
   const [removing, setRemoving] = useState(null)
   const [removeReason, setRemoveReason] = useState('')
 
-  const items = checklists.filter((item) => !item.staffRequest || isPremiumChecklist(item))
+  const ownItems = checklists.filter((item) => !item.staffRequest || isPremiumChecklist(item))
+  const extraItems = useMemo(() => {
+    const seen = new Set(ownItems.map((item) => item.checklistId))
+    const extras = new Map()
+    childLists.forEach(({ child, checklists: list }) => {
+      list.filter((item) => !item.staffRequest).forEach((item) => {
+        if (seen.has(item.checklistId)) return
+        const entry = extras.get(item.checklistId) || { ...item, ownerCaseId: child._id, forEmployees: [] }
+        entry.forEmployees.push(childName(child))
+        extras.set(item.checklistId, entry)
+      })
+    })
+    return [...extras.values()]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childLists, checklists])
+  const items = [...ownItems, ...extraItems]
   if (!items.length) return null
+  // approval of an employee checklist goes through the matter; everything else through the case that owns the checklist
+  const approvalCaseId = (item) => (item.ownerCaseId && item.targetRole !== 'employee' ? item.ownerCaseId : caseId)
   const drafts = items.filter((item) => item.clientApproval === 'draft')
 
   const refresh = async () => {
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
+    ;(childCases || []).forEach((child) => invalidateCachedGet(`/questionnaires/case/${child._id}`))
     await onChanged?.()
+    await loadChildLists()
   }
 
   const runApproval = async () => {
     setBusy(true)
     setError('')
     try {
-      await questionnairesApi.approveCaseChecklists(caseId, confirm.all ? { all: true } : { checklistIds: [confirm.checklist.checklistId] })
+      await questionnairesApi.approveCaseChecklists(confirm.all ? caseId : approvalCaseId(confirm.checklist), confirm.all ? { all: true } : { checklistIds: [confirm.checklist.checklistId] })
       setConfirm(null)
       await refresh()
     } catch (err) {
@@ -48,7 +95,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
     setBusy(true)
     setError('')
     try {
-      await questionnairesApi.removeCaseChecklist(caseId, { checklistId: removing.checklistId, ...(removeReason.trim() ? { reason: removeReason.trim() } : {}) })
+      await questionnairesApi.removeCaseChecklist(removing.ownerCaseId || caseId, { checklistId: removing.checklistId, ...(removeReason.trim() ? { reason: removeReason.trim() } : {}) })
       setRemoving(null)
       setRemoveReason('')
       await refresh()
@@ -77,13 +124,15 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
         )}
       </div>
 
-      <ul className="mt-4 divide-y divide-border">
+      {/* every assigned checklist is listed; past five rows the list scrolls inside the card */}
+      <ul className={`mt-4 divide-y divide-border ${items.length > SCROLL_AFTER ? 'max-h-[26rem] overflow-y-auto pr-1' : ''}`} data-testid="checklist-approval-list">
         {items.map((item) => (
-          <li key={`${item.checklistId}-${item.referenceId || ''}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <li key={`${item.ownerCaseId || ''}-${item.checklistId}-${item.referenceId || ''}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">{item.title}</p>
               <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{ROLE_LABEL[item.targetRole] || item.targetRole}</span>
+                {item.forEmployees?.length > 0 && <span className="truncate" title={item.forEmployees.join(', ')}>· {item.forEmployees.join(', ')}</span>}
                 {item.caseSpecific && <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700"><FileEdit className="h-3 w-3" aria-hidden="true" /> Customised for this case</span>}
               </p>
             </div>
@@ -155,7 +204,7 @@ export default function ChecklistApprovalCard({ caseId, checklists = [], onChang
       )}
       {editing && (
         <ChecklistEditorModal
-          caseId={caseId}
+          caseId={editing.ownerCaseId || caseId}
           checklist={editing}
           onClose={() => setEditing(null)}
           onSaved={refresh}
