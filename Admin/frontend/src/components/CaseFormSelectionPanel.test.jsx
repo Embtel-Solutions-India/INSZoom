@@ -5,9 +5,9 @@ afterEach(() => { cleanup() })
 
 // Manage forms: type a form, Add, see how the case's checklists feed it, apply in one request; removal needs the confirmations the server will demand;
 // a stale revision reloads. The API is faked.
-const api = vi.hoisted(() => ({ getSelection: vi.fn(), catalog: vi.fn(), resolve: vi.fn(), coverage: vi.fn(), updateSelection: vi.fn(), list: vi.fn() }))
+const api = vi.hoisted(() => ({ getSelection: vi.fn(), catalog: vi.fn(), resolve: vi.fn(), coverage: vi.fn(), updateSelection: vi.fn(), autofill: vi.fn(), list: vi.fn() }))
 vi.mock('../services/api', () => ({
-  caseFormsApi: { getSelection: (...a) => api.getSelection(...a), catalog: (...a) => api.catalog(...a), resolve: (...a) => api.resolve(...a), coverage: (...a) => api.coverage(...a), updateSelection: (...a) => api.updateSelection(...a) },
+  caseFormsApi: { getSelection: (...a) => api.getSelection(...a), catalog: (...a) => api.catalog(...a), resolve: (...a) => api.resolve(...a), coverage: (...a) => api.coverage(...a), updateSelection: (...a) => api.updateSelection(...a), autofill: (...a) => api.autofill(...a) },
   questionnairesApi: { list: (...a) => api.list(...a) },
 }))
 
@@ -28,7 +28,8 @@ beforeEach(() => {
   api.catalog.mockReset().mockResolvedValue({ data: { data: { items: [i765] } } })
   api.resolve.mockReset().mockResolvedValue({ data: { data: { match: i765, candidates: [] } } })
   api.coverage.mockReset().mockResolvedValue({ data: { data: { checklists: [{ key: 'h1b_employee_checklist', title: 'H-1B Employee Checklist', heldByCase: true, fieldsFed: 12, questionsFeedingForm: 9 }], suggestedChecklists: [{ key: 'i765_checklist', title: 'I-765 Checklist' }], summary: "This case's checklists can fill about 12 field(s) of I-765." } } })
-  api.updateSelection.mockReset().mockResolvedValue({ data: { data: { results: [{ formCode: 'I-765', action: 'added', status: 'ok', selectionStatus: 'provisioned' }], assignedChecklists: [{ key: 'i765_checklist', title: 'I-765 Checklist' }], autofill: [{ formCode: 'I-765', status: 'filled', completion: { percent: 35 } }], partial: false, revision: 2, selection: selectionState({ revision: 2, items: [...selectionState().items, { key: 'I-765|', formCode: 'I-765', title: 'EAD', origin: 'selection', caseFormStatus: 'ai_filled', completionPercent: 35 }] }) } } })
+  api.updateSelection.mockReset().mockResolvedValue({ data: { data: { results: [{ formCode: 'I-765', action: 'added', status: 'ok', selectionStatus: 'provisioned', caseFormId: 'cf1' }], assignedChecklists: [], autofill: [], partial: false, revision: 2, selection: selectionState({ revision: 2, items: [...selectionState().items, { key: 'I-765|', formCode: 'I-765', title: 'EAD', origin: 'selection', caseFormStatus: 'ai_filled', completionPercent: 35 }] }) } } })
+  api.autofill.mockReset().mockResolvedValue({ data: { data: { results: [{ formCode: 'I-765', status: 'filled', completion: { percent: 35 } }] } } })
   api.list.mockReset().mockResolvedValue({ data: { data: [] } })
 })
 
@@ -40,26 +41,27 @@ const open = async () => {
 }
 
 describe('Manage forms', () => {
-  it('typing a form and pressing Add stages it, shows how the checklists fill it, and Apply sends one atomic request with the revision', async () => {
+  it('typing a form and pressing Add stages it with no checklist picker (the form is linked to the checklists by canonical path), and Apply sends one atomic request with the revision', async () => {
     const onChanged = await open()
     const input = screen.getByPlaceholderText(/Type a form number or name/)
     fireEvent.change(input, { target: { value: 'I-765' } })
     fireEvent.click(screen.getByRole('button', { name: /Add$/ }))
     await screen.findByText('To add')
     expect(api.resolve).toHaveBeenCalledWith('I-765')
-    await screen.findByText(/can fill about 12 field/)
-    expect(screen.getByText('H-1B Employee Checklist')).toBeTruthy()
-    // the form's own checklist is suggested and ticked by default
-    const send = await screen.findByLabelText('Send I-765 Checklist to this case')
-    expect(send.checked).toBe(true)
+    // nothing about sending checklists to the case is offered, and no coverage lookup is made
+    expect(screen.queryByText(/How this case's checklists fill the form/)).toBeNull()
+    expect(screen.queryByText(/not on this case/)).toBeNull()
+    expect(api.coverage).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }))
     await waitFor(() => expect(api.updateSelection).toHaveBeenCalledTimes(1))
     const [caseId, payload] = api.updateSelection.mock.calls[0]
     expect(caseId).toBe('c1')
-    expect(payload).toMatchObject({ targetCaseId: 'c1', expectedRevision: 0, add: [{ formCode: 'I-765' }], remove: [], assignChecklistKeys: ['i765_checklist'], autofill: true })
+    expect(payload).toMatchObject({ targetCaseId: 'c1', expectedRevision: 0, add: [{ formCode: 'I-765' }], remove: [], assignChecklistKeys: [], autofill: false })
+    // the forms are added first and shown at once; the slow fill follows as its own request
     await screen.findByText('Changes saved')
-    expect(screen.getByText(/I-765: auto-filled \(35% complete\)/)).toBeTruthy()
+    await waitFor(() => expect(api.autofill).toHaveBeenCalledWith('c1', { targetCaseId: 'c1', forms: [{ formCode: 'I-765' }] }))
+    expect(await screen.findByText(/I-765: auto-filled \(35% complete\)/)).toBeTruthy()
     expect(onChanged).toHaveBeenCalled()
   })
 
@@ -88,7 +90,7 @@ describe('Manage forms', () => {
 
   it('removal is staged, and Apply stays disabled until the confirmations the form needs are given', async () => {
     await open()
-    fireEvent.click(screen.getByLabelText('Remove I-129'))
+    fireEvent.click(screen.getByLabelText('Delete I-129'))
     const apply = screen.getByRole('button', { name: 'Apply changes' })
     expect(apply.disabled).toBe(true)
     // I-129 holds data and is required by the filing package: both must be acknowledged
@@ -98,14 +100,23 @@ describe('Manage forms', () => {
     expect(apply.disabled).toBe(false)
     // an empty draft needs nothing
     fireEvent.click(screen.getByLabelText('Keep I-129'))
-    fireEvent.click(screen.getByLabelText('Remove I-907'))
+    fireEvent.click(screen.getByLabelText('Delete I-907'))
     expect(screen.getByRole('button', { name: 'Apply changes' }).disabled).toBe(false)
+  })
+
+  it('Delete is a labelled button on each form and "Delete ... and save" removes it in one request without touching other staged changes', async () => {
+    const onChanged = await open()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete I-907' }))
+    fireEvent.click(screen.getByRole('button', { name: /Delete I-907 and save/ }))
+    await waitFor(() => expect(api.updateSelection).toHaveBeenCalledTimes(1))
+    expect(api.updateSelection.mock.calls[0][1]).toMatchObject({ targetCaseId: 'c1', add: [], remove: [{ formCode: 'I-907' }], autofill: false })
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('a stale revision reloads the selection and asks to review again', async () => {
     api.updateSelection.mockRejectedValue({ response: { data: { code: 'STALE_SELECTION_REVISION', message: 'changed' } } })
     await open()
-    fireEvent.click(screen.getByLabelText('Remove I-907'))
+    fireEvent.click(screen.getByLabelText('Delete I-907'))
     fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }))
     expect(await screen.findByText(/Someone else changed this case's forms/)).toBeTruthy()
     expect(api.getSelection).toHaveBeenCalledTimes(2)

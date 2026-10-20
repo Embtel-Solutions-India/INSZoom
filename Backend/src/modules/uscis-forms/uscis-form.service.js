@@ -1282,7 +1282,8 @@ async function listCaseForms(caseId, user, req) {
   const tCaseForms = Date.now();
   let forms;
   try {
-    forms = await CaseForm.find({ caseId: { $in: caseIds } })
+    // a form the Case Manager deleted is archived: it is not part of the case's list (it is under "Removed forms" in Manage forms, from where it can be brought back)
+    forms = await CaseForm.find({ caseId: { $in: caseIds }, status: { $ne: "archived" } })
       .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument componentCode parentFormCode")
       // populate() queries formTemplateId (uscisformtemplates) as a genuinely
       // separate operation - it does not inherit the outer query's read()

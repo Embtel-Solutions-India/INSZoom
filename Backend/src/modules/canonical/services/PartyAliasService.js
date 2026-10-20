@@ -55,6 +55,9 @@ const BENEFICIARY_SOURCES = [
   ["beneficiary.sevisId", "immigration.sevisNumber"],
   ["beneficiary.lastArrivalDate", "immigration.lastArrivalDate"],
   ["beneficiary.foreignAddress.line1", "contact.foreignAddress.line1"],
+  // an address answered as ONE line is kept whole (and split into parts below)
+  ["beneficiary.currentAddress.formatted", "contact.address.formatted"],
+  ["beneficiary.foreignAddress.formatted", "contact.foreignAddress.formatted"],
 ];
 
 const PETITIONER_SOURCES = [
@@ -81,6 +84,7 @@ const PETITIONER_SOURCES = [
   ["petitioner.signatory.email", "company.authorizedRepresentative.email", "company.contact.email"],
   ["petitioner.jobTitle", "employment.jobTitle"],
   ["petitioner.wage", "employment.wage"],
+  ["petitioner.address.formatted", "company.address.formatted"],
 ];
 
 // one free-text address answer -> the structured parts (only the parts the text actually shows)
@@ -137,14 +141,55 @@ function deriveRequestedStatus(profile) {
   if (blank(getPath(profile, "application.requestedStatusEffectiveDate")) && !blank(row.effectiveDate)) setPath(profile, "application.requestedStatusEffectiveDate", row.effectiveDate);
 }
 
+// ---- generic -> legacy back-fill ------------------------------------------------------------------------------------------------------------------------
+// Checklists now store answers under the generic petitioner.* / beneficiary.* paths. Everything else that still reads the older shared paths (person.*,
+// contact.*, company.*, immigration.* - other forms' mappings, the employee / employer profiles, document rules) must keep receiving the same facts, so
+// a blank legacy path is filled from its generic twin. The same tables as above, read the other way: FIRST listed source only; a legacy value that is
+// already present is NEVER overwritten; running it again changes nothing.
+function backfillLegacy(profile, rows) {
+  for (const [generic, legacy] of rows) {
+    if (!legacy || !blank(getPath(profile, legacy))) continue;
+    const value = getPath(profile, generic);
+    if (!blank(value) && typeof value !== "object") setPath(profile, legacy, value);
+  }
+}
+
+// family case: person.* / contact.* ARE the petitioner (see canonical/config/familyPartyPaths.js); beneficiary.* is already the beneficiary's own
+const PETITIONER_FAMILY_LEGACY = [
+  ["petitioner.lastName", "person.lastName"],
+  ["petitioner.firstName", "person.firstName"],
+  ["petitioner.middleName", "person.middleName"],
+  ["petitioner.dateOfBirth", "person.dob"],
+  ["petitioner.gender", "person.gender"],
+  ["petitioner.maritalStatus", "person.maritalStatus"],
+  ["petitioner.ssn", "person.ssn"],
+  ["petitioner.aNumber", "person.alienNumber"],
+  ["petitioner.countryOfBirth", "person.countryOfBirth"],
+  ["petitioner.countryOfCitizenship", "person.citizenship"],
+  ["petitioner.citizenshipCertificateNumber", "person.certificateNumber"],
+  ["petitioner.citizenshipCertificatePlaceOfIssuance", "person.certificatePlaceOfIssuance"],
+  ["petitioner.citizenshipCertificateDateOfIssuance", "person.certificateDateOfIssuance"],
+  ["petitioner.cityTownOfBirth", "person.cityTownOfBirth"],
+  ["petitioner.uscisOnlineAccountNumber", "person.uscisOnlineAccountNumber"],
+  ["petitioner.physicalAddress", "contact.address.line1"],
+];
+
 function apply(profile) {
   if (!profile || typeof profile !== "object") return profile;
   // person.* / company.* mean beneficiary / petitioner only in an employer-sponsored case; in a family case person.* is the petitioner, so nothing is derived there
   const structure = profile.case && profile.case.caseStructure;
-  if (structure && structure !== "employer_employee" && structure !== "single") return profile;
+  // a two-party case is a family case whether its structure says so or the builder found a petitioner account (profile.case.familyParties)
+  const familyParties = structure === "family" || (profile.case && profile.case.familyParties === true);
+  if (familyParties || (structure && structure !== "employer_employee" && structure !== "single")) {
+    // family: the petitioner's checklist answers also fill the person.* / contact.* paths the family forms and the sponsor forms read
+    if (familyParties) backfillLegacy(profile, PETITIONER_FAMILY_LEGACY);
+    return profile;
+  }
   flattenStructuredAddresses(profile);
   fill(profile, BENEFICIARY_SOURCES);
   fill(profile, PETITIONER_SOURCES);
+  backfillLegacy(profile, BENEFICIARY_SOURCES.map(([generic, legacy]) => [generic, legacy]));
+  backfillLegacy(profile, PETITIONER_SOURCES.map(([generic, legacy]) => [generic, legacy]));
   // the petitioner's authorized signatory may only be known as one full name
   const signatory = getPath(profile, "company.authorizedRepresentative.name") || getPath(profile, "company.contact.name");
   const split = splitName(signatory);
@@ -171,4 +216,4 @@ function apply(profile) {
   return profile;
 }
 
-module.exports = { apply, BENEFICIARY_SOURCES, PETITIONER_SOURCES };
+module.exports = { apply, BENEFICIARY_SOURCES, PETITIONER_SOURCES, PETITIONER_FAMILY_LEGACY };

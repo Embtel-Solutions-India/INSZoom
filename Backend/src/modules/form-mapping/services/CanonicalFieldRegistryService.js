@@ -182,6 +182,13 @@ const BASE_FIELDS = [
   PARTY_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// Generic petitioner.* / beneficiary.* paths the checklists store their answers under - see canonical/config/partyChecklistPaths.js. Additive only.
+{
+  const { PARTY_CHECKLIST_FIELDS } = require("../../canonical/config/partyChecklistPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  PARTY_CHECKLIST_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 // H-4 change-of-status checklist paths - see canonical/config/h4CanonicalPaths.js. Additive only.
 {
   const { H4_CANONICAL_FIELDS } = require("../../canonical/config/h4CanonicalPaths");

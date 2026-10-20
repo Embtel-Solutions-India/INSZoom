@@ -389,6 +389,10 @@ async function provisionPendingSelections(targetCase, user, req) {
 
 // input: { targetCaseId, expectedRevision, add: [{formCode, componentCode?, reason?}], remove: [{formCode, componentCode?, reason?, confirm?, cascadeComponents?, acknowledgeWaiver?}], autofill?: true }
 async function updateSelection(caseId, input = {}, user, req) {
+  // where the time goes (the database is remote: every round trip counts) - logged once per request
+  const started = Date.now();
+  const stages = [];
+  const mark = (name) => stages.push([name, Date.now() - started]);
   const caseData = await loadCaseForManagement(caseId, user, { write: true });
   const { target } = await resolveTarget(caseData, input.targetCaseId);
   if (!target) throw httpError(400, "Choose which case's forms to change", "TARGET_CASE_REQUIRED");
@@ -407,7 +411,9 @@ async function updateSelection(caseId, input = {}, user, req) {
   const claimed = await Case.findOneAndUpdate({ _id: target._id, formSelectionRevision: current.formSelectionRevision }, { $inc: { formSelectionRevision: 1 }, $set: { formSelectionMode: "manual" } }, { new: true }).select("formSelectionRevision visaType").lean();
   if (!claimed) throw httpError(409, "The form selection was changed by someone else. Reload it and try again.", "STALE_SELECTION_REVISION", { currentRevision: current.formSelectionRevision });
 
-  const ctx = { user, req, role: roleOf(user), revision: claimed.formSelectionRevision, requiredCodes: await requiredByPackage(caseData) };
+  // which forms the filing package requires only matters to a REMOVAL (it asks for a waiver); an add-only change skips that (slow) package lookup
+  mark("claimed");
+  const ctx = { user, req, role: roleOf(user), revision: claimed.formSelectionRevision, requiredCodes: removes.length ? await requiredByPackage(caseData) : new Set() };
   target.visaType = target.visaType || claimed.visaType;
   const results = [];
   const addedKeys = new Set();
@@ -432,6 +438,7 @@ async function updateSelection(caseId, input = {}, user, req) {
       results.push({ formCode: item.formCode || item.name, componentCode: item.componentCode || null, action: "add", status: "failed", code: error.code, message: error.message, details: error.details });
     }
   }
+  mark("forms_changed");
   // send the forms' own checklists to THIS case (opt-in; the case's normal checklist approval flow applies) so the client can provide what the form needs
   const assignedChecklists = [];
   const explicitKeys = (Array.isArray(input.assignChecklistKeys) ? input.assignChecklistKeys : []).map((key) => selection.baseKeyOf(String(key).trim())).filter(Boolean);
@@ -458,6 +465,7 @@ async function updateSelection(caseId, input = {}, user, req) {
       }
     }
   }
+  mark("checklists");
   // fill the newly created forms from what the case already holds (never for a case with unresolved data conflicts - the same rule "Generate USCIS Forms" applies)
   const autofill = [];
   if (input.autofill !== false) {
@@ -471,7 +479,11 @@ async function updateSelection(caseId, input = {}, user, req) {
       autofill.push(...filled.results);
     }
   }
-  return { results, assignedChecklists, autofill, partial: results.some((result) => result.status === "failed"), revision: ctx.revision, selection: await getSelection(caseId, { targetCaseId: target._id }, user) };
+  mark("autofill");
+  const refreshed = await getSelection(caseId, { targetCaseId: target._id }, user);
+  mark("selection_reloaded");
+  require("../../utils/logger").info("case_form_selection_update_timing", { caseId: String(caseId), adds: adds.length, removes: removes.length, autofill: input.autofill !== false, totalMs: Date.now() - started, stagesMs: stages });
+  return { results, assignedChecklists, autofill, partial: results.some((result) => result.status === "failed"), revision: ctx.revision, selection: refreshed };
 }
 
 // Re-fills forms on the target case from the canonical data (the existing autofill; reviewed and manually edited values are never overwritten).

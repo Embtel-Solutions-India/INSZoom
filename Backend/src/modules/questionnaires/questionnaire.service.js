@@ -2505,6 +2505,29 @@ function enforceRequiredPassportInformation(definitions) {
 applyRequirementLogicToAll(VISA_TEMPLATE_DEFINITIONS);
 enforceRequiredPassportInformation(VISA_TEMPLATE_DEFINITIONS);
 
+// A checklist's answers are stored under petitioner.* / beneficiary.* - never under a form- or visa-named path (canonical/config/partyChecklistPaths.js).
+// The question keeps nothing else about the form; the path it had before is remembered in metadata.legacyCanonicalPath.
+function applyChecklistPartyPaths(definitions) {
+  const { CHECKLIST_PARTY_PATHS } = require("../canonical/config/partyChecklistPaths");
+  for (const definition of definitions) {
+    const table = CHECKLIST_PARTY_PATHS[definition.key];
+    if (!table) continue;
+    for (const question of definition.questions || []) {
+      const spec = table[question.key];
+      if (!spec) continue;
+      const previous = question.mapping?.canonicalPath;
+      question.mapping = { ...(question.mapping || {}), canonicalPath: spec.path };
+      if (previous && previous !== spec.path && !question.metadata?.legacyCanonicalPath) {
+        question.metadata = { ...(question.metadata || {}), legacyCanonicalPath: previous };
+      }
+    }
+  }
+}
+// Opt-in (PARTY_CHECKLIST_PATHS=on): the definitions then carry the generic paths, so a fresh database and the background definition reconciler produce them.
+// Off by default on purpose: a running system must not start moving checklist paths on its own while the form mappings that read them have not been rewired - that
+// is ONE controlled step, scripts/apply-party-checklist-paths.js (which also marks the question's mapping as set by hand so the reconciler leaves it alone).
+if (process.env.PARTY_CHECKLIST_PATHS === "on") applyChecklistPartyPaths(VISA_TEMPLATE_DEFINITIONS);
+
 function slugSection(title) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 }

@@ -1059,7 +1059,7 @@ const CRMCaseDetail = () => {
     try {
       setTabLoading(prev => ({ ...prev, forms: true }))
       const response = await uscisFormsApi.caseForms(id)
-      setCaseForms(response.data.forms || [])
+      setCaseForms((response.data.forms || []).filter((form) => form.status !== 'archived'))
       setFormsError('')
       setFetched(prev => ({ ...prev, forms: true }))
     } catch (error) {
@@ -3284,7 +3284,7 @@ const CRMCaseDetail = () => {
                 <p className="text-sm text-muted-foreground">Edition-locked and populated from the case's checklist and profile data. Use Manage forms to decide which forms this case has.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
+                <button onClick={() => setShowManageForms(true)} className={caseData?.formSelectionMode === 'manual' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>{caseData?.formSelectionMode === 'manual' ? 'Add form' : 'Manage forms'}</button>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
                 <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
                   {tabLoading.forms ? 'Generating…' : caseForms.length ? 'Refresh Auto Fill' : 'Generate USCIS Forms'}
@@ -3438,12 +3438,22 @@ const CRMCaseDetail = () => {
               <div className="text-center py-8">
                 <FileText className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                 <p className="text-muted-foreground font-medium">No USCIS forms yet</p>
-                <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">
-                  Click <strong>Generate USCIS Forms</strong> to auto-fill forms from the
-                  available case data. Fields will be blank where information hasn't been
-                  provided yet — fill them in manually, or they'll populate automatically
-                  as the client completes their questionnaire.
-                </p>
+                {caseData?.formSelectionMode === 'manual' ? (
+                  <>
+                    <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
+                      Forms are added to this case by its Case Manager. Click <strong>Add form</strong>, type the form number or name, and the form is linked to this
+                      case's checklists and filled from the client's answers. You can then open it and complete the rest.
+                    </p>
+                    <button onClick={() => setShowManageForms(true)} className="btn-primary text-sm mt-4">Add form</button>
+                  </>
+                ) : (
+                  <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">
+                    Click <strong>Generate USCIS Forms</strong> to auto-fill forms from the
+                    available case data. Fields will be blank where information hasn't been
+                    provided yet — fill them in manually, or they'll populate automatically
+                    as the client completes their questionnaire.
+                  </p>
+                )}
               </div>
             )}
 
@@ -3452,7 +3462,7 @@ const CRMCaseDetail = () => {
                 provisioned and mapped-but-not-yet-fetched-from-USCIS forms are
                 otherwise completely invisible. Rows already represented in the
                 table above (a CaseForm exists) are excluded here on purpose. */}
-            {formsOverview.items.some((item) => !item.caseForm) && (
+            {caseData?.formSelectionMode !== 'manual' && formsOverview.items.some((item) => !item.caseForm) && (
               <div className="mt-6 pt-6 border-t border-border">
                 <div className="flex items-center justify-between mb-1">
                   <h4 className="font-semibold text-foreground">Other Forms for This Visa</h4>

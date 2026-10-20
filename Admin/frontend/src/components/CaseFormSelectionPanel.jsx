@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Search, X, Trash2, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
-import { caseFormsApi, questionnairesApi } from '../services/api'
+import { caseFormsApi } from '../services/api'
 
 // Case Manager control over a case's USCIS forms. The Case Manager types a form (number or name), adds it, and sees how the case's checklists feed it; changes are
 // staged, reviewed, then applied in one atomic request. The server decides everything (selectability, dependencies, confirmation, revision) - this only presents it.
@@ -56,14 +56,12 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState([])
-  const [staged, setStaged] = useState([]) // forms to add: { key, entry, coverage, coverageLoading, assignKeys: [] }
+  const [staged, setStaged] = useState([]) // forms to add: { key, entry }
   const [removals, setRemovals] = useState({}) // key -> { item, reason, confirm, cascade, acknowledge }
-  const [candidateChecklists, setCandidateChecklists] = useState({}) // key -> [{ key, title }] chosen by the Case Manager
-  const [checklistQuery, setChecklistQuery] = useState({}) // key -> text
-  const [checklistHits, setChecklistHits] = useState({})
   const [applying, setApplying] = useState(false)
   const [outcome, setOutcome] = useState(null)
   const [showRemoved, setShowRemoved] = useState(false)
+  const [deleting, setDeleting] = useState('')
   const debouncedQuery = useDebounced(query)
   const inputRef = useRef(null)
 
@@ -98,24 +96,12 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
   const activeKeys = useMemo(() => new Set((selection?.items || []).map((item) => item.key)), [selection])
   const stagedKeys = useMemo(() => new Set(staged.map((item) => item.key)), [staged])
 
-  const loadCoverage = useCallback(async (entry, extraKeys = []) => {
-    const key = `${entry.formCode}|${entry.componentCode || ''}`
-    setStaged((prev) => prev.map((item) => (item.key === key ? { ...item, coverageLoading: true } : item)))
-    try {
-      const response = await caseFormsApi.coverage(caseId, { targetCaseId, formCode: entry.formCode, componentCode: entry.componentCode || undefined, checklistKeys: extraKeys.join(',') || undefined })
-      setStaged((prev) => prev.map((item) => (item.key === key ? { ...item, coverage: response.data.data, coverageLoading: false, assignKeys: item.assignKeys ?? (response.data.data.suggestedChecklists || []).map((c) => c.key) } : item)))
-    } catch (err) {
-      setStaged((prev) => prev.map((item) => (item.key === key ? { ...item, coverageLoading: false, coverageError: readError(err, 'Could not check the checklists.') } : item)))
-    }
-  }, [caseId, targetCaseId])
-
   const stage = (entry) => {
     const key = `${entry.formCode}|${entry.componentCode || ''}`
     if (stagedKeys.has(key)) return
-    setStaged((prev) => [...prev, { key, entry, coverage: null, coverageLoading: true, assignKeys: null }])
+    setStaged((prev) => [...prev, { key, entry }])
     setQuery(''); setSuggestions([]); setOutcome(null)
     inputRef.current?.focus()
-    loadCoverage(entry)
   }
 
   // "Add": the typed text is resolved by the server to ONE form; an ambiguous or unknown name is explained, never guessed
@@ -141,33 +127,43 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
   })
   const patchRemoval = (key, patch) => setRemovals((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
 
-  // any checklist can be linked to the form for this case
-  useEffect(() => {
-    const entries = Object.entries(checklistQuery).filter(([, text]) => text && text.trim().length > 1)
-    entries.forEach(([key, text]) => {
-      questionnairesApi.list({ isTemplate: true, latestVersion: true, search: text.trim(), limit: 6 })
-        .then((response) => setChecklistHits((prev) => ({ ...prev, [key]: response.data.data || [] })))
-        .catch(() => setChecklistHits((prev) => ({ ...prev, [key]: [] })))
-    })
-  }, [checklistQuery])
+  const removalOk = (item, entry) => (!needsConfirm(item) || entry.confirm) && (!needsReason(item) || entry.reason.trim()) && (!item.requiredByPackage || entry.acknowledge)
 
-  const chooseChecklist = (stagedItem, template) => {
-    const picked = candidateChecklists[stagedItem.key] || []
-    if (picked.some((item) => item.key === template.key)) return
-    const nextPicked = [...picked, { key: template.key, title: template.title }]
-    setCandidateChecklists((prev) => ({ ...prev, [stagedItem.key]: nextPicked }))
-    setChecklistQuery((prev) => ({ ...prev, [stagedItem.key]: '' }))
-    setChecklistHits((prev) => ({ ...prev, [stagedItem.key]: [] }))
-    setStaged((prev) => prev.map((item) => (item.key === stagedItem.key ? { ...item, assignKeys: [...(item.assignKeys || []), template.key] } : item)))
-    loadCoverage(stagedItem.entry, nextPicked.map((item) => item.key))
+  // Delete one form and save it straight away (the other staged changes are left as they are)
+  const deleteNow = async (item) => {
+    const entry = removals[item.key]
+    if (!entry || !removalOk(item, entry)) return
+    setDeleting(item.key)
+    setError('')
+    setOutcome(null)
+    try {
+      const response = await caseFormsApi.updateSelection(caseId, {
+        targetCaseId,
+        expectedRevision: selection.revision,
+        add: [],
+        remove: [{ formCode: item.formCode, componentCode: item.componentCode || undefined, reason: entry.reason.trim() || undefined, confirm: entry.confirm, cascadeComponents: entry.cascade, acknowledgeWaiver: entry.acknowledge }],
+        assignChecklistKeys: [],
+        autofill: false,
+      })
+      const data = response.data.data
+      setSelection(data.selection)
+      setOutcome({ ...data, autofill: [] })
+      setRemovals((prev) => { const next = { ...prev }; delete next[item.key]; return next })
+      onChanged?.()
+    } catch (err) {
+      const code = err?.response?.data?.code
+      if (code === 'STALE_SELECTION_REVISION') { await load(targetCaseId); setError('Someone else changed this case forms. The list was reloaded; review and try again.') }
+      else setError(readError(err, 'Could not delete the form.'))
+    } finally {
+      setDeleting('')
+    }
   }
-  const toggleAssign = (stagedItem, checklistKey) => setStaged((prev) => prev.map((item) => (item.key === stagedItem.key
-    ? { ...item, assignKeys: (item.assignKeys || []).includes(checklistKey) ? item.assignKeys.filter((k) => k !== checklistKey) : [...(item.assignKeys || []), checklistKey] }
-    : item)))
 
   const removalReady = Object.values(removals).every((entry) => (!needsConfirm(entry.item) || entry.confirm) && (!needsReason(entry.item) || entry.reason.trim()) && (!entry.item.requiredByPackage || entry.acknowledge))
   const nothingToApply = staged.length === 0 && Object.keys(removals).length === 0
 
+  // Two steps, so the Case Manager sees the result at once: (1) add / remove the forms - quick - and show it; (2) fill the new forms from the checklists - the slow part - while
+  // a visible "filling" line is on screen, and add its result when it arrives.
   const apply = async () => {
     setApplying(true)
     setError('')
@@ -178,15 +174,26 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
         expectedRevision: selection.revision,
         add: staged.map((item) => ({ formCode: item.entry.formCode, componentCode: item.entry.componentCode || undefined })),
         remove: Object.values(removals).map((entry) => ({ formCode: entry.item.formCode, componentCode: entry.item.componentCode || undefined, reason: entry.reason.trim() || undefined, confirm: entry.confirm, cascadeComponents: entry.cascade, acknowledgeWaiver: entry.acknowledge })),
-        assignChecklistKeys: [...new Set(staged.flatMap((item) => item.assignKeys || []))],
-        autofill: true,
+        assignChecklistKeys: [],
+        autofill: false,
       })
       const data = response.data.data
+      const fresh = (data.results || []).filter((result) => result.action === 'added' && result.status === 'ok' && result.caseFormId)
       setSelection(data.selection)
-      setOutcome(data)
+      setOutcome({ ...data, autofill: [], filling: fresh.map((result) => result.formCode) })
       setStaged((prev) => prev.filter((item) => data.results.some((result) => result.action !== 'removed' && result.status === 'failed' && `${result.formCode}|${result.componentCode || ''}` === item.key)))
       setRemovals({})
+      setApplying(false)
       onChanged?.()
+      if (fresh.length) {
+        try {
+          const filled = await caseFormsApi.autofill(caseId, { targetCaseId, forms: fresh.map((result) => ({ formCode: result.formCode, componentCode: result.componentCode || undefined })) })
+          setOutcome((prev) => (prev ? { ...prev, autofill: filled.data.data.results || [], filling: null } : prev))
+        } catch (fillError) {
+          setOutcome((prev) => (prev ? { ...prev, filling: null, autofill: fresh.map((result) => ({ formCode: result.formCode, status: 'failed', message: readError(fillError, 'The form was added but could not be filled yet. Use Refresh Auto Fill on the form.') })) } : prev))
+        }
+        onChanged?.()
+      }
     } catch (err) {
       const code = err?.response?.data?.code
       if (code === 'STALE_SELECTION_REVISION') { await load(targetCaseId); setError('Someone else changed this case\'s forms. The list was reloaded; review your changes and apply again.') }
@@ -258,7 +265,7 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
                 )}
               </div>
 
-              {/* staged additions with their checklist link */}
+              {/* staged additions */}
               {staged.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">To add</h3>
@@ -270,50 +277,6 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
                         <button type="button" onClick={() => unstage(item.key)} className="text-muted-foreground hover:text-red-600" aria-label={`Do not add ${item.entry.formCode}`}><X className="h-4 w-4" /></button>
                       </div>
                       {item.entry.availabilityNote && <p className="mt-1 text-xs text-muted-foreground">{item.entry.availabilityNote}</p>}
-                      <div className="mt-2 rounded-md bg-muted/50 p-3 text-xs">
-                        <div className="font-medium text-foreground">How this case's checklists fill the form</div>
-                        {item.coverageLoading && <p className="mt-1 text-muted-foreground">Checking the checklists…</p>}
-                        {item.coverageError && <p className="mt-1 text-red-700">{item.coverageError}</p>}
-                        {item.coverage && (
-                          <div className="mt-1 space-y-2">
-                            <p className="text-muted-foreground">{item.coverage.summary}</p>
-                            <ul className="space-y-1">
-                              {item.coverage.checklists.map((checklist) => (
-                                <li key={checklist.key} className="flex min-w-0 items-center gap-2">
-                                  {!checklist.heldByCase ? (
-                                    <input type="checkbox" checked={(item.assignKeys || []).includes(checklist.key)} onChange={() => toggleAssign(item, checklist.key)} aria-label={`Send ${checklist.title} to this case`} />
-                                  ) : <span className="w-3" />}
-                                  <span className="min-w-0 flex-1 truncate text-foreground">{checklist.title}</span>
-                                  <span className="shrink-0 text-muted-foreground">{checklist.heldByCase ? 'on this case' : 'not on this case'} · {checklist.fieldsFed} field{checklist.fieldsFed === 1 ? '' : 's'}</span>
-                                </li>
-                              ))}
-                              {(item.coverage.suggestedChecklists || []).filter((s) => !item.coverage.checklists.some((c) => c.key === s.key)).map((suggested) => (
-                                <li key={suggested.key} className="flex items-center gap-2">
-                                  <input type="checkbox" checked={(item.assignKeys || []).includes(suggested.key)} onChange={() => toggleAssign(item, suggested.key)} aria-label={`Send ${suggested.title} to this case`} />
-                                  <span className="min-w-0 flex-1 truncate text-foreground">{suggested.title}</span>
-                                  <span className="shrink-0 text-muted-foreground">made for this form · not on this case</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <div className="relative max-w-sm">
-                              <input
-                                className="input-field text-xs"
-                                placeholder="Link another checklist to this form…"
-                                value={checklistQuery[item.key] || ''}
-                                onChange={(event) => setChecklistQuery((prev) => ({ ...prev, [item.key]: event.target.value }))}
-                              />
-                              {(checklistHits[item.key] || []).length > 0 && (
-                                <ul className="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded-md border border-border bg-card shadow-sm">
-                                  {checklistHits[item.key].map((template) => (
-                                    <li key={template._id}><button type="button" onClick={() => chooseChecklist(item, template)} className="w-full px-3 py-1.5 text-left text-xs hover:bg-muted">{template.title}</button></li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                            <p className="text-muted-foreground">A ticked checklist is sent to this case only; it goes through the case's normal checklist approval.</p>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -333,19 +296,24 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
                               <FormLabel formCode={item.formCode} componentCode={item.componentCode} parentFormCode={item.parentFormCode} title={item.title} />
                             </div>
                             <span className="max-w-[11rem] shrink-0 truncate text-right text-xs text-muted-foreground">{item.origin === 'automatic' ? 'automatic · ' : ''}{item.caseFormStatus ? item.caseFormStatus.replaceAll('_', ' ') : item.selectionStatus?.replaceAll('_', ' ')}{item.completionPercent != null ? ` · ${item.completionPercent}%` : ''}</span>
-                            <button type="button" onClick={() => toggleRemoval(item)} className={`shrink-0 ${removal ? 'text-primary' : 'text-muted-foreground hover:text-red-600'}`} title={removal ? 'Keep this form' : 'Remove from this case'} aria-label={removal ? `Keep ${item.formCode}` : `Remove ${item.formCode}`}>
-                              {removal ? <RotateCcw className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                            <button type="button" onClick={() => toggleRemoval(item)} className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium ${removal ? 'border-primary/30 text-primary' : 'border-red-200 text-red-600 hover:bg-red-50'}`} title={removal ? 'Keep this form' : 'Delete this form from the case'} aria-label={removal ? `Keep ${item.formCode}` : `Delete ${item.formCode}`}>
+                              {removal ? <><RotateCcw className="h-3.5 w-3.5" /> Keep</> : <><Trash2 className="h-3.5 w-3.5" /> Delete</>}
                             </button>
                           </div>
                           {removal && (
                             <div className="mt-2 space-y-2 rounded-md bg-muted/50 p-3 text-xs">
-                              <p className="text-muted-foreground">The form is removed from active work. Its answers, history and generated files are kept and can be restored.</p>
+                              <p className="text-muted-foreground">The form is deleted from this case and no longer used. Its answers, history and generated files are kept, and it can be brought back from "Removed forms".</p>
                               {selection.items.some((other) => other.parentFormCode === item.formCode) && (
                                 <label className="flex items-center gap-2"><input type="checkbox" checked={removal.cascade} onChange={(event) => patchRemoval(item.key, { cascade: event.target.checked })} /> Also remove its component forms</label>
                               )}
                               {needsConfirm(item) && <label className="flex items-center gap-2"><input type="checkbox" checked={removal.confirm} onChange={(event) => patchRemoval(item.key, { confirm: event.target.checked })} /> This form already holds information; I understand it is kept but no longer used</label>}
                               {item.requiredByPackage && <label className="flex items-center gap-2"><input type="checkbox" checked={removal.acknowledge} onChange={(event) => patchRemoval(item.key, { acknowledge: event.target.checked })} /> The filing package normally requires {item.formCode}; it is not part of this filing</label>}
                               <input className="input-field text-xs" placeholder={needsReason(item) ? 'Reason (required)' : 'Reason (optional)'} value={removal.reason} onChange={(event) => patchRemoval(item.key, { reason: event.target.value })} />
+                              <div className="flex justify-end">
+                                <button type="button" onClick={() => deleteNow(item)} disabled={deleting === item.key || !removalOk(item, removal)} className="inline-flex items-center gap-1 rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                                  <Trash2 className="h-3.5 w-3.5" /> {deleting === item.key ? 'Deleting…' : `Delete ${item.formCode} and save`}
+                                </button>
+                              </div>
                             </div>
                           )}
                         </li>
@@ -398,6 +366,9 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
                         )}
                       </li>
                     ))}
+                    {outcome.filling && outcome.filling.length > 0 && (
+                      <li className="text-primary" role="status">Filling {outcome.filling.join(', ')} from this case's checklists… this can take up to a minute. You can close this window; the form appears in the list when it is ready.</li>
+                    )}
                     {(outcome.assignedChecklists || []).map((checklist) => (
                       <li key={checklist.key} className="text-muted-foreground">{checklist.title || checklist.key}: {checklist.error ? `not sent - ${checklist.error}` : checklist.alreadyAssigned ? 'already on this case' : 'sent to this case'}</li>
                     ))}
@@ -415,7 +386,7 @@ export default function CaseFormSelectionPanel({ caseId, onClose, onChanged }) {
           <div className="flex items-center gap-2">
             <button type="button" onClick={onClose} className="btn-secondary text-sm">Close</button>
             <button type="button" onClick={apply} disabled={applying || nothingToApply || !removalReady || !selection || selection.needsTarget} className="btn-primary text-sm disabled:opacity-50">
-              {applying ? 'Applying…' : 'Apply changes'}
+              {applying ? 'Adding…' : 'Apply changes'}
             </button>
           </div>
         </div>

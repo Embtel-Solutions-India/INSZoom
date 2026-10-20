@@ -1,4 +1,5 @@
 const path = require("path");
+const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const multer = require("multer");
 const env = require("../../config/env");
@@ -1286,6 +1287,7 @@ exports.createCase = async (req, res, next) => {
       const principalTargetRole = caseStructure === "family" ? "petitioner" : caseStructure === "employer_employee" ? "employer" : null;
       const principalChecklist = filterChecklistForRole(checklist, principalTargetRole);
       [principalCase] = await Case.create([{
+        ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
         ...commonCaseData,
         caseId: principalCaseNumber,
@@ -1434,6 +1436,7 @@ exports.createCase = async (req, res, next) => {
         const childRole = caseStructure === "family" ? "beneficiary" : "employee";
         const childChecklist = filterChecklistForRole(checklist, childRole);
         const [childCase] = await Case.create([{
+          ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
           ...commonCaseData,
           caseId: childCaseNumbers[index],
@@ -2788,6 +2791,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     const childChecklist = filterChecklistForRole(checklist, "employee");
 
     const [childCase] = await Case.create([{
+      ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
       isDemoData: false,
       createdBy: req.user._id,
@@ -3754,6 +3758,7 @@ exports.createCaseWithClient = async (req, res, next) => {
     }
 
     const newCase = await Case.create({
+      ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
       isDemoData: false,
       caseId: caseNumber,
