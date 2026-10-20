@@ -71,7 +71,7 @@ test("EB-2 CONSULAR: DS-260 conditional (immigrant-visa stage), I-485 FORBIDDEN 
   try {
     const resolved = await visaFormMappingService.resolveApplicableMappings(caseData);
     const laterStageForms = formNumbers(resolved.laterStage);
-    assert.ok(laterStageForms.includes("I-140"), "EXPECTED: I-140 is LATER_STAGE for PERM-based EB-2");
+    assert.ok(formNumbers(resolved.conditional).includes("I-140"), "EXPECTED: I-140 is Conditional (a case manager adds it) for PERM-based EB-2");
     assert.ok(laterStageForms.includes("DS-260"), "EXPECTED: DS-260 available at the immigrant-visa stage");
     assert.ok(!formNumbers(resolved.autoCreate).includes("I-485"), "FORBIDDEN: I-485 must not auto-create for a pure consular case");
   } finally {

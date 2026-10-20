@@ -23,6 +23,7 @@ const { retryUntilSuccess } = require("../../../utils/resilientRetry");
 const CanonicalProfileService = require("../../canonical/services/CanonicalProfileService");
 const CanonicalBiographicAutofill = require("../../uscis-forms/CanonicalBiographicAutofill");
 const uscisFormService = require("../../uscis-forms/uscis-form.service");
+const caseFormSelection = require("../../uscis-forms/case-form-selection.service");
 const CaseForm = require("../../../models/CaseForm");
 const VisaFormMapping = require("../../../models/VisaFormMapping");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
@@ -608,6 +609,8 @@ async function acquireForCase(caseId, formNumber, user, req) {
           }
         : undefined,
     };
+    // acquiring a form for a case is an explicit Case Manager action: recorded as the selection
+    await caseFormSelection.recordExplicitInclude(caseData, caseFormSelection.identityOfTemplate(templateForProvisioning), user, "Added by a Case Manager (acquired from USCIS)");
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req, { templates: [templateForProvisioning] });
     caseForm = created[0] || await CaseForm.findOne({ caseId: caseData._id, formCode }).sort({ updatedAt: -1 });
   } else {
@@ -619,6 +622,7 @@ async function acquireForCase(caseId, formNumber, user, req) {
     // one uses), so the CaseForm is created directly here instead. Upsert,
     // never a duplicate: same (caseId, formCode) uniqueness every other
     // CaseForm creation path in this codebase relies on.
+    await caseFormSelection.recordExplicitInclude(caseData, { formCode }, user, "Added by a Case Manager (acquired from USCIS)");
     caseForm = await CaseForm.findOneAndUpdate(
       { caseId: caseData._id, formCode },
       {

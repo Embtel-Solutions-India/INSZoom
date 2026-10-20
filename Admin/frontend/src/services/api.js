@@ -557,6 +557,17 @@ export const clientIntakeApi = {
   caseIntake: (caseId, params) => api.get(`/client-intake/cases/${caseId}`, params ? { params } : undefined),
 }
 
+// Case Manager control over which USCIS forms a case has (catalogue, per-case selection with typed add / remove, checklist coverage, autofill).
+export const caseFormsApi = {
+  catalog: (params = {}) => api.get('/case-forms/catalog', { params }),
+  resolve: (name) => api.get('/case-forms/resolve', { params: { name } }),
+  getSelection: (caseId, params = {}) => api.get(`/case-forms/cases/${caseId}/selection`, { params }),
+  // payload: { targetCaseId, expectedRevision, add: [{ name | formCode, componentCode? }], remove: [...], assignChecklists?, assignChecklistKeys?, autofill? }
+  updateSelection: (caseId, payload) => api.put(`/case-forms/cases/${caseId}/selection`, payload, { timeout: 300_000 }),
+  coverage: (caseId, params = {}) => api.get(`/case-forms/cases/${caseId}/selection/coverage`, { params, timeout: 120_000 }),
+  autofill: (caseId, payload = {}) => api.post(`/case-forms/cases/${caseId}/selection/autofill`, payload, { timeout: 300_000 }),
+}
+
 export const uscisFormsApi = {
   templatePdf: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { responseType: 'blob' }),
   // Interactive-viewer copy of the full template: barcode fields baked into

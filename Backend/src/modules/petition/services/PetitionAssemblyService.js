@@ -1,5 +1,6 @@
 const Case = require("../../../models/Case");
 const CaseForm = require("../../../models/CaseForm");
+const { ACTIVE_FORM_FILTER, waivedFormCodesForCase } = require("../../uscis-forms/case-form-selection.service");
 const Document = require("../../../models/Document");
 const Company = require("../../../models/Company");
 const User = require("../../../models/User");
@@ -218,7 +219,7 @@ class PetitionAssemblyService {
   static async loadReadyCaseForms(caseId, definition, extraFormCodes = []) {
     const formCodes = [...new Set([...(definition.requiredForms || []).map((entry) => entry.formCode), ...extraFormCodes])];
     if (!formCodes.length) return [];
-    return CaseForm.find({ caseId, formCode: { $in: formCodes } }).populate("generatedPdfDocument");
+    return CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER, formCode: { $in: formCodes } }).populate("generatedPdfDocument");
   }
 
   // Returns one entry per required certification regardless of whether it's
@@ -250,8 +251,10 @@ class PetitionAssemblyService {
   // generated, still gets its heading here — just with no documentId/
   // storageKey — so the petition's structure is visible from day one and
   // fills in as each form is generated.
-  static buildFormSections(definition, caseForms, conditionalRequiredForms) {
-    const formCodes = [...new Set([...(definition.requiredForms || []).map((entry) => entry.formCode), ...conditionalRequiredForms.map((entry) => entry.formCode)])];
+  static buildFormSections(definition, caseForms, conditionalRequiredForms, waivedFormCodes = []) {
+    const waived = new Set(waivedFormCodes.map((code) => String(code).toUpperCase()));
+    // a form the Case Manager removed on purpose (and acknowledged) gets no heading: it is not part of this filing
+    const formCodes = [...new Set([...(definition.requiredForms || []).map((entry) => entry.formCode), ...conditionalRequiredForms.map((entry) => entry.formCode)])].filter((formCode) => !waived.has(String(formCode).toUpperCase()));
     return formCodes.filter((formCode) => formCode !== "G-28").map((formCode) => {
       const form = caseForms.find((entry) => entry.formCode === formCode);
       const ready = form?.generatedPdfDocument?.storageKey;
@@ -377,7 +380,8 @@ class PetitionAssemblyService {
       // approval re-runs this same assemble() to swap placeholders for
       // real content. Only finalize() (a separate, still-gated action)
       // refuses to proceed while validation.status is "blocked".
-      const validation = await PetitionValidationService.validate({ caseId, definition, caseForms, letters, exhibits, conditionalRequiredForms, requiredDocuments });
+      const waivedFormCodes = await waivedFormCodesForCase(caseId);
+      const validation = await PetitionValidationService.validate({ caseId, definition, caseForms, letters, exhibits, conditionalRequiredForms, requiredDocuments, waivedFormCodes });
 
       const { document: coverLetterDoc, html: coverLetterHtml, pdfBuffer: coverLetterPdfBuffer } = await CoverLetterService.renderCoverLetter({ caseId, definition, context, exhibitIndex, filingMethod: mode?.filingMethod || "usps" }, user);
       // Split the rendered cover letter into editable prose + the derived
@@ -412,7 +416,7 @@ class PetitionAssemblyService {
         // I-539A when their condition is active) - G-28 is excluded here
         // since it's already added above (either the uploaded document or
         // the generated CaseForm), never both.
-        ...this.buildFormSections(definition, caseForms, conditionalRequiredForms),
+        ...this.buildFormSections(definition, caseForms, conditionalRequiredForms, waivedFormCodes),
         ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc?._id, storageKey: doc?.storageKey })),
         ...Object.entries(letters).map(([slotKey, letter]) => ({ type: slotKey, key: slotKey, title: letter.title, documentId: letter.documentId, storageKey: letter.storageKey, buffer: letter.pdfBuffer, contentHtml: letter.html || "" })),
       ], definition), petitionPackage.manualInsertions);
@@ -427,7 +431,7 @@ class PetitionAssemblyService {
         metadata: { title: `${definition.displayName} — ${caseData.caseNumber || caseData.caseId}` },
       }, user, req);
 
-      const forms = await CaseForm.find({ caseId }).populate("generatedPdfDocument");
+      const forms = await CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER }).populate("generatedPdfDocument");
       const frontMatterLettersForWord = {};
       for (const [slotKey, letter] of Object.entries(letters)) {
         frontMatterLettersForWord[slotKey] = { title: letter.title, html: letter.html || "" };

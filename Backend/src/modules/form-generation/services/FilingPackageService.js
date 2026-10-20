@@ -1,5 +1,6 @@
 const AuditLog = require("../../../models/AuditLog");
 const CaseForm = require("../../../models/CaseForm");
+const { ACTIVE_FORM_FILTER } = require("../../uscis-forms/case-form-selection.service");
 const Document = require("../../../models/Document");
 const storageService = require("../../uploads/storage.service");
 const WatermarkService = require("./WatermarkService");
@@ -39,7 +40,7 @@ class FilingPackageService {
     let packageItems = items;
     if (!packageItems.length) {
       const [forms, evidence] = await Promise.all([
-        CaseForm.find({ caseId, generatedPdfDocument: { $exists: true, $ne: null } }).populate("generatedPdfDocument").sort({ formCode: 1 }),
+        CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER, generatedPdfDocument: { $exists: true, $ne: null } }).populate("generatedPdfDocument").sort({ formCode: 1 }),
         Document.find({
           caseId,
           documentType: { $ne: "uscis_form" },

@@ -1,5 +1,6 @@
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
+const { ACTIVE_FORM_FILTER } = require("../uscis-forms/case-form-selection.service");
 const Document = require("../../models/Document");
 const caseService = require("./case.service");
 const caseWorkbookService = require("../document-intelligence/services/case-workbook.service");
@@ -110,7 +111,7 @@ async function runAfterExtractionApproval(caseId, user, req) {
 }
 
 async function allFormsLocked(caseId) {
-  const forms = await CaseForm.find({ caseId });
+  const forms = await CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER });
   return forms.length > 0 && forms.every((form) => ["locked", "finalized", "filed"].includes(form.status) || form.isLocked);
 }
 

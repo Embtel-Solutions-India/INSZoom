@@ -328,7 +328,7 @@ class CanonicalBuilderService {
       caseRecord.beneficiary ? Beneficiary.findById(caseRecord.beneficiary).lean() : null,
       caseRecord.companyId ? Company.findById(caseRecord.companyId).lean() : null,
       caseRecord.user ? User.findById(caseRecord.user).select("-password").lean() : null,
-      Answer.find({ caseId: { $in: familyCaseIds } }).sort({ updatedAt: -1 }).populate({ path: "question", select: "mapping questionnaire" }).lean(),
+      Answer.find({ caseId: { $in: familyCaseIds } }).sort({ updatedAt: -1 }).populate({ path: "question", select: "mapping questionnaire metadata.legacyCanonicalPath" }).lean(),
       Document.find({ caseId, deletedAt: { $exists: false } }).sort({ uploadDate: -1 }).lean(),
       DocumentExtraction.find({ caseId }).sort({ updatedAt: -1 }).lean(),
       principalCaseId ? EmployerProfile.findOne({ principalCaseId }).lean() : null,
@@ -375,11 +375,15 @@ class CanonicalBuilderService {
       // only covers a fixed set of well-known keys, so without this an
       // admin-authored question for a new visa type would never reach
       // autofill even though the mapping exists on the question itself.
-      let targetPath = answer.question?.mapping?.canonicalPath || QUESTION_KEY_MAP[answer.questionKey];
-      if (targetPath && options.family) {
-        targetPath = scopeFamilyPath(targetPath, partyOf(answer.participantRole, answer.questionnaireKey, answer.questionKey));
-      }
-      if (!targetPath) return;
+      const primaryPath = answer.question?.mapping?.canonicalPath || QUESTION_KEY_MAP[answer.questionKey];
+      // A question that moved to a generic petitioner.* / beneficiary.* path (scripts/apply-party-checklist-paths.js) remembers the path it had before in
+      // metadata.legacyCanonicalPath. The answer is ALSO recorded there, so everything that still reads the older path (other forms, profiles, document rules)
+      // receives exactly what it received before the move - nothing depends on a hand-kept list of aliases.
+      const legacyPath = answer.question?.metadata?.legacyCanonicalPath;
+      const targetPaths = [...new Set([primaryPath, legacyPath].filter(Boolean).map((path) => (
+        options.family ? scopeFamilyPath(path, partyOf(answer.participantRole, answer.questionnaireKey, answer.questionKey)) : path
+      )).filter(Boolean))];
+      if (!targetPaths.length) return;
       const answerValue = answer.normalizedValue !== undefined ? answer.normalizedValue : answer.value;
       const provenance = {
         sourceType: "questionnaire",
@@ -395,25 +399,27 @@ class CanonicalBuilderService {
       };
       // An "address"-type answer is an object; fan it out into one candidate per part (each with its own
       // provenance) so company.address.line1 / .city / .state / .zip resolve like any other scalar path.
-      if (targetPath === "company.address" && answerValue && typeof answerValue === "object" && !Array.isArray(answerValue)) {
-        const { ADDRESS_PART_KEYS } = require("../config/permCanonicalPaths");
-        Object.entries(answerValue).forEach(([key, partValue]) => {
-          const part = ADDRESS_PART_KEYS[key];
-          if (part) pushCandidate(candidates, `company.address.${part}`, partValue, provenance);
+      targetPaths.forEach((targetPath) => {
+        if (targetPath === "company.address" && answerValue && typeof answerValue === "object" && !Array.isArray(answerValue)) {
+          const { ADDRESS_PART_KEYS } = require("../config/permCanonicalPaths");
+          Object.entries(answerValue).forEach(([key, partValue]) => {
+            const part = ADDRESS_PART_KEYS[key];
+            if (part) pushCandidate(candidates, `company.address.${part}`, partValue, provenance);
+          });
+          return;
+        }
+        pushCandidate(candidates, targetPath, answerValue, {
+          sourceType: "questionnaire",
+          source: "Questionnaire",
+          sourceId: answer._id,
+          sourceField: answer.questionKey,
+          confidence: answer.status === "approved" ? 95 : answer.status === "submitted" ? 85 : 75,
+          status: answer.status,
+          verifiedBy: answer.approvedBy || answer.reviewedBy,
+          verificationStatus: answer.status === "approved" ? "case_manager_verified" : undefined,
+          verificationDate: answer.approvedAt || answer.reviewedAt,
+          collectedAt: answer.updatedAt,
         });
-        return;
-      }
-      pushCandidate(candidates, targetPath, answerValue, {
-        sourceType: "questionnaire",
-        source: "Questionnaire",
-        sourceId: answer._id,
-        sourceField: answer.questionKey,
-        confidence: answer.status === "approved" ? 95 : answer.status === "submitted" ? 85 : 75,
-        status: answer.status,
-        verifiedBy: answer.approvedBy || answer.reviewedBy,
-        verificationStatus: answer.status === "approved" ? "case_manager_verified" : undefined,
-        verificationDate: answer.approvedAt || answer.reviewedAt,
-        collectedAt: answer.updatedAt,
       });
     });
   }
@@ -713,6 +719,9 @@ class CanonicalBuilderService {
     // against a single case's own Document records.
     merged.profile.case.caseRole = sources.caseRecord.caseRole;
     merged.profile.case.caseStructure = sources.caseRecord.caseStructure;
+    // The builder's own verdict on whether person.* / contact.* are the PETITIONER here (a petitioner account, or a family structure): the generic party
+    // layer must use the same verdict, not guess it from caseStructure alone (a two-party case can lack a stated structure).
+    merged.profile.case.familyParties = isFamilyPartiesCase(sources.caseRecord);
     // Derived from the case-type registry (never a mergeable input): what a USCIS form prints/ticks for this case type
     // ("L-1A Extension" -> "L-1A"), and the filing basis it adds ("extension"). Forms read these canonical paths only.
     merged.profile.case.classification = getClassification(sources.caseRecord.visaType);

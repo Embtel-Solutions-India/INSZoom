@@ -1,4 +1,5 @@
 const Beneficiary = require("../../models/Beneficiary");
+const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const Case = require("../../models/Case");
 const Client = require("../../models/Client");
 const Company = require("../../models/Company");
@@ -309,6 +310,7 @@ exports.createEmployerCase = async (req, res, next) => {
     const visaType = req.body.visaType || req.body.petitionType || "H-1B";
     const definition = registry.getDefinition(visaType);
     const caseData = await Case.create({
+      ...NEW_CASE_FORM_SELECTION,
       caseNumber,
       caseId: caseNumber,
       visaType,

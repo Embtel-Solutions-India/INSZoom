@@ -8,6 +8,7 @@ const VisaFormMapping = require("../../models/VisaFormMapping");
 const Questionnaire = require("../../models/Questionnaire");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
+const caseFormSelection = require("../uscis-forms/case-form-selection.service");
 const { resolveWithHierarchyFallback, filedLikeVisa } = require("../../config/visaHierarchy");
 
 // A CONDITIONAL mapping's formNumber that also has its own non-default,
@@ -441,6 +442,7 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
 
   if (decision === "ADD") {
     const templateStatus = await resolveTemplateStatus(mapping, caseData);
+    const created = [];
     if (templateStatus === "TEMPLATE_AVAILABLE") {
       const template = await uscisFormService.findLatestActiveTemplate(mapping.formTemplateFormCode);
       template._visaFormMapping = {
@@ -451,7 +453,9 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
         processingPath: caseData.processingPath || "",
       };
       for (const target of await provisioningTargets(caseData)) {
-        await uscisFormService.ensureAssignedForms(target, user, req, { templates: [template] });
+        // the Case Manager's "Add" is an explicit selection
+        await caseFormSelection.recordExplicitInclude(target, caseFormSelection.identityOfTemplate(template), user, "Added by a Case Manager (registry Add)");
+        created.push(...((await uscisFormService.ensureAssignedForms(target, user, req, { templates: [template] })) || []));
       }
     }
     // The one integration point where "approved" also means "client may
@@ -486,7 +490,7 @@ async function recordConditionalDecision(caseData, mappingId, decision, user, re
         );
       }
     }
-    return { decisionRecord, templateStatus };
+    return { decisionRecord, templateStatus, created };
   }
   return { decisionRecord, templateStatus: null };
 }
@@ -539,6 +543,7 @@ async function provisionAvailableMapping(caseData, mappingId, user, req) {
   }
   const created = [];
   for (const target of await provisioningTargets(caseData)) {
+    await caseFormSelection.recordExplicitInclude(target, caseFormSelection.identityOfTemplate(template), user, "Added by a Case Manager (single form)");
     created.push(...((await uscisFormService.ensureAssignedForms(target, user, req, { templates: [template] })) || []));
   }
   return { mapping, templateStatus, created };
@@ -623,4 +628,6 @@ module.exports = {
   assertNoClientProvidedForms,
   readWhitelistedField,
   resolveChecklistsForCase,
+  buildTemplateForMapping,
+  resolveActiveComponent,
 };

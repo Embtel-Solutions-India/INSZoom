@@ -1,5 +1,6 @@
 const Case = require("../../../models/Case");
 const CaseForm = require("../../../models/CaseForm");
+const { ACTIVE_FORM_FILTER } = require("../../uscis-forms/case-form-selection.service");
 const Document = require("../../../models/Document");
 const caseService = require("../../cases/case.service");
 const storageService = require("../../uploads/storage.service");
@@ -181,7 +182,7 @@ async function generate(caseId, user, req, reason = "forms_completed") {
   if (!caseData) throw Object.assign(new Error("Case not found"), { status: 404 });
   if (!caseService.canAccessCase(user, caseData)) throw Object.assign(new Error("Not authorized to generate petition package"), { status: 403 });
   const [forms, documents] = await Promise.all([
-    CaseForm.find({ caseId }).sort({ formCode: 1 }),
+    CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER }).sort({ formCode: 1 }),
     Document.find({ caseId, deletedAt: { $exists: false } }).sort({ category: 1, originalName: 1 }),
   ]);
   if (!forms.length) throw Object.assign(new Error("No USCIS forms are available for this case"), { status: 409 });

@@ -8,6 +8,7 @@ const DocumentExtraction = require("../../models/DocumentExtraction");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
+const caseFormSelection = require("./case-form-selection.service");
 const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
 const FormMappingService = require("../form-mapping/services/FormMappingService");
 // ISSUE-001 addendum: mergeFieldValues below needs the exact same flat-key-
@@ -60,6 +61,8 @@ function cloneTemplate(template) {
 }
 
 function invalidateTemplateCache() {
+  // the case-form catalogue is built from the same templates: it is rebuilt on its next read
+  try { require("./case-form-catalog.service").clearCache(); } catch (error) { /* cache only */ }
   templateCache.activeTemplates = null;
   templateCache.activeTemplatesExpiresAt = 0;
   templateCache.latestByCode.clear();
@@ -601,9 +604,13 @@ async function ensureAssignedForms(caseData, user, req, options = {}) {
   // the correct fix is to not call either resolver at all here, not just to
   // make them faster.
   if (options.metadataOnly) return [];
-  const templates = options.templates || await latestTemplatesByAssignmentRules(caseData, user, req);
+  const candidateTemplates = options.templates || await latestTemplatesByAssignmentRules(caseData, user, req);
   const { conditions } = await resolveConditionalTemplates(caseData);
   await reconcileConditionalForms(caseData, user, req, conditions);
+  // The Case Manager's explicit selection is the authority (case-form-selection.service.js): a form they excluded is never created or restored by any
+  // automatic rule, and a case under manual control only gets forms they included. A case nobody ever put under selection control is unchanged.
+  const { allowed: templates, blocked: blockedTemplates } = await caseFormSelection.filterAllowedTemplates(caseData, candidateTemplates);
+  if (blockedTemplates.length) logger.info("uscis_form_not_created_by_case_selection", { caseId: String(caseData._id), blocked: blockedTemplates });
   if (!templates.length) return [];
   const existing = await CaseForm.find({ caseId: caseData._id, formCode: { $in: templates.map((template) => template.formCode) } });
   const existingCodes = new Set(existing.map((form) => normalizeFormCode(form.formCode)));
@@ -1275,7 +1282,8 @@ async function listCaseForms(caseId, user, req) {
   const tCaseForms = Date.now();
   let forms;
   try {
-    forms = await CaseForm.find({ caseId: { $in: caseIds } })
+    // a form the Case Manager deleted is archived: it is not part of the case's list (it is under "Removed forms" in Manage forms, from where it can be brought back)
+    forms = await CaseForm.find({ caseId: { $in: caseIds }, status: { $ne: "archived" } })
       .select("caseId formTemplateId formCode formVersion status completion updatedAt lastModifiedAt generatedPdfDocument componentCode parentFormCode")
       // populate() queries formTemplateId (uscisformtemplates) as a genuinely
       // separate operation - it does not inherit the outer query's read()
@@ -1345,6 +1353,8 @@ async function createCaseForm(caseId, payload, user, req) {
     error.statusCode = 404;
     throw error;
   }
+  // an explicit staff action: recorded as the Case Manager's selection (a no-op for a case nobody put under selection control)
+  await caseFormSelection.recordExplicitInclude(caseData, caseFormSelection.identityOfTemplate(template), user, "Added by staff");
   const initialValues = expandFlatValues(payload.fieldValues || payload.filledData || {});
   const caseForm = await CaseForm.findOneAndUpdate(
     { caseId, formTemplateId: template._id },

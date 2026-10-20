@@ -578,6 +578,12 @@ const caseSchema = new mongoose.Schema(
     // Case Manager's persisted ADD/NOT_APPLICABLE decision on a CONDITIONAL
     // VisaFormMapping entry. Absence of an entry for a given mappingId means
     // "pending" - no PENDING record is ever created.
+    // Who decides which USCIS forms this case has. "legacy" (default, every existing case): the automatic rules (visa mapping, registry, conditional
+    // resolvers) decide, exactly as before - except that a form the Case Manager explicitly EXCLUDED (CaseFormSelection) is never created or restored.
+    // "manual": only forms with an explicit include selection are created. formSelectionRevision counts every selection change (optimistic
+    // concurrency for the selection API); 0 means no selection was ever recorded for this case.
+    formSelectionMode: { type: String, enum: ["legacy", "manual"], default: "legacy" },
+    formSelectionRevision: { type: Number, default: 0 },
     conditionalFormDecisions: [
       {
         mappingId: { type: mongoose.Schema.Types.ObjectId, ref: "VisaFormMapping", required: true },

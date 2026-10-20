@@ -8,6 +8,7 @@
 // generic token helpers, generateCaseNumber) exactly as the employer/employee
 // path does.
 const Beneficiary = require("../../models/Beneficiary");
+const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const Case = require("../../models/Case");
 const User = require("../../models/User");
@@ -325,6 +326,7 @@ exports.createFamilyCase = async (req, res, next) => {
     );
     const caseNumber = await generateCaseNumber();
     let caseData = await Case.create({
+      ...NEW_CASE_FORM_SELECTION,
       ...pipelineCategoryFields(req.body),
       ...(sourceLead ? { creationSource: "lead_conversion", leadId: sourceLead._id } : {}),
       caseNumber,

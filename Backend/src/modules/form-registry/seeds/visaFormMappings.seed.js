@@ -738,4 +738,14 @@ add(m("Certificate of Citizenship", "N-565", "Application for Replacement Natura
 // dedicated pseudo-category rather than duplicated per visa.
 add(m("Action on Approved Case", "I-824", "Application for Action on an Approved Application or Petition", "USCIS", COND, STANDALONE, { formTemplateFormCode: "i-824", immigrationNature: "POST_APPROVAL", notes: "Case must be eligible for post-approval action AND the case manager must explicitly select \"Action on Approved Case\" - never auto-created merely because another petition was approved. No generic trigger field exists for this in the current whitelist; CM-initiated only." }));
 
+// LATER_STAGE_TO_CONDITIONAL: a standalone USCIS form that used to be listed as "later stage" is now Conditional, so a case manager sees it on the case with
+// Add / Not applicable and, once added, it is created and auto-filled. Only independent USCIS forms (agency USCIS, standalone, no parent form) are changed:
+// DOL / DOS online applications and the I-485 supplements have no form of their own to add, so they stay later stage. The stage stays on the row.
+for (const mapping of mappings) {
+  if (mapping.provisioningType === "LATER_STAGE" && mapping.agency === "USCIS" && mapping.componentType === "STANDALONE_FORM" && !mapping.parentForm) {
+    mapping.provisioningType = "CONDITIONAL";
+    mapping.notes = mapping.notes || `Added by a case manager at the ${mapping.stage || "later"} stage.`;
+  }
+}
+
 module.exports = { mappings };
