@@ -677,9 +677,10 @@ const TeamLeadPanel = ({
           </span>
         </div>
         {roleStats?.unassignedCaseList?.length ? (
-          <div className="overflow-x-auto">
+          // about seven rows are visible; the rest scroll inside the card, with the column headings kept in view
+          <div className="max-h-[420px] overflow-auto pr-1">
             <table className="w-full min-w-[640px] text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide border-b border-border">
                   <th className="py-2 pr-4">Case Number</th>
                   <th className="py-2 pr-4">Client</th>

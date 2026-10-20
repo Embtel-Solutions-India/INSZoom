@@ -516,7 +516,7 @@ const FormGovernance = () => {
             {/* Fixed layout: every column but "Used by" has a set width, so the three action buttons always stay in view and "Used by" is the one that gives way (it truncates). */}
             <table className="w-full min-w-[60rem] table-fixed text-sm">
               <colgroup>
-                <col className="w-[14rem]" />
+                <col className="w-[16rem]" />
                 <col className="w-[7rem]" />
                 <col className="w-[6.5rem]" />
                 <col className="w-[9.5rem]" />
@@ -551,17 +551,15 @@ const FormGovernance = () => {
                       title={canReview ? 'Open the mapping review' : undefined}
                       className={`border-b border-border/70 last:border-0 ${canReview ? 'cursor-pointer hover:bg-muted/60 focus:bg-muted/60 focus:outline-none' : ''}`}
                     >
-                      <td className="px-3 py-3.5">
-                        <div className="font-medium text-foreground flex items-center gap-2 whitespace-nowrap">
-                          {form.formCode}
-                          {form.isSupplement && <span className="text-[11px] font-normal text-muted-foreground">Supplement</span>}
-                        </div>
-                        <div className="text-xs text-muted-foreground truncate" title={form.title}>{form.title}</div>
+                      <td className="overflow-hidden px-3 py-3.5">
+                        {/* both lines truncate inside the cell: a long supplement code never runs into the next column */}
+                        <div className="truncate font-medium text-foreground" title={form.formCode}>{form.formCode}</div>
+                        <div className="truncate text-xs text-muted-foreground" title={form.title}>{form.isSupplement ? 'Supplement · ' : ''}{form.title}</div>
                         {form.pendingTemplateId && (
                           <div className="text-xs text-muted-foreground">Newer edition awaiting review</div>
                         )}
                       </td>
-                      <td className="px-3 py-3.5"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
+                      <td className="overflow-hidden px-3 py-3.5"><Badge tone={fetchInfo.tone}>{fetchInfo.label}</Badge></td>
                       <td className="px-3 py-3.5">
                         {form.templateStatus ? <Badge tone={TEMPLATE_STATUS_TONES[form.templateStatus] || 'gray'}>{form.templateStatus.charAt(0).toUpperCase() + form.templateStatus.slice(1)}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
                       </td>

@@ -594,6 +594,9 @@ export const casesApi = {
     api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }, longRequest()),
   addEmployeeSlot: (principalId, payload = {}) =>
     api.post(`/cases/${principalId}/add-employee-slot`, payload, longRequest()),
+  // Who an employee case is: { name?, email? }. Staff write the same fields from Admin, so each side sees what the other typed.
+  setEmployeeIdentity: (principalId, childCaseId, payload) =>
+    api.patch(`/cases/${principalId}/employees/${childCaseId}/identity`, payload),
   employeeVisaOptions: () => api.get("/cases/employee-visa-options"),
 };
 

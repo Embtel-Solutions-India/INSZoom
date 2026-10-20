@@ -20,6 +20,7 @@ import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
   Trash2,
@@ -736,7 +737,13 @@ const CRMCaseDetail = () => {
     const ownerLabel = (ownerId) => {
       if (ownerId === String(id)) return childCases?.length ? 'Petitioner / Company' : null
       const child = (childCases || []).find((c) => String(c._id) === ownerId)
-      return child ? (child.clientName || child.caseNumber || 'Employee') : null
+      return child ? (child.employeeContact?.name || child.clientName || child.employeeContact?.email || child.caseNumber || 'Employee') : null
+    }
+    // the employee's email and (smaller) case number, shown beside the name
+    const ownerSub = (ownerId) => {
+      const child = (childCases || []).find((c) => String(c._id) === ownerId)
+      if (!child) return ''
+      return [child.employeeContact?.email || child.clientEmail, child.caseNumber].filter(Boolean).join(' · ')
     }
     return [...byOwner.entries()].map(([ownerId, forms]) => {
       const byParentCode = new Map()
@@ -757,7 +764,7 @@ const CRMCaseDetail = () => {
         byParentCode.delete(form.formCode)
       })
       byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
-      return { ownerId, label: ownerLabel(ownerId), rows: ordered }
+      return { ownerId, label: ownerLabel(ownerId), sub: ownerSub(ownerId), rows: ordered }
     })
   }, [caseForms, childCases, id])
   // Unchanged shape for every caller that doesn't need owner grouping
@@ -957,6 +964,14 @@ const CRMCaseDetail = () => {
   }
 
   const handleAddEmployee = () => setShowAddEmployee(true)
+  // Copies a fresh one-time setup link (it replaces any earlier one) so the Case Manager can hand it over when the email did not arrive
+  const handleCopySetupLink = (child) => runEmployeeAction(`link:${child._id}`, async () => {
+    const response = await casesApi.createEmployeeSetupLink(id, child._id)
+    const url = response.data?.setupUrl
+    if (!url) throw new Error('No setup link was returned')
+    try { await navigator.clipboard.writeText(url) } catch { window.prompt('Copy this setup link:', url) }
+    return response
+  }, 'Setup link copied. It replaces any earlier link and works until the employee sets a password.')
   const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
   const handleEmployerFillsInstead = (child) => {
     const who = child.clientName || 'this employee'
@@ -966,7 +981,7 @@ const CRMCaseDetail = () => {
   // Employer-filled slot -> invited employee: opens the name/email row under the slot; "Send invite" then switches the slot's mode.
   const handleStartInvite = (child) => {
     setEmployeeActionMessage('')
-    setInviteDraft({ childId: child._id, name: child.clientName || '', email: child.clientEmail || '' })
+    setInviteDraft({ childId: child._id, name: child.clientName || child.pendingEmployee?.name || '', email: child.clientEmail || child.pendingEmployee?.email || '' })
   }
   const handleSendInviteFromDraft = async () => {
     if (!inviteDraft?.name?.trim() || !inviteDraft?.email?.trim()) {
@@ -1984,8 +1999,21 @@ const CRMCaseDetail = () => {
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
-            <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
+            {caseData.caseRole === 'employee' && caseData.employeeContact ? (
+              <>
+                <h1 className="text-2xl font-bold text-foreground break-words">{caseData.employeeContact.name || 'Employee name needed'}</h1>
+                <p className="text-muted-foreground mt-1 break-all">{caseData.employeeContact.email || 'Employee email needed'}</p>
+                <p className="mt-0.5 font-mono text-xs text-muted-foreground">{caseData.caseNumber}</p>
+                <div className="mt-3">
+                  <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
+                <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
+              </>
+            )}
             {/* P12-S3: Case ID + copy button — the admin's fastest path to
                 share the client's Immiglance portal login ID, no DB lookup needed. */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -2089,7 +2117,7 @@ const CRMCaseDetail = () => {
         // case.constants.js's CASE_STATUSES comment on removeEmployee).
         const childStatusPill = (child) => {
           if (child.status === 'removed') return { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground line-through' }
-          if (!child.clientName && !child.clientEmail) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
+          if (!child.clientName && !child.clientEmail && !child.pendingEmployee?.email) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
           if (child.user && String(child.user) !== String(caseData.user?._id || caseData.user)) {
             // inviteStatus comes from GET /cases/:id/related ("pending" until the employee sets a password); an older backend omits it
             if (child.inviteStatus === 'accepted') return { label: 'Accepted', className: 'bg-green-100 text-green-800' }
@@ -2141,6 +2169,7 @@ const CRMCaseDetail = () => {
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
@@ -2163,8 +2192,26 @@ const CRMCaseDetail = () => {
                           className={isRemoved ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40 transition-colors'}
                           onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
                         >
-                          <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
-                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || 'Employee Slot'}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap font-mono text-xs text-muted-foreground">{child.caseNumber}</td>
+                          <td className="px-3 py-2.5 text-sm break-words">
+                            {child.employeeContact?.name || child.clientName ? (
+                              <span className="font-semibold text-foreground">{child.employeeContact?.name || child.clientName}</span>
+                            ) : !isRemoved && child.employeeContact ? (
+                              <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Name needed</span>
+                            ) : <span className="text-muted-foreground">Employee Slot</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm break-all" onClick={(e) => e.stopPropagation()}>
+                            {(child.employeeContact?.email || child.clientEmail) ? (
+                              <>
+                                <span className="font-medium text-foreground">{child.employeeContact?.email || child.clientEmail}</span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {inviteState === 'accepted' ? 'Password set' : inviteState === 'pending' ? 'Password not set yet - setup link sent' : 'Not invited yet'}
+                                </span>
+                              </>
+                            ) : !isRemoved && child.employeeContact ? (
+                              <button type="button" onClick={() => navigate(`/crm-cases/${child._id}`)} className="text-xs font-medium text-amber-700 hover:text-amber-800 dark:text-amber-400">Email needed - add details</button>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </td>
                           <td className="px-3 py-2.5 text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
                           <td className="px-3 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
@@ -2210,6 +2257,17 @@ const CRMCaseDetail = () => {
                                 {/* The same four actions for every employee slot of every employer matter (View, invite/resend, employer
                                     fills instead, Withdraw); the second and third are disabled - never hidden - when the slot's state makes
                                     them meaningless, so the row looks and behaves the same whatever the visa type. */}
+                                {isEmployerMatter && inviteState === 'pending' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopySetupLink(child)}
+                                    disabled={employeeActionBusy === `link:${child._id}`}
+                                    title="Copy a one-time link the employee opens to set their own password"
+                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
+                                  >
+                                    {employeeActionBusy === `link:${child._id}` ? 'Copying…' : 'Copy setup link'}
+                                  </button>
+                                )}
                                 {isEmployerMatter && (inviteState === 'none' ? (
                                   <button
                                     type="button"
@@ -2257,7 +2315,7 @@ const CRMCaseDetail = () => {
                         </tr>
                         {inviteDraft?.childId === child._id && (
                           <tr className="bg-muted/40">
-                            <td colSpan={7} className="px-5 py-3">
+                            <td colSpan={8} className="px-5 py-3">
                               <div className="flex flex-wrap items-center gap-2">
                                 <input className="input-field text-sm max-w-[14rem]" placeholder="Employee full name" value={inviteDraft.name} onChange={(e) => setInviteDraft({ ...inviteDraft, name: e.target.value })} />
                                 <input type="email" className="input-field text-sm max-w-[16rem]" placeholder="Employee email" value={inviteDraft.email} onChange={(e) => setInviteDraft({ ...inviteDraft, email: e.target.value })} />
@@ -3284,7 +3342,7 @@ const CRMCaseDetail = () => {
                 <p className="text-sm text-muted-foreground">Edition-locked and populated from the case's checklist and profile data. Use Manage forms to decide which forms this case has.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setShowManageForms(true)} className={caseData?.formSelectionMode === 'manual' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>{caseData?.formSelectionMode === 'manual' ? 'Add form' : 'Manage forms'}</button>
+                <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
                 <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
                   {tabLoading.forms ? 'Generating…' : caseForms.length ? 'Refresh Auto Fill' : 'Generate USCIS Forms'}
@@ -3356,6 +3414,7 @@ const CRMCaseDetail = () => {
                       <tr className="bg-muted/40">
                         <td colSpan={6} className="py-1.5 px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                           {group.label}
+                          {group.sub && <span className="ml-2 text-[11px] font-normal normal-case tracking-normal text-muted-foreground/80">{group.sub}</span>}
                         </td>
                       </tr>
                     )}
@@ -3441,10 +3500,10 @@ const CRMCaseDetail = () => {
                 {caseData?.formSelectionMode === 'manual' ? (
                   <>
                     <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
-                      Forms are added to this case by its Case Manager. Click <strong>Add form</strong>, type the form number or name, and the form is linked to this
+                      Forms are added to this case by its Case Manager. Click <strong>Manage forms</strong>, type the form number or name, and the form is linked to this
                       case's checklists and filled from the client's answers. You can then open it and complete the rest.
                     </p>
-                    <button onClick={() => setShowManageForms(true)} className="btn-primary text-sm mt-4">Add form</button>
+                    <button onClick={() => setShowManageForms(true)} className="btn-primary text-sm mt-4">Manage forms</button>
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">

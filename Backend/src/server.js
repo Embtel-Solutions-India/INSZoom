@@ -18,6 +18,7 @@ const aiOrchestrationService = require("./modules/ai/ai-orchestration.service");
 const reportService = require("./modules/reports/report.service");
 const settingsRetentionService = require("./modules/settings/retention.service");
 const workflowSlaService = require("./modules/settings/workflowSla.service");
+const taskAlertsService = require("./modules/tasks/task-alerts.service");
 
 process.on("uncaughtException", (error) => {
   logger.fatal("uncaught_exception", { error });
@@ -70,6 +71,20 @@ function startSlaSweepMaintenance() {
       const result = await workflowSlaService.runSlaSweep();
       logger.info("sla_sweep_complete", result);
     }).catch((error) => logger.error("sla_sweep_failed", { error }));
+  scheduleInitialRun(run, initialDelayMs);
+  return setInterval(run, intervalMs);
+}
+
+// Task deadline emails/push: "due within 2 days" and "deadline passed" for open tasks (modules/tasks/task-alerts.service.js).
+// Every 15 minutes so an overdue notice goes out soon after the deadline; each stage is sent once per task and deadline.
+function startTaskDeadlineAlerts() {
+  const intervalMs = Number(process.env.TASK_ALERT_INTERVAL_MS || 15 * 60 * 1000);
+  const initialDelayMs = Number(process.env.TASK_ALERT_INITIAL_DELAY_MS || 50 * 1000);
+  const run = () =>
+    withJobLock("task-deadline-alerts", intervalMs * 3, async () => {
+      const result = await taskAlertsService.runDeadlineSweep();
+      if (result.notices) logger.info("task_deadline_alerts_sent", result);
+    }).catch((error) => logger.error("task_deadline_alerts_failed", { error }));
   scheduleInitialRun(run, initialDelayMs);
   return setInterval(run, intervalMs);
 }
@@ -223,6 +238,7 @@ connectDB()
     server.headersTimeout = Number(process.env.HEADERS_TIMEOUT_MS || 66000);
     realtimeGateway.init(server, { origins: env.clientOrigins });
     const workflowMaintenance = startWorkflowMaintenance();
+    const taskDeadlineAlerts = startTaskDeadlineAlerts();
     const notificationMaintenance = startNotificationMaintenance();
     const appointmentMaintenance = startAppointmentMaintenance();
     const paymentMaintenance = startPaymentMaintenance();
@@ -262,6 +278,7 @@ connectDB()
     });
     const shutdown = () => {
       clearInterval(workflowMaintenance);
+      clearInterval(taskDeadlineAlerts);
       clearInterval(notificationMaintenance);
       clearInterval(appointmentMaintenance);
       clearInterval(paymentMaintenance);

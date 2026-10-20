@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
@@ -18,7 +18,9 @@ const TaskCalendar = () => {
   const navigate = useNavigate()
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
+  const latestRequest = useRef(0)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(null)
   const [filters, setFilters] = useState({
@@ -26,15 +28,19 @@ const TaskCalendar = () => {
     priority: ''
   })
 
+  // The whole visible month, first instant to last instant (the last day used to be cut off at midnight), re-read every minute
   useEffect(() => {
-    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
-    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
+    const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1, 0, 0, 0, 0)
+    const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59, 999)
     fetchCalendarTasks(startOfMonth, endOfMonth)
+    const timer = setInterval(() => fetchCalendarTasks(startOfMonth, endOfMonth, { silent: true }), 60000)
+    return () => clearInterval(timer)
   }, [currentDate, filters])
 
-  const fetchCalendarTasks = async (startDate, endDate) => {
+  const fetchCalendarTasks = async (startDate, endDate, { silent = false } = {}) => {
+    const requestId = ++latestRequest.current
     try {
-      setLoading(true)
+      if (!silent) setRefreshing(true)
       const response = await api.get('/tasks/calendar', {
         params: {
           startDate: startDate.toISOString(),
@@ -42,13 +48,18 @@ const TaskCalendar = () => {
           ...filters
         }
       })
+      if (requestId !== latestRequest.current) return // a newer month/filter was requested meanwhile
       setTasks(Array.isArray(response.data?.tasks) ? response.data.tasks : [])
       setError(null)
     } catch (error) {
+      if (requestId !== latestRequest.current) return
       console.error('Error fetching calendar tasks:', error)
-      setError('Failed to load calendar tasks')
+      if (!silent) setError('Failed to load calendar tasks')
     } finally {
-      setLoading(false)
+      if (requestId === latestRequest.current) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }
 
@@ -90,8 +101,8 @@ const TaskCalendar = () => {
     const colors = {
       low: 'border-border bg-muted',
       medium: 'border-primary bg-primary/10',
-      high: 'border-orange-300 bg-orange-50',
-      urgent: 'border-red-300 bg-red-50'
+      high: 'border-amber-200 bg-amber-50',
+      urgent: 'border-red-200 bg-red-50'
     }
     return colors[priority] || 'border-border bg-muted'
   }
@@ -99,7 +110,7 @@ const TaskCalendar = () => {
   const getPriorityIcon = (priority) => {
     switch (priority) {
       case 'urgent': return <AlertTriangle className="w-3 h-3 text-red-600" />
-      case 'high': return <AlertTriangle className="w-3 h-3 text-orange-600" />
+      case 'high': return <AlertTriangle className="w-3 h-3 text-amber-600" />
       case 'medium': return <Clock className="w-3 h-3 text-primary" />
       default: return <Clock className="w-3 h-3 text-muted-foreground" />
     }
@@ -203,6 +214,7 @@ const TaskCalendar = () => {
             <h2 className="text-lg font-semibold text-foreground">
               {months[currentDate.getMonth()]} {currentDate.getFullYear()}
             </h2>
+            <span className="text-xs tabular-nums text-muted-foreground">{refreshing ? 'Updating…' : `${tasks.length} task${tasks.length === 1 ? '' : 's'} due`}</span>
             <button
               onClick={nextMonth}
               className="p-2 hover:bg-secondary rounded-lg transition-colors"
@@ -226,8 +238,12 @@ const TaskCalendar = () => {
             >
               <option value="">All Status</option>
               <option value="pending">Pending</option>
+              <option value="assigned">Assigned</option>
               <option value="in_progress">In Progress</option>
+              <option value="waiting">Waiting</option>
+              <option value="blocked">Blocked</option>
               <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
             </select>
             <select
               value={filters.priority}
@@ -374,15 +390,15 @@ const TaskCalendar = () => {
             <span className="text-sm text-muted-foreground">Urgent</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
             <span className="text-sm text-muted-foreground">High</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-primary/100"></div>
+            <div className="w-3 h-3 rounded-full bg-sky-500"></div>
             <span className="text-sm text-muted-foreground">Medium</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+            <div className="w-3 h-3 rounded-full bg-slate-400"></div>
             <span className="text-sm text-muted-foreground">Low</span>
           </div>
         </div>
