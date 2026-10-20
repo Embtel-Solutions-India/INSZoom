@@ -443,6 +443,9 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
     })
     const disabled = !canEdit || Boolean(field?.readOnly || field?.readonly)
     if (element.disabled !== disabled) element.disabled = disabled
+    // pdf.js copies the PDF's own read-only flag onto the input. A box the workspace says is fillable (USCIS marks boxes its script switches on, and copies,
+    // read-only; the server unlocks those - signatures and barcodes stay locked) must not stay read-only on screen.
+    if (field && !disabled && element.readOnly) element.readOnly = false
     // pdf.js copies the PDF field's own /MaxLen onto the input, which silently
     // stops typing/pasting at that length. No field may restrict the number of
     // characters, so lift it everywhere. A comb field (one character per printed

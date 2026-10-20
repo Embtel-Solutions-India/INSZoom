@@ -206,6 +206,13 @@ export const documentIntelligenceApi = {
   },
 }
 
+// Deleted cases held for 30 days (admins and super admins)
+export const recycleBinApi = {
+  list: () => api.get('/recycle-bin'),
+  restore: (id) => api.post(`/recycle-bin/${id}/restore`, undefined, { timeout: 120000 }),
+  purge: (id) => api.delete(`/recycle-bin/${id}`),
+}
+
 export const casesApi = {
   dashboardStats: (params = {}) => api.get('/cases/dashboard/stats', { params }),
   list: (params = {}) => api.get('/cases', { params }),
@@ -578,7 +585,8 @@ export const uscisFormsApi = {
   // page content so pdf.js shows the real barcode image rather than an
   // editable text box over it. templatePdf above stays the untouched
   // official blank PDF.
-  templatePdfViewer: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { params: { purpose: 'viewer' }, responseType: 'blob' }),
+  // `r` only changes when the prepared viewer copy changes (boxes unlocked), so a browser that cached the previous copy for an hour fetches the new one
+  templatePdfViewer: (templateId) => api.get(`/uscis-forms/${templateId}/pdf`, { params: { purpose: 'viewer', r: 3 }, responseType: 'blob' }),
   // Component-scoped blank PDF (e.g. the I-129 H Classification Supplement's
   // own pages only, not the full parent) - Adobe combinepdf-sliced server-side.
   componentTemplatePdf: (templateId, componentCode) =>

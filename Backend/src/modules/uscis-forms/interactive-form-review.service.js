@@ -1,4 +1,5 @@
 const AuditLog = require("../../models/AuditLog");
+const { effectiveReadOnly } = require("./field-lock-policy");
 const Case = require("../../models/Case");
 const CaseForm = require("../../models/CaseForm");
 const Document = require("../../models/Document");
@@ -351,6 +352,9 @@ class InteractiveFormReviewService {
     const fieldReview = caseForm.fieldReviews?.[canonicalId] || caseForm.fieldReviews?.[fieldName];
     return {
       ...field,
+      // USCIS read-only flags that only protect a box from nothing a person could type (conditional boxes, copies) no longer lock it - signatures, barcodes and
+      // computed fields still do (field-lock-policy.js)
+      ...(field.readOnly || field.readonly ? { readOnly: effectiveReadOnly(field), readonly: effectiveReadOnly(field) } : {}),
       value: AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, canonicalId)
         ?? AutoFillService.getFieldValue(caseForm.fieldValues || caseForm.filledData || {}, fieldName),
       canonicalValue,

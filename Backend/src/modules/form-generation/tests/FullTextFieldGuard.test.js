@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { PDFDocument, StandardFonts } = require("pdf-lib");
-const { liftTextLengthLimits, shrinkLongTextToFit } = require("../services/FullTextFieldGuard");
+const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("../services/FullTextFieldGuard");
 const PDFRenderer = require("../services/PDFRenderer");
 
 const STREET = "form1[0].Pt3_Line3_StreetNumberName[0]";
@@ -115,4 +115,35 @@ test("a comb field whose text fits its boxes keeps its one-character-per-box lay
   assert.equal(longComb.getMaxLength(), undefined);
   write(second, COMB, "123456789");
   assert.equal(longComb.getText(), "123456789");
+});
+
+test("read-only boxes a person may fill in are made writable on the working copy; signatures and barcodes stay locked", async () => {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage();
+  const form = pdf.getForm();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  let y = 700;
+  const addText = (name) => { const f = form.createTextField(name); f.addToPage(page, { x: 10, y, width: 150, height: 18, font }); f.enableReadOnly(); y -= 30; return f; };
+  const city = addText("form1[0].#subform[1].Line1a_CityorTown[0]");
+  const dateOfSignature = addText("form1[0].#subform[5].Pt6_DateofSignature[0]");
+  const signature = addText("form1[0].#subform[5].Line1a_SignatureofPetitioner[0]");
+  const barcode = addText("form1[0].Page1[0].PDF417BarCode1[0]");
+  const box = form.createCheckBox("form1[0].#subform[2].Line4_Form485[0]");
+  box.addToPage(page, { x: 10, y, width: 14, height: 14 });
+  box.enableReadOnly();
+  // the widget's own ReadOnly annotation flag locks a box too
+  city.acroField.getWidgets()[0].setFlag(64);
+
+  assert.equal(unlockReadOnlyFields(form, new Map([["form1[0].#subform[5].Line1a_SignatureofPetitioner[0]", { fieldType: "signature" }]])), 3);
+  assert.equal(city.isReadOnly(), false);
+  assert.equal(city.acroField.getWidgets()[0].hasFlag(64), false);
+  assert.equal(dateOfSignature.isReadOnly(), false);
+  assert.equal(box.isReadOnly(), false);
+  assert.equal(signature.isReadOnly(), true);
+  assert.equal(barcode.isReadOnly(), true);
+
+  city.setText("Sydney");
+  assert.equal(city.getText(), "Sydney");
+  // idempotent, and a form with nothing read-only is untouched
+  assert.equal(unlockReadOnlyFields(form), 0);
 });

@@ -258,6 +258,7 @@ connectDB()
     // null (and nothing scheduled) unless GHL_ENABLED=true.
     const ghlWorkers = require("./integrations/ghl/ghlWorkers").startGhlWorkers();
     const caseDeletionWorker = require("./modules/cases/case-deletion.service").startCaseDeletionWorker();
+    const recycleBinWorker = require("./modules/recycle-bin/recycle-bin.service").startRecycleBinWorker(); // removes recycle-bin items after 30 days
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
         logger.fatal("port_in_use", { port: env.port, error });
@@ -294,6 +295,7 @@ connectDB()
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);
       clearInterval(caseDeletionWorker);
+      clearInterval(recycleBinWorker);
       server.close(() => {
         disconnectDB()
           .catch((error) => logger.error("mongodb_disconnect_failed", { error }))

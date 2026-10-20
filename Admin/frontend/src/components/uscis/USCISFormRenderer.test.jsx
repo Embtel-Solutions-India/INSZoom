@@ -26,6 +26,8 @@ vi.mock('react-pdf', () => ({
           <input title="First Name" name="beneficiary.firstName" defaultValue="" />
           <input title="Last Name" name="beneficiary.lastName" defaultValue="Smith" maxLength={10} />
           <input title="Comb Field" name="beneficiary.combField" defaultValue="" maxLength={5} className="comb" />
+          <input title="Conditional City" name="beneficiary.conditionalCity" defaultValue="" readOnly />
+          <input title="Locked Signature" name="beneficiary.signature" defaultValue="" readOnly />
         </div>
       </div>
     )
@@ -436,6 +438,29 @@ describe('USCISFormRenderer', () => {
     expect(comb.classList.contains('comb')).toBe(false)
     fireEvent.input(comb, { target: { value: '123' } })
     expect(comb.classList.contains('comb')).toBe(true)
+  })
+
+  // USCIS marks some boxes read-only (boxes its own script switches on); the server sends readOnly:false for the ones a person may fill in
+  it('a box the workspace marks fillable is writable even though the PDF flags it read-only; a locked one (signature) stays read-only', async () => {
+    const base = makeWorkspace()
+    const section = base.template.sections[0]
+    workspaceApi.mockResolvedValue({ data: {
+      ...base,
+      template: { ...base.template, sections: [{ ...section, fields: [
+        ...section.fields,
+        { fieldName: 'beneficiary.conditionalCity', label: 'Conditional City', fieldType: 'text', readOnly: false, coordinates: { x: 50, y: 600, width: 120, height: 20, pageNumber: 1 } },
+        { fieldName: 'beneficiary.signature', label: 'Signature', fieldType: 'signature', readOnly: true, coordinates: { x: 50, y: 500, width: 120, height: 20, pageNumber: 1 } },
+      ] }] },
+    } })
+    templatePdfApi.mockResolvedValue({ data: pdfBlob() })
+
+    render(<USCISFormRenderer caseId="case-1" caseForm={{ _id: 'cf-1' }} onClose={vi.fn()} onSaved={vi.fn()} />)
+    const city = await screen.findByTitle('Conditional City')
+    await vi.waitFor(() => expect(city.readOnly).toBe(false))
+    expect(city.disabled).toBe(false)
+    const signature = screen.getByTitle('Locked Signature')
+    expect(signature.disabled).toBe(true)
+    expect(signature.readOnly).toBe(true)
   })
 
   // Forms Download overhaul - single "Download Official Form" button, no status gate

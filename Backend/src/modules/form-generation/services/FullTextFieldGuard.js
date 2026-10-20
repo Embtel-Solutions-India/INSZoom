@@ -13,6 +13,7 @@
 // Fields whose font size is "auto" (0) are left alone: pdf-lib (and PDF viewers) already shrink the
 // text of an auto-size field to fit its box.
 const FONT_SIZE_IN_DA = /([\d.]+)\s+Tf/;
+const READ_ONLY_ANNOTATION_FLAG = 64; // PDF annotation flag bit 7 (ReadOnly)
 const WIDGET_PADDING_PT = 4; // border + inner padding, both sides
 const FIT_SAFETY = 0.97; // measured with Helvetica; real fonts differ slightly
 const MIN_FONT_SIZE_PT = 1;
@@ -47,6 +48,50 @@ function liftTextLengthLimits(form, valueFor) {
     }
   }
   return lifted;
+}
+
+// USCIS marks some boxes read-only (boxes its own script switches on, copies of a box on another page). A box the policy unlocks (field-lock-policy.js: plain
+// text / date / number boxes and checkboxes - never signatures, barcodes or computed fields) is made writable on the working copy, so the value is written into
+// it and the downloaded PDF stays editable there. The stored template PDF is never modified. `metaByPdfField` (optional) is template.formFields keyed by PDF name.
+function unlockReadOnlyFields(form, metaByPdfField) {
+  const { keepsLock } = require("../../uscis-forms/field-lock-policy");
+  let unlocked = 0;
+  let fields = [];
+  try {
+    fields = form.getFields();
+  } catch (error) {
+    return 0; // best effort - never let this guard stop a download
+  }
+  for (const field of fields) {
+    try {
+      const kind = field.constructor?.name || "";
+      if (!kind.includes("TextField") && !kind.includes("CheckBox")) continue;
+      const widgets = field.acroField.getWidgets?.() || [];
+      const widgetLocked = widgets.some((widget) => widget.hasFlag?.(READ_ONLY_ANNOTATION_FLAG));
+      if (!field.isReadOnly?.() && !widgetLocked) continue;
+      const name = field.getName();
+      const meta = (metaByPdfField && metaByPdfField.get(name)) || {};
+      const asField = {
+        fieldName: name,
+        pdfFieldName: name,
+        fieldType: meta.fieldType,
+        semanticType: meta.semanticType,
+        calculated: meta.calculated,
+        fieldLabel: meta.fieldLabel || meta.label,
+        // the PDF's own widget kind decides when the importer's metadata has nothing
+        pdfFieldType: kind.includes("CheckBox") ? "checkbox" : "text",
+      };
+      // a signature box is still recognised by its name when the metadata has no type for it (a "Date of Signature" box is a plain date and unlocks)
+      if (!meta.fieldType && /signature/i.test(name) && !/date/i.test(name)) continue;
+      if (keepsLock(asField)) continue;
+      if (field.isReadOnly?.()) field.disableReadOnly();
+      widgets.forEach((widget) => { if (widget.hasFlag?.(READ_ONLY_ANNOTATION_FLAG)) widget.clearFlag?.(READ_ONLY_ANNOTATION_FLAG); });
+      unlocked += 1;
+    } catch (error) {
+      // leave this field exactly as it was
+    }
+  }
+  return unlocked;
 }
 
 function currentFontSize(field) {
@@ -125,4 +170,4 @@ async function shrinkLongTextToFit(pdfDoc, form) {
   return shrunk;
 }
 
-module.exports = { liftTextLengthLimits, shrinkLongTextToFit };
+module.exports = { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields };

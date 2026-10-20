@@ -22,7 +22,7 @@ const { purgeOrphanedXfaObjects } = require("./XfaPurgeGuard");
 const { rebuildAcroFormFieldsFromWidgets } = require("./AcroFormRepairGuard");
 const ComponentPageResolver = require("./ComponentPageResolver");
 const { fitTextValue } = require("./FieldValueFitter");
-const { liftTextLengthLimits, shrinkLongTextToFit } = require("./FullTextFieldGuard");
+const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("./FullTextFieldGuard");
 const { toAdobeRanges } = require("./ViewerPdfPreparationService");
 
 function classifyField(field) {
@@ -78,6 +78,8 @@ class AdobeFormRenderer {
     try { earlyMapping = PDFFieldMapper.mapFields(caseForm, template); } catch (error) { earlyMapping = null; }
     const valueByPdfField = new Map(Object.values(earlyMapping?.mappedFields || {}).map((mapped) => [mapped.pdfField, mapped.value]));
     liftTextLengthLimits(sourceForm, (pdfField) => (valueByPdfField.has(pdfField) ? String(valueByPdfField.get(pdfField) ?? "") : undefined));
+    // boxes USCIS marks read-only but a person may fill in (not signatures / barcodes) are made writable, so Adobe accepts a value for them
+    unlockReadOnlyFields(sourceForm, new Map((template.formFields || []).map((meta) => [meta.pdfFieldName || meta.fieldName, meta])));
     const sourceFields = sourceForm.getFields();
     const sourceFieldNames = new Set(sourceFields.map((f) => f.getName()));
     const fieldByName = new Map(sourceFields.map((f) => [f.getName(), f]));
