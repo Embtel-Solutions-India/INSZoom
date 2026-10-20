@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { employeeContact, validateIdentityInput } = require("../employee-identity");
+const { employeeContact, validateIdentityInput, isUninvitedEmployee } = require("../employee-identity");
 
 test("an employee case's contact comes from the typed identity, then the creation mirror, then the invitation; other roles have none", () => {
   assert.deepEqual(employeeContact({ caseRole: "employee", employeeIdentity: { name: " Ana  Souza ", email: "ANA@x.com" } }), { name: "Ana Souza", email: "ana@x.com", missingName: false, missingEmail: false, complete: true });
@@ -22,4 +22,11 @@ test("typed identity: a valid email that is not the employer's or another employ
   assert.match(validateIdentityInput({ email: "b@x.com" }, { siblingEmails: ["B@x.com"] }).message, /already used/);
   assert.match(validateIdentityInput({}).message, /name or email/);
   assert.match(validateIdentityInput({ name: "" , email: "" }).message, /name or email/);
+});
+
+test("an employee who has not been invited (the file is held by the employer) is never a delivery address", () => {
+  assert.equal(isUninvitedEmployee({ caseRole: "employee" }, { role: "client" }), true);
+  assert.equal(isUninvitedEmployee({ caseRole: "employee" }, null), true);
+  assert.equal(isUninvitedEmployee({ caseRole: "employee" }, { role: "employee" }), false); // invited: their own login
+  assert.equal(isUninvitedEmployee({ caseRole: "principal" }, { role: "client" }), false);
 });

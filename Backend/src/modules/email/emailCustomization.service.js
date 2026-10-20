@@ -34,7 +34,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   const ctx = { data, caseContext: {} };
   if (!caseId) return ctx;
   const caseDoc = await Case.findById(caseId)
-    .select("caseNumber caseId visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager additionalCaseManagers assignedTeamLead createdBy attorneyAccess companyId employerUser isDemoData")
+    .select("caseNumber caseId caseRole visaType petitionType status stage clientName clientEmail clientPortalId user petitionerUser assignedCaseManager additionalCaseManagers assignedTeamLead createdBy attorneyAccess companyId employerUser isDemoData")
     .lean();
   if (!caseDoc) return ctx;
   ctx.isDemoData = Boolean(caseDoc.isDemoData);
@@ -45,7 +45,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   const teamLeadId = await require("../notifications/caseTeam").effectiveTeamLeadId(caseDoc);
   const ids = [caseDoc.user, caseDoc.petitionerUser, caseDoc.assignedCaseManager, teamLeadId, ...activeAttorneyIds].filter(Boolean);
   const [users, company] = await Promise.all([
-    User.find({ _id: { $in: ids } }).select("name displayName email").lean(),
+    User.find({ _id: { $in: ids } }).select("name displayName email role").lean(),
     caseDoc.companyId ? Company.findById(caseDoc.companyId).select("name contact hrContact").lean() : null,
   ]);
   const byId = new Map(users.map((user) => [String(user._id), user]));
@@ -56,7 +56,7 @@ async function buildContext({ data = {}, caseId } = {}) {
   const attorney = pick(attorneyId);
 
   ctx.caseContext = {
-    client: { name: caseDoc.clientName || nameOf(clientUser), id: caseDoc.clientPortalId || String(caseDoc.user || ""), email: caseDoc.clientEmail || clientUser?.email, phone: clientUser?.phone },
+    client: { name: caseDoc.clientName || nameOf(clientUser), id: caseDoc.clientPortalId || String(caseDoc.user || ""), email: (require("../cases/employee-identity").isUninvitedEmployee(caseDoc, clientUser) ? undefined : caseDoc.clientEmail) || clientUser?.email, phone: clientUser?.phone },
     case: { id: caseDoc.caseNumber || caseDoc.caseId, type: caseDoc.petitionType, visaType: caseDoc.visaType, status: caseDoc.status, stage: caseDoc.stage },
     caseManager: caseManager && { name: nameOf(caseManager), id: String(caseManager._id), email: caseManager.email },
     teamLead: teamLead && { name: nameOf(teamLead), email: teamLead.email },

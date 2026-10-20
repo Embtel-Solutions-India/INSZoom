@@ -64,18 +64,40 @@ export default function EmployeeIdentityForm({ principalId, childCase, onSaved, 
   )
 }
 
-// The persistent request shown on an employee case whose name or email is still missing.
+// The persistent request shown on an employee case whose name or email is still missing: a small amber box that stays until both are filled in.
+// Clicking it opens the form (name and email); saving updates the case, and the box goes away once nothing is missing.
 export function EmployeeIdentityNotice({ principalId, childCase, onSaved }) {
+  const [open, setOpen] = useState(false)
   const contact = childCase?.employeeContact
   if (!contact || contact.complete || childCase?.status === 'removed') return null
   const missing = [contact.missingName && 'name', contact.missingEmail && 'email'].filter(Boolean).join(' and ')
   return (
-    <div className="max-w-xl rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-      <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">Employee details needed</p>
-      <p className="mb-3 mt-0.5 text-xs text-amber-800/80 dark:text-amber-400/80">
-        Add the employee's {missing} so this case, its forms and the client portal show who it is for.
-      </p>
-      <EmployeeIdentityForm principalId={principalId} childCase={childCase} onSaved={onSaved} />
-    </div>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={`Add the employee's ${missing}`}
+        className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-800 ring-1 ring-inset ring-amber-200 transition-colors hover:bg-amber-100 sm:py-2 dark:bg-amber-950/30 dark:text-amber-400 dark:ring-amber-900/50"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+        Employee details needed
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-label="Employee details" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-base font-semibold text-foreground">Employee details</h3>
+            <p className="mb-4 mt-0.5 text-xs text-muted-foreground">
+              Add the employee's {missing} so this case, its forms and the client portal show who it is for.
+            </p>
+            <EmployeeIdentityForm
+              principalId={principalId}
+              childCase={childCase}
+              onSaved={() => { setOpen(false); onSaved?.() }}
+            />
+            <button type="button" onClick={() => setOpen(false)} className="mt-3 text-xs font-medium text-muted-foreground hover:text-foreground">Cancel</button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

@@ -38,4 +38,9 @@ function validateIdentityInput(input, { blockedEmails = [], siblingEmails = [] }
   return { identity };
 }
 
-module.exports = { employeeContact, validateIdentityInput, cleanEmail, cleanName };
+// An employee case whose file the employer still holds: the case's login is not the employee's own (an invited employee has role "employee").
+// The name and email typed for such an employee only say who they are - they are never a delivery address, so nothing is emailed to them until the
+// employer / staff actually invites them.
+const isUninvitedEmployee = (child, ownerUser) => child?.caseRole === "employee" && ownerUser?.role !== "employee";
+
+module.exports = { isUninvitedEmployee, employeeContact, validateIdentityInput, cleanEmail, cleanName };

@@ -1,6 +1,6 @@
 const path = require("path");
 const { validateEmployeeSlots } = require("./employee-slots");
-const { validateIdentityInput, employeeContact } = require("./employee-identity");
+const { validateIdentityInput, employeeContact, isUninvitedEmployee } = require("./employee-identity");
 const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const multer = require("multer");
@@ -433,6 +433,9 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
   if (!caseData.user) return;
   const caseManager = await User.findById(caseManagerId).select("name displayName").catch(() => null);
   const caseManagerName = caseManager?.name || caseManager?.displayName || "your case manager";
+  // An employee who has not been invited yet is not told anything: the email goes to the account that holds the file (the employer), never to the typed address.
+  const holder = caseData.caseRole === "employee" ? await User.findById(caseData.user).select("role").lean().catch(() => null) : null;
+  const clientEmailTo = isUninvitedEmployee(caseData, holder) ? undefined : caseData.clientEmail;
   const isReassignment = Boolean(previousCaseManagerId);
   const emailTemplate = isReassignment ? "case-manager-reassigned" : "case-manager-assigned";
   // env.clientUrl is the Client portal's own origin — /dashboard/* has
@@ -452,7 +455,7 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
     source: "shared",
     channels: ["in_app", "socket", "push", "email"],
     emailTemplate,
-    emailTo: caseData.clientEmail,
+    emailTo: clientEmailTo,
     emailData: {
       clientName: caseData.clientName,
       caseNumber: caseData.caseNumber || caseData.caseId,

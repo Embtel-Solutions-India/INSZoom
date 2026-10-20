@@ -36,38 +36,10 @@ const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
 // team's queue; admins see every team's).
 const PENDING_QUEUE_ROLES = ['super_admin', 'admin', 'team_lead']
 
-// An employee case is identified by who the employee is: their name and email lead the row, the case number is secondary. Missing details are asked for
-// in amber (like "Awaiting assignment") until both are filled in on the case page.
-const isEmployeeCase = (caseItem) => caseItem?.caseRole === 'employee' && Boolean(caseItem.employeeContact)
-function EmployeeNameBlock({ caseItem, navigate }) {
-  const contact = caseItem.employeeContact
-  return (
-    <>
-      {contact.name ? (
-        <p className="font-semibold text-foreground truncate" title={contact.name}>{contact.name}</p>
-      ) : (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}`) }}
-          className="text-xs font-semibold text-amber-700 hover:text-amber-800 dark:text-amber-400"
-        >
-          Employee name needed
-        </button>
-      )}
-      {contact.email ? (
-        <p className="text-xs text-foreground/80 truncate" title={contact.email}>{contact.email}</p>
-      ) : (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseItem._id}`) }}
-          className="block text-xs font-semibold text-amber-700 hover:text-amber-800 dark:text-amber-400"
-        >
-          Employee email needed
-        </button>
-      )}
-    </>
-  )
-}
+// An employee case has no client name/email of its own until the employee is invited; the employee's name and email (typed at creation or in the client
+// portal) fill the same two places. Everything else about the row is unchanged.
+const listName = (caseItem) => caseItem.clientName || caseItem.employeeContact?.name || ''
+const listEmail = (caseItem) => caseItem.clientEmail || caseItem.employeeContact?.email || ''
 
 const CRMCases = () => {
   const navigate = useNavigate()
@@ -592,7 +564,7 @@ const CRMCases = () => {
                               <span className="text-sm font-semibold text-foreground truncate">{caseItem.caseNumber}</span>
                               <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                             </div>
-                            <p className="text-xs text-muted-foreground truncate">{caseItem.clientName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{listName(caseItem)}</p>
                             <p className="text-xs text-muted-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
                               {caseManagerName ? (
@@ -632,7 +604,7 @@ const CRMCases = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={isEmployeeCase(caseItem) ? 'font-mono text-xs text-muted-foreground' : 'font-semibold text-foreground'}>{caseItem.caseNumber}</span>
+                          <span className="font-semibold text-foreground">{caseItem.caseNumber}</span>
                           {awaitingAssignment && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0 dark:bg-amber-950/40 dark:text-amber-400">
                               <Bell className="h-2.5 w-2.5" />
@@ -640,14 +612,8 @@ const CRMCases = () => {
                             </span>
                           )}
                         </div>
-                        {isEmployeeCase(caseItem) ? (
-                          <EmployeeNameBlock caseItem={caseItem} navigate={navigate} />
-                        ) : (
-                          <>
-                            <p className="text-sm text-foreground mt-0.5 truncate">{caseItem.clientName}</p>
-                            <p className="text-xs text-muted-foreground truncate">{caseItem.clientEmail}</p>
-                          </>
-                        )}
+                        <p className="text-sm text-foreground mt-0.5 truncate">{listName(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground truncate">{listEmail(caseItem)}</p>
                       </div>
                       <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                     </div>
@@ -747,7 +713,7 @@ const CRMCases = () => {
                     >
                       <td className="px-3 py-3 align-top">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className={isEmployeeCase(caseItem) ? 'font-mono text-xs text-muted-foreground truncate' : 'font-medium truncate'} title={caseItem.caseNumber}>{caseItem.caseNumber}</span>
+                          <span className="font-medium truncate" title={caseItem.caseNumber}>{caseItem.caseNumber}</span>
                           {awaitingAssignment && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 shrink-0 dark:bg-amber-950/40 dark:text-amber-400">
                               <Bell className="h-2.5 w-2.5" />
@@ -757,14 +723,8 @@ const CRMCases = () => {
                         </div>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
-                        {isEmployeeCase(caseItem) ? (
-                          <EmployeeNameBlock caseItem={caseItem} navigate={navigate} />
-                        ) : (
-                          <>
-                            <p className="font-medium truncate" title={caseItem.clientName}>{caseItem.clientName}</p>
-                            <p className="text-xs text-muted-foreground truncate" title={caseItem.clientEmail}>{caseItem.clientEmail}</p>
-                          </>
-                        )}
+                        <p className="font-medium truncate" title={listName(caseItem)}>{listName(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={listEmail(caseItem)}>{listEmail(caseItem)}</p>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="truncate" title={resolveDisplayVisa(caseItem)}>{resolveDisplayVisa(caseItem)}</p>

@@ -354,6 +354,16 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
   )
 }
 
+// An employee's visa as one label: an extension / change reads "H-1B Extension" on its own, not "H-1B · H-1B Extension". A sub-type that does not repeat the
+// visa (for example a filing path) still follows it.
+const visaKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const employeeVisaLabel = (child) => {
+  const visa = child.visaType
+  const sub = child.petitionSubType
+  if (!sub || sub === visa) return visa
+  return visaKey(sub).includes(visaKey(visa)) ? sub : `${visa} · ${sub}`
+}
+
 const CRMCaseDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -737,14 +747,9 @@ const CRMCaseDetail = () => {
     const ownerLabel = (ownerId) => {
       if (ownerId === String(id)) return childCases?.length ? 'Petitioner / Company' : null
       const child = (childCases || []).find((c) => String(c._id) === ownerId)
-      return child ? (child.employeeContact?.name || child.clientName || child.employeeContact?.email || child.caseNumber || 'Employee') : null
+      return child ? (child.clientName || child.employeeContact?.name || child.caseNumber || 'Employee') : null
     }
-    // the employee's email and (smaller) case number, shown beside the name
-    const ownerSub = (ownerId) => {
-      const child = (childCases || []).find((c) => String(c._id) === ownerId)
-      if (!child) return ''
-      return [child.employeeContact?.email || child.clientEmail, child.caseNumber].filter(Boolean).join(' · ')
-    }
+
     return [...byOwner.entries()].map(([ownerId, forms]) => {
       const byParentCode = new Map()
       const standalone = []
@@ -764,7 +769,7 @@ const CRMCaseDetail = () => {
         byParentCode.delete(form.formCode)
       })
       byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
-      return { ownerId, label: ownerLabel(ownerId), sub: ownerSub(ownerId), rows: ordered }
+      return { ownerId, label: ownerLabel(ownerId), rows: ordered }
     })
   }, [caseForms, childCases, id])
   // Unchanged shape for every caller that doesn't need owner grouping
@@ -1891,7 +1896,7 @@ const CRMCaseDetail = () => {
     const beneficiary = caseData?.beneficiary || {}
     return [
       ['Full Name', profile.fullName || profile.name || beneficiary.fullName || caseData?.clientName],
-      ['Email', profile.email || beneficiary.email || caseData?.clientEmail],
+      ['Email', profile.email || beneficiary.email || caseData?.clientEmail || caseData?.employeeContact?.email],
       ['Phone', profile.primaryPhone || profile.phone || profile.phoneNumber || beneficiary.phone],
       ['Date of Birth', profile.dateOfBirth || beneficiary.dateOfBirth],
       ['Nationality', profile.nationality || beneficiary.nationality],
@@ -1999,20 +2004,10 @@ const CRMCaseDetail = () => {
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
-            {caseData.caseRole === 'employee' && caseData.employeeContact ? (
-              <>
-                <h1 className="text-2xl font-bold text-foreground break-words">{caseData.employeeContact.name || 'Employee name needed'}</h1>
-                <p className="text-muted-foreground mt-1 break-all">{caseData.employeeContact.email || 'Employee email needed'}</p>
-                <p className="mt-0.5 font-mono text-xs text-muted-foreground">{caseData.caseNumber}</p>
-                <div className="mt-3">
-                  <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
-                </div>
-              </>
-            ) : (
-              <>
-                <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
-                <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
-              </>
+            {/* Every case leads with who it is for - the name, then the email - and the case ID sits beside them in the ID box below. */}
+            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.clientName || caseData.employeeContact?.name || caseData.caseNumber}</h1>
+            {(caseData.clientEmail || caseData.employeeContact?.email) && (
+              <p className="text-muted-foreground mt-1 break-all">{caseData.clientEmail || caseData.employeeContact?.email}</p>
             )}
             {/* P12-S3: Case ID + copy button — the admin's fastest path to
                 share the client's Immiglance portal login ID, no DB lookup needed. */}
@@ -2041,20 +2036,26 @@ const CRMCaseDetail = () => {
               <span className="text-xs text-muted-foreground">Share with client for Immiglance portal login</span>
             </div>
           </div>
-          <button
-            onClick={() => {
-              if (isAwaitingAssignment()) {
-                setAssignError('')
-                setShowAssignModal(true)
-              } else {
-                setShowStaffDetailsModal(true)
-              }
-            }}
-            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
-          >
-            <User className="w-4 h-4" />
-            {isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
-          </button>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}
+            {caseData.caseRole === 'employee' && (
+              <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
+            )}
+            <button
+              onClick={() => {
+                if (isAwaitingAssignment()) {
+                  setAssignError('')
+                  setShowAssignModal(true)
+                } else {
+                  setShowStaffDetailsModal(true)
+                }
+              }}
+              className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+            >
+              <User className="w-4 h-4" />
+              {isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2192,27 +2193,22 @@ const CRMCaseDetail = () => {
                           className={isRemoved ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40 transition-colors'}
                           onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
                         >
-                          <td className="px-3 py-2.5 whitespace-nowrap font-mono text-xs text-muted-foreground">{child.caseNumber}</td>
-                          <td className="px-3 py-2.5 text-sm break-words">
-                            {child.employeeContact?.name || child.clientName ? (
-                              <span className="font-semibold text-foreground">{child.employeeContact?.name || child.clientName}</span>
-                            ) : !isRemoved && child.employeeContact ? (
-                              <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Name needed</span>
-                            ) : <span className="text-muted-foreground">Employee Slot</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm break-all" onClick={(e) => e.stopPropagation()}>
-                            {(child.employeeContact?.email || child.clientEmail) ? (
+                          <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
+                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || child.employeeContact?.name || child.pendingEmployee?.name || 'Employee Slot'}</td>
+                          <td className="max-w-[14rem] px-3 py-2.5 text-sm" onClick={(e) => e.stopPropagation()}>
+                            {(child.clientEmail || child.employeeContact?.email) ? (
                               <>
-                                <span className="font-medium text-foreground">{child.employeeContact?.email || child.clientEmail}</span>
-                                <span className="mt-0.5 block text-xs text-muted-foreground">
-                                  {inviteState === 'accepted' ? 'Password set' : inviteState === 'pending' ? 'Password not set yet - setup link sent' : 'Not invited yet'}
-                                </span>
+                                {/* one line: a long email is cut with an ellipsis (full address on hover) instead of wrapping */}
+                                <span className="block truncate text-foreground" title={child.clientEmail || child.employeeContact?.email}>{child.clientEmail || child.employeeContact?.email}</span>
+                                {inviteState !== 'accepted' && (
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    {inviteState === 'pending' ? 'Password not set yet - setup link sent' : 'Not invited yet'}
+                                  </span>
+                                )}
                               </>
-                            ) : !isRemoved && child.employeeContact ? (
-                              <button type="button" onClick={() => navigate(`/crm-cases/${child._id}`)} className="text-xs font-medium text-amber-700 hover:text-amber-800 dark:text-amber-400">Email needed - add details</button>
                             ) : <span className="text-muted-foreground">-</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
+                          <td className="px-3 py-2.5 text-sm text-foreground">{employeeVisaLabel(child)}</td>
                           <td className="px-3 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
                           </td>
@@ -2443,7 +2439,7 @@ const CRMCaseDetail = () => {
                   )}
                   <div className="min-w-0">
                     <p className="text-sm text-muted-foreground">{caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' ? 'Petitioner (Employer) Email' : 'Client Email'}</p>
-                    <p className="font-medium break-words">{caseData.clientEmail}</p>
+                    <p className="font-medium break-words">{caseData.clientEmail || caseData.employeeContact?.email}</p>
                   </div>
                   {caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' && caseData.delegateEmployer?.email && (
                     <div className="min-w-0">
@@ -3414,7 +3410,6 @@ const CRMCaseDetail = () => {
                       <tr className="bg-muted/40">
                         <td colSpan={6} className="py-1.5 px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                           {group.label}
-                          {group.sub && <span className="ml-2 text-[11px] font-normal normal-case tracking-normal text-muted-foreground/80">{group.sub}</span>}
                         </td>
                       </tr>
                     )}
@@ -3516,144 +3511,6 @@ const CRMCaseDetail = () => {
               </div>
             )}
 
-            {/* Phase 1: every OTHER form the VisaFormMapping registry says this
-                case's visa needs, not yet a CaseForm above - mapped-but-not-
-                provisioned and mapped-but-not-yet-fetched-from-USCIS forms are
-                otherwise completely invisible. Rows already represented in the
-                table above (a CaseForm exists) are excluded here on purpose. */}
-            {caseData?.formSelectionMode !== 'manual' && formsOverview.items.some((item) => !item.caseForm) && (
-              <div className="mt-6 pt-6 border-t border-border">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-semibold text-foreground">Other Forms for This Visa</h4>
-                  <button onClick={handleRefreshOverview} disabled={refreshingOverview} className="btn-secondary text-xs disabled:opacity-60">{refreshingOverview ? 'Refreshing…' : 'Refresh'}</button>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Every other form the registry maps to {caseData?.visaType || 'this visa type'} — not yet on this case.
-                </p>
-                {formsOverviewError && (
-                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formsOverviewError}</div>
-                )}
-                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                  Autofill covers biographic identity, contact, and address fields only — deeper, form-specific
-                  fields still need manual review. Forms are downloaded directly from the current version published
-                  on uscis.gov; always confirm the edition date matches the latest USCIS release before filing.
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px]">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Form</th>
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Status</th>
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {formsOverview.items.filter((item) => item.uiStatus !== 'AUTOFILLED' && item.uiStatus !== 'PROVISIONED').map((item) => (
-                        <tr key={item.mappingId} className="border-b border-border">
-                          <td className="py-2 px-3">
-                            <p className="font-medium text-foreground text-sm">{item.formNumber}</p>
-                            <p className="text-xs text-muted-foreground">{item.formName}</p>
-                            {item.appliesWhen && <p className="text-xs text-amber-700 mt-0.5">{item.appliesWhen}</p>}
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`badge ${getUiStatusColor(item.uiStatus)}`}>
-                              {UI_STATUS_LABEL[item.uiStatus] || item.uiStatus}
-                            </span>
-                            {item.uiStatus === 'RULE_CONFLICT' && (
-                              <p className="text-xs text-red-600 mt-1">This form's template can't be applied to this case yet — contact a registry admin.</p>
-                            )}
-                            {item.uiStatus === 'NOT_FETCHABLE_HERE' && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Issued by {item.agency} — no downloadable PDF on uscis.gov. Import it manually via the form registry.
-                              </p>
-                            )}
-                            {item.uiStatus === 'BIOGRAPHIC_READY' && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Autofill covers biographic identity, contact, and address fields only. A full field
-                                mapping review is required before this form is ready for filing.
-                              </p>
-                            )}
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {/* Only shown when there's no in-app action yet (no CaseForm on
-                                  file) - once a CaseForm exists (BIOGRAPHIC_READY/AUTOFILLED/
-                                  PROVISIONED), "Open"/"Open (Biographic Autofill)" below is the
-                                  real, correct action. Confirmed this external link sitting next
-                                  to "Open (Biographic Autofill)" was what case managers were
-                                  clicking for newly-fetched forms, landing on the raw uscis.gov
-                                  page instead of the in-app viewer. */}
-                              {item.officialPageUrl && !item.caseForm && (
-                                <a href={item.officialPageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                                  View on USCIS.gov
-                                </a>
-                              )}
-                              {item.uiStatus === 'ACQUIRE_FROM_USCIS' && (
-                                <button
-                                  onClick={() => handleAcquireForm(item)}
-                                  disabled={rowActionPending === item.mappingId}
-                                  className="btn-primary text-xs"
-                                >
-                                  {rowActionPending === item.mappingId ? 'Fetching…' : 'Fetch from USCIS'}
-                                </button>
-                              )}
-                              {item.uiStatus === 'AVAILABLE_TO_PROVISION' && (
-                                <button
-                                  onClick={() => handleProvisionMapping(item)}
-                                  disabled={rowActionPending === item.mappingId}
-                                  className="btn-primary text-xs"
-                                  title="Adds and auto-fills this one form, independently of any unresolved canonical conflict elsewhere on the case"
-                                >
-                                  Add &amp; Autofill
-                                </button>
-                              )}
-                              {item.uiStatus === 'CONDITIONAL_PENDING' && (
-                                <>
-                                  <button
-                                    onClick={() => handleDecideMapping(item, 'ADD')}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-primary text-xs"
-                                  >
-                                    Add
-                                  </button>
-                                  <button
-                                    onClick={() => handleDecideMapping(item, 'NOT_APPLICABLE')}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-secondary text-xs"
-                                  >
-                                    Not Applicable
-                                  </button>
-                                </>
-                              )}
-                              {item.uiStatus === 'BIOGRAPHIC_READY' && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      const form = caseForms.find(f => f._id === item.caseForm.id)
-                                      if (form) setSelectedCaseForm(form)
-                                    }}
-                                    className="btn-primary text-xs"
-                                  >
-                                    Open (Biographic Autofill)
-                                  </button>
-                                  <button
-                                    onClick={() => handleRequestMappingReview(item)}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-secondary text-xs"
-                                  >
-                                    Request Full Mapping Review
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </KeepTab>
