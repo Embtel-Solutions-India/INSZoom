@@ -20,6 +20,7 @@ import useCaseQuestionnaire from '../hooks/useCaseQuestionnaire'
 import CaseFormSelectionPanel from '../components/CaseFormSelectionPanel'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import { EmployeeIdentityNotice } from '../components/EmployeeIdentityForm'
 import {
   ArrowLeft,
   Trash2,
@@ -351,6 +352,16 @@ function CaseDocumentUploadPanel({ caseId, checklistItems = [], onUploaded }) {
       </div>
     </div>
   )
+}
+
+// An employee's visa as one label: an extension / change reads "H-1B Extension" on its own, not "H-1B · H-1B Extension". A sub-type that does not repeat the
+// visa (for example a filing path) still follows it.
+const visaKey = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const employeeVisaLabel = (child) => {
+  const visa = child.visaType
+  const sub = child.petitionSubType
+  if (!sub || sub === visa) return visa
+  return visaKey(sub).includes(visaKey(visa)) ? sub : `${visa} · ${sub}`
 }
 
 const CRMCaseDetail = () => {
@@ -736,8 +747,9 @@ const CRMCaseDetail = () => {
     const ownerLabel = (ownerId) => {
       if (ownerId === String(id)) return childCases?.length ? 'Petitioner / Company' : null
       const child = (childCases || []).find((c) => String(c._id) === ownerId)
-      return child ? (child.clientName || child.caseNumber || 'Employee') : null
+      return child ? (child.clientName || child.employeeContact?.name || child.caseNumber || 'Employee') : null
     }
+
     return [...byOwner.entries()].map(([ownerId, forms]) => {
       const byParentCode = new Map()
       const standalone = []
@@ -957,6 +969,14 @@ const CRMCaseDetail = () => {
   }
 
   const handleAddEmployee = () => setShowAddEmployee(true)
+  // Copies a fresh one-time setup link (it replaces any earlier one) so the Case Manager can hand it over when the email did not arrive
+  const handleCopySetupLink = (child) => runEmployeeAction(`link:${child._id}`, async () => {
+    const response = await casesApi.createEmployeeSetupLink(id, child._id)
+    const url = response.data?.setupUrl
+    if (!url) throw new Error('No setup link was returned')
+    try { await navigator.clipboard.writeText(url) } catch { window.prompt('Copy this setup link:', url) }
+    return response
+  }, 'Setup link copied. It replaces any earlier link and works until the employee sets a password.')
   const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
   const handleEmployerFillsInstead = (child) => {
     const who = child.clientName || 'this employee'
@@ -966,7 +986,7 @@ const CRMCaseDetail = () => {
   // Employer-filled slot -> invited employee: opens the name/email row under the slot; "Send invite" then switches the slot's mode.
   const handleStartInvite = (child) => {
     setEmployeeActionMessage('')
-    setInviteDraft({ childId: child._id, name: child.clientName || '', email: child.clientEmail || '' })
+    setInviteDraft({ childId: child._id, name: child.clientName || child.pendingEmployee?.name || '', email: child.clientEmail || child.pendingEmployee?.email || '' })
   }
   const handleSendInviteFromDraft = async () => {
     if (!inviteDraft?.name?.trim() || !inviteDraft?.email?.trim()) {
@@ -1876,7 +1896,7 @@ const CRMCaseDetail = () => {
     const beneficiary = caseData?.beneficiary || {}
     return [
       ['Full Name', profile.fullName || profile.name || beneficiary.fullName || caseData?.clientName],
-      ['Email', profile.email || beneficiary.email || caseData?.clientEmail],
+      ['Email', profile.email || beneficiary.email || caseData?.clientEmail || caseData?.employeeContact?.email],
       ['Phone', profile.primaryPhone || profile.phone || profile.phoneNumber || beneficiary.phone],
       ['Date of Birth', profile.dateOfBirth || beneficiary.dateOfBirth],
       ['Nationality', profile.nationality || beneficiary.nationality],
@@ -1984,8 +2004,11 @@ const CRMCaseDetail = () => {
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.caseNumber}</h1>
-            <p className="text-muted-foreground mt-1">{caseData.clientName}</p>
+            {/* Every case leads with who it is for - the name, then the email - and the case ID sits beside them in the ID box below. */}
+            <h1 className="text-2xl font-bold text-foreground break-words">{caseData.clientName || caseData.employeeContact?.name || caseData.caseNumber}</h1>
+            {(caseData.clientEmail || caseData.employeeContact?.email) && (
+              <p className="text-muted-foreground mt-1 break-all">{caseData.clientEmail || caseData.employeeContact?.email}</p>
+            )}
             {/* P12-S3: Case ID + copy button — the admin's fastest path to
                 share the client's Immiglance portal login ID, no DB lookup needed. */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -2013,20 +2036,26 @@ const CRMCaseDetail = () => {
               <span className="text-xs text-muted-foreground">Share with client for Immiglance portal login</span>
             </div>
           </div>
-          <button
-            onClick={() => {
-              if (isAwaitingAssignment()) {
-                setAssignError('')
-                setShowAssignModal(true)
-              } else {
-                setShowStaffDetailsModal(true)
-              }
-            }}
-            className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
-          >
-            <User className="w-4 h-4" />
-            {isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
-          </button>
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            {/* employee case without a name or email: a small request, to the left of the staff button, that opens the details form */}
+            {caseData.caseRole === 'employee' && (
+              <EmployeeIdentityNotice principalId={caseData.parentCase?._id || caseData.parentCase} childCase={caseData} onSaved={() => { fetchCaseDetail(true); refetchChildCases() }} />
+            )}
+            <button
+              onClick={() => {
+                if (isAwaitingAssignment()) {
+                  setAssignError('')
+                  setShowAssignModal(true)
+                } else {
+                  setShowStaffDetailsModal(true)
+                }
+              }}
+              className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto shrink-0"
+            >
+              <User className="w-4 h-4" />
+              {isAwaitingAssignment() ? 'Assign Staff' : 'Edit Staff'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2089,7 +2118,7 @@ const CRMCaseDetail = () => {
         // case.constants.js's CASE_STATUSES comment on removeEmployee).
         const childStatusPill = (child) => {
           if (child.status === 'removed') return { label: 'Withdrawn', className: 'bg-secondary text-muted-foreground line-through' }
-          if (!child.clientName && !child.clientEmail) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
+          if (!child.clientName && !child.clientEmail && !child.pendingEmployee?.email) return { label: 'Not Identified', className: 'bg-secondary text-foreground' }
           if (child.user && String(child.user) !== String(caseData.user?._id || caseData.user)) {
             // inviteStatus comes from GET /cases/:id/related ("pending" until the employee sets a password); an older backend omits it
             if (child.inviteStatus === 'accepted') return { label: 'Accepted', className: 'bg-green-100 text-green-800' }
@@ -2141,6 +2170,7 @@ const CRMCaseDetail = () => {
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
@@ -2164,8 +2194,21 @@ const CRMCaseDetail = () => {
                           onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
                         >
                           <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
-                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || 'Employee Slot'}</td>
-                          <td className="px-3 py-2.5 text-sm text-foreground">{child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}</td>
+                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || child.employeeContact?.name || child.pendingEmployee?.name || 'Employee Slot'}</td>
+                          <td className="max-w-[14rem] px-3 py-2.5 text-sm" onClick={(e) => e.stopPropagation()}>
+                            {(child.clientEmail || child.employeeContact?.email) ? (
+                              <>
+                                {/* one line: a long email is cut with an ellipsis (full address on hover) instead of wrapping */}
+                                <span className="block truncate text-foreground" title={child.clientEmail || child.employeeContact?.email}>{child.clientEmail || child.employeeContact?.email}</span>
+                                {inviteState !== 'accepted' && (
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    {inviteState === 'pending' ? 'Password not set yet - setup link sent' : 'Not invited yet'}
+                                  </span>
+                                )}
+                              </>
+                            ) : <span className="text-muted-foreground">-</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-sm text-foreground">{employeeVisaLabel(child)}</td>
                           <td className="px-3 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
                           </td>
@@ -2210,6 +2253,17 @@ const CRMCaseDetail = () => {
                                 {/* The same four actions for every employee slot of every employer matter (View, invite/resend, employer
                                     fills instead, Withdraw); the second and third are disabled - never hidden - when the slot's state makes
                                     them meaningless, so the row looks and behaves the same whatever the visa type. */}
+                                {isEmployerMatter && inviteState === 'pending' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopySetupLink(child)}
+                                    disabled={employeeActionBusy === `link:${child._id}`}
+                                    title="Copy a one-time link the employee opens to set their own password"
+                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
+                                  >
+                                    {employeeActionBusy === `link:${child._id}` ? 'Copying…' : 'Copy setup link'}
+                                  </button>
+                                )}
                                 {isEmployerMatter && (inviteState === 'none' ? (
                                   <button
                                     type="button"
@@ -2257,7 +2311,7 @@ const CRMCaseDetail = () => {
                         </tr>
                         {inviteDraft?.childId === child._id && (
                           <tr className="bg-muted/40">
-                            <td colSpan={7} className="px-5 py-3">
+                            <td colSpan={8} className="px-5 py-3">
                               <div className="flex flex-wrap items-center gap-2">
                                 <input className="input-field text-sm max-w-[14rem]" placeholder="Employee full name" value={inviteDraft.name} onChange={(e) => setInviteDraft({ ...inviteDraft, name: e.target.value })} />
                                 <input type="email" className="input-field text-sm max-w-[16rem]" placeholder="Employee email" value={inviteDraft.email} onChange={(e) => setInviteDraft({ ...inviteDraft, email: e.target.value })} />
@@ -2385,7 +2439,7 @@ const CRMCaseDetail = () => {
                   )}
                   <div className="min-w-0">
                     <p className="text-sm text-muted-foreground">{caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' ? 'Petitioner (Employer) Email' : 'Client Email'}</p>
-                    <p className="font-medium break-words">{caseData.clientEmail}</p>
+                    <p className="font-medium break-words">{caseData.clientEmail || caseData.employeeContact?.email}</p>
                   </div>
                   {caseData.caseStructure === 'employer_employee' && caseData.caseRole === 'principal' && caseData.delegateEmployer?.email && (
                     <div className="min-w-0">
@@ -3284,7 +3338,7 @@ const CRMCaseDetail = () => {
                 <p className="text-sm text-muted-foreground">Edition-locked and populated from the case's checklist and profile data. Use Manage forms to decide which forms this case has.</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => setShowManageForms(true)} className={caseData?.formSelectionMode === 'manual' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>{caseData?.formSelectionMode === 'manual' ? 'Add form' : 'Manage forms'}</button>
+                <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
                 <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
                   {tabLoading.forms ? 'Generating…' : caseForms.length ? 'Refresh Auto Fill' : 'Generate USCIS Forms'}
@@ -3441,10 +3495,10 @@ const CRMCaseDetail = () => {
                 {caseData?.formSelectionMode === 'manual' ? (
                   <>
                     <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
-                      Forms are added to this case by its Case Manager. Click <strong>Add form</strong>, type the form number or name, and the form is linked to this
+                      Forms are added to this case by its Case Manager. Click <strong>Manage forms</strong>, type the form number or name, and the form is linked to this
                       case's checklists and filled from the client's answers. You can then open it and complete the rest.
                     </p>
-                    <button onClick={() => setShowManageForms(true)} className="btn-primary text-sm mt-4">Add form</button>
+                    <button onClick={() => setShowManageForms(true)} className="btn-primary text-sm mt-4">Manage forms</button>
                   </>
                 ) : (
                   <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">
@@ -3457,144 +3511,6 @@ const CRMCaseDetail = () => {
               </div>
             )}
 
-            {/* Phase 1: every OTHER form the VisaFormMapping registry says this
-                case's visa needs, not yet a CaseForm above - mapped-but-not-
-                provisioned and mapped-but-not-yet-fetched-from-USCIS forms are
-                otherwise completely invisible. Rows already represented in the
-                table above (a CaseForm exists) are excluded here on purpose. */}
-            {caseData?.formSelectionMode !== 'manual' && formsOverview.items.some((item) => !item.caseForm) && (
-              <div className="mt-6 pt-6 border-t border-border">
-                <div className="flex items-center justify-between mb-1">
-                  <h4 className="font-semibold text-foreground">Other Forms for This Visa</h4>
-                  <button onClick={handleRefreshOverview} disabled={refreshingOverview} className="btn-secondary text-xs disabled:opacity-60">{refreshingOverview ? 'Refreshing…' : 'Refresh'}</button>
-                </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Every other form the registry maps to {caseData?.visaType || 'this visa type'} — not yet on this case.
-                </p>
-                {formsOverviewError && (
-                  <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{formsOverviewError}</div>
-                )}
-                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-                  Autofill covers biographic identity, contact, and address fields only — deeper, form-specific
-                  fields still need manual review. Forms are downloaded directly from the current version published
-                  on uscis.gov; always confirm the edition date matches the latest USCIS release before filing.
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px]">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Form</th>
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Status</th>
-                        <th className="text-left py-2 px-3 font-medium text-muted-foreground text-sm">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {formsOverview.items.filter((item) => item.uiStatus !== 'AUTOFILLED' && item.uiStatus !== 'PROVISIONED').map((item) => (
-                        <tr key={item.mappingId} className="border-b border-border">
-                          <td className="py-2 px-3">
-                            <p className="font-medium text-foreground text-sm">{item.formNumber}</p>
-                            <p className="text-xs text-muted-foreground">{item.formName}</p>
-                            {item.appliesWhen && <p className="text-xs text-amber-700 mt-0.5">{item.appliesWhen}</p>}
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`badge ${getUiStatusColor(item.uiStatus)}`}>
-                              {UI_STATUS_LABEL[item.uiStatus] || item.uiStatus}
-                            </span>
-                            {item.uiStatus === 'RULE_CONFLICT' && (
-                              <p className="text-xs text-red-600 mt-1">This form's template can't be applied to this case yet — contact a registry admin.</p>
-                            )}
-                            {item.uiStatus === 'NOT_FETCHABLE_HERE' && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Issued by {item.agency} — no downloadable PDF on uscis.gov. Import it manually via the form registry.
-                              </p>
-                            )}
-                            {item.uiStatus === 'BIOGRAPHIC_READY' && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Autofill covers biographic identity, contact, and address fields only. A full field
-                                mapping review is required before this form is ready for filing.
-                              </p>
-                            )}
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {/* Only shown when there's no in-app action yet (no CaseForm on
-                                  file) - once a CaseForm exists (BIOGRAPHIC_READY/AUTOFILLED/
-                                  PROVISIONED), "Open"/"Open (Biographic Autofill)" below is the
-                                  real, correct action. Confirmed this external link sitting next
-                                  to "Open (Biographic Autofill)" was what case managers were
-                                  clicking for newly-fetched forms, landing on the raw uscis.gov
-                                  page instead of the in-app viewer. */}
-                              {item.officialPageUrl && !item.caseForm && (
-                                <a href={item.officialPageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                                  View on USCIS.gov
-                                </a>
-                              )}
-                              {item.uiStatus === 'ACQUIRE_FROM_USCIS' && (
-                                <button
-                                  onClick={() => handleAcquireForm(item)}
-                                  disabled={rowActionPending === item.mappingId}
-                                  className="btn-primary text-xs"
-                                >
-                                  {rowActionPending === item.mappingId ? 'Fetching…' : 'Fetch from USCIS'}
-                                </button>
-                              )}
-                              {item.uiStatus === 'AVAILABLE_TO_PROVISION' && (
-                                <button
-                                  onClick={() => handleProvisionMapping(item)}
-                                  disabled={rowActionPending === item.mappingId}
-                                  className="btn-primary text-xs"
-                                  title="Adds and auto-fills this one form, independently of any unresolved canonical conflict elsewhere on the case"
-                                >
-                                  Add &amp; Autofill
-                                </button>
-                              )}
-                              {item.uiStatus === 'CONDITIONAL_PENDING' && (
-                                <>
-                                  <button
-                                    onClick={() => handleDecideMapping(item, 'ADD')}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-primary text-xs"
-                                  >
-                                    Add
-                                  </button>
-                                  <button
-                                    onClick={() => handleDecideMapping(item, 'NOT_APPLICABLE')}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-secondary text-xs"
-                                  >
-                                    Not Applicable
-                                  </button>
-                                </>
-                              )}
-                              {item.uiStatus === 'BIOGRAPHIC_READY' && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      const form = caseForms.find(f => f._id === item.caseForm.id)
-                                      if (form) setSelectedCaseForm(form)
-                                    }}
-                                    className="btn-primary text-xs"
-                                  >
-                                    Open (Biographic Autofill)
-                                  </button>
-                                  <button
-                                    onClick={() => handleRequestMappingReview(item)}
-                                    disabled={rowActionPending === item.mappingId}
-                                    className="btn-secondary text-xs"
-                                  >
-                                    Request Full Mapping Review
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </KeepTab>

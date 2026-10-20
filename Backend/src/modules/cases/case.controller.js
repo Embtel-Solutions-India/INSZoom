@@ -1,4 +1,6 @@
 const path = require("path");
+const { validateEmployeeSlots } = require("./employee-slots");
+const { validateIdentityInput, employeeContact, isUninvitedEmployee } = require("./employee-identity");
 const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const { pipelineCategoryFields } = require("../../utils/pipelineCategory");
 const multer = require("multer");
@@ -431,6 +433,9 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
   if (!caseData.user) return;
   const caseManager = await User.findById(caseManagerId).select("name displayName").catch(() => null);
   const caseManagerName = caseManager?.name || caseManager?.displayName || "your case manager";
+  // An employee who has not been invited yet is not told anything: the email goes to the account that holds the file (the employer), never to the typed address.
+  const holder = caseData.caseRole === "employee" ? await User.findById(caseData.user).select("role").lean().catch(() => null) : null;
+  const clientEmailTo = isUninvitedEmployee(caseData, holder) ? undefined : caseData.clientEmail;
   const isReassignment = Boolean(previousCaseManagerId);
   const emailTemplate = isReassignment ? "case-manager-reassigned" : "case-manager-assigned";
   // env.clientUrl is the Client portal's own origin — /dashboard/* has
@@ -450,7 +455,7 @@ async function notifyClientOfCaseManagerAssignment(caseData, caseManagerId, prev
     source: "shared",
     channels: ["in_app", "socket", "push", "email"],
     emailTemplate,
-    emailTo: caseData.clientEmail,
+    emailTo: clientEmailTo,
     emailData: {
       clientName: caseData.clientName,
       caseNumber: caseData.caseNumber || caseData.caseId,
@@ -1072,6 +1077,7 @@ exports.createCase = async (req, res, next) => {
       creationSource: requestedCreationSource,
       dataEntryMode,
       employerCompletionMode,
+      employees,
       employerEmail,
       employerName,
       extension,
@@ -1154,6 +1160,14 @@ exports.createCase = async (req, res, next) => {
     }
 
     const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
+    // Every employee case of an employer matter - the ones created automatically too - is created with the name and email of the person it is for.
+    let employeeSlots = [];
+    // (the Create Case form always sends them and will not submit without them; a caller that sends none - an import, an older client - keeps working as before)
+    if (caseStructure === "employer_employee" && resolvedChildCaseCount > 0 && employees !== undefined) {
+      const problem = validateEmployeeSlots(employees, resolvedChildCaseCount, [email, cleanEmail(employerEmail)]);
+      if (problem.message) return res.status(400).json({ success: false, code: "EMPLOYEE_DETAILS_REQUIRED", message: problem.message });
+      employeeSlots = problem.slots;
+    }
     const resolvedDataEntryMode = resolveDataEntryMode(caseStructure, dataEntryMode);
     const packageInput = req.body.package || packageName || req.body.primaryPackage || req.body.plan?.tier;
     const normalizedPackage = packageInput ? normalizePackageName(packageInput) : "";
@@ -1464,6 +1478,7 @@ exports.createCase = async (req, res, next) => {
           employerProfileId: employerProfile?._id || null,
           dataEntryMode: resolvedDataEntryMode,
           assignmentOverridden: false,
+          ...(employeeSlots[index] ? { pendingEmployee: employeeSlots[index], employeeIdentity: employeeSlots[index] } : {}),
         }]);
         created.caseIds.push(childCase._id);
 
@@ -2388,6 +2403,7 @@ exports.inviteEmployee = async (req, res, next) => {
     childCase.user = employeeUser._id;
     childCase.clientName = trimmedName;
     childCase.clientEmail = normalizedEmail;
+    childCase.employeeIdentity = { name: trimmedName, email: normalizedEmail };
     childCase.employeeDataEntryMode = "invite";
     childCase.employeeDataEntryModeChangedAt = new Date();
     childCase.employeeDataEntryModeChangedBy = req.user._id;
@@ -2744,6 +2760,97 @@ exports.resendEmployeeInvite = async (req, res, next) => {
       inviteStatus: "sent",
       message: `Invitation re-sent to ${employeeUser.email}`,
       caseId: childCase._id,
+    });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+
+/**
+ * PATCH /api/cases/:principalId/employees/:childCaseId/identity   { name?, email? }
+ * Who an employee case is. Staff (when creating / managing the case) and the employer (in the client portal) both write the SAME fields on the child
+ * case, so what one side types is what the other sees. Only for an employee who has no login of their own yet - once invited, the invitation's name
+ * and email are the employee's own. Does not invite anyone and does not change who fills the information in.
+ */
+exports.setEmployeeIdentity = async (req, res, next) => {
+  try {
+    const { principalId, childCaseId } = req.params;
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+    const isStaff = PHASE9_STAFF_ROLES.has(req.user.role) || req.user.role === "case_manager";
+    const isOwner = delegateEmployerService.isEmployerSide(principal, req.user);
+    if (!isOwner && !(isStaff && caseService.canAccessCase(req.user, principal))) {
+      return res.status(403).json({ success: false, message: "Not authorized to update this employee" });
+    }
+    const childCase = await Case.findOne({ _id: childCaseId, parentCase: principal._id });
+    if (!childCase) return res.status(404).json({ success: false, message: "Employee case not found or does not belong to this case" });
+    if (childCase.caseRole !== "employee") return res.status(400).json({ success: false, message: "This case is not an employee case" });
+    if (childCase.status === "removed") return res.status(409).json({ success: false, code: "EMPLOYEE_REMOVED", message: "Restore this employee before changing their details." });
+    if (childCase.user && String(childCase.user) !== String(principal.user)) {
+      return res.status(409).json({ success: false, code: "ALREADY_INVITED", message: "This employee has their own login, so their name and email come from their invitation." });
+    }
+
+    const siblings = await Case.find({ parentCase: principal._id, caseRole: "employee", _id: { $ne: childCase._id }, status: { $ne: "removed" } }).select("employeeIdentity pendingEmployee clientEmail").lean();
+    const checked = validateIdentityInput(req.body || {}, {
+      blockedEmails: [principal.clientEmail, principal.employerEmail],
+      siblingEmails: siblings.map((sibling) => employeeContact({ ...sibling, caseRole: "employee" })?.email),
+    });
+    if (checked.message) return res.status(400).json({ success: false, code: "INVALID_EMPLOYEE_IDENTITY", message: checked.message });
+
+    const before = employeeContact(childCase.toObject());
+    const next = { name: checked.identity.name ?? before?.name ?? "", email: checked.identity.email ?? before?.email ?? "" };
+    childCase.employeeIdentity = next;
+    childCase.pendingEmployee = next;
+    // A slot added with typed values keeps them on clientName/clientEmail too (addEmployeeSlot); keep those in step so nothing reads a stale value.
+    if (childCase.clientName) childCase.clientName = next.name || childCase.clientName;
+    if (childCase.clientEmail) childCase.clientEmail = next.email || childCase.clientEmail;
+    await childCase.save();
+    require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: the employee is now named; no-op unless enabled
+    await caseService.writeAuditLog("employee_identity_updated", childCase, req.user, { name: next.name, email: next.email, previous: { name: before?.name || "", email: before?.email || "" } }, req);
+    return res.status(200).json({ success: true, childCaseId: childCase._id, employeeContact: employeeContact(childCase.toObject()) });
+  } catch (err) {
+    handleError(err, next);
+  }
+};
+
+/**
+ * POST /api/cases/:principalId/employee-setup-link  { childCaseId }
+ *
+ * A fresh one-time link the invited employee opens to choose their own password - for the Case Manager (or the employer) to copy and hand over when the email did
+ * not arrive. Passwords are never stored in a readable form, so there is no password to show: the link is how the person sets one. Creating a link replaces any
+ * earlier one; it is valid only while the employee has not set a password yet.
+ */
+exports.createEmployeeSetupLink = async (req, res, next) => {
+  try {
+    const { principalId } = req.params;
+    const { childCaseId } = req.body || {};
+    if (!childCaseId) return res.status(400).json({ success: false, message: "childCaseId is required" });
+    const principal = await Case.findById(principalId);
+    if (!principal) return res.status(404).json({ success: false, message: "Principal case not found" });
+    if (!PHASE9_STAFF_ROLES.has(req.user.role) && !delegateEmployerService.isEmployerSide(principal, req.user)) {
+      return res.status(403).json({ success: false, message: "Not authorized for this case" });
+    }
+    const childCase = await Case.findOne({ _id: childCaseId, parentCase: principal._id });
+    if (!childCase) return res.status(404).json({ success: false, message: "Child case not found or does not belong to this principal case" });
+    if (!childCase.user || String(childCase.user) === String(principal.user)) {
+      return res.status(409).json({ success: false, code: "NOT_YET_INVITED", message: "This employee has no login yet - invite them first." });
+    }
+    const employeeUser = await User.findById(childCase.user).select("+password +inviteTokenHash");
+    if (!employeeUser) return res.status(404).json({ success: false, message: "The employee account was not found" });
+    if (employeeUser.password) {
+      return res.status(409).json({ success: false, code: "ALREADY_ACCEPTED", message: "This employee has already set a password." });
+    }
+    const setupToken = generateOpaqueToken();
+    employeeUser.inviteTokenHash = hashToken(setupToken);
+    employeeUser.inviteTokenExpiresAt = new Date(Date.now() + CLIENT_SETUP_TOKEN_EXPIRY_MS);
+    await employeeUser.save();
+    await caseService.writeAuditLog("employee_setup_link_created", childCase, req.user, { email: employeeUser.email }, req);
+    return res.status(200).json({
+      success: true,
+      email: employeeUser.email,
+      setupUrl: `${require("../email/portalUrls").portalUrl("client")}/accept-invite?token=${setupToken}`,
+      expiresAt: employeeUser.inviteTokenExpiresAt,
     });
   } catch (err) {
     handleError(err, next);

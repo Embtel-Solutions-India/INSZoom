@@ -61,6 +61,13 @@ const TRIGGERS = [
   t("case-denied", "Case Denied", "Case Status", "client", "USCIS denied the case.", { groups: ["Client", "Case", "Case Manager", "Attorney"] }),
   t("premium-processing-upgraded", "Upgraded to Premium Processing", "Case Status", "client", "The case was upgraded to Premium Processing (Form I-907).", { groups: ["Client", "Case"] }),
   t("case-closed", "Case Closed", "Case Status", "client", "The case was closed.", { groups: ["Client", "Case", "Case Manager"] }),
+
+  t("task-assigned", "Task Assigned", "Internal Team", "team_member", "A staff member is told a task was assigned to them, with its details and deadline.", { groups: ["System"] }),
+  t("task-self-created", "Task Created for Yourself", "Internal Team", "team_member", "A staff member who created a task for themselves gets it confirmed, with its details and deadline.", { groups: ["System"] }),
+  t("task-deadline-reminder", "Task Deadline Approaching (Assignee)", "Internal Team", "team_member", "Two days or less before a task's deadline, while it is still open, the person responsible is reminded to finish it.", { groups: ["System"] }),
+  t("task-deadline-creator", "Task Deadline Approaching (Assigner)", "Internal Team", "team_member", "The person who assigned a task is told it is nearing its deadline and is not done.", { groups: ["System"] }),
+  t("task-overdue", "Task Overdue (Assignee)", "Internal Team", "team_member", "A task's deadline has passed and it is not complete: the person responsible is told.", { groups: ["System"] }),
+  t("task-overdue-creator", "Task Overdue (Assigner)", "Internal Team", "team_member", "A task's deadline has passed and it is not complete: the person who assigned it is told.", { groups: ["System"] }),
 ];
 
 // ── audience on the 35 built-in emails (for library filtering) ──────────

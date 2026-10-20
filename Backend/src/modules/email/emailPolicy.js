@@ -89,6 +89,13 @@ const EVENT_EMAIL_POLICY = {
 // Plain-language rules, shown on the Email Templates page and in the docs.
 // `when` = trigger + audience; `unless` = the cases where nothing is sent.
 const SEND_RULES = {
+  // ── task emails (modules/tasks/task-alerts.service.js) ───────────────
+  "task-assigned": { when: "A task is created for, or handed to, someone other than the person who created it.", unless: "The person assigned it to themselves - they get the 'Task created for yourself' email instead." },
+  "task-self-created": { when: "Someone creates a task for themselves.", unless: "The task is assigned to somebody else." },
+  "task-deadline-reminder": { when: "A task is still open and its deadline is 2 days away or less. Sent once per task and deadline to the person responsible.", unless: "The task is completed or cancelled, or the reminder was already sent for this deadline." },
+  "task-deadline-creator": { when: "The same moment as the assignee's reminder, to the person who assigned the task, so they know it is not done.", unless: "The assignee and the creator are the same person (they get only their own reminder)." },
+  "task-overdue": { when: "A task's deadline has passed and it is not completed. Sent once to the person responsible.", unless: "The task is completed or cancelled, or its deadline passed more than 2 days before this was first noticed." },
+  "task-overdue-creator": { when: "The same moment as the assignee's overdue notice, to the person who assigned the task.", unless: "The assignee and the creator are the same person." },
   // ── built-in emails (existing call sites; unchanged logic) ───────────
   "client-portal-invitation": { when: "A staff member creates a case for a client who has not set a password yet (also when the client asks for a new activation link).", unless: "The client already has an active account - they get the 'Case created' email instead, never both." },
   "employee-case-invitation": { when: "An employer invites an employee to complete their part of the case (or resends the invite).", unless: "The case is not in 'invite' mode, or the employee was already invited." },

@@ -2,6 +2,7 @@ const Task = require("../../models/Task");
 const User = require("../../models/User");
 const { createCrudController } = require("../../utils/crudFactory");
 const { normalizeRole } = require("../authorization/roleHierarchy");
+const taskAlerts = require("./task-alerts.service");
 
 function idOf(value) {
   return value?._id?.toString?.() || value?.toString?.();
@@ -94,13 +95,15 @@ const base = createCrudController(Task, {
   canAccess: canAccessTask,
   beforeCreate: resolveAssignment,
   beforeUpdate: protectAssignmentChanges,
+  afterCreate: (task, req) => taskAlerts.onTaskCreated(task, req.user, req),
+  afterUpdate: (task, previous, req) => taskAlerts.onTaskUpdated(task, previous, req.user, req),
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Week-over-week % change; null when there is nothing to compare against.
 function pctChange(current, previous) {
-  if (!previous) return current ? 100 : null;
+  if (!previous) return null;
   return Math.round(((current - previous) / previous) * 100);
 }
 
@@ -167,12 +170,33 @@ async function myTasks(req, res, next) {
   return base.list(req, res, next);
 }
 
+// Every task due inside the requested window, in the caller's scope. The generic list is paged at 25 rows, which silently
+// dropped most of a busy month from the calendar, so the calendar reads its own (bounded) query instead.
+const CALENDAR_MAX_TASKS = 2000;
 async function calendar(req, res, next) {
-  if (req.query.startDate || req.query.endDate) {
-    req.query.from = req.query.startDate;
-    req.query.to = req.query.endDate;
+  try {
+    const from = new Date(req.query.startDate || req.query.from);
+    const to = new Date(req.query.endDate || req.query.to);
+    const filter = { ...taskScope(req.user) };
+    if (!Number.isNaN(from.getTime()) || !Number.isNaN(to.getTime())) {
+      filter.dueDate = {};
+      if (!Number.isNaN(from.getTime())) filter.dueDate.$gte = from;
+      if (!Number.isNaN(to.getTime())) filter.dueDate.$lte = to;
+    } else {
+      filter.dueDate = { $ne: null };
+    }
+    ["status", "priority", "category", "assignedTo"].forEach((key) => {
+      if (req.query[key]) filter[key] = req.query[key];
+    });
+    const tasks = await Task.find(filter)
+      .sort({ dueDate: 1 })
+      .limit(CALENDAR_MAX_TASKS)
+      .populate("assignedTo assignedBy caseId companyId teamId")
+      .lean();
+    res.json({ success: true, items: tasks, data: tasks, tasks, total: tasks.length });
+  } catch (error) {
+    next(error);
   }
-  return base.list(req, res, next);
 }
 
 async function addComment(req, res, next) {

@@ -26,6 +26,12 @@ const TEMPLATE_AUDIENCE = {
   "client-intake-submitted-case-manager": "team_member",
   "questionnaire-progress-saved": "team_member",
   "form-pipeline-alert": "team_member",
+  "task-assigned": "team_member",
+  "task-self-created": "team_member",
+  "task-deadline-reminder": "team_member",
+  "task-deadline-creator": "team_member",
+  "task-overdue": "team_member",
+  "task-overdue-creator": "team_member",
   "employee-case-invitation": "client",
   "employee-access-restored": "client",
   "staff-credentials": "team_member",
@@ -112,6 +118,12 @@ const TEMPLATES = {
   "questionnaire-submitted-team": require("./templates/questionnaire-submitted-team"),
   "client-message-team-alert": require("./templates/client-message-team-alert"),
   "form-pipeline-alert": require("./templates/form-pipeline-alert"),
+  "task-assigned": require("./templates/task-alerts").assigned,
+  "task-self-created": require("./templates/task-alerts").selfCreated,
+  "task-deadline-reminder": require("./templates/task-alerts").dueSoon,
+  "task-deadline-creator": require("./templates/task-alerts").dueSoonCreator,
+  "task-overdue": require("./templates/task-alerts").overdue,
+  "task-overdue-creator": require("./templates/task-alerts").overdueCreator,
 };
 
 // The transport/provider (SMTP today, swappable via EMAIL_PROVIDER) is fully

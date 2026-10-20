@@ -2,16 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
-import {
-  Filter,
-  Search,
-  Plus,
-  Calendar,
-  Clock,
-  AlertTriangle,
-  CheckCircle,
-  ArrowLeft,
-} from 'lucide-react'
+import { Search, Plus, Calendar, ArrowLeft } from 'lucide-react'
+import { STATUS_DOT, PRIORITY_DOT, formatLabel } from '../components/tasks/taskStyle'
+
+const CONTROL = 'rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring'
 
 const MyTasks = ({ mode = 'my' }) => {
   const { user } = useAuth()
@@ -75,46 +69,13 @@ const MyTasks = ({ mode = 'my' }) => {
     setFilteredTasks(filtered)
   }
 
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: 'bg-secondary text-foreground',
-      assigned: 'bg-primary/10 text-primary',
-      in_progress: 'bg-yellow-100 text-yellow-800',
-      waiting: 'bg-orange-100 text-orange-800',
-      completed: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800'
-    }
-    return colors[status] || 'bg-secondary text-foreground'
-  }
-
-  const getPriorityColor = (priority) => {
-    const colors = {
-      low: 'bg-secondary text-foreground',
-      medium: 'bg-primary/10 text-primary',
-      high: 'bg-orange-100 text-orange-800',
-      urgent: 'bg-red-100 text-red-800'
-    }
-    return colors[priority] || 'bg-secondary text-foreground'
-  }
-
-  const getPriorityIcon = (priority) => {
-    switch (priority) {
-      case 'urgent': return <AlertTriangle className="w-4 h-4 text-red-600" />
-      case 'high': return <AlertTriangle className="w-4 h-4 text-orange-600" />
-      case 'medium': return <Clock className="w-4 h-4 text-primary" />
-      default: return <CheckCircle className="w-4 h-4 text-muted-foreground" />
-    }
-  }
-
   const isOverdue = (dueDate) => {
     if (!dueDate) return false
     const parsed = new Date(dueDate)
     return !Number.isNaN(parsed.getTime()) && parsed < new Date()
   }
 
-  const formatStatus = (status) => {
-    return String(status || 'pending').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
-  }
+  const formatStatus = (status) => formatLabel(status, 'pending')
 
   const formatDate = (date) => {
     if (!date) return 'Not set'
@@ -139,23 +100,32 @@ const MyTasks = ({ mode = 'my' }) => {
     )
   }
 
+  const isTitleAll = mode === 'all'
+  const overdueCount = tasks.filter(t => isOverdue(t.dueDate) && t.status !== 'completed' && t.status !== 'cancelled').length
+  const summary = [
+    { label: 'Total tasks', value: tasks.length },
+    { label: 'In progress', value: tasks.filter(t => t.status === 'in_progress').length },
+    { label: 'Completed', value: tasks.filter(t => t.status === 'completed').length },
+    { label: 'Overdue', value: overdueCount, bad: overdueCount > 0 }
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => navigate('/tasks')}
-            className="p-2 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
             aria-label="Back to task dashboard"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="h-4 w-4" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">{mode === 'all' ? 'All Tasks' : 'My Tasks'}</h1>
-            <p className="text-muted-foreground mt-1">
-              {mode === 'all'
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{isTitleAll ? 'All tasks' : 'My tasks'}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isTitleAll
                 ? 'Tasks available within your authorized scope'
                 : 'Manage your assigned tasks'}
             </p>
@@ -164,163 +134,130 @@ const MyTasks = ({ mode = 'my' }) => {
         {['super_admin', 'admin', 'team_lead', 'case_manager'].includes(user?.role) && (
           <button
             onClick={() => navigate('/tasks/create')}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary/90"
           >
-            <Plus className="w-5 h-5" />
-            Create Task
+            <Plus className="h-4 w-4" />
+            Create task
           </button>
         )}
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-card rounded-xl shadow-sm p-4 border border-border">
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={filters.search}
-              onChange={(e) => handleFilterChange('search', e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-            />
+      {/* Key figures */}
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border bg-card lg:grid-cols-4 [&>*]:border-border [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t lg:[&>*]:border-t-0 lg:[&>*:not(:first-child)]:border-l">
+        {summary.map(({ label, value, bad }) => (
+          <div key={label} className="px-6 py-4">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${bad ? 'text-red-600' : 'text-foreground'}`}>{value}</p>
           </div>
-
-          <select
-            value={filters.status}
-            onChange={(e) => handleFilterChange('status', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="assigned">Assigned</option>
-            <option value="in_progress">In Progress</option>
-            <option value="waiting">Waiting</option>
-            <option value="completed">Completed</option>
-          </select>
-
-          <select
-            value={filters.priority}
-            onChange={(e) => handleFilterChange('priority', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All Priority</option>
-            <option value="urgent">Urgent</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-
-          <select
-            value={filters.category}
-            onChange={(e) => handleFilterChange('category', e.target.value)}
-            className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="">All Categories</option>
-            <option value="case_preparation">Case Preparation</option>
-            <option value="document_review">Document Review</option>
-            <option value="legal_review">Legal Review</option>
-            <option value="expert_letter">Expert Letter</option>
-            <option value="filing">Filing</option>
-            <option value="rfe_response">RFE Response</option>
-            <option value="follow_up">Follow Up</option>
-            <option value="administrative">Administrative</option>
-            <option value="finance">Finance</option>
-            <option value="client_communication">Client Communication</option>
-          </select>
-
-          <button
-            onClick={() => setFilters({ status: '', priority: '', category: '', search: '' })}
-            className="px-4 py-2 text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted transition-colors"
-          >
-            Clear Filters
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Tasks List */}
-      <div className="bg-card rounded-xl shadow-sm border border-border">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={filters.search}
+            onChange={(e) => handleFilterChange('search', e.target.value)}
+            className={`${CONTROL} w-full pl-9`}
+          />
+        </div>
+
+        <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)} className={CONTROL}>
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="assigned">Assigned</option>
+          <option value="in_progress">In Progress</option>
+          <option value="waiting">Waiting</option>
+          <option value="completed">Completed</option>
+        </select>
+
+        <select value={filters.priority} onChange={(e) => handleFilterChange('priority', e.target.value)} className={CONTROL}>
+          <option value="">All priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+
+        <select value={filters.category} onChange={(e) => handleFilterChange('category', e.target.value)} className={CONTROL}>
+          <option value="">All categories</option>
+          <option value="case_preparation">Case Preparation</option>
+          <option value="document_review">Document Review</option>
+          <option value="legal_review">Legal Review</option>
+          <option value="expert_letter">Expert Letter</option>
+          <option value="filing">Filing</option>
+          <option value="rfe_response">RFE Response</option>
+          <option value="follow_up">Follow Up</option>
+          <option value="administrative">Administrative</option>
+          <option value="finance">Finance</option>
+          <option value="client_communication">Client Communication</option>
+        </select>
+
+        <button
+          onClick={() => setFilters({ status: '', priority: '', category: '', search: '' })}
+          className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          Clear filters
+        </button>
+      </div>
+
+      {/* Tasks list */}
+      <section className="rounded-xl border border-border bg-card">
+        <div className="flex items-baseline justify-between border-b border-border px-6 py-4">
+          <h3 className="text-sm font-semibold text-foreground">Tasks</h3>
+          <span className="text-xs tabular-nums text-muted-foreground">{filteredTasks.length} of {tasks.length}</span>
+        </div>
         {filteredTasks.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-secondary rounded-full mb-4">
-              <Calendar className="w-8 h-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">No tasks found</h3>
-            <p className="text-muted-foreground">Try adjusting your filters or create a new task</p>
+          <div className="py-14 text-center">
+            <Calendar className="mx-auto h-6 w-6 text-muted-foreground/60" />
+            <h3 className="mt-3 text-sm font-semibold text-foreground">No tasks found</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Try adjusting your filters or create a new task</p>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {filteredTasks.map(task => (
-              <div
-                key={task._id}
-                onClick={() => navigate(`/tasks/${task._id}`)}
-                className="p-4 hover:bg-muted transition-colors cursor-pointer"
-              >
-                <div className="flex items-start gap-4">
-                  <div className="mt-1">
-                    {getPriorityIcon(task.priority)}
-                  </div>
-                  
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="font-semibold text-foreground">{task.title}</h3>
-                        {task.description && (
-                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                        )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                            {String(task.priority || 'medium').charAt(0).toUpperCase() + String(task.priority || 'medium').slice(1)}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
-                            {formatStatus(task.status)}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                            {formatStatus(task.category || 'general')}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-medium ${isOverdue(task.dueDate) && task.status !== 'completed' ? 'text-red-600' : 'text-foreground'}`}>
-                          {formatDate(task.dueDate)}
-                        </div>
-                        {isOverdue(task.dueDate) && task.status !== 'completed' && (
-                          <span className="text-xs text-red-600">Overdue</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
-                      {task.caseId && (
-                        <div className="flex items-center gap-1">
-                          <span className="font-medium">Case:</span>
-                          <span>{task.caseId.caseNumber} - {task.caseId.clientName}</span>
-                        </div>
+          <ul className="divide-y divide-border/60">
+            {filteredTasks.map(task => {
+              const overdue = isOverdue(task.dueDate) && task.status !== 'completed' && task.status !== 'cancelled'
+              const progress = Math.min(Math.max(Number(task.progress) || 0, 0), 100)
+              return (
+                <li key={task._id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/tasks/${task._id}`)}
+                    className="flex w-full items-start justify-between gap-6 px-6 py-4 text-left transition-colors hover:bg-muted/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{task.title}</p>
+                      {task.description && (
+                        <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{task.description}</p>
                       )}
-                      <div className="flex items-center gap-1">
-                        <span className="font-medium">Progress:</span>
-                        <div className="w-24 bg-muted rounded-full h-2">
-                          <div
-                            className="bg-primary h-2 rounded-full"
-                            style={{ width: `${Math.min(Math.max(Number(task.progress) || 0, 0), 100)}%` }}
-                          />
-                        </div>
-                        <span>{task.progress || 0}%</span>
-                      </div>
+                      <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-slate-300'}`} aria-hidden="true" />{formatLabel(task.priority, 'medium')} priority</span>
+                        <span className="inline-flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[task.status] || 'bg-slate-300'}`} aria-hidden="true" />{formatStatus(task.status)}</span>
+                        <span>{formatLabel(task.category, 'general')}</span>
+                        {task.caseId && <span>Case <span className="text-foreground">{task.caseId.caseNumber} · {task.caseId.clientName}</span></span>}
+                        <span className="tabular-nums">Progress <span className="text-foreground">{progress}%</span></span>
+                      </p>
                     </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                    <div className="shrink-0 text-right text-xs tabular-nums">
+                      <p className={overdue ? 'font-medium text-red-600' : 'text-muted-foreground'}>{task.dueDate ? `Due ${formatDate(task.dueDate)}` : 'No due date'}</p>
+                      {overdue && <p className="mt-1 text-red-600">Overdue</p>}
+                    </div>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         )}
-      </div>
+      </section>
     </div>
   )
 }

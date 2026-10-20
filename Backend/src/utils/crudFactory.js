@@ -81,6 +81,7 @@ function createCrudController(Model, options = {}) {
       try {
         const payload = options.beforeCreate ? await options.beforeCreate(req.body, req) : req.body;
         const item = await Model.create(payload);
+        if (options.afterCreate) Promise.resolve().then(() => options.afterCreate(item, req)).catch(() => null); // side effects never delay or fail the response
         res.status(201).json(itemPayload(item));
       } catch (error) {
         next(error);
@@ -94,6 +95,7 @@ function createCrudController(Model, options = {}) {
         if (!(await isAccessible(existing, req, "update"))) return res.status(403).json({ success: false, message: "Access denied" });
         const item = await Model.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true });
         if (!item) return res.status(404).json({ success: false, message: `${options.label || "Record"} not found` });
+        if (options.afterUpdate) Promise.resolve().then(() => options.afterUpdate(item, existing, req)).catch(() => null);
         res.json(itemPayload(item));
       } catch (error) {
         next(error);

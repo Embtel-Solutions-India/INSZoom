@@ -584,6 +584,9 @@ const caseSchema = new mongoose.Schema(
     // concurrency for the selection API); 0 means no selection was ever recorded for this case.
     formSelectionMode: { type: String, enum: ["legacy", "manual"], default: "legacy" },
     formSelectionRevision: { type: Number, default: 0 },
+    // The name and email the Case Manager gave for this employee / beneficiary slot when the matter was created (required for every child case, including the
+    // ones created automatically). It is only a record of who the slot is for: it creates no login and grants no access - the invitation does that.
+    pendingEmployee: { type: new mongoose.Schema({ name: { type: String, trim: true }, email: { type: String, trim: true, lowercase: true } }, { _id: false }), default: undefined },
     conditionalFormDecisions: [
       {
         mappingId: { type: mongoose.Schema.Types.ObjectId, ref: "VisaFormMapping", required: true },

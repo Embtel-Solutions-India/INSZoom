@@ -254,9 +254,13 @@ export const casesApi = {
   // act on their own principal's children (enforced server-side).
   restoreEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/restore-employee`),
   resendEmployeeInvite: (principalId, childCaseId) => api.post(`/cases/${principalId}/resend-employee-invite`, { childCaseId }),
+  // a fresh one-time link the employee opens to choose their own password (passwords are never stored readable, so there is nothing to display)
+  createEmployeeSetupLink: (principalId, childCaseId) => api.post(`/cases/${principalId}/employee-setup-link`, { childCaseId }),
   // Per-employee workflow: { mode: 'fill_self' } revokes an invitation, { mode: 'invite', employeeName, employeeEmail } invites.
   setEmployeeDataEntryMode: (principalId, childCaseId, payload) => api.patch(`/cases/${principalId}/employees/${childCaseId}/data-entry-mode`, payload),
   addEmployeeSlot: (principalId, payload = {}) => api.post(`/cases/${principalId}/add-employee-slot`, payload),
+  // who an employee case is: { name?, email? } - the same fields the employer fills in the client portal
+  setEmployeeIdentity: (principalId, childCaseId, payload) => api.patch(`/cases/${principalId}/employees/${childCaseId}/identity`, payload),
   employeeVisaOptions: () => api.get('/cases/employee-visa-options'),
   removeEmployee: (childCaseId) => api.patch(`/cases/${childCaseId}/remove-employee`),
   getTeamLeadDashboard: (params = {}) => api.get('/cases/dashboard/team-lead', { params }),

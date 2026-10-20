@@ -1,4 +1,5 @@
 const AuditLog = require("../../models/AuditLog");
+const { employeeContact } = require("./employee-identity");
 const Appointment = require("../../models/Appointment");
 const Beneficiary = require("../../models/Beneficiary");
 const Case = require("../../models/Case");
@@ -537,6 +538,8 @@ function summarizeCase(caseData) {
 
 function serializeCaseForUser(caseData, user) {
   const data = caseData?.toObject ? caseData.toObject({ virtuals: true }) : { ...(caseData || {}) };
+  const contact = employeeContact(data); // who an employee case is (name + email), whichever field holds it - additive, nothing existing changes
+  if (contact) data.employeeContact = contact;
   const role = normalizeRole(user?.role);
   if (["client", "user", ...RESTRICTED_PORTAL_ROLES].includes(role)) {
     // Clients only ever see the primary case manager (assignedCaseManager); the rest of the team stays internal.
@@ -853,7 +856,7 @@ async function getCaseLinks(caseData) {
     // Phase 9 - also select clientEmail/dataEntryMode so the invite panel can tell "not yet invited" from "invited" (clientEmail is set by
     // inviteEmployee) without a second round-trip.
     Case.find({ parentCase: caseId })
-      .select("caseNumber clientName clientEmail user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
+      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);
@@ -892,6 +895,8 @@ async function withInviteStatus(childCases, principal) {
     const plain = typeof child.toObject === "function" ? child.toObject() : { ...child };
     const userId = String(child.user?._id || child.user || "");
     plain.inviteStatus = !userId || userId === principalUserId ? "none" : (acceptedUserIds.has(userId) ? "accepted" : "pending");
+    const contact = employeeContact(plain);
+    if (contact) plain.employeeContact = contact;
     return plain;
   });
 }

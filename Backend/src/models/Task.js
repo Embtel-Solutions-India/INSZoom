@@ -139,6 +139,13 @@ const taskSchema = new mongoose.Schema(
       timezone: String,
       businessDaysOnly: { type: Boolean, default: false },
     },
+    // Which task emails/notifications have already gone out (modules/tasks/task-alerts.service.js). Cleared when the deadline or the
+    // assignee changes so the reminders run again for the new deadline.
+    alerts: {
+      assignedAt: Date,
+      dueSoonAt: Date,
+      overdueAt: Date,
+    },
     tags: [String],
     estimatedHours: { type: Number, default: 0 },
     actualHours: { type: Number, default: 0 },

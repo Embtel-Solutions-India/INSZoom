@@ -170,17 +170,17 @@ const Layout = () => {
                   navigate(item.path)
                   setSidebarOpen(false)
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[0.925rem] transition-colors duration-150 ${
+                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ${
                   active
-                    ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
-                    : 'text-sidebar-foreground/80 font-medium hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                    ? 'bg-primary/10 text-primary font-medium before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary'
+                    : 'text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                 }`}
               >
-                <Icon className={`w-[1.1rem] h-[1.1rem] shrink-0 ${active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground'}`} />
+                <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
                 <span className="truncate">{item.label}</span>
                 {item.path === '/messages' && unreadMessageCount > 0 && (
                   <span className={`ml-auto min-w-[1.15rem] h-[1.15rem] px-1 flex items-center justify-center text-[10px] font-semibold rounded-full ${
-                    active ? 'bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground' : 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
                   }`}>
                     {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
                   </span>
@@ -193,7 +193,7 @@ const Layout = () => {
         <div className="shrink-0 p-3 border-t border-sidebar-border">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive transition-colors duration-150"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors duration-150"
           >
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
@@ -221,12 +221,9 @@ const Layout = () => {
               >
                 {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
               </button>
-              <h2 className="text-base font-semibold text-foreground hidden md:block">
+              <h2 className="text-sm font-semibold text-foreground hidden md:block">
                 {filteredMenuItems.find(item => isActive(item.path))?.label || 'Dashboard'}
               </h2>
-              <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-semibold text-secondary-foreground bg-secondary border border-border rounded-full px-2.5 py-1 capitalize">
-                {user?.role?.replace('_', ' ')} Portal
-              </span>
             </div>
 
             {/* Global search */}
@@ -244,12 +241,12 @@ const Layout = () => {
             </form>
 
             <div className="flex items-center gap-1 sm:gap-3 ml-auto shrink-0">
-              <span className="hidden lg:block text-xs text-muted-foreground font-mono">
-                Snapshot · {snapshotDate}
+              <span className="hidden lg:block text-xs text-muted-foreground tabular-nums">
+                {snapshotDate}
               </span>
               <button
                 onClick={() => window.location.reload()}
-                className="hidden sm:flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-2 rounded-lg transition-colors"
+                className="hidden sm:flex items-center gap-1.5 border border-border bg-card text-foreground text-xs font-medium px-3 py-1.5 rounded-md hover:bg-secondary transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 Refresh
@@ -274,7 +271,7 @@ const Layout = () => {
                 >
                   <Bell className="w-5 h-5" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    <span className="absolute top-0.5 right-0 min-w-[16px] h-4 bg-primary text-primary-foreground text-[10px] font-medium rounded-full flex items-center justify-center px-1">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
@@ -359,7 +356,7 @@ const Layout = () => {
                   <p className="text-sm font-medium text-foreground">{user?.name}</p>
                   <p className="text-xs text-muted-foreground capitalize">{user?.role?.replace('_', ' ')}</p>
                 </div>
-                <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold text-sm">
+                <div className="w-8 h-8 bg-secondary border border-border rounded-md flex items-center justify-center text-secondary-foreground font-medium text-sm uppercase">
                   {user?.name?.charAt(0) || 'U'}
                 </div>
               </div>

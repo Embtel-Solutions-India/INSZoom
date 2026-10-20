@@ -78,6 +78,7 @@ const initialForm = {
   assignedCaseManager: '',
   employerName: '',
   employerEmail: '',
+  employees: [],
   delegateName: '',
   delegateEmail: '',
   delegatePhone: '',
@@ -139,6 +140,17 @@ const CreateCaseModal = ({
   // An employer matter (L-1A/L-1B/O-1/H-1B...) is opened for the COMPANY: its name and petitioner email are the case's
   // client details. Employees (beneficiaries) are added later, each with their own visa - never at case creation.
   const isEmployerCase = showEmployerFields && !showFamilyFields
+  // every employee case of an employer matter - the one created automatically too - is created with the name and email of the person it is for
+  const employeeCount = Math.max(1, Number(initialData?.childCaseCount || 1))
+  const employeeRows = Array.from({ length: employeeCount }, (_, index) => form.employees[index] || { name: '', email: '' })
+  const setEmployee = (index, field) => (e) => {
+    const { value } = e.target
+    setForm((prev) => {
+      const next = Array.from({ length: employeeCount }, (_, position) => prev.employees[position] || { name: '', email: '' })
+      next[index] = { ...next[index], [field]: value }
+      return { ...prev, employees: next }
+    })
+  }
 
   // switching to an IR/CR visa must not leave a previously chosen Consular path selected
   useEffect(() => {
@@ -177,6 +189,17 @@ const CreateCaseModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    if (isEmployerCase) {
+      const seen = new Set()
+      for (let index = 0; index < employeeRows.length; index += 1) {
+        const email = employeeRows[index].email.trim().toLowerCase()
+        const label = employeeRows.length > 1 ? `Employee ${index + 1}` : 'Employee'
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError(`${label}: enter a valid email address.`)
+        if (email === form.clientEmail.trim().toLowerCase()) return setError(`${label}: use a separate email - it is the employer's own address.`)
+        if (seen.has(email)) return setError(`${label}: that email is already used for another employee.`)
+        seen.add(email)
+      }
+    }
     setSubmitting(true)
     try {
       // Send the display label ("H-1B"), not the raw code ("h1b") — matches
@@ -272,6 +295,7 @@ const CreateCaseModal = ({
         // Company name = the case's client name; the petitioner email above is the employer contact.
         payload.employerName = form.clientName.trim()
       }
+      if (isEmployerCase) payload.employees = employeeRows.map((row) => ({ name: row.name.trim(), email: row.email.trim() }))
       if (isEmployerCase && (form.delegateName.trim() || form.delegateEmail.trim() || form.delegatePhone.trim())) {
         // Optional second employer-side login for the SAME employer: own credentials, same case and same employer data.
         payload.delegateEmployerName = form.delegateName.trim()
@@ -312,6 +336,21 @@ const CreateCaseModal = ({
               {error}
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1">Visa Type *</label>
+            <select
+              required
+              value={form.visaType}
+              onChange={handleChange('visaType')}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="" disabled>Select visa type</option>
+              {visaOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">
@@ -355,6 +394,38 @@ const CreateCaseModal = ({
           </div>
 
           {isEmployerCase && (
+            <div className="rounded-lg border border-border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">{employeeRows.length > 1 ? 'Employees' : 'Employee'}</p>
+                <p className="text-xs text-muted-foreground">
+                  Every employee case needs the email of the person it is for, including the one created automatically. The name is optional - add it if you know it. Their login is set up from the case page.
+                </p>
+              </div>
+              {employeeRows.map((row, index) => (
+                <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder={employeeRows.length > 1 ? `Employee ${index + 1} full name (optional)` : 'Employee full name (optional)'}
+                    value={row.name}
+                    onChange={setEmployee(index, 'name')}
+                    aria-label={`Employee ${index + 1} full name`}
+                  />
+                  <input
+                    type="email"
+                    className="input-field"
+                    placeholder={employeeRows.length > 1 ? `Employee ${index + 1} email` : 'Employee email'}
+                    value={row.email}
+                    onChange={setEmployee(index, 'email')}
+                    required
+                    aria-label={`Employee ${index + 1} email`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {isEmployerCase && (
             <div className="rounded-lg border border-dashed p-3 space-y-3">
               <div>
                 <p className="text-sm font-medium text-foreground">Delegate Employer <span className="text-muted-foreground font-normal">(optional)</span></p>
@@ -386,21 +457,6 @@ const CreateCaseModal = ({
               />
             </div>
           )}
-
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Visa Type *</label>
-            <select
-              required
-              value={form.visaType}
-              onChange={handleChange('visaType')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="" disabled>Select visa type</option>
-              {visaOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">GoHighLevel Pipeline *</label>

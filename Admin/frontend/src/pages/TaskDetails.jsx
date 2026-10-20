@@ -262,10 +262,10 @@ const TaskDetails = () => {
     const colors = {
       pending: 'bg-secondary text-foreground',
       assigned: 'bg-primary/10 text-primary',
-      in_progress: 'bg-yellow-100 text-yellow-800',
-      waiting: 'bg-orange-100 text-orange-800',
-      completed: 'bg-green-100 text-green-800',
-      cancelled: 'bg-red-100 text-red-800'
+      in_progress: 'bg-indigo-50 text-indigo-700',
+      waiting: 'bg-amber-50 text-amber-700',
+      completed: 'bg-emerald-50 text-emerald-700',
+      cancelled: 'bg-slate-100 text-slate-600'
     }
     return colors[status] || 'bg-secondary text-foreground'
   }
@@ -274,8 +274,8 @@ const TaskDetails = () => {
     const colors = {
       low: 'bg-secondary text-foreground',
       medium: 'bg-primary/10 text-primary',
-      high: 'bg-orange-100 text-orange-800',
-      urgent: 'bg-red-100 text-red-800'
+      high: 'bg-amber-50 text-amber-700',
+      urgent: 'bg-red-50 text-red-700'
     }
     return colors[priority] || 'bg-secondary text-foreground'
   }
@@ -347,14 +347,14 @@ const TaskDetails = () => {
               {is(['super_admin', 'admin', 'team_lead', 'case_manager']) && (
                 <button
                   onClick={() => setEditing(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-primary/20 bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors"
                 >
                   <Edit className="w-4 h-4" />
                   Edit
                 </button>
               )}
               {is(['super_admin', 'admin']) && (
-                <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                <button className="flex items-center gap-2 px-4 py-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors">
                   <X className="w-4 h-4" />
                   Delete
                 </button>
@@ -746,7 +746,7 @@ const TaskDetails = () => {
                 <button
                   onClick={() => handleStatusChange('completed')}
                   disabled={submitting}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium border border-emerald-200 bg-emerald-50 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50"
                 >
                   <CheckCircle className="w-4 h-4" />
                   Mark Complete
@@ -756,7 +756,7 @@ const TaskDetails = () => {
                 <button
                   onClick={() => handleStatusChange('in_progress')}
                   disabled={submitting}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium border border-primary/20 bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors disabled:opacity-50"
                 >
                   <Play className="w-4 h-4" />
                   Start Progress
@@ -766,7 +766,7 @@ const TaskDetails = () => {
                 <button
                   onClick={() => handleStatusChange('waiting')}
                   disabled={submitting}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium border border-amber-200 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
                 >
                   <Pause className="w-4 h-4" />
                   Pause
@@ -776,7 +776,7 @@ const TaskDetails = () => {
                 <button
                   onClick={() => handleStatusChange('cancelled')}
                   disabled={submitting}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm font-medium border border-red-200 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
                 >
                   <X className="w-4 h-4" />
                   Cancel Task

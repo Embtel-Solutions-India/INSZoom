@@ -104,7 +104,10 @@ function statusPillFor(child, dataEntryMode, progress) {
 function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpen, onInviteSent, onResend, onWithdraw, onGrantAccess }) {
   // Each employee has their own workflow; an employee without an individual choice follows the case-wide default.
   const dataEntryMode = child.employeeDataEntryMode || caseDefaultMode;
-  const identified = Boolean(child.clientName) || dataEntryMode === "fill_self";
+  // The employee's name and email, whoever typed them (the case team in Admin, or the employer here) - the case holds them once for both portals.
+  const contact = child.employeeContact || { name: child.clientName || "", email: child.clientEmail || "" };
+  const displayName = child.clientName || contact.name;
+  const identified = Boolean(displayName) || dataEntryMode === "fill_self";
   const invited = dataEntryMode === "invite" && Boolean(child.clientEmail);
   // Once an employee is invited, ownership of their checklist/answers transfers to their own account (inviteEmployee pulls the child
   // case off the employer's caseIds): the employer cannot EDIT it any more, but may READ it (backend employer-view-access.js) - so the
@@ -114,8 +117,11 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const returning = !invited && Boolean(child.clientEmail) && Boolean(child.clientName) && dataEntryMode !== "invite";
   const [inviting, setInviting] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [name, setName] = useState(contact.name || "");
+  const [email, setEmail] = useState(contact.email || "");
+  const [idName, setIdName] = useState(contact.name || "");
+  const [idEmail, setIdEmail] = useState(contact.email || "");
+  const [savingIdentity, setSavingIdentity] = useState(false);
   const [error, setError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -124,7 +130,27 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
   const pillLabel = statusPillFor(child, dataEntryMode, progress);
   // A slot nobody has decided for yet (no explicit choice, no employee named, nothing entered) asks the employer who
   // fills it in, instead of silently assuming "employer fills".
+  // Until the employee's name and email are known the card asks for them (before anything else, whichever way the employer chooses to proceed).
+  const identityMissing = !invited && pillLabel !== "Withdrawn" && (!contact.name || !contact.email);
   const undecided = !child.employeeDataEntryMode && !child.clientName && caseDefaultMode !== "invite" && !(progress?.progress?.percent > 0) && pillLabel !== "Withdrawn";
+
+  const handleSaveIdentity = async () => {
+    if (!idName.trim() && !idEmail.trim()) { setError("Enter the employee's name and email."); return; }
+    setSavingIdentity(true);
+    setError("");
+    try {
+      const payload = {};
+      if (idName.trim()) payload.name = idName.trim();
+      if (idEmail.trim()) payload.email = idEmail.trim();
+      const res = await casesApi.setEmployeeIdentity(child.principalId, child._id, payload);
+      if (res?.success === false) setError(res.message || "Could not save the employee details");
+      else onInviteSent();
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || "Could not save the employee details");
+    } finally {
+      setSavingIdentity(false);
+    }
+  };
 
   const handleSwitchToFillSelf = async () => {
     setConfirmFillSelf(false);
@@ -181,13 +207,14 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className={`w-10 h-10 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${identified ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}>
-            {identified ? initials(child.clientName) : "?"}
+            {identified ? initials(displayName) : "?"}
           </div>
           <div className="min-w-0">
             <p className={`text-sm font-bold truncate ${identified ? "text-foreground" : "text-muted-foreground italic font-medium"}`}>
-              {child.clientName || "Employee Slot"}
+              {displayName || "Employee Slot"}
             </p>
-            <p className="text-xs text-muted-foreground font-mono mt-0.5">{child.caseNumber}</p>
+            {contact.email && <p className="text-xs text-muted-foreground truncate">{contact.email}</p>}
+            <p className="text-[10px] text-muted-foreground/70 font-mono mt-0.5">{child.caseNumber}</p>
             <span className="mt-1.5 mr-1.5 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold tracking-wide text-foreground ring-1 ring-inset ring-border">
               {child.petitionSubType && child.petitionSubType !== child.visaType ? `${child.visaType} · ${child.petitionSubType}` : child.visaType}
             </span>
@@ -238,7 +265,20 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
         </div>
       )}
 
-      {error && !showInviteForm && <p className="text-xs text-destructive">{error}</p>}
+      {error && !showInviteForm && !identityMissing && <p className="text-xs text-destructive">{error}</p>}
+
+      {identityMissing && !showInviteForm && (
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3" data-testid="employee-identity-request">
+          <p className="text-xs font-semibold text-amber-800">Add this employee's name and email</p>
+          <p className="text-[11px] text-amber-800/80">We need to know who this employee is before their information can be filled in or an invitation sent.</p>
+          <input className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Full name" value={idName} onChange={(e) => setIdName(e.target.value)} disabled={savingIdentity} aria-label="Employee full name" />
+          <input type="email" className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Email address" value={idEmail} onChange={(e) => setIdEmail(e.target.value)} disabled={savingIdentity} aria-label="Employee email" />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <button type="button" onClick={handleSaveIdentity} disabled={savingIdentity} className="w-full rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            {savingIdentity ? "Saving…" : "Save details"}
+          </button>
+        </div>
+      )}
 
       {showInviteForm ? (
         <div className="space-y-2 animate-in fade-in duration-150">
@@ -252,7 +292,7 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
             <button type="button" onClick={() => { setShowInviteForm(false); setError(""); }} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Cancel</button>
           </div>
         </div>
-      ) : undecided ? (
+      ) : undecided && identityMissing ? null : undecided ? (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-muted-foreground">Who will fill in this employee's information?</p>
           <div className="flex gap-2">

@@ -36,6 +36,11 @@ const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
 // team's queue; admins see every team's).
 const PENDING_QUEUE_ROLES = ['super_admin', 'admin', 'team_lead']
 
+// An employee case has no client name/email of its own until the employee is invited; the employee's name and email (typed at creation or in the client
+// portal) fill the same two places. Everything else about the row is unchanged.
+const listName = (caseItem) => caseItem.clientName || caseItem.employeeContact?.name || ''
+const listEmail = (caseItem) => caseItem.clientEmail || caseItem.employeeContact?.email || ''
+
 const CRMCases = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -559,7 +564,7 @@ const CRMCases = () => {
                               <span className="text-sm font-semibold text-foreground truncate">{caseItem.caseNumber}</span>
                               <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                             </div>
-                            <p className="text-xs text-muted-foreground truncate">{caseItem.clientName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{listName(caseItem)}</p>
                             <p className="text-xs text-muted-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
                               {caseManagerName ? (
@@ -607,8 +612,8 @@ const CRMCases = () => {
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-foreground mt-0.5 truncate">{caseItem.clientName}</p>
-                        <p className="text-xs text-muted-foreground truncate">{caseItem.clientEmail}</p>
+                        <p className="text-sm text-foreground mt-0.5 truncate">{listName(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground truncate">{listEmail(caseItem)}</p>
                       </div>
                       <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
                     </div>
@@ -718,8 +723,8 @@ const CRMCases = () => {
                         </div>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
-                        <p className="font-medium truncate" title={caseItem.clientName}>{caseItem.clientName}</p>
-                        <p className="text-xs text-muted-foreground truncate" title={caseItem.clientEmail}>{caseItem.clientEmail}</p>
+                        <p className="font-medium truncate" title={listName(caseItem)}>{listName(caseItem)}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={listEmail(caseItem)}>{listEmail(caseItem)}</p>
                       </td>
                       <td className="px-3 py-3 align-top min-w-0">
                         <p className="truncate" title={resolveDisplayVisa(caseItem)}>{resolveDisplayVisa(caseItem)}</p>
