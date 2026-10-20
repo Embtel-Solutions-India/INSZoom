@@ -749,6 +749,11 @@ const CRMCaseDetail = () => {
       const child = (childCases || []).find((c) => String(c._id) === ownerId)
       return child ? (child.clientName || child.employeeContact?.name || child.caseNumber || 'Employee') : null
     }
+    // the employee's email, shown after the name in smaller text
+    const ownerEmail = (ownerId) => {
+      const child = (childCases || []).find((c) => String(c._id) === ownerId)
+      return child ? (child.clientEmail || child.employeeContact?.email || '') : ''
+    }
 
     return [...byOwner.entries()].map(([ownerId, forms]) => {
       const byParentCode = new Map()
@@ -769,7 +774,7 @@ const CRMCaseDetail = () => {
         byParentCode.delete(form.formCode)
       })
       byParentCode.forEach((children) => children.forEach((child) => ordered.push({ form: child, isComponent: true })))
-      return { ownerId, label: ownerLabel(ownerId), rows: ordered }
+      return { ownerId, label: ownerLabel(ownerId), email: ownerEmail(ownerId), rows: ordered }
     })
   }, [caseForms, childCases, id])
   // Unchanged shape for every caller that doesn't need owner grouping
@@ -778,6 +783,12 @@ const CRMCaseDetail = () => {
   const [formsError, setFormsError] = useState('')
   const [selectedCaseForm, setSelectedCaseForm] = useState(null)
   const [formActionMessage, setFormActionMessage] = useState('')
+  // the result / error line above the forms list clears itself after a minute (it can also be closed with its X)
+  useEffect(() => {
+    if (!formActionMessage) return undefined
+    const timer = setTimeout(() => setFormActionMessage(''), 60000)
+    return () => clearTimeout(timer)
+  }, [formActionMessage])
   const [refreshingOverview, setRefreshingOverview] = useState(false)
   const [showManageForms, setShowManageForms] = useState(false)
   const [formsWarning, setFormsWarning] = useState('')
@@ -2087,7 +2098,13 @@ const CRMCaseDetail = () => {
 
       {/* Phase 7 — a child case links back to the matter it belongs to */}
       {['employee', 'beneficiary'].includes(caseData.caseRole) && caseData.parentCase && (
-        <div className="rounded-2xl border border-border bg-muted p-4 flex items-center justify-between gap-3">
+        <div
+          role="link"
+          tabIndex={0}
+          onClick={() => navigate(`/crm-cases/${caseData.parentCase._id}`)}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/crm-cases/${caseData.parentCase._id}`) }}
+          className="cursor-pointer rounded-2xl border border-border bg-muted p-4 flex items-center justify-between gap-3 transition-colors hover:bg-secondary"
+        >
           <p className="text-sm text-muted-foreground">
             Part of matter <span className="font-semibold">{caseData.parentCase.caseNumber}</span>
             {caseData.parentCase.clientName ? ` — ${caseData.parentCase.clientName}` : ''}
@@ -2098,7 +2115,7 @@ const CRMCaseDetail = () => {
             )}
           </p>
           <button
-            onClick={() => navigate(`/crm-cases/${caseData.parentCase._id}`)}
+            onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${caseData.parentCase._id}`) }}
             className="text-sm font-semibold text-primary-600 hover:text-primary-700 shrink-0"
           >
             View matter →
@@ -2849,7 +2866,7 @@ const CRMCaseDetail = () => {
       <KeepTab name="documents" active={activeTab === 'documents'} visited={visitedTabs}>
         <div className="space-y-6">
         {renderInformationRequestsPanel()}
-        <ChecklistApprovalCard caseId={caseData?._id} checklists={checklistsProgress} onChanged={reloadCaseChecklists} />
+        <ChecklistApprovalCard caseId={caseData?._id} checklists={checklistsProgress} childCases={caseData?.caseRole === 'principal' ? (childCases || []) : []} onChanged={reloadCaseChecklists} />
         {!isPremiumProcessingCase && (canUpgradePremium || hasPremiumAddon) && (
           <div className="card flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -3337,7 +3354,8 @@ const CRMCaseDetail = () => {
                 <h3 className="text-lg font-semibold text-foreground">USCIS Forms ({caseForms.length})</h3>
                 <p className="text-sm text-muted-foreground">Edition-locked and populated from the case's checklist and profile data. Use Manage forms to decide which forms this case has.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              {/* the buttons share one line on a wide screen (the heading text gives way); they only wrap on a narrow one */}
+              <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap [&>button]:whitespace-nowrap">
                 <button onClick={() => setShowManageForms(true)} className="btn-secondary text-sm">Manage forms</button>
                 <button onClick={() => fetchCaseForms(true)} className="btn-secondary text-sm">Refresh</button>
                 <button onClick={generateCaseForms} disabled={tabLoading.forms} className="btn-primary text-sm">
@@ -3358,8 +3376,11 @@ const CRMCaseDetail = () => {
               />
             )}
             {formActionMessage && (
-              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)|was (added|re-autofilled)|refreshed/.test(formActionMessage) ? 'border-primary/30 bg-primary/5 text-primary' : 'border-red-200 bg-red-50 text-red-700'}`}>
-                {formActionMessage}
+              <div className={`mb-3 flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${/^(USCIS|Filing)|was (added|re-autofilled)|refreshed/.test(formActionMessage) ? 'border-primary/30 bg-primary/5 text-primary' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                <span className="min-w-0">{formActionMessage}</span>
+                <button type="button" onClick={() => setFormActionMessage('')} aria-label="Dismiss message" className="shrink-0 rounded p-0.5 opacity-70 hover:opacity-100">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
             {formsWarning && (
@@ -3410,6 +3431,7 @@ const CRMCaseDetail = () => {
                       <tr className="bg-muted/40">
                         <td colSpan={6} className="py-1.5 px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                           {group.label}
+                          {group.email && <span className="ml-2 text-[11px] font-normal normal-case tracking-normal text-muted-foreground/80">{group.email}</span>}
                         </td>
                       </tr>
                     )}

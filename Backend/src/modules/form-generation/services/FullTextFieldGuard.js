@@ -19,7 +19,10 @@ const MIN_FONT_SIZE_PT = 1;
 
 const isTextField = (field) => (field.constructor?.name || "").includes("TextField");
 
-function liftTextLengthLimits(form) {
+// valueFor(pdfFieldName) -> the text that is about to be written into that field (undefined when none is). Given it, a comb field (one character per printed
+// box) whose text FITS its boxes keeps its /MaxLen and comb layout, so every character lands in its own box in the downloaded PDF; a text longer than its boxes is
+// still written in full as ordinary text. Without it every limit is lifted, as before.
+function liftTextLengthLimits(form, valueFor) {
   let lifted = 0;
   let fields = [];
   try {
@@ -30,7 +33,12 @@ function liftTextLengthLimits(form) {
   for (const field of fields) {
     if (!isTextField(field)) continue;
     try {
-      if (field.getMaxLength?.() === undefined) continue;
+      const maxLength = field.getMaxLength?.();
+      if (maxLength === undefined) continue;
+      if (valueFor && field.isCombed?.()) {
+        const text = valueFor(field.getName());
+        if (text !== undefined && String(text).length <= maxLength) continue; // keep the boxes
+      }
       if (field.isCombed?.()) field.disableCombing();
       field.setMaxLength(undefined);
       lifted += 1;

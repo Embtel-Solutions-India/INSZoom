@@ -631,6 +631,15 @@ class CaseLifecycleOrchestrator {
     const created = await uscisFormService.ensureAssignedForms(caseData, user, req);
     // an archived / removed form is not autofilled (generate() would set it back to ai_filled, silently bringing it back)
     const forms = await CaseForm.find({ caseId, ...ACTIVE_FORM_FILTER });
+    if (!forms.length && caseData.formSelectionMode === "manual") {
+      // The Case Manager decides this case's forms (Manage forms) and has not added any yet. That is not a template or visa-mapping problem, so it must
+      // not be reported as one ("no active templates are configured for <visa>").
+      throw Object.assign(new Error("No forms have been added to this case yet. Use Manage forms to add the USCIS forms this case needs."), {
+        status: 422,
+        code: "NO_FORMS_SELECTED",
+        details: { visaType: caseData.visaType },
+      });
+    }
     if (!forms.length) {
       // Structured in place of the previous bare 422: reuses
       // visaFormMapping.service.js's own resolver + diagnostics (the same

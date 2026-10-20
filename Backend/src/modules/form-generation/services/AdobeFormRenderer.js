@@ -73,7 +73,11 @@ class AdobeFormRenderer {
     const sourcePdf = await PDFRenderer.loadTemplatePdf(template, PDFDocument);
     const sourceForm = sourcePdf.getForm();
     // Free-text fields take the entry in full; the lifted copy is what is sent to Adobe.
-    liftTextLengthLimits(sourceForm);
+    // (a comb field whose text fits its boxes keeps its one-character-per-box layout - see liftTextLengthLimits)
+    let earlyMapping = null;
+    try { earlyMapping = PDFFieldMapper.mapFields(caseForm, template); } catch (error) { earlyMapping = null; }
+    const valueByPdfField = new Map(Object.values(earlyMapping?.mappedFields || {}).map((mapped) => [mapped.pdfField, mapped.value]));
+    liftTextLengthLimits(sourceForm, (pdfField) => (valueByPdfField.has(pdfField) ? String(valueByPdfField.get(pdfField) ?? "") : undefined));
     const sourceFields = sourceForm.getFields();
     const sourceFieldNames = new Set(sourceFields.map((f) => f.getName()));
     const fieldByName = new Map(sourceFields.map((f) => [f.getName(), f]));
@@ -81,7 +85,7 @@ class AdobeFormRenderer {
     // Same mapping call PDFRenderer.render() uses for the pdf-lib path - not
     // a second mapping system. Adobe receives exactly what pdf-lib would
     // have received for the same CaseForm/template.
-    const { mappedFields, missingMappings, protectedFields } = PDFFieldMapper.mapFields(caseForm, template);
+    const { mappedFields, missingMappings, protectedFields } = earlyMapping || PDFFieldMapper.mapFields(caseForm, template);
 
     const jsonFormFieldsData = {};
     const skippedFields = [];

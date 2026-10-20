@@ -268,9 +268,9 @@ function EmployeeCard({ child, dataEntryMode: caseDefaultMode, targetRole, onOpe
       {error && !showInviteForm && !identityMissing && <p className="text-xs text-destructive">{error}</p>}
 
       {identityMissing && !showInviteForm && (
-        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3" data-testid="employee-identity-request">
-          <p className="text-xs font-semibold text-amber-800">Add this employee's name and email</p>
-          <p className="text-[11px] text-amber-800/80">We need to know who this employee is before their information can be filled in or an invitation sent.</p>
+        <div className="space-y-2 rounded-xl border border-border bg-card p-3" data-testid="employee-identity-request">
+          <p className="text-xs font-semibold text-foreground">Add this employee's name and email</p>
+          <p className="text-[11px] text-muted-foreground">We need to know who this employee is before their information can be filled in or an invitation sent.</p>
           <input className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Full name" value={idName} onChange={(e) => setIdName(e.target.value)} disabled={savingIdentity} aria-label="Employee full name" />
           <input type="email" className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-ring" placeholder="Email address" value={idEmail} onChange={(e) => setIdEmail(e.target.value)} disabled={savingIdentity} aria-label="Employee email" />
           {error && <p className="text-xs text-destructive">{error}</p>}

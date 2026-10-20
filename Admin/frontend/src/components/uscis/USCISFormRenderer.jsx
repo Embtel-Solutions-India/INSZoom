@@ -396,6 +396,26 @@ const applyNativeFieldValue = (element, value) => {
   if (element.value !== text) element.value = text
 }
 
+// A comb field is a row of printed boxes, one character per box: pdf.js lines the characters up with the boxes (class "comb" + a letter-spacing) for exactly
+// its /MaxLen characters. No field may limit how much can be typed, so maxlength is removed - but the box layout is KEPT while the text fits its boxes, so each
+// character sits in its own box; a text longer than the boxes falls back to ordinary text, so every character stays visible and editable. (The layout used to be
+// dropped altogether, which packed the characters together and out of their boxes.)
+const rememberCombLayout = (element) => {
+  if (element.dataset.combMax !== undefined || !element.classList.contains('comb')) return
+  const max = Number(element.getAttribute('maxlength'))
+  if (!(max > 0)) return
+  element.dataset.combMax = String(max)
+  element.dataset.combSpacing = element.style.letterSpacing || ''
+}
+const syncCombLayout = (element) => {
+  const max = Number(element?.dataset?.combMax)
+  if (!(max > 0)) return
+  const fits = String(element.value ?? '').length <= max
+  if (element.classList.contains('comb') !== fits) element.classList.toggle('comb', fits)
+  const spacing = fits ? (element.dataset.combSpacing || '') : ''
+  if (element.style.letterSpacing !== spacing) element.style.letterSpacing = spacing
+}
+
 const NATIVE_FIELD_CLASSES = ['canonical', 'override', 'session', 'conflict', 'error', 'saving', 'unmapped'].map((name) => `native-field-${name}`)
 
 const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErrors, sessionEditedFields, fieldSaveStatus, canEdit }) => {
@@ -426,19 +446,16 @@ const applyNativeFieldStateStyles = (root, { fieldsByName, values, validationErr
     // pdf.js copies the PDF field's own /MaxLen onto the input, which silently
     // stops typing/pasting at that length. No field may restrict the number of
     // characters, so lift it everywhere. A comb field (one character per printed
-    // box) is shown as ordinary text instead, since its letter-spacing layout
-    // only works for exactly that many characters.
+    // box) keeps its box layout while the text fits its boxes (see syncCombLayout).
+    rememberCombLayout(element)
     if (element.hasAttribute('maxlength')) element.removeAttribute('maxlength')
-    if (element.classList.contains('comb')) {
-      element.classList.remove('comb')
-      element.style.letterSpacing = ''
-    }
     // Never write a stored value into the box the case manager is typing in: a stale value
     // (state lags the keyboard) would overwrite what they just typed or deleted, which is the
     // "deleted characters keep coming back" bug. The live DOM value IS the newest value there.
     const type = String(element.type || '').toLowerCase()
     const isEditing = typeof document !== 'undefined' && document.activeElement === element && type !== 'checkbox' && type !== 'radio'
     if (!isEditing) applyNativeFieldValue(element, value)
+    syncCombLayout(element)
   })
 }
 
@@ -470,7 +487,10 @@ function PdfFormPage({ pdfPageNumber, displayPageNumber, pdfPageWidth, pdfPageHe
       const field = fieldsByName.get(fieldName)
       if (field) onSelectField(field)
     }
-    const handleInput = (event) => onNativeFieldInput(event)
+    const handleInput = (event) => {
+      syncCombLayout(event.target)
+      onNativeFieldInput(event)
+    }
     const handleChange = (event) => {
       onNativeFieldInput(event)
       const targetType = String(event.target?.type || '').toLowerCase()
