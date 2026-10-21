@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, CornerUpLeft, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle } from 'lucide-react'
+import { Loader2, Send, CornerUpLeft, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle, ChevronDown, Pencil, Trash2, Ban } from 'lucide-react'
 import api, { feedbackApi } from '../services/api'
 import ChatAttachment from './ChatAttachment'
+import ConfirmModal from './ConfirmModal'
 import { MAX_ATTACHMENTS_PER_MESSAGE, formatFileSize, isChunkedFile } from '../utils/chunkedUpload'
 import {
   THUMBNAIL_MAX_BYTES,
@@ -59,6 +60,99 @@ function authorRoleLabel(item) {
   return role.replace(/_/g, ' ')
 }
 
+// Edit / delete-for-everyone (WhatsApp style). Only the author can do either (the backend enforces it);
+// a deleted message keeps its place in the thread as a placeholder, and an edited one shows "Edited".
+const isDeleted = (item) => Boolean(item?.deletedForEveryoneAt)
+const DELETED_LABEL = 'This message was deleted'
+
+// Replaces a message by _id with the copy the server (or a socket event) sent - never appends, so the
+// author's own PATCH response and the same event echoed back are both harmless. Local-only fields
+// (local thumbnails of just-sent images) are kept.
+function mergeFeedback(current, incoming) {
+  return current.map((item) => {
+    if (String(item._id) !== String(incoming._id)) return item
+    const attachments = Array.isArray(incoming.attachments)
+      ? incoming.attachments.map((attachment) => {
+        const previous = (item.attachments || []).find((a) => String(a._id) === String(attachment._id))
+        return previous?.__localUrl ? { ...attachment, __localUrl: previous.__localUrl } : attachment
+      })
+      : item.attachments
+    return { ...item, ...incoming, attachments }
+  })
+}
+
+// Small chevron menu on the user's own bubbles. Fixed-positioned (from the button's rect) so the thread's
+// scroll container never clips it; closes on outside click, Escape, scroll or resize.
+function MessageActionsMenu({ onEdit, onDelete }) {
+  const [pos, setPos] = useState(null)
+  const buttonRef = useRef(null)
+  const menuRef = useRef(null)
+  const close = useCallback(() => setPos(null), [])
+
+  useEffect(() => {
+    if (!pos) return undefined
+    const onOutside = (event) => {
+      if (menuRef.current?.contains(event.target) || buttonRef.current?.contains(event.target)) return
+      close()
+    }
+    const onKey = (event) => { if (event.key === 'Escape') close() }
+    document.addEventListener('mousedown', onOutside)
+    document.addEventListener('touchstart', onOutside)
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', close)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('mousedown', onOutside)
+      document.removeEventListener('touchstart', onOutside)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [pos, close])
+
+  const toggle = () => {
+    if (pos) { close(); return }
+    const rect = buttonRef.current?.getBoundingClientRect()
+    const up = Boolean(rect) && rect.bottom + 96 > window.innerHeight
+    setPos({ up, top: rect ? (up ? rect.top - 4 : rect.bottom + 4) : 0, left: Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - 150)) })
+  }
+  const choose = (action) => { close(); action() }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={toggle}
+        title="Message options"
+        aria-label="Message options"
+        aria-haspopup="menu"
+        aria-expanded={Boolean(pos)}
+        className={`p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 ${pos ? 'sm:!opacity-100' : ''}`}
+      >
+        <ChevronDown className="w-3.5 h-3.5" />
+      </button>
+      {pos && (
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{ position: 'fixed', top: pos.top, left: pos.left, transform: pos.up ? 'translateY(-100%)' : undefined }}
+          className="z-40 min-w-[8.5rem] rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-lg"
+        >
+          {onEdit && (
+            <button type="button" role="menuitem" onClick={() => choose(onEdit)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-secondary">
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground" /> Edit
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={() => choose(onDelete)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-secondary">
+            <Trash2 className="w-3.5 h-3.5" /> Delete
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 const RETRY_DELAYS_MS = [2000, 5000, 10000]
 
 const newClientMessageId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -91,8 +185,16 @@ const fetchFeedbackBlob = (caseId, feedbackId, attachmentId, onProgress, signal)
     .then((response) => response.data)
 )
 
-function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDiscard }) {
+function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDiscard, onEditMessage, onDeleteMessage }) {
   const outgoing = String(idOf(item.authorId)) === String(selfId)
+  const deleted = isDeleted(item)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const editRef = useRef(null)
   const isFailed = Boolean(item.__failed)
   const readByOthers = (item.readBy || []).filter((r) => String(idOf(r.userId)) !== String(idOf(item.authorId)))
   const parent = item.__parent
@@ -106,12 +208,54 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
   const metaClasses = outgoing ? 'text-primary-foreground/70 dark:text-muted-foreground' : 'text-muted-foreground'
   const quoteClasses = outgoing ? 'bg-black/20 border-l-primary-foreground/60 dark:border-l-primary' : 'bg-background border-l-primary'
 
-  const attachments = item.attachments || []
+  const attachments = deleted ? [] : item.attachments || []
+  // Own, delivered, not-yet-deleted messages only; attachment-only messages cannot be edited (only deleted).
+  const canModify = outgoing && !isFailed && !item.__pending && !deleted && !String(item._id).startsWith('temp-')
+  const canEdit = canModify && Boolean(item.message)
+  const isEditing = editing && canEdit
+
+  useEffect(() => {
+    const el = editRef.current
+    if (!isEditing || !el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [isEditing, draft])
+  useEffect(() => {
+    if (!isEditing) return
+    const el = editRef.current
+    el?.focus()
+    el?.setSelectionRange?.(el.value.length, el.value.length)
+  }, [isEditing])
+
+  const startEdit = () => { setDraft(item.message || ''); setActionError(''); setEditing(true) }
+  const cancelEdit = () => { setEditing(false); setActionError('') }
+  const saveEdit = async () => {
+    const text = draft.trim()
+    if (saving || (!text && attachments.length === 0)) return
+    if (text === (item.message || '').trim()) { cancelEdit(); return }
+    setSaving(true)
+    const failure = await onEditMessage(item, text)
+    setSaving(false)
+    if (failure) setActionError(failure)
+    else cancelEdit()
+  }
+  const onEditKeyDown = (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); cancelEdit() }
+    else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent?.isComposing) { event.preventDefault(); saveEdit() }
+  }
+  const confirmDelete = async () => {
+    setDeleting(true)
+    const failure = await onDeleteMessage(item)
+    setDeleting(false)
+    if (failure) setActionError(failure)
+    else setConfirmingDelete(false)
+  }
   const isUploading = Boolean(item.__pending) && attachments.some((a) => typeof a.__progress === 'number')
   // Text, a quoted reply and attachments all live in the one bubble, with the time/tick footer at its bottom-right like WhatsApp.
-  const hasBubble = Boolean(item.message || parent || attachments.length > 0)
+  const hasBubble = Boolean(deleted || item.message || parent || attachments.length > 0)
   const footer = (
     <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap pr-1 text-[10px] leading-none ${hasBubble ? metaClasses : 'text-muted-foreground'}`}>
+      {item.editedAt && !deleted && <span>Edited</span>}
       <span>{formatTime(item.createdAt)}</span>
       {outgoing && !isFailed && (
         <CheckCheck
@@ -138,13 +282,13 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
           {hasBubble ? (
             <div
               onClick={isFailed ? () => onRetry(item) : undefined}
-              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-3 pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
+              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-3 pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isEditing ? 'min-w-[14rem] sm:min-w-[20rem]' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
             >
-              {parent && (
+              {parent && !deleted && (
                 <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
                   <p className={`text-[11px] font-semibold truncate ${outgoing ? 'text-primary-foreground dark:text-primary' : 'text-primary'}`}>{authorName(parent)}</p>
                   <p className={`text-[12px] line-clamp-2 break-words ${outgoing ? 'text-primary-foreground/80 dark:text-muted-foreground' : 'text-muted-foreground'}`}>
-                    {parent.message || 'Attachment'}
+                    {isDeleted(parent) ? <span className="italic">{DELETED_LABEL}</span> : parent.message || 'Attachment'}
                   </p>
                 </div>
               )}
@@ -175,23 +319,70 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
                   </button>
                 </div>
               )}
-              {item.message && <p className="whitespace-pre-wrap break-words">{item.message}</p>}
+              {deleted && (
+                <p className={`flex items-center gap-1.5 italic ${metaClasses}`}>
+                  <Ban className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  {DELETED_LABEL}
+                </p>
+              )}
+              {isEditing ? (
+                <div>
+                  <textarea
+                    ref={editRef}
+                    rows={1}
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={onEditKeyDown}
+                    aria-label="Edit message"
+                    className="block w-full resize-none rounded-md border border-input bg-background px-2 py-1.5 text-[13px] leading-5 text-foreground outline-none focus:ring-2 focus:ring-ring max-h-40"
+                  />
+                  {actionError && <p role="alert" className="mt-1 text-[11px] font-medium text-red-300">{actionError}</p>}
+                  <div className="mt-1.5 flex justify-end gap-1.5">
+                    <button type="button" onClick={cancelEdit} className={`rounded-md px-2.5 py-1 text-[11px] font-semibold hover:bg-black/10 ${metaClasses}`}>Cancel</button>
+                    <button
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={saving || (!draft.trim() && attachments.length === 0)}
+                      className="rounded-md bg-background px-2.5 py-1 text-[11px] font-semibold text-foreground hover:opacity-90 disabled:opacity-50"
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                !deleted && item.message && <p className="whitespace-pre-wrap break-words">{item.message}</p>
+              )}
               {footer}
             </div>
           ) : footer}
         </div>
-        {!isFailed && (
-          <button
-            type="button"
-            onClick={() => onReply(item)}
-            title="Reply"
-            aria-label="Reply"
-            className="mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
-          >
-            <CornerUpLeft className="w-3.5 h-3.5" />
-          </button>
+        {!isFailed && !deleted && (
+          <div className="mb-1 flex items-center shrink-0">
+            <button
+              type="button"
+              onClick={() => onReply(item)}
+              title="Reply"
+              aria-label="Reply"
+              className="p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
+            >
+              <CornerUpLeft className="w-3.5 h-3.5" />
+            </button>
+            {canModify && !isEditing && <MessageActionsMenu onEdit={canEdit ? startEdit : null} onDelete={() => { setActionError(''); setConfirmingDelete(true) }} />}
+          </div>
         )}
       </div>
+      {confirmingDelete && (
+        <ConfirmModal
+          title="Delete message"
+          message="Delete this message? It will be removed for everyone in this conversation."
+          confirmLabel="Delete"
+          tone="danger"
+          busy={deleting}
+          error={actionError}
+          onConfirm={confirmDelete}
+          onCancel={() => { setConfirmingDelete(false); setActionError('') }}
+        />
+      )}
       {outgoing && isFailed && (
         <div className="mt-0.5 mr-10 flex items-center gap-2 text-[11px]">
           <button type="button" onClick={() => onRetry(item)} className="text-red-500 font-medium hover:underline">
@@ -247,7 +438,7 @@ export default function CaseFeedbackChat({ caseId }) {
   // own optimistic send below — but a copy of a message still being sent
   // (same clientMessageId) would replace its temp bubble rather than double up.
   useEffect(() => {
-    const unsubscribe = subscribe('feedback:new', (incoming) => {
+    const unsubscribeNew = subscribe('feedback:new', (incoming) => {
       if (String(incoming.caseId) !== String(caseId)) return
       setItems((current) => {
         if (!current) return current
@@ -259,7 +450,19 @@ export default function CaseFeedbackChat({ caseId }) {
       })
       feedbackApi.markRead(caseId).catch(() => {})
     })
-    return unsubscribe
+    // An edit / delete-for-everyone, from the other party or from this user's other session: replace the
+    // message by _id (never append) and leave read state alone, so no unread count moves.
+    const replaceMessage = (incoming) => {
+      if (!incoming?._id || String(incoming.caseId) !== String(caseId)) return
+      setItems((current) => (current ? mergeFeedback(current, incoming) : current))
+    }
+    const unsubscribeUpdate = subscribe('feedback:update', replaceMessage)
+    const unsubscribeDelete = subscribe('feedback:delete', replaceMessage)
+    return () => {
+      unsubscribeNew?.()
+      unsubscribeUpdate?.()
+      unsubscribeDelete?.()
+    }
   }, [subscribe, caseId])
 
   useEffect(() => {
@@ -451,6 +654,28 @@ export default function CaseFeedbackChat({ caseId }) {
 
   const retry = (item) => sendMessage(item)
 
+  // Edit / delete for everyone. Both resolve to '' on success or the error text to show next to the
+  // control, leaving the old text in place on failure. The staff feedback endpoints are called through
+  // the shared axios instance (feedbackApi has no edit/delete wrappers).
+  const editMessage = async (item, text) => {
+    try {
+      const { data } = await api.patch(`/cases/${caseId}/feedback/${item._id}`, { message: text })
+      if (data?.feedback) setItems((current) => (current ? mergeFeedback(current, data.feedback) : current))
+      return ''
+    } catch (err) {
+      return err.response?.data?.message || 'Could not edit this message.'
+    }
+  }
+  const deleteMessage = async (item) => {
+    try {
+      const { data } = await api.delete(`/cases/${caseId}/feedback/${item._id}`)
+      if (data?.feedback) setItems((current) => (current ? mergeFeedback(current, data.feedback) : current))
+      return ''
+    } catch (err) {
+      return err.response?.data?.message || 'Could not delete this message.'
+    }
+  }
+
   const onKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -465,7 +690,7 @@ export default function CaseFeedbackChat({ caseId }) {
     const byId = new Map(items.map((item) => [String(item._id), item]))
     return [...items]
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-      .map((item) => ({ ...item, __parent: item.__parent || (item.parentFeedbackId ? byId.get(String(item.parentFeedbackId)) : null) }))
+      .map((item) => ({ ...item, __parent: (item.parentFeedbackId && byId.get(String(item.parentFeedbackId))) || item.__parent || null }))
   }, [items])
 
   let lastDay = null
@@ -509,7 +734,7 @@ export default function CaseFeedbackChat({ caseId }) {
                         <div className="flex-1 h-px bg-border" />
                       </div>
                     )}
-                    <Bubble item={item} selfId={selfId} caseId={caseId} onReply={setReplyTo} onRetry={retry} onCancelUpload={cancelUpload} onDiscard={discard} />
+                    <Bubble item={item} selfId={selfId} caseId={caseId} onReply={setReplyTo} onRetry={retry} onCancelUpload={cancelUpload} onDiscard={discard} onEditMessage={editMessage} onDeleteMessage={deleteMessage} />
                   </div>
                 )
               })}

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, memo, Fragment } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, memo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../context/SocketContext";
 import { chunkApi, messagesApi, usersApi } from "../../services/api";
@@ -7,6 +8,7 @@ import { IconX } from "../../utils/iconComponents";
 import { attachmentProblem, formatFileSize, isChunkedFile, MAX_ATTACHMENTS_PER_MESSAGE, uploadFileInChunks } from "../../utils/chunkedUpload";
 import AttachmentViewer from "../../components/AttachmentViewer";
 import MessageAttachment from "../../components/MessageAttachment";
+import ConfirmDialog from "../../components/questionnaire/ConfirmDialog";
 
 /* ─── Icons ────────────────────────────────────────────────────────────── */
 const Ic = {
@@ -18,6 +20,8 @@ const Ic = {
   File:    () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>,
   Reply:   () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14L4 9l5-5M4 9h10a6 6 0 016 6v4"/></svg>,
   Msg:     () => <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>,
+  Chevron: () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M6 9l6 6 6-6"/></svg>,
+  Ban:     () => <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="shrink-0"><circle cx="12" cy="12" r="9" strokeWidth="2"/><path strokeLinecap="round" strokeWidth="2" d="M5.6 5.6l12.8 12.8"/></svg>,
   CheckCheck: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="shrink-0 overflow-visible"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>,
 };
 
@@ -82,6 +86,10 @@ function idOf(ref) {
 function messagesEqual(a, b) {
   return (
     a.messageBody === b.messageBody &&
+    a.editedAt === b.editedAt &&
+    a.deletedForEveryoneAt === b.deletedForEveryoneAt &&
+    (a.replyTo?.messageBody ?? null) === (b.replyTo?.messageBody ?? null) &&
+    a.replyTo?.deletedForEveryoneAt === b.replyTo?.deletedForEveryoneAt &&
     a.isInternalNote === b.isInternalNote &&
     (a.readBy?.length || 0) === (b.readBy?.length || 0) &&
     (a.attachments?.length || 0) === (b.attachments?.length || 0)
@@ -166,6 +174,42 @@ function applyIncomingMessage(prevMessages, incoming) {
     })),
   };
   return prevMessages.map((m, i) => (i === index ? replacement : m));
+}
+
+// An edit / delete-for-everyone arrives (HTTP response and socket, the latter possibly twice) as the full message. It REPLACES
+// the message with that _id - never appends - so a repeat is harmless. The populated author and the local attachment Files of the
+// bubble are kept, and any reply that quotes this message gets its quote refreshed too. Returns the same array when nothing matches.
+function applyMessageChange(prevMessages, incoming) {
+  const id = idOf(incoming?._id);
+  if (!id) return prevMessages;
+  const deleted = Boolean(incoming.deletedForEveryoneAt);
+  const quoted = {
+    messageBody: deleted ? "" : incoming.messageBody ?? incoming.message ?? "",
+    deletedForEveryoneAt: incoming.deletedForEveryoneAt || null,
+  };
+  let changed = false;
+  const next = prevMessages.map((m) => {
+    if (m._id === id) {
+      changed = true;
+      return {
+        ...m,
+        ...incoming,
+        senderId: incoming.senderId && typeof incoming.senderId === "object" ? incoming.senderId : m.senderId,
+        replyTo: incoming.replyTo !== undefined ? incoming.replyTo : m.replyTo,
+        attachments: deleted ? [] : (incoming.attachments || m.attachments || []).map((a, i) => ({ ...a, __localFile: m.attachments?.[i]?.__localFile })),
+      };
+    }
+    if (idOf(m.replyTo) === id || m.__parent?._id === id) {
+      changed = true;
+      return {
+        ...m,
+        replyTo: m.replyTo && typeof m.replyTo === "object" ? { ...m.replyTo, ...quoted } : m.replyTo,
+        __parent: m.__parent ? { ...m.__parent, ...quoted } : m.__parent,
+      };
+    }
+    return m;
+  });
+  return changed ? next : prevMessages;
 }
 
 // Delivery: every attempt for one message carries the same clientMessageId, so
@@ -281,7 +325,39 @@ function ThreadItem({ thread, isActive, onClick, isAdmin }) {
 /* ─── Single message bubble ───────────────────────────────────────────── */
 // Memoized so a background re-sync that leaves this message's object
 // reference unchanged (see mergeMessagesById) skips re-rendering it entirely.
-const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry, onCancelUpload, onOpenAttachment, onReply }) {
+const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry, onCancelUpload, onOpenAttachment, onReply, onEdit, onRequestDelete }) {
+  const [menuPos, setMenuPos] = useState(null); // { top, left } (fixed) of the open actions menu
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const menuButtonRef = useRef(null);
+  const draftRef = useRef(null);
+
+  // The menu is fixed-positioned (the thread scrolls and clips), so it closes on any outside click, scroll or resize.
+  useEffect(() => {
+    if (!menuPos) return undefined;
+    const close = () => setMenuPos(null);
+    const onDown = (e) => { if (!e.target.closest?.("[data-message-menu]")) close(); };
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menuPos]);
+
+  useLayoutEffect(() => {
+    const el = draftRef.current;
+    if (!editing || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
+  }, [editing, draft]);
+
   if (msg.isInternalNote && !isAdmin) return null;
 
   const senderId = msg.senderId?._id || msg.senderId;
@@ -313,7 +389,37 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   const metaClasses = isOwn && !note ? "text-primary-foreground/70 dark:text-muted-foreground" : "text-muted-foreground";
   const quoteOwn = isOwn && !note;
   const quoteClasses = quoteOwn ? "bg-black/20 border-l-primary-foreground/60 dark:border-l-primary" : "bg-secondary border-l-primary";
-  const hasAttachments = msg.attachments?.length > 0;
+  const deleted = Boolean(msg.deletedForEveryoneAt);
+  const hasAttachments = !deleted && msg.attachments?.length > 0;
+  const edited = !deleted && Boolean(msg.editedAt);
+  // Only the sender's own, delivered, live messages get the actions menu; Edit only where there is text to edit.
+  const canManage = isOwn && !deleted && !isPending && !isFailed && !String(msg._id).startsWith("temp-");
+  const canEdit = canManage && Boolean(msg.messageBody) && Boolean(onEdit);
+  const parentDeleted = Boolean(parent?.deletedForEveryoneAt);
+
+  const openMenu = () => {
+    const rect = menuButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuHeight = canEdit ? 84 : 48;
+    const below = window.innerHeight - rect.bottom;
+    const top = below >= menuHeight + 8 ? rect.bottom + 4 : Math.max(8, rect.top - menuHeight - 4);
+    setMenuPos({ top, left: Math.min(Math.max(8, rect.left), window.innerWidth - 168) });
+  };
+  const startEdit = () => { setMenuPos(null); setDraft(msg.messageBody || ""); setEditing(true); };
+  const cancelEdit = () => { if (!saving) setEditing(false); };
+  const saveEdit = async () => {
+    const text = draft.trim();
+    if (!text || saving) return;
+    if (text === (msg.messageBody || "").trim()) { setEditing(false); return; }
+    setSaving(true);
+    const ok = await onEdit(msg, text); // the parent reports a failure itself and returns false; the old text stays
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+  const onDraftKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing) { e.preventDefault(); saveEdit(); }
+    else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+  };
 
   return (
     <div className={`group flex gap-2 ${isOwn ? "flex-row-reverse" : ""}`}>
@@ -326,18 +432,18 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
             <Ic.Lock /> Internal Note (visible to team only)
           </span>
         )}
-        {(msg.messageBody || hasAttachments) && (
+        {(msg.messageBody || hasAttachments || deleted) && (
           <div
             onClick={isFailed ? () => onRetry?.(msg) : undefined}
             className={`px-3 pt-2 pb-1.5 rounded-2xl text-[13px] leading-snug shadow-sm max-w-full
-              ${isFailed ? "ring-2 ring-destructive/50 cursor-pointer" : ""} ${bubbleClasses}`}>
+              ${editing ? "w-full sm:min-w-[18rem]" : ""} ${isFailed ? "ring-2 ring-destructive/50 cursor-pointer" : ""} ${bubbleClasses}`}>
             {parent && (
               <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
                 <p className={`text-[11px] font-semibold truncate ${quoteOwn ? "text-primary-foreground dark:text-primary" : "text-primary"}`}>
                   {parent.senderName || "Message"}
                 </p>
                 <p className={`text-[12px] line-clamp-2 break-words ${quoteOwn ? "text-primary-foreground/80 dark:text-muted-foreground" : "text-muted-foreground"}`}>
-                  {parent.messageBody || parent.message || "Attachment"}
+                  {parentDeleted ? <span className="italic">This message was deleted</span> : (parent.messageBody || parent.message || "Attachment")}
                 </p>
               </div>
             )}
@@ -355,9 +461,41 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
                 ))}
               </div>
             )}
-            {msg.messageBody && <p className="whitespace-pre-wrap break-words">{msg.messageBody}</p>}
+            {deleted ? (
+              <p data-testid="deleted-message" className={`flex items-center gap-1.5 italic ${metaClasses}`}>
+                <Ic.Ban /> This message was deleted
+              </p>
+            ) : editing ? (
+              <div>
+                <textarea
+                  ref={draftRef}
+                  value={draft}
+                  autoFocus
+                  rows={1}
+                  aria-label="Edit message"
+                  disabled={saving}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onDraftKeyDown}
+                  onFocus={(e) => { const n = e.target.value.length; e.target.setSelectionRange(n, n); }}
+                  className="block w-full resize-none rounded-lg border border-border bg-background px-2 py-1.5 text-base sm:text-[13px] leading-5 text-foreground outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring"
+                />
+                <div className="mt-1.5 flex items-center justify-end gap-1.5">
+                  <button type="button" onClick={cancelEdit} disabled={saving}
+                    className="rounded-md bg-background/20 px-2.5 py-1 text-[11px] font-semibold hover:bg-background/30 disabled:opacity-50">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={saveEdit} disabled={saving || !draft.trim()}
+                    className="rounded-md bg-background px-2.5 py-1 text-[11px] font-bold text-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              msg.messageBody && <p className="whitespace-pre-wrap break-words">{msg.messageBody}</p>
+            )}
             {/* Time (and, for our own messages, the delivery tick) at the bottom-right of the bubble, like WhatsApp. The read receipt lives in the tick's tooltip. */}
             <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap pr-1 text-[10px] leading-none ${metaClasses}`}>
+              {edited && <span className="italic">Edited</span>}
               <span>{formatTime(msg.createdAt)}</span>
               {isOwn && !isFailed && (
                 <span title={tickTitle} aria-label={isRead ? "Read" : "Sent"} className={`inline-flex ${isRead ? (quoteOwn ? "text-sky-300" : "text-sky-500") : ""}`}>
@@ -373,11 +511,33 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
           </button>
         )}
       </div>
-      {!isPending && !isFailed && onReply && (
-        <button type="button" onClick={() => onReply(msg)} title="Reply" aria-label="Reply"
-          className="self-end mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0">
-          <Ic.Reply />
-        </button>
+      {!isPending && !isFailed && !deleted && (onReply || canManage) && (
+        <div className="self-end mb-1 flex items-center shrink-0">
+          {onReply && (
+            <button type="button" onClick={() => onReply(msg)} title="Reply" aria-label="Reply"
+              className="p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0">
+              <Ic.Reply />
+            </button>
+          )}
+          {canManage && !editing && (
+            <button ref={menuButtonRef} type="button" onClick={() => (menuPos ? setMenuPos(null) : openMenu())}
+              title="Message options" aria-label="Message options" aria-haspopup="menu" aria-expanded={Boolean(menuPos)} data-message-menu
+              className={`p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 ${menuPos ? "sm:opacity-100" : "sm:opacity-0"}`}>
+              <Ic.Chevron />
+            </button>
+          )}
+        </div>
+      )}
+      {menuPos && canManage && createPortal(
+        <div role="menu" data-message-menu style={{ top: menuPos.top, left: menuPos.left }}
+          className="fixed z-50 w-40 overflow-hidden rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-lg">
+          {canEdit && (
+            <button type="button" role="menuitem" onClick={startEdit} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Edit</button>
+          )}
+          <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRequestDelete?.(msg); }}
+            className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-secondary">Delete</button>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -419,6 +579,7 @@ export default function Messages() {
   const [attachNotice, setAttachNotice] = useState(null); // why a file was not added (too many / too big / empty)
   const [replyingTo, setReplyingTo] = useState(null); // { _id, senderName, messageBody } of the message being replied to
   const [viewer, setViewer]           = useState(null); // attachment open in the centered viewer
+  const [deleteTarget, setDeleteTarget] = useState(null); // { message, busy, error } while the delete-for-everyone confirm is open
   const [loading, setLoading]         = useState(true);
   const [msgLoading, setMsgLoading]   = useState(false);
   const [showMobile, setShowMobile]   = useState(false); // mobile: show conversation
@@ -576,8 +737,23 @@ export default function Messages() {
       }
       loadThreads();
     };
+    // An edit or delete-for-everyone (by either side) replaces the message in the open thread by _id; the same event can arrive
+    // twice (conversation room + personal room), so it is never appended. The thread list shows no message preview, so it is left alone.
+    const handleMessageChange = (message) => {
+      const msgThreadId = message?.conversationId || message?.threadId;
+      const current = activeThreadRef.current;
+      if (current && msgThreadId === current._id) {
+        setMessages((prev) => applyMessageChange(prev, message));
+      }
+    };
     socket.on("message:new", handleNewMessage);
-    return () => socket.off("message:new", handleNewMessage);
+    socket.on("message:update", handleMessageChange);
+    socket.on("message:delete", handleMessageChange);
+    return () => {
+      socket.off("message:new", handleNewMessage);
+      socket.off("message:update", handleMessageChange);
+      socket.off("message:delete", handleMessageChange);
+    };
   }, [socket, loadThreads]);
 
   // Typing indicator: listen for the other party's typing state in the
@@ -865,6 +1041,36 @@ export default function Messages() {
   // A reply quotes a message of the open conversation: drop it when the conversation changes.
   useEffect(() => { setReplyingTo(null); }, [activeThread?._id]);
 
+  // Edit in place: the bubble keeps its old text until the server confirms. Returns true on success (the bubble leaves edit mode).
+  const editMessage = useCallback(async (message, text) => {
+    try {
+      const res = await messagesApi.editMessage(message._id, text);
+      if (res?.message) setMessages((prev) => applyMessageChange(prev, res.message));
+      else setMessages((prev) => applyMessageChange(prev, { ...message, messageBody: text, editedAt: new Date().toISOString() }));
+      setSendError(null);
+      return true;
+    } catch (err) {
+      setSendError(err.userMessage || err.message || "Failed to edit message");
+      return false;
+    }
+  }, []);
+
+  const requestDelete = useCallback((message) => setDeleteTarget({ message, busy: false, error: "" }), []);
+  const cancelDelete = useCallback(() => setDeleteTarget(null), []);
+  const confirmDelete = useCallback(async () => {
+    const message = deleteTarget?.message;
+    if (!message || deleteTarget.busy) return;
+    setDeleteTarget({ message, busy: true, error: "" });
+    try {
+      const res = await messagesApi.deleteMessageForEveryone(message._id);
+      setMessages((prev) => applyMessageChange(prev, res?.message || { ...message, messageBody: "", attachments: [], deletedForEveryoneAt: new Date().toISOString() }));
+      setReplyingTo((prev) => (prev?._id === message._id ? null : prev));
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteTarget({ message, busy: false, error: err.userMessage || err.message || "Failed to delete message" });
+    }
+  }, [deleteTarget]);
+
   const openAttachment = useCallback((info) => setViewer(info), []);
   const closeViewer = useCallback(() => setViewer(null), []);
 
@@ -1018,7 +1224,8 @@ export default function Messages() {
                           {showDivider && <DayDivider label={dayLabel(msg.createdAt)} />}
                           <MessageBubble msg={msg} isAdmin={isAdmin}
                             isOwn={msg.senderId?._id === user?._id || msg.senderId === user?._id}
-                            onRetry={retryMessage} onCancelUpload={cancelUpload} onOpenAttachment={openAttachment} onReply={startReply} />
+                            onRetry={retryMessage} onCancelUpload={cancelUpload} onOpenAttachment={openAttachment} onReply={startReply}
+                            onEdit={editMessage} onRequestDelete={requestDelete} />
                         </Fragment>
                       );
                     });
@@ -1113,6 +1320,18 @@ export default function Messages() {
       </div>
 
       {viewer && <AttachmentViewer {...viewer} onClose={closeViewer} />}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete message?"
+          message="Delete this message? It will be removed for everyone in this conversation."
+          confirmLabel="Delete"
+          tone="danger"
+          busy={deleteTarget.busy}
+          error={deleteTarget.error}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
+      )}
     </div>
   );
 }

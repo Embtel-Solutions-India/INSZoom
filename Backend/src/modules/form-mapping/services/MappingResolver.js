@@ -197,7 +197,13 @@ class MappingResolver {
       case "boolean":
         return Boolean(value);
       case "checkbox":
-        if (transform.value !== undefined) return value === transform.value;
+        // opt-in per edge (ignoreCase): an answer typed as "brown" or normalised to "male" still ticks the "Brown" / "Male" box
+        if (transform.value !== undefined) {
+          // a multi-select answer (race) ticks the box of every option it contains
+          if (Array.isArray(value)) return value.some((entry) => (transform.ignoreCase && typeof entry === "string" && typeof transform.value === "string" ? entry.trim().toLowerCase() === transform.value.trim().toLowerCase() : entry === transform.value));
+          if (transform.ignoreCase && typeof value === "string" && typeof transform.value === "string") return value.trim().toLowerCase() === transform.value.trim().toLowerCase();
+          return value === transform.value;
+        }
         if (transform.optionsMap && Object.prototype.hasOwnProperty.call(transform.optionsMap, value)) return transform.optionsMap[value];
         return Boolean(value);
       case "arrayItem": {
@@ -205,7 +211,11 @@ class MappingResolver {
         if (!Array.isArray(collection)) return value;
         const index = Number(mapping.repeatIndex ?? transform.index ?? 0);
         const item = collection[index];
-        return transform.itemPath ? this.resolvePath(item, transform.itemPath) : item;
+        const picked = transform.itemPath ? this.resolvePath(item, transform.itemPath) : item;
+        // optional, opt-in per edge: split ONE free-text address of the row into a part (employer address -> city / state / zip / country), or format a date of the row
+        if (transform.addressPart) return AddressParser.addressPart(picked, transform.addressPart);
+        if (transform.format) return this.formatDate(picked, transform.format);
+        return picked;
       }
       // --- Family (K-1/K-3) crosswalk transforms. Each is opt-in per edge. ---
       // Digits only: SSN / A-Number widgets are maxLength 9 with the "A-" /

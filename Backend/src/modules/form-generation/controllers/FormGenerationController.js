@@ -1,5 +1,6 @@
 const PDFGenerationService = require("../services/PDFGenerationService");
 const FilingPackageService = require("../services/FilingPackageService");
+const { sendFile } = require("../../../utils/fileResponse");
 
 function handle(res, error) {
   return res.status(error.status || 500).json({ success: false, message: error.message, validationResults: error.validationResults });
@@ -26,9 +27,7 @@ exports.validate = async (req, res) => {
 exports.preview = async (req, res) => {
   try {
     const { document, buffer } = await PDFGenerationService.getPdfDocument(req.params.caseFormId);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${document.originalName || "uscis-form.pdf"}"`);
-    res.send(buffer);
+    sendFile(res, { buffer, fileName: document.originalName || "uscis-form.pdf", mimeType: "application/pdf", disposition: "inline" });
   } catch (error) {
     handle(res, error);
   }
@@ -38,9 +37,7 @@ exports.download = async (req, res) => {
   try {
     const { caseForm, document, buffer } = await PDFGenerationService.getPdfDocument(req.params.caseFormId);
     await PDFGenerationService.audit("PDF_DOWNLOADED", caseForm, req.user, req, { documentId: document._id });
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${document.originalName || "uscis-form.pdf"}"`);
-    res.send(buffer);
+    sendFile(res, { buffer, fileName: document.originalName || "uscis-form.pdf", mimeType: "application/pdf", disposition: "attachment" });
   } catch (error) {
     handle(res, error);
   }

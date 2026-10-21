@@ -115,6 +115,10 @@ const env = {
   // see email.service.js's sendTemplateEmail(), which is the one place this
   // is enforced.
   emailSuppressStaffAndAttorney: process.env.EMAIL_SUPPRESS_STAFF_AND_ATTORNEY === "true",
+  // Master switch: EMAIL_SUPPRESS_ALL=true holds back EVERY outbound email (internal team, attorneys and clients alike). Each one is still written to EmailLog with
+  // status "skipped", so nothing is lost from the audit trail. The only exception is a password-reset email the user asked for themselves (otherwise they would be
+  // locked out). Enforced in one place: email.service.js's dispatch(), the final hand-off to the mail provider.
+  emailSuppressAll: process.env.EMAIL_SUPPRESS_ALL === "true",
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/immigration_crm",
   clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",
@@ -161,6 +165,8 @@ const env = {
       // (and in addition to) the app-level AES-256-GCM envelope above when
       // STORAGE_ENCRYPTION_KEY is set — defense in depth, not a replacement.
       sse: process.env.S3_SSE || "AES256",
+      // Only used when S3_SSE=aws:kms; unset = the account's default aws/s3 KMS key.
+      sseKmsKeyId: process.env.S3_SSE_KMS_KEY_ID || undefined,
     },
   },
   stripe: {

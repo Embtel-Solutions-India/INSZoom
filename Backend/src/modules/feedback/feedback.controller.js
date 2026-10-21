@@ -70,6 +70,26 @@ exports.replyToFeedback = async (req, res, next) => {
   }
 };
 
+exports.editFeedback = async (req, res, next) => {
+  try {
+    await assertStaffCaseAccess(req);
+    const feedback = await feedbackService.editFeedback({ caseId: req.params.caseId, feedbackId: req.params.feedbackId, author: req.user, message: req.body.message });
+    res.json({ success: true, feedback });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteFeedbackForEveryone = async (req, res, next) => {
+  try {
+    await assertStaffCaseAccess(req);
+    const feedback = await feedbackService.deleteFeedbackForEveryone({ caseId: req.params.caseId, feedbackId: req.params.feedbackId, author: req.user });
+    res.json({ success: true, feedback });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.markFeedbackRead = async (req, res, next) => {
   try {
     await assertStaffCaseAccess(req);

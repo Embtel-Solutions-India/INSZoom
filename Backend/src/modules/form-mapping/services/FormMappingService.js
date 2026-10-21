@@ -4,6 +4,7 @@ const MappingResolver = require("./MappingResolver");
 const ValidationService = require("./ValidationService");
 const { isProjectable } = require("../contract/MappingPolicy");
 const logger = require("../../../utils/logger");
+const { isInterpreterOrPreparerField } = require("../config/blankFieldPolicy");
 
 let legacyMappingWarned = false;
 
@@ -45,6 +46,10 @@ class FormMappingService {
       const id = field.fieldId || field.id || field.fieldName;
       if (keptBlank.has(id)) {
         return { ...field, mappings: [], keepBlank: true, required: false, ...(field.validation ? { validation: { ...field.validation, required: false } } : {}), ...(field.validationRules ? { validationRules: { ...field.validationRules, required: false } } : {}) };
+      }
+      // the interpreter's and the preparer's own boxes are never filled by the system, whatever a mapping version, a legacy mapping or a template default says
+      if (isInterpreterOrPreparerField(field)) {
+        return { ...field, mappings: [], mapping: undefined, canonicalPath: undefined, masterDataPath: undefined, defaultValue: undefined };
       }
       return { ...field, mappings: mappingsByTarget.get(id) || [] };
     });

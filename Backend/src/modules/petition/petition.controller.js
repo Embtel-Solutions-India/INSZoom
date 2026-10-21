@@ -3,6 +3,7 @@ const PackageDefinition = require("../../models/PackageDefinition");
 const Document = require("../../models/Document");
 const Case = require("../../models/Case");
 const storageService = require("../uploads/storage.service");
+const { sendFile } = require("../../utils/fileResponse");
 const caseService = require("../cases/case.service");
 const PetitionAssemblyService = require("./services/PetitionAssemblyService");
 const feedbackService = require("../feedback/feedback.service");
@@ -90,9 +91,7 @@ exports.preview = async (req, res) => {
     const document = await resolveOutputDocument(petitionPackage, "pdf");
     if (!document?.storageKey) return res.status(404).json({ success: false, message: "Mailing PDF has not been assembled yet" });
     const buffer = await storageService.readBuffer(document.storageKey);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${document.originalName || "petition.pdf"}"`);
-    res.send(buffer);
+    sendFile(res, { buffer, fileName: document.originalName || "petition.pdf", mimeType: "application/pdf", disposition: "inline" });
   } catch (error) {
     handle(res, error);
   }
@@ -105,9 +104,12 @@ exports.download = async (req, res) => {
     const document = await resolveOutputDocument(petitionPackage, format);
     if (!document?.storageKey) return res.status(404).json({ success: false, message: `${format === "word" ? "Presentation draft" : "Mailing PDF"} has not been assembled yet` });
     const buffer = await storageService.readBuffer(document.storageKey);
-    res.setHeader("Content-Type", document.mimeType || (format === "word" ? "application/msword" : "application/pdf"));
-    res.setHeader("Content-Disposition", `attachment; filename="${document.originalName}"`);
-    res.send(buffer);
+    sendFile(res, {
+      buffer,
+      fileName: document.originalName || (format === "word" ? "petition.docx" : "petition.pdf"),
+      mimeType: document.mimeType || (format === "word" ? "application/msword" : "application/pdf"),
+      disposition: "attachment",
+    });
   } catch (error) {
     handle(res, error);
   }
