@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, CornerUpLeft, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle, MoreHorizontal, Pencil, Trash2, Ban } from 'lucide-react'
+import { Loader2, Send, CornerUpLeft, Copy, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle, MoreHorizontal, Pencil, Trash2, Ban } from 'lucide-react'
+import { copyTextToClipboard } from '../utils/copyToClipboard'
 import api, { feedbackApi } from '../services/api'
 import ChatAttachment from './ChatAttachment'
 import ConfirmModal from './ConfirmModal'
@@ -89,11 +90,14 @@ function mergeFeedback(current, incoming) {
 // resize or after choosing an option.
 const clampTo = (value, min, max) => Math.max(min, Math.min(value, max))
 
-function MessageActionsMenu({ onReply, onEdit, onDelete }) {
+function MessageActionsMenu({ onReply, onCopy, onEdit, onDelete }) {
   const [anchor, setAnchor] = useState(null) // { rect: dots button, bounds: chat pane }
   const [place, setPlace] = useState(null) // { top, left } once the menu has been measured
   const buttonRef = useRef(null)
   const menuRef = useRef(null)
+  const [copyState, setCopyState] = useState(null) // null | 'copied' | 'failed' - shown on the Copy item for a moment before the menu closes
+  const copyTimerRef = useRef(null)
+  useEffect(() => () => clearTimeout(copyTimerRef.current), [])
   const close = useCallback(() => { setAnchor(null); setPlace(null) }, [])
 
   useEffect(() => {
@@ -134,6 +138,7 @@ function MessageActionsMenu({ onReply, onEdit, onDelete }) {
   const toggle = (event) => {
     event.stopPropagation()
     if (anchor) { close(); return }
+    setCopyState(null)
     const button = buttonRef.current
     if (!button) return
     const rect = button.getBoundingClientRect()
@@ -147,6 +152,12 @@ function MessageActionsMenu({ onReply, onEdit, onDelete }) {
     setAnchor({ rect: { top: rect.top, bottom: rect.bottom, right: rect.right }, bounds })
   }
   const choose = (action) => { close(); action() }
+  const copy = async () => {
+    const copied = await onCopy()
+    setCopyState(copied ? 'copied' : 'failed')
+    clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => { close(); setCopyState(null) }, 900)
+  }
   const itemClasses = 'flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-secondary'
 
   return (
@@ -173,6 +184,11 @@ function MessageActionsMenu({ onReply, onEdit, onDelete }) {
           <button type="button" role="menuitem" onClick={() => choose(onReply)} className={itemClasses}>
             <CornerUpLeft className="w-3.5 h-3.5 text-muted-foreground" /> Reply
           </button>
+          {onCopy && (
+            <button type="button" role="menuitem" onClick={copy} className={itemClasses}>
+              <Copy className="w-3.5 h-3.5 text-muted-foreground" /> {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+            </button>
+          )}
           {onEdit && (
             <button type="button" role="menuitem" onClick={() => choose(onEdit)} className={itemClasses}>
               <Pencil className="w-3.5 h-3.5 text-muted-foreground" /> Edit
@@ -335,7 +351,7 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
               onClick={isFailed ? () => onRetry(item) : undefined}
               className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} relative group/msg pl-3 ${gutter ? 'pr-7' : 'pr-3'} pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isEditing ? 'min-w-[14rem] sm:min-w-[20rem]' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
             >
-              {hasMenu && <MessageActionsMenu onReply={() => onReply(item)} onEdit={canEdit ? startEdit : null} onDelete={canModify ? () => { setActionError(''); setConfirmingDelete(true) } : null} />}
+              {hasMenu && <MessageActionsMenu onReply={() => onReply(item)} onCopy={item.message ? () => copyTextToClipboard(item.message) : null} onEdit={canEdit ? startEdit : null} onDelete={canModify ? () => { setActionError(''); setConfirmingDelete(true) } : null} />}
               {parent && !deleted && (
                 <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
                   <p className={`text-[11px] font-semibold truncate ${outgoing ? 'text-primary-foreground dark:text-primary' : 'text-primary'}`}>{authorName(parent)}</p>

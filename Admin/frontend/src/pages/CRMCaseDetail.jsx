@@ -364,6 +364,9 @@ const employeeVisaLabel = (child) => {
   return visaKey(sub).includes(visaKey(visa)) ? sub : `${visa} · ${sub}`
 }
 
+// Documents tab: the "Uploaded By" column is hidden for these two cases only (an explicit exception requested by the business); every other case keeps it.
+const CASES_WITHOUT_UPLOADED_BY = new Set(['B413', 'B413-A'])
+
 const CRMCaseDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -577,6 +580,7 @@ const CRMCaseDetail = () => {
   // checklist panel here without a manual refresh.
   const reloadChecklistsRef = useRef(reloadCaseChecklists)
   reloadChecklistsRef.current = reloadCaseChecklists
+  const fetchDocumentsRef = useRef(null)
   useEffect(() => {
     if (!connected) return undefined
     return subscribe('case:checklists_changed', (payload) => {
@@ -584,6 +588,21 @@ const CRMCaseDetail = () => {
       reloadChecklistsRef.current?.()
     })
   }, [connected, id, subscribe])
+  // An answer or file saved from any panel on this page (see hooks/useCaseQuestionnaire.js) refreshes every other place that shows it:
+  // the other checklist panels, the Required Documents counts and the Documents tab.
+  useEffect(() => {
+    let timer = null
+    const onAnswersChanged = (event) => {
+      if (event?.detail?.caseId && String(event.detail.caseId) !== String(caseData?._id || id)) return
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        reloadChecklistsRef.current?.()
+        fetchDocumentsRef.current?.(true)
+      }, 300)
+    }
+    window.addEventListener('case-answers-changed', onAnswersChanged)
+    return () => { clearTimeout(timer); window.removeEventListener('case-answers-changed', onAnswersChanged) }
+  }, [id, caseData?._id])
   // EVERY checklist on the case (the same list the Checklist Approval card shows, approved or still a draft) that the fixed role panels below
   // do not already show (matched by the questionnaire each panel resolved), so each case type gets its detailed, editable answers panel.
   const shownQuestionnaireIds = new Set([
@@ -668,6 +687,7 @@ const CRMCaseDetail = () => {
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
   const [tabLoading, setTabLoading] = useState({ documents: false, forms: false, strategy: false, payments: false, letters: false, notes: false, tracking: false })
   const [documents, setDocuments] = useState([])
+  const hideUploadedBy = CASES_WITHOUT_UPLOADED_BY.has(String(caseData?.caseNumber || '').trim().toUpperCase())
   const [viewingDocument, setViewingDocument] = useState(null)
   // In-place text editing (client-uploaded .txt/.csv/.md files) - case
   // manager view/edit/save, versioned exactly like any other document
@@ -1035,6 +1055,7 @@ const CRMCaseDetail = () => {
       setTabLoading(prev => ({ ...prev, documents: false }))
     }
   }, [id, fetched.documents])
+  fetchDocumentsRef.current = fetchDocuments
 
   const parentCaseId = caseData?.parentCase?._id || caseData?.parentCase
   useEffect(() => {
@@ -3221,7 +3242,7 @@ const CRMCaseDetail = () => {
           </div>
           {showCaseDocumentUpload && (
             <div className="mb-5">
-              <CaseDocumentUploadPanel caseId={id} checklistItems={checklistDocumentGroups.length ? checklistDocumentGroups.flatMap((c) => c.documentItems.map((item) => ({ documentType: item.key, name: item.label }))) : getChecklistItems()} onUploaded={() => fetchDocuments(true)} />
+              <CaseDocumentUploadPanel caseId={id} checklistItems={checklistDocumentGroups.length ? checklistDocumentGroups.flatMap((c) => c.documentItems.map((item) => ({ documentType: item.key, name: item.label }))) : getChecklistItems()} onUploaded={() => { fetchDocuments(true); reloadCaseChecklists() }} />
             </div>
           )}
           {tabLoading.documents ? (
@@ -3230,17 +3251,28 @@ const CRMCaseDetail = () => {
             <div className="overflow-x-auto">
               <table className="w-full table-fixed">
                 <colgroup>
-                  <col className="w-[25%]" />
-                  <col className="w-[21%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[13%]" />
-                  <col className="w-[30%]" />
+                  {hideUploadedBy ? (
+                    <>
+                      <col className="w-[28%]" />
+                      <col className="w-[24%]" />
+                      <col className="w-[14%]" />
+                      <col className="w-[34%]" />
+                    </>
+                  ) : (
+                    <>
+                      <col className="w-[25%]" />
+                      <col className="w-[21%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[13%]" />
+                      <col className="w-[30%]" />
+                    </>
+                  )}
                 </colgroup>
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Filename</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Checklist question</th>
-                    <th className="text-left py-3 px-4 font-medium text-muted-foreground">Uploaded By</th>
+                    {!hideUploadedBy && <th className="text-left py-3 px-4 font-medium text-muted-foreground">Uploaded By</th>}
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Review Status</th>
                     <th className="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
                   </tr>
@@ -3259,7 +3291,7 @@ const CRMCaseDetail = () => {
                           <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Employer • Shared</span>
                         )}
                       </td>
-                      <td className="py-2 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>
+                      {!hideUploadedBy && <td className="py-2 px-4">{doc.uploadedByUser?.name || doc.uploadedByUser?.email || doc.uploadedBy || 'Staff'}</td>}
                       <td className="py-2 px-4">
                         <span className={`badge ${getDocumentReviewColor(doc.reviewStatus)}`}>
                           {doc.reviewStatus}

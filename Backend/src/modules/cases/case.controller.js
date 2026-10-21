@@ -1160,9 +1160,9 @@ exports.createCase = async (req, res, next) => {
     }
 
     const resolvedChildCaseCount = resolveChildCaseCount(caseStructure, childCaseCount);
-    // Every employee case of an employer matter - the ones created automatically too - is created with the name and email of the person it is for.
+    // Every employee case of an employer matter - the ones created automatically too - can be created with the name and email of the person it is for (both optional).
     let employeeSlots = [];
-    // (the Create Case form always sends them and will not submit without them; a caller that sends none - an import, an older client - keeps working as before)
+    // (a caller that sends none - an import, an older client - keeps working as before)
     if (caseStructure === "employer_employee" && resolvedChildCaseCount > 0 && employees !== undefined) {
       const problem = validateEmployeeSlots(employees, resolvedChildCaseCount, [email, cleanEmail(employerEmail)]);
       if (problem.message) return res.status(400).json({ success: false, code: "EMPLOYEE_DETAILS_REQUIRED", message: problem.message });
@@ -1478,7 +1478,7 @@ exports.createCase = async (req, res, next) => {
           employerProfileId: employerProfile?._id || null,
           dataEntryMode: resolvedDataEntryMode,
           assignmentOverridden: false,
-          ...(employeeSlots[index] ? { pendingEmployee: employeeSlots[index], employeeIdentity: employeeSlots[index] } : {}),
+          ...(employeeSlots[index]?.name || employeeSlots[index]?.email ? { pendingEmployee: employeeSlots[index], employeeIdentity: employeeSlots[index] } : {}),
         }]);
         created.caseIds.push(childCase._id);
 

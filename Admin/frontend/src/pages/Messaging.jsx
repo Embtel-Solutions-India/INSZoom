@@ -26,6 +26,7 @@ import {
 import ChatAttachment from '../components/ChatAttachment'
 import ConfirmModal from '../components/ConfirmModal'
 import { MAX_ATTACHMENTS_PER_MESSAGE, formatFileSize, isChunkedFile } from '../utils/chunkedUpload'
+import { copyTextToClipboard } from '../utils/copyToClipboard'
 import {
   THUMBNAIL_MAX_BYTES,
   acceptNewFiles,
@@ -282,8 +283,11 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [copyState, setCopyState] = useState(null) // null | 'copied' | 'failed' - shown on the Copy item for a moment before the menu closes
   const menuButtonRef = useRef(null)
   const draftRef = useRef(null)
+  const copyTimerRef = useRef(null)
+  useEffect(() => () => clearTimeout(copyTimerRef.current), [])
 
   // The menu is fixed-positioned (the thread scrolls and clips), so it closes on any outside click, scroll or resize.
   useEffect(() => {
@@ -356,12 +360,21 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
   const canManage = outgoing && !deleted && !isPending && !isFailed && !String(m._id).startsWith('temp-')
   const canEdit = canManage && Boolean(m.message) && Boolean(onEdit)
   const canReply = Boolean(onReply) && !deleted && !isPending && !isFailed
-  // One "three dots" menu in the bubble's top-right corner: Reply on any live message, Edit / Delete on your own.
-  const showMenu = !editing && (canReply || canManage)
+  // Copy: any live message that has text (attachment-only messages have nothing to copy).
+  const canCopy = !deleted && Boolean(m.message)
+  // One "three dots" menu in the bubble's top-right corner: Reply / Copy on any live message, Edit / Delete on your own.
+  const showMenu = !editing && (canReply || canCopy || canManage)
 
   const openMenu = () => {
     if (!menuButtonRef.current) return
-    setMenuPos(placeMenu(menuButtonRef.current, (canReply ? 1 : 0) + (canEdit ? 1 : 0) + (canManage ? 1 : 0)))
+    setCopyState(null)
+    setMenuPos(placeMenu(menuButtonRef.current, (canReply ? 1 : 0) + (canCopy ? 1 : 0) + (canEdit ? 1 : 0) + (canManage ? 1 : 0)))
+  }
+  const copyMessage = async () => {
+    const copied = await copyTextToClipboard(m.message)
+    setCopyState(copied ? 'copied' : 'failed')
+    clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => { setMenuPos(null); setCopyState(null) }, 900)
   }
   const startEdit = () => { setMenuPos(null); setDraft(m.message || ''); setEditError(''); setEditing(true) }
   const cancelEdit = () => { if (!saving) { setEditing(false); setEditError('') } }
@@ -548,6 +561,11 @@ const MessageBubble = memo(function MessageBubble({ message: m, outgoing, style,
           >
             {canReply && (
               <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onReply(m) }} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Reply</button>
+            )}
+            {canCopy && (
+              <button type="button" role="menuitem" onClick={copyMessage} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">
+                {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy'}
+              </button>
             )}
             {canEdit && (
               <button type="button" role="menuitem" onClick={startEdit} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Edit</button>

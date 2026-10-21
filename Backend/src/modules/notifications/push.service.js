@@ -6,8 +6,10 @@
 // into this module).
 const firebaseAdmin = require("../../config/firebase-admin");
 const logger = require("../../utils/logger");
+const env = require("../../config/env");
 const deviceTokenService = require("./device-token.service");
 
+const PUSH_SUPPRESSED = "Notifications are paused (NOTIFICATIONS_SUPPRESS_ALL)";
 const PUSH_NOT_CONFIGURED = "Push notifications are temporarily unavailable (delivery provider not configured)";
 
 const DEAD_TOKEN_CODES = new Set([
@@ -56,6 +58,7 @@ async function deactivateDeadTokens(tokens, errorCodes) {
 
 async function sendToToken(token, payload = {}) {
   if (!token) return { sent: false, error: "No token provided" };
+  if (env.notificationsSuppressAll) return { sent: false, skipped: PUSH_SUPPRESSED };
   if (!firebaseAdmin.isConfigured()) return { sent: false, skipped: PUSH_NOT_CONFIGURED };
   try {
     const messaging = firebaseAdmin.getMessaging();
@@ -68,6 +71,7 @@ async function sendToToken(token, payload = {}) {
 }
 
 async function sendMulticast(tokens, payload = {}) {
+  if (env.notificationsSuppressAll) return { successCount: 0, failureCount: 0, responses: [], skipped: PUSH_SUPPRESSED };
   const validTokens = [...new Set((tokens || []).filter(Boolean))];
   if (!validTokens.length) return { successCount: 0, failureCount: 0, responses: [] };
   if (!firebaseAdmin.isConfigured()) return { successCount: 0, failureCount: validTokens.length, skipped: PUSH_NOT_CONFIGURED };

@@ -289,7 +289,7 @@ describe("Messages edit and delete", () => {
     await flush();
   };
 
-  it("has one three-dots menu per message: Reply everywhere, Edit/Delete only on the user's own", async () => {
+  it("has one three-dots menu per message: Reply and Copy everywhere, Edit/Delete only on the user's own", async () => {
     threadState.messages = [theirs, mine];
     await openThread();
     const dots = screen.getAllByLabelText("Message options");
@@ -302,13 +302,36 @@ describe("Messages edit and delete", () => {
     expect(dots[0].parentElement.className).not.toMatch(/\bpx-3\b|float|pt-3|mt-2/);
     expect(dots[0].parentElement.querySelector("[class*=float-right], [class*=clear-both]")).toBeNull();
     fireEvent.click(dots[0]); // the team's message
-    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Reply"]);
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Reply", "Copy"]);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
     fireEvent.click(dots[1]); // own message
-    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Reply", "Edit", "Delete"]);
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual(["Reply", "Copy", "Edit", "Delete"]);
     fireEvent.mouseDown(document.body); // outside click closes
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("the menu's Copy option copies the message text, confirms with \"Copied\", then closes", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      threadState.messages = [theirs, { ...mine, attachments: [{ _id: "a1", originalName: "x.pdf" }], messageBody: "" }];
+      await openThread();
+      const [theirDots, attachmentOnlyDots] = screen.getAllByLabelText("Message options");
+      fireEvent.click(attachmentOnlyDots); // no text -> nothing to copy
+      expect(screen.queryByRole("menuitem", { name: "Copy" })).toBeNull();
+      fireEvent.keyDown(document, { key: "Escape" });
+      fireEvent.click(theirDots);
+      await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: "Copy" })); });
+      expect(writeText).toHaveBeenCalledWith("from the team");
+      expect(screen.getByRole("menuitem", { name: "Copied" })).toBeTruthy();
+      await act(async () => { vi.advanceTimersByTime(1000); });
+      expect(screen.queryByRole("menu")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      delete navigator.clipboard;
+    }
   });
 
   it("the menu's Reply option starts the same reply as the standalone Reply button", async () => {
@@ -421,7 +444,7 @@ describe("Messages edit and delete", () => {
       fireEvent.click(screen.getByLabelText("Message options"));
       menu = screen.getByRole("menu");
       expect(menu.style.left).toBe("308px"); // clamped to the pane's left edge + 8px inset (416 - 128 would be 288)
-      expect(menu.style.top).toBe("392px"); // 500 - 4 - (8 + 3 * 32)
+      expect(menu.style.top).toBe("360px"); // 500 - 4 - (8 + 4 * 32)
     } finally {
       HTMLElement.prototype.getBoundingClientRect = original;
     }

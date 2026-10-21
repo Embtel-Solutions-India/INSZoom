@@ -6,6 +6,7 @@ import { chunkApi, messagesApi, usersApi } from "../../services/api";
 import { useMyCase } from "../../hooks/useMyCaseProfile";
 import { IconX } from "../../utils/iconComponents";
 import { attachmentProblem, formatFileSize, isChunkedFile, MAX_ATTACHMENTS_PER_MESSAGE, uploadFileInChunks } from "../../utils/chunkedUpload";
+import { copyTextToClipboard } from "../../utils/copyToClipboard";
 import AttachmentViewer from "../../components/AttachmentViewer";
 import MessageAttachment from "../../components/MessageAttachment";
 import ConfirmDialog from "../../components/questionnaire/ConfirmDialog";
@@ -370,8 +371,11 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [copyState, setCopyState] = useState(null); // null | "copied" | "failed" - shown on the Copy item for a moment before the menu closes
   const menuButtonRef = useRef(null);
   const draftRef = useRef(null);
+  const copyTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(copyTimerRef.current), []);
 
   // The menu is fixed-positioned (the thread scrolls and clips), so it closes on any outside click, scroll or resize.
   useEffect(() => {
@@ -436,13 +440,22 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   const canManage = isOwn && !deleted && !isPending && !isFailed && !String(msg._id).startsWith("temp-");
   const canEdit = canManage && Boolean(msg.messageBody) && Boolean(onEdit);
   const canReply = Boolean(onReply) && !deleted && !isPending && !isFailed;
-  // One "three dots" menu in the bubble's top-right corner: Reply on any live message, Edit / Delete on your own.
-  const showMenu = !editing && (canReply || canManage);
+  // Copy: any live message that has text (attachment-only messages have nothing to copy).
+  const canCopy = !deleted && Boolean(msg.messageBody);
+  // One "three dots" menu in the bubble's top-right corner: Reply / Copy on any live message, Edit / Delete on your own.
+  const showMenu = !editing && (canReply || canCopy || canManage);
   const parentDeleted = Boolean(parent?.deletedForEveryoneAt);
 
   const openMenu = () => {
     if (!menuButtonRef.current) return;
-    setMenuPos(placeMenu(menuButtonRef.current, (canReply ? 1 : 0) + (canEdit ? 1 : 0) + (canManage ? 1 : 0)));
+    setCopyState(null);
+    setMenuPos(placeMenu(menuButtonRef.current, (canReply ? 1 : 0) + (canCopy ? 1 : 0) + (canEdit ? 1 : 0) + (canManage ? 1 : 0)));
+  };
+  const copyMessage = async () => {
+    const copied = await copyTextToClipboard(msg.messageBody);
+    setCopyState(copied ? "copied" : "failed");
+    clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => { setMenuPos(null); setCopyState(null); }, 900);
   };
   const startEdit = () => { setMenuPos(null); setDraft(msg.messageBody || ""); setEditing(true); };
   const cancelEdit = () => { if (!saving) setEditing(false); };
@@ -568,6 +581,11 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
           className="fixed z-50 w-32 min-w-[7.5rem] overflow-hidden rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-md">
           {canReply && (
             <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onReply(msg); }} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Reply</button>
+          )}
+          {canCopy && (
+            <button type="button" role="menuitem" onClick={copyMessage} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">
+              {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
+            </button>
           )}
           {canEdit && (
             <button type="button" role="menuitem" onClick={startEdit} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Edit</button>

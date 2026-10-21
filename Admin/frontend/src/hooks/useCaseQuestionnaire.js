@@ -10,6 +10,12 @@ import { questionnairesApi, documentIntelligenceApi, invalidateCachedGet } from 
 // go through questionnairesApi's preserveStatus:true path (see
 // questionnaire.service.js's PRESERVE_ANSWER_STATUS) so fixing a value never
 // silently reopens an already-submitted/approved checklist.
+// Everything on the case page that shows answers or uploaded files (the other checklist panels, the Required Documents summary, the Documents tab) listens for
+// this, so a text answer or a file saved from ANY panel appears in all of them at once, without a page reload.
+const announceAnswersChanged = (caseId) => {
+  try { window.dispatchEvent(new CustomEvent('case-answers-changed', { detail: { caseId: String(caseId || '') } })) } catch { /* never block a save */ }
+}
+
 export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
   const enabled = options.enabled !== false
   // Disambiguates when 2+ active checklists share the same targetRole (e.g.
@@ -89,6 +95,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     })
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
     await load()
+    announceAnswersChanged(caseId)
   }, [state.questionnaire, responseId, caseId, targetRole, referenceId, load])
 
   const saveFileAnswer = useCallback(async (questionKey, file) => {
@@ -103,6 +110,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     await questionnairesApi.saveFileAnswer(state.questionnaire._id, formData)
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
     await load()
+    announceAnswersChanged(caseId)
   }, [state.questionnaire, responseId, caseId, targetRole, referenceId, load])
 
   // Removes ONE entry from a multi-entry file row (staff may always remove).
@@ -116,6 +124,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     })
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
     await load()
+    announceAnswersChanged(caseId)
   }, [state.questionnaire, caseId, load])
 
   // Scans a document (passport, I-94, ...) with OCR/Document AI; the backend
@@ -124,6 +133,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     const response = await documentIntelligenceApi.autofillFromDocument(caseId, documentType, file)
     invalidateCachedGet(`/questionnaires/case/${caseId}`)
     await load()
+    announceAnswersChanged(caseId)
     return response.data
   }, [caseId, load])
 
