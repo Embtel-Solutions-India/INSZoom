@@ -20,7 +20,7 @@ const Ic = {
   File:    () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>,
   Reply:   () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14L4 9l5-5M4 9h10a6 6 0 016 6v4"/></svg>,
   Msg:     () => <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>,
-  Chevron: () => <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" d="M6 9l6 6 6-6"/></svg>,
+  Dots:    () => <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>,
   Ban:     () => <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" className="shrink-0"><circle cx="12" cy="12" r="9" strokeWidth="2"/><path strokeLinecap="round" strokeWidth="2" d="M5.6 5.6l12.8 12.8"/></svg>,
   CheckCheck: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="shrink-0 overflow-visible"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>,
 };
@@ -174,6 +174,46 @@ function applyIncomingMessage(prevMessages, incoming) {
     })),
   };
   return prevMessages.map((m, i) => (i === index ? replacement : m));
+}
+
+// Placement of the Reply/Edit/Delete dropdown (fixed layer, so the thread's overflow can't clip it): its RIGHT edge lines up with
+// the dots button's right edge (it opens toward the left, over the chat), 4px below the button - or above it when the chat pane has
+// no room below - and it is clamped, with an 8px inset, to the visible area of the nearest [data-chat-scroll] pane (scrollbar
+// excluded) so it never covers the scrollbar, the thread list or the composer. Falls back to the viewport without such a pane.
+const MENU_WIDTH = 128;
+const MENU_INSET = 8;
+function placeMenu(button, itemCount) {
+  const rect = button.getBoundingClientRect();
+  const menuHeight = 8 + 32 * itemCount;
+  const pane = button.closest("[data-chat-scroll]");
+  const paneRect = pane?.getBoundingClientRect();
+  const bounds = paneRect
+    ? {
+        left: paneRect.left + (pane.clientLeft || 0),
+        right: paneRect.left + (pane.clientLeft || 0) + (pane.clientWidth || paneRect.right - paneRect.left),
+        top: paneRect.top,
+        bottom: paneRect.top + (pane.clientHeight || paneRect.bottom - paneRect.top),
+      }
+    : { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+  const minLeft = bounds.left + MENU_INSET;
+  const maxLeft = Math.max(minLeft, bounds.right - MENU_INSET - MENU_WIDTH);
+  const left = Math.min(Math.max(minLeft, rect.right - MENU_WIDTH), maxLeft);
+  const fitsBelow = rect.bottom + 4 + menuHeight <= bounds.bottom - MENU_INSET;
+  const wanted = fitsBelow ? rect.bottom + 4 : rect.top - 4 - menuHeight;
+  const maxTop = Math.max(bounds.top + MENU_INSET, bounds.bottom - MENU_INSET - menuHeight);
+  return { top: Math.min(Math.max(bounds.top + MENU_INSET, wanted), maxTop), left };
+}
+
+// Keeps Tab / Shift+Tab inside the confirm popup (its buttons) while it is open.
+function trapTabInside(event) {
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(event.currentTarget.querySelectorAll("button:not([disabled])"));
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!focusable.includes(document.activeElement)) { event.preventDefault(); first.focus(); }
+  else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 }
 
 // An edit / delete-for-everyone arrives (HTTP response and socket, the latter possibly twice) as the full message. It REPLACES
@@ -395,15 +435,14 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
   // Only the sender's own, delivered, live messages get the actions menu; Edit only where there is text to edit.
   const canManage = isOwn && !deleted && !isPending && !isFailed && !String(msg._id).startsWith("temp-");
   const canEdit = canManage && Boolean(msg.messageBody) && Boolean(onEdit);
+  const canReply = Boolean(onReply) && !deleted && !isPending && !isFailed;
+  // One "three dots" menu in the bubble's top-right corner: Reply on any live message, Edit / Delete on your own.
+  const showMenu = !editing && (canReply || canManage);
   const parentDeleted = Boolean(parent?.deletedForEveryoneAt);
 
   const openMenu = () => {
-    const rect = menuButtonRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const menuHeight = canEdit ? 84 : 48;
-    const below = window.innerHeight - rect.bottom;
-    const top = below >= menuHeight + 8 ? rect.bottom + 4 : Math.max(8, rect.top - menuHeight - 4);
-    setMenuPos({ top, left: Math.min(Math.max(8, rect.left), window.innerWidth - 168) });
+    if (!menuButtonRef.current) return;
+    setMenuPos(placeMenu(menuButtonRef.current, (canReply ? 1 : 0) + (canEdit ? 1 : 0) + (canManage ? 1 : 0)));
   };
   const startEdit = () => { setMenuPos(null); setDraft(msg.messageBody || ""); setEditing(true); };
   const cancelEdit = () => { if (!saving) setEditing(false); };
@@ -435,8 +474,15 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
         {(msg.messageBody || hasAttachments || deleted) && (
           <div
             onClick={isFailed ? () => onRetry?.(msg) : undefined}
-            className={`px-3 pt-2 pb-1.5 rounded-2xl text-[13px] leading-snug shadow-sm max-w-full
+            className={`relative group/bubble ${showMenu ? "pl-3 pr-7" : "px-3"} pt-2 pb-1.5 rounded-2xl text-[13px] leading-snug shadow-sm max-w-full
               ${editing ? "w-full sm:min-w-[18rem]" : ""} ${isFailed ? "ring-2 ring-destructive/50 cursor-pointer" : ""} ${bubbleClasses}`}>
+            {showMenu && (
+              <button ref={menuButtonRef} type="button" onClick={(e) => { e.stopPropagation(); if (menuPos) setMenuPos(null); else openMenu(); }}
+                title="Message options" aria-label="Message options" aria-haspopup="menu" aria-expanded={Boolean(menuPos)} data-message-menu
+                className={`absolute top-1.5 right-1.5 inline-flex h-4 w-4 items-center justify-center opacity-60 hover:opacity-100 focus:opacity-100 transition-opacity ${menuPos ? "sm:!opacity-100" : "sm:opacity-0 sm:group-hover/bubble:opacity-60"}`}>
+                <Ic.Dots />
+              </button>
+            )}
             {parent && (
               <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
                 <p className={`text-[11px] font-semibold truncate ${quoteOwn ? "text-primary-foreground dark:text-primary" : "text-primary"}`}>
@@ -494,7 +540,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
               msg.messageBody && <p className="whitespace-pre-wrap break-words">{msg.messageBody}</p>
             )}
             {/* Time (and, for our own messages, the delivery tick) at the bottom-right of the bubble, like WhatsApp. The read receipt lives in the tick's tooltip. */}
-            <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap pr-1 text-[10px] leading-none ${metaClasses}`}>
+            <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap ${showMenu ? "-mr-[22px]" : "pr-1"} text-[10px] leading-none ${metaClasses}`}>
               {edited && <span className="italic">Edited</span>}
               <span>{formatTime(msg.createdAt)}</span>
               {isOwn && !isFailed && (
@@ -511,31 +557,25 @@ const MessageBubble = memo(function MessageBubble({ msg, isOwn, isAdmin, onRetry
           </button>
         )}
       </div>
-      {!isPending && !isFailed && !deleted && (onReply || canManage) && (
-        <div className="self-end mb-1 flex items-center shrink-0">
-          {onReply && (
-            <button type="button" onClick={() => onReply(msg)} title="Reply" aria-label="Reply"
-              className="p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0">
-              <Ic.Reply />
-            </button>
-          )}
-          {canManage && !editing && (
-            <button ref={menuButtonRef} type="button" onClick={() => (menuPos ? setMenuPos(null) : openMenu())}
-              title="Message options" aria-label="Message options" aria-haspopup="menu" aria-expanded={Boolean(menuPos)} data-message-menu
-              className={`p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 ${menuPos ? "sm:opacity-100" : "sm:opacity-0"}`}>
-              <Ic.Chevron />
-            </button>
-          )}
-        </div>
+      {!isPending && !isFailed && !deleted && onReply && (
+        <button type="button" onClick={() => onReply(msg)} title="Reply" aria-label="Reply"
+          className="self-end mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0">
+          <Ic.Reply />
+        </button>
       )}
-      {menuPos && canManage && createPortal(
+      {menuPos && showMenu && createPortal(
         <div role="menu" data-message-menu style={{ top: menuPos.top, left: menuPos.left }}
-          className="fixed z-50 w-40 overflow-hidden rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-lg">
+          className="fixed z-50 w-32 min-w-[7.5rem] overflow-hidden rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-md">
+          {canReply && (
+            <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onReply(msg); }} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Reply</button>
+          )}
           {canEdit && (
             <button type="button" role="menuitem" onClick={startEdit} className="block w-full px-3 py-1.5 text-left hover:bg-secondary">Edit</button>
           )}
-          <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRequestDelete?.(msg); }}
-            className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-secondary">Delete</button>
+          {canManage && (
+            <button type="button" role="menuitem" onClick={() => { setMenuPos(null); onRequestDelete?.(msg); }}
+              className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-secondary">Delete</button>
+          )}
         </div>,
         document.body,
       )}
@@ -1061,13 +1101,16 @@ export default function Messages() {
     const message = deleteTarget?.message;
     if (!message || deleteTarget.busy) return;
     setDeleteTarget({ message, busy: true, error: "" });
+    let failure = "";
     try {
       const res = await messagesApi.deleteMessageForEveryone(message._id);
       setMessages((prev) => applyMessageChange(prev, res?.message || { ...message, messageBody: "", attachments: [], deletedForEveryoneAt: new Date().toISOString() }));
       setReplyingTo((prev) => (prev?._id === message._id ? null : prev));
-      setDeleteTarget(null);
     } catch (err) {
-      setDeleteTarget({ message, busy: false, error: err.userMessage || err.message || "Failed to delete message" });
+      failure = err?.userMessage || err?.message || "Failed to delete message";
+    } finally {
+      // Always leave the "Working…" state: close the popup on success, or keep it open with the error.
+      setDeleteTarget((prev) => (prev?.message?._id !== message._id ? prev : failure ? { message, busy: false, error: failure } : null));
     }
   }, [deleteTarget]);
 
@@ -1197,7 +1240,7 @@ export default function Messages() {
             </div>
 
             {/* Messages */}
-            <div ref={messagesContainerRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4 space-y-3">
+            <div ref={messagesContainerRef} data-chat-scroll className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-4 space-y-3">
               {msgLoading ? (
                 <div className="flex items-center justify-center h-24">
                   <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
@@ -1321,16 +1364,17 @@ export default function Messages() {
 
       {viewer && <AttachmentViewer {...viewer} onClose={closeViewer} />}
       {deleteTarget && (
-        <ConfirmDialog
-          title="Delete message?"
-          message="Delete this message? It will be removed for everyone in this conversation."
-          confirmLabel="Delete"
-          tone="danger"
-          busy={deleteTarget.busy}
-          error={deleteTarget.error}
-          onConfirm={confirmDelete}
-          onCancel={cancelDelete}
-        />
+        <div onKeyDown={trapTabInside}>
+          <ConfirmDialog
+            title="Delete message?"
+            message="This message will be deleted for everyone in this conversation."
+            confirmLabel="Delete"
+            busy={deleteTarget.busy}
+            error={deleteTarget.error}
+            onConfirm={confirmDelete}
+            onCancel={cancelDelete}
+          />
+        </div>
       )}
     </div>
   );

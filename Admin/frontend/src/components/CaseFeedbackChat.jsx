@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send, CornerUpLeft, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle, ChevronDown, Pencil, Trash2, Ban } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, Send, CornerUpLeft, Paperclip, X, FileText, CheckCheck, MessageSquare, AlertCircle, MoreHorizontal, Pencil, Trash2, Ban } from 'lucide-react'
 import api, { feedbackApi } from '../services/api'
 import ChatAttachment from './ChatAttachment'
 import ConfirmModal from './ConfirmModal'
@@ -81,16 +81,23 @@ function mergeFeedback(current, incoming) {
   })
 }
 
-// Small chevron menu on the user's own bubbles. Fixed-positioned (from the button's rect) so the thread's
-// scroll container never clips it; closes on outside click, Escape, scroll or resize.
-function MessageActionsMenu({ onEdit, onDelete }) {
-  const [pos, setPos] = useState(null)
+// Plain three-dots icon, absolutely positioned in the bubble's right padding gutter so it never overlaps the
+// content. Its dropdown (Reply for any message; Edit / Delete are passed as null unless it is the user's own)
+// is fixed-positioned so no overflow clips it, but placed from the clamped coordinates of the CHAT PANE (the
+// nearest [data-chat-scroll] container, minus its scrollbar) with an 8px inset: right edge aligned with the
+// dots, 4px below them, flipped upward when there is no room below. Closes on outside click, Escape, scroll,
+// resize or after choosing an option.
+const clampTo = (value, min, max) => Math.max(min, Math.min(value, max))
+
+function MessageActionsMenu({ onReply, onEdit, onDelete }) {
+  const [anchor, setAnchor] = useState(null) // { rect: dots button, bounds: chat pane }
+  const [place, setPlace] = useState(null) // { top, left } once the menu has been measured
   const buttonRef = useRef(null)
   const menuRef = useRef(null)
-  const close = useCallback(() => setPos(null), [])
+  const close = useCallback(() => { setAnchor(null); setPlace(null) }, [])
 
   useEffect(() => {
-    if (!pos) return undefined
+    if (!anchor) return undefined
     const onOutside = (event) => {
       if (menuRef.current?.contains(event.target) || buttonRef.current?.contains(event.target)) return
       close()
@@ -108,15 +115,39 @@ function MessageActionsMenu({ onEdit, onDelete }) {
       window.removeEventListener('resize', close)
       window.removeEventListener('scroll', close, true)
     }
-  }, [pos, close])
+  }, [anchor, close])
 
-  const toggle = () => {
-    if (pos) { close(); return }
-    const rect = buttonRef.current?.getBoundingClientRect()
-    const up = Boolean(rect) && rect.bottom + 96 > window.innerHeight
-    setPos({ up, top: rect ? (up ? rect.top - 4 : rect.bottom + 4) : 0, left: Math.max(8, Math.min(rect?.left ?? 0, window.innerWidth - 150)) })
+  // Measure the rendered menu (before paint) and fit it inside the chat pane.
+  useLayoutEffect(() => {
+    if (!anchor || !menuRef.current) return
+    const { width, height } = menuRef.current.getBoundingClientRect()
+    const { rect, bounds } = anchor
+    const inset = 8
+    const roomBelow = bounds.bottom - inset - (rect.bottom + 4)
+    const roomAbove = rect.top - 4 - (bounds.top + inset)
+    const up = height > roomBelow && roomAbove > roomBelow
+    const top = clampTo(up ? rect.top - 4 - height : rect.bottom + 4, bounds.top + inset, bounds.bottom - inset - height)
+    const left = clampTo(rect.right - width, bounds.left + inset, bounds.right - inset - width)
+    setPlace({ top, left })
+  }, [anchor])
+
+  const toggle = (event) => {
+    event.stopPropagation()
+    if (anchor) { close(); return }
+    const button = buttonRef.current
+    if (!button) return
+    const rect = button.getBoundingClientRect()
+    const pane = button.closest('[data-chat-scroll]')
+    let bounds = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }
+    if (pane) {
+      const box = pane.getBoundingClientRect()
+      // clientWidth/Height exclude the scrollbar, so the menu can never sit over it.
+      bounds = { left: box.left + pane.clientLeft, top: box.top + pane.clientTop, right: box.left + pane.clientLeft + pane.clientWidth, bottom: box.top + pane.clientTop + pane.clientHeight }
+    }
+    setAnchor({ rect: { top: rect.top, bottom: rect.bottom, right: rect.right }, bounds })
   }
   const choose = (action) => { close(); action() }
+  const itemClasses = 'flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-secondary'
 
   return (
     <>
@@ -127,26 +158,31 @@ function MessageActionsMenu({ onEdit, onDelete }) {
         title="Message options"
         aria-label="Message options"
         aria-haspopup="menu"
-        aria-expanded={Boolean(pos)}
-        className={`p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0 ${pos ? 'sm:!opacity-100' : ''}`}
+        aria-expanded={Boolean(anchor)}
+        className={`absolute top-1.5 right-1.5 rounded text-current opacity-60 sm:opacity-0 sm:group-hover/msg:opacity-60 hover:!opacity-100 focus:!opacity-100 transition-opacity ${anchor ? 'sm:!opacity-100' : ''}`}
       >
-        <ChevronDown className="w-3.5 h-3.5" />
+        <MoreHorizontal className="w-4 h-4" />
       </button>
-      {pos && (
+      {anchor && (
         <div
           ref={menuRef}
           role="menu"
-          style={{ position: 'fixed', top: pos.top, left: pos.left, transform: pos.up ? 'translateY(-100%)' : undefined }}
-          className="z-40 min-w-[8.5rem] rounded-lg border border-border bg-card py-1 text-[13px] text-foreground shadow-lg"
+          style={{ position: 'fixed', top: place?.top ?? 0, left: place?.left ?? 0, visibility: place ? 'visible' : 'hidden' }}
+          className="z-40 w-32 rounded-lg border border-border bg-card py-1 text-[13px] font-normal not-italic text-foreground shadow-md"
         >
+          <button type="button" role="menuitem" onClick={() => choose(onReply)} className={itemClasses}>
+            <CornerUpLeft className="w-3.5 h-3.5 text-muted-foreground" /> Reply
+          </button>
           {onEdit && (
-            <button type="button" role="menuitem" onClick={() => choose(onEdit)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-secondary">
+            <button type="button" role="menuitem" onClick={() => choose(onEdit)} className={itemClasses}>
               <Pencil className="w-3.5 h-3.5 text-muted-foreground" /> Edit
             </button>
           )}
-          <button type="button" role="menuitem" onClick={() => choose(onDelete)} className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-red-600 hover:bg-secondary">
-            <Trash2 className="w-3.5 h-3.5" /> Delete
-          </button>
+          {onDelete && (
+            <button type="button" role="menuitem" onClick={() => choose(onDelete)} className={`${itemClasses} text-red-600`}>
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </button>
+          )}
         </div>
       )}
     </>
@@ -213,6 +249,11 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
   const canModify = outgoing && !isFailed && !item.__pending && !deleted && !String(item._id).startsWith('temp-')
   const canEdit = canModify && Boolean(item.message)
   const isEditing = editing && canEdit
+  // The three-dots icon sits in a permanent right gutter (pr-7) of the bubble, absolutely positioned at its top-right: every live (non-deleted, delivered-or-sending) message has it.
+  const hasMenu = !isFailed && !deleted && !isEditing
+  // Right gutter (pr-7) for the dots; the deleted placeholder keeps it too so its time lines up with the other bubbles. The footer cancels
+  // the gutter minus the dots' 6px inset (-mr-[22px]) so the time / ticks end directly below the dots.
+  const gutter = hasMenu || deleted
 
   useEffect(() => {
     const el = editRef.current
@@ -234,10 +275,15 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
     if (saving || (!text && attachments.length === 0)) return
     if (text === (item.message || '').trim()) { cancelEdit(); return }
     setSaving(true)
-    const failure = await onEditMessage(item, text)
-    setSaving(false)
-    if (failure) setActionError(failure)
-    else cancelEdit()
+    try {
+      const failure = await onEditMessage(item, text)
+      if (failure) setActionError(failure)
+      else cancelEdit()
+    } catch {
+      setActionError('Could not edit this message.')
+    } finally {
+      setSaving(false)
+    }
   }
   const onEditKeyDown = (event) => {
     if (event.key === 'Escape') { event.preventDefault(); cancelEdit() }
@@ -245,16 +291,21 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
   }
   const confirmDelete = async () => {
     setDeleting(true)
-    const failure = await onDeleteMessage(item)
-    setDeleting(false)
-    if (failure) setActionError(failure)
-    else setConfirmingDelete(false)
+    try {
+      const failure = await onDeleteMessage(item)
+      if (failure) setActionError(failure)
+      else setConfirmingDelete(false)
+    } catch {
+      setActionError('Could not delete this message.')
+    } finally {
+      setDeleting(false)
+    }
   }
   const isUploading = Boolean(item.__pending) && attachments.some((a) => typeof a.__progress === 'number')
   // Text, a quoted reply and attachments all live in the one bubble, with the time/tick footer at its bottom-right like WhatsApp.
   const hasBubble = Boolean(deleted || item.message || parent || attachments.length > 0)
   const footer = (
-    <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap pr-1 text-[10px] leading-none ${hasBubble ? metaClasses : 'text-muted-foreground'}`}>
+    <div className={`mt-0.5 flex items-center justify-end gap-1 whitespace-nowrap ${gutter ? 'pr-0 -mr-[22px]' : 'pr-1'} text-[10px] leading-none ${hasBubble ? metaClasses : 'text-muted-foreground'}`}>
       {item.editedAt && !deleted && <span>Edited</span>}
       <span>{formatTime(item.createdAt)}</span>
       {outgoing && !isFailed && (
@@ -282,8 +333,9 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
           {hasBubble ? (
             <div
               onClick={isFailed ? () => onRetry(item) : undefined}
-              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} px-3 pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isEditing ? 'min-w-[14rem] sm:min-w-[20rem]' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
+              className={`rounded-2xl ${outgoing ? 'rounded-tr-md' : 'rounded-tl-md'} relative group/msg pl-3 ${gutter ? 'pr-7' : 'pr-3'} pt-2 pb-1.5 text-[13px] leading-snug shadow-sm ${bubbleClasses} ${isEditing ? 'min-w-[14rem] sm:min-w-[20rem]' : ''} ${isFailed ? 'ring-2 ring-red-300 cursor-pointer' : ''}`}
             >
+              {hasMenu && <MessageActionsMenu onReply={() => onReply(item)} onEdit={canEdit ? startEdit : null} onDelete={canModify ? () => { setActionError(''); setConfirmingDelete(true) } : null} />}
               {parent && !deleted && (
                 <div className={`mb-1.5 rounded-lg border-l-4 px-2.5 py-1.5 ${quoteClasses}`}>
                   <p className={`text-[11px] font-semibold truncate ${outgoing ? 'text-primary-foreground dark:text-primary' : 'text-primary'}`}>{authorName(parent)}</p>
@@ -357,26 +409,23 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
           ) : footer}
         </div>
         {!isFailed && !deleted && (
-          <div className="mb-1 flex items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => onReply(item)}
-              title="Reply"
-              aria-label="Reply"
-              className="p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
-            >
-              <CornerUpLeft className="w-3.5 h-3.5" />
-            </button>
-            {canModify && !isEditing && <MessageActionsMenu onEdit={canEdit ? startEdit : null} onDelete={() => { setActionError(''); setConfirmingDelete(true) }} />}
-          </div>
+          <button
+            type="button"
+            onClick={() => onReply(item)}
+            title="Reply"
+            aria-label="Reply"
+            className="mb-1 p-1.5 rounded-full text-muted-foreground hover:text-primary hover:bg-secondary sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity shrink-0"
+          >
+            <CornerUpLeft className="w-3.5 h-3.5" />
+          </button>
         )}
       </div>
-      {confirmingDelete && (
+      {confirmingDelete && !deleted && (
         <ConfirmModal
-          title="Delete message"
-          message="Delete this message? It will be removed for everyone in this conversation."
+          title="Delete message?"
+          message="This message will be deleted for everyone in this conversation."
           confirmLabel="Delete"
-          tone="danger"
+          icon={Trash2}
           busy={deleting}
           error={actionError}
           onConfirm={confirmDelete}
@@ -399,7 +448,7 @@ function Bubble({ item, selfId, caseId, onReply, onRetry, onCancelUpload, onDisc
 
 export default function CaseFeedbackChat({ caseId }) {
   const { user } = useAuth()
-  const { subscribe } = useSocket()
+  const { subscribe, connected } = useSocket()
   const selfId = user?._id || user?.id
   const [items, setItems] = useState(null)
   const [message, setMessage] = useState('')
@@ -439,7 +488,7 @@ export default function CaseFeedbackChat({ caseId }) {
   // (same clientMessageId) would replace its temp bubble rather than double up.
   useEffect(() => {
     const unsubscribeNew = subscribe('feedback:new', (incoming) => {
-      if (String(incoming.caseId) !== String(caseId)) return
+      if (String(idOf(incoming.caseId)) !== String(caseId)) return
       setItems((current) => {
         if (!current) return current
         if (current.some((item) => String(item._id) === String(incoming._id))) return current
@@ -453,7 +502,7 @@ export default function CaseFeedbackChat({ caseId }) {
     // An edit / delete-for-everyone, from the other party or from this user's other session: replace the
     // message by _id (never append) and leave read state alone, so no unread count moves.
     const replaceMessage = (incoming) => {
-      if (!incoming?._id || String(incoming.caseId) !== String(caseId)) return
+      if (!incoming?._id || String(idOf(incoming.caseId)) !== String(caseId)) return
       setItems((current) => (current ? mergeFeedback(current, incoming) : current))
     }
     const unsubscribeUpdate = subscribe('feedback:update', replaceMessage)
@@ -463,7 +512,9 @@ export default function CaseFeedbackChat({ caseId }) {
       unsubscribeUpdate?.()
       unsubscribeDelete?.()
     }
-  }, [subscribe, caseId])
+    // `connected` is a dependency because subscribe() is a no-op until the socket exists: when it connects
+    // late (or reconnects) these listeners are attached again.
+  }, [subscribe, caseId, connected])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -709,7 +760,7 @@ export default function CaseFeedbackChat({ caseId }) {
             <p className="text-sm font-semibold text-primary bg-card px-4 py-2 rounded-lg shadow">Drop files to attach</p>
           </div>
         )}
-        <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
+        <div ref={scrollRef} data-chat-scroll className="flex-1 min-h-0 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
           {items === null ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />

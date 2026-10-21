@@ -125,6 +125,9 @@ export const attorneyApi = {
   replyFeedback: (caseId, feedbackId, message, files = [], clientMessageId, uploadIds = []) =>
     api.post(`/attorney/cases/${caseId}/feedback/${feedbackId}/reply`, toFeedbackFormData(message, files, clientMessageId, uploadIds), feedbackPostConfig(files)),
   markFeedbackRead: (caseId) => api.patch(`/attorney/cases/${caseId}/feedback/mark-read`),
+  // Author-only edit / delete-for-everyone of one's own message (WhatsApp style).
+  editFeedback: (caseId, feedbackId, message) => api.patch(`/attorney/cases/${caseId}/feedback/${feedbackId}`, { message }),
+  deleteFeedback: (caseId, feedbackId) => api.delete(`/attorney/cases/${caseId}/feedback/${feedbackId}`),
   attachmentUrl: (caseId, feedbackId, attachmentId) =>
     `${api.defaults.baseURL}/attorney/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`,
   // `config` lets the viewer pass { signal, onDownloadProgress }; big files can take longer than the default timeout.

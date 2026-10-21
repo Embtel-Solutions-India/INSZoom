@@ -11,6 +11,7 @@ export default function ConfirmModal({
   busy = false,
   tone = 'default',
   error = '',
+  icon: Icon = null, // optional custom header icon (drawn in the same tinted circle as the tone's default)
   children = null,
   onConfirm,
   onCancel,
@@ -43,7 +44,7 @@ export default function ConfirmModal({
         className="w-full max-w-sm rounded-2xl bg-card p-6 text-center shadow-2xl"
       >
         <div className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${danger ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
-          {danger ? <AlertTriangle className="h-8 w-8" aria-hidden="true" /> : <Zap className="h-8 w-8" aria-hidden="true" />}
+          {Icon ? <Icon className="h-8 w-8" aria-hidden="true" /> : danger ? <AlertTriangle className="h-8 w-8" aria-hidden="true" /> : <Zap className="h-8 w-8" aria-hidden="true" />}
         </div>
         <h2 id={titleId} className="text-xl font-bold text-foreground">{title}</h2>
         <p id={descriptionId} className="mt-2 whitespace-pre-line text-sm leading-6 text-muted-foreground">{message}</p>

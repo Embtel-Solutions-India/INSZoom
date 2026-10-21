@@ -327,6 +327,14 @@ export const feedbackApi = {
     api.get(`/cases/${caseId}/feedback/${feedbackId}/attachments/${attachmentId}`, { responseType: 'blob', ...config }),
 }
 
+// Client<->staff / staff<->staff message thread (Backend/src/modules/messages). Sender-only: edit replaces the text (the
+// message keeps its place and gains `editedAt`); delete-for-everyone wipes text, attachments and reactions but leaves the
+// message in the thread with `deletedForEveryoneAt` set. Both return { success, message }.
+export const messagesApi = {
+  edit: (messageId, messageBody) => api.put(`/messages/${messageId}`, { messageBody }, { timeout: 20_000 }),
+  deleteForEveryone: (messageId) => api.delete(`/messages/${messageId}/everyone`, { timeout: 20_000 }),
+}
+
 export const lifecycleApi = {
   tracking: (caseId) => api.get(`/lifecycle/cases/${caseId}/tracking`),
   saveTracking: (caseId, payload) => api.put(`/lifecycle/cases/${caseId}/tracking`, payload),

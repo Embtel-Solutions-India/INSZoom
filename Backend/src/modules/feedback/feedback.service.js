@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Feedback = require("../../models/Feedback");
 const Case = require("../../models/Case");
+const User = require("../../models/User");
 const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
 const chunkedUploads = require("../chunked-uploads/chunkedUpload.service");
@@ -240,14 +241,18 @@ async function getFeedbackAttachment(caseId, feedbackId, attachmentId) {
   return { buffer, attachment };
 }
 
-// Everyone who can see this case's thread: its case managers, the attorneys with active access, and the author (their other open sessions).
+// Everyone who can see this case's thread: its case managers, team lead and owners, every admin / super admin, the attorneys with active access, and the author
+// (their other open sessions). Edits and deletions are broadcast to all of them so nobody keeps looking at the old text.
 async function threadParticipantIds(caseId, author) {
-  const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers attorneyAccess");
+  const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers assignedTeamLead primaryOwner secondaryOwner attorneyAccess");
   const ids = new Set([String(author._id)]);
   if (caseDoc) {
     (allCaseManagerIds(caseDoc) || []).forEach((id) => id && ids.add(String(id)));
+    [caseDoc.assignedTeamLead, caseDoc.primaryOwner, caseDoc.secondaryOwner].forEach((id) => id && ids.add(String(id)));
     (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active" && grant.attorneyId).forEach((grant) => ids.add(String(grant.attorneyId)));
   }
+  const admins = await User.find({ role: { $in: ["admin", "super_admin"] }, isActive: { $ne: false } }).select("_id").lean().catch(() => []);
+  admins.forEach((admin) => ids.add(String(admin._id)));
   return [...ids];
 }
 

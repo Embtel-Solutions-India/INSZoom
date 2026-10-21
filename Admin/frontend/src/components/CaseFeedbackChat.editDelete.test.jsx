@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
   del: vi.fn(),
   handlers: {},
+  connected: true,
 }))
 
 vi.mock('../services/api', () => ({
@@ -25,7 +26,10 @@ vi.mock('../services/api', () => ({
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { _id: 'me', name: 'Case Manager', role: 'case_manager' } }) }))
 vi.mock('../contexts/SocketContext', () => ({
   useSocket: () => ({
+    connected: mocks.connected,
+    // like the real context: a no-op until the socket exists
     subscribe: (event, handler) => {
+      if (!mocks.connected) return () => {}
       mocks.handlers[event] = handler
       return () => { delete mocks.handlers[event] }
     },
@@ -40,6 +44,7 @@ const msg = (over) => ({ _id: 'm1', caseId: 'case-1', authorId: me, message: 'Or
 
 beforeEach(() => {
   mocks.handlers = {}
+  mocks.connected = true
   mocks.markRead.mockReset().mockResolvedValue({})
   mocks.patch.mockReset()
   mocks.del.mockReset()
@@ -55,11 +60,27 @@ const openMenuFor = (text) => {
 }
 
 describe('CaseFeedbackChat edit / delete', () => {
-  it('offers the menu only on the signed-in user\'s own messages', async () => {
+  it('shows the three-dots menu on every live message, with Edit / Delete only on the user own messages', async () => {
     render(<CaseFeedbackChat caseId="case-1" />)
     await screen.findByText('Original text')
-    expect(screen.getAllByLabelText('Message options')).toHaveLength(1)
-    expect(within(screen.getByText('Their text').closest('.group')).queryByLabelText('Message options')).toBeNull()
+    expect(screen.getAllByLabelText('Message options')).toHaveLength(2)
+    openMenuFor('Their text')
+    expect(screen.getByRole('menuitem', { name: /Reply/ })).toBeTruthy()
+    expect(screen.queryByRole('menuitem', { name: /Edit/ })).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /Delete/ })).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    openMenuFor('Original text')
+    expect(screen.getByRole('menuitem', { name: /Edit/ })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: /Delete/ })).toBeTruthy()
+  })
+
+  it('Reply from the menu starts a reply to that message (same as the standalone Reply button)', async () => {
+    render(<CaseFeedbackChat caseId="case-1" />)
+    await screen.findByText('Their text')
+    openMenuFor('Their text')
+    fireEvent.click(screen.getByRole('menuitem', { name: /Reply/ }))
+    expect(screen.getByText(/Replying to/)).toBeTruthy()
   })
 
   it('edits in place, saves with Enter, and shows the Edited label beside the time', async () => {
@@ -87,7 +108,7 @@ describe('CaseFeedbackChat edit / delete', () => {
     await screen.findByText('Original text')
     openMenuFor('Original text')
     fireEvent.click(screen.getByRole('menuitem', { name: /Edit/ }))
-    let box = screen.getByLabelText('Edit message')
+    const box = screen.getByLabelText('Edit message')
     fireEvent.change(box, { target: { value: '   ' } })
     expect(screen.getByRole('button', { name: 'Save' }).disabled).toBe(true)
     fireEvent.change(box, { target: { value: 'Something else' } })
@@ -97,7 +118,7 @@ describe('CaseFeedbackChat edit / delete', () => {
     fireEvent.keyDown(screen.getByLabelText('Edit message'), { key: 'Escape' })
     expect(screen.queryByLabelText('Edit message')).toBeNull()
     expect(screen.getByText('Original text')).toBeTruthy()
-    box = null
+
   })
 
   it('confirms, deletes for everyone and leaves the "This message was deleted" placeholder in place', async () => {
@@ -106,14 +127,14 @@ describe('CaseFeedbackChat edit / delete', () => {
     await screen.findByText('Original text')
     openMenuFor('Original text')
     fireEvent.click(screen.getByRole('menuitem', { name: /Delete/ }))
-    expect(screen.getByText(/removed for everyone in this conversation/)).toBeTruthy()
+    expect(screen.getByText(/deleted for everyone in this conversation/)).toBeTruthy()
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
 
     await screen.findByText('This message was deleted')
     expect(mocks.del).toHaveBeenCalledWith('/cases/case-1/feedback/m1')
     expect(screen.queryByText('Original text')).toBeNull()
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(screen.queryByLabelText('Message options')).toBeNull()
+    expect(screen.getAllByLabelText('Message options')).toHaveLength(1)
     expect(screen.getByText('Their text')).toBeTruthy()
   })
 
@@ -152,5 +173,98 @@ describe('CaseFeedbackChat edit / delete', () => {
     render(<CaseFeedbackChat caseId="case-1" />)
     await screen.findByText('Reply body')
     await waitFor(() => expect(screen.getAllByText('This message was deleted')).toHaveLength(2))
+  })
+
+  it('re-subscribes when the socket connects late, and accepts a populated caseId on events', async () => {
+    mocks.connected = false
+    const { rerender } = render(<CaseFeedbackChat caseId="case-1" />)
+    await screen.findByText('Their text')
+    expect(mocks.handlers['feedback:update']).toBeUndefined()
+    mocks.connected = true
+    rerender(<CaseFeedbackChat caseId="case-1" />)
+    expect(mocks.handlers['feedback:update']).toBeTypeOf('function')
+    expect(mocks.handlers['feedback:delete']).toBeTypeOf('function')
+    act(() => { mocks.handlers['feedback:update'](msg({ _id: 'm2', caseId: { _id: 'case-1' }, authorId: attorney, message: 'Edited remotely', editedAt: '2026-10-20T10:09:00Z', createdAt: '2026-10-20T10:01:00Z' })) })
+    expect(screen.getByText('Edited remotely')).toBeTruthy()
+  })
+
+  it('shows the confirm popup in the primary (non-danger) style, and clears Working... when the delete fails', async () => {
+    mocks.del.mockRejectedValue({ response: { data: { message: 'Server said no' } } })
+    render(<CaseFeedbackChat caseId="case-1" />)
+    await screen.findByText('Original text')
+    openMenuFor('Original text')
+    fireEvent.click(screen.getByRole('menuitem', { name: /Delete/ }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Delete message?')).toBeTruthy()
+    const confirm = within(dialog).getByRole('button', { name: 'Delete' })
+    expect(confirm.className).toContain('btn-primary')
+    expect(confirm.className).not.toContain('rose')
+    fireEvent.click(confirm)
+    expect(await within(dialog).findByText('Server said no')).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Delete' }).disabled).toBe(false)
+    expect(screen.getByText('Original text')).toBeTruthy()
+  })
+
+  it('renders the three-dots control as a plain absolute icon in a right gutter (no float, no chip)', async () => {
+    render(<CaseFeedbackChat caseId="case-1" />)
+    const text = await screen.findByText('Original text')
+    const bubble = text.parentElement
+    const button = within(bubble).getByLabelText('Message options')
+    expect(button.className).toContain('absolute')
+    expect(button.className).toContain('top-1.5')
+    expect(button.className).not.toMatch(/(float-|border|shadow|bg-)/)
+    expect(bubble.className).toContain('relative')
+    expect(bubble.className).toContain('pr-7')
+    // time / ticks row ends directly below the dots: it cancels the 28px gutter minus the dots' 6px inset
+    const footer = bubble.querySelector('div[class*="justify-end"]')
+    expect(footer.className).toContain('-mr-[22px]')
+    expect(footer.className).toContain('pr-0')
+    expect(footer.className).not.toContain('-mr-4')
+    expect(bubble.className).not.toContain('pt-3')
+    // a bubble without the control (the deleted placeholder's neighbours aside) keeps the normal padding
+    expect(within(screen.getByText('Their text').parentElement).getByLabelText('Message options').closest('div').className).toContain('pr-7')
+  })
+
+  describe('menu placement', () => {
+    const rectOf = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} })
+    let spy
+    const setup = async (button) => {
+      spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function rect() {
+        if (this.getAttribute?.('role') === 'menu') return rectOf(0, 0, 128, 100)
+        if (this.getAttribute?.('aria-label') === 'Message options' && this.closest('.group')?.textContent.includes('Original text')) return button
+        if (this.hasAttribute?.('data-chat-scroll')) return rectOf(0, 0, 400, 600) // 15px of that is the scrollbar
+        return rectOf(0, 0, 0, 0)
+      })
+      render(<CaseFeedbackChat caseId="case-1" />)
+      await screen.findByText('Original text')
+      const pane = document.querySelector('[data-chat-scroll]')
+      Object.defineProperty(pane, 'clientWidth', { configurable: true, value: 385 })
+      Object.defineProperty(pane, 'clientHeight', { configurable: true, value: 600 })
+      openMenuFor('Original text')
+      return screen.getByRole('menu')
+    }
+    afterEach(() => spy?.mockRestore())
+
+    it('aligns its right edge with the dots, 4px below, clamped inside the pane (never over the scrollbar)', async () => {
+      const menu = await setup(rectOf(364, 80, 16, 16))
+      expect(menu.style.top).toBe('100px') // 96 + 4
+      expect(menu.style.left).toBe('249px') // pane inner right 385 - 8 inset - 128 wide (the dots' right edge 380 would poke past it)
+      expect(menu.className).toContain('w-32')
+    })
+
+    it('opens upward when there is no room below inside the pane', async () => {
+      const menu = await setup(rectOf(200, 560, 16, 16))
+      expect(menu.style.top).toBe('456px') // 560 - 4 - 100
+      expect(menu.style.left).toBe('88px') // 216 - 128
+    })
+  })
+
+  it('keeps the deleted placeholder in the same gutter so its time lines up under where the dots would be', async () => {
+    mocks.list.mockResolvedValue({ data: { feedback: [msg({ message: '', deletedForEveryoneAt: '2026-10-20T10:06:00Z' })] } })
+    render(<CaseFeedbackChat caseId="case-1" />)
+    const bubble = (await screen.findByText('This message was deleted')).parentElement
+    expect(bubble.className).toContain('pr-7')
+    expect(bubble.querySelector('div[class*="justify-end"]').className).toContain('-mr-[22px]')
+    expect(within(bubble).queryByLabelText('Message options')).toBeNull()
   })
 })
