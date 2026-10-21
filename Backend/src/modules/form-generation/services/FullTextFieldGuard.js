@@ -50,9 +50,21 @@ function liftTextLengthLimits(form, valueFor) {
   return lifted;
 }
 
-// USCIS marks some boxes read-only (boxes its own script switches on, copies of a box on another page). A box the policy unlocks (field-lock-policy.js: plain
-// text / date / number boxes and checkboxes - never signatures, barcodes or computed fields) is made writable on the working copy, so the value is written into
-// it and the downloaded PDF stays editable there. The stored template PDF is never modified. `metaByPdfField` (optional) is template.formFields keyed by PDF name.
+// USCIS marks some boxes read-only (boxes its own script switches on, copies of a box on another page). A field the policy unlocks (field-lock-policy.js: text /
+// date / number boxes, checkboxes, drop-downs, list boxes and radio groups - never signatures, barcodes or computed fields) is made writable on the working copy,
+// so the value is written into it and the downloaded PDF stays editable there. The stored template PDF is never modified. `metaByPdfField` (optional) is
+// template.formFields keyed by PDF name.
+
+// the widget kinds a person can fill in; anything else (buttons, signatures) is never touched here
+function kindOfPdfField(className) {
+  if (className.includes("TextField")) return "text";
+  if (className.includes("CheckBox")) return "checkbox";
+  if (className.includes("RadioGroup")) return "radio";
+  if (className.includes("Dropdown")) return "dropdown";
+  if (className.includes("OptionList")) return "optionList";
+  return "";
+}
+
 function unlockReadOnlyFields(form, metaByPdfField) {
   const { keepsLock } = require("../../uscis-forms/field-lock-policy");
   let unlocked = 0;
@@ -65,7 +77,8 @@ function unlockReadOnlyFields(form, metaByPdfField) {
   for (const field of fields) {
     try {
       const kind = field.constructor?.name || "";
-      if (!kind.includes("TextField") && !kind.includes("CheckBox")) continue;
+      const pdfFieldType = kindOfPdfField(kind);
+      if (!pdfFieldType) continue;
       const widgets = field.acroField.getWidgets?.() || [];
       const widgetLocked = widgets.some((widget) => widget.hasFlag?.(READ_ONLY_ANNOTATION_FLAG));
       if (!field.isReadOnly?.() && !widgetLocked) continue;
@@ -79,7 +92,7 @@ function unlockReadOnlyFields(form, metaByPdfField) {
         calculated: meta.calculated,
         fieldLabel: meta.fieldLabel || meta.label,
         // the PDF's own widget kind decides when the importer's metadata has nothing
-        pdfFieldType: kind.includes("CheckBox") ? "checkbox" : "text",
+        pdfFieldType,
       };
       // a signature box is still recognised by its name when the metadata has no type for it (a "Date of Signature" box is a plain date and unlocks)
       if (!meta.fieldType && /signature/i.test(name) && !/date/i.test(name)) continue;

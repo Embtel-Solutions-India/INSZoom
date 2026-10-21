@@ -62,7 +62,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('Messaging edit and delete', () => {
-  it('has one three-dots menu per message: Reply everywhere, Edit/Delete only on your own', async () => {
+  it('has one three-dots menu per message: Reply and Copy everywhere, Edit/Delete only on your own', async () => {
     await openThread()
     const dots = screen.getAllByLabelText('Message options')
     expect(dots).toHaveLength(2)
@@ -74,11 +74,11 @@ describe('Messaging edit and delete', () => {
     expect(dots[0].parentElement.className).not.toMatch(/\bpx-3\b|float|pt-3|mt-2/)
     expect(dots[0].parentElement.querySelector('[class*=float-right], [class*=clear-both]')).toBeNull()
     fireEvent.click(dots[0])
-    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Reply'])
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Reply', 'Copy'])
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
     fireEvent.click(dots[1])
-    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Reply', 'Edit', 'Delete'])
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Reply', 'Copy', 'Edit', 'Delete'])
   })
 
   it('edits in place, then shows the new text with an Edited label beside the time', async () => {
@@ -165,7 +165,7 @@ describe('Messaging edit and delete', () => {
       fireEvent.click(screen.getAllByLabelText('Message options')[1])
       menu = screen.getByRole('menu')
       expect(menu.style.left).toBe('308px') // clamped to the pane's left edge + 8px inset (416 - 128 would be 288)
-      expect(menu.style.top).toBe('392px') // 500 - 4 - (8 + 3 * 32)
+      expect(menu.style.top).toBe('360px') // 500 - 4 - (8 + 4 * 32)
     } finally {
       HTMLElement.prototype.getBoundingClientRect = original
     }

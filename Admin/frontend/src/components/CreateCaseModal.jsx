@@ -140,7 +140,7 @@ const CreateCaseModal = ({
   // An employer matter (L-1A/L-1B/O-1/H-1B...) is opened for the COMPANY: its name and petitioner email are the case's
   // client details. Employees (beneficiaries) are added later, each with their own visa - never at case creation.
   const isEmployerCase = showEmployerFields && !showFamilyFields
-  // every employee case of an employer matter - the one created automatically too - is created with the name and email of the person it is for
+  // every employee case of an employer matter - the one created automatically too - can be created with the name and email of the person it is for (both optional)
   const employeeCount = Math.max(1, Number(initialData?.childCaseCount || 1))
   const employeeRows = Array.from({ length: employeeCount }, (_, index) => form.employees[index] || { name: '', email: '' })
   const setEmployee = (index, field) => (e) => {
@@ -193,6 +193,7 @@ const CreateCaseModal = ({
       const seen = new Set()
       for (let index = 0; index < employeeRows.length; index += 1) {
         const email = employeeRows[index].email.trim().toLowerCase()
+        if (!email) continue // optional: it can be added from the case page later
         const label = employeeRows.length > 1 ? `Employee ${index + 1}` : 'Employee'
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError(`${label}: enter a valid email address.`)
         if (email === form.clientEmail.trim().toLowerCase()) return setError(`${label}: use a separate email - it is the employer's own address.`)
@@ -398,7 +399,7 @@ const CreateCaseModal = ({
               <div>
                 <p className="text-sm font-medium text-foreground">{employeeRows.length > 1 ? 'Employees' : 'Employee'}</p>
                 <p className="text-xs text-muted-foreground">
-                  Every employee case needs the email of the person it is for, including the one created automatically. The name is optional - add it if you know it. Their login is set up from the case page.
+                  The name and email of the person each employee case is for are optional - add them if you know them, or add them later from the case page. Their login is set up from the case page.
                 </p>
               </div>
               {employeeRows.map((row, index) => (
@@ -414,10 +415,9 @@ const CreateCaseModal = ({
                   <input
                     type="email"
                     className="input-field"
-                    placeholder={employeeRows.length > 1 ? `Employee ${index + 1} email` : 'Employee email'}
+                    placeholder={employeeRows.length > 1 ? `Employee ${index + 1} email (optional)` : 'Employee email (optional)'}
                     value={row.email}
                     onChange={setEmployee(index, 'email')}
-                    required
                     aria-label={`Employee ${index + 1} email`}
                   />
                 </div>

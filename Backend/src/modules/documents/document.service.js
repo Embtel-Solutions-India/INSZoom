@@ -240,6 +240,16 @@ async function writeAuditLog(action, document, user, changes, req) {
     userAgent: req?.headers?.["user-agent"],
     description: `${action} on document ${document.originalName || document.fileName || document._id}`,
   }).catch(() => {});
+  announceDocumentChange(document, user, action);
+}
+
+// Live: every open session on the case (client portal, Admin, Attorney) re-reads its documents / Required Documents sections. Called wherever a
+// document is created, versioned or audited, so no upload path (checklist, OCR / autofill, resumable, bulk) is missed; bursts coalesce into one event.
+// Never affects the change itself.
+function announceDocumentChange(document, user, reason) {
+  try {
+    require("../realtime/caseLiveUpdates").notifyCaseDataChanged(document?.caseId, "documents", { actor: user, reason: `document_${reason}` });
+  } catch { /* a live update must never fail a document change */ }
 }
 
 function uploadedByLabel(user) {
@@ -503,6 +513,7 @@ async function createDocumentFromFile({ file, body, user, req }) {
     caseService.addAuditEntry(context.caseData, "petition_manual_upload", `A petition document was uploaded by ${user.name || user.displayName || "staff"}.`, user, { documentId: document._id }, req);
     await context.caseData.save();
   }
+  announceDocumentChange(document, user, "upload");
   return document;
 }
 
@@ -859,6 +870,7 @@ async function addDocumentVersion(document, file, user, req, changeReason) {
   document.versions.push(version);
   addAuditEntry(document, "new_version", user, { version: nextVersion, storageKey: stored.key }, req);
   await document.save();
+  announceDocumentChange(document, user, "new_version");
   return document;
 }
 

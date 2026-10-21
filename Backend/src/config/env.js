@@ -119,6 +119,10 @@ const env = {
   // status "skipped", so nothing is lost from the audit trail. The only exception is a password-reset email the user asked for themselves (otherwise they would be
   // locked out). Enforced in one place: email.service.js's dispatch(), the final hand-off to the mail provider.
   emailSuppressAll: process.env.EMAIL_SUPPRESS_ALL === "true",
+  // Master switch: NOTIFICATIONS_SUPPRESS_ALL=true pauses every in-app notification (no bell entry, no live pop-up) and every browser push notification, for everyone.
+  // Nothing is stored while it is on. Enforced in notification.service.js (createNotification / deliverRealtime) and push.service.js (the final hand-off to Firebase).
+  // Live chat messages are not notifications and keep arriving in an open thread.
+  notificationsSuppressAll: process.env.NOTIFICATIONS_SUPPRESS_ALL === "true",
   mongoUri: process.env.MONGODB_URI || "mongodb://localhost:27017/immigration_crm",
   clientOrigins: configuredOrigins,
   jwtAccessSecret: jwtAccessSecret || "dev-access-secret-change-me",

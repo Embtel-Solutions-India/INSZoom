@@ -7,6 +7,7 @@ const { normalizeRole } = require("../authorization/roleHierarchy");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const emailService = require("../email/email.service");
 const pushService = require("./push.service");
+const env = require("../../config/env");
 const { resolveNotificationDefaults, withPushForTriggerTypes } = require("./notificationRules");
 
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "attorney", "paralegal", "reviewer", "finance", "hr"];
@@ -267,6 +268,7 @@ async function applyPreferences(notification) {
 }
 
 async function deliverRealtime(notification) {
+  if (env.notificationsSuppressAll) return;
   const emitted = [];
   if (notification.userId) {
     realtimeGateway.emitToUser(notification.userId, "new_notification", notification);
@@ -371,6 +373,8 @@ async function dispatchPushChannel(notification, payload, actor) {
 }
 
 async function createNotification(payload, actor, req) {
+  // Master switch (env.notificationsSuppressAll): no bell entry, no live pop-up, no push. Callers already cope with null (a person outside the case's team).
+  if (env.notificationsSuppressAll) return null;
   // Internal staff are told about a case only when they work it (its case manager(s) + team lead); see caseAudience.js.
   const caseRef = payload?.caseId || payload?.case;
   const targetUser = payload?.userId || payload?.user || payload?.recipient;

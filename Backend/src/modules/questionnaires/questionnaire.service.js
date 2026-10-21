@@ -1505,7 +1505,21 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
       && [reference.questionnaireId, reference.questionnaireTemplateId].some((id) => id && String(id) === String(questionnaire._id))
     ))
     : null;
-  const responseId = payload.responseId || namedReference?.responseId || pinnedResponseId || responseIdFor(identityQuestionnaireId, effectiveCaseId, responseOwner);
+  // Staff saving for a case where no participant could be matched (no responseId and no referenceId sent, as the first answer / upload of a
+  // fresh checklist is, since the panel has no answers to take a responseId from): the checklist reference the case already holds for this
+  // questionnaire IS the response the client portal and every Admin section read. Without this the save landed in a private response derived
+  // from the staff member's own user id that nothing ever reads - the upload or text looked saved but showed up nowhere.
+  const staffReferenceMatch = !participantId && !payload.responseId && !namedReference && !pinnedResponseId && caseData
+    && ["super_admin", "admin", "team_lead", "case_manager"].includes(normalizeRole(user?.role))
+    ? (() => {
+      const candidates = (caseData.questionnaireReferences || []).filter((reference) => (
+        reference.active !== false && reference.responseId && !reference.staffRequest
+        && [reference.questionnaireId, reference.questionnaireTemplateId].some((id) => id && String(id) === String(questionnaire._id))
+      ));
+      return candidates.find((reference) => !targetRole || !reference.targetRole || reference.targetRole === targetRole) || null;
+    })()
+    : null;
+  const responseId = payload.responseId || namedReference?.responseId || pinnedResponseId || staffReferenceMatch?.responseId || responseIdFor(identityQuestionnaireId, effectiveCaseId, responseOwner);
   const questionByKey = questions.reduce((map, question) => {
     map[question.key] = question;
     return map;
@@ -1543,14 +1557,14 @@ async function saveAnswers(payload, user, req, status = "auto_saved") {
           question: question._id,
           questionKey: question.key,
           caseId: effectiveCaseId,
-          participantId,
+          participantId: participantId || staffReferenceMatch?.participantId,
           participantRole: participant?.role || participantService.normalizeParticipantRole(targetRole),
           user: user?._id || payload.userId,
           clientId: payload.clientId || user?._id,
           client: payload.client || caseData?.clientProfile,
           beneficiary: payload.beneficiary || caseData?.beneficiary,
           companyId: payload.companyId || caseData?.companyId,
-          assignedTo: payload.assignedTo || user?._id,
+          assignedTo: payload.assignedTo || staffReferenceMatch?.assignedTo || user?._id,
           assignedBy: payload.assignedBy,
           dueDate: payload.dueDate,
           value: item.value,
@@ -3228,8 +3242,9 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
 // the client portal all show the edited checklist. Only the questionnaire that is SERVED changes: response ids are always
 // derived from the original template, so no answer is ever detached. An employee case with a copy of its own keeps it.
 async function parentChecklistCopy(caseData, questionnaire) {
+  // Every checklist the principal customised is served to its child cases - the employee checklist and the principal's own (petitioner) one alike:
+  // they are the same checklist, managed on the principal (see case-checklist.service.js). A child keeps a copy of its own only if it already had one.
   if (!caseData?.parentCase || !questionnaire || isCaseCopyKey(questionnaire.key)) return questionnaire;
-  if (String(questionnaire.checklistRole || "") !== "employee") return questionnaire;
   const copy = await Questionnaire.findOne({ key: caseCopyKey(questionnaire.key, caseData.parentCase), latestVersion: true, status: { $ne: "archived" } });
   return copy || questionnaire;
 }

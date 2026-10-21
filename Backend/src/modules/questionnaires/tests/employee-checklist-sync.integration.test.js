@@ -102,18 +102,20 @@ test("an edit to the employee checklist on the principal reaches employee cases,
     // ── the template and an unrelated case's checklist are untouched ──
     assert.equal(await Question.countDocuments({ questionnaire: templateId, label: "Synced extra question" }), 0, "the shared template never changes");
 
-    // ── editing ONE employee forks only that employee; the sibling keeps the shared edit ──
+    // ── editing on ONE employee case edits the SHARED checklist: it is the principal's copy, so every employee case follows ──
     const childEntry = employeeEntries[0];
     await checklistService.editChecklist(childA, { op: "remove", checklistId: childEntry.checklistId, questionKey: extra.key }, ADMIN, { headers: {}, ip: "test" });
     const a2 = await questionnaireService.getQuestionnaireForCase(childA, employer, "employee");
     const b2 = await questionnaireService.getQuestionnaireForCase(childB, employer, "employee");
-    assert.ok(!a2.questions.some((q) => q.key === extra.key), "removed for this employee only");
-    assert.ok(b2.questions.some((q) => q.key === extra.key), "the other employee still has the question the principal added");
-    assert.ok(String(a2.questionnaire.key).endsWith(`__case_${childA}`), "this employee now has a copy of their own");
-    assert.equal(a2.responseId, responseBefore, "still the same response after the per-employee fork");
+    assert.ok(!a2.questions.some((q) => q.key === extra.key), "removed on the employee case it was edited from");
+    assert.ok(!b2.questions.some((q) => q.key === extra.key), "the other employee case follows: it is the same checklist");
+    assert.ok(String(a2.questionnaire.key).endsWith(`__case_${principal._id}`), "served the principal's copy - no copy of its own was made");
+    assert.equal(await Questionnaire.countDocuments({ key: { $regex: `__case_${childA}$` } }), 0, "no private copy was created for the employee case");
+    assert.equal((await Question.findOne({ questionnaire: created.copyId, key: extra.key }).lean()).active, false, "the change is on the principal's copy");
+    assert.equal(a2.responseId, responseBefore, "still the same response after the edit");
     assert.ok((await Answer.find({ responseId: responseBefore }).lean()).some((a) => a.questionKey === extra.key), "a removed question's answer stays on record");
 
-    // ── removing on the principal propagates to employees still on the shared copy, non-destructively ──
+    // ── removing on the principal reaches every employee case, non-destructively (here the question is already retired: harmless to repeat) ──
     await checklistService.editChecklist(principal._id, { op: "remove", checklistId: employeeChecklist.checklistId, questionKey: extra.key }, ADMIN, { headers: {}, ip: "test" });
     const b3 = await questionnaireService.getQuestionnaireForCase(childB, employer, "employee");
     assert.ok(!b3.questions.some((q) => q.key === extra.key), "removal on the principal reaches the other employee");
