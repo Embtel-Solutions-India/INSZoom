@@ -3,7 +3,6 @@ const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
 const Case = require("../../models/Case");
 const Client = require("../../models/Client");
 const Company = require("../../models/Company");
-const Task = require("../../models/Task");
 const User = require("../../models/User");
 const generateCaseNumber = require("../cases/caseId");
 const caseService = require("../cases/case.service");
@@ -618,20 +617,6 @@ exports.createInformationRequest = async (req, res, next) => {
     const target = req.body.target === "employer" ? "employer" : "employee";
     const participant = participantService.findParticipant(caseData, { role: target, participantId: req.body.participantId });
     const assignedTo = participant?.userId || (target === "employer" ? caseData.employerUser : (caseData.employeeUser || caseData.user));
-    const task = await Task.create({
-      title: req.body.title || "Information requested",
-      description: req.body.description,
-      caseId: caseData._id,
-      companyId: caseData.companyId,
-      assignedTo,
-      assignedBy: req.user._id,
-      category: "client_communication",
-      documentation: { workType: req.body.requestType === "document" ? "document_request" : "client_follow_up", documentType: req.body.documentType, instructions: req.body.description },
-      priority: req.body.priority || "medium",
-      status: assignedTo ? "assigned" : "pending",
-      dueDate: req.body.dueDate,
-      source: "shared",
-    });
     caseData.informationRequests.push({
       target,
       title: req.body.title || "Information requested",
@@ -641,7 +626,6 @@ exports.createInformationRequest = async (req, res, next) => {
       dueDate: req.body.dueDate,
       assignedTo,
       requestedBy: req.user._id,
-      task: task._id,
       participantId: participant?._id,
     });
     if (participant) {
@@ -650,10 +634,10 @@ exports.createInformationRequest = async (req, res, next) => {
     }
     caseData.employerEmployeeWorkflow[`${target}Status`] = "needs_info";
     caseData.employerEmployeeWorkflow.caseManagerStatus = target === "employer" ? "waiting_for_employer" : "waiting_for_employee";
-    caseService.addTimelineEvent(caseData, "request", "Information Requested", `${target} was asked for ${req.body.title || "additional information"}.`, req.user, { target, taskId: task._id });
+    caseService.addTimelineEvent(caseData, "request", "Information Requested", `${target} was asked for ${req.body.title || "additional information"}.`, req.user, { target });
     await caseData.save();
     if (assignedTo) await notifyUser(assignedTo, { title: "Information Requested", message: req.body.description || req.body.title, link: target === "employer" ? "/dashboard/employer" : "/dashboard/profile", caseId: caseData._id, companyId: caseData.companyId }, req.user, req);
-    res.status(201).json({ success: true, request: caseData.informationRequests[caseData.informationRequests.length - 1], task, case: caseData });
+    res.status(201).json({ success: true, request: caseData.informationRequests[caseData.informationRequests.length - 1], case: caseData });
   } catch (error) {
     next(error);
   }

@@ -167,11 +167,16 @@ async function purgeExpired(limit = 20) {
   return purged;
 }
 
-// Immediate permanent removal of one entry (a super admin's explicit action).
-async function purgeNow(entryId) {
+// Immediate permanent removal of one entry (an admin's or super admin's explicit action).
+async function purgeNow(entryId, actor) {
   const entry = await RecycleBinEntry.findOne({ _id: entryId, status: { $in: ["capturing", "in_bin"] } });
   if (!entry) throw conflict("This item is not in the recycle bin.", "NOT_IN_BIN", 404);
   await purgeEntry(entry);
+  try {
+    await require("../../models/AuditLog").create({ userId: actor?._id, userRole: actor?.role, action: "case_purged_from_recycle_bin", entityType: "case", entityId: entry.caseIds[0], changes: { caseNumbers: entry.caseNumbers } });
+  } catch (error) {
+    logger.warn("recycle_bin_audit_failed", { error: error.message });
+  }
   return { caseNumbers: entry.caseNumbers };
 }
 

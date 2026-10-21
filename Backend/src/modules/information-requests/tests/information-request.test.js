@@ -138,6 +138,8 @@ test("createRequest appends the row only to the target role's own checklist and 
   assert.equal(String(refs.find((ref) => ref.targetRole === "employee").assignedTo), String(caseData.employeeUser));
   assert.equal(caseData.informationRequests.length, 2);
   assert.equal(caseData.informationRequests[0].status, undefined, "defaults to open via the schema");
+  assert.equal(world.tasks.length, 0, "a request notifies the recipient; it never creates a Task (tasks are only made on the Tasks page)");
+  assert.ok(caseData.informationRequests.every((request) => !request.task));
 });
 
 test("a second request to the same person reuses their checklist and reopens a finished one", async (t) => {
@@ -170,6 +172,7 @@ test("createRequest asks for in-app, push and email with the additional-info tem
   assert.equal(notification.emailTo, "eli@corp.com");
   assert.equal(notification.emailData.itemName, "Pay stubs");
   assert.match(notification.message, /Cathy CaseManager is asking for this document: Pay stubs/);
+  assert.equal(world.tasks.length, 0, "no Task is created for an information request");
   assert.match(notification.emailData.portalLink, /\/dashboard\/documents$/);
 });
 

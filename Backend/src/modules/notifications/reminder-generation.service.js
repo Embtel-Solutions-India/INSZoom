@@ -3,7 +3,6 @@ const Beneficiary = require("../../models/Beneficiary");
 const Case = require("../../models/Case");
 const Document = require("../../models/Document");
 const Payment = require("../../models/Payment");
-const Task = require("../../models/Task");
 const notificationService = require("./notification.service");
 const workflowService = require("../workflows/workflow.service");
 const { allCaseManagerIds } = require("../cases/caseManagerAccess");
@@ -58,31 +57,6 @@ async function notify(payload) {
   }, null, null);
 }
 
-async function ensureTask({ marker, caseData, assignedTo, title, description, dueDate, priority, category }) {
-  if (!assignedTo || !caseData?._id) return null;
-  const existing = await Task.findOne({
-    caseId: caseData._id,
-    tags: marker,
-    status: { $nin: ["completed", "cancelled"] },
-  });
-  if (existing) return existing;
-  return Task.create({
-    title,
-    description,
-    caseId: caseData._id,
-    clientId: caseClientUser(caseData),
-    assignedTo,
-    assignedBy: caseData.assignedTeamLead || caseData.primaryOwner || assignedTo,
-    dueDate,
-    priority,
-    category,
-    tags: [marker, "automated_reminder"],
-    source: "automation",
-    status: "assigned",
-    auditHistory: [{ action: "automated_reminder_task_created", changes: { marker }, performedAt: new Date() }],
-  });
-}
-
 async function notifyCaseDate(caseData, config, days) {
   const clientUser = caseClientUser(caseData);
   const priority = days <= 3 ? "urgent" : days <= 14 ? "high" : "medium";
@@ -104,19 +78,6 @@ async function notifyCaseDate(caseData, config, days) {
     internalOnly: !item.clientVisible,
     dedupeKey: `${eventKey}:${item.userId}`,
   })));
-  if (config.task && days <= config.task.threshold) {
-    const assignedTo = config.task.attorney ? caseData.assignedAttorney : caseData.assignedCaseManager || caseData.primaryOwner;
-    await ensureTask({
-      marker: `${config.type}_${caseData._id}_${parseDate(caseData[config.path])?.toISOString().slice(0, 10)}`,
-      caseData,
-      assignedTo,
-      title: config.task.title(caseData),
-      description: config.staffMessage(caseData, days),
-      dueDate: new Date(parseDate(caseData[config.path]).getTime() - config.task.leadDays * DAY_MS),
-      priority,
-      category: config.task.category,
-    });
-  }
   await workflowService.triggerWorkflow(`${config.type}.approaching`, {
     caseId: caseData._id,
     entityId: caseData._id,
@@ -134,7 +95,6 @@ const CASE_DATE_CONFIGS = [
     clientMessage: (item, days) => `Your visa for case ${item.caseNumber} expires in ${days} days.`,
     staffTitle: (days) => `Client Visa Expiring in ${days} Days`,
     staffMessage: (item, days) => `${item.clientName || "Client"}'s visa for case ${item.caseNumber} expires in ${days} days.`,
-    task: { threshold: 60, leadDays: 30, category: "renewal", title: (item) => `Visa Renewal - ${item.caseNumber}` },
   },
   {
     path: "filingDeadline",
@@ -145,7 +105,6 @@ const CASE_DATE_CONFIGS = [
     clientMessage: (item, days) => `Your case ${item.caseNumber} has a filing deadline in ${days} days.`,
     staffTitle: (days) => `Filing Deadline in ${days} Days`,
     staffMessage: (item, days) => `Case ${item.caseNumber} must be filed within ${days} days.`,
-    task: { threshold: 14, leadDays: 2, attorney: true, category: "deadline", title: (item) => `Filing Deadline - ${item.caseNumber}` },
   },
   {
     path: "rfeDeadline",
@@ -156,7 +115,6 @@ const CASE_DATE_CONFIGS = [
     clientMessage: (item, days) => `The response deadline for your case ${item.caseNumber} is in ${days} days.`,
     staffTitle: (days) => `RFE Response Due in ${days} Days`,
     staffMessage: (item, days) => `RFE response for case ${item.caseNumber} is due in ${days} days.`,
-    task: { threshold: 14, leadDays: 2, attorney: true, category: "rfe_response", title: (item) => `RFE Response - ${item.caseNumber}` },
   },
   {
     path: "interviewDate",
@@ -167,7 +125,6 @@ const CASE_DATE_CONFIGS = [
     clientMessage: (item, days) => `Your interview for case ${item.caseNumber} is scheduled in ${days} days.`,
     staffTitle: (days) => `Client Interview in ${days} Days`,
     staffMessage: (item, days) => `${item.clientName || "Client"} has an interview in ${days} days for case ${item.caseNumber}.`,
-    task: { threshold: 7, leadDays: 1, attorney: true, category: "follow_up", title: (item) => `Interview Preparation - ${item.caseNumber}` },
   },
   {
     path: "biometricAppointmentDate",

@@ -6,7 +6,7 @@ const { layoutHtml, renderCustom, adminLoginText } = require("./emailRenderer");
 const customization = require("./emailCustomization.service");
 const triggerRegistry = require("./emailTriggers.registry");
 const emailPolicy = require("./emailPolicy");
-const { portalUrl, productionizeLinks } = require("./portalUrls");
+const { portalUrl, productionizeLinks, confineToPortal } = require("./portalUrls");
 const caseAudience = require("../notifications/caseAudience");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
@@ -20,7 +20,8 @@ const caseAudience = require("../notifications/caseAudience");
 // static table whenever it's known — see resolveAudience() below.
 // still sent while EMAIL_SUPPRESS_ALL is on: a password reset the person asked for themselves
 const SUPPRESS_ALL_EXEMPT = new Set(["password-reset"]);
-const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
+// Everyone who works in the Admin portal ("team_member" is the generic internal-team marker some call sites pass instead of a User.role).
+const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "team_member"];
 const TEMPLATE_AUDIENCE = {
   "case-created-client": "client",
   "case-created-team-lead": "team_member",
@@ -55,8 +56,8 @@ const TEMPLATE_AUDIENCE = {
   "case-approved": "client",
   "case-denied": "client",
   "case-stage-changed": "client",
-  "case-manager-assigned": "team_member",
-  "case-manager-reassigned": "team_member",
+  "case-manager-assigned": "client", // tells the client who their case manager is - never gets the staff "Log in to Admin" button
+  "case-manager-reassigned": "client",
   "case-closed": "client",
   "premium-processing-upgraded": "client",
   "additional-info-requested": "client",
@@ -199,14 +200,10 @@ const PORTAL_OF_AUDIENCE = {
   attorney: (caseId) => `${portalUrl("attorney")}${caseId ? `/cases/${caseId}` : "/dashboard"}`,
   staff: (caseId) => `${portalUrl("admin")}${caseId ? `/crm-cases/${caseId}` : "/dashboard"}`,
 };
+// Same answer as resolveAudience() (one rule for "which portal is this person's"), as a PORTAL_OF_AUDIENCE key.
 function defaultPortalLink(templateKey, recipientRole, caseId) {
-  let audience;
-  if (recipientRole) audience = recipientRole === "attorney" ? "attorney" : STAFF_ROLES.includes(recipientRole) ? "staff" : "client";
-  else {
-    const declared = triggerRegistry.getTrigger(templateKey)?.audience;
-    audience = declared === "attorney" ? "attorney" : declared && declared !== "client" ? "staff" : "client";
-  }
-  return PORTAL_OF_AUDIENCE[audience](caseId);
+  const audience = resolveAudience(templateKey, recipientRole);
+  return PORTAL_OF_AUDIENCE[audience === "team_member" ? "staff" : audience](caseId);
 }
 
 // Admin-customized version of a built-in email (Email Template
@@ -300,7 +297,14 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   }
 
   // Internal staff (case manager, team lead, admin, super admin) always get a "Log in to Admin" button; security emails stay as they are.
-  const adminLogin = resolveAudience(templateKey, recipientRole) === "team_member" && !triggerRegistry.getTrigger(templateKey)?.locked;
+  const audience = resolveAudience(templateKey, recipientRole);
+  const locked = Boolean(triggerRegistry.getTrigger(templateKey)?.locked);
+  const adminLogin = audience === "team_member" && !locked;
+  // Client emails link only to the Client portal, internal-team emails only to Admin, attorney emails only to the Attorney portal.
+  // Locked security emails (credentials / password reset) already build their own exact link.
+  const ownPortal = audience === "team_member" ? "admin" : audience;
+  const ownLanding = defaultPortalLink(templateKey, recipientRole, caseId);
+  const confine = (content) => (locked ? content : confineToPortal(productionizeLinks(content), ownPortal, ownLanding));
   const custom = await resolveCustomization(templateKey, { to, data, caseId, adminLogin });
   if (custom?.suppressed) return skip("disabled_by_admin", "This email is switched off on the Email Templates page");
   if (custom) {
@@ -310,7 +314,7 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     const extraCc = deliverable([...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])]);
     return dispatch({
       templateKey, to: finalTo.join(", "), cc: extraCc, bcc: deliverable(custom.recipients.bcc),
-      subject: custom.subject, html: custom.html, text: custom.text, data, caseId, userId, triggeredBy, source, attachments,
+      subject: custom.subject, html: confine(custom.html), text: confine(custom.text), data, caseId, userId, triggeredBy, source, attachments,
     });
   }
 
@@ -318,9 +322,9 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
 
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
-  const html = wrapHtml(subject, lines, { adminLogin });
+  const html = confine(wrapHtml(subject, lines, { adminLogin }));
   const bodyText = lines.join("\n\n");
-  const text = [bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n");
+  const text = confine([bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n"));
 
   return dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source, attachments });
 }
