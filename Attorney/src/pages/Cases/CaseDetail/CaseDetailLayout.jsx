@@ -76,9 +76,16 @@ export default function CaseDetailLayout() {
       fetchCase()
       setRefreshToken((t) => t + 1)
     })
+    // An answer saved, a document uploaded / reviewed or a checklist approved on this case (client portal or Admin): the tabs re-read it
+    // (refreshToken). Bursts are coalesced server-side; this just re-reads.
+    const unsubDataChanged = subscribe('case:data_changed', (payload) => {
+      if (String(payload?.caseId) !== String(caseId)) return
+      setRefreshToken((t) => t + 1)
+    })
     return () => {
       unsubUpdated()
       unsubSubmitted()
+      unsubDataChanged()
     }
   }, [connected, subscribe, caseId, fetchCase])
 

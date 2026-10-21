@@ -258,6 +258,8 @@ connectDB()
     // null (and nothing scheduled) unless GHL_ENABLED=true.
     const ghlWorkers = require("./integrations/ghl/ghlWorkers").startGhlWorkers();
     const caseDeletionWorker = require("./modules/cases/case-deletion.service").startCaseDeletionWorker();
+    // runs / retries the checklist edits (remove a question, change its wording) that the editor hands over and shows instantly
+    const checklistEditWorker = require("./modules/questionnaires/checklist-edit-jobs.service").startChecklistEditWorker();
     const recycleBinWorker = require("./modules/recycle-bin/recycle-bin.service").startRecycleBinWorker(); // removes recycle-bin items after 30 days
     server.on("error", (error) => {
       if (error.code === "EADDRINUSE") {
@@ -295,6 +297,7 @@ connectDB()
       clearInterval(slaSweepMaintenance);
       if (ghlWorkers) clearInterval(ghlWorkers);
       clearInterval(caseDeletionWorker);
+      clearInterval(checklistEditWorker);
       clearInterval(recycleBinWorker);
       server.close(() => {
         disconnectDB()

@@ -56,6 +56,18 @@ export const SocketProvider = ({ children }) => {
     socket.on('disconnect', () => setConnected(false))
     socket.on('connect_error', () => setConnected(false))
 
+    // Live case changes - an answer saved or a document uploaded from the client portal, by another staff member or in another tab. The case page
+    // already refreshes its questionnaire panels, Required Documents, checklist approval and Documents tab on 'case-answers-changed' (the event a save
+    // made on this page raises), so the server's signal is handed to it. The tab that made the change has refreshed itself already, so it skips its own.
+    socket.on('case:data_changed', (payload) => {
+      try {
+        if (!payload?.caseId) return
+        const own = payload.actorId && String(payload.actorId) === String(user?._id || user?.id || '')
+        if (own && document.hasFocus()) return
+        window.dispatchEvent(new CustomEvent('case-answers-changed', { detail: { caseId: String(payload.caseId), remote: true } }))
+      } catch { /* a live update must never break the socket */ }
+    })
+
     // A page holding an open WebSocket cannot enter the browser's back/forward
     // cache; the browser logs "WebSocket ... failed: Page entered Back-Forward
     // Cache" and drops it anyway. Close the socket as the page is hidden for

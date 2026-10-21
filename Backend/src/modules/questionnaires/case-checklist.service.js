@@ -45,6 +45,7 @@ function broadcastChecklistsChanged(caseDocs, reason, actor) {
       recipients.forEach((userId) => realtimeGateway.emitToUser(userId, "case:checklists_changed", payload));
       realtimeGateway.emitToRole?.("admin", "case:checklists_changed", payload);
       realtimeGateway.emitToRole?.("super_admin", "case:checklists_changed", payload);
+      require("../realtime/caseLiveUpdates").notifyCaseDataChanged(caseDoc, "checklist", { actor, reason });
     }
   } catch (error) {
     require("../../utils/logger").error("checklist_broadcast_failed", { error: error.message });
@@ -96,15 +97,59 @@ async function releasePremiumProcessingChecklist(caseId, user, req) {
   return { caseId: String(fresh._id), checklistId: PREMIUM_PROCESSING_CHECKLIST_ID, title: "Form I-907 Information Checklist" };
 }
 
+// ── a child case shares its principal's checklists ──────────────────────
+// The checklists an employer matter's child (employee) cases carry are the SAME checklists as the principal's (same id: template key + role),
+// held on two case ids. They are managed - approved, edited, removed - on the PRINCIPAL only; the child cases adopt the result. An action asked for
+// on a child case for such a checklist is therefore carried out on the principal, which hands it to every child. A checklist only the child has
+// (a staff-requested one, a premium-processing release) stays that child's own. When the principal cannot be reached by this user, the action stays on
+// the child, exactly as before.
+async function principalFor(caseDoc, user) {
+  if (!caseDoc?.parentCase) return null;
+  const parent = await Case.findById(caseDoc.parentCase);
+  return parent && caseService.canAccessCase(user, parent) ? parent : null;
+}
+
+// the ids of the (automatic, non staff-request) checklists the principal itself carries
+async function sharedChecklistIds(principalId) {
+  const entries = await service().resolveCaseQuestionnaires(principalId);
+  return new Set(entries.filter((entry) => !entry.staffRequest).map((entry) => gateChecklistId(gateEntry(entry))));
+}
+
+// the case a checklist is managed on: the principal for a child case's shared checklist, the case itself otherwise
+async function managingCaseFor(caseId, wantedId, user) {
+  const caseDoc = await Case.findById(caseId).select("parentCase").lean();
+  const parent = await principalFor(caseDoc, user);
+  if (!parent) return caseId;
+  return (await sharedChecklistIds(parent._id)).has(wantedId) ? parent._id : caseId;
+}
+
 // ── approval ────────────────────────────────────────────────────────────
 // ids: specific checklist ids on THIS case, or all: every draft checklist on this case and its child cases.
+// On a child case the shared checklists are approved on the principal (and so on every child); only what is left is approved here.
 async function approveChecklists(caseId, { checklistIds = [], all = false } = {}, user, req) {
+  const requested = await Case.findById(caseId).select("parentCase").lean();
+  const parent = await principalFor(requested, user);
+  if (parent) {
+    const shared = await sharedChecklistIds(parent._id);
+    const viaPrincipal = all ? [...shared] : checklistIds.filter((id) => shared.has(id));
+    if (viaPrincipal.length) {
+      const fromPrincipal = await approveOnCase(parent._id, { checklistIds: viaPrincipal }, user, req);
+      const own = all ? { all: true } : { checklistIds: checklistIds.filter((id) => !shared.has(id)) };
+      if (!all && !own.checklistIds.length) return fromPrincipal;
+      const rest = await approveOnCase(caseId, own, user, req);
+      return { approved: [...fromPrincipal.approved, ...rest.approved] };
+    }
+  }
+  return approveOnCase(caseId, { checklistIds, all }, user, req);
+}
+
+async function approveOnCase(caseId, { checklistIds = [], all = false } = {}, user, req) {
   const principal = await loadCase(caseId, user);
   const targets = [principal];
-  // Approving an EMPLOYEE checklist on the principal case approves it on every child case too (and sends it to each client),
-  // so the case manager never has to open each child case. "all" covers every checklist role.
-  const employeeIdsRequested = checklistIds.filter((id) => String(id).endsWith("|employee"));
-  const cascadeToChildren = all || employeeIdsRequested.length > 0;
+  // Approving a checklist on the principal case approves it on every child case too, so the case manager never has to open each child case. Only
+  // the employee checklists are SENT to each employee's client (the others belong to the employer, who is notified once, on the principal).
+  // "all" covers every checklist role.
+  const cascadeToChildren = all || checklistIds.length > 0;
   const isChildTarget = (target) => String(target._id) !== String(principal._id);
   if (cascadeToChildren && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
 
@@ -120,8 +165,8 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
       if (isApproved(target, gateEntry(entry))) return false;
       if (all) return true;
       const id = gateChecklistId(gateEntry(entry));
-      // on a child case only the employee checklists cascade from the principal's approval
-      return isChildTarget(target) ? employeeIdsRequested.includes(id) : checklistIds.includes(id);
+      // a child adopts every checklist the principal approved (the same checklist, held on its own case id)
+      return checklistIds.includes(id);
     });
     if (!pending.length) continue;
 
@@ -140,16 +185,20 @@ async function approveChecklists(caseId, { checklistIds = [], all = false } = {}
     broadcastChecklistsChanged(fresh, "approved", user);
 
     for (const entry of pending) {
-      try {
-        await service().notifyChecklistAssigned(
-          entry.questionnaire,
-          fresh,
-          { assignedTo: entry.assignedTo || fresh.user, responseId: entry.responseId },
-          user,
-          req
-        );
-      } catch (error) {
-        require("../../utils/logger").error("checklist_approval_notification_failed", { caseId: String(fresh._id), error: error.message });
+      // an employer-side checklist adopted by a child case is not sent again: its owner was notified when it was approved on the principal
+      const silent = isChildTarget(target) && gateEntry(entry).targetRole !== "employee";
+      if (!silent) {
+        try {
+          await service().notifyChecklistAssigned(
+            entry.questionnaire,
+            fresh,
+            { assignedTo: entry.assignedTo || fresh.user, responseId: entry.responseId },
+            user,
+            req
+          );
+        } catch (error) {
+          require("../../utils/logger").error("checklist_approval_notification_failed", { caseId: String(fresh._id), error: error.message });
+        }
       }
       approved.push({ caseId: String(fresh._id), checklistId: gateChecklistId(gateEntry(entry)), title: entry.title || entry.questionnaire.title });
     }
@@ -192,12 +241,23 @@ async function inheritParentApprovals(caseId, user) {
 // employee case under it too, mirroring how approving it cascades.
 async function removeChecklist(caseId, { checklistId: wantedId, reason } = {}, user, req) {
   const cleanReason = typeof reason === "string" ? reason.trim().slice(0, 500) : "";
+  // on a child case a shared checklist is removed on the principal (and so from every child); see managingCaseFor
+  const managingId = await managingCaseFor(caseId, wantedId, user);
+  if (String(managingId) !== String(caseId)) return removeChecklist(managingId, { checklistId: wantedId, reason: cleanReason }, user, req);
   const principal = await loadCase(caseId, user);
   // 404 when it is not a checklist of this case (an already-removed one is hidden from the resolver, so it is only re-checked
   // against the removal record: that is how a reason can still be added to it afterwards)
   if (!(principal.checklistApproval?.removed || []).some((item) => item.checklistId === wantedId)) await findEntry(caseId, wantedId);
   const targets = [principal];
-  if (String(wantedId).endsWith("|employee") && !principal.parentCase) targets.push(...(await Case.find({ parentCase: principal._id })));
+  if (!principal.parentCase) {
+    const children = await Case.find({ parentCase: principal._id });
+    // every employee case loses an employee checklist; any other checklist only the child cases that carry it
+    for (const child of children) {
+      if (String(wantedId).endsWith("|employee")) { targets.push(child); continue; }
+      const carried = (await service().resolveCaseQuestionnaires(child._id)).some((entry) => !entry.staffRequest && gateChecklistId(gateEntry(entry)) === wantedId);
+      if (carried) targets.push(child);
+    }
+  }
 
   const removedFrom = [];
   for (const target of targets) {
@@ -230,6 +290,9 @@ async function removeChecklist(caseId, { checklistId: wantedId, reason } = {}, u
 
 // ── per-case copy ───────────────────────────────────────────────────────
 async function forkChecklist(caseId, wantedId, user, req) {
+  // on a child case a shared checklist is customised on the principal's copy, which every child is served; see managingCaseFor
+  const managingId = await managingCaseFor(caseId, wantedId, user);
+  if (String(managingId) !== String(caseId)) return forkChecklist(managingId, wantedId, user, req);
   const caseData = await loadCase(caseId, user);
   const entry = await findEntry(caseId, wantedId);
   // already THIS case's own copy: edit it in place. (An employee case that is only being served its principal's copy gets a copy
@@ -259,6 +322,14 @@ async function forkChecklist(caseId, wantedId, user, req) {
     });
     copy.rootQuestionnaire = copy._id;
     await copy.save();
+    const questions = await Question.find({ questionnaire: original._id }).lean();
+    if (questions.length) {
+      await Question.insertMany(questions.map(({ _id, __v, createdAt, updatedAt, ...rest }) => ({
+        ...rest, questionnaire: copy._id, questionnaireKey: copy.key, questionnaireVersion: copy.version,
+      })));
+    }
+  } else if (!(await Question.exists({ questionnaire: copy._id }))) {
+    // a copy a previous (interrupted) attempt created but never filled: complete it, so a retried edit never ends up on an empty checklist
     const questions = await Question.find({ questionnaire: original._id }).lean();
     if (questions.length) {
       await Question.insertMany(questions.map(({ _id, __v, createdAt, updatedAt, ...rest }) => ({
@@ -305,6 +376,8 @@ function cleanOptions(options) {
 
 async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, patch = {} } = {}, user, req) {
   if (!["update", "add", "remove"].includes(op)) throw httpError(400, "op must be update, add or remove");
+  // the case the checklist is managed on (the principal, for a child case's shared checklist): its copy is edited and every child sees it
+  caseId = await managingCaseFor(caseId, wantedId, user);
   const { questionnaire: copy } = await forkChecklist(caseId, wantedId, user, req);
 
   if (op === "add") {

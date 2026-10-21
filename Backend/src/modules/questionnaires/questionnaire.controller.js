@@ -4,6 +4,24 @@ const Questionnaire = require("../../models/Questionnaire");
 const questionLibraryService = require("./question-library.service");
 const questionnaireService = require("./questionnaire.service");
 const caseService = require("../cases/case.service");
+const { notifyCaseDataChanged } = require("../realtime/caseLiveUpdates");
+
+// After a successful answer / file save: tells every open session on the case (client portal, Admin, Attorney) that its answers, Required Documents,
+// checklist and documents sections changed, so they re-read without a manual refresh. Runs after the response is sent and can never fail the save.
+function announceAnswersChanged(req, result, scope = ["answers", "checklist"]) {
+  try {
+    const answers = Array.isArray(result?.answers) ? result.answers : [];
+    const caseIds = [req.body?.caseId, req.query?.caseId, result?.caseId, ...answers.slice(0, 5).map((answer) => answer?.caseId)].filter(Boolean);
+    if (caseIds.length) return notifyCaseDataChanged(caseIds, scope, { actor: req.user, reason: "answers_saved" });
+    // a request that names no case (e.g. removing a file): find it through the response the answers belong to
+    if (result?.responseId) {
+      Answer.findOne({ responseId: result.responseId }).select("caseId").lean()
+        .then((found) => found?.caseId && notifyCaseDataChanged(found.caseId, scope, { actor: req.user, reason: "answers_saved" }))
+        .catch(() => {});
+    }
+  } catch { /* a live update must never fail a save */ }
+}
+const FILE_SCOPES = ["answers", "documents", "checklist"];
 
 function listFilter(query) {
   const filter = {};
@@ -196,6 +214,13 @@ exports.removeCaseChecklist = async (req, res, next) => {
 // Case manager: edit / add / remove a question on ONE case's copy of a checklist. Never changes the template.
 exports.editCaseChecklist = async (req, res, next) => {
   try {
+    // { background: true } on a remove / update: recorded as a durable job and answered at once; the server does the work and retries until it succeeds
+    // (checklist-edit-jobs.service.js). Anything else - and every older client - is done before answering, exactly as before.
+    const jobs = require("./checklist-edit-jobs.service");
+    if (req.body?.background === true && jobs.supportsBackground(req.body.op)) {
+      const job = await jobs.enqueueEdit(req.params.caseId, req.body, req.user);
+      return res.status(202).json({ success: true, queued: true, data: { jobId: job._id } });
+    }
     const result = await require("./case-checklist.service").editChecklist(req.params.caseId, req.body || {}, req.user, req);
     res.json({ success: true, data: result });
   } catch (error) {
@@ -457,6 +482,7 @@ exports.autoSaveAnswers = async (req, res, next) => {
   try {
     const result = await questionnaireService.saveAnswers({ ...req.body, questionnaireId: req.params.id }, req.user, req, "auto_saved");
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result);
   } catch (error) {
     next(error);
   }
@@ -480,6 +506,7 @@ exports.saveAnswer = async (req, res, next) => {
     const status = staffPreserve ? questionnaireService.PRESERVE_ANSWER_STATUS : "auto_saved";
     const result = await questionnaireService.saveAnswers({ ...req.body, questionnaireId: req.params.id }, req.user, req, status);
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result);
   } catch (error) {
     next(error);
   }
@@ -490,6 +517,7 @@ exports.saveFileAnswer = async (req, res, next) => {
     const staffPreserve = caseService.isStaff(req.user) && isPreserveStatusRequested(req.body);
     const result = await questionnaireService.saveFileAnswer({ ...req.body, questionnaireId: req.params.id }, req.files || [], req.user, req, { preserveStatus: staffPreserve });
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result, FILE_SCOPES);
   } catch (error) {
     next(error);
   }
@@ -533,6 +561,7 @@ exports.completeAnswerFileSession = async (req, res, next) => {
     const result = await questionnaireService.saveFileAnswer({ ...req.body, questionnaireId: req.params.id }, [assembled.file], req.user, req, { preserveStatus: staffPreserve });
     await assembled.finish();
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result, FILE_SCOPES);
   } catch (error) {
     if (assembled && error.statusCode !== 409) await assembled.discard().catch(() => null);
     next(error);
@@ -556,6 +585,7 @@ exports.removeAnswerFile = async (req, res, next) => {
   try {
     const result = await questionnaireService.removeAnswerFile({ ...(req.body || {}), ...req.query, questionnaireId: req.params.id }, req.user, req);
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result, FILE_SCOPES);
   } catch (error) {
     next(error);
   }
@@ -642,6 +672,7 @@ exports.submitAnswers = async (req, res, next) => {
   try {
     const result = await questionnaireService.submitResponse({ ...req.body, questionnaireId: req.params.id }, req.user, req);
     res.json({ success: true, data: result });
+    announceAnswersChanged(req, result, FILE_SCOPES);
   } catch (error) {
     next(error);
   }

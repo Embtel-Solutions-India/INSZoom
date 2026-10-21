@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { questionnairesApi } from "../services/api";
 import { useSocket } from "../context/SocketContext";
+import useCaseDataChanged from "./useCaseDataChanged";
 
 // Resolves the assigned-or-default Questionnaire template for a case + role
 // (e.g. targetRole="employer"|"employee"|"business_plan"), and exposes a
@@ -105,6 +106,9 @@ export default function useCaseQuestionnaire(caseId, targetRole, referenceId, { 
     socket.on("case:checklists_changed", onChanged);
     return () => socket.off("case:checklists_changed", onChanged);
   }, [socket, caseId]);
+  // Anyone else saving an answer or file on this case (the case manager in Admin, another staff member, the employer...) shows up live. This user's
+  // own saves already re-read after themselves (saveAnswer below), so those are skipped.
+  useCaseDataChanged(caseId, () => loadRef.current(), { skipOwn: true });
 
   // A read-only view of somebody else's file (the employer looking at an invited employee's answers) re-reads it on a timer, so what the
   // other person saves or submits shows up without a reload. Never used for a file the viewer edits (a refetch would race their typing).

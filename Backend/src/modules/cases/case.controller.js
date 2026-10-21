@@ -3275,7 +3275,10 @@ exports.submitQuestionnaire = async (req, res, next) => {
     if (!caseService.canAccessCase(req.user, caseData)) return res.status(403).json({ success: false, message: "Not authorized to access this case" });
     if (req.body.questionnaireId && Array.isArray(req.body.answers)) {
       const result = await questionnaireService.submitResponse({ ...req.body, caseId: caseData._id }, req.user, req);
-      return res.json({ success: true, message: "Questionnaire submitted", data: result });
+      res.json({ success: true, message: "Questionnaire submitted", data: result });
+      // Live: the other portals' answers / Required Documents / checklist sections re-read (never affects the submit itself).
+      try { require("../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, ["answers", "checklist"], { actor: req.user, reason: "questionnaire_submitted" }); } catch { /* ignore */ }
+      return;
     }
 
     const questionnaire = caseData.questionnaireReferences.id(req.body.referenceId)

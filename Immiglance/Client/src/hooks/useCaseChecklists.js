@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { questionnairesApi } from "../services/api";
+import useCaseDataChanged from "./useCaseDataChanged";
 
 // Every checklist currently assigned to a case (any visa type, any role) —
 // thin wrapper around listCaseChecklists, which is already generic
@@ -17,6 +18,9 @@ export default function useCaseChecklists(caseId) {
     enabled: Boolean(caseId),
     staleTime: 2 * 60_000,
   });
+
+  // an approval, a customisation or progress made by anyone re-reads the list (own changes too: the progress counts here move with every save)
+  useCaseDataChanged(caseId, () => { refetch(); });
 
   return { checklists: caseId ? data || [] : [], loading: Boolean(caseId) && isLoading, refetch };
 }

@@ -3242,8 +3242,9 @@ async function getQuestionnaireForCase(caseId, user, targetRole, options = {}) {
 // the client portal all show the edited checklist. Only the questionnaire that is SERVED changes: response ids are always
 // derived from the original template, so no answer is ever detached. An employee case with a copy of its own keeps it.
 async function parentChecklistCopy(caseData, questionnaire) {
+  // Every checklist the principal customised is served to its child cases - the employee checklist and the principal's own (petitioner) one alike:
+  // they are the same checklist, managed on the principal (see case-checklist.service.js). A child keeps a copy of its own only if it already had one.
   if (!caseData?.parentCase || !questionnaire || isCaseCopyKey(questionnaire.key)) return questionnaire;
-  if (String(questionnaire.checklistRole || "") !== "employee") return questionnaire;
   const copy = await Questionnaire.findOne({ key: caseCopyKey(questionnaire.key, caseData.parentCase), latestVersion: true, status: { $ne: "archived" } });
   return copy || questionnaire;
 }

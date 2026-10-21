@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X, Plus, Trash2, Loader2, Info } from 'lucide-react'
 import { questionnairesApi, invalidateCachedGet } from '../services/api'
 
@@ -35,6 +35,27 @@ const NEW_TYPES = [
   { value: 'file', label: 'Document upload' },
 ]
 
+// Removing a question or changing its wording is shown at once and handed to the server as a background job (it retries until it succeeds). Until the
+// server's own list no longer disagrees, a reload (re-opening the editor, another panel refreshing) keeps showing the change, so a row never pops back.
+const PENDING_TTL_MS = 2 * 60 * 1000 // if the server never confirms, the screen returns to what the server says
+const pendingChanges = new Map() // `${caseId}|${checklistId}` -> { removed: Map(key -> at), labels: Map(key -> { label, at }) }
+function pendingFor(caseId, checklistId) {
+  const id = `${caseId}|${checklistId}`
+  if (!pendingChanges.has(id)) pendingChanges.set(id, { removed: new Map(), labels: new Map() })
+  return pendingChanges.get(id)
+}
+function applyPending(questions, pending) {
+  const now = Date.now()
+  const present = new Set(questions.map((question) => question.key))
+  for (const [key, at] of pending.removed) if (!present.has(key) || now - at > PENDING_TTL_MS) pending.removed.delete(key) // confirmed (gone on the server) or given up
+  for (const [key, entry] of pending.labels) {
+    const question = questions.find((item) => item.key === key)
+    if (!question || question.label === entry.label || now - entry.at > PENDING_TTL_MS) pending.labels.delete(key)
+  }
+  return questions.filter((question) => !pending.removed.has(question.key)).map((question) => (pending.labels.has(question.key) ? { ...question, label: pending.labels.get(question.key).label } : question))
+}
+const SEND_RETRY_DELAYS_MS = [0, 1000, 2000, 4000, 8000, 15000] // only for the request itself not reaching the server; once accepted, the server retries
+
 // Edit one checklist FOR THIS CASE ONLY: change a question's wording / required flag, add a question, remove a
 // question. The first change gives this case its own copy of the checklist; the shared template and every other case
 // are never touched. (Answers a client or staff member already gave are edited in the answer panels, and stay
@@ -62,7 +83,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       const all = [...(data.questions || []), ...(data.hiddenQuestions || [])]
       const unique = [...new Map(all.map((question) => [question.key, question])).values()]
         .filter((question) => question.active !== false && question.type !== 'page_break' && question.type !== 'section_break')
-      setQuestions(unique)
+      setQuestions(applyPending(unique, pendingFor(caseId, checklist.checklistId)))
       setSections(data.questionnaire?.sections || [])
       if (!quiet) setDrafts({})
     } catch (err) {
@@ -70,7 +91,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
     } finally {
       if (!quiet) setLoading(false)
     }
-  }, [caseId, checklist.targetRole, checklist.referenceId])
+  }, [caseId, checklist.targetRole, checklist.referenceId, checklist.checklistId])
 
   useEffect(() => { load(false) }, [load])
 
@@ -91,6 +112,52 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
     } finally {
       setBusyKey('')
     }
+  }
+
+  // Remove / change wording: the screen changes now; the request goes out in the background (in order) and the server carries it out, retrying until it
+  // succeeds. Only a refusal the server will never accept (not allowed, not found) or a connection that stays down puts the question back, with the reason.
+  const chain = useRef(Promise.resolve())
+  const sendInBackground = (body) => {
+    const attempt = async () => {
+      let lastError
+      for (const delay of SEND_RETRY_DELAYS_MS) {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+        try {
+          await questionnairesApi.editCaseChecklist(caseId, { checklistId: checklist.checklistId, ...body, background: true })
+          return null
+        } catch (err) {
+          const status = err.response?.status
+          if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) return err.response?.data?.message || err.message || 'This change was not accepted.'
+          lastError = err
+        }
+      }
+      return lastError?.response?.data?.message || 'Could not reach the server, so this change was not saved. Please check your connection and try again.'
+    }
+    chain.current = chain.current.then(async () => {
+      const problem = await attempt()
+      if (!problem) return
+      const pending = pendingFor(caseId, checklist.checklistId)
+      pending.removed.delete(body.questionKey)
+      pending.labels.delete(body.questionKey)
+      await load(true) // back to what the server has (a reload clears any message, so the reason is shown after it)
+      setError(problem)
+    })
+  }
+
+  const removeQuestion = (question) => {
+    pendingFor(caseId, checklist.checklistId).removed.set(question.key, Date.now())
+    setQuestions((current) => current.filter((item) => item.key !== question.key))
+    setDrafts((current) => { const next = { ...current }; delete next[question.key]; return next })
+    setError('')
+    sendInBackground({ op: 'remove', questionKey: question.key })
+  }
+
+  const saveLabel = (question, label) => {
+    pendingFor(caseId, checklist.checklistId).labels.set(question.key, { label, at: Date.now() })
+    setQuestions((current) => current.map((item) => (item.key === question.key ? { ...item, label } : item)))
+    setDrafts((current) => { const next = { ...current }; delete next[question.key]; return next })
+    setError('')
+    sendInBackground({ op: 'update', questionKey: question.key, patch: { label } })
   }
 
   const groups = useMemo(() => arrangeLikeClient(questions, sections), [questions, sections])
@@ -145,12 +212,12 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
                         )}
                       </div>
                       <div className="flex gap-2">
-                        <button type="button" className="btn-primary text-xs disabled:opacity-50" disabled={!isDirty(question) || busyKey === question.key}
-                          onClick={() => send(question.key, { op: 'update', questionKey: question.key, patch: { label } })}>
-                          {busyKey === question.key ? 'Saving…' : 'Save'}
+                        <button type="button" className="btn-primary text-xs disabled:opacity-50" disabled={!isDirty(question)}
+                          onClick={() => saveLabel(question, label)}>
+                          Save
                         </button>
-                        <button type="button" className="btn-secondary inline-flex items-center gap-1 text-xs text-rose-700" disabled={busyKey === question.key}
-                          onClick={() => send(question.key, { op: 'remove', questionKey: question.key })}>
+                        <button type="button" className="btn-secondary inline-flex items-center gap-1 text-xs text-rose-700"
+                          onClick={() => removeQuestion(question)}>
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Remove
                         </button>
                       </div>

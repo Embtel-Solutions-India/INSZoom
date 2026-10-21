@@ -117,6 +117,42 @@ test("a comb field whose text fits its boxes keeps its one-character-per-box lay
   assert.equal(longComb.getText(), "123456789");
 });
 
+test("a read-only drop-down (State), list box and radio group are made writable too, so a value can be chosen and written", async () => {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage();
+  const form = pdf.getForm();
+  const state = form.createDropdown("bform[1].Part1_Line7_PhysicalAddress_State[0]");
+  state.addOptions(["CA", "NY", "TX"]);
+  state.addToPage(page, { x: 10, y: 700, width: 80, height: 18 });
+  state.enableReadOnly();
+  const radio = form.createRadioGroup("form1[0].#subform[1].Part2_Choice[0]");
+  radio.addOptionToPage("Yes", page, { x: 10, y: 660, width: 14, height: 14 });
+  radio.addOptionToPage("No", page, { x: 40, y: 660, width: 14, height: 14 });
+  radio.enableReadOnly();
+  const list = form.createOptionList("form1[0].#subform[1].Part2_List[0]");
+  list.addOptions(["A", "B"]);
+  list.addToPage(page, { x: 10, y: 600, width: 80, height: 40 });
+  list.enableReadOnly();
+  // a drop-down that is a computed field keeps its lock
+  const computed = form.createDropdown("form1[0].#subform[1].Computed[0]");
+  computed.addOptions(["X"]);
+  computed.addToPage(page, { x: 10, y: 560, width: 80, height: 18 });
+  computed.enableReadOnly();
+
+  const meta = new Map([["form1[0].#subform[1].Computed[0]", { fieldType: "dropdown", calculated: true }]]);
+  assert.equal(unlockReadOnlyFields(form, meta), 3);
+  assert.equal(state.isReadOnly(), false);
+  assert.equal(radio.isReadOnly(), false);
+  assert.equal(list.isReadOnly(), false);
+  assert.equal(computed.isReadOnly(), true);
+
+  state.select("NY");
+  assert.deepEqual(state.getSelected(), ["NY"]);
+  radio.select("Yes");
+  assert.equal(radio.getSelected(), "Yes");
+  assert.equal(unlockReadOnlyFields(form, meta), 0); // idempotent
+});
+
 test("read-only boxes a person may fill in are made writable on the working copy; signatures and barcodes stay locked", async () => {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage();

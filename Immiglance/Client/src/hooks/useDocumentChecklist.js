@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { documentsApi } from "../services/api";
+import useCaseDataChanged from "./useCaseDataChanged";
 
 // Shared files/extractions bookkeeping + upload/remove handlers, lifted out of
 // Documents.jsx so any surface driving the same <DocumentChecklist> UI
@@ -50,6 +51,22 @@ export default function useDocumentChecklist(context = {}) {
   }, []);
 
   useEffect(() => load(), [load]);
+
+  // Live: a document uploaded / replaced / deleted / reviewed by someone else (the case manager in Admin...) appears without a reload. A silent
+  // re-read - `loading` is not touched, so the list never flashes or unmounts - and this user's own uploads (which this hook already tracks) are skipped.
+  useCaseDataChanged(context?.caseId, () => {
+    documentsApi.list().then((docs) => {
+      const grouped = {};
+      docs.forEach((d) => {
+        if (!grouped[d.documentType]) grouped[d.documentType] = [];
+        grouped[d.documentType].push(d);
+      });
+      setFiles(grouped);
+      const extractionMap = {};
+      docs.forEach((d) => { extractionMap[d._id] = { status: d.intelligenceStatus || d.processing?.status || d.aiExtractionStatus }; });
+      setExtractions(extractionMap);
+    }).catch(() => { /* keep what is shown; the next change or reload will refresh it */ });
+  }, { skipOwn: true });
 
   const handleUpload = async (file, category, documentType, controls) => {
     setUploadsInFlight((count) => count + 1);

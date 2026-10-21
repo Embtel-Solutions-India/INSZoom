@@ -631,6 +631,13 @@ const CRMCaseDetail = () => {
     c.documentItems.forEach((item) => { if (item.answered) acc.sent += 1; else acc.pending += 1 })
     return acc
   }, { sent: 0, pending: 0 })
+  // Documents the case manager REQUESTED (Request information panel) are listed in their own group so they show here as soon as they are provided -
+  // by the client or on their behalf. Display only: the overall document progress (documentsProgress, below) is still computed from the regular checklists.
+  const requestedDocumentGroups = checklistsProgress.filter((c) => c.staffRequest && c.documentItems?.length)
+  const requestedDocumentCounts = requestedDocumentGroups.reduce((acc, c) => {
+    c.documentItems.forEach((item) => { if (item.answered) acc.sent += 1; else acc.pending += 1 })
+    return acc
+  }, { sent: 0, pending: 0 })
   // Scoped to upload (file-type) questions only — c.progress mixes in
   // questionnaire field answers, which QuestionnaireAnswersPanel already
   // renders separately, so using it here double-counted field answers as
@@ -3160,7 +3167,10 @@ const CRMCaseDetail = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-foreground">Required Documents</h3>
             <span className="text-sm text-muted-foreground">
-              {checklistDocumentGroups.length ? `${checklistDocumentCounts.sent} sent · ${checklistDocumentCounts.pending} pending` : `${getUploadedChecklistCount()} sent · ${getPendingChecklistItems().length} pending`}
+              {(() => {
+                const base = checklistDocumentGroups.length ? checklistDocumentCounts : { sent: getUploadedChecklistCount(), pending: getPendingChecklistItems().length }
+                return `${base.sent + requestedDocumentCounts.sent} sent · ${base.pending + requestedDocumentCounts.pending} pending`
+              })()}
             </span>
           </div>
           {checklistDocumentGroups.length ? (
@@ -3221,6 +3231,28 @@ const CRMCaseDetail = () => {
             </div>
           ) : (
             renderEmptyState('No required document checklist')
+          )}
+          {requestedDocumentGroups.length > 0 && (
+            <div className="mt-5 space-y-5" data-testid="required-documents-requested">
+              {requestedDocumentGroups.map((c) => (
+                <div key={`requested-${c.referenceId || c.checklistId}`}>
+                  <p className="mb-2 text-sm font-semibold text-foreground">
+                    Requested by case manager
+                    {c.title ? <span className="ml-2 text-xs font-normal text-muted-foreground">{c.title}</span> : null}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {c.documentItems.map((item) => (
+                      <div key={item.key} className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                        <p className="min-w-0 text-sm font-medium text-foreground">{item.label}</p>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${item.answered ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {item.answered ? 'Sent' : 'Pending'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
         )}
