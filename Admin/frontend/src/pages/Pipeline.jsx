@@ -152,8 +152,8 @@ export default function Pipeline() {
       {deleteTarget ? (
         <ConfirmModal
           title="Are you sure?"
-          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be permanently deleted from the CRM, together with its documents, answers, forms and messages${deleteTarget.caseRole === 'principal' ? ', and all of its child cases' : ''}. Its GoHighLevel opportunity is removed too. This cannot be undone.`}
-          confirmLabel="Yes, delete"
+          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be moved to the recycle bin, together with its documents, answers, forms and messages${deleteTarget.caseRole === 'principal' ? ', and all of its child cases' : ''}. It can be restored from the Recycle Bin for 30 days, then it is deleted permanently. Its GoHighLevel opportunity is removed now and is not restored.`}
+          confirmLabel="Yes, move to recycle bin"
           cancelLabel="No"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}

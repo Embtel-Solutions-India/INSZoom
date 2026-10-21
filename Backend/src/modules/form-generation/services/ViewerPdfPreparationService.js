@@ -35,7 +35,8 @@ const logger = require("../../../utils/logger");
 // (USCISFormComponentDefinition.slicedPdfRecipeVersion) so a code fix alone
 // invalidates every previously-cached (broken) slice without a data
 // migration.
-const VIEWER_PDF_RECIPE_VERSION = 2;
+// 3: boxes USCIS marks read-only that a person may fill in are made writable in the viewer copy (see unlockReadOnlyFields)
+const VIEWER_PDF_RECIPE_VERSION = 3;
 
 // Converts a flat, sorted, 1-based page list into the contiguous
 // {start, end} ranges Adobe's combinepdf API requires. Moved here (out of
@@ -190,6 +191,10 @@ async function prepareViewerPdf({ rawBuffer, template, pagesToKeep }) {
 
   const flattenedBarcodeFields = flattenBarcodeAppearances(doc.getForm(), template.formCode);
   const disabledRichTextFields = disableEmptyRichTextFields(doc.getForm());
+  // pdf.js turns a widget's own read-only flag into a locked input, so the boxes the editor lets a person fill in (conditional boxes, copies - never
+  // signatures or barcodes) are made writable in this copy of the PDF itself, not only in the page around it
+  const { unlockReadOnlyFields } = require("./FullTextFieldGuard");
+  unlockReadOnlyFields(doc.getForm(), new Map((template.formFields || []).map((meta) => [meta.pdfFieldName || meta.fieldName, meta])));
   purgeOrphanedXfaObjects(doc);
   const prepared = Buffer.from(await doc.save());
 

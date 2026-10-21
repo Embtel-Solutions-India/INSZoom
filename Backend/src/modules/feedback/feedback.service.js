@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Feedback = require("../../models/Feedback");
 const Case = require("../../models/Case");
+const User = require("../../models/User");
 const notificationService = require("../notifications/notification.service");
 const storageService = require("../uploads/storage.service");
 const chunkedUploads = require("../chunked-uploads/chunkedUpload.service");
@@ -240,7 +241,84 @@ async function getFeedbackAttachment(caseId, feedbackId, attachmentId) {
   return { buffer, attachment };
 }
 
+// Everyone who can see this case's thread: its case managers, team lead and owners, every admin / super admin, the attorneys with active access, and the author
+// (their other open sessions). Edits and deletions are broadcast to all of them so nobody keeps looking at the old text.
+async function threadParticipantIds(caseId, author) {
+  const caseDoc = await Case.findById(caseId).select("_id caseId caseNumber assignedCaseManager additionalCaseManagers assignedTeamLead primaryOwner secondaryOwner attorneyAccess");
+  const ids = new Set([String(author._id)]);
+  if (caseDoc) {
+    (allCaseManagerIds(caseDoc) || []).forEach((id) => id && ids.add(String(id)));
+    [caseDoc.assignedTeamLead, caseDoc.primaryOwner, caseDoc.secondaryOwner].forEach((id) => id && ids.add(String(id)));
+    (caseDoc.attorneyAccess || []).filter((grant) => grant.status === "active" && grant.attorneyId).forEach((grant) => ids.add(String(grant.attorneyId)));
+  }
+  const admins = await User.find({ role: { $in: ["admin", "super_admin"] }, isActive: { $ne: false } }).select("_id").lean().catch(() => []);
+  admins.forEach((admin) => ids.add(String(admin._id)));
+  return [...ids];
+}
+
+async function loadOwnFeedback(caseId, feedbackId, author) {
+  if (!mongoose.Types.ObjectId.isValid(feedbackId)) {
+    const error = new Error("Invalid message id");
+    error.status = 400;
+    throw error;
+  }
+  const feedback = await Feedback.findOne({ _id: feedbackId, caseId, deletedAt: { $exists: false } });
+  if (!feedback) {
+    const error = new Error("Message not found");
+    error.status = 404;
+    throw error;
+  }
+  if (String(feedback.authorId) !== String(author._id)) {
+    const error = new Error("Only the author can change this message");
+    error.status = 403;
+    throw error;
+  }
+  return feedback;
+}
+
+async function broadcastChange(caseId, author, feedbackId, event) {
+  const populated = await Feedback.findById(feedbackId).populate("authorId", "name displayName email role").lean();
+  const participants = await threadParticipantIds(caseId, author).catch(() => [String(author._id)]);
+  participants.forEach((userId) => realtimeGateway.emitToUser(userId, event, populated));
+  return populated;
+}
+
+// Edit in place (the author only): the text changes, the message keeps its place in the thread and is marked edited.
+async function editFeedback({ caseId, feedbackId, author, message }) {
+  const feedback = await loadOwnFeedback(caseId, feedbackId, author);
+  if (feedback.deletedForEveryoneAt) {
+    const error = new Error("A deleted message cannot be edited");
+    error.status = 400;
+    throw error;
+  }
+  const text = typeof message === "string" ? message.trim() : "";
+  if (!text && !(feedback.attachments || []).length) {
+    const error = new Error("A message cannot be empty");
+    error.status = 400;
+    throw error;
+  }
+  feedback.message = text;
+  feedback.editedAt = new Date();
+  await feedback.save();
+  return broadcastChange(caseId, author, feedback._id, "feedback:update");
+}
+
+// "Delete for everyone" (the author only): the message stays in the thread as a deleted line; its text and files are wiped (the stored file bytes are not touched).
+async function deleteFeedbackForEveryone({ caseId, feedbackId, author }) {
+  const feedback = await loadOwnFeedback(caseId, feedbackId, author);
+  if (!feedback.deletedForEveryoneAt) {
+    feedback.message = "";
+    feedback.attachments = [];
+    feedback.deletedForEveryoneAt = new Date();
+    feedback.deletedForEveryoneBy = author._id;
+    await feedback.save();
+  }
+  return broadcastChange(caseId, author, feedback._id, "feedback:delete");
+}
+
 module.exports = {
+  editFeedback,
+  deleteFeedbackForEveryone,
   createFeedback,
   listFeedback,
   markCaseFeedbackRead,

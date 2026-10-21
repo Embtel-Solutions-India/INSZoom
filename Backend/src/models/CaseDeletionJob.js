@@ -12,6 +12,8 @@ const caseDeletionJobSchema = new mongoose.Schema(
     userIds: [{ type: mongoose.Schema.Types.ObjectId }],
     emails: [String],
     requestedBy: { type: mongoose.Schema.Types.ObjectId },
+    // the recycle-bin entry holding a copy of everything this job removes (absent: a deletion that skips the bin)
+    recycleEntryId: { type: mongoose.Schema.Types.ObjectId },
     status: { type: String, enum: ["pending", "processing", "done", "failed"], default: "pending" },
     attempts: { type: Number, default: 0 },
     nextAttemptAt: { type: Date, default: Date.now },

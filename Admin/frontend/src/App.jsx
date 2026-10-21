@@ -28,6 +28,7 @@ const Analytics = lazy(() => import('./pages/Analytics'))
 const USCISForms = lazy(() => import('./pages/USCISForms'))
 const FormGovernance = lazy(() => import('./pages/FormGovernance'))
 const FormGovernanceDetail = lazy(() => import('./pages/FormGovernanceDetail'))
+const RecycleBin = lazy(() => import('./pages/RecycleBin'))
 const CaseManagers = lazy(() => import('./pages/CaseManagers'))
 const CaseManagerDetails = lazy(() => import('./pages/CaseManagerDetails'))
 const MyPerformance = lazy(() => import('./pages/MyPerformance'))
@@ -182,6 +183,14 @@ function App() {
                 element={
                   <ProtectedRoute module="cases">
                     <FormGovernanceDetail />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="recycle-bin"
+                element={
+                  <ProtectedRoute requiredRoles={['super_admin', 'admin']}>
+                    <RecycleBin />
                   </ProtectedRoute>
                 }
               />

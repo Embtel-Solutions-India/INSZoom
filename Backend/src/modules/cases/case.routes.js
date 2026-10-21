@@ -204,6 +204,8 @@ router.post(
   staffFeedbackCtrl.replyToFeedback
 );
 router.patch("/:caseId/feedback/mark-read", authenticate, authorizeRoles(...staffRoles), authorizePermissions("feedback:update"), staffFeedbackCtrl.markFeedbackRead);
+router.patch("/:caseId/feedback/:feedbackId", authenticate, authorizeRoles(...staffRoles), authorizePermissions("feedback:update"), body("message").isString(), validate, staffFeedbackCtrl.editFeedback);
+router.delete("/:caseId/feedback/:feedbackId", authenticate, authorizeRoles(...staffRoles), authorizePermissions("feedback:update"), staffFeedbackCtrl.deleteFeedbackForEveryone);
 router.get(
   "/:caseId/feedback/:feedbackId/attachments/:attachmentId",
   authenticate,

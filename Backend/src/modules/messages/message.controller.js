@@ -211,6 +211,18 @@ exports.editMessage = async (req, res, next) => {
   }
 };
 
+exports.deleteMessageForEveryone = async (req, res, next) => {
+  try {
+    const message = await Message.findById(req.params.id);
+    if (!message || message.deletedAt) return res.status(404).json({ success: false, message: "Message not found" });
+    if (!(await messageService.canAccessMessage(req.user, message))) return res.status(403).json({ success: false, message: "Access denied" });
+    const updated = await messageService.deleteMessageForEveryone(message, req.user, req);
+    res.json({ success: true, message: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.reactToMessage = async (req, res, next) => {
   try {
     const message = await Message.findById(req.params.id);

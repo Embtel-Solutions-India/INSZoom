@@ -58,6 +58,24 @@ router.patch(
   requireAttorneyAccess,
   ctrl.markFeedbackRead
 );
+router.patch(
+  "/cases/:caseId/feedback/:feedbackId",
+  authenticate,
+  requireAttorney,
+  authorizePermissions("feedback:update"),
+  requireAttorneyAccess,
+  body("message").isString(),
+  validate,
+  ctrl.editFeedback
+);
+router.delete(
+  "/cases/:caseId/feedback/:feedbackId",
+  authenticate,
+  requireAttorney,
+  authorizePermissions("feedback:update"),
+  requireAttorneyAccess,
+  ctrl.deleteFeedbackForEveryone
+);
 router.get(
   "/cases/:caseId/feedback/:feedbackId/attachments/:attachmentId",
   authenticate,

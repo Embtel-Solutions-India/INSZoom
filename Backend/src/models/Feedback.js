@@ -43,6 +43,10 @@ const feedbackSchema = new mongoose.Schema(
     // dropped response / timeout) returns the stored copy instead of posting a duplicate.
     clientMessageId: { type: String, maxlength: 64 },
     deletedAt: Date,
+    // Edited in place (shown as "edited" next to the time) / deleted for everyone (stays in the thread as "This message was deleted", content and files wiped).
+    editedAt: Date,
+    deletedForEveryoneAt: Date,
+    deletedForEveryoneBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }
 );

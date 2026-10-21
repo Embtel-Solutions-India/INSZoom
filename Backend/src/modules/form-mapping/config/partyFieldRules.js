@@ -182,6 +182,17 @@ const RULES = {
 // Form I-824: verified rules live in their own file. EXCLUSIVE forms keep ONLY rule-backed edges - any older auto-guessed edge on a field no rule covers
 // (e.g. company.name on a beneficiary name box) is removed instead of leaving wrong data on the PDF.
 RULES["I-824"] = require("./i824FieldRules").I824_RULES;
-const EXCLUSIVE_FORMS = new Set(["I-824"]);
+// Form I-140: only the boxes USCIS switches on by script (not exclusive - the form's existing edges are kept).
+RULES["I-140"] = require("./i140FieldRules").I140_RULES;
+// Form I-864: every box the sponsor / principal-immigrant checklists can fill. EXCLUSIVE: only rule-backed edges are kept (an old guess on a box no rule covers
+// - a name on the wrong person's box, for instance - is removed instead of leaving wrong data on the form); everything else is the case manager's.
+RULES["I-864"] = require("./i864FieldRules").I864_RULES;
+// Form N-400: the applicant (the checklist's client, stored as petitioner.*). EXCLUSIVE for the same reason as I-864.
+RULES["N-400"] = require("./n400FieldRules").N400_RULES;
+// Form I-129S (blanket L supplement): the L-1 employer (petitioner.*) and the transferred worker (beneficiary.*). EXCLUSIVE for the same reason.
+RULES["I-129S"] = require("./i129sFieldRules").I129S_RULES;
+// Form I-751: the conditional resident (petitioner.*), the spouse (petitioner.currentSpouse.*) and the children (petitioner.children). EXCLUSIVE as well.
+RULES["I-751"] = require("./i751FieldRules").I751_RULES;
+const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751"]);
 
 module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

@@ -1,4 +1,8 @@
-// Permanent case deletion. Unlike archiveCase (reversible, keeps every record), this removes the case from the database
+// Case deletion. A deleted case goes to the recycle bin first (modules/recycle-bin): everything below is still removed from the live database at once, but a
+// copy of every record is kept there, and the uploaded files stay in storage, for 30 days - after that they are removed for good. `skipRecycleBin` (scripts,
+// tests, RECYCLE_BIN_ENABLED=false) restores the old immediate, final deletion.
+//
+// Unlike archiveCase (reversible, keeps every record), this removes the case from the database
 // together with everything that only exists for it: answers, documents (and their stored files), forms, tasks, messages,
 // notifications, audit rows, ... Deleting a principal case also deletes its child cases (they cannot exist without it).
 // A client/employee account is removed only when this leaves it with no case at all; staff and attorney accounts are
@@ -22,7 +26,7 @@ const CASE_FIELDS = ["caseId", "case", "caseRef", "parentCaseId", "principalCase
 const USER_FIELDS = ["user", "userId", "clientId", "clientUserId", "recipient", "recipientId"];
 const EMAIL_FIELDS = ["email", "clientEmail", "to", "emailTo", "userEmail"];
 const CLIENT_SIDE_ROLES = ["client", "employee", "employer", "beneficiary"];
-const SKIPPED_COLLECTIONS = new Set(["users", "cases", "leads", "system.profile", "casedeletionjobs"]);
+const SKIPPED_COLLECTIONS = new Set(["users", "cases", "leads", "system.profile", "casedeletionjobs", "recyclebinentries", "recyclebinchunks"]);
 
 const MAX_ATTEMPTS = Number(process.env.CASE_DELETION_MAX_ATTEMPTS || 8);
 const CONCURRENCY = Number(process.env.CASE_DELETION_CONCURRENCY || 8);
@@ -79,19 +83,39 @@ async function removeCasesAndAccounts(caseIds, userIds) {
 /**
  * Phase 1. Returns as soon as the cases and accounts are gone; the linked-data sweep continues in the background.
  */
-async function requestCaseDeletion(caseData, actor, { skipGhl = false } = {}) {
-  // EVERY deletion removes the GoHighLevel card(s) of the case (and of an employer matter's employees) too - queued as durable, retried jobs, never
-  // blocking and never failing the deletion. Done here, not in one controller, so no path (a bulk action, a script, a sync) can leave a card behind.
-  // `skipGhl` is for a deletion CAUSED by GHL (the card is already gone there).
-  if (!skipGhl) await require("../../integrations/ghl/ghlCaseOutbound").queueGhlOpportunityDeletions(caseData);
+async function requestCaseDeletion(caseData, actor, { skipGhl = false, skipRecycleBin = false } = {}) {
   const { cases, caseIds } = await collectTargets(caseData);
   const orphans = await orphanedClientUsers(cases, caseIds);
   const userIds = orphans.map((user) => user._id);
   const emails = orphans.map((user) => user.email).filter(Boolean);
   const caseNumbers = cases.map((item) => item.caseNumber);
 
+  // The recycle-bin copy of the cases and the accounts is made BEFORE anything is queued or removed. If it cannot be made, nothing is deleted: a deletion
+  // never goes ahead without its backup.
+  const recycleBin = require("../recycle-bin/recycle-bin.service");
+  let entry = null;
+  if (!skipRecycleBin && recycleBin.enabled()) {
+    try {
+      const database = mongoose.connection.db;
+      const [caseDocs, userDocs] = await Promise.all([
+        database.collection("cases").find({ _id: { $in: caseIds } }).toArray(),
+        userIds.length ? database.collection("users").find({ _id: { $in: userIds } }).toArray() : [],
+      ]);
+      entry = await recycleBin.createEntry({ caseDocs, userDocs, actor });
+    } catch (error) {
+      logger.error("recycle_bin_capture_failed", { caseNumbers, error: error.message });
+      throw Object.assign(new Error("The case could not be moved to the recycle bin, so it was not deleted. Please try again."), { status: 503, code: "RECYCLE_BIN_UNAVAILABLE" });
+    }
+  }
+
+  // EVERY deletion removes the GoHighLevel card(s) of the case (and of an employer matter's employees) too - queued as durable, retried jobs, never
+  // blocking and never failing the deletion. Done here, not in one controller, so no path (a bulk action, a script, a sync) can leave a card behind.
+  // `skipGhl` is for a deletion CAUSED by GHL (the card is already gone there).
+  if (!skipGhl) await require("../../integrations/ghl/ghlCaseOutbound").queueGhlOpportunityDeletions(caseData);
+
   // the durable record comes first: from here on the deletion WILL complete, whatever happens to this request
-  const job = await CaseDeletionJob.create({ caseIds, caseNumbers, userIds, emails, requestedBy: actor?._id });
+  const job = await CaseDeletionJob.create({ caseIds, caseNumbers, userIds, emails, requestedBy: actor?._id, ...(entry ? { recycleEntryId: entry._id } : {}) });
+  if (entry) await require("../../models/RecycleBinEntry").updateOne({ _id: entry._id }, { $set: { jobId: job._id } });
   try {
     await removeCasesAndAccounts(caseIds, userIds);
   } catch (error) {
@@ -99,13 +123,18 @@ async function requestCaseDeletion(caseData, actor, { skipGhl = false } = {}) {
     logger.error("case_delete_fast_phase_failed", { jobId: String(job._id), error: error.message });
   }
   setImmediate(() => processDeletionJob(job._id).catch((error) => logger.error("case_delete_kick_failed", { jobId: String(job._id), error: error.message })));
-  return { caseNumbers, accountsRemoved: orphans.length, jobId: job._id };
+  return { caseNumbers, accountsRemoved: orphans.length, jobId: job._id, recycleBin: Boolean(entry) };
 }
 
-async function removeStoredFiles(db, caseIds) {
+async function removeStoredFiles(db, caseIds, recycleEntryId) {
   const documents = await db.collection("documents").find({ caseId: { $in: caseIds } }).project({ storageKey: 1, versions: 1 }).toArray();
   const keys = new Set();
   documents.forEach((doc) => [doc.storageKey, ...(doc.versions || []).map((version) => version.storageKey)].filter(Boolean).forEach((key) => keys.add(key)));
+  if (recycleEntryId) {
+    // the files stay in storage while the case is in the recycle bin; the bin removes them when its retention ends
+    await require("../recycle-bin/recycle-bin.service").addFileKeys(recycleEntryId, [...keys]);
+    return 0;
+  }
   const storage = require("../uploads/storage.service");
   let removed = 0;
   // a failure here fails the whole run (so it is retried) BEFORE any Document row is deleted: the keys are still on record
@@ -123,6 +152,15 @@ async function sweepCollections(db, job) {
     const or = CASE_FIELDS.map((field) => ({ [field]: { $in: caseIds } }));
     if (job.userIds.length) USER_FIELDS.forEach((field) => or.push({ [field]: { $in: job.userIds } }));
     if (job.emails.length) EMAIL_FIELDS.forEach((field) => or.push({ [field]: { $in: job.emails } }));
+    if (job.recycleEntryId) {
+      // copy to the recycle bin first, then remove exactly the documents that were copied
+      const docs = await db.collection(name).find({ $or: or }).toArray();
+      if (!docs.length) return;
+      await require("../recycle-bin/recycle-bin.service").storeDocs(job.recycleEntryId, name, docs);
+      const result = await db.collection(name).deleteMany({ _id: { $in: docs.map((doc) => doc._id) } });
+      if (result?.deletedCount) removed[name] = result.deletedCount;
+      return;
+    }
     const result = await db.collection(name).deleteMany({ $or: or });
     if (result?.deletedCount) removed[name] = result.deletedCount;
   });
@@ -159,11 +197,12 @@ async function processDeletionJob(jobId) {
   try {
     const db = mongoose.connection.db;
     await removeCasesAndAccounts(job.caseIds, job.userIds); // idempotent repeat of phase 1 (covers a phase-1 failure)
-    const filesRemoved = await removeStoredFiles(db, job.caseIds);
+    const filesRemoved = await removeStoredFiles(db, job.caseIds, job.recycleEntryId);
     const removed = await sweepCollections(db, job);
-    const result = { filesRemoved, removed, ms: Date.now() - started };
+    if (job.recycleEntryId) await require("../recycle-bin/recycle-bin.service").markComplete(job.recycleEntryId);
+    const result = { filesRemoved, removed, ms: Date.now() - started, ...(job.recycleEntryId ? { recycleBin: String(job.recycleEntryId) } : {}) };
     await CaseDeletionJob.updateOne({ _id: job._id }, { $set: { status: "done", completedAt: new Date(), result, lastError: null }, $unset: { lockedUntil: "" } });
-    logger.info("case_deleted_permanently", { jobId: String(job._id), by: String(job.requestedBy || ""), caseNumbers: job.caseNumbers, accountsRemoved: job.userIds.length, ...result });
+    logger.info(job.recycleEntryId ? "case_moved_to_recycle_bin" : "case_deleted_permanently", { jobId: String(job._id), by: String(job.requestedBy || ""), caseNumbers: job.caseNumbers, accountsRemoved: job.userIds.length, ...result });
     return { ...job.toObject(), status: "done", result };
   } catch (error) {
     const failedForGood = job.attempts >= MAX_ATTEMPTS;
@@ -201,9 +240,12 @@ async function retryDeletionJob(jobId) {
 async function deleteCasePermanently(caseData, actor, options) {
   const { jobId, caseNumbers, accountsRemoved } = await requestCaseDeletion(caseData, actor, options);
   let job = await CaseDeletionJob.findById(jobId).lean();
-  for (let guard = 0; guard < MAX_ATTEMPTS && job && job.status !== "done"; guard += 1) {
+  // The request-time kick may already be running this job (processDeletionJob then returns null): wait for it to finish instead of giving up early.
+  const deadline = Date.now() + 5 * 60 * 1000;
+  for (let guard = 0; guard < MAX_ATTEMPTS * 600 && job && job.status !== "done" && job.status !== "failed" && Date.now() < deadline; guard += 1) {
     await CaseDeletionJob.updateOne({ _id: jobId, status: "pending" }, { $set: { nextAttemptAt: new Date(0) } });
-    await processDeletionJob(jobId);
+    const ran = await processDeletionJob(jobId);
+    if (!ran) await new Promise((resolve) => setTimeout(resolve, 100));
     job = await CaseDeletionJob.findById(jobId).lean();
   }
   return { caseNumbers, accountsRemoved, filesRemoved: job?.result?.filesRemoved || 0, removed: job?.result?.removed || {} };

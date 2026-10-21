@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs").promises;
 const path = require("path");
 const env = require("../../config/env");
+const { resolveContentType } = require("../../utils/fileResponse");
 
 const STORAGE_PROVIDER = env.storage.provider;
 const LOCAL_STORAGE_PATH = env.storage.localPath || path.join(process.cwd(), "storage");
@@ -24,9 +25,16 @@ function encryptionKey() {
   return configured ? crypto.createHash("sha256").update(configured).digest() : null;
 }
 
+// App-level encryption of NEW writes. On when STORAGE_ENCRYPTION_KEY is set unless STORAGE_APP_ENCRYPTION=off: objects are then stored as the
+// plain file (still encrypted at rest by S3's own server-side encryption, env.storage.aws.sse), so they open directly in the S3 console. The
+// key is still used by decrypt() to read objects written earlier, so keep it set until scripts/decryptStoredObjects.js has converted them all.
+function appEncryptionEnabled() {
+  return !["off", "false", "0", "no"].includes(String(process.env.STORAGE_APP_ENCRYPTION || "").trim().toLowerCase());
+}
+
 function encrypt(buffer) {
   const key = encryptionKey();
-  if (!key) return buffer;
+  if (!key || !appEncryptionEnabled()) return buffer;
   const initializationVector = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, initializationVector);
   const encrypted = Buffer.concat([cipher.update(buffer), cipher.final()]);
@@ -46,7 +54,15 @@ function decrypt(buffer) {
   const authenticationTag = buffer.subarray(offset + 12, offset + 28);
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, initializationVector);
   decipher.setAuthTag(authenticationTag);
-  return Buffer.concat([decipher.update(buffer.subarray(offset + 28)), decipher.final()]);
+  try {
+    return Buffer.concat([decipher.update(buffer.subarray(offset + 28)), decipher.final()]);
+  } catch (cause) {
+    // GCM authentication failed: wrong STORAGE_ENCRYPTION_KEY for this object (e.g. a dev key reading prod data) or a corrupted object.
+    const error = new Error("Stored file could not be decrypted - STORAGE_ENCRYPTION_KEY does not match the key it was written with, or the object is corrupted");
+    error.code = "STORAGE_DECRYPTION_FAILED";
+    error.cause = cause;
+    throw error;
+  }
 }
 
 function extensionFromName(fileName = "") {
@@ -69,8 +85,8 @@ function getS3() {
   if (!s3Client) {
     // Required lazily, not at module top-level, so a "local"-provider
     // process never even needs @aws-sdk/client-s3 to resolve/load.
-    const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
-    s3Commands = { PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand };
+    const { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetBucketVersioningCommand } = require("@aws-sdk/client-s3");
+    s3Commands = { PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command, GetBucketVersioningCommand };
     const { region, accessKeyId, secretAccessKey, endpoint, forcePathStyle } = env.storage.aws;
     s3Client = new S3Client({
       region,
@@ -91,6 +107,14 @@ async function s3BodyToBuffer(body) {
   const chunks = [];
   for await (const chunk of body) chunks.push(chunk);
   return Buffer.concat(chunks);
+}
+
+// S3 server-side encryption for every write: SSE-S3 (AES256, default) or SSE-KMS (S3_SSE=aws:kms, optionally S3_SSE_KMS_KEY_ID). The data is
+// encrypted at rest, and S3 decrypts it transparently for IAM principals allowed to read (and use the KMS key), so an object written without
+// the app-level envelope still opens as a normal PDF in the S3 console while a leaked disk or bucket snapshot is unreadable.
+function serverSideEncryption() {
+  const { sse, sseKmsKeyId } = env.storage.aws;
+  return { ServerSideEncryption: sse, ...(sse === "aws:kms" && sseKmsKeyId ? { SSEKMSKeyId: sseKmsKeyId } : {}) };
 }
 
 function isS3NotFound(error) {
@@ -144,7 +168,7 @@ async function s3PutObject(key, body, contentType) {
       Key: key,
       Body: body,
       ContentType: contentType || "application/octet-stream",
-      ServerSideEncryption: env.storage.aws.sse,
+      ...serverSideEncryption(),
     })
   );
   readCacheDrop(key); // and again after the write: a read that raced it may have cached the old copy
@@ -211,6 +235,12 @@ async function objectExists(key) {
   return (await statObject(key)).exists;
 }
 
+// The stored object's Content-Type: what the caller said, else sniffed from the bytes / key extension. A real type (not octet-stream) is what
+// lets S3's "Open" show a PDF or image instead of downloading it.
+function storedContentType(key, buffer, contentType) {
+  return resolveContentType({ buffer, mimeType: contentType, fileName: key });
+}
+
 async function storeBuffer(key, buffer, contentType) {
   const normalizedKey = normalizeKey(key);
   const encrypted = encrypt(buffer);
@@ -221,7 +251,7 @@ async function storeBuffer(key, buffer, contentType) {
     let lastError;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        await s3PutObject(normalizedKey, encrypted, contentType);
+        await s3PutObject(normalizedKey, encrypted, storedContentType(normalizedKey, buffer, contentType));
         lastError = null;
         break;
       } catch (error) {
@@ -270,8 +300,8 @@ async function storeImmutableBuffer(key, buffer) {
           Bucket: env.storage.aws.bucket,
           Key: normalizedKey,
           Body: encrypted,
-          ContentType: "application/octet-stream",
-          ServerSideEncryption: env.storage.aws.sse,
+          ContentType: storedContentType(normalizedKey, buffer),
+          ...serverSideEncryption(),
           IfNoneMatch: "*",
         })
       );
@@ -298,7 +328,7 @@ async function storeImmutableBuffer(key, buffer) {
         if (isS3NotFound(getError)) {
           // Genuinely didn't exist (the endpoint just doesn't support
           // IfNoneMatch) — retry as a plain put now that we know it's safe.
-          await s3PutObject(normalizedKey, encrypted, "application/octet-stream");
+          await s3PutObject(normalizedKey, encrypted, storedContentType(normalizedKey, buffer));
           return {
             provider: "s3",
             key: normalizedKey,
@@ -429,15 +459,101 @@ async function deleteObject(key) {
   }
 }
 
+// ── Raw object access: for the encrypted -> plain conversion (scripts/decryptStoredObjects.js) only. Bypasses decrypt() and the read cache. ──
+async function* walkLocal(directory, prefix = "") {
+  let entries;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) yield* walkLocal(path.join(directory, entry.name), relative);
+    else yield relative;
+  }
+}
+
+const rawObjects = {
+  async *listKeys(prefix = "") {
+    if (STORAGE_PROVIDER === "s3") {
+      const { client, commands } = getS3();
+      let token;
+      do {
+        const page = await client.send(new commands.ListObjectsV2Command({ Bucket: env.storage.aws.bucket, Prefix: prefix, ContinuationToken: token }));
+        for (const object of page.Contents || []) yield object.Key;
+        token = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (token);
+      return;
+    }
+    for await (const key of walkLocal(LOCAL_STORAGE_PATH)) if (key.startsWith(prefix)) yield key;
+  },
+  // First bytes of the stored object, without transferring the rest of it.
+  async peek(key, length = ENCRYPTION_HEADER.length) {
+    const normalizedKey = normalizeKey(key);
+    if (STORAGE_PROVIDER === "s3") {
+      const { client, commands } = getS3();
+      try {
+        const response = await client.send(new commands.GetObjectCommand({ Bucket: env.storage.aws.bucket, Key: normalizedKey, Range: `bytes=0-${length - 1}` }));
+        return await s3BodyToBuffer(response.Body);
+      } catch (error) {
+        if (error?.name === "InvalidRange" || error?.$metadata?.httpStatusCode === 416) return Buffer.alloc(0); // empty object
+        throw error;
+      }
+    }
+    const handle = await fs.open(path.join(LOCAL_STORAGE_PATH, normalizedKey), "r");
+    try {
+      const { bytesRead, buffer } = await handle.read(Buffer.alloc(length), 0, length, 0);
+      return buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
+    }
+  },
+  async read(key) {
+    const normalizedKey = normalizeKey(key);
+    if (STORAGE_PROVIDER === "s3") {
+      const { client, commands } = getS3();
+      const response = await client.send(new commands.GetObjectCommand({ Bucket: env.storage.aws.bucket, Key: normalizedKey }));
+      return s3BodyToBuffer(response.Body);
+    }
+    return fs.readFile(path.join(LOCAL_STORAGE_PATH, normalizedKey));
+  },
+  // Overwrites in place with exactly these bytes (no encryption) and a real Content-Type.
+  async write(key, buffer, contentType) {
+    const normalizedKey = normalizeKey(key);
+    if (STORAGE_PROVIDER === "s3") return s3PutObject(normalizedKey, buffer, contentType);
+    const filePath = path.join(LOCAL_STORAGE_PATH, normalizedKey);
+    const temp = `${filePath}.tmp-${process.pid}`;
+    await fs.writeFile(temp, buffer);
+    await fs.rename(temp, filePath);
+  },
+  // "Enabled" | "Suspended" | "Unversioned" | "Unknown" (S3, no permission to ask), null for local storage. Previous versions are what make the conversion reversible.
+  async versioning() {
+    if (STORAGE_PROVIDER !== "s3") return null;
+    const { client, commands } = getS3();
+    try {
+      const response = await client.send(new commands.GetBucketVersioningCommand({ Bucket: env.storage.aws.bucket }));
+      return response.Status || "Unversioned";
+    } catch (error) {
+      if (error?.name === "AccessDenied" || error?.$metadata?.httpStatusCode === 403) return "Unknown"; // the IAM user lacks s3:GetBucketVersioning
+      throw error;
+    }
+  },
+};
+
 module.exports = {
   checksum,
   _readCache: { get: readCacheGet, put: readCachePut, drop: readCacheDrop, size: () => readCache.size, bytes: () => readCacheBytes },
   decrypt,
   deleteObject,
+  appEncryptionEnabled,
   encrypt,
+  ENCRYPTION_HEADER,
   generateDocumentKey,
   objectExists,
   provider: STORAGE_PROVIDER,
+  rawObjects,
   readBuffer,
   statObject,
   storeBuffer,

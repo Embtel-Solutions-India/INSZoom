@@ -719,6 +719,10 @@ export const messagesApi = {
   // `options.signal` lets the viewer abort a big download when it is closed.
   getAttachment:    (messageId, attachmentId, options) => api.get(`/messages/${messageId}/attachments/${attachmentId}`, options),
   typing:           (threadId, isTyping) => api.post(`/messages/conversations/${threadId}/typing`, { isTyping }),
+  // Sender-only. Edit replaces the text (the message keeps its place and gains `editedAt`); delete-for-everyone wipes the
+  // text/attachments/reactions but leaves the bubble in the thread with `deletedForEveryoneAt` set.
+  editMessage:      (messageId, messageBody) => api.put(`/messages/${messageId}`, { messageBody }),
+  deleteMessageForEveryone: (messageId) => api.delete(`/messages/${messageId}/everyone`),
 };
 
 // ── Presence ─────────────────────────────────────────

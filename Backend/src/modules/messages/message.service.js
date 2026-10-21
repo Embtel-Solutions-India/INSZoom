@@ -678,6 +678,11 @@ async function updateConversation(conversation, payload, user, req) {
 }
 
 async function addReaction(message, emoji, user, req) {
+  if (message.deletedForEveryoneAt) {
+    const error = new Error("This message was deleted");
+    error.status = 400;
+    throw error;
+  }
   const existing = (message.reactions || []).find((reaction) => sameId(reaction.userId, user._id) && reaction.emoji === emoji);
   if (existing) {
     message.reactions = message.reactions.filter((reaction) => !(sameId(reaction.userId, user._id) && reaction.emoji === emoji));
@@ -690,14 +695,47 @@ async function addReaction(message, emoji, user, req) {
   return populateMessage(message);
 }
 
+const DELETED_PREVIEW = "This message was deleted";
+
+// Everyone in the thread hears about an edit / deletion at once: the conversation room (anyone viewing it) and each participant's own room (anyone with the app open).
+// Internal notes stay with the conversation room, like every other staff-only event. Receivers replace the message by id, so a duplicate delivery is harmless.
+async function emitMessageChange(message, event) {
+  realtimeGateway.emitToConversation(message.conversationId, event, message);
+  if (message.isInternal || message.isInternalNote) return;
+  const conversation = await Conversation.findById(message.conversationId).catch(() => null);
+  if (conversation) participantIds(conversation).forEach((userId) => realtimeGateway.emitToUser(userId, event, message));
+}
+
+// The conversation list's one-line preview follows the newest message: when that message is edited or deleted the preview changes with it.
+async function refreshConversationPreview(message, preview) {
+  const conversation = await Conversation.findById(message.conversationId).catch(() => null);
+  if (!conversation) return;
+  const latest = await Message.findOne({ conversationId: conversation._id, deletedAt: { $exists: false }, isInternal: { $ne: true } }).sort({ createdAt: -1 }).select("_id").lean();
+  if (latest && sameId(latest._id, message._id)) {
+    conversation.lastMessagePreview = String(preview || "").slice(0, 160);
+    await conversation.save();
+    realtimeGateway.emitToConversation(conversation._id, "conversation:update", conversation);
+  }
+}
+
 async function editMessage(message, payload, user, req) {
   if (!sameId(message.senderId, user._id) && !["super_admin", "admin"].includes(roleOf(user))) {
     const error = new Error("Only the sender or admin can edit this message");
     error.status = 403;
     throw error;
   }
-  const content = payload.messageBody || payload.message;
+  if (message.deletedForEveryoneAt) {
+    const error = new Error("A deleted message cannot be edited");
+    error.status = 400;
+    throw error;
+  }
+  const content = payload.messageBody !== undefined ? payload.messageBody : payload.message;
   if (content !== undefined) {
+    if (typeof content !== "string" || (!content.trim() && !(message.attachments || []).length)) {
+      const error = new Error("A message cannot be empty");
+      error.status = 400;
+      throw error;
+    }
     message.messageBody = content;
     message.message = content;
     message.normalizedBody = content.toLowerCase();
@@ -709,7 +747,39 @@ async function editMessage(message, payload, user, req) {
   addAuditEntry(message, "edit", user, payload, req);
   await message.save();
   await writeAuditLog("edit", "message", message, user, payload, req);
-  realtimeGateway.emitToConversation(message.conversationId, "message:update", message);
+  await emitMessageChange(message, "message:update");
+  if (content !== undefined) await refreshConversationPreview(message, content);
+  return populateMessage(message);
+}
+
+// WhatsApp-style "delete for everyone": only the sender, and the message stays in the thread as a deleted line. Its text, files, reactions, translation and AI
+// text are wiped so no endpoint can still return them; the file bytes in storage are left untouched (only the reference is removed, and recorded in the audit trail).
+async function deleteMessageForEveryone(message, user, req) {
+  if (!sameId(message.senderId, user._id)) {
+    const error = new Error("Only the sender can delete this message for everyone");
+    error.status = 403;
+    throw error;
+  }
+  if (message.deletedForEveryoneAt) return populateMessage(message);
+  const removedAttachments = (message.attachments || []).map((attachment) => ({ originalName: attachment.originalName, storageKey: attachment.storageKey }));
+  message.message = "";
+  message.messageBody = "";
+  message.normalizedBody = "";
+  message.attachments = [];
+  message.attachmentPreviews = [];
+  message.reactions = [];
+  message.translation = undefined;
+  message.ai = undefined;
+  message.mentions = [];
+  // earlier edits kept the new text in the audit trail: that text goes too
+  (message.auditHistory || []).forEach((entry) => { if (entry.action === "edit") entry.changes = {}; });
+  message.deletedForEveryoneAt = new Date();
+  message.deletedForEveryoneBy = user._id;
+  addAuditEntry(message, "delete_for_everyone", user, { removedAttachments }, req);
+  await message.save();
+  await writeAuditLog("delete_for_everyone", "message", message, user, { removedAttachments }, req);
+  await emitMessageChange(message, "message:delete");
+  await refreshConversationPreview(message, DELETED_PREVIEW);
   return populateMessage(message);
 }
 
@@ -805,6 +875,7 @@ module.exports = {
   createOrGetDirectConversation,
   createTemplate,
   editMessage,
+  deleteMessageForEveryone,
   emitTyping,
   addReaction,
   getAttachmentFile,

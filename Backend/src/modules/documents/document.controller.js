@@ -5,6 +5,11 @@ const evidenceService = require("./evidence.service");
 const caseService = require("../cases/case.service");
 const workflowService = require("./document.workflow.service");
 const documentIntelligenceQueue = require("../document-intelligence/queues/document-intelligence.queue");
+const { sendFile } = require("../../utils/fileResponse");
+
+function documentFileName(document) {
+  return document.originalName || document.originalFileName || document.fileName;
+}
 
 async function findAccessibleDocument(id, user) {
   const document = await documentService.populateDocumentQuery(Document.findById(id));
@@ -370,9 +375,7 @@ exports.downloadDocument = async (req, res, next) => {
   try {
     const document = await findAccessibleDocument(req.params.id || req.params.docId, req.user);
     const buffer = await documentService.readDocumentBuffer(document);
-    res.setHeader("Content-Type", document.mimeType || document.fileType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `attachment; filename="${document.originalName || document.originalFileName || document.fileName}"`);
-    res.send(buffer);
+    sendFile(res, { buffer, fileName: documentFileName(document), mimeType: document.mimeType || document.fileType, disposition: "attachment" });
   } catch (error) {
     next(error);
   }
@@ -382,9 +385,7 @@ exports.previewDocument = async (req, res, next) => {
   try {
     const document = await findAccessibleDocument(req.params.id || req.params.docId, req.user);
     const buffer = await documentService.readDocumentBuffer(document);
-    res.setHeader("Content-Type", document.mimeType || document.fileType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `inline; filename="${document.originalName || document.originalFileName || document.fileName}"`);
-    res.send(buffer);
+    sendFile(res, { buffer, fileName: documentFileName(document), mimeType: document.mimeType || document.fileType, disposition: "inline" });
   } catch (error) {
     next(error);
   }

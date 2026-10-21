@@ -203,6 +203,27 @@ const BASE_FIELDS = [
   I824_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// Form I-140 conditional-box paths - see canonical/config/i140CanonicalPaths.js. Additive only.
+{
+  const { I140_CANONICAL_FIELDS } = require("../../canonical/config/i140CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I140_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
+// Form I-864 sponsor paths - see canonical/config/i864CanonicalPaths.js. Additive only.
+{
+  const { I864_CANONICAL_FIELDS } = require("../../canonical/config/i864CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I864_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
+// Form I-751 spouse paths - see canonical/config/i751CanonicalPaths.js. Additive only.
+{
+  const { I751_CANONICAL_FIELDS } = require("../../canonical/config/i751CanonicalPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  I751_CANONICAL_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 // O-1A checklist paths - see canonical/config/o1aCanonicalPaths.js. Additive only.
 {
   const { O1A_CANONICAL_FIELDS } = require("../../canonical/config/o1aCanonicalPaths");

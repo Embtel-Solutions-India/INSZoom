@@ -143,6 +143,10 @@ const messageSchema = new mongoose.Schema(
     pinnedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     deletedAt: Date,
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    // "Delete for everyone" (WhatsApp style): the message stays in the thread as a "This message was deleted" line, with its text, files and reactions wiped.
+    // Deliberately separate from deletedAt, which makes a message disappear from every list altogether (the admin hard delete).
+    deletedForEveryoneAt: Date,
+    deletedForEveryoneBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     legacySource: { type: String, enum: ["Immiglance", "BAIS", "Admin", "shared", ""], default: "shared" },
     auditHistory: [messageAuditSchema],
   },

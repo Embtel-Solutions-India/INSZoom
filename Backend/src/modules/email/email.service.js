@@ -18,6 +18,8 @@ const caseAudience = require("../notifications/caseAudience");
 // forgotPassword, consultation.service.js's notifyHost,
 // notification.service.js's dispatchEmailChannel) which overrides this
 // static table whenever it's known — see resolveAudience() below.
+// still sent while EMAIL_SUPPRESS_ALL is on: a password reset the person asked for themselves
+const SUPPRESS_ALL_EXEMPT = new Set(["password-reset"]);
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
 const TEMPLATE_AUDIENCE = {
   "case-created-client": "client",
@@ -149,6 +151,11 @@ function wrapHtml(subjectText, lines = [], { adminLogin = false } = {}) {
 async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, caseId, userId, triggeredBy, source = "shared", attachments }) {
   // Emails only ever carry production links: a localhost address from any call site becomes the real portal address.
   subject = productionizeLinks(subject); html = productionizeLinks(html); text = productionizeLinks(text);
+  // Master switch (env.emailSuppressAll): nothing goes out to anyone - logged as skipped, never handed to the provider
+  if (env.emailSuppressAll && !SUPPRESS_ALL_EXEMPT.has(templateKey)) {
+    const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "skipped", caseId, userId, triggeredBy, data, source, error: "Suppressed: all outbound email is switched off (EMAIL_SUPPRESS_ALL)" });
+    return { sent: false, skipped: true, reason: "all_email_suppressed", log };
+  }
   const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
 
   const provider = getProvider();

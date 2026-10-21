@@ -41,6 +41,7 @@ router.post(
 router.get("/:messageId/attachments/:attachmentId", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:read"), ctrl.getAttachment);
 router.put("/:id/read", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:update"), ctrl.markMessageAsRead);
 router.put("/:id", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:update"), ctrl.editMessage);
+router.delete("/:id/everyone", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:update"), ctrl.deleteMessageForEveryone);
 router.post("/:id/reactions", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:update"), ctrl.reactToMessage);
 router.post("/:id/translate", authenticate, authorizeRoles(...messageRoles), authorizePermissions("messages:read"), ctrl.translateMessage);
 router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("messages:delete"), ctrl.deleteMessage);

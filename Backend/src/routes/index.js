@@ -25,6 +25,7 @@ router.use("/saved-charges", require("../modules/settings/savedCharges.routes"))
 router.use("/branches", require("../modules/settings/branches.routes"));
 router.use("/teams", require("../modules/teams/team.routes"));
 router.use("/tasks", require("../modules/tasks/task.routes"));
+router.use("/recycle-bin", require("../modules/recycle-bin/recycle-bin.routes"));
 router.use("/canonical", require("../modules/canonical/routes/canonicalRoutes"));
 router.use("/uscis-forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/uscis/forms", require("../modules/uscis-form-import/routes/uscisFormImportRoutes"));

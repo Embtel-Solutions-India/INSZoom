@@ -1,6 +1,6 @@
 const storageService = require("../../uploads/storage.service");
 const { fitTextValue, fitChoiceValue } = require("./FieldValueFitter");
-const { liftTextLengthLimits, shrinkLongTextToFit } = require("./FullTextFieldGuard");
+const { liftTextLengthLimits, shrinkLongTextToFit, unlockReadOnlyFields } = require("./FullTextFieldGuard");
 const { normalizePdf } = require("../../../utils/normalizePdf");
 const PDFFieldMapper = require("./PDFFieldMapper");
 const WatermarkService = require("./WatermarkService");
@@ -147,6 +147,8 @@ class PDFRenderer {
     try { earlyMapping = PDFFieldMapper.mapFields(caseForm, template); } catch (error) { earlyMapping = null; }
     const valueByPdfField = new Map(Object.values(earlyMapping?.mappedFields || {}).map((mapped) => [mapped.pdfField, mapped.value]));
     liftTextLengthLimits(form, (pdfField) => (valueByPdfField.has(pdfField) ? String(valueByPdfField.get(pdfField) ?? "") : undefined));
+    // boxes USCIS marks read-only but a person may fill in (not signatures / barcodes) are made writable on this working copy
+    unlockReadOnlyFields(form, new Map((template.formFields || []).map((meta) => [meta.pdfFieldName || meta.fieldName, meta])));
     // Confirmed root cause of 2 historical "generated" CaseForm records that
     // turned out to be 883-byte, 1-page, 0-field stubs: the template asset
     // they were rendered from (since deleted/replaced) apparently exposed no

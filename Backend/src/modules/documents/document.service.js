@@ -1027,7 +1027,9 @@ async function readDocumentBuffer(document) {
   }
   const relativePath = String(document.filePath).replace(/^[/\\]+/, "");
   const localPath = path.isAbsolute(document.filePath) ? document.filePath : path.join(process.cwd(), relativePath);
-  return fs.readFile(localPath);
+  // Legacy records with no storageKey: files written by storeBuffer are encrypted at rest, so this raw read must decrypt too
+  // (decrypt passes unencrypted legacy files through unchanged).
+  return storageService.decrypt(await fs.readFile(localPath));
 }
 
 async function listDocuments(query, user) {

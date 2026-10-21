@@ -5,14 +5,17 @@
 //   - a field with no edge gets a new one;
 //   - nothing else is touched, nothing is removed, and the result is a NEW mapping version (history is kept), activated only if it validates.
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
+const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const MappingGraphService = require("./MappingGraphService");
 const { RULES, EXCLUSIVE_FORMS } = require("../config/partyFieldRules");
 const { inferRules } = require("./FieldRuleInferenceService");
+const UnlockedMirrorService = require("./UnlockedMirrorService");
 
 const SKIP_TYPES = new Set(["checkbox", "radio", "signature", "button"]);
 const indexOf = (pdfField) => { const match = /\[(\d+)\]$/.exec(String(pdfField || "")); return match ? Number(match[1]) : 0; };
 // a Yes / No box: ticked when the generic yes/no answer (boolean, or the older "Yes"/"No" text) matches the box
-const boxTransformOf = (rule) => (rule.checkboxEquals !== undefined ? { type: "checkbox", value: rule.checkboxEquals } : rule.checkbox !== undefined ? checkboxTransform(rule.checkbox) : null);
+// rule.box: a checkbox that takes its value from the rule's own transform (for example the Apt / Ste / Flr boxes of an address block)
+const boxTransformOf = (rule) => (rule.checkboxEquals !== undefined ? { type: "checkbox", value: rule.checkboxEquals, ...(rule.ignoreCase ? { ignoreCase: true } : {}) } : rule.checkbox !== undefined ? checkboxTransform(rule.checkbox) : rule.box && rule.transform ? rule.transform : null);
 const checkboxTransform = (ticksWhenYes) => ({ type: "checkbox", optionsMap: ticksWhenYes
   ? { true: true, false: false, Yes: true, yes: true, No: false, no: false }
   : { true: false, false: true, Yes: false, yes: false, No: true, no: true } });
@@ -63,7 +66,8 @@ function indexRules(rules) {
 
 function plan(template, graph, options = {}) {
   const formCode = template.formCode;
-  const { rules: formRules, inferred } = rulesFor(template, options);
+  // mirrorsOnly: add nothing but the copies of already-mapped boxes (see UnlockedMirrorService) - no rule of the form is applied
+  const { rules: formRules, inferred } = options.mirrorsOnly ? { rules: [], inferred: false } : rulesFor(template, options);
   const byStem = indexRules(formRules);
   const version = template.version || String(template.editionDate || "unknown");
   const targets = MappingGraphService.getTemplateFields(template);
@@ -74,7 +78,8 @@ function plan(template, graph, options = {}) {
   const matchedStems = new Set();
   const removeIds = new Set();
 
-  for (const target of targets) {
+  // (mirrorsOnly applies no rule at all - not even the removal of an old guess on an exclusive form)
+  for (const target of options.mirrorsOnly ? [] : targets) {
     if (/PDF417|barcode/i.test(target.targetPdfField)) continue;
     const rules = (byStem.get(stemOf(target.targetPdfField)) || [])
       .filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber))
@@ -154,6 +159,10 @@ function plan(template, graph, options = {}) {
     report.created += 1;
   }
 
+  // rule stems that matched no box of this edition (a typo, or a box the edition does not have) - reported, never silently ignored
+  const allStems = new Set(targets.map((target) => stemOf(target.targetPdfField)));
+  report.unusedRuleStems = options.mirrorsOnly ? [] : [...new Set(formRules.flatMap((rule) => rule.stems).filter((stem) => !allStems.has(stem.toLowerCase())))];
+
   // fields whose name looks party-related but no rule covers - listed for review, never guessed
   for (const target of targets) {
     const stem = stemOf(target.targetPdfField);
@@ -164,6 +173,11 @@ function plan(template, graph, options = {}) {
   const keptOut = out.filter((edge) => !removeIds.has(edge.targetFieldId));
   out.length = 0;
   out.push(...keptOut);
+  // copies of an already-mapped box (the A-Number / name repeated on every continuation page) that USCIS marks read-only and are now fillable: same edge
+  // (only siblings that are part of the live mapping, or were created by this run's own rules, are copied: options.trustedTargetIds)
+  const createdHere = new Set(out.filter((edge) => !edgesByTarget.has(edge.targetFieldId)).map((edge) => edge.targetFieldId));
+  const trusted = options.trustedTargetIds ? (edge) => options.trustedTargetIds.has(edge.targetFieldId) || createdHere.has(edge.targetFieldId) : undefined;
+  if (options.mirrors !== false) UnlockedMirrorService.addMirrorEdges({ formCode, version, editionDate: template.editionDate }, targets, out, report, trusted);
   const canonicalPaths = new Set();
   out.forEach((edge) => {
     canonicalPaths.add(edge.sourcePath);
@@ -199,15 +213,19 @@ function plan(template, graph, options = {}) {
 }
 
 // dryRun: only reports; otherwise saves a new mapping version and activates it when it validates (a template that is not the live edition is saved only)
-async function apply(templateOrId, user, req, { dryRun = false, activate = true, allowInference = true } = {}) {
+async function apply(templateOrId, user, req, { dryRun = false, activate = true, allowInference = true, mirrorsOnly = false } = {}) {
   const template = typeof templateOrId === "object" && templateOrId.save ? templateOrId : await USCISFormTemplate.findById(templateOrId);
   if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
-  if (!rulesFor(template, { allowInference }).rules.length) return { formCode: template.formCode, skipped: "no authored or inferable rules for this form" };
+  const hasRules = !mirrorsOnly && rulesFor(template, { allowInference }).rules.length > 0;
+  if (!hasRules && !UnlockedMirrorService.hasCandidates(template)) return { formCode: template.formCode, skipped: "no authored or inferable rules for this form" };
   const current = await MappingGraphService.loadCurrentGraph(template);
-  const { graph, report } = plan(template, current, { allowInference });
+  // the edges of the LIVE mapping version are the ones a copy may be based on (a draft version's edges were never reviewed)
+  const live = await USCISMappingVersion.findOne({ template: template._id, status: "active" }).select("graph.edges.targetFieldId").lean();
+  const trustedTargetIds = new Set((live?.graph?.edges || []).map((edge) => edge.targetFieldId));
+  const { graph, report } = plan(template, current, { allowInference, mirrorsOnly, trustedTargetIds });
   report.validation = graph.validation.summary;
-  const staleUnmapped = (EXCLUSIVE_FORMS.has(template.formCode) || rulesFor(template, { allowInference }).inferred) && (current.unmappedTargets || []).length > 0;
-  if (dryRun || (report.created === 0 && report.rewired === 0 && !report.removed && !staleUnmapped)) return { ...report, saved: false };
+  const staleUnmapped = hasRules && (EXCLUSIVE_FORMS.has(template.formCode) || rulesFor(template, { allowInference }).inferred) && (current.unmappedTargets || []).length > 0;
+  if (dryRun || (report.created === 0 && report.rewired === 0 && !report.mirrored && !report.removed && !staleUnmapped)) return { ...report, saved: false };
   if (!graph.validation.valid) return { ...report, saved: false, error: "graph does not validate", errors: graph.validation.errors.slice(0, 5) };
   const version = await MappingGraphService.persistVersion(template, graph, user);
   let activated = false;

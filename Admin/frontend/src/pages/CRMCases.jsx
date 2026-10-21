@@ -361,6 +361,18 @@ const CRMCases = () => {
               <LayoutGrid className="w-3.5 h-3.5" /> Board
             </button>
           </div>
+          {['super_admin', 'admin'].includes(user?.role) && (
+            // a small text button, no border: opens the page where deleted cases can be restored
+            <button
+              type="button"
+              onClick={() => navigate('/recycle-bin')}
+              className="inline-flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              title="Deleted cases - restore within 30 days"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Recycle bin
+            </button>
+          )}
           {CAN_CREATE_CASE_ROLES.includes(user?.role) && (
             <button
               onClick={() => setShowCreateModal(true)}
@@ -383,8 +395,8 @@ const CRMCases = () => {
       {deleteTarget && (
         <ConfirmModal
           title="Are you sure?"
-          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be permanently deleted from the database, together with its documents, answers, forms and messages${(deleteTarget.childCases?.length || deleteTarget.caseRole === 'principal') ? ', and all of its child cases' : ''}. This cannot be undone.`}
-          confirmLabel={deleting ? 'Deleting…' : 'Yes, delete'}
+          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be moved to the recycle bin, together with its documents, answers, forms and messages${(deleteTarget.childCases?.length || deleteTarget.caseRole === 'principal') ? ', and all of its child cases' : ''}. It disappears from the portals now and can be restored from the Recycle Bin for 30 days; after that it is deleted permanently.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Yes, move to recycle bin'}
           cancelLabel="No"
           busy={deleting}
           error={deleteError}

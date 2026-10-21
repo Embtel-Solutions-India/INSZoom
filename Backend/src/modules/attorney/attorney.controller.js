@@ -153,6 +153,24 @@ exports.replyToFeedback = async (req, res, next) => {
   }
 };
 
+exports.editFeedback = async (req, res, next) => {
+  try {
+    const feedback = await feedbackService.editFeedback({ caseId: req.params.caseId, feedbackId: req.params.feedbackId, author: req.user, message: req.body.message });
+    res.json({ success: true, feedback });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+exports.deleteFeedbackForEveryone = async (req, res, next) => {
+  try {
+    const feedback = await feedbackService.deleteFeedbackForEveryone({ caseId: req.params.caseId, feedbackId: req.params.feedbackId, author: req.user });
+    res.json({ success: true, feedback });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
 exports.markFeedbackRead = async (req, res, next) => {
   try {
     const result = await feedbackService.markCaseFeedbackRead(req.params.caseId, req.user._id);
