@@ -3,7 +3,7 @@
   "title": "Golden set - draft for review",
   "note": "An answer key of form boxes and what each one is filled with. Built from the mappings that are in use today; a reviewer confirms each one. Nothing here changes how any form is filled.",
   "heldOutForms": [
-    "I-131"
+    "I-90"
   ],
   "entries": [
     {
@@ -10023,7 +10023,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "page 1",
       "boxLabel": "I am a lawful permanent resident or conditional permanent resident of the United States, and I am applying for a reentry permit",
       "boxKind": "checkbox",
@@ -10038,7 +10038,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page1.form10P10CbAppType0",
+        "mappingId": "I-131:2025-01-20:page1.form10P10CbAppType0",
         "targetFieldId": "page1.form10P10CbAppType0",
         "targetPdfField": "form1[0].P1[0].CB_AppType[0]",
         "sourcePath": "petitioner.purpose",
@@ -10062,7 +10062,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_purpose.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.purpose"
+        "partyRule": "petitioner.purpose",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (page 1), the tick box \"I am a lawful permanent resident or conditional permanent resident of the United States, and I am applying for a reentry permit\" is filled with the petitioner's purpose, ticked when the answer is Yes, but only when the petitioner's purpose is REENTRY_PERMIT or the answer to \"purpose\" is REENTRY_PERMIT. If that is empty, it uses the client's answer to the question \"purpose\".",
       "contentHash": "1accd4f554081fed"
@@ -10074,7 +10075,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 13, page 4",
       "boxLabel": "Yes",
       "boxKind": "checkbox",
@@ -10089,7 +10090,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page4.form10P40P1Line13YesNo0",
+        "mappingId": "I-131:2025-01-20:page4.form10P40P1Line13YesNo0",
         "targetFieldId": "page4.form10P40P1Line13YesNo0",
         "targetPdfField": "form1[0].P4[0].P1_Line13_YesNo[0]",
         "sourcePath": "petitioner.purpose",
@@ -10113,7 +10114,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_purpose.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.purpose"
+        "partyRule": "petitioner.purpose",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Item 13, page 4), the tick box \"Yes\" is filled with the petitioner's purpose, ticked when the answer is Yes, but only when the petitioner's purpose is REFUGEE_TRAVEL_DOCUMENT or the answer to \"purpose\" is REFUGEE_TRAVEL_DOCUMENT. If that is empty, it uses the client's answer to the question \"purpose\".",
       "contentHash": "29bb6caaeb4627c7"
@@ -10125,7 +10127,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 1, page 4",
       "boxLabel": "Family Name (Last Name)",
       "boxKind": "text",
@@ -10140,7 +10142,7 @@
         "boxShows": "Gonzalez"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P40Part2Line1FamilyName0",
+        "mappingId": "I-131:2025-01-20:part2.form10P40Part2Line1FamilyName0",
         "targetFieldId": "part2.form10P40Part2Line1FamilyName0",
         "targetPdfField": "form1[0].P4[0].Part2_Line1_FamilyName[0]",
         "sourcePath": "person.lastName",
@@ -10148,7 +10150,8 @@
         "transform": {
           "type": "direct"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 1, page 4), the box \"Family Name (Last Name)\" is filled with the applicant's last (family) name.",
       "contentHash": "10954ed1c949a80d"
@@ -10160,7 +10163,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 1, page 4",
       "boxLabel": "Given Name (First Name)",
       "boxKind": "text",
@@ -10175,7 +10178,7 @@
         "boxShows": "Maria"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P40Part2Line1GivenName0",
+        "mappingId": "I-131:2025-01-20:part2.form10P40Part2Line1GivenName0",
         "targetFieldId": "part2.form10P40Part2Line1GivenName0",
         "targetPdfField": "form1[0].P4[0].Part2_Line1_GivenName[0]",
         "sourcePath": "person.firstName",
@@ -10183,7 +10186,8 @@
         "transform": {
           "type": "direct"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 1, page 4), the box \"Given Name (First Name)\" is filled with the applicant's first (given) name.",
       "contentHash": "623f66a4d7d9d7c2"
@@ -10195,7 +10199,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 1, page 4",
       "boxLabel": "Middle Name",
       "boxKind": "text",
@@ -10210,7 +10214,7 @@
         "boxShows": "Elena"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P40Part2Line1MiddleName0",
+        "mappingId": "I-131:2025-01-20:part2.form10P40Part2Line1MiddleName0",
         "targetFieldId": "part2.form10P40Part2Line1MiddleName0",
         "targetPdfField": "form1[0].P4[0].Part2_Line1_MiddleName[0]",
         "sourcePath": "person.middleName",
@@ -10218,7 +10222,8 @@
         "transform": {
           "type": "direct"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 1, page 4), the box \"Middle Name\" is filled with the applicant's middle name.",
       "contentHash": "9ff481cf567c821f"
@@ -10230,7 +10235,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, page 5",
       "boxLabel": "Postal Code,",
       "boxKind": "text",
@@ -10245,7 +10250,7 @@
         "boxShows": "Left blank for the sample client (this box does not apply to them)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line4PostalCode0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line4PostalCode0",
         "targetFieldId": "part2.form10P50Part2Line4PostalCode0",
         "targetPdfField": "form1[0].P5[0].Part2_Line4_PostalCode[0]",
         "sourcePath": "contact.address.zip",
@@ -10258,7 +10263,8 @@
           "operator": "not_equals",
           "value": "United States"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, page 5), the box \"Postal Code,\" is filled with the applicant's address - ZIP code, but only when the applicant's address - country is not United States.",
       "contentHash": "b68a3659d8852d57"
@@ -10270,7 +10276,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 10, page 5",
       "boxLabel": "Social Security Number, if any",
       "boxKind": "text",
@@ -10285,7 +10291,7 @@
         "boxShows": "900123456"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Area1Part2Line10Ssn0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Area1Part2Line10Ssn0",
         "targetFieldId": "part2.form10P50Area1Part2Line10Ssn0",
         "targetPdfField": "form1[0].P5[0].#area[1].Part2_Line10_SSN[0]",
         "sourcePath": "petitioner.ssn",
@@ -10295,7 +10301,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_applicant_ssn.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.ssn"
+        "partyRule": "petitioner.ssn",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 10, page 5), the box \"Social Security Number, if any\" is filled with the petitioner's Social Security number, digits only. If that is empty, it uses the client's answer to the question \"applicant ssn\".",
       "contentHash": "3a635e4657e3aeff"
@@ -10307,7 +10314,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 11, page 5",
       "boxLabel": "a U S C I S Online Account Number (if any)",
       "boxKind": "text",
@@ -10344,7 +10351,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 12, page 5",
       "boxLabel": "Class of Admission if any",
       "boxKind": "text",
@@ -10359,7 +10366,7 @@
         "boxShows": "Yes"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line12ClassofAdmission0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line12ClassofAdmission0",
         "targetFieldId": "part2.form10P50Part2Line12ClassofAdmission0",
         "targetPdfField": "form1[0].P5[0].Part2_Line12_ClassofAdmission[0]",
         "sourcePath": "petitioner.classOfAdmission",
@@ -10369,7 +10376,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_applicant_classOfAdmission.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.classOfAdmission"
+        "partyRule": "petitioner.classOfAdmission",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 12, page 5), the box \"Class of Admission if any\" is filled with the petitioner's class of admission. If that is empty, it uses the client's answer to the question \"applicant class of admission\".",
       "contentHash": "e337b096b20b0f90"
@@ -10381,7 +10389,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 13, page 5",
       "boxLabel": "Most recent Form I-94 Arrival Departure Record Number if any",
       "boxKind": "text",
@@ -10418,7 +10426,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "City or Town",
       "boxKind": "text",
@@ -10433,7 +10441,7 @@
         "boxShows": "San Jose"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3CityTown0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3CityTown0",
         "targetFieldId": "part2.form10P50Part2Line3CityTown0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_CityTown[0]",
         "sourcePath": "contact.address.city",
@@ -10441,7 +10449,8 @@
         "transform": {
           "type": "direct"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"City or Town\" is filled with the applicant's address - city or town.",
       "contentHash": "3f22f64d8aa1e1ab"
@@ -10453,7 +10462,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "Country",
       "boxKind": "text",
@@ -10468,7 +10477,7 @@
         "boxShows": "United States"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3Country0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3Country0",
         "targetFieldId": "part2.form10P50Part2Line3Country0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_Country[0]",
         "sourcePath": "contact.address.country",
@@ -10476,7 +10485,8 @@
         "transform": {
           "type": "country"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"Country\" is filled with the applicant's address - country, written as the country name.",
       "contentHash": "c42ec33b0b277910"
@@ -10488,7 +10498,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "Postal Code, if applicable",
       "boxKind": "text",
@@ -10503,7 +10513,7 @@
         "boxShows": "Left blank for the sample client (this box does not apply to them)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3PostalCode0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3PostalCode0",
         "targetFieldId": "part2.form10P50Part2Line3PostalCode0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_PostalCode[0]",
         "sourcePath": "contact.address.zip",
@@ -10516,7 +10526,8 @@
           "operator": "not_equals",
           "value": "United States"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"Postal Code, if applicable\" is filled with the applicant's address - ZIP code, but only when the applicant's address - country is not United States.",
       "contentHash": "754aa76d56da5eaf"
@@ -10528,7 +10539,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "Street Number and Name",
       "boxKind": "text",
@@ -10543,7 +10554,7 @@
         "boxShows": "500 Market Street"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3StreetNumberName0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3StreetNumberName0",
         "targetFieldId": "part2.form10P50Part2Line3StreetNumberName0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_StreetNumberName[0]",
         "sourcePath": "contact.address.line1",
@@ -10551,7 +10562,8 @@
         "transform": {
           "type": "direct"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"Street Number and Name\" is filled with the applicant's address - street number and name.",
       "contentHash": "06f356d882180d4a"
@@ -10563,7 +10575,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "ZIP Code",
       "boxKind": "text",
@@ -10578,7 +10590,7 @@
         "boxShows": "95113 (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3ZipCode0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3ZipCode0",
         "targetFieldId": "part2.form10P50Part2Line3ZipCode0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_ZipCode[0]",
         "sourcePath": "contact.address.zip",
@@ -10591,7 +10603,8 @@
           "operator": "equals",
           "value": "United States"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"ZIP Code\" is filled with the applicant's address - ZIP code, but only when the applicant's address - country is United States.",
       "contentHash": "ef44754b3dc3375f"
@@ -10603,7 +10616,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 3, page 5",
       "boxLabel": "State from a List of States",
       "boxKind": "dropdown",
@@ -10618,7 +10631,7 @@
         "boxShows": "CA"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line3State0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line3State0",
         "targetFieldId": "part2.form10P50Part2Line3State0",
         "targetPdfField": "form1[0].P5[0].Part2_Line3_State[0]",
         "sourcePath": "contact.address.state",
@@ -10627,7 +10640,8 @@
           "type": "usState",
           "countryPath": "contact.address.country"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 3, page 5), the box \"State from a List of States\" is filled with the applicant's address - state, written as the two-letter state.",
       "contentHash": "807388028ecb999a"
@@ -10639,7 +10653,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 5, page 5",
       "boxLabel": "Alien Registration Number (A-Number) (if any)",
       "boxKind": "text",
@@ -10654,7 +10668,7 @@
         "boxShows": "123456789"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Area0Part2Line5AlienNumber0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Area0Part2Line5AlienNumber0",
         "targetFieldId": "part2.form10P50Area0Part2Line5AlienNumber0",
         "targetPdfField": "form1[0].P5[0].#area[0].Part2_Line5_AlienNumber[0]",
         "sourcePath": "person.alienNumber",
@@ -10662,7 +10676,8 @@
         "transform": {
           "type": "digits"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 5, page 5), the box \"Alien Registration Number (A-Number) (if any)\" is filled with the applicant's A-Number, digits only.",
       "contentHash": "96714a0dee4d8f08"
@@ -10674,7 +10689,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 8, page 5",
       "boxLabel": "Female",
       "boxKind": "checkbox",
@@ -10689,7 +10704,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line8Gender0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line8Gender0",
         "targetFieldId": "part2.form10P50Part2Line8Gender0",
         "targetPdfField": "form1[0].P5[0].Part2_Line8_Gender[0]",
         "sourcePath": "petitioner.gender",
@@ -10713,7 +10728,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_applicant_gender.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.gender"
+        "partyRule": "petitioner.gender",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 8, page 5), the tick box \"Female\" is filled with the petitioner's sex, ticked when the answer is Yes, but only when the petitioner's sex is Female or the answer to \"applicant gender\" is Female. If that is empty, it uses the client's answer to the question \"applicant gender\".",
       "contentHash": "d48b19155efebe93"
@@ -10725,7 +10741,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 8, page 5",
       "boxLabel": "Male",
       "boxKind": "checkbox",
@@ -10740,7 +10756,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line8Gender1",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line8Gender1",
         "targetFieldId": "part2.form10P50Part2Line8Gender1",
         "targetPdfField": "form1[0].P5[0].Part2_Line8_Gender[1]",
         "sourcePath": "petitioner.gender",
@@ -10764,7 +10780,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_applicant_gender.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.gender"
+        "partyRule": "petitioner.gender",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 8, page 5), the tick box \"Male\" is filled with the petitioner's sex, ticked when the answer is Yes, but only when the petitioner's sex is Male or the answer to \"applicant gender\" is Male. If that is empty, it uses the client's answer to the question \"applicant gender\".",
       "contentHash": "b61a50e3c2217321"
@@ -10776,7 +10793,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Part 2, Item 9, page 5",
       "boxLabel": "Date of Birth as 2-digit Month, 2-digit Day, and 4-digit Year",
       "boxKind": "date",
@@ -10791,7 +10808,7 @@
         "boxShows": "03/15/1990"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:part2.form10P50Part2Line9DateOfBirth0",
+        "mappingId": "I-131:2025-01-20:part2.form10P50Part2Line9DateOfBirth0",
         "targetFieldId": "part2.form10P50Part2Line9DateOfBirth0",
         "targetPdfField": "form1[0].P5[0].Part2_Line9_DateOfBirth[0]",
         "sourcePath": "person.dob",
@@ -10800,7 +10817,8 @@
           "type": "date",
           "format": "mm/dd/yyyy"
         },
-        "profileOwner": "employee"
+        "profileOwner": "employee",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Part 2, Item 9, page 5), the box \"Date of Birth as 2-digit Month, 2-digit Day, and 4-digit Year\" is filled with the applicant's date of birth, written as a date (month/day/year).",
       "contentHash": "2d6bbf72a266b5b4"
@@ -10812,7 +10830,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 18, page 6",
       "boxLabel": "01/01/2023",
       "boxKind": "date",
@@ -10827,7 +10845,7 @@
         "boxShows": "03/15/1990"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page6.form10P60P2Line18DateOfBirth0",
+        "mappingId": "I-131:2025-01-20:page6.form10P60P2Line18DateOfBirth0",
         "targetFieldId": "page6.form10P60P2Line18DateOfBirth0",
         "targetPdfField": "form1[0].P6[0].P2_Line18_DateOfBirth[0]",
         "sourcePath": "petitioner.outsideUsa.dateOfBirth",
@@ -10838,7 +10856,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_outsideUsa_dateOfBirth.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.outsideUsa.dateOfBirth"
+        "partyRule": "petitioner.outsideUsa.dateOfBirth",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Item 18, page 6), the box \"01/01/2023\" is filled with the petitioner's outside usa - date of birth, written as a date (month/day/year). If that is empty, it uses the client's answer to the question \"outside usa date of birth\".",
       "contentHash": "e881a133a1f5a442"
@@ -10850,7 +10869,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 1, page 7",
       "boxLabel": "Hispanic or Latino",
       "boxKind": "checkbox",
@@ -10889,7 +10908,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 1, page 7",
       "boxLabel": "Not Hispanic or Latino",
       "boxKind": "checkbox",
@@ -10928,7 +10947,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "for the last document issued to you.) Check No",
       "boxKind": "checkbox",
@@ -10943,7 +10962,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page7.form10P70P4Line2AYesNo1",
+        "mappingId": "I-131:2025-01-20:page7.form10P70P4Line2AYesNo1",
         "targetFieldId": "page7.form10P70P4Line2AYesNo1",
         "targetPdfField": "form1[0].P7[0].P4_Line2a_YesNo[1]",
         "sourcePath": "petitioner.previouslyIssued.answer",
@@ -10967,7 +10986,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_previouslyIssued.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.previouslyIssued.answer"
+        "partyRule": "petitioner.previouslyIssued.answer",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Item 2, page 7), the tick box \"for the last document issued to you.) Check No\" is filled with the petitioner's previously issued - answer, ticked when the answer is Yes, but only when the petitioner's previously issued - answer is no or the answer to \"previously issued\" is no. If that is empty, it uses the client's answer to the question \"previously issued\".",
       "contentHash": "eedd3f3b55dff51e"
@@ -10979,7 +10999,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "for the last document issued to you.) Check Yes",
       "boxKind": "checkbox",
@@ -10994,7 +11014,7 @@
         "boxShows": "Ticked (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page7.form10P70P4Line2AYesNo0",
+        "mappingId": "I-131:2025-01-20:page7.form10P70P4Line2AYesNo0",
         "targetFieldId": "page7.form10P70P4Line2AYesNo0",
         "targetPdfField": "form1[0].P7[0].P4_Line2a_YesNo[0]",
         "sourcePath": "petitioner.previouslyIssued.answer",
@@ -11018,7 +11038,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_previouslyIssued.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.previouslyIssued.answer"
+        "partyRule": "petitioner.previouslyIssued.answer",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Item 2, page 7), the tick box \"for the last document issued to you.) Check Yes\" is filled with the petitioner's previously issued - answer, ticked when the answer is Yes, but only when the petitioner's previously issued - answer is yes or the answer to \"previously issued\" is yes. If that is empty, it uses the client's answer to the question \"previously issued\".",
       "contentHash": "a6185d2eb9382440"
@@ -11030,7 +11051,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "American Indian or Alaska Native",
       "boxKind": "checkbox",
@@ -11069,7 +11090,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "Asian",
       "boxKind": "checkbox",
@@ -11108,7 +11129,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "Black or African American",
       "boxKind": "checkbox",
@@ -11147,7 +11168,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "Native Hawaiian or Other Pacific Islander",
       "boxKind": "checkbox",
@@ -11186,7 +11207,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "White",
       "boxKind": "checkbox",
@@ -11225,7 +11246,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 2, page 7",
       "boxLabel": "Yes, is Checked, Enter Date Issued as 2-digit Month, 2-digit Day, and 4-digit Year",
       "boxKind": "date",
@@ -11240,7 +11261,7 @@
         "boxShows": "01/15/2026"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page7.form10P70P4Line2BDateIssued0",
+        "mappingId": "I-131:2025-01-20:page7.form10P70P4Line2BDateIssued0",
         "targetFieldId": "page7.form10P70P4Line2BDateIssued0",
         "targetPdfField": "form1[0].P7[0].P4_Line2b_DateIssued[0]",
         "sourcePath": "petitioner.previouslyIssued.dateIssued",
@@ -11251,7 +11272,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_previouslyIssued_dateIssued.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.previouslyIssued.dateIssued"
+        "partyRule": "petitioner.previouslyIssued.dateIssued",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (Item 2, page 7), the box \"Yes, is Checked, Enter Date Issued as 2-digit Month, 2-digit Day, and 4-digit Year\" is filled with the petitioner's previously issued - date issued, written as a date (month/day/year). If that is empty, it uses the client's answer to the question \"previously issued date issued\".",
       "contentHash": "965fe1c755f69860"
@@ -11263,7 +11285,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 3, page 7",
       "boxLabel": "the number of feet",
       "boxKind": "dropdown",
@@ -11300,7 +11322,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 3, page 7",
       "boxLabel": "the number of Inches",
       "boxKind": "dropdown",
@@ -11337,7 +11359,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "Item 5, page 7",
       "boxLabel": "Black",
       "boxKind": "checkbox",
@@ -11376,7 +11398,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "page 9",
       "boxLabel": "State from a List of States",
       "boxKind": "dropdown",
@@ -11391,7 +11413,7 @@
         "boxShows": "Left blank"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page4.form10Subform8P4Line9AState0",
+        "mappingId": "I-131:2025-01-20:page4.form10Subform8P4Line9AState0",
         "targetFieldId": "page4.form10Subform8P4Line9AState0",
         "targetPdfField": "form1[0].#subform[8].P4_Line9a_State[0]",
         "sourcePath": "petitioner.ap.pickupAddress",
@@ -11402,7 +11424,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_ap_pickupAddress.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.ap.pickupAddress"
+        "partyRule": "petitioner.ap.pickupAddress",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (page 9), the box \"State from a List of States\" is filled with the petitioner's ap - pickup address, taken from the address. If that is empty, it uses the client's answer to the question \"ap pickup address\".",
       "contentHash": "11f8ebcc2279bd6e"
@@ -11414,7 +11437,7 @@
       "formName": "Application for Travel Document",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": true,
+      "heldOut": false,
       "where": "page 10",
       "boxLabel": "2-digit Month, 2-digit Day, and 4-digit Year",
       "boxKind": "date",
@@ -11429,7 +11452,7 @@
         "boxShows": "01/15/2026 (for a client where this applies)"
       },
       "technical": {
-        "mappingId": "I-131:2026-09-18:page7.form10Subform9P7Line1DateOfDeparture0",
+        "mappingId": "I-131:2025-01-20:page7.form10Subform9P7Line1DateOfDeparture0",
         "targetFieldId": "page7.form10Subform9P7Line1DateOfDeparture0",
         "targetPdfField": "form1[0].#subform[9].P7_Line1_DateOfDeparture[0]",
         "sourcePath": "petitioner.dateOfIntendedDeparture",
@@ -11462,7 +11485,8 @@
         },
         "fallback": "raw.questionnaireAnswers.i131_dateOfIntendedDeparture.value",
         "profileOwner": "employer",
-        "partyRule": "petitioner.dateOfIntendedDeparture"
+        "partyRule": "petitioner.dateOfIntendedDeparture",
+        "editionDate": "2025-01-20T00:00:00.000Z"
       },
       "sentence": "On Form I-131 (page 10), the box \"2-digit Month, 2-digit Day, and 4-digit Year\" is filled with the petitioner's date of intended departure, written as a date (month/day/year), but only when the petitioner's purpose is one of ADVANCE_PAROLE_INSIDE_US, ADVANCE_PAROLE_OUTSIDE_US_FOR_SELF, ADVANCE_PAROLE_FOR_PERSON_OUTSIDE_US or the answer to \"purpose\" is one of ADVANCE_PAROLE_INSIDE_US, ADVANCE_PAROLE_OUTSIDE_US_FOR_SELF, ADVANCE_PAROLE_FOR_PERSON_OUTSIDE_US. If that is empty, it uses the client's answer to the question \"date of intended departure\".",
       "contentHash": "9c81e4d6001f183c"
@@ -11474,7 +11498,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 1, page 1",
       "boxLabel": "Number)",
       "boxKind": "text",
@@ -11510,7 +11534,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 2, page 1",
       "boxLabel": "U S C I S Online Account Number, if any",
       "boxKind": "text",
@@ -11551,7 +11575,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 3, page 1",
       "boxLabel": "Family Name (Last Name)",
       "boxKind": "text",
@@ -11587,7 +11611,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 3, page 1",
       "boxLabel": "Given Name (First Name)",
       "boxKind": "text",
@@ -11623,7 +11647,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 3, page 1",
       "boxLabel": "Middle Name",
       "boxKind": "text",
@@ -11664,7 +11688,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 4, page 1",
       "boxLabel": "C.)",
       "boxKind": "checkbox",
@@ -11705,7 +11729,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 4, page 1",
       "boxLabel": "I.)",
       "boxKind": "checkbox",
@@ -11746,7 +11770,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 4, page 1",
       "boxLabel": "I.)",
       "boxKind": "checkbox",
@@ -11787,7 +11811,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 5, page 1",
       "boxLabel": "Family Name (Last Name)",
       "boxKind": "text",
@@ -11828,7 +11852,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 5, page 1",
       "boxLabel": "Given Name (First Name)",
       "boxKind": "text",
@@ -11869,7 +11893,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 5, page 1",
       "boxLabel": "Middle Name",
       "boxKind": "text",
@@ -11919,7 +11943,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Apartment, Suite, or Floor Number",
       "boxKind": "text",
@@ -11968,7 +11992,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "City or Town",
       "boxKind": "text",
@@ -12004,7 +12028,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Country",
       "boxKind": "text",
@@ -12040,7 +12064,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Postal Code",
       "boxKind": "text",
@@ -12085,7 +12109,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Province",
       "boxKind": "text",
@@ -12130,7 +12154,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Street Number and Name",
       "boxKind": "text",
@@ -12166,7 +12190,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "ZIP Code",
       "boxKind": "text",
@@ -12211,7 +12235,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Apartment",
       "boxKind": "checkbox",
@@ -12256,7 +12280,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Floor",
       "boxKind": "checkbox",
@@ -12301,7 +12325,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "State from List of States",
       "boxKind": "dropdown",
@@ -12347,7 +12371,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 6, page 1",
       "boxLabel": "Suite",
       "boxKind": "checkbox",
@@ -12392,7 +12416,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 7, page 1",
       "boxLabel": "Apartment",
       "boxKind": "checkbox",
@@ -12442,7 +12466,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 7, page 1",
       "boxLabel": "Floor",
       "boxKind": "checkbox",
@@ -12492,7 +12516,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 7, page 1",
       "boxLabel": "Suite",
       "boxKind": "checkbox",
@@ -12542,7 +12566,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "page 1",
       "boxLabel": "State from List of States",
       "boxKind": "dropdown",
@@ -12593,7 +12617,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 15, page 2",
       "boxLabel": "as 2-digit Month, 2-digit Day, and 4-digit Year",
       "boxKind": "date",
@@ -12630,7 +12654,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 8, page 2",
       "boxLabel": "Female",
       "boxKind": "checkbox",
@@ -12671,7 +12695,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 8, page 2",
       "boxLabel": "Male",
       "boxKind": "checkbox",
@@ -12712,7 +12736,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 9, page 2",
       "boxLabel": "as 2-digit Month, 2-digit Day, and 4-digit Year",
       "boxKind": "date",
@@ -12749,7 +12773,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "page 2",
       "boxLabel": "(Attach your existing card with incorrect data along with this application.)",
       "boxKind": "checkbox",
@@ -12807,7 +12831,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 1, page 2",
       "boxLabel": "(Proceed to Section A.)",
       "boxKind": "checkbox",
@@ -12848,7 +12872,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 1, page 2",
       "boxLabel": "(Proceed to Section A.)",
       "boxKind": "checkbox",
@@ -12889,7 +12913,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 2, page 3",
       "boxLabel": "Location where your immigrant visa was issued or U S C I S office where you were granted adjustment of status",
       "boxKind": "date",
@@ -12925,7 +12949,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 8, page 3",
       "boxLabel": "Number of Feet from List",
       "boxKind": "dropdown",
@@ -12961,7 +12985,7 @@
       "formName": "Application to Replace Permanent Resident Card",
       "family": "single",
       "familyLabel": "Single-applicant",
-      "heldOut": false,
+      "heldOut": true,
       "where": "Item 8, page 3",
       "boxLabel": "Number of Inches from List",
       "boxKind": "dropdown",

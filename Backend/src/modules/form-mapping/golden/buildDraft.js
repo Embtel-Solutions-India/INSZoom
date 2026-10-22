@@ -23,7 +23,8 @@ const SCOPE = {
   "G-28": { family: "general", name: "Notice of Entry of Appearance as Attorney or Accredited Representative" },
 };
 const FAMILY_LABEL = { employment: "Employment-based", family: "Family-based", single: "Single-applicant", general: "General / representation" };
-const HELD_OUT_FORMS = ["I-131"];
+// I-131 was the held-out form until its own rules were written (2026-10-22), so it is a normal form now; I-90 (single-applicant family) is untouched and takes its place
+const HELD_OUT_FORMS = ["I-90"];
 const PER_FORM_CAP = 36;
 
 const sha = (value) => crypto.createHash("sha1").update(value).digest("hex");

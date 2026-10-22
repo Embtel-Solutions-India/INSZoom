@@ -7,8 +7,14 @@ const { certificationDecision, CRITICAL_CERTIFICATION_CHECKS } = VersionManageme
 const cert = (checks, passed) => ({ importMetadata: { validationSummary: { certification: { passed, checks } } } });
 const check = (name, passed = true) => ({ name, passed, detail: "x" });
 
-test("the critical checks are exactly the three that decide whether a form can be filled", () => {
-  assert.deepEqual([...CRITICAL_CERTIFICATION_CHECKS], ["pdf_fillable", "mapping_valid", "fill_roundtrip"]);
+test("the critical checks are exactly the five that decide whether a form can be filled correctly (Phase 3 added party_markers and widget_inputs)", () => {
+  assert.deepEqual([...CRITICAL_CERTIFICATION_CHECKS], ["pdf_fillable", "mapping_valid", "fill_roundtrip", "party_markers", "widget_inputs"]);
+});
+
+test("a check the policy does not know is critical (a crashed certification can never be waved through)", () => {
+  const result = certificationDecision(cert([check("certification", false)], false), { body: { overrideReason: "the business needs this form now" } });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /certification/);
 });
 
 test("a passing certification activates; a missing one never does (certify first, not overridable)", () => {

@@ -45,6 +45,7 @@ router.use("/form-mappings", require("../modules/form-mapping/routes/mappingGrap
 // Release 0b-1: evidence-resolution path for USCIS form edition acceptance (admin / team_lead only; not wired into any activation path)
 router.use("/form-edition-policy", require("../modules/form-edition-policy/form-edition-policy.routes"));
 router.use("/form-pipeline", require("../modules/form-pipeline/form-pipeline.routes"));
+router.use("/form-release", require("../modules/form-release/form-release.routes")); // Phase 3: release gate, migration plan, rollback, reconcile, pre-image restore
 // Phase 2: the golden set (answer key) review - read for staff, answer / sign off only by the named reviewer
 router.use("/golden-set", require("../modules/form-mapping/routes/goldenSetRoutes"));
 router.use("/case-managers", require("../modules/cases/case-manager.routes"));

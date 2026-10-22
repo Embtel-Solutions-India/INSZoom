@@ -102,6 +102,11 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       rejectionReason: String,
       activatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       retiredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      retiredWhy: String, // set when the promotion reconciler (not a person) retires an edition
+      // Phase 3: set WITH an activation that replaces a live edition ({ newId, oldIds, step, at, by }); cleared once the old edition is retired. A crash in between leaves it
+      // for VersionManagementService.reconcilePromotions() to finish or revert. Phase 0's audited non-critical-check override is stored next to it.
+      promotionIntent: mongoose.Schema.Types.Mixed,
+      certificationOverride: mongoose.Schema.Types.Mixed,
       comparisonReport: mongoose.Schema.Types.Mixed,
       migrationSuggestions: [mongoose.Schema.Types.Mixed],
       impactAnalysis: mongoose.Schema.Types.Mixed,

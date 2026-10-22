@@ -15,7 +15,8 @@ This is the ONE document that records the implementation of the approved plan in
 | **Test isolation (local database)** | **DONE 2026-10-16** | given 2026-10-16 |
 | **Phase 1** - durable, resumable, fenced pipeline (worker/PM2 production rollout and queued mode NOT switched on) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Phase 2** - mapping contract, policy, validator, coverage (live autofill unchanged) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
-| Phases 3 - 6 | Not started | each separately |
+| **Phase 3** - certification that proves correctness, release gate, safe activation, safe case migration, rollback (Admin screen, repair strategies and performance baseline NOT done) | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
+| Phases 4 - 6 | Not started | each separately |
 
 ---
 
@@ -537,6 +538,74 @@ Your review of sections 2, 4 and 6 and the decision on the golden-set reviewer. 
 
 Still open: the reviewer has not yet answered the 424 entries (that is the human step); `ensureCurrentUSCISForm.test.js` still stalls on its 3rd test (pre-existing, unmocked mongoose); Phase 3.
 
+# Phase 3 - certification that proves correctness, one release gate, safe activation, safe case migration, rollback
+
+## 1. Scope and authorization
+You said "implement phase 3" on 2026-10-22 (after the golden set was signed off again that morning and I-131 was rebuilt). Code, tests, two index-only database writes (below) and this report; **no case, user or company was created**, no real e-mail sent, no deploy, and no benchmark was run on the shared database. Everything is additive and fail-closed: nothing here weakens a Phase 0-2 check. The case-migration half (Rule G) was built by a parallel worker in its own files; the rest by me.
+
+## 2. What was built
+| Plan item | Result |
+|---|---|
+| Certification proves correctness (distinct markers) | `form-release/markerCertification.js`, two new certification checks in `FormCertificationService`: **party_markers** - every party gets a distinct synthetic marker (PETITIONER_TEST_001, BENEFICIARY_TEST_002, COMPANY_TEST_003, PREPARER_TEST_004); each active edge is resolved by the REAL `MappingResolver` (transforms, fallbacks, composite sources) and a box may only receive its own side's marker and never two sides at once. The party a box speaks about comes from its own label / section / PDF name, not from the mapping, so the check is not circular. A reviewed exception on an edge (`contractExceptions`) silences only that code on only that edge. **widget_inputs** - each edge is resolved for a fictional client and judged against its box: tick boxes get booleans, a drop-down gets a choice the PDF renderer can select (it uses the renderer's own `fitChoiceValue`, so "H-1B" finds "H1B - SPECIALITY OCCUPATION"), dates are dates. Only what can be observed is judged; the rest is counted as unobserved. In memory: no PDF, no database. |
+| CERT_CHECK_POLICY | `form-release/certPolicy.js`: ONE table. Five critical checks (pdf_fillable, mapping_valid, fill_roundtrip, **party_markers, widget_inputs**), two overridable with a written, audited reason (viewer_download, components_slice). **An unknown check name is now critical** (it used to be overridable, so a crashed certification could have been waved through). |
+| One ReleaseGate | `form-release/ReleaseGate.js`: `promote | restricted_degraded | approval_required | held | blocked`, with every check listed; most severe wins; every error inside a check fails closed. It combines preconditions (approved, mapping active, not deprecated), certification, the edition-acceptance decision (read-only, through the enforcer) and the edition diff. `VersionManagementService.activate` uses it for the preconditions + certification (acceptance is still enforced by `requireAcceptedEdition` and the diff by the mapping activation, so nothing is asked twice and nothing is weaker). The full gate is shown by `GET /api/form-release/templates/:id/gate`. |
+| Activation protocol | `VersionManagementService.activate`: the **new edition goes live while the old one is still live** (readers take the newest active edition, so there is never a moment without a live form), the change is confirmed, only then the old edition is retired and the intent cleared. The intent `{newId, oldIds, step}` is saved WITH the activation (`lifecycle.promotionIntent`). |
+| Crash reconciliation | `VersionManagementService.reconcilePromotions` (run at start-up and every 5 minutes, under a job lock): new live + old live -> finish retiring the old one **only if the acceptance gate still holds**, otherwise retire the new one; neither live -> restore the previous edition **only if the gate still accepts it**, otherwise activate nothing, alert admins and report "no policy-approved edition available"; the single-wording invariant of the plan. |
+| Rollback | `VersionManagementService.rollback` + `POST /api/form-release/forms/:formCode/rollback`: goes through `activate`, so the same certification, acceptance gate and protocol apply (an edition USCIS does not accept can never be restored); needs a retired, certified edition whose mapping version is still stored; **cases are not moved back**, the case forms on the replaced edition are listed for reconciliation. |
+| Case migration safety (Rule G) | `CaseFormEditionMigrationService` rewritten around `CaseFormMigrationRecovery` and the new `CaseFormMigrationSnapshot` collection: a checksummed **pre-image** of every answer record (values, provenance, attribution, reviews, overrides, status, lock, edition pointers) before anything changes; `migrationState` on the case form (snapshotted -> saved -> autofilled -> verified -> completed); **collisions detected before writing** (different values on one target = unresolved, blocks only that case; equal values merge with a recorded reason); a user-sourced `false` is a real answer; provenance and review metadata travel with the value; **database read-back verification** replaces the circular `carried + archived == total`; **safe recovery**: restore from the pre-image only when the current state equals the migration's own expected intermediate state, otherwise `reconciliation_required` with the snapshot kept (no expiry) and the conflicting fields listed; compare-and-set before each save; idempotent restore; `reconcileIncompleteMigrations` resumes a case form interrupted at any step; `planMigration` / `frozenReconciliationReport` are the no-write dry run. Snapshots expire 90 days after a VERIFIED migration and never while unresolved / failed / waiting / on legal hold. |
+| API | `/api/form-release`: `GET /templates/:id/gate`, `GET /forms/:formCode/migration-plan`, `POST /forms/:formCode/rollback`, `POST /reconcile`, `GET /migration-snapshots?caseFormId=` (metadata only, never the answers), `POST /migration-snapshots/:id/restore` (dry run unless told otherwise). Snapshot routes are exactly `admin`; rollback / reconcile `admin` and `super_admin`; gate and plan also `team_lead`. |
+| Schema | `USCISFormTemplate.lifecycle`: `promotionIntent`, `retiredWhy`, `certificationOverride` declared (the schema is strict: **Phase 0's `certificationOverride` had been silently dropped on save** - it was still in the audit log - and now persists). `CaseForm.migrationState` (optional, small). |
+| Indexes (real database, index-only, run with your standing permission for index scripts) | `scripts/createFormReleaseIndexes.js --apply`: all indexes of `caseformmigrationsnapshots` (new, empty; the TTL index on `expiresAt`) and only `caseforms { "migrationState.step": 1 }` (sparse). |
+
+## 3. How safety was kept
+- **Calibrated on live data first** (the Phase 2 lesson): both new checks were run read-only over all 34 live edition graphs (26 have mapped boxes) before being made critical. party_markers: 0 findings (775 mapped boxes actually party-checked). widget_inputs (1,318 boxes checked): the first run showed 55 findings, all noise from the sample client's placeholder answer and from my own dropdown test not using the renderer's matcher; after fixing both, **0 findings**. So no live form fails a new critical check and no edition is blocked by calibration noise.
+- **Existing editions are untouched**: certification only runs on import / promotion / re-certification; a stored certification that lacks the two new checks is not a failure.
+- **The edition-acceptance gate is unchanged** and still the last word; the ReleaseGate reaches it only through a read-only `peekAcceptance` on the enforcer (a test keeps the pipeline importing the enforcer only).
+- **Nothing can make an edition live except `VersionManagementService`**, which already calls the gate (a static test asserts the release module only reads).
+- **Recovery never overwrites a newer edit and never activates an edition the gate refuses.**
+- All DB-backed tests ran on a throwaway local database (never the shared one); nothing was created in any case.
+
+## 4. Verification
+| Check | Result |
+|---|---|
+| New tests | markerCertification 10, releaseGate 9, routes/wiring 5, **promotion / reconcile / rollback on a local database 6**, migration safety (pure 12, local database 15), updated activation tests 5 |
+| Combined run (release, edition policy, pipeline, lifecycle, migration, contract, rewire, I-131, golden, scripts) | **407 tests: 402 pass, 4 skipped (they need real I-140 / I-864 / I-485 templates in the local test database), 1 fail** |
+| The 1 failure | the gate-matrix test still lists the old 2026-10-16 `scripts/repairLegacyMappingFindings.js` (it activates a MAPPING version, not an edition). Unchanged since Phase 2; you chose not to touch it. Nothing of Phase 3 is in that list. |
+| Backend | restarted by itself on every edit and answers `/api/health` |
+| Calibration (read-only, all live forms) | party_markers 0, widget_inputs 0 |
+| Not run | the Admin / Client / Landing / Attorney builds (no frontend file changed); no benchmark on the shared database |
+
+### Checks per entry point (Rule I table)
+| Entry point | Preconditions + certification (ReleaseGate) | Acceptance gate | Edition diff | Protocol |
+|---|---|---|---|---|
+| `VersionManagementService.activate` (lifecycle route, import route, pipeline promote, registry console) | yes | `requireAcceptedEdition` | via mapping activation | new live -> confirm -> retire old, intent saved |
+| Rollback | same (it calls activate) | same | same | same; cases not moved |
+| Promotion reconciler | n/a (finishes / reverts) | re-run on the candidate | n/a | decides from the latest verified policy |
+| `migrateCaseFormsToEdition` | n/a | `requireAcceptedEdition` first | n/a | pre-image, verify, safe recovery |
+| Importer `activateVersion`, `importLocalForm`, 11 seeds, `replaceFormEdition` | unchanged from Phase 0 | `requireAcceptedEdition` | unchanged | unchanged |
+
+## 5. Expected vs actual
+| Item | Plan | Actual |
+|---|---|---|
+| Certification markers rendered into the PDF and reopened | "resolved in memory via MappingResolver -> rendered -> reopened" | Resolved in memory through the real mapper; the existing `fill_roundtrip` still renders and reopens the PDF. The markers themselves are not written into the PDF. |
+| Coverage of the party check | every field | Judged only where a box names one side AND the mapped path has a party root (petitioner / beneficiary / company / checklist keys). Forms whose edges read person.* / contact.* (I-90, I-765, I-485 and parts of others) make no party claim, so they are observed 0 times by this check and rely on the contract's text check. |
+| Unified ReleaseGate "replaces the individual checks" | one gate | One structured decision used by activation for preconditions + certification; acceptance and the edition diff keep their existing enforcement points (asked once, no weakening). |
+| Concrete repair strategies | with certification | **Not built** (see 7). |
+
+## 6. Findings for your review
+1. **Phase 0's certification-override record never reached the template** (strict schema); fixed. Overrides were always audited in the audit log.
+2. **The party check cannot see person.* / contact.* forms** (above). Moving those forms to the generic petitioner / beneficiary paths would bring them into the check.
+3. **Activation now has a short window with two live editions** of one form (new first, old retired a moment later); readers always take the newest, so cases see the new one. A rollback to an older edition shows the newer one for that moment only.
+4. **Frozen-report priority flag**: `frozenReconciliationReport` marks a frozen case "priority" only when the caller supplies `deps.oldEditionNotAccepted` (the enforcer has no read-only "is this edition refused" call beyond `peekAcceptance`, which the pipeline does not yet pass); until then it is `false`.
+5. **A value counts as verified** when its review is approved / confirmed / verified or its attribution says so; a typed or verified value with no box on the new edition blocks that case form from migrating (other unmatched values are archived with a reason).
+6. **Pre-image access is exactly `admin`** (assumption from the plan; no implicit super_admin or team_lead); retention is the plan's initial 90 days, subject to your organization's rules.
+
+## 7. What was NOT done
+Concrete repair strategies for certification failures (the repair framework has none registered); an Admin screen for the gate, the migration plan, rollback and pre-image restore (the API exists); the performance-budget measurement (needs an approved baseline run); `acquireForCase` through the job layer; Rule J; the PM2 worker / queued mode; Phases 4-6 (Gemini mapping, governance screens and e-mails, full regression).
+
+## 8. Gate before the next phase
+Your review of sections 5-7. Phase 4 (Gemini mapping) is unlocked on the golden-set side (signed off 2026-10-22, held-out form I-90) but still needs its own approval, the Gemini key / quota, and the pre-approved accuracy gate.
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -612,4 +681,5 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 | 2026-10-16 | Phase 2 addendum | Legacy findings repaired live, scorer alias fix, golden set draft (424 plain-language entries) + reviewer API/models + sign-off, Admin screens (Import Progress, Golden Set Review, Mapping coverage), reviewer guide | `scripts/repairLegacyMappingFindings.js`, `scripts/buildGoldenSetDraft.js`, `form-mapping/golden/*`, `models/GoldenSet{Review,SignOff}.js`, `form-mapping/routes/goldenSetRoutes.js`, `routes/index.js`, `MappingGraphService.js`, `contract/MappingContractValidator.js`, `Admin/frontend/src/components/{FormPipelineJobsSection,GoldenSetReviewSection,MappingCoveragePanel}.jsx(+tests)`, `services/api.js`, `pages/FormGovernance*.jsx`, `docs/GOLDEN_SET_REVIEW_GUIDE.md`, `docs/golden-set/GOLDEN_SET_DRAFT.csv` |
 | 2026-10-16 | Live form updates (socket only) | When a team member saves or changes a form, everyone who has it open is told over the socket and the screen re-reads it quietly (unsaved typing is kept). Event after the response, no form data in it, join re-checks access; no conflict blocking (last save still wins) | `Backend/src/modules/uscis-forms/caseFormLiveUpdates.js(+test)`, `uscis-form.routes.js` (1 line), `realtime.gateway.js` (join/leave + emit), `Admin/frontend/src/hooks/useCaseFormLiveUpdates.js(+test)`, `contexts/{Socket,Auth}Context.jsx` (optional hooks), `components/uscis/USCISFormRenderer.jsx` (+test) |
 | 2026-10-16 | Delete-form fix | Deleting a form was refused whenever ANY recurring import job (autopilot / edition-upgrade / monitoring / catalog sync) held its lock, which is most of the day. Now only a pipeline job running for THAT form blocks it; the form's waiting (pending / blocked / held) jobs are removed on delete so nothing re-imports it | `Backend/src/modules/form-registry/form-registry.controller.js`, `uscis-lifecycle/tests/jobLocks.test.js` |
+| 2026-10-22 | Phase 3 | Distinct-marker certification (party_markers, widget_inputs) + one CERT_CHECK_POLICY, unified ReleaseGate, activation protocol (new live before old retired, saved intent) with crash reconciliation, rollback, safe case migration (pre-image, read-back verification, safe recovery, sweeper, dry run), release API, recovery sweeps wired into the server, index script (run) | `Backend/src/modules/form-release/*`, `uscis-lifecycle/services/VersionManagementService.js`, `form-mapping/services/{FormCertificationService,CaseFormEditionMigrationService,CaseFormMigrationRecovery}.js`, `models/{CaseFormMigrationSnapshot,CaseForm,USCISFormTemplate}.js`, `form-edition-policy/EditionPolicyEnforcer.js` (read-only peek), `server.js`, `routes/index.js`, `scripts/createFormReleaseIndexes.js`, tests |
 | 2026-10-16 | Keep blank + golden-set reasons | Per-box "Keep blank" (a person decides a box stays empty: no canonical mapping, template default value ignored, not required, enforced on every save, inherited by rebuilds and carried into new editions, counted separately in coverage; Undo; mapping the box again clears it). Golden set "Wrong" now asks why + what to fill instead (or "should be blank"). Additive: with no kept-blank boxes nothing changes | `form-mapping/contract/keepBlank.js`, `MappingGraphService.js`, `FormMappingService.js`, `EditionMigrationService.js`, `ValidationService.js`, `uscis-form.service.js`, `MappingGraphController.js`, `mappingGraphRoutes.js`, `MappingContractValidator.js`, `MappingCoverageService.js`, `golden/GoldenSetService.js`, `models/GoldenSetReview.js`, `Admin/.../FormGovernanceDetail.jsx`, `GoldenSetReviewSection.jsx`, `services/api.js`, tests |

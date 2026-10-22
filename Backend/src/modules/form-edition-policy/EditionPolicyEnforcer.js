@@ -83,4 +83,19 @@ async function requireAcceptedEdition(template, { entryPoint, actor } = {}) {
   }
 }
 
-module.exports = { requireAcceptedEdition, EditionPolicyHeldError, editionOf, setDepsForTests };
+/**
+ * READ-ONLY: what the gate answers for this edition right now ({ allowed, decision, reasons }). Never throws, never records an outcome, never runs the automatic check - it is for
+ * previews (the Phase 3 ReleaseGate); every path that actually changes something calls requireAcceptedEdition above instead.
+ */
+async function peekAcceptance(template) {
+  try {
+    const deps = depsOverride || defaultDeps();
+    const edition = editionOf(template);
+    if (!edition.editionIdentifier) return { allowed: false, decision: "held", reasons: [edition.why] };
+    return await gate.check(edition.formCode, edition.editionIdentifier, { store: deps.store });
+  } catch {
+    return { allowed: false, decision: "held", reasons: [GATE_REASONS.GATE_ERROR] }; // fail closed
+  }
+}
+
+module.exports = { requireAcceptedEdition, peekAcceptance, EditionPolicyHeldError, editionOf, setDepsForTests };

@@ -341,7 +341,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
       if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
       caseMigration = await stage("migrate_cases", () => migrateCaseFormsToEdition({ newTemplate: template, actor: user, req }));
-      logger.info("uscis_form_cases_migrated", { formCode: template.formCode, ...caseMigration, failed: caseMigration.failed.length });
+      logger.info("uscis_form_cases_migrated", { formCode: template.formCode, considered: caseMigration.considered, migrated: caseMigration.migrated, verified: caseMigration.verified, skippedFrozen: caseMigration.skippedFrozen, valuesCarried: caseMigration.valuesCarried, valuesArchived: caseMigration.valuesArchived, unresolved: (caseMigration.unresolved || []).length, reconciliationRequired: (caseMigration.reconciliationRequired || []).length, failed: caseMigration.failed.length });
     } catch (error) {
       logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
     }

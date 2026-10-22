@@ -259,6 +259,18 @@ const caseFormSchema = new mongoose.Schema(
       ),
       default: {},
     },
+    // ─── Phase 3 (case migration safety) ADDITION - optional and small; absent on every case form that was never migrated by the safe migration ───
+    // Where an edition migration of THIS case form stands (see CaseFormMigrationRecovery): a crash at any step is resumed from the recorded step. The pre-image lives in
+    // CaseFormMigrationSnapshot, never here.
+    migrationState: {
+      jobId: String,
+      snapshotId: { type: mongoose.Schema.Types.ObjectId, ref: "CaseFormMigrationSnapshot" },
+      step: { type: String, enum: ["snapshotted", "saved", "autofilled", "verified", "completed", "reconciliation_required"] },
+      outcome: { type: String, enum: ["migrated", "restored"] },
+      expectedIntermediateChecksum: String,
+      updatedAt: Date,
+      error: String,
+    },
     // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }
@@ -301,6 +313,8 @@ caseFormSchema.index({ "syncState.requiresRegeneration": 1, updatedAt: -1 });
 // which a compound index leading with caseId cannot satisfy.
 caseFormSchema.index({ caseId: 1, updatedAt: -1 });
 caseFormSchema.index({ updatedAt: -1 });
+// the reconciliation sweeper looks for migrations that stopped half-way (sparse: only migrated case forms carry the field)
+caseFormSchema.index({ "migrationState.step": 1 }, { sparse: true });
 
 const CaseForm = mongoose.model("CaseForm", caseFormSchema);
 

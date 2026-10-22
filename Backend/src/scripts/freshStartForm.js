@@ -65,11 +65,13 @@ async function main(argv = process.argv.slice(2)) {
 
     // ---- 1. proof that the form can be fetched again (before anything is deleted) ----
     const { resolveOfficialPdf } = require("../modules/uscis-form-import/services/OnDemandFormAcquisitionService");
-    const { fetchOfficialSource } = require("../modules/form-edition-policy/OfficialSourceFetcher");
+    const importer = require("../modules/uscis-form-import/services/USCISFormImporterService");
     const resolved = await resolveOfficialPdf(formCode);
-    const probe = await fetchOfficialSource(resolved.pdfUrl, { accept: "pdf" });
-    if (!probe.ok || !probe.bytes?.length || probe.bytes.slice(0, 5).toString() !== "%PDF-") { console.log(`REFUSED: uscis.gov did not return a valid PDF for ${formCode} (${probe.error || probe.status}); nothing was deleted`); return 1; }
-    console.log(`uscis.gov answered: ${resolved.pdfUrl} (${probe.bytes.length} bytes, edition ${resolved.editionDate || "unknown"})`);
+    let probe = null;
+    let probeError = "";
+    try { probe = await importer.downloadOfficialPdf(resolved.pdfUrl, "form"); } catch (error) { probeError = error.message; }
+    if (!probe?.buffer?.length || probe.buffer.slice(0, 5).toString() !== "%PDF-") { console.log(`REFUSED: uscis.gov did not return a valid PDF for ${formCode} (${probeError || "not a PDF"}); nothing was deleted`); return 1; }
+    console.log(`uscis.gov answered: ${resolved.pdfUrl} (${probe.buffer.length} bytes, edition ${resolved.editionDate || "unknown"})`);
 
     // ---- 2. backup ----
     const dir = path.resolve(__dirname, "../../backups/forms", `${formCode}-fresh-start-${stamp()}`);
@@ -103,7 +105,6 @@ async function main(argv = process.argv.slice(2)) {
     // ---- 4. fetch fresh and rebuild ----
     const actor = (await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 })) || { role: "super_admin" };
     const req = { ip: "script", headers: {} };
-    const importer = require("../modules/uscis-form-import/services/USCISFormImporterService");
     const imported = await importer.importFromUrl({ pdfUrl: resolved.pdfUrl, formType: formCode, source: "fresh_start", officialPageUrl: resolved.officialPageUrl, editionDate: resolved.editionDate }, actor, req);
     let template = await USCISFormTemplate.findById(imported.template._id);
     console.log(`imported ${formCode} ${template.version} [${template.status}], ${(template.formFields || []).length} boxes`);

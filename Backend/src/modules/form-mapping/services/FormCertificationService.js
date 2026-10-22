@@ -5,6 +5,8 @@
 // Checks (all deterministic, no AI):
 //   pdf_fillable          the stored PDF loads (qpdf-normalized, XFA-free), exposes AcroForm fields, and every scanned field is present
 //   mapping_valid         the active mapping graph validates with zero errors, is non-empty, and (rule-driven forms) holds only rule-verified edges
+//   party_markers         (Phase 3) distinct synthetic markers per party are resolved through the real mapper: each person's data may only land in that person's boxes
+//   widget_inputs         (Phase 3) tick boxes get booleans, drop-downs get a choice the renderer can select, dates are dates
 //   fill_roundtrip        every mapped text field accepts a probe value, the PDF saves, reloads, and reads each probe back - i.e. the filled form is NOT blank
 //   viewer_download       the filled bytes are a valid PDF with the template's page count (what the case manager sees, edits and downloads)
 //   components_slice      every component / supplement the previous edition served can be sliced from this edition
@@ -79,6 +81,20 @@ async function certify(template, { previous = null, persist = true } = {}) {
       if (unverified.length) fail(`${unverified.length} active edges are not backed by a verified rule`);
     }
     return `${graph.edges.length} edges${validation.contract?.summary?.legacyViolations ? `, ${validation.contract.summary.legacyViolations} legacy findings (report only)` : ""}`;
+  });
+
+  // Phase 3: prove WHO each box is filled with and that each kind of box gets a value it can hold (in memory; the policy that makes both critical is form-release/certPolicy.js)
+  const targetsById = new Map();
+  (template.formFields || []).forEach((field) => { if (field.fieldId) targetsById.set(field.fieldId, field); if (field.uniqueId) targetsById.set(field.uniqueId, field); });
+  await run(checks, "party_markers", async () => {
+    const report = require("../../form-release/markerCertification").partyMarkerReport({ graph, targetsById });
+    if (report.violations.length) fail(`${report.violations.length} box(es) would receive the wrong party's data, first: ${report.violations[0].field}: ${report.violations[0].reason}`);
+    return `${report.checked} mapped boxes traced to the right party (${report.unobserved} not observable${report.advisories.length ? `, ${report.advisories.length} advisories` : ""})`;
+  });
+  await run(checks, "widget_inputs", async () => {
+    const report = require("../../form-release/markerCertification").widgetInputReport({ graph, targetsById });
+    if (report.violations.length) fail(`${report.violations.length} box(es) would get a value they cannot hold, first: ${report.violations[0].field}: ${report.violations[0].reason}`);
+    return `${report.checked} mapped boxes given a valid value (${report.unobserved} not observable)`;
   });
 
   let filledBytes = null;

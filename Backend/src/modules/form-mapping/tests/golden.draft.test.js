@@ -71,11 +71,12 @@ test("a conditional box is shown for a client where the condition applies", () =
 });
 
 test("inactive edges are left out; the held-out form is flagged; ids and checksum are stable", () => {
-  const graphs = { "I-131": [edge({ targetFieldId: "x1" }), edge({ targetFieldId: "x2", status: "pending", sourcePath: "beneficiary.lastName", targetLabel: "Family" })], "I-130": [edge({ targetFieldId: "y1" })] };
+  const graphs = { "I-131": [edge({ targetFieldId: "x1" }), edge({ targetFieldId: "x2", status: "pending", sourcePath: "beneficiary.lastName", targetLabel: "Family" })], "I-130": [edge({ targetFieldId: "y1" })], "I-90": [edge({ targetFieldId: "z1" })] };
   const first = buildDraft(graphs);
   const second = buildDraft(graphs);
-  assert.deepEqual(first.entries.map((e) => e.formCode).sort(), ["I-130", "I-131"]);
-  assert.equal(first.entries.find((e) => e.formCode === "I-131").heldOut, true);
+  assert.deepEqual(first.entries.map((e) => e.formCode).sort(), ["I-130", "I-131", "I-90"]);
+  assert.equal(first.entries.find((e) => e.formCode === "I-90").heldOut, true);
+  assert.equal(first.entries.find((e) => e.formCode === "I-131").heldOut, false, "I-131 has its own rules now, so it is no longer held out");
   assert.equal(first.entriesChecksum, second.entriesChecksum);
   assert.ok(HELD_OUT_FORMS.every((code) => SCOPE[code]));
   assert.equal(first.meetsPlan.ok, false);
