@@ -997,13 +997,15 @@ async function resolveTeamLeadForCase(payload = {}, creator = null) {
     const dedicated = await User.findOne({ ...query, email: dedicatedEmail }).select("_id teamId");
     if (dedicated) return dedicated;
   }
-  // A configured default team lead (DEFAULT_TEAM_LEAD_EMAIL) gets every case that names nobody, as long as they are an active team lead
-  // (and on the requested team, when one is given). Otherwise - or if they are inactive/missing - fall back to the round robin below.
+  // A configured default team lead (DEFAULT_TEAM_LEAD_EMAIL, teamlead@immiglance.com) gets every case that names nobody and was not created by a team lead,
+  // as long as they are an active team lead (and on the requested team, when one is given).
+  // There is deliberately NO round robin any more: it silently made an arbitrary team lead (Madaan) the owner of 62 cases he never created, and he was emailed about all of
+  // them. With no default team lead the case simply has none (notifications/caseTeam.js then resolves it the same way, and nobody else is told).
   if (env.defaultTeamLeadEmail) {
     const preferred = await User.findOne({ ...query, email: env.defaultTeamLeadEmail }).select("_id teamId");
     if (preferred) return preferred;
   }
-  return User.findOne(query).sort({ updatedAt: 1 }).select("_id teamId");
+  return null;
 }
 
 module.exports = {

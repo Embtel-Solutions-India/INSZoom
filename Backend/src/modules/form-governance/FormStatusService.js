@@ -43,6 +43,22 @@ function coverageStatus(coverage) {
 }
 
 /** Pure. Edition-acceptance preview -> { state, decision, reasons }. */
+/** Pure. Phase 7.4: the stored per-field inventory summary -> { state, decision, counts, holdCount, gate }. Shown only while FORM_PIPELINE_AUTONOMY is not off. */
+function inventoryStatus(summary, { gate = require("../form-mapping/inventory/FieldInventory").gateMode() } = {}) {
+  if (!summary) return { ...unknown("no per-field inventory has been computed for this edition yet"), decision: null, counts: null, holdCount: null, gate };
+  const held = summary.decision === "held";
+  return {
+    state: held ? "warning" : "ok",
+    detail: held ? `${summary.hold?.count ?? 0} box(es) have no active mapping and cannot be left empty on their own${gate === "report" ? " (report only: nothing is blocked)" : ""}` : "every box is mapped, deliberately empty with a reason, or not client data",
+    decision: summary.decision,
+    counts: summary.counts || null,
+    holdCount: summary.hold?.count ?? 0,
+    holdFields: (summary.hold?.fields || []).slice(0, 20),
+    previous: summary.previous || null,
+    gate,
+  };
+}
+
 function editionPolicyStatus(peek) {
   if (!peek) return { state: "unknown", decision: null, reasons: [] };
   const state = peek.allowed ? "ok" : peek.decision === "not_accepted" ? "blocked" : "warning";
@@ -136,6 +152,7 @@ async function formStatus(formCode, deps = {}) {
       import: importStatus(template, job),
       mapping: mappingStatus(template, version),
       coverage: template ? coverageStatus(coverage) : { ...unknown("no edition on file"), mapped: null, requiredUnmapped: null, unresolved: null },
+      ...(require("../../config/formPipelineAutonomy").mode() !== "off" ? { inventory: template ? inventoryStatus(coverage?.inventory || version?.graph?.inventory) : { ...unknown("no edition on file"), decision: null, counts: null, holdCount: null } } : {}),
       certification: template ? certificationStatus(template.importMetadata?.validationSummary?.certification) : { ...unknown("no edition on file"), checks: [] },
       release,
       editionPolicy: policy,
@@ -148,4 +165,4 @@ async function formStatus(formCode, deps = {}) {
   };
 }
 
-module.exports = { formStatus, certificationStatus, coverageStatus, editionPolicyStatus, releaseStatus, timelineOf, degradedOf, holdOf, monitoringStatus, importStatus, mappingStatus };
+module.exports = { formStatus, inventoryStatus, certificationStatus, coverageStatus, editionPolicyStatus, releaseStatus, timelineOf, degradedOf, holdOf, monitoringStatus, importStatus, mappingStatus };

@@ -24,6 +24,10 @@ const caseFormMigrationSnapshotSchema = new mongoose.Schema(
     intermediateImage: { type: mongoose.Schema.Types.Mixed, default: null },
     intermediateChecksum: { type: String, default: null },
     dispositions: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    // Phase 7.7 (migrations made with the switch on): the checksummed conservation proof (what happened to every answer, and why) and the full copies needed to undo the
+    // field-name remap of comments / history / sync state and the stale-PDF mark
+    proof: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    extraPre: { type: mongoose.Schema.Types.Mixed, default: undefined },
     state: { type: String, enum: ["active", "released", "purged"], default: "active", index: true },
     legalHold: { type: Boolean, default: false },
     expiresAt: { type: Date },

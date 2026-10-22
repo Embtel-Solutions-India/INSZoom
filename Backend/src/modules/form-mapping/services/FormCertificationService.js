@@ -130,6 +130,19 @@ async function certify(template, { previous = null, persist = true } = {}) {
     const { checkEditionReady } = require("./EditionMigrationService");
     const readiness = await checkEditionReady(template, previous);
     if (!readiness.ready) fail(readiness.problems.join("; "));
+    // Phase 7.5 (FORM_PIPELINE_AUTONOMY=on only): the check is no longer satisfied by "nothing to compare with" - every page after the first supplement must belong to a
+    // component, an unregistered supplement is a problem to resolve, every active component must have fields, and a component the previous edition served keeps a plausible size
+    const autonomyMode = require("../../../config/formPipelineAutonomy").mode();
+    if (autonomyMode !== "off") {
+      const { evaluateComponentSlice } = require("../../uscis-forms/services/ComponentSegmenter");
+      const USCISFormComponentDefinition = require("../../../models/USCISFormComponentDefinition");
+      const previousDefs = previous ? await USCISFormComponentDefinition.find({ parentTemplateId: previous._id, status: "ACTIVE" }).select("componentCode pageRanges fieldIds").lean() : [];
+      const sliceProblems = evaluateComponentSlice({ results: readiness.components, totalPages: Number(template.pdfMetadata?.pageCount) || 0, previousDefs: previousDefs.map((def) => ({ componentCode: def.componentCode, pageRanges: def.pageRanges, fieldCount: (def.fieldIds || []).length })) });
+      if (sliceProblems.length) {
+        if (autonomyMode === "on") fail(sliceProblems.join("; "));
+        logger.warn("form_certification_components_slice_shadow", { formCode: template.formCode, version: template.version, wouldFail: sliceProblems });
+      }
+    }
     return `${readiness.components.length} components`;
   });
 

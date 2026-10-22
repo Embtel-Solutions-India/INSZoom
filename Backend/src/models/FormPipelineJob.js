@@ -59,8 +59,11 @@ const formPipelineJobSchema = new mongoose.Schema(
       reasonCode: String, errorClass: String, stage: String, detail: String,
       releaseConditions: { type: [String], default: undefined }, // no default: a job that was never held carries no hold at all
       firstHeldAt: Date, lastEvaluatedAt: Date, escalatedAt: Date,
-      evaluatedWith: { matcher: Number, gate: Number, cert: Number },
+      evaluatedWith: { matcher: Number, gate: Number, cert: Number, resolver: Number },
     },
+    // Phase 7.E error resolution: every strategy tried for a failure (verified or not), newest last, capped; and the signature the job was exhausted with
+    resolutions: [{ _id: false, strategy: String, ok: Boolean, verified: Boolean, evidence: String, stage: String, signature: String, at: Date }],
+    exhausted: { at: Date, signature: String, cause: String },
     // alert dedupe: one entry per distinct (state|stage|error signature) already announced for this job
     alerts: [{ _id: false, signature: String, kind: String, at: Date }],
     history: [{ _id: false, at: Date, state: String, stage: String, note: String }],

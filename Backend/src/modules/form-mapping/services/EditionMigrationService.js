@@ -13,6 +13,8 @@ const MappingGraphService = require("./MappingGraphService");
 const { findRenamedTarget } = require("../contract/fieldEquivalence");
 const { originOf } = require("../contract/MappingPolicy");
 const { carryKeepBlank } = require("../contract/keepBlank");
+const { matcherRenames } = require("../matching/editionCarry");
+const { inventoryForCarry } = require("../inventory/editionCarry");
 
 // formCode -> () => { buildCrosswalkGraph(template) }; add a form here only when it has an authored crosswalk
 const CROSSWALK_BUILDERS = {
@@ -33,7 +35,7 @@ async function findPreviousEdition(template) {
   return null;
 }
 
-function carryForwardGraph(previousGraph, template) {
+function carryForwardGraph(previousGraph, template, options = {}) {
   const targetFields = MappingGraphService.getTemplateFields(template);
   const byPdfName = new Map(targetFields.map((field) => [norm(field.targetPdfField), field]));
   const byId = new Map(targetFields.map((field) => [norm(field.targetFieldId), field]));
@@ -62,8 +64,12 @@ function carryForwardGraph(previousGraph, template) {
     return found?.target ? found : null;
   });
 
+  // pass 2b (Phase 7.3, gated by FORM_PIPELINE_AUTONOMY: nothing happens when it is off): the semantic FieldMatcher looks at the edges BOTH passes above left without a target.
+  // shadow only logs what it would carry; on carries it exactly like a rename (needs_review, never active).
+  const matched = matcherRenames({ previousEdges, exact, renames, targetFields, claimed, previousTemplate: options.previousTemplate || null, previousGraph, formCode });
+
   previousEdges.forEach((edge, index) => {
-    const renamed = renames[index];
+    const renamed = renames[index] || matched[index];
     const target = exact[index] || renamed?.target;
     if (!target) {
       lostEdges.push({ mappingId: edge.mappingId, sourcePath: edge.sourcePath, targetPdfField: edge.targetPdfField, targetLabel: edge.targetLabel });
@@ -121,6 +127,13 @@ function carryForwardGraph(previousGraph, template) {
     },
     carriedForwardFrom: previousGraph.version,
   };
+  // Phase 7.4 (gated by FORM_PIPELINE_AUTONOMY; returns null and does nothing when it is off): the per-field inventory of this edition - which boxes are mapped, not client data,
+  // deliberately empty, conditional, or still need a source. Stored compactly on the graph; it only changes unmappedTargets when FORM_INVENTORY_GATE=enforce.
+  const inventory = inventoryForCarry({ template, graph, targetFields, previousGraph, previousTemplate: options.previousTemplate || null, renamedEdges, lostEdges });
+  if (inventory) {
+    graph.inventory = inventory.summary;
+    if (inventory.unmappedTargets) graph.unmappedTargets = inventory.unmappedTargets;
+  }
   graph.validation = MappingGraphService.validateGraph(graph, template);
   return { graph, lostEdges, renamedEdges };
 }
@@ -174,7 +187,7 @@ async function migrateMappingToEdition(template, user, req, options = {}) {
   } else if (previous) {
     const previousGraph = await MappingGraphService.loadCurrentGraph(previous);
     if (!previousGraph?.edges?.length) return { migrated: false, reason: "previous_edition_has_no_mapping" };
-    ({ graph, lostEdges, renamedEdges } = carryForwardGraph(previousGraph, template));
+    ({ graph, lostEdges, renamedEdges } = carryForwardGraph(previousGraph, template, { previousTemplate: previous }));
     source = `edition ${previous.version}`;
   } else {
     return { migrated: false, reason: "no_previous_edition_or_crosswalk" };

@@ -24,6 +24,15 @@ function createHoldSweep({ jobService, alerter = null, log = logger, escalationL
     } catch (error) {
       log.warn("form_pipeline_hold_escalation_failed", { error: error.message });
     }
+    // Phase 7.E: the "forms stuck" reminder (the alerter throttles itself and sends only when the set changed or the reminder time has passed); never throws
+    if (typeof alerter?.sendStuckReminder === "function") {
+      try {
+        const reminded = await alerter.sendStuckReminder();
+        summary.stuckReminded = reminded?.sent ? 1 : 0;
+      } catch (error) {
+        log.warn("form_pipeline_stuck_reminder_failed", { error: error.message });
+      }
+    }
     return summary;
   };
 }

@@ -113,6 +113,16 @@ async function resolveCorePages(template, totalPages) {
     const context = { parentFormCode: def.parentFormCode, componentCode: def.componentCode };
     expandPageRanges(def.pageRanges, totalPages, context).forEach((p) => claimed.add(p));
   }
+  // Phase 7.5 (FORM_PIPELINE_AUTONOMY=on only): pages of a NEW-COMPONENT CANDIDATE (a supplement heading nobody registered, or an unclaimed trailing run) are not part of the core
+  // form either, so they must not leak into its render. Only for a parent that already has an ACTIVE component (read above); off / shadow: exactly the code above.
+  if (require("../../../config/formPipelineAutonomy").mode() === "on") {
+    const candidates = await USCISFormComponentDefinition.find({ parentTemplateId: template._id, status: "REVIEW_REQUIRED", verificationMethod: "segmenter_new_component_candidate" }).lean();
+    for (const def of candidates) {
+      try {
+        expandPageRanges(def.pageRanges, totalPages, { parentFormCode: def.parentFormCode, componentCode: def.componentCode }).forEach((p) => claimed.add(p));
+      } catch (error) { /* a candidate with an unusable range never changes the core render */ }
+    }
+  }
 
   const corePages = [];
   for (let p = 1; p <= totalPages; p += 1) {

@@ -12,6 +12,7 @@
 const alertConfig = require("./alerts/alertConfig");
 const outcomeData = require("./alerts/outcomeData");
 const { createDigestStore, createMemoryDigestStore } = require("./alerts/digestStore");
+const { createStuckStore, createMemoryStuckStore, setSignature } = require("./alerts/stuckStore");
 
 const DEFAULT_RECIPIENT = "ishaan@embtelsolutions.com";
 const ADMIN_ROLES = ["super_admin", "admin"];
@@ -24,7 +25,23 @@ const KIND_BY_STATE = { pending: "failure", blocked: "blocked", dead_letter: "de
 const QUIET_BLOCKED_TRIGGERS = new Set(["admin_fetch", "case_acquire", "mapping_save"]);
 
 // the audit vocabulary of the pipeline's alerts (one action per delivery, one entity type)
-const AUDIT = Object.freeze({ entityType: "FormPipelineJob", alert: "FORM_PIPELINE_ALERT_SENT", digest: "FORM_PIPELINE_DIGEST_SENT" });
+const AUDIT = Object.freeze({ entityType: "FormPipelineJob", alert: "FORM_PIPELINE_ALERT_SENT", digest: "FORM_PIPELINE_DIGEST_SENT", stuck: "FORM_PIPELINE_STUCK_SENT" });
+
+// Phase 7.E: the states a job can be exhausted in (every strategy tried), and how often the reminder sweep may look at the database
+const STUCK_STATES = ["held", "blocked", "dead_letter"];
+const REMINDER_CHECK_EVERY_MS = 5 * 60 * 1000;
+
+/** The recipients of the "forms stuck" e-mail: DEVELOPER_EMAIL, else FORM_PIPELINE_ALERT_EMAIL, else the default developer address. */
+const developerRecipients = (env = process.env) => alertConfig.developerRecipients(env, DEFAULT_RECIPIENT);
+
+/** Jobs that are exhausted and still stuck, read straight from the collection (the pipeline's own model may not declare every field the resolver writes). */
+async function defaultListStuck() {
+  const cursor = require("../../models/FormPipelineJob").collection.find(
+    { state: { $in: STUCK_STATES }, "exhausted.at": { $exists: true } },
+    { projection: { formCode: 1, state: 1, trigger: 1, editionKey: 1, currentStage: 1, lastError: 1, hold: 1, exhausted: 1, resolutions: 1, updatedAt: 1 } }
+  );
+  return cursor.sort({ "exhausted.at": 1 }).limit(200).toArray();
+}
 
 function defaultDeps() {
   return {
@@ -56,6 +73,9 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
   const audit = "audit" in deps ? deps.audit : (injected ? null : defaultAudit);
   const digestStore = deps.digestStore || (injected ? createMemoryDigestStore() : createDigestStore());
   const outcomeLookups = deps.outcomeLookups || {};
+  const stuckStore = deps.stuckStore || (injected ? createMemoryStuckStore() : createStuckStore());
+  const listStuck = deps.listStuck || (typeof jobService?.listStuck === "function" ? () => jobService.listStuck() : (injected ? async () => [] : defaultListStuck));
+  const clock = deps.now || (() => new Date());
   const adminLink = () => (env.FORM_PIPELINE_ADMIN_URL ? `${String(env.FORM_PIPELINE_ADMIN_URL).replace(/\/+$/, "")}/form-governance` : "");
 
   /** One in-app notification PER admin, each with its own dedupeKey (the key is `${dedupeBase}:${userId}`). Without a user list (tests) it falls back to the role fan-out. */
@@ -84,10 +104,10 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
    * E-mail (every recipient) when the toggle is on and a provider is configured; otherwise - or when no recipient could be sent to - the in-app notice.
    * `notice` = { title, message, metadata, type, priority }. Resolves { channel }.
    */
-  async function deliver({ template, data, enabled, notice, dedupeBase }) {
+  async function deliver({ template, data, enabled, notice, dedupeBase, to: recipientOverride }) {
     const configured = typeof email.isConfigured === "function" ? email.isConfigured() : false;
     if (enabled && configured) {
-      const to = recipients(env);
+      const to = recipientOverride && recipientOverride.length ? recipientOverride : recipients(env);
       let delivered = 0;
       for (const address of to) {
         try {
@@ -302,7 +322,76 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
     }
   }
 
-  return { announce, announceOutcome, announceMigrationGap, announceEscalation, flushDigests, startDigestFlusher, workerUnavailable };
+  /**
+   * Phase 7.E (B8): ONE e-mail to the developer listing every form that is still not imported / not production ready after all effort. Called when a job is exhausted
+   * (`job` = that job; the whole current set is read, so one e-mail covers all of them) and by sendStuckReminder. Sent when the set CHANGED since the last e-mail; an unchanged
+   * set is only re-sent as a reminder (sendStuckReminder). Forms that were in the last e-mail and are no longer stuck are listed once under "resolved". E-mail off / not
+   * configured / a send fails => the admins get an in-app notice instead. Never throws, never blocks the pipeline.
+   */
+  async function announceStuck({ job } = {}) {
+    return sendStuck({ job, reason: "exhausted" });
+  }
+
+  async function currentStuck(extraJob) {
+    const listed = (await Promise.resolve(listStuck()).catch(() => [])) || [];
+    const jobs = listed.filter((item) => STUCK_STATES.includes(item.state) && item.exhausted);
+    if (extraJob?.exhausted && STUCK_STATES.includes(extraJob.state) && !jobs.some((item) => String(item._id) === String(extraJob._id))) jobs.push(extraJob);
+    return jobs;
+  }
+
+  async function sendStuck({ job, reason, reminderDue = false }) {
+    try {
+      const at = clock();
+      const jobs = await currentStuck(job);
+      if (!jobs.length) return { sent: false, reason: "nothing_stuck" };
+      const entries = jobs.map((item) => ({ jobId: String(item._id), formCode: item.formCode, signature: String(item.exhausted?.signature || "") }));
+      const signature = setSignature(entries);
+      const last = await Promise.resolve(stuckStore.getLast()).catch(() => null);
+      const changed = !last || setSignature(last.entries) !== signature;
+      if (!changed && !reminderDue) return { sent: false, deduped: true, reason: "same_set" };
+      const stillStuck = new Set(entries.map((entry) => String(entry.jobId)));
+      const resolved = changed && last ? last.entries.filter((entry) => !stillStuck.has(String(entry.jobId))) : [];
+      const isReminder = !changed;
+      const data = await outcomeData.buildStuckData({ jobs, resolved, describeForm, now: at, adminLink: adminLink(), reminder: isReminder });
+      const bucket = isReminder ? Math.floor(at.getTime() / alertConfig.stuckReminderMs(env)) : "set";
+      const codes = [...new Set(data.forms.map((item) => item.formCode))];
+      const delivery = await deliver({
+        template: "form-pipeline-stuck", data, enabled: alertConfig.stuckEmailEnabled(env), to: developerRecipients(env), dedupeBase: `form-pipeline-stuck:${require("crypto").createHash("sha1").update(signature).digest("hex").slice(0, 16)}:${bucket}`,
+        notice: {
+          title: `${data.count} form${data.count === 1 ? "" : "s"} stuck after all automatic attempts`,
+          message: `${codes.slice(0, 8).join(", ")}${codes.length > 8 ? ` +${codes.length - 8} more` : ""}: every strategy was tried and the form is still not imported or not production ready. Reasons and the strategies tried are in Form Governance; the previous edition keeps serving where there is one.`,
+          metadata: { forms: codes.slice(0, 20), count: data.count, reminder: isReminder },
+        },
+      });
+      await Promise.resolve(stuckStore.record({ at, entries })).catch((error) => logger.warn("form_pipeline_stuck_record_failed", { error: error.message }));
+      await writeAudit(AUDIT.stuck, null, `Stuck-forms ${isReminder ? "reminder" : "alert"} for ${data.count} form(s) sent by ${delivery.channel}`, { kind: isReminder ? "stuck_reminder" : "stuck", channel: delivery.channel, count: data.count, forms: codes.slice(0, 20), trigger: reason });
+      return { sent: true, kind: isReminder ? "stuck_reminder" : "stuck", count: data.count, resolved: resolved.length, ...delivery };
+    } catch (error) {
+      logger.warn("form_pipeline_alert_failed", { jobId: String(job?._id || ""), error: error.message });
+      return { sent: false, error: error.message };
+    }
+  }
+
+  /**
+   * Phase 7.E: the periodic check (worker tick, throttled to every few minutes). Sends when the set of stuck forms changed (a missed announcement) or when the unchanged set
+   * has not been e-mailed for FORM_PIPELINE_STUCK_REMINDER_HOURS. Never throws.
+   */
+  let lastReminderCheck = 0;
+  async function sendStuckReminder({ force = false } = {}) {
+    try {
+      const at = clock();
+      if (!force && lastReminderCheck && at.getTime() - lastReminderCheck < REMINDER_CHECK_EVERY_MS) return { sent: false, reason: "throttled" };
+      lastReminderCheck = at.getTime();
+      const last = await Promise.resolve(stuckStore.getLast()).catch(() => null);
+      const due = !last?.at || at.getTime() - new Date(last.at).getTime() >= alertConfig.stuckReminderMs(env);
+      return await sendStuck({ reason: "reminder", reminderDue: due });
+    } catch (error) {
+      logger.warn("form_pipeline_alert_failed", { error: error.message });
+      return { sent: false, error: error.message };
+    }
+  }
+
+  return { announceStuck, sendStuckReminder, announce, announceOutcome, announceMigrationGap, announceEscalation, flushDigests, startDigestFlusher, workerUnavailable };
 }
 
-module.exports = { createAlerter, recipients, emailEnabled, DEFAULT_RECIPIENT, KIND_BY_STATE, AUDIT };
+module.exports = { createAlerter, recipients, developerRecipients, emailEnabled, DEFAULT_RECIPIENT, KIND_BY_STATE, AUDIT, STUCK_STATES };

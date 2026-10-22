@@ -32,6 +32,7 @@ const TEMPLATE_AUDIENCE = {
   "form-pipeline-success": "team_member",
   "form-pipeline-held": "team_member",
   "form-pipeline-digest": "team_member",
+  "form-pipeline-stuck": "team_member",
   "task-assigned": "team_member",
   "task-self-created": "team_member",
   "task-deadline-reminder": "team_member",
@@ -127,6 +128,7 @@ const TEMPLATES = {
   "form-pipeline-success": require("./templates/form-pipeline-success"),
   "form-pipeline-held": require("./templates/form-pipeline-held"),
   "form-pipeline-digest": require("./templates/form-pipeline-digest"),
+  "form-pipeline-stuck": require("./templates/form-pipeline-stuck"),
   "task-assigned": require("./templates/task-alerts").assigned,
   "task-self-created": require("./templates/task-alerts").selfCreated,
   "task-deadline-reminder": require("./templates/task-alerts").dueSoon,
@@ -162,6 +164,19 @@ async function dispatch({ templateKey, to, cc, bcc, subject, html, text, data, c
   if (env.emailSuppressAll && !SUPPRESS_ALL_EXEMPT.has(templateKey)) {
     const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "skipped", caseId, userId, triggeredBy, data, source, error: "Suppressed: all outbound email is switched off (EMAIL_SUPPRESS_ALL)" });
     return { sent: false, skipped: true, reason: "all_email_suppressed", log };
+  }
+  // Blocked recipients (env.emailBlockedRecipients, EMAIL_BLOCKED_RECIPIENTS): never emailed, whatever the template or the case; still logged as skipped.
+  const blocked = env.emailBlockedRecipients;
+  if (blocked && blocked.size) {
+    const isBlocked = (address) => blocked.has(String(address || "").trim().toLowerCase());
+    const toList = [].concat(to || []);
+    if (toList.length && toList.every(isBlocked)) {
+      const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "skipped", caseId, userId, triggeredBy, data, source, error: "Not sent: blocked recipient (EMAIL_BLOCKED_RECIPIENTS)" }).catch(() => null);
+      return { sent: false, skipped: true, reason: "blocked_recipient", log };
+    }
+    to = Array.isArray(to) ? toList.filter((address) => !isBlocked(address)) : to;
+    if (cc) cc = Array.isArray(cc) ? cc.filter((address) => !isBlocked(address)) : (isBlocked(cc) ? undefined : cc);
+    if (bcc) bcc = Array.isArray(bcc) ? bcc.filter((address) => !isBlocked(address)) : (isBlocked(bcc) ? undefined : bcc);
   }
   const log = await EmailLog.create({ templateKey, to, cc, bcc, subject, status: "queued", caseId, userId, triggeredBy, data, source });
 

@@ -202,6 +202,18 @@ class AutoFillService {
     return ["manual_override", "approved", "attorney_verified", "case_manager_verified"].includes(attribution?.verificationStatus || attribution?.validationStatus);
   }
 
+  // Phase 7.7: during an edition migration (options.preserveExisting, set only by the migration with FORM_PIPELINE_AUTONOMY on) autofill only FILLS BLANKS and refreshes values the
+  // system itself derived. An answer a person gave, a reviewer confirmed, or whose origin is unknown is never overwritten. Without the option nothing here runs.
+  static isProtectedDuringMigration(caseForm, fieldId, filledData, fieldValueProvenance) {
+    const existing = this.getFieldValue(filledData, fieldId);
+    if (existing === undefined || existing === null || existing === "") return false;
+    const review = this.getMeta(caseForm.fieldReviews || {}, fieldId);
+    if (["approved", "edited", "confirmed", "verified"].includes(review?.status)) return true;
+    const provenance = fieldValueProvenance[fieldId];
+    const systemDerived = provenance && ["canonical", "ocr", "questionnaire"].includes(provenance.source || "canonical") && !provenance.overriddenAt && !provenance.overriddenBy;
+    return !systemDerived;
+  }
+
   static mergeMappedFields(caseForm, template, mapped, canonicalData, options = {}) {
     const selected = options.fieldIds?.length ? new Set(options.fieldIds) : null;
     const fieldMap = this.templateFieldMap(template);
@@ -226,6 +238,10 @@ class AutoFillService {
         // case-manager override survives an OCR/questionnaire rerun rather
         // than being silently overwritten.
         skippedFields.push({ fieldId, reason: "manual_or_reviewed_field" });
+        return;
+      }
+      if (options.preserveExisting && this.isProtectedDuringMigration(caseForm, fieldId, filledData, fieldValueProvenance)) {
+        skippedFields.push({ fieldId, reason: "protected_during_migration" });
         return;
       }
       const previousValue = this.getFieldValue(filledData, fieldId);

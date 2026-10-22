@@ -12,7 +12,8 @@ const CERT_CHECK_POLICY = Object.freeze({
 });
 
 const OVERRIDE_REASON_MIN = 10;
-const classify = (name) => CERT_CHECK_POLICY[name] || "critical";
+// Phase 7.5: with FORM_PIPELINE_AUTONOMY=on the component check can no longer be overridden (it is no longer vacuous); off / shadow: the table above, unchanged.
+const classify = (name) => (name === "components_slice" && require("../../config/formPipelineAutonomy").mode() === "on" ? "critical" : (CERT_CHECK_POLICY[name] || "critical"));
 const CRITICAL_CERTIFICATION_CHECKS = Object.freeze(Object.keys(CERT_CHECK_POLICY).filter((name) => CERT_CHECK_POLICY[name] === "critical"));
 
 /** Pure. { ok, error?, override? } - may this edition be activated given its stored certification report and the request. */

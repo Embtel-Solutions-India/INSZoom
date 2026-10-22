@@ -10,6 +10,7 @@ const {
 } = require("pdf-lib");
 const crypto = require("crypto");
 const _ = require("lodash");
+const { stableKeyOf, stableGroupOf } = require("../../form-mapping/matching/stableKey");
 
 const ANNOTATION_FLAGS = {
   invisible: 1,
@@ -579,6 +580,8 @@ class PDFFieldScannerService {
           pdfFieldName: fieldName,
           normalizedName,
           normalizedPath: fieldId,
+          // Phase 7.3: an ADDITIVE identity for edition matching (container-free name + group). It never replaces or feeds fieldId and is not part of the field fingerprint.
+          stableKey: stableKeyOf(fieldName, stableGroupOf(detectGroupId(fieldName, fieldId, pageNumber))),
           type,
           fieldType: type,
           pdfFieldType,

@@ -54,6 +54,26 @@ describe('PDFFieldChangeAdapter', () => {
     expect(no).toMatchObject({ fieldName: 'form1[0].#subform[0].CheckBox_YN[1]', value: '' })
   })
 
+  it('keeps a ticked checkbox when the autosave re-sends the stored answer (no DOM element: the stored value is the answer)', () => {
+    const saved = (value, fieldType = 'checkbox') => convert({ fieldName: 'form1[0].#subform[0].CheckBox_YN[0]', fieldType, value }, 'case-form-1', {}, { fieldMetaByName }).value
+    expect(saved('Yes')).toBe('Yes')
+    expect(saved('Y')).toBe('Y')
+    expect(saved('1')).toBe('1')
+    expect(saved(true)).toBe('Yes')
+    expect(saved('Yes', 'radio')).toBe('Yes')
+  })
+
+  it('an un-ticked checkbox re-sent by the autosave stays empty', () => {
+    const saved = (value) => convert({ fieldName: 'form1[0].#subform[0].CheckBox_YN[0]', fieldType: 'checkbox', value }, 'case-form-1', {}, { fieldMetaByName }).value
+    for (const value of ['', false, null, undefined, 'false', 'Off', '0']) expect(saved(value)).toBe('')
+  })
+
+  it('a real DOM change event still decides by its own checked state', () => {
+    const dom = (checked, value) => convert({ target: { name: 'form1[0].#subform[0].CheckBox_YN[0]', type: 'checkbox', checked, value } }, 'case-form-1', {}, { fieldMetaByName }).value
+    expect(dom(true, 'on')).toBe('Yes')
+    expect(dom(false, 'Y')).toBe('')
+  })
+
   it('handles AcroForm choice fields as strings', () => {
     const event = {
       fieldType: 'Ch',

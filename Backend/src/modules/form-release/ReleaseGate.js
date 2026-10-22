@@ -10,6 +10,7 @@
 //
 // Pure decision core (`decide`) + an `evaluate` that gathers the inputs. Dependencies are injectable so the whole matrix is testable without a database.
 const { certificationDecision } = require("./certPolicy");
+const autonomy = require("../../config/formPipelineAutonomy");
 
 const ORDER = ["blocked", "held", "approval_required", "restricted_degraded", "promote"]; // most severe first
 
@@ -36,9 +37,42 @@ async function defaultEditionDiff(template) {
   return { blocked, summary: comparison?.summary || (comparison ? { breaking: Boolean(comparison.hasBreakingChanges) } : undefined) };
 }
 
+// Phase 7.4: the stored per-field inventory summary of the edition (written next to the coverage report on its active mapping VERSION, never on the template document).
+// A light read; null when none has been computed for this edition yet.
+async function defaultInventory(template) {
+  const MappingVersion = require("../../models/USCISMappingVersion");
+  const query = template.activeMappingVersionId ? { _id: template.activeMappingVersionId } : { template: template._id, status: "active" };
+  const version = await MappingVersion.findOne(query).sort({ mappingVersion: -1 }).select("validation.coverage.inventory graph.inventory").lean();
+  return version?.validation?.coverage?.inventory || version?.graph?.inventory || null;
+}
+
+/**
+ * Phase 7.4 inventory check, behind FORM_PIPELINE_AUTONOMY: off = no check at all (the decision and the checks list are exactly what they always were); shadow = the would-be
+ * decision is only logged; on = the check is added - in REPORT mode (FORM_INVENTORY_GATE, default) its outcome is "pass" with the would-be decision attached, so nothing is
+ * blocked; with FORM_INVENTORY_GATE=enforce an edition with boxes that need a source is HELD. An unreadable inventory fails closed only in enforce mode.
+ */
+async function inventoryCheck(template, deps, mode) {
+  const FieldInventory = require("../form-mapping/inventory/FieldInventory");
+  const gate = FieldInventory.gateMode();
+  try {
+    const summary = await (deps.inventory || defaultInventory)(template);
+    const check = FieldInventory.gateCheck(summary, { mode: gate });
+    if (mode === "shadow") {
+      require("../../utils/logger").warn("form_inventory_gate_shadow", { formCode: template?.formCode, wouldBe: check.wouldBe, gate, holdCount: check.holdCount ?? null });
+      return null;
+    }
+    return check;
+  } catch (error) {
+    if (mode === "shadow") return null;
+    return gate === "enforce"
+      ? { name: "inventory", outcome: "held", wouldBe: "held", report: false, detail: `the per-field inventory could not be read (${error.message})` } // fail closed
+      : { name: "inventory", outcome: "pass", wouldBe: "unknown", report: true, detail: `report only: the per-field inventory could not be read (${error.message})` };
+  }
+}
+
 /**
  * Evaluates an edition. Never throws: an error inside a check is that check failing closed.
- * deps (tests): { policy(template), editionDiff(template) }
+ * deps (tests): { policy(template), editionDiff(template), inventory(template) }
  * Returns { decision, canPromote, error, status, override, checks[] }; `error` / `status` carry the exact message and HTTP status activation should refuse with.
  */
 async function evaluate(template, { req, deps = {} } = {}) {
@@ -67,6 +101,12 @@ async function evaluate(template, { req, deps = {} } = {}) {
       : { name: "edition_diff", outcome: "pass", detail: template?.parentVersion ? "no unreviewed breaking change" : "first edition, nothing to compare" });
   } catch (error) {
     checks.push({ name: "edition_diff", outcome: "approval_required", detail: `the edition diff could not be read (${error.message})` }); // fail closed
+  }
+
+  const inventoryMode = autonomy.mode();
+  if (inventoryMode !== "off") {
+    const inventory = await inventoryCheck(template, deps, inventoryMode);
+    if (inventory) checks.push(inventory);
   }
 
   const decision = decide(checks);

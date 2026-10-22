@@ -36,7 +36,7 @@ test("a held job records why, what would release it and which code versions judg
   assert.equal(job.hold.reasonCode, "EDITION_POLICY_HELD");
   assert.ok(job.hold.releaseConditions.length >= 1);
   assert.ok(job.hold.firstHeldAt && job.hold.lastEvaluatedAt);
-  assert.deepEqual({ matcher: job.hold.evaluatedWith.matcher, gate: job.hold.evaluatedWith.gate, cert: job.hold.evaluatedWith.cert }, EVALUATOR_VERSIONS);
+  assert.deepEqual({ matcher: job.hold.evaluatedWith.matcher, gate: job.hold.evaluatedWith.gate, cert: job.hold.evaluatedWith.cert, resolver: job.hold.evaluatedWith.resolver }, EVALUATOR_VERSIONS);
 });
 
 test("a held job judged again for the same reason keeps its first-held time", async (t) => {

@@ -22,6 +22,26 @@ function flag(value, fallback = true) {
 }
 
 const emailFlags = (env = process.env) => ({ failure: flag(env.FORM_PIPELINE_EMAIL_FAILURE), held: flag(env.FORM_PIPELINE_EMAIL_HELD), success: flag(env.FORM_PIPELINE_EMAIL_SUCCESS) });
+/** Phase 7.E: the stuck-forms e-mail has its own switch (kept out of emailFlags so that object keeps its shape). */
+const stuckEmailEnabled = (env = process.env) => flag(env.FORM_PIPELINE_EMAIL_STUCK);
+
+// Phase 7.E (B8): the "forms stuck after all efforts" e-mail.
+//   DEVELOPER_EMAIL=<a>,<b>                  who receives it (comma-separated); falls back to FORM_PIPELINE_ALERT_EMAIL, then the alerter's default address
+//   FORM_PIPELINE_EMAIL_STUCK=true|false     off => the admins get an in-app notice instead                                                      default true
+//   FORM_PIPELINE_STUCK_REMINDER_HOURS=<n>   an unchanged set of stuck forms is e-mailed again after this long                                   default 24
+const splitList = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+/** The developer addresses for the stuck e-mail: DEVELOPER_EMAIL, else FORM_PIPELINE_ALERT_EMAIL, else `fallback` (the alerter's default). Never empty when a fallback is given. */
+function developerRecipients(env = process.env, fallback = "") {
+  const first = splitList(env.DEVELOPER_EMAIL);
+  if (first.length) return first;
+  const second = splitList(env.FORM_PIPELINE_ALERT_EMAIL);
+  if (second.length) return second;
+  return splitList(fallback);
+}
+const stuckReminderMs = (env = process.env) => {
+  const parsed = Number.parseFloat(env.FORM_PIPELINE_STUCK_REMINDER_HOURS);
+  return (Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 24 * 30) : 24) * 60 * 60 * 1000;
+};
 
 function emailMode(env = process.env) {
   const value = String(env.FORM_PIPELINE_EMAIL_MODE || "auto").trim().toLowerCase();
@@ -49,4 +69,4 @@ function successRoute({ trigger, env = process.env } = {}) {
 /** One digest window per trigger so a catalog sync and an autopilot run are summarized separately. */
 const digestKey = (trigger) => `success:${trigger || "unknown"}`;
 
-module.exports = { SCHEDULED_TRIGGERS, MODES, DEFAULTS, flag, emailFlags, emailMode, runCap, digestQuietMs, flusherEnabled, isScheduledTrigger, successRoute, digestKey };
+module.exports = { developerRecipients, stuckReminderMs, stuckEmailEnabled, SCHEDULED_TRIGGERS, MODES, DEFAULTS, flag, emailFlags, emailMode, runCap, digestQuietMs, flusherEnabled, isScheduledTrigger, successRoute, digestKey };

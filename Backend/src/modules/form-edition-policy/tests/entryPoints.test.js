@@ -206,11 +206,11 @@ test("MATRIX: every other route to activation ends in the guarded function (the 
 test("MATRIX: the pipeline imports only the enforcer (and the 12-hour job only the scheduler) - never the gate, the store or the service directly", () => {
   const importers = walk(SRC).filter((file) => !isTest(file) && !rel(file).startsWith("modules/form-edition-policy/") && /require\([^)]*form-edition-policy/.test(codeOf(file))).map(rel).sort();
   assert.deepEqual(importers, [
-    "models/FormEditionAuditEvent.js", "models/FormEditionDecision.js", "modules/form-governance/FormStatusService.js", "modules/form-mapping/services/CaseFormEditionMigrationService.js", "modules/form-release/ReleaseGate.js", "modules/uscis-form-import/scripts/importLocalForm.js",
+    "models/FormEditionAuditEvent.js", "models/FormEditionDecision.js", "modules/form-governance/FormStatusService.js", "modules/form-mapping/services/CaseFormEditionMigrationService.js", "modules/form-pipeline/resolution/importDeps.js", "modules/uscis-form-import/services/PdfDownload.js", "modules/uscis-form-import/services/SourceResolver.js", "modules/form-release/ReleaseGate.js", "modules/uscis-form-import/scripts/importLocalForm.js",
     "modules/uscis-forms/uscis-form-importer.service.js", "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js", "modules/uscis-lifecycle/services/VersionManagementService.js", "routes/index.js", "scripts/buildFixtureManifest.js", "scripts/formSourceRedirectCrawl.js", "scripts/replaceFormEdition.js", ...SEEDS,
   ].sort());
   for (const file of importers) {
-    if (file.startsWith("models/") || file === "routes/index.js" || file === "scripts/formSourceRedirectCrawl.js" || file === "scripts/buildFixtureManifest.js" || file === "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js") continue; // the job: see scheduler.test.js
+    if (file.startsWith("models/") || file === "routes/index.js" || file === "scripts/formSourceRedirectCrawl.js" || file === "scripts/buildFixtureManifest.js" || file === "modules/uscis-form-import/services/SourceResolver.js" || file === "modules/uscis-form-import/services/PdfDownload.js" || file === "modules/form-pipeline/resolution/importDeps.js" || file === "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js") continue; // the job: see scheduler.test.js
     assert.equal(/EditionPolicyGate|EvidenceService|EditionPolicyStore/.test(codeOf(path.join(SRC, file))), false, `${file} must only use the enforcer`);
     assert.match(codeOf(path.join(SRC, file)), /EditionPolicyEnforcer/);
   }

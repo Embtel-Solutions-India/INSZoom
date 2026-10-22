@@ -14,6 +14,11 @@ const crypto = require("crypto");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const FieldDiffService = require("../../uscis-lifecycle/services/FieldDiffService");
 const Recovery = require("./CaseFormMigrationRecovery");
+const { wrapCaseMatcher } = require("../matching/editionCarry");
+const { MATCHER_VERSION } = require("../matching");
+const ConflictPolicy = require("./migration/ConflictPolicy");
+const MetaRemap = require("./migration/MetaRemap");
+const logger = require("../../../utils/logger");
 
 const { FROZEN_CASE_FORM_STATUSES, isFrozen } = require("../config/caseFormFreeze");
 
@@ -38,7 +43,35 @@ function buildMatcher(oldTemplate, newTemplate) {
       if (target) fieldKeys(item.oldField || {}).forEach((key) => renamed.set(key, target));
     });
   }
-  return (path) => newByKey.get(path) || newByBase.get(stripSubform(path)) || renamed.get(path);
+  const current = (path) => newByKey.get(path) || newByBase.get(stripSubform(path)) || renamed.get(path);
+  // Phase 7.3 (gated by FORM_PIPELINE_AUTONOMY): off returns `current` unchanged; shadow logs where the semantic matcher differs; on lets it resolve ONLY what `current` did not
+  const wrapped = wrapCaseMatcher({ current, oldTemplate, newTemplate });
+  // exact-name pairs whose widget kind / options / help text changed: exposed for the planning step (not applied yet); empty and unset when the switch is off
+  if (wrapped.conflicts.length) wrapped.match.conflicts = wrapped.conflicts;
+  return wrapped.match;
+}
+
+const targetIdOf = (target) => target.fieldId || target.id || target.fieldName;
+/** Phase 7.7: the OLD edition's field for an answer key (its type / options are what a conversion rule compares against). */
+function oldFieldLookup(template) {
+  const map = new Map();
+  ((template && template.formFields) || []).forEach((field) => fieldKeys(field).forEach((key) => map.set(key, field)));
+  return (path) => map.get(path) || map.get(stripSubform(path)) || null;
+}
+const modeOf = (deps = {}) => Recovery.modeOf(deps);
+const isApplicableTarget = (target) => target.hidden !== true;
+
+/** Shadow mode: plan with the new rules too and log HOW it would differ from what is about to be done. Never changes anything, never throws. */
+function shadowCompare({ image, matcher, previous, plan, formCode, caseFormId }) {
+  try {
+    const next = Recovery.planCarry(image, matcher, { isApplicable: isApplicableTarget, v7: { oldField: oldFieldLookup(previous) } });
+    const sum = (p) => ({ carried: p.counts.carried, archived: p.counts.archived, unresolved: p.unresolved.length, converted: p.dispositions.filter((item) => item.converted).length });
+    const now = sum(plan);
+    const would = sum(next);
+    if (JSON.stringify(now) !== JSON.stringify(would)) logger.warn("case_migration_shadow_difference", { formCode, caseFormId: String(caseFormId), now, wouldBe: would, newUnresolved: next.unresolved.map((item) => item.code + ":" + (item.policy || "")).slice(0, 10) });
+  } catch (error) {
+    try { logger.warn("case_migration_shadow_failed", { formCode, error: error.message }); } catch { /* never throw */ }
+  }
 }
 
 const caseFormDeps = (deps = {}) => ({ CaseForm: deps.CaseForm || require("../../../models/CaseForm"), ...deps });
@@ -88,22 +121,47 @@ async function frozenReconciliationReport(newTemplate, { formCode = newTemplate.
  */
 async function migrateOneCaseForm({ caseFormId, previous, newTemplate, actor, req, deps = {}, jobId = crypto.randomUUID(), result = {} }) {
   const { CaseForm } = caseFormDeps(deps);
+  const mode = modeOf(deps);
   try {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const loaded = await Recovery.loadImage(CaseForm, caseFormId);
       if (!loaded) return { outcome: "failed", error: "case form not found" };
       if (isFrozen(loaded.doc)) return { outcome: "frozen" };
       if (idStr(loaded.doc.formTemplateId) === idStr(newTemplate._id)) return { outcome: "skipped", reason: "already on the new edition" };
-      const plan = Recovery.planCarry(loaded.image, buildMatcher(previous, newTemplate), { isApplicable: (target) => target.hidden !== true });
-      if (plan.unresolved.length) return { outcome: "unresolved", counts: plan.counts, unresolved: plan.unresolved.map((item) => ({ caseFormId: idStr(caseFormId), caseId: idStr(loaded.doc.caseId), ...item })) };
+      const parkedNow = loaded.doc.migrationState && loaded.doc.migrationState.step === "parked" ? loaded.doc.migrationState.parked : null;
+      // Phase 7.7 (on): a parked case form is not re-planned in a loop - only when the rules / matcher changed, the edition changed, or the case form was edited since
+      if (mode === "on" && parkedNow && ConflictPolicy.isParkCurrent(parkedNow, { toTemplateId: newTemplate._id, updatedAt: loaded.doc.updatedAt, matcherVersion: MATCHER_VERSION })) {
+        return { outcome: "unresolved", parked: true, cached: true, unresolved: (parkedNow.unresolved || []).map((item) => ({ caseFormId: idStr(caseFormId), caseId: idStr(loaded.doc.caseId), ...item })) };
+      }
+      const matcher = buildMatcher(previous, newTemplate);
+      const v7 = mode === "on" ? { oldField: oldFieldLookup(previous) } : null;
+      const plan = Recovery.planCarry(loaded.image, matcher, { isApplicable: isApplicableTarget, ...(v7 ? { v7 } : {}) });
+      if (mode === "shadow") shadowCompare({ image: loaded.image, matcher, previous, plan, formCode: loaded.doc.formCode, caseFormId });
+      if (plan.unresolved.length) {
+        if (mode === "on") {
+          // persistent, re-evaluable "parked" record: the case form itself is untouched (updatedAt unchanged) and stays on its old edition
+          await Recovery.setState(deps, caseFormId, { step: "parked", parked: ConflictPolicy.parkRecord({ unresolved: plan.unresolved, toTemplateId: newTemplate._id, updatedAt: loaded.doc.updatedAt, matcherVersion: MATCHER_VERSION }) });
+        }
+        return { outcome: "unresolved", ...(mode === "on" ? { parked: true } : {}), counts: plan.counts, unresolved: plan.unresolved.map((item) => ({ caseFormId: idStr(caseFormId), caseId: idStr(loaded.doc.caseId), ...item })) };
+      }
+      // Phase 7.7 (on): the non-answer records that name a field follow it, and generated PDFs are marked stale (nothing deleted); both are undoable from the snapshot
+      let remap = null;
+      let stale = null;
+      if (mode === "on") {
+        remap = MetaRemap.plan(loaded.doc, matcher, targetIdOf);
+        if (loaded.doc.filledPdfPath || loaded.doc.generatedPdfDocument || (loaded.doc.generatedPdfVersions || []).length) {
+          stale = { since: new Date(), reason: "edition_migration", fromVersion: previous && previous.version, toVersion: newTemplate.version, migrationJobId: jobId, hadFilledPdfPath: Boolean(loaded.doc.filledPdfPath), generatedPdfVersions: (loaded.doc.generatedPdfVersions || []).length };
+        }
+      }
 
       await deps.checkpoint?.("planned");
-      const snapshot = await Recovery.createSnapshot(deps, { caseForm: loaded.doc, image: loaded.image, jobId, fromTemplateId: previous?._id, toTemplateId: newTemplate._id, dispositions: plan.dispositions });
-      await Recovery.setState(deps, caseFormId, { jobId, snapshotId: snapshot._id, step: "snapshotted", error: null });
+      const extraPre = mode === "on" && ((remap && Object.keys(remap.pre).length) || stale) ? { ...remap.pre, ...(stale ? { stalePdf: true } : {}) } : null;
+      const snapshot = await Recovery.createSnapshot(deps, { caseForm: loaded.doc, image: loaded.image, jobId, fromTemplateId: previous?._id, toTemplateId: newTemplate._id, dispositions: plan.dispositions, proof: mode === "on" ? plan.proof : null, extraPre });
+      await Recovery.setState(deps, caseFormId, { jobId, snapshotId: snapshot._id, step: "snapshotted", error: null, ...(mode === "on" && parkedNow ? { parked: null } : {}) });
       await deps.checkpoint?.("snapshotted");
 
       const now = new Date();
-      const archive = { fromVersion: previous?.version, fromTemplateId: previous?._id, toVersion: newTemplate.version, migratedAt: now, migratedBy: actor?._id, migrationJobId: jobId, snapshotId: snapshot._id, unmatchedValues: plan.archive.unmatchedValues, ...(Object.keys(plan.archive.unmatchedMeta).length ? { unmatchedMeta: plan.archive.unmatchedMeta } : {}), ...(plan.archive.merged.length ? { mergedCollisions: plan.archive.merged } : {}), ...(plan.flags.provenanceUnknown.length ? { provenanceUnknown: plan.flags.provenanceUnknown } : {}) };
+      const archive = { fromVersion: previous?.version, fromTemplateId: previous?._id, toVersion: newTemplate.version, migratedAt: now, migratedBy: actor?._id, migrationJobId: jobId, snapshotId: snapshot._id, unmatchedValues: plan.archive.unmatchedValues, ...(Object.keys(plan.archive.unmatchedMeta).length ? { unmatchedMeta: plan.archive.unmatchedMeta } : {}), ...(plan.archive.merged.length ? { mergedCollisions: plan.archive.merged } : {}), ...(plan.flags.provenanceUnknown.length ? { provenanceUnknown: plan.flags.provenanceUnknown } : {}), ...(mode === "on" && plan.proof ? { proofChecksum: plan.proof.checksum, conversions: plan.proof.entries.filter((entry) => entry.converted).map((entry) => ({ bag: entry.bag, from: entry.oldKey, to: entry.newKey, rule: entry.rule })) } : {}), ...(mode === "on" && remap && remap.changed ? { remappedRecords: remap.changed } : {}) };
       const $set = {};
       for (const [key, value] of Object.entries(plan.writes)) $set[key] = key === "fieldValueProvenance" ? Object.fromEntries(Object.entries(value).map(([field, item]) => [Recovery.encodeKey(field), item])) : value;
       const lock = loaded.image.pointers.formVersionLock || {};
@@ -112,6 +170,7 @@ async function migrateOneCaseForm({ caseFormId, previous, newTemplate, actor, re
         mappingVersion: newTemplate.activeMappingVersion || 0, mappingVersionId: newTemplate.activeMappingVersionId,
         formVersionLock: { ...lock, formType: loaded.doc.formCode, editionDate: newTemplate.editionDate, version: newTemplate.version, mappingVersion: newTemplate.activeMappingVersion || 0, mappingVersionId: newTemplate.activeMappingVersionId, formTemplateId: newTemplate._id, migratedFrom: previous?._id, migratedAt: now, migratedBy: actor?._id },
       });
+      if (mode === "on") { Object.assign($set, remap ? remap.set : {}); if (stale) $set.generatedPdfStale = stale; }
       for (const key of Object.keys($set)) if ($set[key] === undefined) delete $set[key];
       const audit = { action: "EDITION_MIGRATED", changes: { from: previous?.version, to: newTemplate.version, carried: plan.counts.carried, archived: plan.counts.archived, snapshotId: idStr(snapshot._id), jobId }, performedBy: actor?._id, performedAt: now };
       const written = await Recovery.casUpdate(deps, caseFormId, loaded.doc.updatedAt, { $set, $push: { editionMigrations: archive, auditHistory: audit } });
@@ -126,6 +185,14 @@ async function migrateOneCaseForm({ caseFormId, previous, newTemplate, actor, re
       await Recovery.captureIntermediate(deps, caseFormId, snapshot._id);
       await deps.checkpoint?.("saved");
       const finished = await Recovery.continueAfterSave({ caseFormId, snapshotId: snapshot._id, newTemplate, actor, req, deps, from: "saved", result });
+      if (mode === "on" && finished.outcome === "restored") {
+        // a verification that failed (and was safely undone) must not be retried in a loop on every run: park it until the rules / matcher change or the case form is edited
+        try {
+          const after = await CaseForm.findById(caseFormId).select("updatedAt").lean();
+          const problem = (finished.problems || [])[0] || {};
+          await Recovery.setState(deps, caseFormId, { step: "parked", parked: ConflictPolicy.parkRecord({ unresolved: [{ code: "VERIFICATION_FAILED", reason: "the migrated case form did not verify against its pre-image and was restored: " + (problem.code || "unknown"), policy: problem.code || "verification_failed" }], toTemplateId: newTemplate._id, updatedAt: after && after.updatedAt, matcherVersion: MATCHER_VERSION }) });
+        } catch (parkError) { logger.warn("case_migration_park_after_restore_failed", { caseFormId: idStr(caseFormId), error: parkError.message }); }
+      }
       return { ...finished, counts: plan.counts, flags: plan.flags, snapshotId: snapshot._id };
     }
     return { outcome: "concurrent_edit" };
@@ -143,6 +210,7 @@ async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = n
   // Release 0b-2: never move cases onto an edition USCIS's acceptance of which is not on record (fail closed; throws before any case form is touched)
   await (deps.requireAcceptedEdition || require("../../form-edition-policy/EditionPolicyEnforcer").requireAcceptedEdition)(newTemplate, { entryPoint: "migrateCaseFormsToEdition", actor });
   const result = { considered: 0, migrated: 0, skippedFrozen: 0, valuesCarried: 0, valuesArchived: 0, valuesRestoredAfterAutofill: 0, failed: [], verified: 0, unresolved: [], reconciliationRequired: [], frozenReport: [], restored: 0, inProgress: 0, dryRun: false };
+  if (modeOf(deps) === "on") return migrateStreaming({ newTemplate, formCode, actor, req, deps, result });
   const { priorById, caseForms } = await selection({ newTemplate, formCode, deps });
   result.considered = caseForms.length;
   const jobId = crypto.randomUUID();
@@ -172,6 +240,82 @@ async function migrateCaseFormsToEdition({ newTemplate, actor, req, formCode = n
       default: result.failed.push({ caseFormId: id, stage: "migrate", error: outcome.error || "unknown error" });
     }
   }
+  return result;
+}
+
+/** What happened to one case form, folded into the run's result (Phase 7.7 path; the original loop above keeps its own inline copy). */
+function applyOutcome(result, outcome, id) {
+  switch (outcome.outcome) {
+    case "migrated":
+      result.migrated += 1;
+      if (outcome.verified) result.verified += 1;
+      result.valuesCarried += outcome.counts?.carried || 0;
+      result.valuesArchived += outcome.counts?.archived || 0;
+      break;
+    case "unresolved":
+      result.unresolved.push(...outcome.unresolved);
+      if (outcome.parked) (result.parked ||= []).push({ caseFormId: id, reasons: [...new Set(outcome.unresolved.map((item) => item.code))], cached: Boolean(outcome.cached) });
+      break;
+    case "restored": result.restored += 1; break;
+    case "reconciliation_required": result.reconciliationRequired.push({ caseFormId: id, changes: outcome.changes || [], problems: outcome.problems || [] }); break;
+    case "concurrent_edit": result.failed.push({ caseFormId: id, stage: "concurrent_edit", error: "a person edited this case form while it was being migrated; it was left on its old edition" }); break;
+    case "frozen": result.skippedFrozen += 1; break;
+    case "skipped": break;
+    default: result.failed.push({ caseFormId: id, stage: outcome.stage || "migrate", error: outcome.error || "unknown error" });
+  }
+}
+
+const withBudget = (promise, ms, id) => {
+  if (!(ms > 0)) return promise;
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ outcome: "failed", stage: "time_budget", error: "the case form did not finish within its time budget (" + ms + " ms); it is re-checked by the recovery sweep and the next run", requeue: true, caseFormId: id }), ms); timer.unref?.(); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+};
+
+/**
+ * Phase 7.7 (FORM_PIPELINE_AUTONOMY on): the same migration, paged by _id (no whole-collection load), with bounded concurrency (CASE_MIGRATION_CONCURRENCY, default 1 = sequential),
+ * a time budget per case form, a lease check before each batch (deps.leaseAlive), and forms already on a NEWER edition left alone. A stopped / timed-out run reports
+ * result.requeue = true so the caller runs the remaining case forms again; nothing is lost either way (every case form is migrated or left untouched).
+ */
+async function migrateStreaming({ newTemplate, formCode, actor, req, deps, result }) {
+  const { CaseForm } = caseFormDeps(deps);
+  const priorEditions = await USCISFormTemplate.find({ formCode, _id: { $ne: newTemplate._id } }).lean();
+  const priorById = new Map(priorEditions.map((template) => [String(template._id), template]));
+  const query = { $or: [{ formCode }, { parentFormCode: formCode }], formTemplateId: { $in: [...priorById.keys()] } };
+  const pageSize = Math.max(1, Number(process.env.CASE_MIGRATION_PAGE_SIZE || 50));
+  const concurrency = Math.max(1, Number(process.env.CASE_MIGRATION_CONCURRENCY || 1));
+  const budgetMs = Number(process.env.CASE_MIGRATION_CASE_FORM_BUDGET_MS || 120000);
+  const jobId = crypto.randomUUID();
+  result.parked = [];
+  result.skippedNewer = 0;
+  const frozen = [];
+  let lastId = null;
+  let stop = false;
+  const processOne = async (caseForm) => {
+    const id = idStr(caseForm._id);
+    const previous = priorById.get(idStr(caseForm.formTemplateId));
+    if (previous && previous.editionDate && newTemplate.editionDate && new Date(previous.editionDate) > new Date(newTemplate.editionDate)) { result.skippedNewer += 1; return; }
+    const outcome = await withBudget(migrateOneCaseForm({ caseFormId: caseForm._id, previous, newTemplate, actor, req, deps, jobId, result }), budgetMs, id);
+    if (outcome.requeue) result.requeue = true;
+    applyOutcome(result, outcome, id);
+  };
+  while (!stop) {
+    const page = await CaseForm.find(lastId ? { $and: [query, { _id: { $gt: lastId } }] } : query).sort({ _id: 1 }).limit(pageSize).lean();
+    if (!page.length) break;
+    lastId = page[page.length - 1]._id;
+    result.considered += page.length;
+    const todo = [];
+    for (const caseForm of page) {
+      if (isFrozen(caseForm)) { frozen.push(caseForm); result.skippedFrozen += 1; continue; }
+      if (Recovery.IN_PROGRESS_STEPS.includes(caseForm.migrationState?.step)) { result.inProgress += 1; continue; }
+      todo.push(caseForm);
+    }
+    for (let i = 0; i < todo.length; i += concurrency) {
+      if (deps.leaseAlive && !(await Promise.resolve(deps.leaseAlive()).catch(() => false))) { result.stopped = "lease_lost"; result.requeue = true; stop = true; break; }
+      await Promise.all(todo.slice(i, i + concurrency).map(processOne));
+    }
+  }
+  result.frozenReport = await describeFrozen(frozen, priorById, newTemplate, deps).catch(() => []);
   return result;
 }
 
@@ -232,7 +376,7 @@ async function planMigration({ newTemplate, formCode = newTemplate.formCode, dep
 }
 
 module.exports = {
-  migrateCaseFormsToEdition, migrateOneCaseForm, planMigration, frozenReconciliationReport, buildMatcher, FROZEN_STATUSES, leaves,
+  migrateCaseFormsToEdition, migrateOneCaseForm, planMigration, frozenReconciliationReport, buildMatcher, oldFieldLookup, FROZEN_STATUSES, leaves,
   // re-exported so the pipeline / a future admin tool needs one require
   reconcileIncompleteMigrations: (options) => Recovery.reconcileIncompleteMigrations(options),
   restoreCaseFormFromPreImage: (snapshotId, options) => Recovery.restoreCaseFormFromPreImage(snapshotId, options),

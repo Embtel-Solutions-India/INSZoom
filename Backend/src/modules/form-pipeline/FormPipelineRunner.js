@@ -38,15 +38,20 @@ function defaultPromotionLock() {
   };
 }
 
-function createRunner({ jobService, alerter = null, executor, repairs = [], inspectResult = null, promotionLock = null, heartbeatMs = LIMITS.heartbeatMs, leaseMs = LIMITS.leaseMs, logger = require("../../utils/logger") } = {}) {
+function createRunner({ jobService, alerter = null, executor, repairs = [], inspectResult = null, promotionLock = null, resolver = null, autonomyMode = null, resolverDeps = {}, heartbeatMs = LIMITS.heartbeatMs, leaseMs = LIMITS.leaseMs, logger = require("../../utils/logger") } = {}) {
   if (!jobService || typeof executor !== "function") throw new Error("createRunner needs a jobService and an executor");
   const lock = promotionLock || defaultPromotionLock();
+  // Phase 7.E: the error-resolution engine, behind FORM_PIPELINE_AUTONOMY (off = today's behavior exactly; shadow = diagnose and log only; on = full engine)
+  const modeOf = () => { try { return (autonomyMode || require("../../config/formPipelineAutonomy").mode)(); } catch { return "off"; } };
+  let resolverInstance = resolver;
+  const getResolver = () => { if (!resolverInstance) resolverInstance = require("./resolution").createDefaultResolver({ log: logger }); return resolverInstance; };
 
   /** `actor` / `req` (optional): when the caller runs the job right away it passes its own user and request through to the executor. */
   async function run({ job, lease, actor, req }) {
     const jobId = job._id;
     let lost = false;
     let currentStage = null;
+    let lastDiagnosis = null; // Phase 7.E: what the engine last diagnosed (only set when the switch is on)
     const beat = setInterval(() => {
       jobService.heartbeat(jobId, lease, leaseMs).catch((error) => { if (error instanceof LeaseLostError) lost = true; else logger.warn("form_pipeline_heartbeat_failed", { jobId: String(jobId), error: error.message }); });
     }, heartbeatMs);
@@ -90,6 +95,44 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       return executor(job, context);
     }
 
+    // Phase 7.E: diagnose, try every verified alternative, and record each attempt. Returns { kind: "off" | "pass" | "retry" | "exhausted", ... }; never throws (LeaseLost excepted).
+    async function resolveFailure(error) {
+      const mode = modeOf();
+      if (mode === "off") return { kind: "off" };
+      try {
+        const fresh = await jobService.get(jobId);
+        const baseCtx = { job: fresh, stage: currentStage, deps: { ...resolverDeps, legacyRepairs: repairs, recordRepair: (entry) => jobService.recordRepair(jobId, lease, entry) }, legacyContext: { ...context, job: fresh } };
+        const engine = getResolver();
+        if (mode === "shadow") {
+          const planned = await engine.plan({ error, stage: currentStage, job: fresh, ctx: baseCtx });
+          logger.warn("form_pipeline_resolution_shadow", { jobId: String(jobId), formCode: job.formCode, stage: currentStage, cause: planned.diagnosis.cause, signature: planned.diagnosis.signature, wouldTry: planned.planned });
+          return { kind: "off" };
+        }
+        const resolved = await engine.resolve({ error, stage: currentStage, job: fresh, ctx: baseCtx });
+        lastDiagnosis = resolved.diagnosis;
+        const attempts = resolved.attempts.map((attempt) => ({ ...attempt, stage: currentStage, signature: resolved.diagnosis.signature }));
+        if (attempts.length) await jobService.recordResolutions(jobId, lease, attempts).catch((failure) => { if (failure instanceof LeaseLostError) throw failure; });
+        if (resolved.outcome === "resolved") return resolved.retry ? { kind: "retry", resolved } : { kind: "pass", resolved };
+        if (resolved.outcome === "not_applicable") return { kind: "pass", resolved };
+        // exhausted: a passing blip (network, a busy promotion, an unknown error) gets the job's own backoff retries first; only a job out of attempts, or a deterministic cause, becomes a documented hold
+        const outOfAttempts = Number(job.attempts || 1) >= Number(job.maxAttempts || LIMITS.maxAttempts);
+        if (resolved.diagnosis.retryFirst && !outOfAttempts) return { kind: "pass", resolved };
+        return { kind: "exhausted", resolved, attempts };
+      } catch (failure) {
+        if (failure instanceof LeaseLostError) throw failure;
+        logger.warn("form_pipeline_resolution_failed", { jobId: String(jobId), error: sanitizeMessage(failure) });
+        return { kind: "pass" };
+      }
+    }
+
+    // the engine tried everything: the job becomes a documented hold, the original error still reaches the caller (inline mode behaves as before), and the developer is told
+    async function exhaustJob(error, resolved, attempts) {
+      const transition = await jobService.exhaust(jobId, lease, { signature: resolved.diagnosis.signature, diagnosis: resolved.diagnosis, attempts, stage: currentStage, message: sanitizeMessage(error) });
+      logger.warn("form_pipeline_job_exhausted", { jobId: String(jobId), formCode: job.formCode, stage: currentStage, cause: resolved.diagnosis.cause, signature: resolved.diagnosis.signature, tried: attempts.map((attempt) => attempt.strategy) });
+      if (alerter && typeof alerter.announceStuck === "function") await Promise.resolve(alerter.announceStuck({ job: await jobService.get(jobId) })).catch((failure) => logger.warn("form_pipeline_alert_failed", { jobId: String(jobId), error: sanitizeMessage(failure) }));
+      return { state: transition.state, transition, error };
+    }
+
     // a known repair: repair, VERIFY the repair, and only then retry the work once (per-strategy attempt limit across the whole job)
     async function repairAndRetry(error) {
       const fresh = await jobService.get(jobId);
@@ -120,9 +163,22 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
         result = await attempt();
       } catch (error) {
         if (error instanceof LeaseLostError) throw error;
-        const repaired = classifyError(error).class === ERROR_CLASSES.REPAIRABLE || repairs.some((strategy) => strategy.matches(error)) ? await repairAndRetry(error) : { retried: false };
-        if (!repaired.retried) throw error;
-        result = repaired.result;
+        const engine = await resolveFailure(error);
+        if (engine.kind === "exhausted") return await exhaustJob(error, engine.resolved, engine.attempts);
+        if (engine.kind === "retry") {
+          try {
+            result = await attempt(); // the engine fixed the cause and verified the fix: run the work once more
+          } catch (second) {
+            if (second instanceof LeaseLostError) throw second;
+            const again = await resolveFailure(second);
+            if (again.kind === "exhausted") return await exhaustJob(second, again.resolved, again.attempts);
+            throw second;
+          }
+        } else {
+          const repaired = engine.kind === "pass" && modeOf() === "on" ? { retried: false } : classifyError(error).class === ERROR_CLASSES.REPAIRABLE || repairs.some((strategy) => strategy.matches(error)) ? await repairAndRetry(error) : { retried: false };
+          if (!repaired.retried) throw error;
+          result = repaired.result;
+        }
       }
       // Phase 4: a run can finish "successfully" with the edition left in review because its certification FAILED (that is recorded, not thrown). The inspector reads what the
       // run left behind and, when a strategy recognizes the failure, it is repaired and VERIFIED like any other; otherwise nothing changes. Never throws into the run.
@@ -156,7 +212,7 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       return { state: "done", outcome, result, ...(alerted ? { alerted } : {}) };
     } catch (error) {
       if (error instanceof LeaseLostError) return { state: "lease_lost" };
-      const transition = await jobService.fail(jobId, lease, { stage: currentStage, error }).catch((failure) => (failure instanceof LeaseLostError ? { leaseLost: true } : Promise.reject(failure)));
+      const transition = await jobService.fail(jobId, lease, { stage: currentStage, error, ...(modeOf() === "on" && lastDiagnosis ? { diagnosis: lastDiagnosis } : {}) }).catch((failure) => (failure instanceof LeaseLostError ? { leaseLost: true } : Promise.reject(failure)));
       if (transition.leaseLost) return { state: "lease_lost" };
       logger.warn("form_pipeline_job_failed", { jobId: String(jobId), formCode: job.formCode, stage: currentStage, state: transition.state, class: transition.classification.class, code: transition.classification.code, message: transition.message });
       if (alerter) await alerter.announce({ job: await jobService.get(jobId), transition, stage: currentStage });

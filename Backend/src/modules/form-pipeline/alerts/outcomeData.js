@@ -35,6 +35,59 @@ function describeRelease(template) {
   return { mode: "degraded", failed, authorizedBy: override.by ? String(override.by) : "", authorizedAt: isoDay(override.at), reason: override.reason ? sanitizeMessage(override.reason) : "" };
 }
 
+// ---- Phase 7.E (B8): the "forms stuck" e-mail ------------------------------------------------------------------------------------------------------------------
+// Pipeline stage names -> what a person calls them. The fetch / normalize / import steps all run inside the pipeline's "import" stage.
+const STAGE_TEXT = { detect: "detect (asking USCIS)", import: "fetch / normalize / import", map: "map", ai_map: "map", certify: "certify", promote: "promote", migrate_cases: "migrate cases", finalize: "finalize" };
+const stageText = (stage) => STAGE_TEXT[stage] || (stage ? String(stage) : "unknown");
+
+/** "3 d 4 h" / "5 h 10 min" / "12 min" between two dates (never negative). */
+function durationText(from, to = new Date()) {
+  const start = from ? new Date(from).getTime() : NaN;
+  if (!Number.isFinite(start)) return "";
+  const minutes = Math.max(0, Math.round((new Date(to).getTime() - start) / 60000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  if (days) return `${days} d ${hours} h`;
+  if (hours) return `${hours} h ${minutes % 60} min`;
+  return `${minutes} min`;
+}
+
+const oneLine = (value, max = 160) => {
+  let text;
+  if (value && typeof value === "object" && !(value instanceof Error)) { try { text = JSON.stringify(value); } catch { text = String(value); } } else text = value;
+  const clean = sanitizeMessage(text);
+  return clean.length > max ? `${clean.slice(0, max - 3)}...` : clean;
+};
+
+/** One stuck job as the e-mail states it. `describe` is { activeEdition } from the alerter's describeForm; everything is sanitized (no secrets, client data or stack traces). */
+function buildStuckItem({ job, describe = {}, now = new Date() }) {
+  const hold = job?.hold || {};
+  const stage = hold.stage || job?.lastError?.stage || job?.currentStage;
+  const toEdition = String(job?.editionKey || "").split("|")[1] || "";
+  const strategies = (Array.isArray(job?.resolutions) ? job.resolutions : []).map((entry) => ({
+    strategy: oneLine(entry?.strategy, 80) || "unknown strategy",
+    result: entry?.ok && entry?.verified ? "worked" : entry?.ok ? "unverified" : "failed",
+    evidence: entry?.evidence ? oneLine(entry.evidence) : "",
+  }));
+  return {
+    jobId: job?._id ? String(job._id) : "", formCode: job?.formCode || "", fromEdition: describe.activeEdition || "", toEdition, stage: stageText(stage),
+    reason: oneLine(hold.detail || job?.lastError?.message || "no reason was recorded", 300), reasonCode: hold.reasonCode ? oneLine(hold.reasonCode, 80) : "",
+    signature: job?.exhausted?.signature ? oneLine(job.exhausted.signature, 80) : "", strategies,
+    releaseConditions: (Array.isArray(hold.releaseConditions) ? hold.releaseConditions : []).map((item) => oneLine(item, 200)).filter(Boolean),
+    stuckFor: durationText(hold.firstHeldAt || job?.exhausted?.at, now), previousServing: Boolean(describe.activeEdition), activeEdition: describe.activeEdition || "",
+  };
+}
+
+/** The data of the stuck e-mail. `jobs` are the currently stuck jobs, `resolved` the forms that were in the last e-mail's set and are not stuck any more. */
+async function buildStuckData({ jobs = [], resolved = [], describeForm = async () => ({}), now = new Date(), adminLink = "", reminder = false } = {}) {
+  const forms = [];
+  for (const job of jobs) {
+    const describe = await Promise.resolve(describeForm(job.formCode)).catch(() => ({}));
+    forms.push(buildStuckItem({ job, describe: describe || {}, now }));
+  }
+  return { count: forms.length, forms, resolved: resolved.map((item) => ({ formCode: oneLine(item.formCode, 40) })), reminder: Boolean(reminder), adminLink };
+}
+
 const count = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
 /** Facts for the "edition promoted" e-mail / digest line. `result` is the pipeline result, `lookups` can be replaced (tests). */
@@ -65,4 +118,4 @@ function buildHeldData({ job, result, transition, reasonKind, describe = {} } = 
   };
 }
 
-module.exports = { buildSuccessData, buildHeldData, describeRelease, editionOf, isoDay, safely, withTimeout, LOOKUP_MS };
+module.exports = { buildStuckData, buildStuckItem, durationText, stageText, buildSuccessData, buildHeldData, describeRelease, editionOf, isoDay, safely, withTimeout, LOOKUP_MS };

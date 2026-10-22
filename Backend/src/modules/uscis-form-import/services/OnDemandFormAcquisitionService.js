@@ -28,6 +28,7 @@ const CaseForm = require("../../../models/CaseForm");
 const VisaFormMapping = require("../../../models/VisaFormMapping");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const logger = require("../../../utils/logger");
+const { pageUrlFor: aliasPageUrl } = require("../config/formSourceAliases");
 
 const versionService = new FormVersionService();
 
@@ -90,8 +91,9 @@ const STANDALONE_FORM_CODE_PATTERN = /^[A-Z]{1,3}-\d{2,4}[A-Z]{0,2}$/;
 // check for null rather than fetching a guaranteed-broken/misleading URL.
 function guessedFormPageUrl(formNumber) {
   const formCode = compactSupplementCode(normalizeFormCode(formNumber));
-  if (!STANDALONE_FORM_CODE_PATTERN.test(formCode)) return null;
-  return `https://www.uscis.gov/${formCode.toLowerCase()}`;
+  if (!require("../config/formCodePattern").isStandaloneFormCode(formCode, "importer")) return null; // Phase 7.2: the one shared pattern; with the switch off it IS the old pattern
+  // Phase 7.E: USCIS publishes some forms under another address (I-485J -> /i-485supj); the alias data knows them, everything else keeps the code-derived address
+  return aliasPageUrl(formCode) || `https://www.uscis.gov/${formCode.toLowerCase()}`;
 }
 
 // Resolves {pdfUrl, editionDate, officialPageUrl} for a form number with no
@@ -192,6 +194,17 @@ async function resolveOfficialPdf(formNumber) {
         // Parent page fetch/parse failed too - fall through to the typed error.
       }
     }
+  }
+  // Phase 7.E: last resort before failing - the verified source resolver (it only runs where the paths above found nothing, so a form that resolved before resolves the same way)
+  try {
+    const { resolveSource } = require("./SourceResolver");
+    const found = await resolveSource({ formCode });
+    if (found.ok && found.pdfUrl) {
+      logger.info("uscis_source_resolved_by_fallback", { formCode, via: found.via, pdfUrl: found.pdfUrl });
+      return { pdfUrl: found.pdfUrl, editionDate: null, officialPageUrl: found.pageUrl || guessedFormPageUrl(formCode), formName: formCode };
+    }
+  } catch (error) {
+    logger.warn("uscis_source_resolver_failed", { formCode, error: error.message });
   }
   throw enterpriseError(
     `Could not locate a current PDF for ${formCode} on uscis.gov — import it manually via the form registry's Upload PDF flow.`,
@@ -414,6 +427,35 @@ async function recordEdition(pipeline, formCode, template, previous) {
   }
 }
 
+// Phase 7.E. The check of an existing form failed with an address problem (HTTP 404/403 on the page, or no PDF located). Resolve the form's REAL address (stored address,
+// alias slugs such as I-485J -> /i-485supj, the parent form's page for I-539A, the stable PDF address, the directory), verify it, remember it (only when
+// FORM_PIPELINE_AUTONOMY=on), and - when the form has a page of its own - check the edition there. Returns { scanResult } (checked at the real page),
+// { sourceResolved } (the PDF is reachable but only through a parent page / stable address, so there is no edition page to compare: nothing is changed and no
+// error is reported) or null (unchanged failure). A failure that is NOT an address problem (503, timeout, a qpdf problem) is never touched. Never throws.
+const ADDRESS_FAILURE = /page fetch failed: (404|403|410)|USCIS_PDF_UNRESOLVED|could not locate a current pdf/i;
+async function recoverFormSource({ formCode, existing, failure, pageUrl, user, req }) {
+  try {
+    if (!ADDRESS_FAILURE.test(String(failure || ""))) return null;
+    const { resolveSource, rememberSource } = require("./SourceResolver");
+    const resolved = await resolveSource({ formCode, template: existing });
+    if (!resolved.ok) {
+      logger.info("uscis_source_resolver_exhausted", { formCode, tried: resolved.tried.length });
+      return null;
+    }
+    const remembered = await rememberSource({ template: existing, resolved });
+    logger.info("uscis_source_resolved", { formCode, via: resolved.via, pageUrl: resolved.pageUrl, pdfUrl: resolved.pdfUrl, remembered });
+    const ownPage = resolved.pageUrl && (resolved.via === "alias" || resolved.via === "stored") && resolved.pageUrl !== pageUrl;
+    if (ownPage) {
+      const scanResult = await USCISScannerService.scanForm({ formType: formCode, pageUrl: resolved.pageUrl }, user, req);
+      if (scanResult.action !== "scan_failed") return { scanResult };
+    }
+    return { sourceResolved: { via: resolved.via, pageUrl: resolved.pageUrl, pdfUrl: resolved.pdfUrl, remembered } };
+  } catch (error) {
+    logger.warn("uscis_source_recovery_failed", { formCode, error: error.message });
+    return null;
+  }
+}
+
 // The "form has never been acquired at all" path — resolve → download →
 // import (via the existing, unmodified USCISFormImporterService) →
 // activateOrPromote. Extracted from the original acquireAndActivate (no
@@ -507,13 +549,29 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
     // USCIS unreachable — the existing, previously-validated template is
     // still safe to keep serving. Never let a network failure here break a
     // case that already has a working form.
-    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: error.message });
-    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: error.message };
+    scanResult = { action: "scan_failed", error: error.message };
   }
 
   if (scanResult.action === "scan_failed") {
-    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: scanResult.error });
-    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: scanResult.error };
+    // Phase 7.E: a 404 / unlocatable page is an address problem, not "USCIS unreachable": find the real address (verified), remember it, and check again there
+    const recovered = await recoverFormSource({ formCode, existing, failure: scanResult.error, pageUrl, user, req });
+    if (recovered?.scanResult) {
+      scanResult = recovered.scanResult;
+    } else if (recovered?.sourceResolved) {
+      logger.info("uscis_form_check_completed", { formCode, outcome: "source_resolved_no_edition_page", via: recovered.sourceResolved.via });
+      return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, sourceResolved: recovered.sourceResolved };
+    }
+  }
+
+  if (scanResult.action === "scan_failed") {
+    // Phase 7.E: only a failure to REACH the USCIS page is "USCIS unavailable". A failure of OUR OWN import work (qpdf, normalize, scan, save) is reported with its real stage and
+    // cause. Inside a pipeline job it is thrown so the error-resolution engine can diagnose and fix it (the live edition keeps serving: nothing was changed); everywhere else, and
+    // whenever FORM_PIPELINE_AUTONOMY is off, the caller gets exactly the result it always got (the existing edition and a checkError), with the real stage added.
+    if (scanResult.stage && scanResult.stage !== "page_fetch" && pipeline && require("../../../config/formPipelineAutonomy").mode() !== "off") {
+      throw Object.assign(new Error(scanResult.error), { code: scanResult.code || undefined, cause: scanResult.cause || undefined, stage: scanResult.stage });
+    }
+    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: scanResult.error, stage: scanResult.stage });
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: scanResult.error, ...(scanResult.stage ? { checkStage: scanResult.stage, checkCause: scanResult.cause } : {}) };
   }
 
   if (scanResult.action === "no_change_detected") {
@@ -703,4 +761,5 @@ module.exports = {
   acquireAndActivate,
   acquireForCase,
   guessedFormPageUrl,
+  recoverFormSource,
 };

@@ -172,8 +172,8 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
    * A stage (or the run) failed. Classifies the error and moves the job: held -> wait for a decision; blocked -> slow retry; transient / unknown -> backoff + jitter
    * until the attempts run out, then dead_letter. Returns { state, classification, signature, nextAttemptAt }. A lost lease changes nothing.
    */
-  async function fail(jobId, lease, { stage, error, attempts } = {}) {
-    const classification = classifyError(error);
+  async function fail(jobId, lease, { stage, error, attempts, diagnosis = null } = {}) {
+    const classification = classifyError(error, diagnosis);
     if (classification.class === ERROR_CLASSES.LEASE_LOST) return { state: null, classification, signature: errorSignature({ stage, classification }), leaseLost: true };
     const at = now();
     const message = sanitizeMessage(error);
@@ -207,6 +207,39 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       $push: { history: pushHistory(historyEntry(at, state, stage, `${classification.class}: ${message}`)) },
     });
     return { state, classification, signature: errorSignature({ stage, classification }), nextAttemptAt, message };
+  }
+
+  /** Phase 7.E: the strategies tried for a failure (verified or not), newest last, at most 50 kept. Never overwrites; a lost lease changes nothing. */
+  async function recordResolutions(jobId, lease, attempts = []) {
+    const entries = (attempts || []).slice(0, 25).map((attempt) => ({ strategy: String(attempt.strategy || "").slice(0, 80), ok: Boolean(attempt.ok), verified: Boolean(attempt.verified), evidence: sanitizeMessage(attempt.evidence || ""), stage: attempt.stage || undefined, signature: attempt.signature || undefined, at: now() }));
+    if (!entries.length) return;
+    await fenced(jobId, lease, { $push: { resolutions: { $each: entries, $slice: -50 } } });
+  }
+
+  /**
+   * Phase 7.E: the resolution engine tried every alternative and none verified. The job becomes a DOCUMENTED HOLD (never a dead-letter): the hold record carries the
+   * reason code from the diagnosis, what would release it and the evaluator versions (including the resolver version, so shipping a new strategy re-runs it), and
+   * `exhausted` records the error signature. Re-checked on the held schedule. Returns { state, classification, signature, nextAttemptAt, message }.
+   */
+  async function exhaust(jobId, lease, { signature, diagnosis, attempts = [], stage = null, message = "" } = {}) {
+    const at = now();
+    const reasonCode = diagnosis?.reasonCode || "UNRESOLVED_ERROR";
+    const classification = { class: ERROR_CLASSES.HELD, code: reasonCode, retryable: false, exhausted: true };
+    const text = sanitizeMessage(message || diagnosis?.evidence?.join("; ") || reasonCode);
+    const tried = (attempts || []).map((attempt) => attempt.strategy).filter(Boolean);
+    const detail = tried.length ? `${text} (tried: ${tried.join(", ")})` : text;
+    const counters = await model.findById(jobId).select("hold").lean();
+    const hold = holdContract.buildHold({ classification, stage, message: detail, previous: counters?.hold || null, at, versions: evaluatorVersions });
+    const nextAttemptAt = new Date(at.getTime() + LIMITS.heldRecheckMs);
+    await fenced(jobId, lease, {
+      $set: {
+        state: JOB_STATES.HELD, open: true, nextAttemptAt, attempts: 0, "lease.lockedUntil": null, hold, exhausted: { at, signature: signature || diagnosis?.signature, cause: diagnosis?.cause },
+        lastError: { class: classification.class, code: reasonCode, stage, message: text, at },
+        ...(stage ? { [`stages.${stage}.status`]: "failed", [`stages.${stage}.finishedAt`]: at, [`stages.${stage}.error`]: { class: classification.class, code: reasonCode, message: text } } : {}),
+      },
+      $push: { history: pushHistory(historyEntry(at, JOB_STATES.HELD, stage, `exhausted: ${reasonCode}${tried.length ? ` after ${tried.length} strateg${tried.length === 1 ? "y" : "ies"}` : ""}`)) },
+    });
+    return { state: JOB_STATES.HELD, classification, signature: signature || diagnosis?.signature || errorSignature({ stage, classification }), nextAttemptAt, message: text, exhausted: true };
   }
 
   /**
@@ -294,7 +327,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     return model.find({ state: JOB_STATES.PENDING, createdAt: { $lt: cutoff }, $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now() } }] }).select("_id formCode createdAt").lean();
   }
 
-  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, release, manualRetry, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
+  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, recordResolutions, exhaust, release, manualRetry, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
 }
 
 let defaultService = null;

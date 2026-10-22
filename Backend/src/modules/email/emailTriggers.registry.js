@@ -74,6 +74,7 @@ const TRIGGERS = [
   t("form-pipeline-success", "Form Edition Promoted (Developer)", "System", "team_member", "A new form edition was promoted to live by an on-demand run, with the old and new edition, visa types, release and coverage.", { groups: ["System"], locked: true }),
   t("form-pipeline-held", "Form Edition Held / Approval Needed (Developer)", "System", "team_member", "A form edition was imported but not promoted (USCIS acceptance not on record, or an approval is needed), with the action needed.", { groups: ["System"], locked: true }),
   t("form-pipeline-digest", "Form Pipeline Summary (Developer)", "System", "team_member", "One summary of the editions a scheduled or catalog-wide run promoted.", { groups: ["System"], locked: true }),
+  t("form-pipeline-stuck", "Forms Stuck After All Efforts (Developer)", "System", "team_member", "Forms that are still not imported or not production ready after every automatic attempt, with the reasons and every strategy tried. Sent to DEVELOPER_EMAIL, with a daily reminder while they stay stuck.", { groups: ["System"], locked: true }),
 ];
 
 // ── audience on the 35 built-in emails (for library filtering) ──────────

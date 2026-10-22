@@ -8,7 +8,8 @@ const { JOB_STATES } = require("./pipeline.constants");
 
 // Bumped when the judging code changes in a way that can turn an old hold into a pass (matcher / gate / certification). A hold stamped with older versions is
 // re-evaluated once. Starting values; later releases (7.3 matcher, 7.4 gate, 7.6 certification) raise them.
-const EVALUATOR_VERSIONS = Object.freeze({ matcher: 0, gate: 1, cert: 1 });
+// `resolver` (7.E): raised whenever a new error-resolution strategy ships, so a job held because no strategy solved it runs again with the new one.
+const EVALUATOR_VERSIONS = Object.freeze({ matcher: 0, gate: 1, cert: 1, resolver: 1 });
 
 const DEFAULT_ESCALATION_DAYS = 7;
 const escalationMs = (env = process.env) => {
@@ -21,6 +22,16 @@ const CONDITIONS = {
   EDITION_POLICY_HELD: ["USCIS acceptance of this edition is recorded (the automatic check reads the official page every 12 hours)"],
   UNREVIEWED_EDITION_CHANGES: ["the edition difference is acknowledged (automatically when it is provably safe) or the changed boxes are re-mapped"],
   PROMOTION_BUSY: ["the other promotion of this form finishes"],
+  TOOL_UNAVAILABLE: ["the tool (qpdf) is found and runs again, or a new normalizer ships: the pre-flight check re-probes every 30 minutes and the job resumes by itself"],
+  NO_OFFICIAL_SOURCE: ["an official USCIS page or PDF address for this form is found (the source resolver tries every known address on each run), or the form's address is stored on the template"],
+  PDF_UNREADABLE: ["the official file changes, or a new repair for this kind of file ships; the job retries every 24 hours"],
+  NO_FILLABLE_FIELDS: ["USCIS publishes a fillable (AcroForm) file for this edition; the job re-checks when the official file changes"],
+  TEMPLATE_TOO_LARGE: ["the template is stored in a smaller layout (needs the template-size change to be approved)"],
+  SCAN_FAILED: ["a scanner fix ships; the job re-runs automatically"],
+  CERTIFICATION_FAILED: ["the failed certification check passes after a repair or a mapping change; the job re-checks on each run"],
+  NETWORK_UNAVAILABLE: ["uscis.gov answers again; the job retries with growing delays"],
+  MIGRATION_FAILED: ["the failed case forms migrate on the next run (each failure is retried on its own)"],
+  UNRESOLVED_ERROR: ["a resolution strategy for this error signature ships (the resolver version changes and the job re-runs)"],
 };
 const BY_CLASS = {
   held: ["the condition that caused the hold is resolved; the job re-checks every 12 hours"],

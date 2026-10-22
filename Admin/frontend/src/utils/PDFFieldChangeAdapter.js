@@ -1,4 +1,6 @@
 const CHECKBOX_TYPES = new Set(['checkbox', 'radio'])
+// stored texts that mean "not ticked" (a ticked box is stored as its export value, e.g. "Yes" / "Y" / "1")
+const UNCHECKED_TEXT = new Set(['false', 'off', '0'])
 
 const unwrapStoredValue = (entry) => {
   if (entry && typeof entry === 'object' && !Array.isArray(entry) && Object.prototype.hasOwnProperty.call(entry, 'value')) {
@@ -69,7 +71,16 @@ export function normalizePdfFieldValue(input) {
   const isChoice = String(input?.fieldType || target.fieldType || '').toLowerCase() === 'ch'
 
   if (CHECKBOX_TYPES.has(type) || isButton) {
-    return target.checked ? String(exportValueOf(input)) : ''
+    // A real DOM change event carries the box's own checked state. A programmatic save (the autosave re-sending a stored answer: { fieldName, fieldType, value })
+    // has NO element, so target.checked is undefined: the stored value IS the answer. Reading undefined as "unchecked" saved every tick as an empty string, so the
+    // ticked boxes vanished from the downloaded PDF.
+    const checkedState = input?.checked ?? target.checked
+    if (typeof checkedState === 'boolean') return checkedState ? String(exportValueOf(input)) : ''
+    const stored = input?.value ?? target.value
+    if (stored === true) return String(input?.exportValue ?? input?.buttonValue ?? 'Yes')
+    if (stored == null || stored === false || stored === '') return ''
+    const text = String(stored).trim()
+    return UNCHECKED_TEXT.has(text.toLowerCase()) ? '' : String(stored)
   }
 
   const rawValue = input?.value ?? target.value

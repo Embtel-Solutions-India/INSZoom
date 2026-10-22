@@ -11,6 +11,10 @@
 //   - writes go through the native collection (no Mongoose casting of dotted PDF field names) and the migration's own bookkeeping never changes `updatedAt`.
 const crypto = require("crypto");
 const logger = require("../../../utils/logger");
+const autonomy = require("../../../config/formPipelineAutonomy");
+const ValueRules = require("./migration/ValueRules");
+const ConflictPolicy = require("./migration/ConflictPolicy");
+const MigrationProof = require("./migration/MigrationProof");
 
 const ANSWER_KEYS = ["filledData", "fieldValues", "manualOverrides", "fieldValueProvenance", "sourceAttribution", "fieldReviews", "sectionReviews"];
 const POINTER_KEYS = ["status", "isLocked", "formTemplateId", "formVersion", "formEditionDate", "mappingVersion", "mappingVersionId", "formVersionLock"];
@@ -150,7 +154,7 @@ const isNonAnswer = (value, kind) => isMissing(value) || (value === false && kin
  * Dispositions: preserved | archived (with a reason, the value is kept on the case form) | unresolved (blocks THIS case's migration).
  * Returns { writes, archive, dispositions, unresolved, flags, counts }.
  */
-function planCarry(image, match, { isApplicable = () => true } = {}) {
+function planCarry(image, match, { isApplicable = () => true, v7 = null } = {}) {
   const writes = {};
   const archive = { unmatchedValues: {}, unmatchedMeta: {}, merged: [] };
   const dispositions = [];
@@ -189,29 +193,49 @@ function planCarry(image, match, { isApplicable = () => true } = {}) {
       }
       if (!isApplicable(target)) { archiveValue(bag, path, value, "inapplicable_in_new_edition", common); continue; }
       const id = targetIdOf(target);
-      byTarget.set(id, [...(byTarget.get(id) || []), { path, value, kind, common }]);
+      let carried = value;
+      let extra = {};
+      if (v7) {
+        // Phase 7.7: the answer must provably fit the NEW box; it is carried unchanged, converted by one named rule, archived, or (when a person's answer) the case form is parked
+        const conv = bag === "manualOverrides" ? { ok: true, value, rule: "override_record" } : ValueRules.carry({ value, oldField: v7.oldField ? v7.oldField(path) : null, newField: target });
+        if (!conv.ok) {
+          const protectedValue = bag === "manualOverrides" || kind.userSourced || kind.verified || (kind.unknownProvenance && !isMissing(value));
+          if (protectedValue) {
+            unresolved.push({ code: "VALUE_NOT_CARRIABLE", bag, targetId: id, oldKeys: [path], reason: "an answer a person gave (or of unknown origin) does not provably fit the new box: " + conv.reason, policy: conv.reason });
+            dispositions.push({ kind: "value", bag, oldKey: path, newKey: id, disposition: "unresolved", reason: conv.reason, ...common });
+          } else archiveValue(bag, path, value, "value_not_carriable:" + conv.reason, { ...common, newKey: id });
+          continue;
+        }
+        carried = conv.value;
+        extra = { rule: conv.rule, ...(conv.converted ? { converted: true, convertedTo: conv.value } : {}) };
+      }
+      byTarget.set(id, [...(byTarget.get(id) || []), { path, value: carried, original: value, kind, common, extra }]);
     }
     for (const [id, group] of byTarget) {
       let keep = group;
       if (group.length > 1) {
         const real = group.filter((item) => !isNonAnswer(item.value, item.kind));
         const distinct = new Set(real.map((item) => canonical(item.value)));
+        let decision = null;
         if (distinct.size > 1) {
-          unresolved.push({ code: "COLLISION", bag, targetId: id, oldKeys: group.map((item) => item.path), values: group.map((item) => item.value), reason: "two old records with different values land on one box of the new edition" });
-          group.forEach((item) => dispositions.push({ kind: "value", bag, oldKey: item.path, newKey: id, disposition: "unresolved", reason: "collision_different_values", ...item.common }));
-          continue;
+          decision = v7 ? ConflictPolicy.decide(real) : null;
+          if (!decision || decision.action === "park") {
+            unresolved.push({ code: "COLLISION", bag, targetId: id, oldKeys: group.map((item) => item.path), values: group.map((item) => item.value), reason: "two old records with different values land on one box of the new edition", ...(decision ? { policy: decision.reason } : {}) });
+            group.forEach((item) => dispositions.push({ kind: "value", bag, oldKey: item.path, newKey: id, disposition: "unresolved", reason: "collision_different_values", ...item.common }));
+            continue;
+          }
         }
-        const winner = real.find((item) => item.kind.userSourced) || real[0] || group[0];
+        const winner = (decision && decision.winner) || real.find((item) => item.kind.userSourced) || real[0] || group[0];
         keep = [winner];
         for (const item of group) {
           if (item === winner) continue;
-          archiveValue(bag, item.path, item.value, real.length > 1 ? "equal_value_collision_merge" : "collision_non_answer", { ...item.common, newKey: id });
+          archiveValue(bag, item.path, item.original !== undefined ? item.original : item.value, decision ? decision.reason + "_merge" : (real.length > 1 ? "equal_value_collision_merge" : "collision_non_answer"), { ...item.common, newKey: id });
           archive.merged.push({ bag, targetId: id, kept: winner.path, archived: item.path });
         }
       }
       const [item] = keep;
       if (flatOutput) out[id] = item.value; else setPath(out, id, item.value);
-      dispositions.push({ kind: "value", bag, oldKey: item.path, newKey: id, disposition: "preserved", ...item.common });
+      dispositions.push({ kind: "value", bag, oldKey: item.path, newKey: id, disposition: "preserved", ...item.common, ...(item.extra || {}) });
       counts.carried += 1;
       if (bag !== "manualOverrides" && item.common.unknownProvenance && !isMissing(item.value)) flags.provenanceUnknown.push(item.path);
       if (bag === "fieldValues" || (bag === "filledData" && !winners.has(id))) winners.set(id, item.path);
@@ -242,6 +266,14 @@ function planCarry(image, match, { isApplicable = () => true } = {}) {
     writes[map] = out;
   }
   if (isPlain(image.answers.sectionReviews)) writes.sectionReviews = clonePlain(image.answers.sectionReviews); // keyed by section, not by field: unchanged by an edition move
+  if (v7) {
+    // Phase 7.7: the conservation proof - every old answer must have exactly one documented destination, or the plan is UNPROVEN and the case form is parked (nothing is written)
+    const enumerate = [];
+    for (const bag of VALUE_BAGS) if (isPlain(image.answers[bag])) leaves(image.answers[bag], "", bag !== "filledData").forEach(([path]) => enumerate.push([bag, path]));
+    const proof = MigrationProof.build({ enumerate, plan: { dispositions, archive } });
+    if (!proof.ok) unresolved.push({ code: "UNACCOUNTED_VALUE", oldKeys: proof.unaccounted.map((item) => item.oldKey), reason: "an old answer has no documented destination", policy: "unproven_plan" });
+    return { writes, archive, dispositions, unresolved, flags, counts, proof };
+  }
   return { writes, archive, dispositions, unresolved, flags, counts };
 }
 
@@ -266,7 +298,7 @@ function verifyAgainstPlan({ preImage, dispositions, current, archiveEntry, newT
     }
     if (!needsProof(item)) continue;
     if (item.kind === "value") {
-      const expected = bagValue(before[item.bag], item.oldKey);
+      const expected = item.convertedTo !== undefined ? item.convertedTo : bagValue(before[item.bag], item.oldKey);
       const actual = bagValue(after[item.bag], item.newKey);
       const protectedValue = item.userSourced || item.verified || item.bag === "manualOverrides";
       if (protectedValue ? !sameValue(expected, actual) : (isMissing(actual) && !isMissing(expected))) problems.push({ code: protectedValue ? "PROTECTED_VALUE_CHANGED" : "VALUE_BLANKED", bag: item.bag, oldKey: item.oldKey, newKey: item.newKey, expected, actual: actual ?? null });
@@ -324,11 +356,12 @@ async function casUpdate(deps, caseFormId, expectedUpdatedAt, update) {
   return result.modifiedCount === 1;
 }
 
-async function createSnapshot(deps, { caseForm, image, jobId, fromTemplateId, toTemplateId, dispositions }) {
+async function createSnapshot(deps, { caseForm, image, jobId, fromTemplateId, toTemplateId, dispositions, proof = null, extraPre = null }) {
   const { Snapshot } = stores(deps);
   return Snapshot.create({
     caseFormId: caseForm._id, caseId: caseForm.caseId, migrationJobId: jobId, formCode: caseForm.formCode, fromTemplateId, toTemplateId,
     preImage: image, checksum: imageChecksum(image), dispositions,
+    ...(proof ? { proof } : {}), ...(extraPre ? { extraPre } : {}),
   });
 }
 
@@ -361,8 +394,25 @@ async function markReconciliation(deps, caseFormId, snapshotId, error) {
 }
 
 // ── restore (safe recovery) ──────────────────────────────────────────────────
+/**
+ * Phase 7.7: undoes the field-name remap of comments / field history / sync state by record id (never by array position), so a comment added AFTER the migration is kept.
+ * Returns { $set, $unset } to merge into the restore update.
+ */
+function extraRestoreFor(currentDoc, extraPre) {
+  const $set = {};
+  const $unset = {};
+  for (const key of ["comments", "fieldHistory"]) {
+    if (!Array.isArray(extraPre[key]) || !Array.isArray(currentDoc[key])) continue;
+    const before = new Map(extraPre[key].map((item) => [String(item._id), item.fieldName]));
+    $set[key] = currentDoc[key].map((item) => (before.has(String(item._id)) ? { ...item, fieldName: before.get(String(item._id)) } : item));
+  }
+  if (extraPre.syncState) for (const key of ["changedFields", "affectedFields"]) if (extraPre.syncState[key]) $set["syncState." + key] = extraPre.syncState[key];
+  if (extraPre.stalePdf) $unset.generatedPdfStale = "";
+  return { $set, $unset };
+}
+
 /** The update that puts a case form's answer records and edition pointers back exactly as the pre-image has them. */
-function restoreUpdate(preImage, jobId, auditEntry) {
+function restoreUpdate(preImage, jobId, auditEntry, extraRestore = null) {
   const $set = {};
   const $unset = {};
   const put = (key, value) => { if (value === null || value === undefined) $unset[key] = ""; else $set[key] = value; };
@@ -372,6 +422,7 @@ function restoreUpdate(preImage, jobId, auditEntry) {
     if (value === null || value === undefined) { if (key === "fieldValues" || key === "manualOverrides" || key === "sourceAttribution") $set[key] = {}; else $unset[key] = ""; } else $set[key] = value;
   }
   for (const key of POINTER_KEYS) put(key, preImage.pointers[key]);
+  if (extraRestore) { Object.assign($set, extraRestore.$set || {}); Object.assign($unset, extraRestore.$unset || {}); } // Phase 7.7 (only present for migrations made with the switch on)
   const update = { $set, ...(Object.keys($unset).length ? { $unset } : {}), $pull: { editionMigrations: { migrationJobId: jobId } } };
   return { update, auditEntry };
 }
@@ -401,7 +452,7 @@ async function restoreCaseFormFromPreImage(snapshotId, { dryRun = true, actor, d
   }
   if (dryRun) return { restored: false, dryRun: true, wouldRestore: true, changes: diffImages(loaded.image, snapshot.preImage) };
   const audit = { action: "EDITION_MIGRATION_RESTORED", changes: { snapshotId: String(snapshot._id), jobId: snapshot.migrationJobId, reason }, performedBy: actor?._id, performedAt: now() };
-  const { update } = restoreUpdate(snapshot.preImage, snapshot.migrationJobId, audit);
+  const { update } = restoreUpdate(snapshot.preImage, snapshot.migrationJobId, audit, snapshot.extraPre ? extraRestoreFor(loaded.doc, snapshot.extraPre) : null);
   update.$push = { auditHistory: audit };
   const written = await casUpdate(deps, snapshot.caseFormId, loaded.doc.updatedAt, update);
   if (!written) { await markReconciliation(deps, snapshot.caseFormId, snapshot._id, "a person edited this case form while it was being restored"); return { restored: false, reconciliationRequired: true, changes: [] }; }
@@ -414,6 +465,18 @@ async function restoreCaseFormFromPreImage(snapshotId, { dryRun = true, actor, d
 }
 
 // ── the step machine after the new edition was saved ─────────────────────────
+/** Phase 7.7: the migration's new behavior is on only when FORM_PIPELINE_AUTONOMY is "on" (tests inject deps.mode). Off and shadow keep today's behavior exactly. */
+const modeOf = (deps = {}) => { try { return (deps.mode || autonomy.mode)(); } catch { return "off"; } };
+/** What autofill must not change on a migrated case form: the person's workflow position and the version history. */
+const pickKeep = (doc) => ({ status: doc.status, versionNumber: doc.versionNumber ?? 0, versions: clonePlain(doc.versions) || [], reviewState: clonePlain(doc.reviewState) });
+function restoreKeep(doc, keep) {
+  const $set = {};
+  if (doc.status !== keep.status) $set.status = keep.status;
+  if ((doc.versionNumber ?? 0) !== keep.versionNumber) $set.versionNumber = keep.versionNumber;
+  if (canonical(doc.versions || []) !== canonical(keep.versions)) $set.versions = keep.versions;
+  if (keep.reviewState !== undefined && keep.reviewState !== null && canonical(doc.reviewState) !== canonical(keep.reviewState)) $set.reviewState = keep.reviewState;
+  return Object.keys($set).length ? $set : null;
+}
 const defaultAutofill = (caseId, formCode, actor, req, options) => require("./AutoFillService").generate(caseId, formCode, actor, req, options);
 
 /**
@@ -429,9 +492,26 @@ async function continueAfterSave({ caseFormId, snapshotId, newTemplate, actor, r
     if (from === "saved") {
       const run = deps.autofill || defaultAutofill;
       const loaded = await loadImage(CaseForm, caseFormId);
-      await Promise.resolve(run(loaded.doc.caseId, loaded.doc.formCode, actor, req || { ip: "system", headers: {} }, { regenerate: true })).catch((error) => failed("autofill", error.message));
+      const on = modeOf(deps) === "on";
+      let keep = null;
+      if (on) {
+        keep = pickKeep(loaded.doc);
+        await setState(deps, caseFormId, { expected: { status: keep.status, versionNumber: keep.versionNumber } });
+      }
+      // Phase 7.7 (on): exactly THIS case form (never another participant's form of the same code), and autofill never overwrites an answer a person gave or a reviewer confirmed
+      const autofillOptions = on ? { regenerate: true, caseFormId: String(caseFormId), preserveExisting: true } : { regenerate: true };
+      await Promise.resolve(run(loaded.doc.caseId, loaded.doc.formCode, actor, req || { ip: "system", headers: {} }, autofillOptions)).catch((error) => failed("autofill", error.message));
+      let after = await loadImage(CaseForm, caseFormId);
+      if (on) {
+        // autofill moves status to ai_filled, bumps versionNumber and pushes a version: put the person's workflow position and the version history back (compare-and-set)
+        const back = restoreKeep(after.doc, keep);
+        if (back) {
+          const written = await casUpdate(deps, caseFormId, after.doc.updatedAt, { $set: back });
+          if (!written) { await markReconciliation(deps, caseFormId, snapshotId, "a person edited this case form while the migration was restoring its status after autofill"); return { outcome: "reconciliation_required", changes: [] }; }
+          after = await loadImage(CaseForm, caseFormId);
+        }
+      }
       // never let autofill blank a value a person had saved
-      const after = await loadImage(CaseForm, caseFormId);
       const filled = clonePlain(after.doc.filledData) || {};
       const restore = valuesToRestore(snapshot.preImage, snapshot.dispositions, filled);
       if (restore.length) {
@@ -449,6 +529,19 @@ async function continueAfterSave({ caseFormId, snapshotId, newTemplate, actor, r
     const fresh = await Snapshot.findById(snapshotId).lean();
     const archiveEntry = (loaded.doc.editionMigrations || []).slice().reverse().find((entry) => entry && entry.migrationJobId === snapshot.migrationJobId);
     const problems = verifyAgainstPlan({ preImage: snapshot.preImage, dispositions: snapshot.dispositions, current: loaded.image, archiveEntry, newTemplateId: newTemplate?._id || snapshot.toTemplateId });
+    if (modeOf(deps) === "on") {
+      const expected = loaded.doc.migrationState?.expected;
+      if (expected && loaded.doc.status !== expected.status) problems.push({ code: "STATUS_CHANGED", expected: expected.status, actual: loaded.doc.status });
+      if (expected && (loaded.doc.versionNumber ?? 0) !== expected.versionNumber) problems.push({ code: "VERSION_NUMBER_CHANGED", expected: expected.versionNumber, actual: loaded.doc.versionNumber ?? 0 });
+      if (snapshot.proof) {
+        problems.push(...MigrationProof.reconcile({
+          proof: snapshot.proof, sameValue, isMissing,
+          readOld: (bag, key) => bagValue(snapshot.preImage.answers[bag], key),
+          read: (bag, key) => bagValue(loaded.image.answers[bag], key),
+          archived: (bag, key) => archiveEntry?.unmatchedValues?.[bag]?.[key],
+        }));
+      }
+    }
     if (problems.length) {
       failed("verify", `${problems.length} problem(s), first: ${JSON.stringify(problems[0]).slice(0, 240)}`);
       // safe recovery: restore only if nothing but the migration changed this case form since it left it; a newer edit is never overwritten
@@ -513,6 +606,6 @@ module.exports = {
   ANSWER_KEYS, POINTER_KEYS, VALUE_BAGS, META_MAPS, IN_PROGRESS_STEPS,
   canonical, sha256, sameValue, clonePlain, toPlain, leaves, bagValue, setBagValue, isMissing, encodeKey, decodeKey,
   imageOf, imageChecksum, diffImages, classifyRecord, planCarry, verifyAgainstPlan, valuesToRestore, needsProof,
-  stores, loadImage, setState, casUpdate, createSnapshot, captureIntermediate, setSnapshotExpiry, clearSnapshotExpiry, markReconciliation,
-  restoreUpdate, restoreCaseFormFromPreImage, continueAfterSave, reconcileIncompleteMigrations,
+  modeOf, pickKeep, restoreKeep, stores, loadImage, setState, casUpdate, createSnapshot, captureIntermediate, setSnapshotExpiry, clearSnapshotExpiry, markReconciliation,
+  restoreUpdate, extraRestoreFor, restoreCaseFormFromPreImage, continueAfterSave, reconcileIncompleteMigrations,
 };

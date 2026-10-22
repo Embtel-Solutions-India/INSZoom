@@ -11,15 +11,25 @@ class LeaseLostError extends Error {
 }
 
 const TRANSIENT_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EPIPE", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET", "UND_ERR_HEADERS_TIMEOUT"]);
-const BLOCKED_CODES = new Set(["USCIS_PDF_UNRESOLVED", "USCIS_FORM_NOT_STANDALONE", "USCIS_PDF_INVALID", "PDF_INVALID", "PDF_ENCRYPTED"]);
-const BLOCKED_MESSAGE = /\b(invalid pdf|not a pdf|corrupt|malformed|encrypted|no fillable|no form fields|could not locate a current pdf|pdf is empty|unsupported pdf)\b/i;
+const BLOCKED_CODES = new Set(["USCIS_PDF_UNRESOLVED", "USCIS_FORM_NOT_STANDALONE", "USCIS_PDF_INVALID", "PDF_INVALID", "PDF_ENCRYPTED",
+  // Phase 7.2: our own import refused the file for a reason retrying the same bytes cannot change (the resolution engine looks for another way; the job retries slowly)
+  "NORMALIZE_INPUT_NOT_PDF", "NORMALIZED_SCAN_EMPTY_FIELDS", "TEMPLATE_TOO_LARGE", "DOWNLOADED_RESOURCE_NOT_PDF", "PDF_TOO_LARGE"]);
+const BLOCKED_MESSAGE = /\b(invalid pdf|not a pdf|corrupt|malformed|encrypted|qpdf normalization failed|no fillable|no form fields|could not locate a current pdf|pdf is empty|unsupported pdf)\b/i;
 const TRANSIENT_MESSAGE = /\b(timeout|timed out|socket hang up|network|fetch failed|temporarily|rate limit|too many requests|service unavailable|bad gateway|gateway timeout|econn|aborted)\b/i;
 
 const statusOf = (error) => Number(error?.statusCode || error?.status || error?.response?.status || 0) || 0;
 
-/** { class, code, retryable } for an error thrown anywhere in the pipeline. */
-function classifyError(error) {
+// Phase 7.E: causes the resolution engine diagnoses that are never "try again later" blips: they are documented holds (TOOL_UNAVAILABLE, NO_OFFICIAL_SOURCE, ...)
+const DIAGNOSED_HOLD_CAUSES = new Set(["tool_unavailable", "source_not_found", "not_a_pdf", "pdf_damaged", "pdf_encrypted", "xfa_or_no_fields", "template_too_large", "scan_field_exception", "cert_failed", "migration_failed"]);
+
+/**
+ * { class, code, retryable } for an error thrown anywhere in the pipeline.
+ * `diagnosis` (optional, from the resolution engine, only passed when the autonomy switch is on): a diagnosed cause above becomes a HELD documented hold instead of
+ * a blind retry; without it the classification is exactly what it always was.
+ */
+function classifyError(error, diagnosis = null) {
   const code = String(error?.code || "");
+  if (diagnosis && DIAGNOSED_HOLD_CAUSES.has(diagnosis.cause)) return { class: ERROR_CLASSES.HELD, code: diagnosis.reasonCode || String(diagnosis.cause).toUpperCase(), retryable: false, diagnosed: true };
   const status = statusOf(error);
   const name = String(error?.name || "");
   if (error instanceof LeaseLostError || code === "PIPELINE_LEASE_LOST") return { class: ERROR_CLASSES.LEASE_LOST, code: "PIPELINE_LEASE_LOST", retryable: false };
@@ -62,4 +72,5 @@ function backoffMs(attempt, { base = LIMITS.backoffBaseMs, max = LIMITS.backoffM
 /** Stable text for "the same failure again" (dedupes alerts): stage + class + code. */
 const errorSignature = ({ stage, classification }) => `${stage || "?"}|${classification.class}|${classification.code}`;
 
-module.exports = { LeaseLostError, classifyError, sanitizeMessage, backoffMs, errorSignature };
+module.exports = {
+  DIAGNOSED_HOLD_CAUSES, LeaseLostError, classifyError, sanitizeMessage, backoffMs, errorSignature };

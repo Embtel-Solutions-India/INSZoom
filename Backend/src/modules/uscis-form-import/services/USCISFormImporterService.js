@@ -33,7 +33,21 @@ function assertOfficialUscisUrl(url) {
   return parsed;
 }
 
-async function fetchPdf(url) {
+// Phase 7.2: FORM_PIPELINE_AUTONOMY off = the download below, unchanged. shadow = the same download, plus a warn log of what the hardened download would have done to its
+// bytes (nothing is changed). on = the hardened download (every redirect hop checked, size cap, HTML / junk-before-header / truncated-file handling; services/PdfDownload.js).
+async function fetchPdf(url, options = {}) {
+  const mode = require("../../../config/formPipelineAutonomy").mode();
+  if (mode === "off") return fetchPdfOriginal(url);
+  if (mode === "on") return require("./PdfDownload").fetchPdf(url, { legacy: fetchPdfOriginal, reresolve: options.reresolve });
+  const downloaded = await fetchPdfOriginal(url);
+  try {
+    const seen = require("./PdfDownload").inspect(downloaded.buffer);
+    if (!seen.header || seen.trimmed || !seen.complete) require("../../../utils/logger").warn("uscis_pdf_download_shadow", { url, ...seen });
+  } catch { /* shadow logging never affects the download */ }
+  return downloaded;
+}
+
+async function fetchPdfOriginal(url) {
   assertOfficialUscisUrl(url);
   const response = await fetch(url, {
     headers: {
@@ -55,6 +69,15 @@ async function fetchPdf(url) {
     contentLength: Number(response.headers.get("content-length")) || buffer.length,
     downloadedAt: new Date(),
   };
+}
+
+/** The precise error for an XFA-only PDF: the same code the importer always used for "no AcroForm fields", with the cause named. */
+function xfaOnlyError(xfa, sourceUrl) {
+  const error = enterpriseError("This PDF is an XFA-only (dynamic) form: it has no fillable AcroForm fields, so it cannot be imported as is. A fillable companion PDF is looked for on the official page; the form was not stored.", 422, "NORMALIZED_SCAN_EMPTY_FIELDS");
+  error.cause = "xfa_only";
+  error.xfa = xfa;
+  error.sourceUrl = sourceUrl;
+  return error;
 }
 
 function storageSegment(value = "") {
@@ -108,7 +131,9 @@ class USCISFormImporterService {
     }, user, req).catch(() => []);
   }
 
-  async downloadOfficialPdf(url, artifactType = "form") {
+  async downloadOfficialPdf(url, artifactType = "form", options = {}) {
+    // Phase 7.2 (switch on): a replacement address found by the error-resolution engine (a fillable companion PDF) is used instead of the one that failed
+    if (require("../../../config/formPipelineAutonomy").mode() === "on") url = require("./PdfDownload").resolveUrlOverride(url);
     const maxAttempts = Math.min(Math.max(Number(process.env.USCIS_PDF_DOWNLOAD_MAX_ATTEMPTS || 3), 1), 6);
     const baseDelayMs = Math.max(Number(process.env.USCIS_PDF_DOWNLOAD_RETRY_DELAY_MS || 500), 0);
     let lastError;
@@ -132,7 +157,7 @@ class USCISFormImporterService {
         // actually a PDF (content-type/%PDF- signature); the full
         // parseability check correctly stays in importFromBuffer, after
         // normalization, where it can succeed.
-        const downloaded = await fetchPdf(url);
+        const downloaded = await fetchPdf(url, options);
         return { ...downloaded, attempts: attempt, sourceUrl: url, artifactType };
       } catch (error) {
         lastError = error;
@@ -143,6 +168,7 @@ class USCISFormImporterService {
     }
     lastError.attempts = maxAttempts;
     lastError.artifactType = artifactType;
+    if (!lastError.sourceUrl) lastError.sourceUrl = url; // the address that failed (the error-resolution engine retries or replaces exactly this one)
     throw lastError;
   }
 
@@ -214,8 +240,15 @@ class USCISFormImporterService {
       // the RAW buffer — it already degrades gracefully if pdf-lib can't
       // load it (falls back to scanResult's page count / empty text), and
       // `fileSize`/pdfParse-derived fields should reflect the original file.
-      const normalizedBuffer = await normalizePdf(buffer);
+      // Phase 7.2 (switch on): after qpdf failed on this PDF and the engine verified the JavaScript normalizer on it, that one retry uses it (same pages, same field names, checked)
+      const useFallbackNormalizer = require("../../../config/formPipelineAutonomy").mode() === "on" && require("./PdfDownload").consumeFallbackNormalize(input.formType || input.formCode || input.formNumber);
+      const normalizedBuffer = useFallbackNormalizer ? (await require("../../../utils/normalizeFallback").normalizeVerified(buffer)).buffer : await normalizePdf(buffer);
       await this.validation.validatePdfBuffer(normalizedBuffer);
+      // Phase 7.2 (switch not off): an XFA-only (dynamic) PDF is named for what it is BEFORE the scan, so the pipeline can look for the fillable companion instead of retrying
+      if (require("../../../config/formPipelineAutonomy").mode() !== "off") {
+        const xfa = require("./PdfDownload").detectXfaOnly(normalizedBuffer);
+        if (xfa.xfaOnly && !xfa.hasAcroForm) throw xfaOnlyError(xfa, input.pdfUrl);
+      }
       const scanResult = await this.scanner.scan(normalizedBuffer);
       this.validation.validateFields(scanResult, { allowEmpty: (input.provider || "uscis") === "uscis" });
       // Explicit stop even when validateFields' allowEmpty would otherwise
@@ -223,6 +256,10 @@ class USCISFormImporterService {
       // normalization silently lost the form's fillable layer, and importing
       // it would create an unusable template. Nothing is stored.
       if (!scanResult.fields?.length) {
+        if (require("../../../config/formPipelineAutonomy").mode() !== "off") {
+          const xfa = require("./PdfDownload").detectXfaOnly(normalizedBuffer);
+          if (xfa.xfaOnly) throw xfaOnlyError(xfa, input.pdfUrl);
+        }
         throw enterpriseError(
           "Normalized PDF scan found zero AcroForm fields — aborting import; the form was not stored.",
           422,
@@ -401,7 +438,26 @@ class USCISFormImporterService {
           }],
         },
       };
-      const creationResult = await this.versioning.createTemplate(templatePayload, user, req);
+      // Phase 7.2 (switch not off): a template that would not fit the 16 MB database document is reported BEFORE the save with the size of every part; shadow only logs it
+      let payloadToSave = templatePayload;
+      const sizeMode = require("../../../config/formPipelineAutonomy").mode();
+      if (sizeMode !== "off") {
+        const TemplateSizeGuard = require("./TemplateSizeGuard");
+        let sizeCheck = null;
+        try { sizeCheck = TemplateSizeGuard.check(templatePayload); } catch (guardError) { require("../../../utils/logger").warn("uscis_template_size_check_failed", { error: guardError.message }); }
+        if (sizeCheck && !sizeCheck.ok) {
+          if (sizeMode === "on") {
+            // first shrink what is PROVEN to be a duplicate (the definition.* copies of top-level structures), re-measured; only a template that still does not fit is refused
+            const slimmed = TemplateSizeGuard.slim(templatePayload);
+            if (!slimmed.ok) throw TemplateSizeGuard.tooLargeError(slimmed.after);
+            payloadToSave = slimmed.payload;
+            require("../../../utils/logger").warn("uscis_template_slimmed", { formCode: metadata.formCode, removed: slimmed.removed, estimateBefore: slimmed.before.estimate, estimateAfter: slimmed.after.estimate });
+          } else {
+            require("../../../utils/logger").warn("uscis_template_size_shadow", { formCode: metadata.formCode, estimate: sizeCheck.estimate, limit: sizeCheck.limit, largest: sizeCheck.summary });
+          }
+        }
+      }
+      const creationResult = await this.versioning.createTemplate(payloadToSave, user, req);
       let template = creationResult.template;
       const comparisonReport = creationResult.comparisonReport;
       await require("../../questionnaires/question-library.service").syncTemplate(template, user, req).catch(async (error) => {

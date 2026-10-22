@@ -119,6 +119,10 @@ const env = {
   // status "skipped", so nothing is lost from the audit trail. The only exception is a password-reset email the user asked for themselves (otherwise they would be
   // locked out). Enforced in one place: email.service.js's dispatch(), the final hand-off to the mail provider.
   emailSuppressAll: process.env.EMAIL_SUPPRESS_ALL === "true",
+  // Addresses that NEVER receive any email from the system (comma separated, case-insensitive). Enforced in email.service.js dispatch(): the email is logged as skipped
+  // ("blocked recipient") and never handed to the provider; the address is also dropped from cc / bcc. Unset = the built-in list below (madaan@ receives no email at all,
+  // owner's instruction 2026-10-23); set EMAIL_BLOCKED_RECIPIENTS= (empty) to block nobody, or list other addresses.
+  emailBlockedRecipients: new Set(String(process.env.EMAIL_BLOCKED_RECIPIENTS ?? "madaan@bayareaimmigrationservices.com").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean)),
   // Master switch: NOTIFICATIONS_SUPPRESS_ALL=true pauses every in-app notification (no bell entry, no live pop-up) and every browser push notification, for everyone.
   // Nothing is stored while it is on. Enforced in notification.service.js (createNotification / deliverRealtime) and push.service.js (the final hand-off to Firebase).
   // Live chat messages are not notifications and keep arriving in an open thread.

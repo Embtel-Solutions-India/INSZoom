@@ -108,7 +108,7 @@ test("the Case model carries additionalCaseManagers, empty by default", () => {
   assert.deepEqual([...doc.additionalCaseManagers], []);
 });
 
-test("the default team lead (DEFAULT_TEAM_LEAD_EMAIL) gets cases that name nobody; round robin is the fallback", async () => {
+test("the default team lead (DEFAULT_TEAM_LEAD_EMAIL) gets cases that name nobody; there is no round robin fallback", async () => {
   const User = require("../../../models/User");
   const env = require("../../../config/env");
   const realFindOne = User.findOne;
@@ -127,9 +127,9 @@ test("the default team lead (DEFAULT_TEAM_LEAD_EMAIL) gets cases that name nobod
     assert.equal(await caseService.resolveTeamLeadForCase({}), akash, "the configured default is used");
     assert.equal(await caseService.resolveTeamLeadForCase({ assignedTeamLead: robin._id }), robin._id, "an explicit team lead still wins");
     env.defaultTeamLeadEmail = "missing@example.test";
-    assert.equal(await caseService.resolveTeamLeadForCase({}), robin, "an unknown / inactive default falls back to the round robin");
+    assert.equal(await caseService.resolveTeamLeadForCase({}), null, "an unknown / inactive default: the case has no team lead (never an arbitrary one)");
     env.defaultTeamLeadEmail = "";
-    assert.equal(await caseService.resolveTeamLeadForCase({}), robin, "no default configured: unchanged round robin");
+    assert.equal(await caseService.resolveTeamLeadForCase({}), null, "no default configured: no team lead (never an arbitrary one)");
   } finally {
     User.findOne = realFindOne;
     env.defaultTeamLeadEmail = previous;

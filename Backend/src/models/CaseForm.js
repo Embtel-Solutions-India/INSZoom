@@ -265,12 +265,18 @@ const caseFormSchema = new mongoose.Schema(
     migrationState: {
       jobId: String,
       snapshotId: { type: mongoose.Schema.Types.ObjectId, ref: "CaseFormMigrationSnapshot" },
-      step: { type: String, enum: ["snapshotted", "saved", "autofilled", "verified", "completed", "reconciliation_required"] },
+      step: { type: String, enum: ["snapshotted", "saved", "autofilled", "verified", "completed", "reconciliation_required", "parked"] },
       outcome: { type: String, enum: ["migrated", "restored"] },
       expectedIntermediateChecksum: String,
+      // Phase 7.7 (only written when FORM_PIPELINE_AUTONOMY is on): the status / version the migration must leave unchanged, and the persistent "parked" record of a case form
+      // whose answers cannot be carried safely (it stays on its old edition; re-evaluated when the rules or the matcher change or the case form is edited)
+      expected: mongoose.Schema.Types.Mixed,
+      parked: mongoose.Schema.Types.Mixed,
       updatedAt: Date,
       error: String,
     },
+    // Phase 7.7: set on the case form's generated PDFs when its edition changed: they were made from the OLD edition (nothing is deleted; regenerate to refresh)
+    generatedPdfStale: mongoose.Schema.Types.Mixed,
     // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }

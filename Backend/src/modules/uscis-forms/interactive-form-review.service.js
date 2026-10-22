@@ -196,6 +196,24 @@ class InteractiveFormReviewService {
     return { caseData, caseForm, template };
   }
 
+  /**
+   * Phase 7.7 (only with FORM_PIPELINE_AUTONOMY=on): a save must not land on a case form that an edition migration moved - or is moving - since this save loaded it. The
+   * person gets a plain 409 (reload) instead of a silent overwrite of the migrated answers; a failed check never blocks a save. Off: nothing happens (today's behavior).
+   */
+  static async assertNotMovedByMigration(caseForm) {
+    let moved = false;
+    try {
+      if (require("../../config/formPipelineAutonomy").mode() !== "on" || !caseForm?._id) return;
+      const fresh = await CaseForm.collection.findOne({ _id: caseForm._id }, { projection: { formTemplateId: 1, "migrationState.step": 1 } });
+      const loadedTemplate = String(caseForm.formTemplateId?._id || caseForm.formTemplateId || "");
+      moved = Boolean(fresh) && (String(fresh.formTemplateId || "") !== loadedTemplate || ["snapshotted", "saved", "autofilled", "verified"].includes(fresh.migrationState?.step));
+    } catch (failure) {
+      logger.warn("form_migration_save_check_failed", { error: failure.message });
+      return;
+    }
+    if (moved) throw error("This form was just moved to a newer USCIS edition. Reload it to continue editing - nothing you changed here was saved over the migrated answers.", 409, { code: "FORM_MIGRATED_RELOAD" });
+  }
+
   static assertEditable(caseForm, user) {
     const permissions = this.permissions(user);
     if (!permissions.canEdit) throw error("This review mode is read only", 403);
@@ -661,6 +679,7 @@ class InteractiveFormReviewService {
     // reported every required field as permanently missing.
     await this.updateProgress(updated, updated.formTemplateId);
     this.addAudit(updated, "FIELD_EDITED", user, req, { fieldName, previousValue, value: payload.value, reason: payload.reason });
+    await this.assertNotMovedByMigration(caseForm);
     await updated.save();
     // Fire-and-forget: neither the external AuditLog write nor the team
     // notification needs to block the response - both were previously
@@ -720,6 +739,7 @@ class InteractiveFormReviewService {
     this.touchReview(caseForm, user);
     await this.updateProgress(caseForm, template);
     this.addAudit(caseForm, "SECTION_SAVED", user, req, { sectionKey: payload.sectionKey, fields: changed.map((item) => item.fieldName) });
+    await this.assertNotMovedByMigration(caseForm);
     await caseForm.save();
     await this.audit("SECTION_SAVED", caseForm, user, req, { sectionKey: payload.sectionKey, fields: changed.map((item) => item.fieldName) });
     return caseForm;
@@ -781,6 +801,7 @@ class InteractiveFormReviewService {
     caseForm.lastModifiedAt = new Date();
     await this.updateProgress(caseForm, template);
     this.addAudit(caseForm, action, user, req, { sectionKey, fields: changed.map((item) => item.fieldName), ignored });
+    await this.assertNotMovedByMigration(caseForm);
     await caseForm.save();
     await this.audit(action, caseForm, user, req, { sectionKey, fields: changed.map((item) => item.fieldName) });
     return caseForm;
