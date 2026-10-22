@@ -116,7 +116,7 @@ async function readinessForForm(formCode, actor) {
   return { formCode, mappingSaved: Boolean(mapping.saved), activated: Boolean(mapping.activated), certified: report.passed, failed: report.checks.filter((check) => !check.passed).map((check) => `${check.name}: ${check.detail}`) };
 }
 
-async function run() {
+async function runOnce() {
   const summary = { registry: null, components: null, forms: [] };
   const step = async (name, task) => { try { return await task(); } catch (error) { logger.error("form_autopilot_step_failed", { step: name, error: error.message }); return { error: error.message }; } };
   summary.registry = await step("registry", syncMissingRegistry);
@@ -132,6 +132,13 @@ async function run() {
   }
   logger.info("form_autopilot_completed", summary);
   return summary;
+}
+
+// Phase 5: the run is recorded for the governance overview AFTER it finishes; recording is fail-safe and never changes the run or its result
+async function run() {
+  let governance = null;
+  try { governance = require("../form-governance/GovernanceRecorder"); } catch { /* governance bookkeeping is optional */ }
+  return governance ? governance.timedRun("autopilot", runOnce, require("../form-governance/summaries").summarizeAutopilot) : runOnce();
 }
 
 // scheduler hook used by server.js: initial delayed run + interval, lock-guarded across instances, opt-out with FORM_AUTOPILOT=false

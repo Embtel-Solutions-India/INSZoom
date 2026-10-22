@@ -1,19 +1,30 @@
-// Phase 1 developer alerts (plan "Developer email notifications", failure / blocked / dead-letter part; success, held and digests arrive in Phase 5).
+// Developer alerts of the form pipeline (plan "Developer email notifications"). Phase 1: failure / blocked / dead-letter. Phase 5E: held / approval-required, success, digest.
 //   - recipient: FORM_PIPELINE_ALERT_EMAIL (comma-separated), default ishaan@embtelsolutions.com - no address is hard-coded in the logic below;
 //   - one alert per job per (kind | stage | error class | error code): a retry loop that fails the same way does not re-email; a new stage / error, or entering
-//     dead_letter, does (the dedupe record lives on the job, markAlert is atomic);
-//   - FORM_PIPELINE_EMAIL_FAILURE=false switches the emails off (the in-app notification still happens);
-//   - email goes through the existing email.service (templates, EmailLog, address guards); when no provider is configured the admins get an in-app notification instead;
+//     dead_letter, does (the dedupe record lives on the job, markAlert is atomic). A success is announced once per job and edition, a hold once per job and reason;
+//   - noise control (alerts/alertConfig.js): FORM_PIPELINE_EMAIL_FAILURE | HELD | SUCCESS, FORM_PIPELINE_EMAIL_MODE=auto|individual|digest, a per-run cap of individual
+//     success e-mails, and ONE digest per scheduled / catalog-wide run (failures, holds and dead-letters are always individual);
+//   - e-mail goes through the existing email.service (templates, EmailLog, address guards); when no provider is configured (or a send fails) the admins get an in-app
+//     notification instead - one notification PER admin with its own dedupeKey (a shared dedupeKey would collapse the whole fan-out into the first admin's notification);
+//   - every delivery leaves one audit record (action FORM_PIPELINE_ALERT_SENT / _DIGEST_SENT, entityType FormPipelineJob);
 //   - an alert failing NEVER blocks or fails the pipeline: everything is caught and logged.
-// Content: only the sanitized error class / code / short message - never secrets, tokens, client data or stack traces.
+// Content: only the sanitized error class / code / short message, form codes, edition dates and counts - never secrets, tokens, client data or stack traces.
+const alertConfig = require("./alerts/alertConfig");
+const outcomeData = require("./alerts/outcomeData");
+const { createDigestStore, createMemoryDigestStore } = require("./alerts/digestStore");
+
 const DEFAULT_RECIPIENT = "ishaan@embtelsolutions.com";
+const ADMIN_ROLES = ["super_admin", "admin"];
 
 const recipients = (env = process.env) => String(env.FORM_PIPELINE_ALERT_EMAIL || DEFAULT_RECIPIENT).split(",").map((item) => item.trim()).filter(Boolean);
-const emailEnabled = (env = process.env) => String(env.FORM_PIPELINE_EMAIL_FAILURE ?? "true").toLowerCase() !== "false";
+const emailEnabled = (env = process.env) => alertConfig.emailFlags(env).failure;
 
-const KIND_BY_STATE = { pending: "failure", blocked: "blocked", dead_letter: "dead_letter" }; // held / done: Phase 5
+const KIND_BY_STATE = { pending: "failure", blocked: "blocked", dead_letter: "dead_letter", held: "held" };
 // a person asked for this run and already sees the error (e.g. a form that is not on uscis.gov): a BLOCKED result of such a run is not announced to the developer
 const QUIET_BLOCKED_TRIGGERS = new Set(["admin_fetch", "case_acquire", "mapping_save"]);
+
+// the audit vocabulary of the pipeline's alerts (one action per delivery, one entity type)
+const AUDIT = Object.freeze({ entityType: "FormPipelineJob", alert: "FORM_PIPELINE_ALERT_SENT", digest: "FORM_PIPELINE_DIGEST_SENT" });
 
 function defaultDeps() {
   return {
@@ -28,14 +39,77 @@ function defaultDeps() {
   };
 }
 
+/** The staff who get in-app notices. Default: every active admin / super admin (read from the users collection). */
+async function defaultListAdmins() {
+  const User = require("../../models/User");
+  return User.find({ role: { $in: ADMIN_ROLES }, isActive: { $ne: false } }).select("_id role").lean();
+}
+
+async function defaultAudit(entry) {
+  return require("../audit/audit.service").recordAuditEvent({ ...entry, source: "form-pipeline" });
+}
+
 function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
+  const injected = Boolean(deps.email || deps.notifications); // a test replaced the senders: nothing may fall through to the real database / audit log
   const { email, notifications, logger, describeForm } = { ...defaultDeps(), ...deps };
+  const listAdmins = "listAdmins" in deps ? deps.listAdmins : (injected ? null : defaultListAdmins);
+  const audit = "audit" in deps ? deps.audit : (injected ? null : defaultAudit);
+  const digestStore = deps.digestStore || (injected ? createMemoryDigestStore() : createDigestStore());
+  const outcomeLookups = deps.outcomeLookups || {};
+  const adminLink = () => (env.FORM_PIPELINE_ADMIN_URL ? `${String(env.FORM_PIPELINE_ADMIN_URL).replace(/\/+$/, "")}/form-governance` : "");
+
+  /** One in-app notification PER admin, each with its own dedupeKey (the key is `${dedupeBase}:${userId}`). Without a user list (tests) it falls back to the role fan-out. */
+  async function notifyAdmins(payload, dedupeBase) {
+    const users = listAdmins && typeof notifications.createNotification === "function" ? await Promise.resolve(listAdmins()).catch(() => []) : [];
+    if (users?.length) {
+      for (const user of users) {
+        await notifications.createNotification({ ...payload, userId: user._id, recipientRole: user.role, dedupeKey: dedupeBase ? `${dedupeBase}:${user._id}` : undefined }, null, null);
+      }
+      return;
+    }
+    // no per-user path available: the role fan-out WITHOUT a dedupeKey (one shared key would suppress every admin after the first); the job-level dedupe already ran
+    await notifications.createForRoles(ADMIN_ROLES, payload, null, null);
+  }
+
+  async function writeAudit(action, job, details, metadata = {}) {
+    if (!audit) return;
+    try {
+      await audit({ action, entityType: AUDIT.entityType, entityId: job?._id ? String(job._id) : undefined, details, severity: "low", metadata });
+    } catch (error) {
+      logger.warn("form_pipeline_alert_audit_failed", { jobId: String(job?._id || ""), error: error.message });
+    }
+  }
+
+  /**
+   * E-mail (every recipient) when the toggle is on and a provider is configured; otherwise - or when no recipient could be sent to - the in-app notice.
+   * `notice` = { title, message, metadata, type, priority }. Resolves { channel }.
+   */
+  async function deliver({ template, data, enabled, notice, dedupeBase }) {
+    const configured = typeof email.isConfigured === "function" ? email.isConfigured() : false;
+    if (enabled && configured) {
+      const to = recipients(env);
+      let delivered = 0;
+      for (const address of to) {
+        try {
+          await email.sendTemplateEmail(template, { to: address, data, triggeredBy: "form-pipeline", source: "shared", recipientRole: "team_member" });
+          delivered += 1;
+        } catch (error) {
+          logger.warn("form_pipeline_alert_email_failed", { template, error: error.message });
+        }
+      }
+      if (delivered) return { channel: "email", to };
+    }
+    // not configured, switched off, or the provider rejected every send: the admins still see it in the app
+    await notifyAdmins({ source: "shared", category: "system", priority: "high", type: "form_pipeline_alert", ...notice }, dedupeBase);
+    return { channel: "in_app" };
+  }
 
   /**
    * `transition` is what jobService.fail returned: { state, classification, signature, nextAttemptAt, message }; `job` is the job AFTER the failure.
+   * Failure / blocked / dead_letter use the alert template; a HELD job (edition policy hold) uses the held template.
    * Resolves { sent, kind, deduped?, channel? } and never throws.
    */
-  async function announce({ job, transition, stage }) {
+  async function announce({ job, transition, stage, result }) {
     try {
       const kind = KIND_BY_STATE[transition?.state];
       if (!kind) return { sent: false, reason: "no_alert_for_state" };
@@ -43,29 +117,129 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
       const signature = `${kind}|${transition.signature}`;
       if (!(await jobService.markAlert(job._id, signature, kind))) return { sent: false, kind, deduped: true };
       const described = await Promise.resolve(describeForm(job.formCode)).catch(() => ({}));
+      const flags = alertConfig.emailFlags(env);
+      if (kind === "held") {
+        const data = { ...outcomeData.buildHeldData({ job, result, transition, reasonKind: "policy_hold", describe: described }), adminLink: adminLink() };
+        const delivery = await deliver({
+          template: "form-pipeline-held", data, enabled: flags.held, dedupeBase: `form-pipeline:${job._id}:${signature}`,
+          notice: { title: `Form ${job.formCode}: edition held`, message: `${data.reason}. ${data.action}`, metadata: { jobId: data.jobId, formCode: job.formCode, state: "held", reason: "policy_hold" } },
+        });
+        await writeAudit(AUDIT.alert, job, `Held alert for ${job.formCode} sent by ${delivery.channel}`, { kind, channel: delivery.channel, signature, formCode: job.formCode });
+        return { sent: true, kind, ...delivery };
+      }
       const editionDate = String(job.editionKey || "").split("|")[1] || "";
       const data = {
         kind, formCode: job.formCode, editionDate, activeEdition: described.activeEdition, stage: stage || job.lastError?.stage, errorClass: transition.classification.class, errorCode: transition.classification.code,
         message: transition.message, attempts: job.attempts, maxAttempts: job.maxAttempts, state: transition.state, nextAttemptAt: transition.nextAttemptAt ? new Date(transition.nextAttemptAt).toISOString() : "",
-        repairs: (job.repairsTried || []).map((item) => ({ strategy: item.strategy, outcome: item.outcome, verification: item.verification })), jobId: String(job._id), adminLink: env.FORM_PIPELINE_ADMIN_URL ? `${String(env.FORM_PIPELINE_ADMIN_URL).replace(/\/+$/, "")}/form-governance` : "",
+        repairs: (job.repairsTried || []).map((item) => ({ strategy: item.strategy, outcome: item.outcome, verification: item.verification })), jobId: String(job._id), adminLink: adminLink(),
       };
-      const configured = typeof email.isConfigured === "function" ? email.isConfigured() : false;
-      if (emailEnabled(env) && configured) {
-        for (const to of recipients(env)) {
-          await email.sendTemplateEmail("form-pipeline-alert", { to, data, triggeredBy: "form-pipeline", source: "shared", recipientRole: "team_member" });
-        }
-        return { sent: true, kind, channel: "email", to: recipients(env) };
-      }
-      // not configured (or emails switched off): the admins still see it in the app
-      await notifications.createForRoles(["super_admin", "admin"], {
-        source: "shared", category: "system", type: "form_pipeline_alert", title: `Form ${job.formCode}: pipeline ${kind.replace("_", " ")}`,
-        message: `Stage ${data.stage || "?"}: ${data.errorClass} ${data.errorCode} - ${data.message}`, metadata: { jobId: data.jobId, formCode: job.formCode, state: transition.state },
-      }, null, null);
-      return { sent: true, kind, channel: "in_app" };
+      const delivery = await deliver({
+        template: "form-pipeline-alert", data, enabled: flags.failure, dedupeBase: `form-pipeline:${job._id}:${signature}`,
+        notice: { title: `Form ${job.formCode}: pipeline ${kind.replace("_", " ")}`, message: `Stage ${data.stage || "?"}: ${data.errorClass} ${data.errorCode} - ${data.message}`, metadata: { jobId: data.jobId, formCode: job.formCode, state: transition.state } },
+      });
+      await writeAudit(AUDIT.alert, job, `${kind} alert for ${job.formCode} sent by ${delivery.channel}`, { kind, channel: delivery.channel, signature, formCode: job.formCode, stage: data.stage });
+      return { sent: true, kind, ...delivery };
     } catch (error) {
       logger.warn("form_pipeline_alert_failed", { jobId: String(job?._id), error: error.message });
       return { sent: false, error: error.message };
     }
+  }
+
+  /**
+   * A run FINISHED without failing. `outcome` is summarizeResult(result), `result` the pipeline's own result.
+   *   activated / acquired  -> an "edition promoted" success (one e-mail, or an entry in the run's digest - see alertConfig.successRoute);
+   *   kept_in_review        -> "imported but not promoted": approval required (the policy-hold case arrives through announce() as a held transition).
+   * Resolves { sent, kind?, route?, deduped? } and never throws.
+   */
+  async function announceOutcome({ job, outcome, result }) {
+    try {
+      const status = outcome?.status;
+      if (status === "activated" || status === "acquired") return await announceSuccess({ job, outcome, result });
+      if (status === "kept_in_review") return await announceApproval({ job, outcome, result });
+      return { sent: false, reason: "no_alert_for_outcome" };
+    } catch (error) {
+      logger.warn("form_pipeline_alert_failed", { jobId: String(job?._id), error: error.message });
+      return { sent: false, error: error.message };
+    }
+  }
+
+  async function announceSuccess({ job, outcome, result }) {
+    const flags = alertConfig.emailFlags(env);
+    if (!flags.success) return { sent: false, kind: "success", reason: "switched_off" };
+    const edition = outcomeData.editionOf(result?.template) || String(outcome?.version || "");
+    if (!(await jobService.markAlert(job._id, `success|${edition}`, "success"))) return { sent: false, kind: "success", deduped: true };
+    const trigger = job.trigger || "unknown";
+    const key = alertConfig.digestKey(trigger);
+    let route = alertConfig.successRoute({ trigger, env });
+    if (route === "individual" && !(await digestStore.reserveIndividual(key, alertConfig.runCap(env)))) route = "digest"; // the per-run cap is spent
+    if (route === "digest") {
+      await digestStore.addEntry(key, {
+        formCode: job.formCode, fromEdition: outcomeData.editionOf(result?.previousTemplate), toEdition: edition, release: outcomeData.describeRelease(result?.template).mode, jobId: String(job._id), trigger,
+      });
+      return { sent: false, kind: "success", route: "digest", queued: true };
+    }
+    const data = { ...(await outcomeData.buildSuccessData({ job, result, lookups: outcomeLookups })), adminLink: adminLink() };
+    const delivery = await deliver({
+      template: "form-pipeline-success", data, enabled: true, dedupeBase: `form-pipeline:${job._id}:success|${edition}`,
+      notice: {
+        type: "form_pipeline_update", priority: "medium", title: `Form ${job.formCode}: edition ${edition} is live`,
+        message: `${data.previousEdition ? `Updated from edition ${data.previousEdition} to ${edition}` : `Added at edition ${edition}`}. Release: ${data.release.mode}.`, metadata: { jobId: data.jobId, formCode: job.formCode, state: "done" },
+      },
+    });
+    await writeAudit(AUDIT.alert, job, `Success alert for ${job.formCode} sent by ${delivery.channel}`, { kind: "success", channel: delivery.channel, formCode: job.formCode, edition });
+    return { sent: true, kind: "success", route: "individual", ...delivery };
+  }
+
+  async function announceApproval({ job, outcome, result }) {
+    const reasonKey = String(outcome?.activationBlockedReason || "approval_required").slice(0, 80);
+    const edition = String(job.editionKey || "").split("|")[1] || outcomeData.editionOf(result?.template);
+    if (!(await jobService.markAlert(job._id, `held|approval_required|${edition}|${reasonKey}`, "held"))) return { sent: false, kind: "held", deduped: true };
+    const described = await Promise.resolve(describeForm(job.formCode)).catch(() => ({}));
+    const data = { ...outcomeData.buildHeldData({ job, result, reasonKind: "approval_required", describe: described }), adminLink: adminLink() };
+    const delivery = await deliver({
+      template: "form-pipeline-held", data, enabled: alertConfig.emailFlags(env).held, dedupeBase: `form-pipeline:${job._id}:held|approval_required|${edition}`,
+      notice: { title: `Form ${job.formCode}: approval needed`, message: `${data.reason}. ${data.action}`, metadata: { jobId: data.jobId, formCode: job.formCode, state: "done", reason: "approval_required" } },
+    });
+    await writeAudit(AUDIT.alert, job, `Approval-required alert for ${job.formCode} sent by ${delivery.channel}`, { kind: "held", reason: "approval_required", channel: delivery.channel, formCode: job.formCode, edition });
+    return { sent: true, kind: "held", reason: "approval_required", ...delivery };
+  }
+
+  /** Sends the digest of every run window that has been quiet long enough. Safe to call from several processes (a window is claimed atomically). Never throws. */
+  async function flushDigests({ now = new Date(), quietMs = alertConfig.digestQuietMs(env) } = {}) {
+    let flushed = 0;
+    try {
+      const due = await digestStore.claimDue({ quietMs, now });
+      for (const window of due) {
+        try {
+          const trigger = String(window.key || "").replace(/^success:/, "") || "unknown";
+          const data = { trigger, count: window.count, individualSent: window.individualSent || 0, entries: (window.entries || []).map((item) => ({ formCode: item.formCode, fromEdition: item.fromEdition, toEdition: item.toEdition, release: item.release })), adminLink: adminLink() };
+          const delivery = await deliver({
+            template: "form-pipeline-digest", data, enabled: alertConfig.emailFlags(env).success, dedupeBase: `form-pipeline-digest:${window._id}`,
+            notice: {
+              type: "form_pipeline_update", priority: "medium", title: `Form pipeline: ${window.count} edition${window.count === 1 ? "" : "s"} promoted`,
+              message: data.entries.slice(0, 10).map((item) => `${item.formCode} ${item.fromEdition ? `${item.fromEdition} -> ` : ""}${item.toEdition}`).join("; ") + (window.count > 10 ? ` and ${window.count - 10} more` : ""), metadata: { trigger, count: window.count },
+            },
+          });
+          await digestStore.markSent(window._id);
+          await writeAudit(AUDIT.digest, null, `Digest of ${window.count} promoted edition(s) sent by ${delivery.channel}`, { trigger, count: window.count, channel: delivery.channel, forms: data.entries.slice(0, 50).map((item) => item.formCode) });
+          flushed += 1;
+        } catch (error) {
+          logger.warn("form_pipeline_digest_failed", { key: window.key, error: error.message });
+          await Promise.resolve(digestStore.release(window._id)).catch(() => null); // put it back: the next tick tries again
+        }
+      }
+    } catch (error) {
+      logger.warn("form_pipeline_digest_failed", { error: error.message });
+    }
+    return { flushed };
+  }
+
+  /** Runs flushDigests every `intervalMs` (default 2 minutes); the timer never keeps the process alive. Returns { stop }. Off with FORM_PIPELINE_DIGEST_FLUSHER=false. */
+  function startDigestFlusher({ intervalMs = 2 * 60 * 1000 } = {}) {
+    if (!alertConfig.flusherEnabled(env)) return { stop() {}, disabled: true };
+    const timer = setInterval(() => { flushDigests().catch(() => null); }, intervalMs);
+    timer.unref?.();
+    return { stop() { clearInterval(timer); } };
   }
 
   /** The queue has waited longer than it should and no worker is alive: one alert (deduped across ticks through the in-memory flag of this process). */
@@ -76,18 +250,18 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
     workerAlertSent = true;
     logger.error("form_pipeline_worker_unavailable", { waiting: waiting.length, forms: waiting.slice(0, 10).map((item) => item.formCode) });
     try {
-      await notifications.createForRoles(["super_admin", "admin"], {
-        source: "shared", category: "system", type: "form_pipeline_alert", title: "Form pipeline worker is not running",
+      await notifyAdmins({
+        source: "shared", category: "system", priority: "high", type: "form_pipeline_alert", title: "Form pipeline worker is not running",
         message: `${waiting.length} form import job(s) have been waiting more than 15 minutes and no worker is picking them up (${waiting.slice(0, 5).map((item) => item.formCode).join(", ")}). Live forms keep working; nothing is processed until the worker runs.`,
         metadata: { waiting: waiting.length },
-      }, null, null);
+      }, `form-pipeline-worker:${new Date().toISOString().slice(0, 13)}`); // once per admin per hour
     } catch (error) {
       logger.warn("form_pipeline_alert_failed", { error: error.message });
     }
     return { sent: true };
   }
 
-  return { announce, workerUnavailable };
+  return { announce, announceOutcome, flushDigests, startDigestFlusher, workerUnavailable };
 }
 
-module.exports = { createAlerter, recipients, emailEnabled, DEFAULT_RECIPIENT, KIND_BY_STATE };
+module.exports = { createAlerter, recipients, emailEnabled, DEFAULT_RECIPIENT, KIND_BY_STATE, AUDIT };

@@ -359,6 +359,8 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
     }
   }
+  // Phase 5: what the migration left behind (frozen case forms, lost mapping edges) is recorded for the governance screens; fail-safe, never throws, changes nothing
+  try { await require("../../form-governance/GovernanceRecorder").recordMigrationOutcome({ template, caseMigration, lostEdges: migration?.lostEdges, actor: user }); } catch { /* bookkeeping only */ }
 
   // Biographic Activation tier: since full production activation is
   // correctly blocked without a human-reviewed curated mapping (above),

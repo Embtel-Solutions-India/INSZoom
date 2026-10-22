@@ -24,7 +24,8 @@ Rev 9 below is the original approval record and is kept unchanged for history. *
 | **Phase 2** (mapping contract, policy, validator, coverage, default-value classification, rename equivalence) | **Done in code** (2026-10-16); legacy findings, golden set not done |
 | **Phase 3** (certification markers, ReleaseGate, activation protocol + reconciliation, rollback, safe case migration) | **Done in code** (2026-10-22); Admin screen, repair strategies, performance baseline not done |
 | **Phase 4** (Gemini mapping, shadow-first; accuracy gate closed; live accuracy run blocked by a retired model) | **Done in code** (2026-10-22) |
-| Phase 5, 6 | Not started |
+| **Phase 5** (governance API + Admin screens, run summaries, deduped alerts, developer e-mails) | **Done in code** (2026-10-22) |
+| Phase 6 | Not started |
 | Phase 4 - Gemini mapping | **Not started and not part of the 12-hour pipeline** (see C7) |
 
 ### Changes from rev 9
@@ -314,6 +315,8 @@ Deterministic mapping and case creation never depend on Gemini, email or the wor
 - First proof runs are SHADOW; AI results never change live mappings.
 
 ### Phase 5 - Governance and operations
+
+> **As built (2026-10-22).** Done: `/api/form-governance` (overview, metrics, per-form status with seven separate statuses, read-only mapping-review queue, frozen-case list) over persisted run summaries and migration reports; Admin "Show Operations" screens; `PipelineAlerter` with dedupe, per-admin in-app fallback, success / held / digest e-mails and per-outcome switches. **Differences from the text below:** the review queue is read-only (approve / reject stays in the existing mapping editor); the endpoints live under `/api/form-governance` and `/api/form-pipeline`, not `/form-registry/pipeline`; the pre-image restore tool is the Phase 3 / 4 screen. See FORM_PIPELINE_IMPLEMENTATION_REPORT.md, "Phase 5".
 Persist catalog-sync/autopilot summaries; `/form-registry/pipeline` (jobs by state, oldest unresolved age, retries, stage timings, blocked/held list) + retry/unblock and the edition-evidence submission screen (team_lead/admin; no direct hold-lift or override); frozen-case reconciliation list; pre-image restore tool (restricted, audited); metrics. Admin `FormGovernance`: stage timeline; separate Import / Mapping / Coverage / Certification / Release / Edition-policy / Monitoring statuses; cert checks; `lostEdges`; mapping-review queue (via `MappingPolicy`); degraded/override/hold details. Deduped high-priority alerts (`dedupeKey`); register missing notification type; consistent audit action/entityType.
 
 ### Developer email notifications (delivered in Phase 1 for failure/blocked, completed in Phase 5; requested by the user)

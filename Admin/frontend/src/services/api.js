@@ -687,6 +687,20 @@ export const formReleaseApi = {
   restore: (snapshotId, payload) => api.post(`/form-release/migration-snapshots/${snapshotId}/restore`, payload, { timeout: 120000 }),
 }
 
+// Phase 5 governance (read-only): the operations overview, one form's separate statuses, the mapping-review queue and the frozen case forms. Responses are { success, data }.
+export const governanceOpsApi = {
+  overview: () => api.get('/form-governance/overview'),
+  formStatus: (formCode) => api.get(`/form-governance/forms/${encodeURIComponent(formCode)}/status`),
+  mappingReview: (params) => api.get('/form-governance/mapping-review', { params }),
+  frozenCases: () => api.get('/form-governance/frozen-cases'),
+}
+
+// Phase 4: the AI field-mapping engine (read-only). The mode is the server's FORM_AI_MAPPING setting; suggestions hold form metadata only.
+export const aiMappingApi = {
+  status: () => api.get('/form-ai-mapping/status'),
+  suggestions: (params) => api.get('/form-ai-mapping/suggestions', { params }),
+}
+
 // Phase 2: the golden set - the answer key a named reviewer confirms in plain language. Responses are { success, data }.
 export const goldenSetApi = {
   summary: () => api.get('/golden-set/summary'),

@@ -23,7 +23,9 @@ function services() {
     const alerter = createAlerter({ jobService });
     // Phase 4: the concrete repair strategies (each verified; none may touch a mapping, a party or an acceptance decision - see repair/guard.js)
     const runner = createRunner({ jobService, alerter, executor: createDefaultExecutor(), repairs: defaultStrategies(), inspectResult: createCertificationInspector() });
-    built = { jobService, alerter, runner };
+    // Phase 5E: the digest of a scheduled / catalog-wide run is sent once the run has been quiet for a while (unref'd timer; FORM_PIPELINE_DIGEST_FLUSHER=false turns it off)
+    const flusher = alerter.startDigestFlusher ? alerter.startDigestFlusher() : null;
+    built = { jobService, alerter, runner, flusher };
   }
   return built;
 }

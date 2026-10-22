@@ -7,6 +7,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import FormEditionEvidenceSection, { EVIDENCE_ROLES } from '../components/FormEditionEvidenceSection'
 import FormPipelineJobsSection, { READ_ROLES as PIPELINE_READ_ROLES } from '../components/FormPipelineJobsSection'
 import GoldenSetReviewSection from '../components/GoldenSetReviewSection'
+import FormGovernanceHub from '../components/FormGovernanceHub'
 import FormReleaseSection, { READ_ROLES as RELEASE_READ_ROLES } from '../components/FormReleaseSection'
 import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2, X } from 'lucide-react'
 
@@ -82,6 +83,7 @@ const FormGovernance = () => {
   const [showGolden, setShowGolden] = useState(false)
   const canSeeRelease = RELEASE_READ_ROLES.includes(user?.role) // super_admin, admin, team_lead (the roles the release API allows)
   const [showRelease, setShowRelease] = useState(false)
+  const [showOperations, setShowOperations] = useState(false)
   const [forms, setForms] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -299,6 +301,11 @@ const FormGovernance = () => {
               <FileCheck2 className="w-4 h-4" /> {showRelease ? 'Hide' : 'Show'} Release Safety
             </button>
           )}
+          {canSeeRelease && (
+            <button onClick={() => setShowOperations((open) => !open)} className="btn-secondary text-sm flex items-center gap-1 shrink-0">
+              <FileCheck2 className="w-4 h-4" /> {showOperations ? 'Hide' : 'Show'} Operations
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setShowUpload(true)} className="btn-primary text-sm flex items-center gap-1 shrink-0">
               <Upload className="w-4 h-4" /> Upload Form
@@ -311,6 +318,7 @@ const FormGovernance = () => {
       {canSeeStaffReviews && showPipeline && <FormPipelineJobsSection />}
       {canSeeStaffReviews && showGolden && <GoldenSetReviewSection />}
       {canSeeRelease && showRelease && <FormReleaseSection forms={forms} />}
+      {canSeeRelease && showOperations && <FormGovernanceHub forms={forms} />}
 
       {showCoverage && (
         <div className="card">

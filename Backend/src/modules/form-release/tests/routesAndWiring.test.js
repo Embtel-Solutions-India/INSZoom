@@ -44,3 +44,19 @@ test("nothing outside the lifecycle service makes an edition live: the release m
     assert.equal(/status:\s*"active"\s*\}?\s*\}\s*\)?\s*;?\s*$/m.test("") || /\$set:[^}]*status:\s*"active"/.test(code), false, `${file} does not set an edition live`);
   }
 });
+
+test("the restore preview never carries a stored value: only the field path and the kind of difference", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "form-release.routes.js"), "utf8");
+  assert.match(source, /redactChanges\(await /, "the restore report passes through the redaction before it leaves the server");
+  const start = source.indexOf("const redactChanges");
+  const end = source.indexOf(": report);", start) + ": report);".length;
+  const redact = new Function(`${source.slice(start, end)}; return redactChanges;`)();
+  const out = redact({ restored: false, dryRun: true, wouldRestore: true, changes: [
+    { path: "filledData.ssn", expected: "900-12-3456", actual: "999-99-9999" },
+    { path: "filledData.city", expected: null, actual: "San Jose" },
+    { path: "filledData.line2", expected: "Apt 5", actual: null },
+  ] });
+  assert.deepEqual(out.changes, [{ path: "filledData.ssn", kind: "changed" }, { path: "filledData.city", kind: "added" }, { path: "filledData.line2", kind: "removed" }]);
+  assert.equal(JSON.stringify(out).includes("900-12-3456"), false);
+  assert.equal(redact({ refused: "SNAPSHOT_NOT_FOUND" }).refused, "SNAPSHOT_NOT_FOUND", "a report without a change list passes through");
+});

@@ -54,6 +54,10 @@ const NOTIFICATION_TYPES = [
   "document_reminder",
   "document_overdue",
   "task_overdue",
+  // Form import pipeline (Phase 5): an alert that needs a person (failure, held, approval required) and a quiet "an edition was promoted" update. Registered because the
+  // Notification type is an enum: an unregistered type made the in-app fallback fail validation.
+  "form_pipeline_alert",
+  "form_pipeline_update",
   "escalated_task_overdue",
   "critical_task_overdue",
   "filing_deadline_approaching",

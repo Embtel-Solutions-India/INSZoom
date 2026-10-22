@@ -25,6 +25,10 @@ const handle = (fn) => async (req, res, next) => {
 const notFound = (message) => Object.assign(new Error(message), { status: 404 });
 const validId = (value) => mongoose.Types.ObjectId.isValid(String(value || ""));
 const USCISFormTemplate = () => require("../../models/USCISFormTemplate");
+// A restore report lists what differs, and the engine's diff carries the stored VALUES (a client's answers). The browser only ever gets the field path and what kind of difference it is.
+const redactChanges = (report) => (report && Array.isArray(report.changes)
+  ? { ...report, changes: report.changes.map((change) => ({ path: change.path, kind: change.expected === null || change.expected === undefined ? "added" : change.actual === null || change.actual === undefined ? "removed" : "changed" })) }
+  : report);
 
 router.get("/templates/:id/gate", authenticate, authorizeRoles(...REVIEW_ROLES), handle(async (req) => {
   if (!validId(req.params.id)) throw notFound("Form edition not found");
@@ -57,7 +61,7 @@ router.get("/migration-snapshots", authenticate, authorizeRoles(...SNAPSHOT_ROLE
 
 router.post("/migration-snapshots/:id/restore", authenticate, authorizeRoles(...SNAPSHOT_ROLES), handle(async (req) => {
   if (!validId(req.params.id)) throw notFound("Snapshot not found");
-  return require("../form-mapping/services/CaseFormEditionMigrationService").restoreCaseFormFromPreImage(req.params.id, { dryRun: req.body?.dryRun !== false, actor: req.user, reason: String(req.body?.reason || "restore requested by an admin") });
+  return redactChanges(await require("../form-mapping/services/CaseFormEditionMigrationService").restoreCaseFormFromPreImage(req.params.id, { dryRun: req.body?.dryRun !== false, actor: req.user, reason: String(req.body?.reason || "restore requested by an admin") }));
 }));
 
 module.exports = router;

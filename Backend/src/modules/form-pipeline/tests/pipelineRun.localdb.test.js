@@ -167,7 +167,7 @@ test("the promote stage re-checks the lease and takes the per-form mutex; a lost
   assert.equal(promoted, 1, "a worker that lost its lease can never promote");
 });
 
-test("an edition the policy gate refused (EDITION_POLICY_HELD inside the existing activation) puts the job on HOLD, not in failure, and sends no failure alert", async (t) => {
+test("an edition the policy gate refused (EDITION_POLICY_HELD inside the existing activation) puts the job on HOLD, not in failure, and sends one held e-mail (no failure alert)", async (t) => {
   if (!db.ok) return t.skip(db.reason);
   const code = newCode();
   const { runner, sent } = makeRunner(async () => ({ template: { status: "review", version: "x" }, requiresActivation: true, activationBlockedCode: "EDITION_POLICY_HELD", activationBlockedReason: "USCIS has not confirmed that edition x is accepted" }));
@@ -176,7 +176,9 @@ test("an edition the policy gate refused (EDITION_POLICY_HELD inside the existin
   assert.equal(outcome.result.requiresActivation, true, "the caller still gets the pipeline's normal result");
   const saved = await FormPipelineJob.findOne({ formCode: code }).lean();
   assert.deepEqual([saved.state, saved.open, saved.attempts, saved.lastError.class], ["held", true, 0, "held"]);
-  assert.equal(sent.emails.length, 0);
+  await outcome.alerted; // Phase 5E: the hold is announced once, as a HELD e-mail (never as a failure alert)
+  assert.deepEqual(sent.emails.map((mail) => mail.key), ["form-pipeline-held"]);
+  assert.equal(sent.emails[0].data.reasonKind, "policy_hold");
   assert.ok(saved.nextAttemptAt > new Date(Date.now() + LIMITS.heldRecheckMs - 60000), "re-checked slowly");
 });
 

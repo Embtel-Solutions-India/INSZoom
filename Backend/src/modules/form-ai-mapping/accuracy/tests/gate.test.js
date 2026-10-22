@@ -117,3 +117,19 @@ test("a record made from an evaluation that did not meet the criteria cannot ope
   assert.equal(result.open, false);
   assert.ok(result.reasons.includes("evaluation_not_met"));
 });
+
+test("status(): one answer per family and a plain summary of the newest evaluation; closed when nothing is on record; never throws", async () => {
+  const open = await gateFor().gate.status();
+  assert.equal(open.open, true);
+  assert.deepEqual(Object.keys(open.families).sort(), ["employment", "family", "general", "single"]);
+  assert.equal(open.latest.met, true);
+  assert.equal(open.latest.model, "gemini-x");
+
+  const none = await gateFor({ noRecord: true }).gate.status();
+  assert.equal(none.open, false);
+  assert.equal(none.latest, null);
+  assert.ok(Object.values(none.families).every((family) => family.reasons.includes("no_evaluation_on_record")));
+
+  const broken = await gateFor({ recordThrows: true }).gate.status();
+  assert.equal(broken.open, false, "a database error reads as closed");
+});

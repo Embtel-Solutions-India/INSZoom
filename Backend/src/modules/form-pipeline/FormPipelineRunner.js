@@ -49,6 +49,9 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
     }, heartbeatMs);
     beat.unref?.();
     const alive = () => { if (lost) throw new LeaseLostError(); };
+    // runs an alert with the job as it is NOW; the promise (also on the run's result as `alerted`, for tests) never rejects
+    const background = (id, call) => Promise.resolve().then(async () => { const current = await jobService.get(id); return current ? call(current) : null; })
+      .catch((error) => { logger.warn("form_pipeline_alert_failed", { jobId: String(id), error: sanitizeMessage(error) }); return null; });
 
     const context = {
       job, lease, formCode: job.formCode, options: job.options || {}, actor, req,
@@ -137,11 +140,15 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       if (result?.activationBlockedCode === "EDITION_POLICY_HELD") {
         const held = Object.assign(new Error(result.activationBlockedReason || "The edition policy has not accepted this edition"), { name: "EditionPolicyHeldError", code: "EDITION_POLICY_HELD" });
         const transition = await jobService.fail(jobId, lease, { stage: STAGES.PROMOTE, error: held });
-        return { state: transition.state, transition, result };
+        // Phase 5E: ONE "imported but not promoted" e-mail per job and reason (deduped on the job); runs beside the caller's response and never throws
+        const alerted = alerter ? background(jobId, async (current) => alerter.announce({ job: current, transition, stage: STAGES.PROMOTE, result })) : null;
+        return { state: transition.state, transition, result, ...(alerted ? { alerted } : {}) };
       }
       const outcome = summarizeResult(result);
       await jobService.complete(jobId, lease, outcome);
-      return { state: "done", outcome, result };
+      // Phase 5E: "edition promoted" (success e-mail or digest entry) or "approval required"; deduped on the job, never throws, does not delay the caller
+      const alerted = alerter?.announceOutcome ? background(jobId, async (current) => alerter.announceOutcome({ job: current, outcome, result })) : null;
+      return { state: "done", outcome, result, ...(alerted ? { alerted } : {}) };
     } catch (error) {
       if (error instanceof LeaseLostError) return { state: "lease_lost" };
       const transition = await jobService.fail(jobId, lease, { stage: currentStage, error }).catch((failure) => (failure instanceof LeaseLostError ? { leaseLost: true } : Promise.reject(failure)));

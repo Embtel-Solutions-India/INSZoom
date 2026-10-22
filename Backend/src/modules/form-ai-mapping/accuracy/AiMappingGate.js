@@ -88,7 +88,22 @@ function createAiMappingGate(overrides = {}) {
     return { open: unique.length === 0, reasons: unique };
   }
 
-  return { isOpen, recordEvaluation, latest };
+  /** For the status screen: one answer per golden-scope family (the gate decides per family), plus a plain summary of the newest evaluation. Never throws; any error reads as closed. */
+  async function status() {
+    const families = {};
+    for (const [code, scope] of Object.entries(SCOPE)) {
+      if (families[scope.family]) continue;
+      families[scope.family] = await isOpen({ formCode: code, family: scope.family });
+    }
+    let newest = null;
+    try {
+      const record = await latest();
+      if (record) newest = { evaluatedAt: record.evaluatedAt, met: record.met === true, expiresAt: record.expiresAt, promptVersion: record.promptVersion, model: record.model, source: record.source, families: record.families || [], forms: record.forms || [], blockers: record.summary?.blockers || [], autoUsedText: record.summary?.autoUsedText, precision: record.summary?.precision };
+    } catch { newest = null; }
+    return { open: Object.values(families).some((family) => family.open), families, latest: newest };
+  }
+
+  return { isOpen, recordEvaluation, latest, status };
 }
 
 let shared = null;
@@ -99,4 +114,5 @@ module.exports = {
   isOpen: (args) => instance().isOpen(args),
   recordEvaluation: (report, options) => instance().recordEvaluation(report, options),
   latest: () => instance().latest(),
+  status: () => instance().status(),
 };

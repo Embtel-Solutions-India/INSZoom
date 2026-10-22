@@ -17,7 +17,11 @@ function startUSCISEditionUpgradeJob(withJobLock) {
     try {
       const task = async () => {
         const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
-        return upgradeTrackedForms({ user: actor || { role: "super_admin" } });
+        const upgrade = () => upgradeTrackedForms({ user: actor || { role: "super_admin" } });
+        // Phase 5: recorded for the governance overview AFTER the run; recording is fail-safe and never changes the run or its result
+        let governance = null;
+        try { governance = require("../../form-governance/GovernanceRecorder"); } catch { /* governance bookkeeping is optional */ }
+        return governance ? governance.timedRun("edition_upgrade", upgrade, require("../../form-governance/summaries").summarizeUpgrade) : upgrade();
       };
       await (withJobLock ? withJobLock("uscis-edition-upgrade", 3 * 60 * 60 * 1000, task) : task());
     } catch (error) {
