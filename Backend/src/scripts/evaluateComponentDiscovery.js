@@ -23,7 +23,9 @@ function compare(storedDefs, segmentation) {
       const seg = byRange.get(key);
       if (!seg) { missing.push({ componentCode: def.componentCode, range: key }); continue; }
       seen.add(key);
-      if (seg.componentCode !== def.componentCode && seg.codeSource === "carried") codeMismatch.push({ stored: def.componentCode, segmenter: seg.componentCode, range: key });
+      const sameRange = stored.filter((other) => (other.pageRanges || []).some((r) => rangeKey(r.startPage, r.endPage) === key));
+      const overlapOk = sameRange.length > 1 && sameRange.some((other) => other.componentCode === seg.componentCode); // a documented duplicate: one segment, two stored rows
+      if (seg.componentCode !== def.componentCode && seg.codeSource === "carried" && !overlapOk) codeMismatch.push({ stored: def.componentCode, segmenter: seg.componentCode, range: key });
     }
   }
   const extra = segs.filter((seg) => !seen.has(rangeKey(seg.startPage, seg.endPage))).map((seg) => ({ range: rangeKey(seg.startPage, seg.endPage), heading: seg.headingText, code: seg.componentCode, codeSource: seg.codeSource }));
@@ -46,19 +48,35 @@ async function main(argv) {
   const defsByTemplate = new Map();
   for (const def of definitions) { const key = String(def.parentTemplateId); (defsByTemplate.get(key) || defsByTemplate.set(key, []).get(key)).push(def); }
 
+  const textOf = new Map();
+  const readPages = async (head) => {
+    const key = String(head._id);
+    if (!textOf.has(key)) {
+      const parser = new PDFParse({ data: await storage.readBuffer(head.artifacts.form.storageKey) });
+      try { textOf.set(key, (await parser.getText()).pages.map((page) => page.text || "")); } finally { await parser.destroy(); }
+    }
+    return textOf.get(key);
+  };
   const rows = [];
   for (const head of heads) {
     const storageKey = head.artifacts?.form?.storageKey;
     const row = { formCode: head.formCode, version: head.version, status: head.status };
     if (!storageKey) { rows.push({ ...row, skipped: "no stored PDF" }); continue; }
     try {
-      const buffer = await storage.readBuffer(storageKey);
-      const parser = new PDFParse({ data: buffer });
-      let pages;
-      try { pages = (await parser.getText()).pages.map((page) => page.text || ""); } finally { await parser.destroy(); }
+      const pages = await readPages(head);
       const candidates = registry.filter((item) => String(item._id.parentForm).toUpperCase() === String(head.formCode).toUpperCase()).map((item) => ({ name: item._id.formName, componentCode: item._id.componentCode || Segmenter.derivedCode(head.formCode, item._id.formName), inUse: Boolean(item._id.componentCode), source: "registry" }));
       const stored = defsByTemplate.get(String(head._id)) || [];
-      const segmentation = Segmenter.segment({ pages, parentFormCode: head.formCode, candidates });
+      // the previous edition of the same form that has stored components (older version): its pages and components let a HEADINGLESS sheet (I-129 Additional Beneficiary) be recognised
+      const older = heads.filter((other) => other.formCode === head.formCode && String(other._id) !== String(head._id) && String(other.version) < String(head.version) && (defsByTemplate.get(String(other._id)) || []).length)
+        .sort((a, b) => String(b.version).localeCompare(String(a.version)))[0];
+      let previous = null;
+      let previousCandidates = [];
+      if (older) {
+        const olderDefs = defsByTemplate.get(String(older._id));
+        previous = { pages: await readPages(older), components: olderDefs.map((def) => ({ componentCode: def.componentCode, name: def.name, startPage: def.pageRanges?.[0]?.startPage, endPage: def.pageRanges?.[0]?.endPage })) };
+        previousCandidates = olderDefs.map((def) => ({ name: def.name, componentCode: def.componentCode, inUse: false, source: "previous" }));
+      }
+      const segmentation = Segmenter.segment({ pages, parentFormCode: head.formCode, candidates: [...candidates, ...previousCandidates], previous });
       row.pages = pages.length;
       row.segmentsFound = segmentation.segments.filter((seg) => seg.kind === "component").length;
       row.unclaimedPages = segmentation.unclaimed.length;

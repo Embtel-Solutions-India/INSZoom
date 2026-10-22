@@ -192,3 +192,14 @@ test("AutoFillService without preserveExisting is exactly as before (an un-attri
   const merged = AutoFill.mergeMappedFields(caseForm, { formFields: [{ fieldId: "b", fieldName: "b" }] }, { fieldValues: { b: "AUTO" }, sourceAttribution: {} }, { fieldMetadata: {} }, {});
   assert.equal(merged.filledData.b, "AUTO");
 });
+
+test("ValueRules: an identical box carries the answer untouched; an answer that already overflowed its old box is not a NEW problem; a new, tighter limit still refuses", () => {
+  const same = field("t", { fieldType: "dropdown", options: opts("Single", "Married"), validation: { maxLength: 5 } });
+  const kept = ValueRules.carry({ value: " married ", oldField: same, newField: same });
+  assert.deepEqual([kept.ok, kept.value, kept.rule, kept.converted], [true, " married ", "unchanged_box", false], "no conversion on an unchanged box");
+  const longText = "A value longer than the limit of ten";
+  const overflowing = ValueRules.carry({ value: longText, oldField: field("t", { validation: { maxLength: 10 } }), newField: field("t", { validation: { maxLength: 12 } }) });
+  assert.deepEqual([overflowing.ok, overflowing.rule], [true, "already_overflowing"]);
+  assert.equal(ValueRules.carry({ value: "123456789", oldField: field("t"), newField: field("t", { validation: { maxLength: 5 } }) }).ok, false, "fit an unlimited old box, not the new limited one: refused");
+  assert.equal(ValueRules.carry({ value: "123456789", oldField: field("t", { validation: { maxLength: 20 } }), newField: field("t", { validation: { maxLength: 5 } }) }).reason, "exceeds_max_length_5");
+});

@@ -402,6 +402,8 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     biographicReady: template.mappingStatus === "biographic_active",
     coverage: biographicMapping?.coverage || null,
     migration,
+    // Phase 7: boxes the edition could not map are left unmapped (blank) and the release went on without them (FORM_PIPELINE_AUTONOMY=on)
+    mappingLeftUnmapped: migration?.partial ? migration.leftUnmapped || null : null,
     readiness,
     certification,
     caseMigration,
@@ -607,6 +609,27 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
     comparisonReport: scanResult.comparisonReport,
     checked: true,
     versionChanged: true,
+    ...compactActivationReport(activation),
+  };
+}
+
+/**
+ * Phase 7: what the job outcome / stage ladder needs to say about the run, in COUNTS only (no case-form ids, no answers): whether the mapping was activated (and how many boxes were
+ * left unmapped), the certification verdict, the case-migration counts or its error, and the component-discovery verdict. Additive keys on the result.
+ */
+function compactActivationReport(activation) {
+  const n = (value) => (Array.isArray(value) ? value.length : Number(value) || 0);
+  const migrationRun = activation.caseMigration;
+  return {
+    migration: activation.migration ? { activated: Boolean(activation.migration.activated), partial: Boolean(activation.migration.partial), reason: activation.migration.reason } : null,
+    mappingLeftUnmapped: activation.mappingLeftUnmapped || null,
+    certification: activation.certification ? { passed: Boolean(activation.certification.passed), checks: (activation.certification.checks || []).map((check) => ({ name: check.name, passed: check.passed })) } : null,
+    caseMigration: migrationRun ? {
+      considered: n(migrationRun.considered), migrated: n(migrationRun.migrated), verified: n(migrationRun.verified), skippedFrozen: n(migrationRun.skippedFrozen), failed: n(migrationRun.failed),
+      unresolved: n(migrationRun.unresolved), reconciliationRequired: n(migrationRun.reconciliationRequired), restored: n(migrationRun.restored), inProgress: n(migrationRun.inProgress),
+    } : null,
+    caseMigrationError: activation.caseMigrationError || null,
+    componentDiscovery: activation.componentDiscovery ? { componentsDiscovered: Number(activation.componentDiscovery.componentsDiscovered) || 0, error: activation.componentDiscovery.error } : null,
   };
 }
 

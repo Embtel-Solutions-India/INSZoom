@@ -58,7 +58,7 @@ test("synthetic pair: an added protected-role box is NEW, listed, and holds the 
   });
 });
 
-test("carry-forward hook: off = no inventory, graph byte-for-byte as before; shadow = the same graph (only a log line); on+report = summary only; on+enforce = unmappedTargets", async () => {
+test("carry-forward hook: off = no inventory, graph byte-for-byte as before; shadow = the same graph (only a log line); on = summary only (FORM_INVENTORY_GATE=enforce is ignored)", async () => {
   const fields = [{ fieldId: "A", pdfFieldName: "A", label: "Beneficiary Given Name", fieldType: "text", sectionTitle: "Part 1", pageNumber: 1 }, { fieldId: "B", pdfFieldName: "B", label: "Petitioner Name", fieldType: "text", sectionTitle: "Part 1", pageNumber: 1 }];
   const previous = { version: "old", edges: [edge("A", "Beneficiary Given Name")], nodes: { canonical: [] } };
   const run = (env) => withEnv({ FORM_INVENTORY_GATE: undefined, ...env }, () => carryForwardGraph(JSON.parse(JSON.stringify(previous)), template(JSON.parse(JSON.stringify(fields)))));
@@ -74,8 +74,8 @@ test("carry-forward hook: off = no inventory, graph byte-for-byte as before; sha
   assert.equal(on.graph.inventory.decision, "held");
   assert.deepEqual(on.graph.unmappedTargets, [], "report mode never touches the activation readiness");
   assert.equal(on.graph.validation.readyForActivation, off.graph.validation.readyForActivation);
-  assert.deepEqual(enforce.graph.unmappedTargets, ["B"]);
-  assert.equal(enforce.graph.validation.readyForActivation, false, "enforced: the existing readiness check refuses to activate with an unmapped protected box");
+  assert.deepEqual(enforce.graph.unmappedTargets, [], "enforce is ignored: the box without a source is left blank, activation is never blocked by it");
+  assert.equal(enforce.graph.validation.readyForActivation, on.graph.validation.readyForActivation);
 });
 
 test("inventoryForCarry / inventoryForCoverage never throw and return null when off", () => {
@@ -110,7 +110,7 @@ test("ReleaseGate: with the switch off the decision AND the checks list are exac
   assert.equal(off.decision, baseline.decision);
 });
 
-test("ReleaseGate: shadow adds no check; on+report adds a PASSING check that carries the would-be decision (the decision does not move); enforce holds", async () => {
+test("ReleaseGate: shadow adds no check; on adds a PASSING check that carries the would-be decision (the decision does not move); enforce is ignored", async () => {
   const shadow = await withEnv({ FORM_PIPELINE_AUTONOMY: "shadow" }, () => ReleaseGate.evaluate(baseTemplate, { deps: deps(heldSummary) }));
   assert.equal(shadow.checks.some((check) => check.name === "inventory"), false);
   const baseline = await withEnv({ FORM_PIPELINE_AUTONOMY: "off" }, () => ReleaseGate.evaluate(baseTemplate, { deps: deps(heldSummary) }));
@@ -120,18 +120,18 @@ test("ReleaseGate: shadow adds no check; on+report adds a PASSING check that car
   assert.equal(report.decision, baseline.decision, "report mode never changes the decision");
   assert.equal(report.canPromote, baseline.canPromote);
   const enforce = await withEnv({ FORM_PIPELINE_AUTONOMY: "on", FORM_INVENTORY_GATE: "enforce" }, () => ReleaseGate.evaluate(baseTemplate, { deps: deps(heldSummary) }));
-  assert.equal(enforce.decision, "held");
-  assert.equal(enforce.canPromote, false);
+  assert.equal(enforce.decision, baseline.decision, "FORM_INVENTORY_GATE=enforce is ignored: the inventory never holds an edition");
+  assert.equal(enforce.canPromote, baseline.canPromote);
   const clean = await withEnv({ FORM_PIPELINE_AUTONOMY: "on", FORM_INVENTORY_GATE: "enforce" }, () => ReleaseGate.evaluate(baseTemplate, { deps: deps({ decision: "pass", counts: {}, hold: { count: 0 } }) }));
   assert.equal(clean.decision, "promote");
 });
 
-test("ReleaseGate: an unreadable inventory is advisory in report mode and fails closed only when enforced", async () => {
+test("ReleaseGate: an unreadable inventory is only a note, enforce or not", async () => {
   const broken = { policy: async () => ({ allowed: true }), editionDiff: async () => ({ blocked: false }), inventory: async () => { throw new Error("db down"); } };
   const report = await withEnv({ FORM_PIPELINE_AUTONOMY: "on", FORM_INVENTORY_GATE: undefined }, () => ReleaseGate.evaluate(baseTemplate, { deps: broken }));
   assert.equal(report.decision, "promote");
   const enforce = await withEnv({ FORM_PIPELINE_AUTONOMY: "on", FORM_INVENTORY_GATE: "enforce" }, () => ReleaseGate.evaluate(baseTemplate, { deps: broken }));
-  assert.equal(enforce.decision, "held");
+  assert.equal(enforce.decision, "promote");
 });
 
 // ---- per-form status ----

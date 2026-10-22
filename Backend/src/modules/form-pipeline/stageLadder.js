@@ -37,6 +37,14 @@ function summarizeMigration({ released, caseMigration, error }) {
 
 const stage = (status, reason) => (reason ? { status, reason: String(reason).slice(0, 300) } : { status });
 
+/** "N boxes left unmapped" when the edition's mapping was activated without the boxes it could not map (owner decision 2026-10-23); undefined otherwise. */
+function leftUnmappedReason(result) {
+  const left = result?.mappingLeftUnmapped;
+  if (!left) return undefined;
+  const count = (Number(left.lost) || 0) + (Number(left.needsReview) || 0);
+  return `${count} box(es) left unmapped (blank); every other box is mapped`;
+}
+
 /** The ladder for one finished run. `result` is what activateOrPromote / ensureCurrentUSCISForm returned (may be partial or null). Never throws. */
 function buildLadder(result) {
   try {
@@ -53,7 +61,7 @@ function buildLadder(result) {
       detected: stage(result.checkError ? "failed" : result.checked === false ? "skipped" : "done", result.checkError),
       fetched: stage(imported ? "done" : result.checkError ? "failed" : "skipped"),
       imported: stage(imported ? "done" : "skipped"),
-      mapped: stage(result.migration || result.ruleMapping || template?.mappingStatus === "active" ? "done" : imported ? "held" : "skipped", imported && template?.mappingStatus !== "active" && !result.migration ? "no active mapping yet" : undefined),
+      mapped: stage(result.migration || result.ruleMapping || template?.mappingStatus === "active" ? "done" : imported ? "held" : "skipped", leftUnmappedReason(result) || (imported && template?.mappingStatus !== "active" && !result.migration ? "no active mapping yet" : undefined)),
       certified: stage(certification ? (certified ? "done" : "failed") : "skipped", certified ? undefined : (certification?.checks || []).filter((check) => check && check.passed === false).map((check) => check.name).join(", ") || undefined),
       release_eligible: stage(certified && !blocked ? "done" : blocked ? "held" : "skipped", blocked),
       released: stage(released ? "done" : blocked ? "held" : "skipped", blocked),

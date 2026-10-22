@@ -7,6 +7,8 @@
 //
 // Rules (rule ids are stored on the migration record so every conversion is explainable):
 //   blank                   an empty answer stays empty
+//   unchanged_box           the new box is the same box (same kind, same option set, same maxLength): the answer is carried untouched - nothing to validate or convert
+//   already_overflowing     the answer was ALREADY longer than the old box's maxLength (the renderer shrinks long text, so real answers do overflow): it is not a NEW problem, kept as is
 //   locked_box_refused      signature / barcode boxes never receive a carried answer
 //   text_same_kind          text / date / number -> text-like box; refused when it is longer than the new box's maxLength (never cut)
 //   boolean_checkbox        a true / false -> a tick box
@@ -49,6 +51,14 @@ function maxLengthOf(field) {
 }
 
 const refuse = (reason) => ({ ok: false, reason });
+const optionValues = (field) => { const list = optionsOf(field); return list ? list.map((option) => String(option.value)).sort() : null; };
+/** The old and the new box are the same box as far as an answer is concerned: nothing about the answer needs validating or converting. */
+function sameBox(oldField, newField) {
+  if (!oldField || !newField) return false;
+  const a = kindOf(oldField);
+  const b = kindOf(newField);
+  return Boolean(a) && a === b && maxLengthOf(oldField) === maxLengthOf(newField) && JSON.stringify(optionValues(oldField)) === JSON.stringify(optionValues(newField));
+}
 const pass = (value, rule, converted = false) => ({ ok: true, value, rule, converted });
 
 function toOption(options, text) {
@@ -72,13 +82,19 @@ function carry({ value, oldField = null, newField = null }) {
   const target = kindOf(newField);
   if (!target) return pass(value, "no_type_info"); // the new edition's box says nothing about its type: carried exactly as today
   if (target === "locked") return refuse("locked_box_refused");
+  if (sameBox(oldField, newField)) return pass(value, "unchanged_box");
   if (value && typeof value === "object" && !Array.isArray(value)) return target === "text" ? refuse("object_into_text_box") : pass(value, "override_record");
 
   if (target === "text") {
     if (typeof value === "boolean") return refuse("boolean_into_text_box");
     if (Array.isArray(value)) return refuse("list_into_text_box");
     const max = maxLengthOf(newField);
-    if (max && String(value).length > max) return refuse(`exceeds_max_length_${max}`);
+    if (max && String(value).length > max) {
+      // only a NEW restriction refuses: an answer that already overflowed its old box (or fits an old box that had no limit) is judged against that
+      const oldMax = maxLengthOf(oldField);
+      if (oldMax !== null && String(value).length > oldMax) return pass(value, "already_overflowing");
+      return refuse(`exceeds_max_length_${max}`);
+    }
     return pass(value, "text_same_kind");
   }
   if (target === "checkbox") {
@@ -111,4 +127,4 @@ function carry({ value, oldField = null, newField = null }) {
 /** Bumped when a rule is added / changed in a way that can turn a parked case form into a carriable one (stored on the park record). */
 const RULES_VERSION = 1;
 
-module.exports = { carry, kindOf, optionsOf, maxLengthOf, AFFIRMATIVE, NEGATIVE, RULES_VERSION };
+module.exports = { carry, sameBox, kindOf, optionsOf, maxLengthOf, AFFIRMATIVE, NEGATIVE, RULES_VERSION };

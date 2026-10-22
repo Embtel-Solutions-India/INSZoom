@@ -9,7 +9,7 @@
 // Only COUNTS are printed: no answer, name or id of a person ever appears in the output.
 const mongoose = require("mongoose");
 
-const OPEN_FROZEN = ["finalized", "filed", "approved", "generated", "ready_for_pdf", "locked", "receipt_received", "archived"];
+const { FROZEN_CASE_FORM_STATUSES: OPEN_FROZEN } = require("../modules/form-mapping/config/caseFormFreeze"); // the one shared definition of a frozen case form
 
 /** Pure. Folds one plan into a counter object. */
 function tally(acc, plan) {

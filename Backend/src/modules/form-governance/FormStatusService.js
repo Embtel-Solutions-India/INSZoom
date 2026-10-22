@@ -113,7 +113,10 @@ function importStatus(template, job) {
 function mappingStatus(template, version) {
   if (!template) return { state: "unknown", detail: "no edition on file", activeVersion: null };
   const activeVersion = version?.mappingVersion ?? null;
-  if (template.mappingStatus === "active" && version) return { state: version.validation?.readyForActivation === false ? "warning" : "ok", detail: `mapping version ${activeVersion} is active`, activeVersion };
+  if (template.mappingStatus === "active" && version) {
+    const left = version.validation?.readyForActivation === false && require("../../config/formPipelineAutonomy").mode() === "on" ? Number(version.validation?.summary?.reviewRequired) || 0 : 0;
+    return { state: version.validation?.readyForActivation === false ? "warning" : "ok", detail: `mapping version ${activeVersion} is active${left ? `; ${left} box(es) left unmapped (blank)` : ""}`, activeVersion };
+  }
   if (["needs_review", "draft", "biographic_active"].includes(template.mappingStatus)) return { state: "warning", detail: `mapping is ${template.mappingStatus}`, activeVersion };
   return { state: "blocked", detail: `mapping is ${template.mappingStatus || "unmapped"}`, activeVersion };
 }

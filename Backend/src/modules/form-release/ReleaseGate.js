@@ -53,10 +53,10 @@ async function defaultInventory(template) {
  */
 async function inventoryCheck(template, deps, mode) {
   const FieldInventory = require("../form-mapping/inventory/FieldInventory");
-  const gate = FieldInventory.gateMode();
+  const gate = FieldInventory.gateMode(); // always "report": the inventory never holds an edition
   try {
     const summary = await (deps.inventory || defaultInventory)(template);
-    const check = FieldInventory.gateCheck(summary, { mode: gate });
+    const check = FieldInventory.gateCheck(summary);
     if (mode === "shadow") {
       require("../../utils/logger").warn("form_inventory_gate_shadow", { formCode: template?.formCode, wouldBe: check.wouldBe, gate, holdCount: check.holdCount ?? null });
       return null;
@@ -64,9 +64,7 @@ async function inventoryCheck(template, deps, mode) {
     return check;
   } catch (error) {
     if (mode === "shadow") return null;
-    return gate === "enforce"
-      ? { name: "inventory", outcome: "held", wouldBe: "held", report: false, detail: `the per-field inventory could not be read (${error.message})` } // fail closed
-      : { name: "inventory", outcome: "pass", wouldBe: "unknown", report: true, detail: `report only: the per-field inventory could not be read (${error.message})` };
+    return { name: "inventory", outcome: "pass", wouldBe: "unknown", report: true, detail: `report only: the per-field inventory could not be read (${error.message})` };
   }
 }
 
@@ -94,13 +92,23 @@ async function evaluate(template, { req, deps = {} } = {}) {
     checks.push({ name: "edition_policy", outcome: "held", detail: `acceptance could not be checked (${error.message})` }); // fail closed
   }
 
+  // Owner decision 2026-10-23 (FORM_PIPELINE_AUTONOMY=on only): a box whose mapping the edition broke is LEFT UNMAPPED (blank); the mapping was activated without those boxes, so the
+  // diff no longer needs a person - it passes with a note. off / shadow: exactly as before.
+  const leaveUnmapped = autonomy.mode() === "on";
   try {
     const diff = await (deps.editionDiff || defaultEditionDiff)(template);
-    checks.push(diff.blocked
-      ? { name: "edition_diff", outcome: "approval_required", detail: "this edition changed fields that have mapping edges; a reviewer must acknowledge the edition diff", diff: diff.summary }
-      : { name: "edition_diff", outcome: "pass", detail: template?.parentVersion ? "no unreviewed breaking change" : "first edition, nothing to compare" });
+    if (diff.blocked && leaveUnmapped) {
+      const count = Number(diff.summary?.affectedMappingEdges);
+      checks.push({ name: "edition_diff", outcome: "pass", detail: `${Number.isFinite(count) ? count : "some"} box(es) whose mapping this edition broke are left unmapped (blank); every other box is mapped`, diff: diff.summary });
+    } else {
+      checks.push(diff.blocked
+        ? { name: "edition_diff", outcome: "approval_required", detail: "this edition changed fields that have mapping edges; a reviewer must acknowledge the edition diff", diff: diff.summary }
+        : { name: "edition_diff", outcome: "pass", detail: template?.parentVersion ? "no unreviewed breaking change" : "first edition, nothing to compare" });
+    }
   } catch (error) {
-    checks.push({ name: "edition_diff", outcome: "approval_required", detail: `the edition diff could not be read (${error.message})` }); // fail closed
+    checks.push(leaveUnmapped
+      ? { name: "edition_diff", outcome: "pass", detail: `the edition diff could not be read (${error.message}); boxes that cannot be mapped are left unmapped` }
+      : { name: "edition_diff", outcome: "approval_required", detail: `the edition diff could not be read (${error.message})` }); // fail closed
   }
 
   const inventoryMode = autonomy.mode();

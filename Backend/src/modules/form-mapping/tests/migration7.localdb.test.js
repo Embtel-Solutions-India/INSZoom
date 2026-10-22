@@ -152,17 +152,17 @@ test("on: a parked case form is not re-planned in a loop - only when the matcher
   const ctx = await makeTemplates([f("part1.name")], [f("part1.name", { validation: { maxLength: 8 } })]);
   const typed = await makeCase(ctx.oldTemplate, { filledData: { part1: { name: "Alexandria Montgomery" } }, fieldValues: { "part1.name": "Alexandria Montgomery" }, manualOverrides: { "part1.name": { value: "Alexandria Montgomery" } }, fieldValueProvenance: prov("part1.name", "case_manager_override") });
   await run(ctx);
-  const first = (await fresh(typed._id)).migrationState.parked.parkedAt;
+  const first = new Date((await fresh(typed._id)).migrationState.parked.parkedAt).getTime();
   await sleep(15);
   const second = await run(ctx);
   assert.equal(second.parked[0].cached, true, "the second run did not plan again");
-  assert.equal(String((await fresh(typed._id)).migrationState.parked.parkedAt), String(first));
+  assert.equal(new Date((await fresh(typed._id)).migrationState.parked.parkedAt).getTime(), first);
   // the matcher version changes: re-evaluated
   await CaseForm.collection.updateOne({ _id: typed._id }, { $set: { "migrationState.parked.matcherVersion": 0 } });
   await sleep(15);
   const third = await run(ctx);
   assert.equal(third.parked[0].cached, false);
-  assert.notEqual(String((await fresh(typed._id)).migrationState.parked.parkedAt), String(first));
+  assert.notEqual(new Date((await fresh(typed._id)).migrationState.parked.parkedAt).getTime(), first);
   // a person shortens the answer: it now fits and the case form migrates
   await CaseForm.collection.updateOne({ _id: typed._id }, { $set: { filledData: { part1: { name: "Alex" } }, fieldValues: { "part1.name": "Alex" }, manualOverrides: { "part1.name": { value: "Alex" } }, updatedAt: new Date() } });
   const fourth = await run(ctx);

@@ -8,8 +8,11 @@ const CAP = 50; // lists in the stored summary are capped: it is a report, not a
 const VERSION = 1;
 const norm = (value) => String(value ?? "").toLowerCase().replace(/\[\d+\]/g, "").trim();
 
-/** FORM_INVENTORY_GATE: "report" (default - the decision is recorded and shown, nothing is blocked) or "enforce" (the owner's later decision). Anything else is report. */
-const gateMode = (env = process.env) => (String(env.FORM_INVENTORY_GATE || "report").trim().toLowerCase() === "enforce" ? "enforce" : "report");
+/**
+ * The inventory gate is REPORT-ONLY, always (owner decision 2026-10-23): a box that cannot be mapped is left unmapped (blank) and the import / release goes on with every other
+ * box; the inventory only lists those boxes. FORM_INVENTORY_GATE=enforce is therefore ignored - nothing is ever held because of the inventory.
+ */
+const gateMode = () => "report";
 
 /** The previous edition's fields as plain facts, from its template or (when only the graph is known) from the graph's form nodes. */
 function previousFacts(previous = {}) {
@@ -108,17 +111,12 @@ function summarize(inventory) {
  * The gate's answer from a stored (or freshly built) summary: { outcome: "pass" | "held", wouldBe, report, detail }. In report mode the OUTCOME stays "pass" (nothing is
  * blocked) and `wouldBe` carries what enforcement would say; in enforce mode the outcome is the decision itself.
  */
-function gateCheck(summary, { mode = gateMode() } = {}) {
-  if (!summary) {
-    return mode === "enforce"
-      ? { name: "inventory", outcome: "held", wouldBe: "held", report: false, detail: "the per-field inventory of this edition has not been computed, so what is left unmapped is unknown" }
-      : { name: "inventory", outcome: "pass", wouldBe: "unknown", report: true, detail: "report only: no inventory has been computed for this edition yet" };
-  }
+function gateCheck(summary) {
+  if (!summary) return { name: "inventory", outcome: "pass", wouldBe: "unknown", report: true, detail: "report only: no inventory has been computed for this edition yet" };
   const held = summary.decision === "held";
   const detail = held
     ? `${summary.hold.count} box(es) have no active mapping and cannot be left empty on their own: ${summary.hold.protectedRole} about a person, ${summary.hold.required} required, ${summary.hold.conditionalRequired} conditionally required, ${summary.hold.roleUnknown} with an unclear party${summary.hold.new ? `, ${summary.hold.new} new in this edition` : ""}`
     : "every box is mapped, deliberately left empty with a stated reason, or not client data";
-  if (mode === "enforce") return { name: "inventory", outcome: held ? "held" : "pass", wouldBe: held ? "held" : "pass", report: false, detail, holdCount: summary.hold.count };
   return { name: "inventory", outcome: "pass", wouldBe: held ? "held" : "pass", report: true, detail: `report only (not blocking): ${detail}`, holdCount: summary.hold.count };
 }
 

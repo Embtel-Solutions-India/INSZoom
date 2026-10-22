@@ -6,6 +6,25 @@ const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const CanonicalFieldRegistryService = require("./CanonicalFieldRegistryService");
 const contract = require("../contract");
 const logger = require("../../../utils/logger");
+const autonomy = require("../../../config/formPipelineAutonomy");
+
+/**
+ * Owner decision 2026-10-23: a box that cannot be mapped is left unmapped (blank) and the activation goes on with the boxes that can. Can the ACTIVE edges of this graph be activated on
+ * their own? Yes when at least one edge is active and no error belongs to an active edge (an error that belongs to a needs_review / rejected suggestion is just that suggestion staying
+ * unused; a graph-level error, or an error on an ACTIVE edge, is a real fault and still blocks). Pure.
+ */
+function partialReadiness(graph = {}, errors = []) {
+  const active = (graph.edges || []).filter((edge) => edge.status === "active");
+  const activeIds = new Set(active.map((edge) => edge.mappingId));
+  const activeTargets = {};
+  active.forEach((edge) => { activeTargets[edge.targetFieldId] = (activeTargets[edge.targetFieldId] || 0) + 1; });
+  const blocking = errors.filter((error) => {
+    if (error.code === "DUPLICATE_TARGET_MAPPING") return (activeTargets[error.targetFieldId] || 0) > 1;
+    if (error.mappingId) return activeIds.has(error.mappingId);
+    return true;
+  });
+  return { ready: active.length >= 1 && blocking.length === 0, activeEdges: active.length, blocking: blocking.length };
+}
 
 class MappingGraphService {
   static userId(user) {
@@ -244,6 +263,7 @@ class MappingGraphService {
     return {
       valid: errors.length === 0,
       readyForActivation: errors.length === 0 && reviewRequired === 0 && unmapped === 0,
+      readyForPartialActivation: partialReadiness(graph, errors).ready,
       errors,
       warnings,
       summary: {
@@ -382,6 +402,7 @@ class MappingGraphService {
       ...base,
       valid,
       readyForActivation: valid && base.summary.reviewRequired === 0 && base.summary.unmapped === 0,
+      readyForPartialActivation: partialReadiness(graph, errors).ready,
       errors,
       contract: { valid: result.valid, summary: result.summary, unmapped: result.unmapped, legacySample: result.legacy.slice(0, 25) },
       summary: { ...base.summary, errors: errors.length, contractLegacyViolations: result.summary.legacyViolations },
@@ -726,15 +747,18 @@ class MappingGraphService {
     return { templateId, versions, count: versions.length };
   }
 
-  static async activate(templateId, user, req) {
+  static async activate(templateId, user, req, options = {}) {
+    // partial activation (owner decision 2026-10-23) exists only with FORM_PIPELINE_AUTONOMY=on; otherwise this call is exactly what it always was
+    const partial = options?.partial === true && autonomy.mode() === "on";
     const template = await this.loadTemplateOrThrow(templateId);
     if (!template) {
       const error = new Error("USCIS form template not found");
       error.status = 404;
       throw error;
     }
-    const validation = await this.validateWithContract(await this.loadCurrentGraph(template), template);
-    if (!validation.readyForActivation) {
+    const currentGraph = await this.loadCurrentGraph(template);
+    const validation = await this.validateWithContract(currentGraph, template);
+    if (!(partial ? validation.readyForPartialActivation : validation.readyForActivation)) {
       const error = new Error("Cannot activate mapping until every USCIS field has an approved Master Case Data mapping");
       error.status = 422;
       error.details = validation;
@@ -753,7 +777,7 @@ class MappingGraphService {
     // itself: it only lifts once a human explicitly acknowledges THIS
     // template's specific parentVersion via
     // FormEditionComparisonService.acknowledge().
-    if (template.parentVersion) {
+    if (template.parentVersion && !partial) { // a partial activation leaves out every edge the edition broke, so there is nothing for a reviewer to acknowledge
       const FormEditionComparisonService = require("./FormEditionComparisonService");
       const { blocked, comparison } = await FormEditionComparisonService.hasUnreviewedEditionChanges(template);
       if (blocked) {
@@ -782,9 +806,11 @@ class MappingGraphService {
     template.mappingStatus = "active";
     template.activeMappingVersion = mappingVersion.mappingVersion;
     template.activeMappingVersionId = mappingVersion._id;
-    template.mappingAuditHistory = [...(template.mappingAuditHistory || []), { action: "MAPPING_VERSION_ACTIVATED", performedAt: new Date(), version: template.mappingVersion }];
+    // boxes left unmapped by a partial activation: edges that stayed needs_review / rejected (their boxes are blank), plus what the caller says the edition lost
+    const leftUnmapped = partial ? ((currentGraph?.edges || []).filter((edge) => edge.status !== "active").length + Number(options.lostEdges || 0)) : 0;
+    template.mappingAuditHistory = [...(template.mappingAuditHistory || []), { action: "MAPPING_VERSION_ACTIVATED", performedAt: new Date(), version: template.mappingVersion, ...(partial ? { partialActivation: true, leftUnmapped } : {}) }];
     await template.save();
-    await this.audit("MAPPING_VERSION_ACTIVATED", template, user, req, { mappingVersion: template.mappingVersion });
+    await this.audit("MAPPING_VERSION_ACTIVATED", template, user, req, { mappingVersion: template.mappingVersion, ...(partial ? { partialActivation: { leftUnmapped, activeEdges: partialReadiness(currentGraph, validation.errors || []).activeEdges } } : {}) });
     return { templateId, mappingStatus: template.mappingStatus, mappingVersion: template.mappingVersion, mappingVersionId: mappingVersion._id };
   }
 }

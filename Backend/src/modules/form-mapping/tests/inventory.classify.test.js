@@ -111,15 +111,16 @@ test("summarize: compact, capped, no field bodies; gateCheck: report mode never 
   assert.equal(JSON.stringify(summary).includes('"condition"'), false);
   const report = FieldInventory.gateCheck(summary, { mode: "report" });
   assert.deepEqual([report.outcome, report.wouldBe, report.report], ["pass", "held", true]);
+  // owner decision 2026-10-23: the inventory never holds - a second argument asking for "enforce" is ignored
   const enforce = FieldInventory.gateCheck(summary, { mode: "enforce" });
-  assert.deepEqual([enforce.outcome, enforce.wouldBe, enforce.report], ["held", "held", false]);
+  assert.deepEqual([enforce.outcome, enforce.wouldBe, enforce.report], ["pass", "held", true]);
   assert.equal(FieldInventory.gateCheck(null, { mode: "report" }).outcome, "pass");
-  assert.equal(FieldInventory.gateCheck(null, { mode: "enforce" }).outcome, "held"); // unknown fails closed when enforced
+  assert.equal(FieldInventory.gateCheck(null, { mode: "enforce" }).outcome, "pass"); // unknown is also just a note
 });
 
-test("gateMode: report unless explicitly enforce", () => {
+test("gateMode: always report - FORM_INVENTORY_GATE=enforce is ignored (unmappable boxes are left blank, never a hold)", () => {
   assert.equal(FieldInventory.gateMode({}), "report");
-  assert.equal(FieldInventory.gateMode({ FORM_INVENTORY_GATE: "ENFORCE" }), "enforce");
+  assert.equal(FieldInventory.gateMode({ FORM_INVENTORY_GATE: "ENFORCE" }), "report");
   assert.equal(FieldInventory.gateMode({ FORM_INVENTORY_GATE: "banana" }), "report");
 });
 

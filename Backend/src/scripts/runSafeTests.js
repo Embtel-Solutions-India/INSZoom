@@ -17,6 +17,10 @@ const { spawnSync } = require("child_process");
 
 const SRC = path.resolve(__dirname, "..");
 
+// The tests must not depend on what a developer has switched on in their own .env: with the master e-mail / notification switches ON the real-send-path tests (which stub the provider) see
+// every send skipped and fail. dotenv never overrides a variable that is already set, so these win over the .env file.
+const TEST_ENV = { ...process.env, EMAIL_SUPPRESS_ALL: "false", NOTIFICATIONS_SUPPRESS_ALL: "false" };
+
 const REAL_DB_REFERENCE = /config\/database|env\.mongoUri|\bmongoUri\b|MONGO_URI|MONGODB_URI/;
 const RAW_CONNECT = /mongoose\.connect\(/;
 const LOCAL_DB = /test-utils\/db["'`]|MONGODB_TEST_URI/;
@@ -58,7 +62,7 @@ function main(argv) {
   if (args.length) run = run.filter((f) => args.some((a) => f.includes(a)));
   console.log(`running ${run.length} test files; skipped: ${all["local-db"].length} fixed-local-database files (--include-local-db) and ${all["real-db"].length} real-database files (never run here)`);
   if (!run.length) return 0;
-  const result = spawnSync(process.execPath, ["--test", "--test-reporter=spec", ...run], { cwd: path.resolve(SRC, ".."), stdio: "inherit" });
+  const result = spawnSync(process.execPath, ["--test", "--test-reporter=spec", ...run], { cwd: path.resolve(SRC, ".."), stdio: "inherit", env: TEST_ENV });
   return result.status === null ? 1 : result.status;
 }
 
