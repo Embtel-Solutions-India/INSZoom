@@ -3,30 +3,24 @@ name: INSZoom CI/CD
 on:
   push:
     branches:
+      - '**'
+  pull_request:
+    branches:
       - main
 
 permissions:
-  id-token: write
   contents: read
+  id-token: write
 
 jobs:
-  deploy:
+  ci:
+    name: Build and verify frontends
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     env:
-      AWS_REGION: us-east-1
-      EC2_INSTANCE_ID: i-02b7b8b1b4991922a
-      S3_BUCKET: inszoom-bucket
-      DEPLOY_DIR: /home/ubuntu/INSZoom/deploy-temp
-
-      # =====================================================
-      # COMMON FRONTEND CONFIGURATION
-      # GitHub Actions Variables
-      # =====================================================
-
       VITE_API_URL: ${{ vars.IMMIGLANCE_VITE_API_URL }}
       VITE_API_TIMEOUT_MS: ${{ vars.IMMIGLANCE_VITE_API_TIMEOUT_MS }}
-
       VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
       VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
       VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
@@ -36,33 +30,17 @@ jobs:
       VITE_FIREBASE_VAPID_KEY: ${{ vars.VITE_FIREBASE_VAPID_KEY }}
 
     steps:
-
-      # =====================================================
-      # CHECKOUT
-      # =====================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # =====================================================
-      # VERIFY FRONTEND CONFIGURATION
-      # =====================================================
-
       - name: Verify VITE_API_URL
-        env:
-          VITE_API_URL: ${{ vars.IMMIGLANCE_VITE_API_URL }}
         run: |
           if [ -z "$VITE_API_URL" ]; then
-            echo "ERROR: IMMIGLANCE_VITE_API_URL is EMPTY"
+            echo "ERROR: IMMIGLANCE_VITE_API_URL is empty."
             exit 1
           fi
-
-          echo "VITE_API_URL is available"
+          echo "VITE_API_URL is available."
           echo "API host: $(echo "$VITE_API_URL" | sed -E 's#https?://([^/]+).*#\1#')"
-
-      # =====================================================
-      # NODE.JS
-      # =====================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -76,10 +54,7 @@ jobs:
             Admin/frontend/package-lock.json
             Backend/package-lock.json
 
-      # =====================================================
-      # LANDING
-      # =====================================================
-
+      # Landing
       - name: Install Landing dependencies
         working-directory: Immiglance/Landing
         run: npm ci --include=optional
@@ -101,23 +76,13 @@ jobs:
             echo "ERROR: Landing build contains MISSING-VITE_API_URL.invalid"
             exit 1
           fi
-
           if ! grep -R "client.immiglance.com/api" dist/assets >/dev/null 2>&1; then
             echo "ERROR: Landing build does not contain the expected API URL"
             exit 1
           fi
-
           echo "Landing API URL verified successfully."
 
-      - name: Package Landing
-        run: |
-          tar -czf /tmp/landing-frontend.tar.gz \
-            -C Immiglance/Landing/dist .
-
-      # =====================================================
-      # CLIENT
-      # =====================================================
-
+      # Client
       - name: Install Client dependencies
         working-directory: Immiglance/Client
         run: npm ci --include=optional
@@ -139,23 +104,13 @@ jobs:
             echo "ERROR: Client build contains MISSING-VITE_API_URL.invalid"
             exit 1
           fi
-
           if ! grep -R "client.immiglance.com/api" dist/assets >/dev/null 2>&1; then
             echo "ERROR: Client build does not contain the expected API URL"
             exit 1
           fi
-
           echo "Client API URL verified successfully."
 
-      - name: Package Client
-        run: |
-          tar -czf /tmp/client-frontend.tar.gz \
-            -C Immiglance/Client/dist .
-
-      # =====================================================
-      # ATTORNEY
-      # =====================================================
-
+      # Attorney
       - name: Install Attorney dependencies
         working-directory: Attorney
         run: npm ci --include=optional
@@ -174,23 +129,13 @@ jobs:
             echo "ERROR: Attorney build contains MISSING-VITE_API_URL.invalid"
             exit 1
           fi
-
           if ! grep -R "client.immiglance.com/api" dist/assets >/dev/null 2>&1; then
             echo "ERROR: Attorney build does not contain the expected API URL"
             exit 1
           fi
-
           echo "Attorney API URL verified successfully."
 
-      - name: Package Attorney
-        run: |
-          tar -czf /tmp/attorney-frontend.tar.gz \
-            -C Attorney/dist .
-
-      # =====================================================
-      # ADMIN
-      # =====================================================
-
+      # Admin
       - name: Install Admin dependencies
         working-directory: Admin/frontend
         run: npm ci --include=optional
@@ -216,22 +161,50 @@ jobs:
             echo "ERROR: Admin build contains MISSING-VITE_API_URL.invalid"
             exit 1
           fi
-
           if ! grep -R "client.immiglance.com/api" dist/assets >/dev/null 2>&1; then
             echo "ERROR: Admin build does not contain the expected API URL"
             exit 1
           fi
-
           echo "Admin API URL verified successfully."
 
-      - name: Package Admin
+      # Package all frontend builds for passing to the deploy job.
+      - name: Package frontend builds
         run: |
-          tar -czf /tmp/admin-frontend.tar.gz \
-            -C Admin/frontend/dist .
+          set -euo pipefail
+          mkdir -p artifacts
+          tar -czf artifacts/landing-frontend.tar.gz -C Immiglance/Landing/dist .
+          tar -czf artifacts/client-frontend.tar.gz -C Immiglance/Client/dist .
+          tar -czf artifacts/attorney-frontend.tar.gz -C Attorney/dist .
+          tar -czf artifacts/admin-frontend.tar.gz -C Admin/frontend/dist .
+          ls -lh artifacts/
 
-      # =====================================================
-      # AWS OIDC
-      # =====================================================
+      - name: Upload frontend build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: inszoom-frontends
+          path: artifacts/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Deploy to EC2
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      AWS_REGION: us-east-1
+      EC2_INSTANCE_ID: i-02b7b8b1b4991922a
+      S3_BUCKET: inszoom-bucket
+      DEPLOY_DIR: /home/ubuntu/INSZoom/deploy-temp
+
+    steps:
+      - name: Download frontend build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: inszoom-frontends
+          path: artifacts
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -240,198 +213,148 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           audience: sts.amazonaws.com
 
-      # =====================================================
-      # UPLOAD ARTIFACTS TO S3
-      # =====================================================
-
-      - name: Upload Landing artifact
+      - name: Upload frontend artifacts to S3
         run: |
-          aws s3 cp \
-            /tmp/landing-frontend.tar.gz \
-            s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz
-
-      - name: Upload Client artifact
-        run: |
-          aws s3 cp \
-            /tmp/client-frontend.tar.gz \
-            s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz
-
-      - name: Upload Attorney artifact
-        run: |
-          aws s3 cp \
-            /tmp/attorney-frontend.tar.gz \
-            s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz
-
-      - name: Upload Admin artifact
-        run: |
-          aws s3 cp \
-            /tmp/admin-frontend.tar.gz \
-            s3://${S3_BUCKET}/inszoom-deploy/admin-frontend.tar.gz
-
-      # =====================================================
-      # GENERATE PRESIGNED URLS
-      # =====================================================
+          set -euo pipefail
+          aws s3 cp artifacts/landing-frontend.tar.gz \
+            "s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz" \
+            --region "$AWS_REGION"
+          aws s3 cp artifacts/client-frontend.tar.gz \
+            "s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz" \
+            --region "$AWS_REGION"
+          aws s3 cp artifacts/attorney-frontend.tar.gz \
+            "s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz" \
+            --region "$AWS_REGION"
+          aws s3 cp artifacts/admin-frontend.tar.gz \
+            "s3://${S3_BUCKET}/inszoom-deploy/admin-frontend.tar.gz" \
+            --region "$AWS_REGION"
 
       - name: Generate presigned URLs
         run: |
-          LANDING_URL=$(aws s3 presign \
-            s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz \
-            --expires-in 1800 \
-            --region ${AWS_REGION})
+          set -euo pipefail
+          echo "LANDING_URL=$(aws s3 presign "s3://${S3_BUCKET}/inszoom-deploy/landing-frontend.tar.gz" --expires-in 1800 --region "$AWS_REGION")" >> "$GITHUB_ENV"
+          echo "CLIENT_URL=$(aws s3 presign "s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz" --expires-in 1800 --region "$AWS_REGION")" >> "$GITHUB_ENV"
+          echo "ATTORNEY_URL=$(aws s3 presign "s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz" --expires-in 1800 --region "$AWS_REGION")" >> "$GITHUB_ENV"
+          echo "ADMIN_URL=$(aws s3 presign "s3://${S3_BUCKET}/inszoom-deploy/admin-frontend.tar.gz" --expires-in 1800 --region "$AWS_REGION")" >> "$GITHUB_ENV"
 
-          CLIENT_URL=$(aws s3 presign \
-            s3://${S3_BUCKET}/inszoom-deploy/client-frontend.tar.gz \
-            --expires-in 1800 \
-            --region ${AWS_REGION})
-
-          ATTORNEY_URL=$(aws s3 presign \
-            s3://${S3_BUCKET}/inszoom-deploy/attorney-frontend.tar.gz \
-            --expires-in 1800 \
-            --region ${AWS_REGION})
-
-          ADMIN_URL=$(aws s3 presign \
-            s3://${S3_BUCKET}/inszoom-deploy/admin-frontend.tar.gz \
-            --expires-in 1800 \
-            --region ${AWS_REGION})
-
-          echo "LANDING_URL=$LANDING_URL" >> "$GITHUB_ENV"
-          echo "CLIENT_URL=$CLIENT_URL" >> "$GITHUB_ENV"
-          echo "ATTORNEY_URL=$ATTORNEY_URL" >> "$GITHUB_ENV"
-          echo "ADMIN_URL=$ADMIN_URL" >> "$GITHUB_ENV"
-
-      # =====================================================
-      # DEPLOY TO EC2
-      # =====================================================
-
-      - name: Deploy application to EC2
+      - name: Prepare SSM deployment parameters
+        env:
+          LANDING_URL: ${{ env.LANDING_URL }}
+          CLIENT_URL: ${{ env.CLIENT_URL }}
+          ATTORNEY_URL: ${{ env.ATTORNEY_URL }}
+          ADMIN_URL: ${{ env.ADMIN_URL }}
+          DEPLOY_DIR: ${{ env.DEPLOY_DIR }}
         run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = "/home/ubuntu/INSZoom"
+          deploy_dir = os.environ["DEPLOY_DIR"]
+
+          commands = [
+              "set -e",
+              f"sudo -u ubuntu git -C {root} fetch origin main",
+              f"sudo -u ubuntu git -C {root} checkout main",
+              f"sudo -u ubuntu git -C {root} pull --ff-only origin main",
+              f"sudo mkdir -p {deploy_dir}",
+              f"sudo curl -fLsS {json.dumps(os.environ['LANDING_URL'])} -o {deploy_dir}/landing-frontend.tar.gz",
+              f"sudo curl -fLsS {json.dumps(os.environ['CLIENT_URL'])} -o {deploy_dir}/client-frontend.tar.gz",
+              f"sudo curl -fLsS {json.dumps(os.environ['ATTORNEY_URL'])} -o {deploy_dir}/attorney-frontend.tar.gz",
+              f"sudo curl -fLsS {json.dumps(os.environ['ADMIN_URL'])} -o {deploy_dir}/admin-frontend.tar.gz",
+          ]
+
+          frontends = [
+              ("landing", f"{root}/Immiglance/Landing/dist"),
+              ("client", f"{root}/Immiglance/Client/dist"),
+              ("attorney", f"{root}/Attorney/dist"),
+              ("admin", f"{root}/Admin/frontend/dist"),
+          ]
+
+          for name, destination in frontends:
+              archive = f"{deploy_dir}/{name}-frontend.tar.gz"
+              commands.extend([
+                  f"sudo rm -rf {destination}",
+                  f"sudo mkdir -p {destination}",
+                  f"sudo tar -xzf {archive} -C {destination}",
+                  f"sudo chown -R ubuntu:ubuntu {destination}",
+              ])
+
+          commands.extend([
+              f"cd {root}/Backend && sudo -u ubuntu npm ci --omit=dev",
+              "sudo -u ubuntu env PM2_HOME=/home/ubuntu/.pm2 pm2 restart inszoom-backend --update-env",
+              f"sudo rm -rf {deploy_dir}",
+              "echo Deployment completed successfully.",
+          ])
+
+          Path("ssm-deploy-parameters.json").write_text(
+              json.dumps({"commands": commands})
+          )
+          PY
+
+      - name: Send deployment command to EC2
+        id: deploy_ssm
+        run: |
+          set -euo pipefail
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "${EC2_INSTANCE_ID}" \
+            --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "INSZoom CI/CD deployment" \
-            --parameters commands="[
-              \"set -e\",
-              \"rm -rf ${DEPLOY_DIR}\",
-              \"mkdir -p ${DEPLOY_DIR}\",
-
-              \"echo 'Updating repository...'\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom fetch origin main\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom checkout main\",
-              \"sudo -u ubuntu git -C /home/ubuntu/INSZoom pull --ff-only origin main\",
-
-              \"echo 'Downloading Landing frontend...'\",
-              \"curl -fL '${LANDING_URL}' -o ${DEPLOY_DIR}/landing-frontend.tar.gz\",
-
-              \"echo 'Downloading Client frontend...'\",
-              \"curl -fL '${CLIENT_URL}' -o ${DEPLOY_DIR}/client-frontend.tar.gz\",
-
-              \"echo 'Downloading Attorney frontend...'\",
-              \"curl -fL '${ATTORNEY_URL}' -o ${DEPLOY_DIR}/attorney-frontend.tar.gz\",
-
-              \"echo 'Downloading Admin frontend...'\",
-              \"curl -fL '${ADMIN_URL}' -o ${DEPLOY_DIR}/admin-frontend.tar.gz\",
-
-              \"echo 'Deploying Landing frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/landing-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
-
-              \"echo 'Deploying Client frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/Immiglance/Client/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/Immiglance/Client/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/client-frontend.tar.gz -C /home/ubuntu/INSZoom/Immiglance/Client/dist\",
-
-              \"echo 'Deploying Attorney frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/Attorney/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/Attorney/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/attorney-frontend.tar.gz -C /home/ubuntu/INSZoom/Attorney/dist\",
-
-              \"echo 'Deploying Admin frontend...'\",
-              \"rm -rf /home/ubuntu/INSZoom/Admin/frontend/dist\",
-              \"mkdir -p /home/ubuntu/INSZoom/Admin/frontend/dist\",
-              \"tar -xzf ${DEPLOY_DIR}/admin-frontend.tar.gz -C /home/ubuntu/INSZoom/Admin/frontend/dist\",
-
-              \"echo 'Fixing frontend ownership...'\",
-              \"sudo chown -R ubuntu:ubuntu /home/ubuntu/INSZoom/Immiglance/Landing/dist\",
-              \"sudo chown -R ubuntu:ubuntu /home/ubuntu/INSZoom/Immiglance/Client/dist\",
-              \"sudo chown -R ubuntu:ubuntu /home/ubuntu/INSZoom/Attorney/dist\",
-              \"sudo chown -R ubuntu:ubuntu /home/ubuntu/INSZoom/Admin/frontend/dist\",
-
-              \"echo 'Installing backend production dependencies...'\",
-              \"cd /home/ubuntu/INSZoom/Backend && npm ci --omit=dev\",
-
-              \"echo 'Restarting backend...'\",
-              \"sudo -u ubuntu env PM2_HOME=/home/ubuntu/.pm2 pm2 restart inszoom-backend --update-env\",
-
-              \"echo 'Cleaning deployment files...'\",
-              \"rm -rf ${DEPLOY_DIR}\",
-
-              \"echo 'Deployment completed successfully.'\"
-            ]" \
-            --region "${AWS_REGION}" \
+            --parameters file://ssm-deploy-parameters.json \
+            --region "$AWS_REGION" \
             --query "Command.CommandId" \
             --output text)
 
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
           echo "SSM Command ID: $COMMAND_ID"
-          echo "COMMAND_ID=$COMMAND_ID" >> "$GITHUB_ENV"
-
-      # =====================================================
-      # WAIT FOR DEPLOYMENT
-      # =====================================================
 
       - name: Wait for deployment
+        env:
+          COMMAND_ID: ${{ steps.deploy_ssm.outputs.command_id }}
         run: |
-          for i in {1..60}; do
-
+          set -euo pipefail
+          for i in {1..90}; do
             STATUS=$(aws ssm get-command-invocation \
-              --command-id "${COMMAND_ID}" \
-              --instance-id "${EC2_INSTANCE_ID}" \
-              --region "${AWS_REGION}" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --region "$AWS_REGION" \
               --query "Status" \
-              --output text)
+              --output text 2>/dev/null || echo "Pending")
 
             echo "Deployment status: $STATUS"
 
-            if [ "$STATUS" = "Success" ]; then
-              echo "Deployment completed successfully."
-
-              aws ssm get-command-invocation \
-                --command-id "${COMMAND_ID}" \
-                --instance-id "${EC2_INSTANCE_ID}" \
-                --region "${AWS_REGION}" \
-                --query "StandardOutputContent" \
-                --output text
-
-              exit 0
-            fi
-
-            if [ "$STATUS" = "Failed" ] || \
-               [ "$STATUS" = "Cancelled" ] || \
-               [ "$STATUS" = "TimedOut" ] || \
-               [ "$STATUS" = "Cancelling" ]; then
-
-              echo "Deployment failed with status: $STATUS"
-
-              echo "----- STDOUT -----"
-              aws ssm get-command-invocation \
-                --command-id "${COMMAND_ID}" \
-                --instance-id "${EC2_INSTANCE_ID}" \
-                --region "${AWS_REGION}" \
-                --query "StandardOutputContent" \
-                --output text
-
-              echo "----- STDERR -----"
-              aws ssm get-command-invocation \
-                --command-id "${COMMAND_ID}" \
-                --instance-id "${EC2_INSTANCE_ID}" \
-                --region "${AWS_REGION}" \
-                --query "StandardErrorContent" \
-                --output text
-
-              exit 1
-            fi
-
-            sleep 15
+            case "$STATUS" in
+              Success)
+                echo "Deployment completed successfully."
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$EC2_INSTANCE_ID" \
+                  --region "$AWS_REGION" \
+                  --query "StandardOutputContent" \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                echo "Deployment failed with status: $STATUS"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$EC2_INSTANCE_ID" \
+                  --region "$AWS_REGION" \
+                  --query "StandardOutputContent" \
+                  --output text || true
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$EC2_INSTANCE_ID" \
+                  --region "$AWS_REGION" \
+                  --query "StandardErrorContent" \
+                  --output text || true
+                exit 1
+                ;;
+              *)
+                sleep 10
+                ;;
+            esac
           done
 
           echo "Deployment timed out while waiting for SSM."
