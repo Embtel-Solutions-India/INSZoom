@@ -85,7 +85,9 @@ function planRewire(graph = {}, index = QUESTION_PATH_INDEX) {
     const next = { ...edge };
     // what this edge looked like before (once): lets planRollback put it back exactly
     if (!next.partyRewire) {
-      next.partyRewire = { sourcePath: edge.sourcePath, fallback: edge.fallback, profileOwner: edge.profileOwner, partyRule: edge.partyRule, condition: edge.condition, transform: edge.transform };
+      next.partyRewire = { sourcePath: edge.sourcePath, fallback: edge.fallback, profileOwner: edge.profileOwner, partyRule: edge.partyRule, origin: edge.origin, condition: edge.condition, transform: edge.transform };
+      // a rewired edge is no longer what was live before: it is held to the contract like any new edge (legacy edges are only reported on)
+      next.origin = "authored";
     }
     if (generic) {
       next.sourcePath = generic;
@@ -97,9 +99,11 @@ function planRewire(graph = {}, index = QUESTION_PATH_INDEX) {
         next.fallback = edge.sourcePath;
         report.retargeted += 1;
       }
-      next.partyRule = generic.replace(/\.\d+(\..*)?$/, "");
+      // the contract requires the derived label to follow the source path exactly (a repeating path keeps its row number and field name)
+      next.partyRule = generic;
       next.profileOwner = generic.startsWith("petitioner") ? "employer" : "employee";
-      report.byPath[next.partyRule] = (report.byPath[next.partyRule] || 0) + 1;
+      const group = generic.replace(/\.\d+(\..*)?$/, "");
+      report.byPath[group] = (report.byPath[group] || 0) + 1;
       report.questionKeys.add(hit[1]);
     }
     if (conditionChanged) { next.condition = condition; report.conditionsRewired += 1; }
@@ -122,7 +126,7 @@ function planRollback(graph = {}) {
     if (!edge.partyRewire) return edge;
     const { partyRewire, ...rest } = edge;
     const next = { ...rest, sourcePath: partyRewire.sourcePath };
-    for (const key of ["fallback", "profileOwner", "partyRule", "condition", "transform"]) {
+    for (const key of ["fallback", "profileOwner", "partyRule", "origin", "condition", "transform"]) {
       if (partyRewire[key] === undefined) delete next[key]; else next[key] = partyRewire[key];
     }
     restored += 1;

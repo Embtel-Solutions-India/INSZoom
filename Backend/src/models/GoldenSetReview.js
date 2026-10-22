@@ -15,6 +15,8 @@ const goldenSetReviewSchema = new mongoose.Schema(
     reviewerEmail: { type: String, required: true },
     reviewer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     reviewedAt: { type: Date, default: Date.now },
+    // set only when the entry was reworded for a path rename alone and the answer was moved to the new wording (scripts/carryOverGoldenReviews.js); the verdict, reviewer and date are the reviewer's own
+    carriedOver: { fromContentHash: String, at: Date, reason: String },
   },
   { timestamps: true }
 );

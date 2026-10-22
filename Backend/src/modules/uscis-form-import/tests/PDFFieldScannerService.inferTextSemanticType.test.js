@@ -47,3 +47,37 @@ test("P1-002 regression guard: true date-of-birth and other genuine date fields 
     assert.equal(inferTextSemanticType(name), "date", `${name} must still classify as "date"`);
   });
 });
+
+// A street box is an address line, not a number: "StreetNumberName" used to match the bare word "number" and every real address then failed the numeric check.
+const STREET_FIELD_NAMES = [
+  "form1[0].P5[0].Part2_Line3_StreetNumberName[0]",
+  "form1[0].#subform[1].Pt1Line8_StreetNumberName[0]",
+  "form1[0].Page1[0].P2_Line24_StreetNumberName[0]",
+  "Part4_Line2_StreetName",
+];
+// the genuinely numeric boxes next to them must stay numeric
+const NUMERIC_FIELD_NAMES = [
+  "form1[0].Page1[0].P2_Line24_ZipCode[0]",
+  "form1[0].P5[0].Part13_Line3_PageNumber[0]",
+  "form1[0].P5[0].Part2_Line11_USCISOnlineAcctNumber[0]",
+];
+// an apartment / suite / floor number and an international postal code can hold letters ("4B", "SW1A 1AA")
+const ALPHANUMERIC_ADDRESS_NAMES = [
+  "form1[0].P5[0].Part2_Line3_AptSteFlrNumber[0]",
+  "form1[0].#subform[2].Pt1Line8_AptSteFlrNumber[0]",
+  "form1[0].P5[0].Part2_Line3_PostalCode[0]",
+  "form1[0].#subform[3].Pt2Line5_ZIPPostalCode[0]",
+];
+
+test("a street address box is text, never numeric", () => {
+  STREET_FIELD_NAMES.forEach((name) => assert.equal(inferTextSemanticType(name), "text", name));
+  assert.equal(inferTextSemanticType("Part2_Line3_StreetNumberName", { isMultiline: () => true }), "textarea");
+});
+
+test("the numeric boxes beside the street box are still numeric", () => {
+  NUMERIC_FIELD_NAMES.forEach((name) => assert.equal(inferTextSemanticType(name), "number", name));
+});
+
+test("an apartment / suite / floor number and a postal code are text, a plain US ZIP code stays numeric", () => {
+  ALPHANUMERIC_ADDRESS_NAMES.forEach((name) => assert.equal(inferTextSemanticType(name), "text", name));
+});

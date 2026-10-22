@@ -209,3 +209,16 @@ for (const formCode of ["I-129", "I-907", "I-130", "I-129F", "I-140", "I-864", "
     assert.deepEqual(diff(onlyKept(A), onlyKept(C)), [], "the old answers still fill the rewired graph (fallback)");
   });
 }
+
+test("a rewired edge is marked authored (held to the contract) and its derived label follows the source path exactly, even for a repeating row", () => {
+  const graph = { nodes: {}, edges: [edge("row", "raw.questionnaireAnswers.petitioner_residentialHistory.value.1.streetAndNumber"), edge("plain", "raw.questionnaireAnswers.employer_company_address_city.value", { origin: "legacy" })] };
+  const { graph: next } = planRewire(graph);
+  for (const item of next.edges) {
+    assert.equal(item.origin, "authored");
+    assert.equal(item.partyRule, item.sourcePath, "the contract compares the derived label with the source path");
+    assert.equal(item.profileOwner, "employer");
+  }
+  assert.equal(next.edges[0].sourcePath, "petitioner.addressHistory.1.streetAndNumber");
+  assert.equal(planRollback(next).graph.edges[1].origin, "legacy", "rollback gives the previous origin back");
+  assert.equal(planRollback(next).graph.edges[0].origin, undefined, "an edge that had no origin has none again");
+});
