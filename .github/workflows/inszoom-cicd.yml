@@ -132,15 +132,22 @@ jobs:
 
       # ── Admin ────────────────────────────────────────────────────────
       - name: Install Admin Frontend dependencies
-          VITE_ADMIN_URL: ${{ secrets.IMMIGLANCE_VITE_ADMIN_URL }}
-          VITE_ATTORNEY_PORTAL_URL: ${{ secrets.IMMIGLANCE_VITE_ATTORNEY_PORTAL_URL }}
-          VITE_CLIENT_URL: ${{ secrets.IMMIGLANCE_VITE_CLIENT_URL }}
+        working-directory: Admin/frontend
+        run: npm ci --include=optional
+        
+      - name: Build Admin
+        working-directory: Admin/frontend
+        env:
+          VITE_API_URL: ${{ env.PROD_API_URL }}
+          VITE_ADMIN_URL: ${{ env.PROD_ADMIN_URL }}
+          VITE_ATTORNEY_PORTAL_URL: ${{ env.PROD_ATTORNEY_URL }}
+          VITE_CLIENT_URL: ${{ env.PROD_CLIENT_URL }}
         run: npm run build
 
-      - name: Package Landing
+      - name: Package Admin
         run: |
-          tar -czf /tmp/landing-frontend.tar.gz \
-            -C Immiglance/Landing/dist .
+          tar -czf /tmp/admin-frontend.tar.gz \
+            -C Admin/frontend/dist .
 
       # =====================================================
       # CLIENT
