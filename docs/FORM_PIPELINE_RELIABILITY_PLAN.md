@@ -25,7 +25,7 @@ Rev 9 below is the original approval record and is kept unchanged for history. *
 | **Phase 3** (certification markers, ReleaseGate, activation protocol + reconciliation, rollback, safe case migration) | **Done in code** (2026-10-22); Admin screen, repair strategies, performance baseline not done |
 | **Phase 4** (Gemini mapping, shadow-first; accuracy gate closed; live accuracy run blocked by a retired model) | **Done in code** (2026-10-22) |
 | **Phase 5** (governance API + Admin screens, run summaries, deduped alerts, developer e-mails) | **Done in code** (2026-10-22) |
-| Phase 6 | Not started |
+| **Phase 6** (regression and proof) | **Done except the shadow runs and the performance baseline, which need approval** (2026-10-22) |
 | Phase 4 - Gemini mapping | **Not started and not part of the 12-hour pipeline** (see C7) |
 
 ### Changes from rev 9
@@ -331,6 +331,8 @@ Every pipeline outcome emails the developer, default recipient `ishaan@embtelsol
 - **Testing:** all email tests use a mocked provider (no real sends, no real recipients); assert recipients, subject/body content, dedupe, digest batching, per-outcome toggles, in-app fallback when unconfigured, and that bodies never contain secrets/tokens, client data or raw stack traces (sanitized error code + short message only). No real test email is sent without explicit approval.
 
 ### Phase 6 - Regression and proof
+
+> **As built (2026-10-22).** Done: full DB-free regression (2,124 tests; the 20 failures are the old gate-matrix line, one timing-flaky cache test, and 18 that fail identically before Phase 3), four app builds, Phase 6 structural acceptance tests, the safe test runner `npm run test:safe`. **Not done (needs approval):** shadow runs, the performance baseline and budget comparison, the real PM2 worker kill test. See FORM_PIPELINE_IMPLEMENTATION_REPORT.md, "Phase 6".
 Full suite below, then shadow runs (separate approval if they touch the shared DB).
 
 ## Tests
