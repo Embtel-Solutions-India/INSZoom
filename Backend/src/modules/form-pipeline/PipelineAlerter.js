@@ -261,7 +261,48 @@ function createAlerter({ jobService, env = process.env, deps = {} } = {}) {
     return { sent: true };
   }
 
-  return { announce, announceOutcome, flushDigests, startDigestFlusher, workerUnavailable };
+  /**
+   * Phase 7.0: a released edition whose case migration did not finish (failed, partial, or never ran) is raised once per job and migration state - the release status
+   * never hides it. In-app notice for the admins (every admin separately) plus an audit record; never throws.
+   */
+  async function announceMigrationGap({ job, outcome }) {
+    try {
+      const migration = outcome?.migration;
+      if (!migration || !["migration_failed", "migration_partial", "migration_pending"].includes(migration.state)) return { sent: false, reason: "no_gap" };
+      const signature = `migration_gap|${migration.state}`;
+      if (!(await jobService.markAlert(job._id, signature, "migration_gap"))) return { sent: false, deduped: true };
+      await notifyAdmins({
+        source: "shared", category: "system", priority: "high", type: "form_pipeline_alert", title: `Form ${job.formCode}: new edition released, case migration incomplete`,
+        message: `${migration.reason || migration.state}. Open cases stay on the previous edition and keep working; the migration is retried automatically.`,
+        metadata: { jobId: String(job._id), formCode: job.formCode, migrationState: migration.state, counts: migration.counts || null },
+      }, `form-pipeline:${job._id}:${signature}`);
+      await writeAudit(AUDIT.alert, job, `Migration gap alert for ${job.formCode}`, { kind: "migration_gap", state: migration.state, formCode: job.formCode });
+      return { sent: true, kind: "migration_gap", channel: "in_app" };
+    } catch (error) {
+      logger.warn("form_pipeline_alert_failed", { jobId: String(job?._id), error: error.message });
+      return { sent: false, error: error.message };
+    }
+  }
+
+  /** Phase 7.0: a hold that has lasted past the escalation period is raised ONCE (the job records it). The notice says why and what would release it; it decides nothing. */
+  async function announceEscalation({ job }) {
+    try {
+      const hold = job?.hold || {};
+      if (!(await jobService.markEscalated(job._id))) return { sent: false, deduped: true };
+      await notifyAdmins({
+        source: "shared", category: "system", priority: "high", type: "form_pipeline_alert", title: `Form ${job.formCode}: held for a long time`,
+        message: `${hold.detail || hold.reasonCode || "held"}. It would be released when: ${(hold.releaseConditions || []).join("; ") || "the condition clears"}. The previous edition keeps serving; nothing is promoted until it can be proven safe.`,
+        metadata: { jobId: String(job._id), formCode: job.formCode, state: job.state, reasonCode: hold.reasonCode || null, firstHeldAt: hold.firstHeldAt || null },
+      }, `form-pipeline:${job._id}:escalation`);
+      await writeAudit(AUDIT.alert, job, `Persistent hold escalated for ${job.formCode}`, { kind: "escalation", reasonCode: hold.reasonCode, formCode: job.formCode });
+      return { sent: true, kind: "escalation", channel: "in_app" };
+    } catch (error) {
+      logger.warn("form_pipeline_alert_failed", { jobId: String(job?._id), error: error.message });
+      return { sent: false, error: error.message };
+    }
+  }
+
+  return { announce, announceOutcome, announceMigrationGap, announceEscalation, flushDigests, startDigestFlusher, workerUnavailable };
 }
 
 module.exports = { createAlerter, recipients, emailEnabled, DEFAULT_RECIPIENT, KIND_BY_STATE, AUDIT };

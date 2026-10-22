@@ -411,7 +411,7 @@ class PetitionAssemblyService {
       // (storageKey or buffer) are handed to the PDF assembler.
       const mailingSections = await this.applyManualInsertions(this.orderMailingSections([
         { type: "cover_letter", key: "cover_letter", title: "Cover Letter", documentId: coverLetterDoc._id, buffer: coverLetterPdfBuffer, contentHtml: coverLetterBodyHtml },
-        ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey }] : []),
+        ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey, ...(generatedG28Form ? { caseFormId: generatedG28Form._id } : {}) }] : []),
         // Every other required form (I-129, and Phase H6's I-907/I-539/
         // I-539A when their condition is active) - G-28 is excluded here
         // since it's already added above (either the uploaded document or
@@ -550,7 +550,7 @@ class PetitionAssemblyService {
     const g28Document = uploadedG28Document || (generatedG28Form ? generatedG28Form.generatedPdfDocument : null);
     const mailingSections = await this.applyManualInsertions(this.orderMailingSections([
       { type: "cover_letter", key: "cover_letter", title: "Cover Letter", documentId: coverLetterDoc._id, buffer: coverLetterPdfBuffer },
-      ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey }] : []),
+      ...(g28Document ? [{ type: "g28", key: "g28", title: "Form G-28", documentId: g28Document._id, storageKey: g28Document.storageKey, ...(generatedG28Form ? { caseFormId: generatedG28Form._id } : {}) }] : []),
       ...caseForms.filter((form) => form.generatedPdfDocument?.storageKey && form.formCode !== "G-28").map((form) => ({ type: "form", key: form.formCode, title: form.formCode, documentId: form.generatedPdfDocument._id, caseFormId: form._id, storageKey: form.generatedPdfDocument.storageKey })),
       ...certificationDocs.map(({ cert, doc }) => ({ type: "certification", key: cert.key, title: cert.label, documentId: doc._id, storageKey: doc.storageKey })),
       ...otherLettersForMailing,

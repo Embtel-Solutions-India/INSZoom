@@ -11,12 +11,13 @@ const crypto = require("crypto");
 const FormPipelineJob = require("../../models/FormPipelineJob");
 const { JOB_STATES, OPEN_STATES, SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS, LIMITS, ERROR_CLASSES } = require("./pipeline.constants");
 const { LeaseLostError, classifyError, sanitizeMessage, backoffMs, errorSignature } = require("./errorClassifier");
+const holdContract = require("./holdContract");
 
 const normalizeCode = (formCode) => String(formCode || "").trim().toUpperCase();
 const historyEntry = (at, state, stage, note) => ({ at, state, stage: stage || undefined, note: note ? String(note).slice(0, 200) : undefined });
 const pushHistory = (entry) => ({ $each: [entry], $slice: -LIMITS.historyKept });
 
-function createJobService({ model = FormPipelineJob, now = () => new Date(), random = Math.random } = {}) {
+function createJobService({ model = FormPipelineJob, now = () => new Date(), random = Math.random, evaluatorVersions = holdContract.EVALUATOR_VERSIONS } = {}) {
   const leaseFilter = (jobId, lease) => ({ _id: jobId, state: JOB_STATES.RUNNING, "lease.token": lease.token, "lease.fence": lease.fence });
 
   /** Conditional write: only the worker that still holds the lease may change the job. */
@@ -162,6 +163,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       $set: {
         state: JOB_STATES.DONE, open: false, outcome, completedAt: at, expireAt: new Date(at.getTime() + LIMITS.doneKeptDays * 86400000), "lease.lockedUntil": null, currentStage: null,
       },
+      $unset: { hold: "" }, // Phase 7.0: a finished job no longer holds anything
       $push: { history: pushHistory(historyEntry(at, JOB_STATES.DONE, null, outcome?.status || "done")) },
     });
   }
@@ -175,7 +177,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     if (classification.class === ERROR_CLASSES.LEASE_LOST) return { state: null, classification, signature: errorSignature({ stage, classification }), leaseLost: true };
     const at = now();
     const message = sanitizeMessage(error);
-    const counters = await model.findById(jobId).select("attempts maxAttempts").lean();
+    const counters = await model.findById(jobId).select("attempts maxAttempts hold").lean();
     const used = attempts ?? counters?.attempts ?? 1;
     const max = counters?.maxAttempts || LIMITS.maxAttempts;
     let state;
@@ -194,14 +196,45 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       state = JOB_STATES.PENDING;
       nextAttemptAt = new Date(at.getTime() + backoffMs(used, { random }));
     }
+    // Phase 7.0: a job that cannot go on carries why, what would release it and which code versions judged it; a plain retry (pending) leaves any earlier hold alone
+    const holds = [JOB_STATES.HELD, JOB_STATES.BLOCKED, JOB_STATES.DEAD_LETTER].includes(state);
+    const hold = holds ? holdContract.buildHold({ classification, stage, message, previous: counters?.hold || null, at, versions: evaluatorVersions }) : null;
     await fenced(jobId, lease, {
       $set: {
-        state, open: OPEN_STATES.includes(state), nextAttemptAt, "lease.lockedUntil": null, ...(resetAttempts ? { attempts: 0 } : {}), lastError: { class: classification.class, code: classification.code, stage, message, at },
+        state, open: OPEN_STATES.includes(state), nextAttemptAt, "lease.lockedUntil": null, ...(resetAttempts ? { attempts: 0 } : {}), ...(hold ? { hold } : {}), lastError: { class: classification.class, code: classification.code, stage, message, at },
         ...(stage ? { [`stages.${stage}.status`]: "failed", [`stages.${stage}.finishedAt`]: at, [`stages.${stage}.error`]: { class: classification.class, code: classification.code, message } } : {}),
       },
       $push: { history: pushHistory(historyEntry(at, state, stage, `${classification.class}: ${message}`)) },
     });
     return { state, classification, signature: errorSignature({ stage, classification }), nextAttemptAt, message };
+  }
+
+  /**
+   * Phase 7.0 re-evaluation: held / blocked jobs whose hold was judged with OLDER code versions than the running ones are put back in the queue once, so a code or
+   * rule fix releases them without anyone clicking. Returns the number of jobs requeued. Never changes a decision itself: the requeued job runs the normal pipeline
+   * and the same gates.
+   */
+  async function requeueOutdatedHolds(versions = evaluatorVersions) {
+    const at = now();
+    const outdated = Object.keys(versions).map((key) => ({ [`hold.evaluatedWith.${key}`]: { $ne: versions[key] } }));
+    const result = await model.updateMany(
+      { state: { $in: [JOB_STATES.HELD, JOB_STATES.BLOCKED] }, "hold.reasonCode": { $exists: true }, $or: outdated },
+      { $set: { state: JOB_STATES.PENDING, open: true, attempts: 0, nextAttemptAt: at, "lease.lockedUntil": null }, $push: { history: pushHistory(historyEntry(at, JOB_STATES.PENDING, null, "re-evaluating: the code that judged this hold has changed")) } }
+    );
+    return result.modifiedCount || 0;
+  }
+
+  /** Holds (held / blocked / dead-letter) older than the escalation period that have not been raised yet, oldest first. */
+  async function persistentHolds({ periodMs = holdContract.escalationMs(), limit = 50, includeEscalated = false } = {}) {
+    const cutoff = new Date(now().getTime() - periodMs);
+    const filter = { state: { $in: [JOB_STATES.HELD, JOB_STATES.BLOCKED, JOB_STATES.DEAD_LETTER] }, "hold.firstHeldAt": { $lte: cutoff }, ...(includeEscalated ? {} : { "hold.escalatedAt": { $exists: false } }) };
+    return model.find(filter).sort({ "hold.firstHeldAt": 1 }).limit(Math.min(Number(limit) || 50, 200)).select("formCode state trigger editionKey hold lastError attempts updatedAt").lean();
+  }
+
+  /** True the FIRST time this job is escalated (the caller raises the alert only then). */
+  async function markEscalated(jobId) {
+    const result = await model.updateOne({ _id: jobId, "hold.escalatedAt": { $exists: false }, "hold.reasonCode": { $exists: true } }, { $set: { "hold.escalatedAt": now() } });
+    return result.modifiedCount === 1;
   }
 
   /** Graceful shutdown: hand the job back untouched (not counted as an attempt). */
@@ -261,7 +294,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     return model.find({ state: JOB_STATES.PENDING, createdAt: { $lt: cutoff }, $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now() } }] }).select("_id formCode createdAt").lean();
   }
 
-  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, release, manualRetry, markAlert, list, get, staleQueued, fenced };
+  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, release, manualRetry, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
 }
 
 let defaultService = null;

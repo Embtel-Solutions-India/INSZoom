@@ -81,6 +81,11 @@ async function extractPerPageText(buffer) {
 // sections - "Additional Information"/interpreter/preparer pages shared by
 // every classification, not scoped to any one component) are detected by
 // simple token-overlap similarity, not assumed to be a fixed count of pages.
+// Running page headers / footers ("Page 3 of 38", "Form I-129 Edition 09/09/26") differ between editions and must not count as a content difference.
+// Generic form code (I-129, G-28, N-400, EOIR-29 ...), not a hard-coded "I-".
+const PAGE_FURNITURE = /Page\s+\d+\s+of\s+\d+|Form\s+[A-Z]{1,4}-\d+[A-Z]*\s+Edition\s+[\d/]+/gi;
+const stripPageFurniture = (text) => String(text || "").replace(PAGE_FURNITURE, "");
+
 function textSimilarity(a, b) {
   const tokensA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
   const tokensB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
@@ -238,9 +243,9 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
       const oldTemplate = await USCISFormTemplate.findById(manual.parentTemplateId);
       const oldPages = await extractPerPageText(await storageService.readBuffer(oldTemplate.artifacts.form.storageKey));
       const oldRange = manual.pageRanges?.[0];
-      const oldText = oldPages.slice((oldRange?.startPage || 1) - 1, oldRange?.endPage || oldPages.length).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
-      const newText = pages.slice(startPage - 1).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
-      looksSame = textSimilarity(oldText, newText) >= 0.7;
+      const oldText = oldPages.slice((oldRange?.startPage || 1) - 1, oldRange?.endPage || oldPages.length).join(" ");
+      const newText = stripPageFurniture(pages.slice(startPage - 1).join(" "));
+      looksSame = textSimilarity(stripPageFurniture(oldText), newText) >= 0.7;
     } catch (error) {
       looksSame = false;
     }
@@ -330,4 +335,6 @@ module.exports = {
   discoverComponentsForParentForm,
   discoverAllRegistryComponents,
   deriveSearchPattern,
+  stripPageFurniture,
+  textSimilarity,
 };

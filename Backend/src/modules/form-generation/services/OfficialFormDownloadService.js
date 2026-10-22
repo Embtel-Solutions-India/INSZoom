@@ -17,6 +17,7 @@
 // told exactly what they got instead of an error or a silent difference.
 const PDFGenerationService = require("./PDFGenerationService");
 const PDFRenderer = require("./PDFRenderer");
+const FilingArtifactPolicy = require("./FilingArtifactPolicy");
 const env = require("../../../config/env");
 
 const ADOBE_TIMEOUT_MS = Number(process.env.ADOBE_DOWNLOAD_TIMEOUT_MS || 15000);
@@ -112,6 +113,12 @@ async function prepareOfficialDownload({ caseFormId, user, req, deferBookkeeping
   }
 
   lap("render");
+  // Phase 7.1 (FORM_PIPELINE_AUTONOMY): a form in the filing step is only handed out when it passed the strict fidelity check. Off = unchanged; shadow = logged;
+  // on = refused (409) before anything is stored. Review copies and drafts are never affected.
+  (deps.filingPolicy || FilingArtifactPolicy).enforce(
+    (deps.filingPolicy || FilingArtifactPolicy).assessDownload({ caseForm, mode }),
+    { event: "official_download", context: { caseFormId: String(caseForm._id), formCode: caseForm.formCode, status: caseForm.status, mode } }
+  );
   warnings.push(...fieldWarnings(result.renderReport));
 
   // Keep a copy on the case and an audit trail - but never fail the download

@@ -34,6 +34,13 @@ function defaultDeps() {
   const USCISScannerService = require("../../uscis-lifecycle/services/USCISScannerService");
   const Acquisition = require("./OnDemandFormAcquisitionService");
   return {
+    // Phase 7.1: the newest job per form that failed or waits (read-only, light projection)
+    async recentJobs(formCodes) {
+      const FormPipelineJob = require("../../../models/FormPipelineJob");
+      const rows = await FormPipelineJob.find({ formCode: { $in: formCodes }, $or: [{ state: { $in: ["blocked", "held", "dead_letter"] } }, { "lastError.at": { $gte: new Date(Date.now() - 2 * DAY_MS) } }] })
+        .select("formCode editionKey state lastError.at updatedAt").sort({ updatedAt: -1 }).limit(500).lean();
+      return rows.map((row) => ({ formCode: row.formCode, editionKey: row.editionKey, state: row.state, hasError: Boolean(row.lastError?.at), at: row.lastError?.at || row.updatedAt }));
+    },
     // every standalone form code the directory lists (all pages), with whatever edition date the listing shows
     async listPublishedForms({ maxPages }) {
       const root = USCISScannerService.OFFICIAL_SOURCES?.formsDirectoryUrl || "https://www.uscis.gov/forms/all-forms";
@@ -78,7 +85,28 @@ async function inBatches(items, size, task) {
   return out;
 }
 
-// options: { user, req, dryRun, maxFormsPerRun, maxPages, concurrency, only: [codes] }, deps override for tests
+const DAY_MS = 86400000;
+const isoDay = (value) => { const date = value ? new Date(value) : null; return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : ""; };
+
+/**
+ * Pure. Splits candidates into those worth queueing and those that would only repeat a failure (Phase 7.1 failure memory). A candidate is skipped when a pipeline
+ * job for the SAME form and edition date is blocked / held / dead-letter, or already failed within `triedWithinMs`. `jobs` are light job rows
+ * ({ formCode, editionKey, state, lastErrorAt|updatedAt, hasError }).
+ */
+function applyFailureMemory(candidates, jobs, { now = Date.now(), triedWithinMs = 6 * 3600000 } = {}) {
+  const keep = [];
+  const skipped = [];
+  for (const item of candidates) {
+    const day = isoDay(item.editionDate);
+    const match = (jobs || []).find((job) => job.formCode === item.formCode && (!day || String(job.editionKey || "").split("|")[1] === day));
+    if (match && ["blocked", "held", "dead_letter"].includes(match.state)) { skipped.push({ formCode: item.formCode, reason: `job ${match.state} for this edition` }); continue; }
+    if (match && match.hasError && match.at && now - new Date(match.at).getTime() < triedWithinMs) { skipped.push({ formCode: item.formCode, reason: "this edition failed recently" }); continue; }
+    keep.push(item);
+  }
+  return { keep, skipped };
+}
+
+// options: { user, req, dryRun, maxFormsPerRun, maxPages, concurrency, only: [codes], timeBudgetMs }, deps override for tests
 async function runCatalogSync(options = {}, deps = defaultDeps()) {
   const maxFormsPerRun = Number(options.maxFormsPerRun || process.env.USCIS_CATALOG_MAX_FORMS_PER_RUN || 15);
   const maxPages = Number(options.maxPages || process.env.USCIS_SYNC_MAX_PAGES || 30);
@@ -98,14 +126,33 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   });
   const upgrades = classified.filter((item) => item.action === "upgrade" || item.action === "check_edition");
   const news = classified.filter((item) => item.action === "import_new");
-  const queue = [...upgrades, ...news].slice(0, maxFormsPerRun);
+  const candidates = [...upgrades, ...news];
+  // Phase 7.1 failure memory: forms that would only repeat a known failure must not occupy the per-run slots (FORM_PIPELINE_AUTONOMY: off = unchanged, shadow = log only, on = applied)
+  const autonomy = require("../../../config/formPipelineAutonomy").mode();
+  let memorySkipped = [];
+  let queue;
+  if (autonomy !== "off" && deps.recentJobs) {
+    try {
+      const memory = applyFailureMemory(candidates, await deps.recentJobs(candidates.map((item) => item.formCode)), { triedWithinMs: Number(options.triedWithinHours || process.env.FORM_PIPELINE_RETRY_AFTER_HOURS || 6) * 3600000 });
+      memorySkipped = memory.skipped;
+      if (memorySkipped.length) logger.warn(autonomy === "on" ? "uscis_catalog_sync_skipped_known_failures" : "uscis_catalog_sync_would_skip_known_failures", { mode: autonomy, skipped: memorySkipped });
+      queue = (autonomy === "on" ? memory.keep : candidates).slice(0, maxFormsPerRun);
+    } catch (error) {
+      logger.warn("uscis_catalog_sync_failure_memory_unavailable", { error: error.message }); // never blocks the sync
+      queue = candidates.slice(0, maxFormsPerRun);
+    }
+  } else {
+    queue = candidates.slice(0, maxFormsPerRun);
+  }
   const summary = {
     published: published.length,
     upToDate: classified.filter((item) => item.action === "up_to_date").length,
     upgradesFound: upgrades.length,
     newFormsFound: news.length,
     queued: queue.map((item) => `${item.formCode}(${item.action})`),
-    deferred: Math.max(upgrades.length + news.length - queue.length, 0),
+    deferred: Math.max(upgrades.length + news.length - queue.length - (autonomy === "on" ? memorySkipped.length : 0), 0),
+    skippedKnownFailures: memorySkipped,
+    autonomy,
     skipped: classified.filter((item) => item.action === "skip").length,
     // every form already in the software, with both editions side by side
     installedComparison: classified.filter((item) => item.installed).map((item) => ({ formCode: item.formCode, installed: (item.installed.importMetadata?.publishedEditionDate || item.installed.editionDate) ? new Date(item.installed.importMetadata?.publishedEditionDate || item.installed.editionDate).toISOString().slice(0, 10) : item.installed.version || null, published: item.editionDate ? new Date(item.editionDate).toISOString().slice(0, 10) : null, action: item.action, reason: item.reason })),
@@ -115,7 +162,12 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   if (options.dryRun) return { ...summary, dryRun: true, ms: Date.now() - startedAt };
 
   const req = options.req || { ip: "system", headers: {} };
+  const timeBudgetMs = autonomy === "on" ? Number(options.timeBudgetMs || process.env.USCIS_CATALOG_TIME_BUDGET_MS || 45 * 60000) : Infinity;
   for (const item of queue) { // sequential: one form's failure can never affect another
+    if (Date.now() - startedAt > timeBudgetMs) { // a run can never go on forever: the rest is picked up by the next run
+      summary.results.push({ formCode: item.formCode, action: item.action, outcome: "deferred", detail: "time budget used up" });
+      continue;
+    }
     try {
       const result = await deps.importForm(item.formCode, options.user, req);
       if (result?.queued) { // FORM_PIPELINE_MODE=queued: the worker does the work; the next run sees the outcome
@@ -137,4 +189,4 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   return { ...summary, ms: Date.now() - startedAt };
 }
 
-module.exports = { runCatalogSync, classify, sameDay };
+module.exports = { runCatalogSync, classify, sameDay, applyFailureMemory };

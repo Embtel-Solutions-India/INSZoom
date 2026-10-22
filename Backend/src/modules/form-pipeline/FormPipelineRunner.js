@@ -7,6 +7,7 @@
 //   - nothing here weakens a safeguard: promotion still goes through the existing guarded activation and the edition-policy gate inside the executor.
 const { LeaseLostError, classifyError, sanitizeMessage } = require("./errorClassifier");
 const { ERROR_CLASSES, LIMITS, STAGES } = require("./pipeline.constants");
+const { buildLadder } = require("./stageLadder");
 
 /** What a finished ensureCurrentUSCISForm-style result means, as a small stored summary. */
 function summarizeResult(result) {
@@ -18,8 +19,10 @@ function summarizeResult(result) {
   else if (result.versionChanged) status = result.requiresActivation ? "kept_in_review" : "activated";
   else if (result.alreadyActive === false) status = result.requiresActivation ? "kept_in_review" : "acquired";
   else status = result.checked === false ? "skipped" : "no_change";
+  // Phase 7.0: the stage ladder and the case-migration state are reported beside the status, so a released edition can never hide a migration that did not finish
+  const ladder = buildLadder(result);
   return {
-    status, version: template?.version, templateStatus: template?.status, requiresActivation: Boolean(result.requiresActivation),
+    status, version: template?.version, templateStatus: template?.status, requiresActivation: Boolean(result.requiresActivation), migration: ladder.migration, ladder: ladder.stages, levels: ladder.levels, ...(ladder.components ? { components: ladder.components } : {}),
     ...(result.activationBlockedReason ? { activationBlockedReason: sanitizeMessage(result.activationBlockedReason) } : {}),
     ...(result.checkError ? { checkError: sanitizeMessage(result.checkError) } : {}),
   };
@@ -148,6 +151,8 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       await jobService.complete(jobId, lease, outcome);
       // Phase 5E: "edition promoted" (success e-mail or digest entry) or "approval required"; deduped on the job, never throws, does not delay the caller
       const alerted = alerter?.announceOutcome ? background(jobId, async (current) => alerter.announceOutcome({ job: current, outcome, result })) : null;
+      // Phase 7.0: a migration that failed, is partial, or never ran is raised on its own (deduped per job and state)
+      if (alerter?.announceMigrationGap) background(jobId, async (current) => alerter.announceMigrationGap({ job: current, outcome }));
       return { state: "done", outcome, result, ...(alerted ? { alerted } : {}) };
     } catch (error) {
       if (error instanceof LeaseLostError) return { state: "lease_lost" };

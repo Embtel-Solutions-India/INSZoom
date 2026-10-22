@@ -384,8 +384,28 @@ class AutoFillService {
     return CaseForm.findOne({ caseId, formCode: normalizedFormType }).sort({ updatedAt: -1 });
   }
 
+  // Phase 7: load exactly one case form by id (migration, which must never regenerate a different participant's form of the same code). It must belong to the
+  // case and to the form code, otherwise the call fails loudly instead of touching another form.
+  static async findCaseFormById(caseId, formType, caseFormId) {
+    const normalizedFormType = FormMappingService.normalizeFormType(formType);
+    const caseForm = await CaseForm.findById(caseFormId);
+    if (!caseForm) {
+      const error = new Error("The case form to auto-fill was not found.");
+      error.status = 404;
+      error.code = "CASE_FORM_NOT_FOUND";
+      throw error;
+    }
+    if (String(caseForm.caseId) !== String(caseId) || String(caseForm.formCode) !== String(normalizedFormType)) {
+      const error = new Error("That case form does not belong to this case and form.");
+      error.status = 409;
+      error.code = "CASE_FORM_MISMATCH";
+      throw error;
+    }
+    return caseForm;
+  }
+
   static async generate(caseId, formType, user, req, options = {}) {
-    const existingCaseForm = await this.findCaseForm(caseId, formType);
+    const existingCaseForm = options.caseFormId ? await this.findCaseFormById(caseId, formType, options.caseFormId) : await this.findCaseForm(caseId, formType);
     if (existingCaseForm?.status === "archived") {
       const error = new Error(`${existingCaseForm.formCode} was removed from this case. Add it back to the case first; auto-fill does not bring a removed form back.`);
       error.status = 409;

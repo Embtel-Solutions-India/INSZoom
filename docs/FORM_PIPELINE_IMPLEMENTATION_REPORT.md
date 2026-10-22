@@ -18,6 +18,7 @@ This is the ONE document that records the implementation of the approved plan in
 | **Phase 3** - certification that proves correctness, release gate, safe activation, safe case migration, rollback (Admin screen, repair strategies and performance baseline NOT done) | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
 | **Phase 4** - Gemini mapping engine (OFF by default, shadow-first), accuracy gate (closed), plus Phase 3's repair strategies, Admin release screen and performance tooling (live accuracy run blocked: the configured Gemini model is retired) | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
 | **Phase 5** - governance API and Admin screens (overview, per-form status, review queue, frozen cases, AI panel), persisted run summaries, deduped alerts, success / held / digest developer e-mails | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
+| **Phase 7** - fully autonomous editions (plan approved 2026-10-22; 7.0 and part of 7.1 built, behind the switch, nothing enabled) | **IN PROGRESS** | approved 2026-10-22 |
 | **Phase 6** - regression and proof (full regression, builds, acceptance checks, safe test runner) | **DONE for what needs no shared database 2026-10-22; shadow runs + performance baseline waiting for your approval** | given 2026-10-22 |
 
 ---
@@ -758,6 +759,46 @@ Shadow runs; the performance baseline and budget comparison; the real PM2 worker
 
 ## 6. Gate before calling the whole plan finished
 Your decisions on: running the performance baseline and shadow runs against the shared database (and with which forms), removing the old test records, and fixing or retiring the 18 stale tests. Until the shadow runs and the baseline are done, the plan's acceptance rows "Performance / non-disruption" and "Worker / off-thread" are met structurally and in simulation, not by measurement.
+
+# Phase 7 - fully autonomous editions (7.0 and the first part of 7.1 done; the rest of 7.1 and 7.2-7.8 not started)
+
+## 1. Scope and authorization
+The plan is [FORM_PIPELINE_PHASE7_PLAN.md](FORM_PIPELINE_PHASE7_PLAN.md) (rev 2, approved 2026-10-22). This section covers the first build step: **7.0** (hold contract and stage ladder) and the parts of **7.1** that need no deploy change and no shared-database write. Everything new is additive. The `FORM_PIPELINE_AUTONOMY` switch (`off` default, `shadow`, `on`) gates every behavior change that could alter what a client or a filing sees; nothing is switched on. No database write was made, no case created, no deploy changed.
+
+## 2. What was built
+| Plan item | Result |
+|---|---|
+| 7.0 hold contract | `form-pipeline/holdContract.js`: a held / blocked / dead-lettered job now stores `hold { reasonCode, detail, releaseConditions[], firstHeldAt, lastEvaluatedAt, evaluatedWith{matcher,gate,cert}, escalatedAt }` (`FormPipelineJob.hold`, written by `jobService.fail`; the first-held time survives re-checks of the same reason; a finished job clears it). |
+| 7.0 automatic re-evaluation | `requeueOutdatedHolds`: a hold judged with older code versions than the running ones is requeued once with a fresh attempt budget. It runs the normal pipeline and the same gates; nothing is promoted by it. Existing retry timers (held 12 h, blocked 24 h, transient backoff) are unchanged. |
+| 7.0 escalation | `holdSweep.js` (worker tick): a hold older than `FORM_PIPELINE_HOLD_ESCALATION_DAYS` (default 7) raises ONE in-app admin notice and audit record (`announceEscalation`), says what would release it, and decides nothing. `persistentHolds` is the review list. |
+| 7.0 stage ladder | `stageLadder.js`: every finished run reports `ladder` (detected, fetched, imported, mapped, certified, release_eligible, released, migration_pending / complete / partial) and `levels` (in registry, approved for new cases, eligible for existing cases) in the job outcome. Existing statuses are unchanged. |
+| 7.1 migration honesty | `activateOrPromote` no longer swallows a thrown case migration at info level: the error is warn-logged and returned (`caseMigrationError`); the outcome carries `migration.state` (not_applicable / migration_pending / migration_failed / migration_partial / migration_complete) with counts, and `announceMigrationGap` raises one in-app notice per job and state. A component-discovery failure after activation is warn-logged and shown in the outcome (`components`). |
+| 7.1 pipeline preflight | `form-pipeline/preflight/pipelinePreflight.js`: verifies (never installs) qpdf and its minimum version, the required unique indexes, worker placement, job schema versions, evidence flag, an active admin, the autonomy switch. Report-only by default; `FORM_PIPELINE_PREFLIGHT_ENFORCE=true` makes the worker claim nothing while a critical check fails. Started from `server.js` 20 s after boot, every 30 minutes; admins notified once per distinct failure set; shown in the governance overview. |
+| 7.1 component-discovery regex | `\d` fixed and the form code made generic (the old pattern stripped nothing); a test fails on the old regex. |
+| 7.1 sync failure memory | `FormCatalogSyncService`: skips forms whose job is blocked / held / dead-letter for the same edition date or that failed within 6 h, keeps filling the per-run cap, time budget 45 min. Behind the switch: off = unchanged, shadow = logs only, on = applies. |
+| 7.1 AutoFill target | `AutoFillService.generate({ caseFormId })` loads exactly that case form (404 / 409 on a mismatch); without it the old lookup is untouched. Migration callers not changed yet (7.7). |
+| 7.1 filing artifacts | `FilingArtifactPolicy.js`; `OfficialFormDownloadService` and `FilingPackageService` (and the generated G-28 item in `PetitionAssemblyService`): behind the switch, a filing-status download that ended on an unverified or blank fallback is refused (409), and a package is rebuilt from the clean official render, refusing any watermarked component that cannot be rebuilt. Drafts and attorney-review copies are untouched. |
+| 7.8 fixtures | `scripts/buildFixtureManifest.js` (read-only), `test-utils/editionMutants.js` (pdf-lib synthetic mutants, labeled), `test-utils/fixtures/editions/MANIFEST.json` (hashes and locations only). |
+
+## 3. Verification
+| Check | Result |
+|---|---|
+| New tests | hold contract + ladder + alerter + worker 13; holds on the local throwaway database 7; preflight 12; filing artifact policy 14; failure memory + page-furniture + caseFormId (25 with the existing tests); fixture manifest 9 and mutants 9 |
+| Existing suites touched (jobs, pipeline run, alerter, wiring, governance, phase 6 acceptance, download) | pass |
+| Full safe regression (`npm run test:safe`) | 305 test files, 2,204 tests: 2,185 pass, 19 fail. Same 19 as Phase 6 (18 pre-existing identical at commit 33794ea + the old gate-matrix line); the timing-flaky cache test passed this time; no new failure. Four app builds green. Three regressions my own guard tests caught during the step were fixed (autonomy switch moved to config/ so the hot path does not reach pipeline modules; a duplicated status list; a fixture-script allow-list entry). |
+
+## 4. Findings for your review
+1. **The fixture check found a mislabeled pair.** The stored I-485 "2026-04-09" retired PDF prints footer **2026-09-04**; the I-485 live edition (2026-09-18) has no official PDF URL on its template, so it cannot be compared with the official file. The I-129 2026-09-09 edition is byte-identical to the official PDF (verified); I-129 2026-02-27 is not served by USCIS any more (provenance recorded from our stored copy). I-131 is no longer a pair: the corrected live edition is 2025-01-20, so there is no older edition. The simulation harness therefore needs I-485 re-sourced or the pair redefined; I did not guess.
+2. The component-discovery fix can only raise a similarity score, so a continuation sheet previously marked "review required" only because of its running header may now come back active. Unmeasured without a database run.
+3. The failure-memory skip matches on edition DATE only (the file checksum is not known when the queue is built): a blocked job for the same date but a newer file revision waits for its own 24 h retry.
+4. A generated G-28 section with no form behind it (uploaded or already watermarked) will refuse a final package when the switch is `on`.
+5. Nothing is enabled: preflight is report-only and the autonomy switch is off, so live behavior changed only in what is reported (migration state, hold records, warn logs).
+
+## 5. Not done in this step
+Rest of 7.1: the deploy changes (pinned qpdf, index scripts, worker app: D6, own approval), `hasNewEdition` confirmation, approval actor `system:pipeline`; 7.2 detection and fetch hardening; 7.3 matcher; 7.4 inventory gate; 7.5 components; 7.6 release proof; 7.7 case migration; 7.8 harness and shadow runs.
+
+## 6. Gate before the next step
+Your review of finding 1 (I-485 pair), your answer on D6 (deploy changes), and the go-ahead for 7.2 and 7.3.
 
 ## Appendix A - Per-form results (generated from the run)
 

@@ -251,6 +251,8 @@ connectDB()
     const uscisCatalogSync = require("./modules/uscis-lifecycle/jobs/USCISCatalogSyncJob").startUSCISCatalogSyncJob(withJobLock);
     // durable form pipeline (Phase 1): the worker that runs queued / retried / recovered jobs (embedded unless FORM_PIPELINE_WORKER=external|off) and the "no worker is running" alert
     const formPipeline = require("./modules/form-pipeline").startFormPipeline({ withJobLock });
+    // Phase 7.1: verifies (never installs, never writes) qpdf, indexes and worker placement; report-only unless FORM_PIPELINE_PREFLIGHT_ENFORCE=true
+    const formPipelinePreflight = require("./modules/form-pipeline/preflight/pipelinePreflight").startPipelinePreflight({ withJobLock });
     // Phase 3: finishes interrupted promotions and case-form migrations (recovery only; never starts either)
     const formRelease = require("./modules/form-release").startFormReleaseMaintenance({ withJobLock });
     // keeps the form registry / rule-driven mappings / certification correct by code (registry gap-fill, component linking, per-form certification)
@@ -295,6 +297,7 @@ connectDB()
       if (uscisCatalogSync) clearInterval(uscisCatalogSync);
       if (formAutopilot) clearInterval(formAutopilot);
       if (formRelease) clearInterval(formRelease);
+      if (formPipelinePreflight) clearInterval(formPipelinePreflight);
       formPipeline.stop().catch((error) => logger.error("form_pipeline_stop_failed", { error }));
       clearInterval(settingsRetentionMaintenance);
       clearInterval(slaSweepMaintenance);

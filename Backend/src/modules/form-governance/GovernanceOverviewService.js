@@ -20,6 +20,7 @@ function defaultDeps() {
     mode: () => pipeline().mode(),
     placement: () => require("../form-pipeline").workerPlacement(),
     workerAlive: () => require("../form-pipeline/FormPipelineWorker").workerAlive(),
+    preflight: () => require("../form-pipeline/preflight/pipelinePreflight").getLastPreflight(),
     frozenOpen: () => require("./FrozenCasesService").frozenOpenCount(),
     now: () => new Date(),
   };
@@ -98,6 +99,7 @@ async function overview(deps = {}) {
       retries: retryCounts,
       stageTimings: stageTimings(sample),
     },
+    preflight: await safely(() => d.preflight(), null) || null, // Phase 7.1: the latest start-up check (null until the first one has run)
     blocked: blocked.map((job) => jobSummary(job, now)),
     held: held.map((job) => jobSummary(job, now)),
     runs: runs.map(presentRun),

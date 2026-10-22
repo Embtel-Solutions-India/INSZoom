@@ -9,7 +9,7 @@ const logger = require("../../utils/logger");
 
 const WORKER_LOCK_PREFIX = "form-pipeline-worker:";
 
-function createWorker({ jobService, runner, workerId = `${os.hostname()}:${process.pid}`, intervalMs = Number(process.env.FORM_PIPELINE_WORKER_INTERVAL_MS || 15000), maxJobsPerTick = 3, random = Math.random, now = () => new Date() } = {}) {
+function createWorker({ jobService, runner, workerId = `${os.hostname()}:${process.pid}`, intervalMs = Number(process.env.FORM_PIPELINE_WORKER_INTERVAL_MS || 15000), maxJobsPerTick = 3, sweeps = [], canClaim = () => true, random = Math.random, now = () => new Date() } = {}) {
   if (!jobService || !runner) throw new Error("createWorker needs a jobService and a runner");
   let timer = null;
   let stopping = false;
@@ -33,6 +33,10 @@ function createWorker({ jobService, runner, workerId = `${os.hostname()}:${proce
     if (stopping) return outcomes;
     await beat();
     await jobService.recoverExpired().catch((error) => logger.warn("form_pipeline_recover_failed", { error: error.message }));
+    // Phase 7.0: housekeeping that must never stop the queue (re-evaluate outdated holds, escalate persistent ones); every sweep catches its own errors
+    for (const sweep of sweeps) await Promise.resolve().then(sweep).catch((error) => logger.warn("form_pipeline_sweep_failed", { error: error.message }));
+    // Phase 7.1: when the start-up self-check found a critical problem (and enforcement is switched on) the worker keeps its marker and sweeps but claims nothing
+    if (!canClaim()) { logger.warn("form_pipeline_worker_not_claiming", { reason: "preflight" }); return outcomes; }
     for (let i = 0; i < maxJobsPerTick && !stopping; i += 1) {
       const claim = await jobService.claimNext({ workerId });
       if (!claim) break;

@@ -301,6 +301,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
   const autoActivate = readyToPromote || (String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true" && Boolean(certification?.passed));
   let activationBlockedReason = null;
+  let componentDiscovery = null; // Phase 7.0: what activation's component discovery reported (an error there is surfaced in the job outcome, not swallowed)
   let activationBlockedCode = null; // e.g. EDITION_POLICY_HELD: lets the pipeline job tell "waiting for a decision" from an ordinary failure
   if (autoActivate && template.status !== "active") {
     // VersionManagementService.activate() requires the edition to already
@@ -318,6 +319,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     try {
       // VersionManagementService.activate returns { template, impact, componentDiscovery } - keep the document itself (a later step persists against it)
       const activated = await stage("promote", () => versionService.activate(template._id, user, req));
+      componentDiscovery = activated?.componentDiscovery || null;
       template = activated?.template || (await USCISFormTemplate.findById(template._id));
       logger.info("uscis_form_activated", { formCode: template.formCode, templateId: String(template._id), version: template.version });
     } catch (error) {
@@ -348,6 +350,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   // The new edition is live: every visa that used the old one keeps using it (visa types carried over), and every open case form of the old
   // edition moves onto it with all saved values (nothing is dropped; unmatched values are archived on the form).
   let caseMigration = null;
+  let caseMigrationError = null; // Phase 7.0: a migration that threw is REPORTED in the job outcome (it used to be logged at info level and forgotten)
   if (template.status === "active" && certification?.passed && (readyToPromote || (migration?.activated && readiness?.ready))) {
     try {
       const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
@@ -356,7 +359,8 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       caseMigration = await stage("migrate_cases", () => migrateCaseFormsToEdition({ newTemplate: template, actor: user, req }));
       logger.info("uscis_form_cases_migrated", { formCode: template.formCode, considered: caseMigration.considered, migrated: caseMigration.migrated, verified: caseMigration.verified, skippedFrozen: caseMigration.skippedFrozen, valuesCarried: caseMigration.valuesCarried, valuesArchived: caseMigration.valuesArchived, unresolved: (caseMigration.unresolved || []).length, reconciliationRequired: (caseMigration.reconciliationRequired || []).length, failed: caseMigration.failed.length });
     } catch (error) {
-      logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
+      caseMigrationError = error.message;
+      logger.warn("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
     }
   }
   // Phase 5: what the migration left behind (frozen case forms, lost mapping edges) is recorded for the governance screens; fail-safe, never throws, changes nothing
@@ -388,6 +392,8 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     readiness,
     certification,
     caseMigration,
+    caseMigrationError,
+    componentDiscovery,
   };
 }
 

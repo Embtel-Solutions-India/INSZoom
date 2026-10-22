@@ -26,6 +26,7 @@ Rev 9 below is the original approval record and is kept unchanged for history. *
 | **Phase 4** (Gemini mapping, shadow-first; accuracy gate closed; live accuracy run blocked by a retired model) | **Done in code** (2026-10-22) |
 | **Phase 5** (governance API + Admin screens, run summaries, deduped alerts, developer e-mails) | **Done in code** (2026-10-22) |
 | **Phase 6** (regression and proof) | **Done except the shadow runs and the performance baseline, which need approval** (2026-10-22) |
+| **Phase 7** (fully autonomous editions, rev 2: hold contract, semantic field matching, inventory gate, artifact proof, data-conserving case migration) | **Approved 2026-10-22; building 7.0 and 7.1 first** - see [FORM_PIPELINE_PHASE7_PLAN.md](FORM_PIPELINE_PHASE7_PLAN.md) |
 | Phase 4 - Gemini mapping | **Not started and not part of the 12-hour pipeline** (see C7) |
 
 ### Changes from rev 9

@@ -143,6 +143,7 @@ class VersionManagementService {
       const USCISFormComponentDiscoveryService = require("../../uscis-forms/services/USCISFormComponentDiscoveryService");
       componentDiscovery = await USCISFormComponentDiscoveryService.discoverComponentsForParentForm(template.formCode);
     } catch (discoveryError) {
+      logger.warn("uscis_component_discovery_failed_after_activation", { formCode: template.formCode, error: discoveryError.message }); // Phase 7.0: no longer silent
       componentDiscovery = { parentFormCode: template.formCode, error: discoveryError.message, componentsDiscovered: 0 };
     }
 

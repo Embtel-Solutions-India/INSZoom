@@ -211,8 +211,9 @@ test("overview: the exact documented shape, from injected models", async () => {
     countDocuments: async () => 2,
   };
   const Run = { find: () => query([{ kind: "autopilot", startedAt: now, finishedAt: now, durationMs: 10, checked: 3, changed: 1, promoted: 0, held: 1, failed: 0 }]) };
-  const out = await overview({ now: () => now, Job, Run, Suggestion: { countDocuments: async () => 11 }, mode: () => "inline", placement: () => "embedded", workerAlive: async () => true, frozenOpen: async () => 4 });
-  assert.deepEqual(Object.keys(out).sort(), ["blocked", "generatedAt", "held", "metrics", "pipeline", "runs"]);
+  const out = await overview({ now: () => now, Job, Run, Suggestion: { countDocuments: async () => 11 }, mode: () => "inline", placement: () => "embedded", workerAlive: async () => true, frozenOpen: async () => 4, preflight: () => ({ ok: true, checks: [] }) });
+  assert.deepEqual(Object.keys(out).sort(), ["blocked", "generatedAt", "held", "metrics", "pipeline", "preflight", "runs"]);
+  assert.deepEqual(out.preflight, { ok: true, checks: [] });
   assert.deepEqual(Object.keys(out.pipeline).sort(), ["counts", "mode", "oldestUnresolved", "retries", "stageTimings", "worker"]);
   assert.deepEqual(out.pipeline.worker, { placement: "embedded", alive: true });
   assert.deepEqual(out.pipeline.counts, { pending: 0, running: 0, blocked: 0, held: 1, dead_letter: 0, done: 5 });
@@ -226,6 +227,7 @@ test("overview: the exact documented shape, from injected models", async () => {
   const boom = () => { throw new Error("db down"); };
   const empty = await overview({ now: () => now, Job: { aggregate: boom, find: boom, findOne: boom, countDocuments: boom }, Run: { find: boom }, Suggestion: { countDocuments: boom }, mode: boom, placement: boom, workerAlive: boom, frozenOpen: boom });
   assert.deepEqual([empty.pipeline.oldestUnresolved, empty.blocked, empty.runs, empty.pipeline.worker.alive], [null, [], [], false]);
+  assert.equal(empty.preflight, null, "no preflight result yet (or an unreadable one) is null, never an error");
   assert.equal("aiSuggestions24h" in empty.metrics, false, "an unreadable suggestions collection leaves the optional metric out");
   assert.deepEqual((await metrics({ now: () => now, Job, Suggestion: { countDocuments: async () => 0 }, frozenOpen: async () => 0 })).aiSuggestions24h, 0);
 });

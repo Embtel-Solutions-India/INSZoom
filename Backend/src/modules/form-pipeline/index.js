@@ -3,6 +3,7 @@ const { services, mode } = require("./FormPipeline");
 const { createWorker, workerAlive } = require("./FormPipelineWorker");
 const { LIMITS } = require("./pipeline.constants");
 const logger = require("../../utils/logger");
+const { createHoldSweep } = require("./holdSweep");
 
 /** FORM_PIPELINE_WORKER: "embedded" (default - the worker runs inside the API process, as the work always did), "external" (a separate process runs it), "off". */
 const workerPlacement = (env = process.env) => {
@@ -11,8 +12,8 @@ const workerPlacement = (env = process.env) => {
 };
 
 function buildWorker() {
-  const { jobService, runner } = services();
-  return createWorker({ jobService, runner });
+  const { jobService, runner, alerter } = services();
+  return createWorker({ jobService, runner, sweeps: [createHoldSweep({ jobService, alerter })], canClaim: () => !require("./preflight/pipelinePreflight").isBlocking() });
 }
 
 /**

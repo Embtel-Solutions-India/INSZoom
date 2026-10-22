@@ -54,6 +54,13 @@ const formPipelineJobSchema = new mongoose.Schema(
       storageKey: String,
     },
     outcome: { type: mongoose.Schema.Types.Mixed }, // small summary of how a finished run ended
+    // Phase 7.0 hold contract: why the job is held / blocked / dead-lettered, what would release it, when it was last judged and with which code versions
+    hold: {
+      reasonCode: String, errorClass: String, stage: String, detail: String,
+      releaseConditions: { type: [String], default: undefined }, // no default: a job that was never held carries no hold at all
+      firstHeldAt: Date, lastEvaluatedAt: Date, escalatedAt: Date,
+      evaluatedWith: { matcher: Number, gate: Number, cert: Number },
+    },
     // alert dedupe: one entry per distinct (state|stage|error signature) already announced for this job
     alerts: [{ _id: false, signature: String, kind: String, at: Date }],
     history: [{ _id: false, at: Date, state: String, stage: String, note: String }],
