@@ -20,6 +20,7 @@ const STAGES = Object.freeze({
   DETECT: "detect", // ask uscis.gov whether the edition changed
   IMPORT: "import", // resolve + download + normalize (qpdf / XFA) + import, or scan into a draft
   MAP: "map", // carry the mapping forward / apply authored or inferred rules
+  AI_MAP: "ai_map", // Phase 4, optional (FORM_AI_MAPPING=shadow|on): Gemini suggestions for the boxes the rules left unmapped; never fails the pipeline
   CERTIFY: "certify", // fillable, mapping valid, filled round trip, viewer/download, components
   PROMOTE: "promote", // edition-policy gate + existing guarded activation (under the per-form promotion mutex)
   MIGRATE_CASES: "migrate_cases", // open case forms move to the new edition with every saved answer

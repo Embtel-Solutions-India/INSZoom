@@ -35,7 +35,7 @@ function defaultPromotionLock() {
   };
 }
 
-function createRunner({ jobService, alerter = null, executor, repairs = [], promotionLock = null, heartbeatMs = LIMITS.heartbeatMs, leaseMs = LIMITS.leaseMs, logger = require("../../utils/logger") } = {}) {
+function createRunner({ jobService, alerter = null, executor, repairs = [], inspectResult = null, promotionLock = null, heartbeatMs = LIMITS.heartbeatMs, leaseMs = LIMITS.leaseMs, logger = require("../../utils/logger") } = {}) {
   if (!jobService || typeof executor !== "function") throw new Error("createRunner needs a jobService and an executor");
   const lock = promotionLock || defaultPromotionLock();
 
@@ -87,6 +87,8 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], prom
     // a known repair: repair, VERIFY the repair, and only then retry the work once (per-strategy attempt limit across the whole job)
     async function repairAndRetry(error) {
       const fresh = await jobService.get(jobId);
+      // the strategy sees the job as it is NOW (the edition ids recorded since the run started), not the snapshot the run was claimed with
+      const strategyContext = { ...context, job: fresh };
       for (const strategy of repairs) {
         if (!strategy.matches(error)) continue;
         const tried = (fresh.repairsTried || []).filter((item) => item.strategy === strategy.name).length;
@@ -94,8 +96,8 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], prom
         let outcome = "failed";
         let verification = "";
         try {
-          await strategy.repair(error, context);
-          verification = String(await strategy.verify(error, context) ?? "");
+          await strategy.repair(error, strategyContext);
+          verification = String(await strategy.verify(error, strategyContext) ?? "");
           outcome = verification && !/^fail/i.test(verification) ? "repaired" : "failed";
         } catch (repairError) {
           verification = `error: ${sanitizeMessage(repairError)}`;
@@ -115,6 +117,20 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], prom
         const repaired = classifyError(error).class === ERROR_CLASSES.REPAIRABLE || repairs.some((strategy) => strategy.matches(error)) ? await repairAndRetry(error) : { retried: false };
         if (!repaired.retried) throw error;
         result = repaired.result;
+      }
+      // Phase 4: a run can finish "successfully" with the edition left in review because its certification FAILED (that is recorded, not thrown). The inspector reads what the
+      // run left behind and, when a strategy recognizes the failure, it is repaired and VERIFIED like any other; otherwise nothing changes. Never throws into the run.
+      if (inspectResult && repairs.length) {
+        try {
+          const problem = await inspectResult(result, context);
+          if (problem && repairs.some((strategy) => strategy.matches(problem))) {
+            const repaired = await repairAndRetry(problem);
+            if (repaired.retried) result = repaired.result;
+          }
+        } catch (error) {
+          if (error instanceof LeaseLostError) throw error;
+          logger.warn("form_pipeline_result_inspection_failed", { jobId: String(jobId), error: sanitizeMessage(error) });
+        }
       }
       alive();
       // the edition was imported but the policy gate (inside the existing activation) refused to promote it: the job waits for a decision

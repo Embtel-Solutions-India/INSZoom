@@ -7,6 +7,7 @@ import ConfirmModal from '../components/ConfirmModal'
 import FormEditionEvidenceSection, { EVIDENCE_ROLES } from '../components/FormEditionEvidenceSection'
 import FormPipelineJobsSection, { READ_ROLES as PIPELINE_READ_ROLES } from '../components/FormPipelineJobsSection'
 import GoldenSetReviewSection from '../components/GoldenSetReviewSection'
+import FormReleaseSection, { READ_ROLES as RELEASE_READ_ROLES } from '../components/FormReleaseSection'
 import { FileCheck2, Search, Download, ExternalLink, RefreshCw, Upload, Trash2, X } from 'lucide-react'
 
 export const RESULT_BANNER_MS = 10000
@@ -79,6 +80,8 @@ const FormGovernance = () => {
   const canSeeStaffReviews = PIPELINE_READ_ROLES.includes(user?.role) // super_admin, admin, team_lead (the same roles the API allows)
   const [showPipeline, setShowPipeline] = useState(false)
   const [showGolden, setShowGolden] = useState(false)
+  const canSeeRelease = RELEASE_READ_ROLES.includes(user?.role) // super_admin, admin, team_lead (the roles the release API allows)
+  const [showRelease, setShowRelease] = useState(false)
   const [forms, setForms] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -291,6 +294,11 @@ const FormGovernance = () => {
               <FileCheck2 className="w-4 h-4" /> {showGolden ? 'Hide' : 'Show'} Golden Set Review
             </button>
           )}
+          {canSeeRelease && (
+            <button onClick={() => setShowRelease((open) => !open)} className="btn-secondary text-sm flex items-center gap-1 shrink-0">
+              <FileCheck2 className="w-4 h-4" /> {showRelease ? 'Hide' : 'Show'} Release Safety
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setShowUpload(true)} className="btn-primary text-sm flex items-center gap-1 shrink-0">
               <Upload className="w-4 h-4" /> Upload Form
@@ -302,6 +310,7 @@ const FormGovernance = () => {
       {canRecordEvidence && showEvidence && <FormEditionEvidenceSection />}
       {canSeeStaffReviews && showPipeline && <FormPipelineJobsSection />}
       {canSeeStaffReviews && showGolden && <GoldenSetReviewSection />}
+      {canSeeRelease && showRelease && <FormReleaseSection forms={forms} />}
 
       {showCoverage && (
         <div className="card">

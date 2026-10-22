@@ -254,6 +254,19 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       logger.info("uscis_form_rule_mapping_failed", { formCode: template.formCode, error: error.message });
     }
   }
+  // Phase 4 (optional, OFF unless FORM_AI_MAPPING=shadow|on): Gemini suggestions for the boxes the rules left unmapped. Shadow only stores them; "on" adds validated low-risk ones to a
+  // NEW mapping version of a pending edition (and only while the accuracy gate is open) BEFORE certification, so they are certified with the rest. Never fails the pipeline.
+  try {
+    const aiMapping = require("../../form-ai-mapping");
+    if (aiMapping.mode() !== "off") {
+      await stage("ai_map", async () => {
+        try { return await aiMapping.runForTemplate({ template, user, req }); } catch (error) { logger.info("uscis_form_ai_mapping_skipped", { formCode: template.formCode, error: error.message }); return { skipped: true, error: error.message }; }
+      });
+      template = await USCISFormTemplate.findById(template._id);
+    }
+  } catch (error) {
+    logger.info("uscis_form_ai_mapping_skipped", { formCode: template.formCode, error: error.message });
+  }
   // The live edition is never replaced until the new one is fully ready (mapping lossless + every component sliceable); otherwise it stays as is.
   let readiness = null;
   if (migration?.activated) {

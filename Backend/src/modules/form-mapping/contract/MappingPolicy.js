@@ -35,7 +35,10 @@ function canReplace(existing, incoming) {
  */
 function admitNewEdge(edge) {
   const origin = originOf(edge);
-  if (NEVER_AUTO_ACTIVE.includes(origin) && edge.status === "active") {
+  // Phase 4: the ONE narrow exception. An "ai" edge may be active only when the Gemini mapping engine itself marked it validated AND in the auto_use tier (an unambiguous,
+  // low-risk mapping - or one a sibling form / a verified golden fixture corroborates - that passed every independent code check). Every other ai edge is still review-only.
+  const aiValidated = origin === "ai" && edge.evidence?.aiValidated === true && edge.evidence?.tier === "auto_use";
+  if (NEVER_AUTO_ACTIVE.includes(origin) && edge.status === "active" && !aiValidated) {
     return { ...edge, status: "needs_review", evidence: { ...(edge.evidence || {}), downgradedFrom: "active", reason: `${origin} suggestions are review-only` } };
   }
   return edge;

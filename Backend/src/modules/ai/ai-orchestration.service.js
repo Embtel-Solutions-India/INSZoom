@@ -155,6 +155,7 @@ async function createJob(jobType, payload, user) {
       focus: payload.focus,
       artifactType: payload.artifactType,
       templateInstructions: payload.templateInstructions,
+      formMapping: payload.formMapping, // Phase 4: { payload } - form metadata only (form-ai-mapping/promptInput.js allow-list); never case data
     },
     maxAttempts: Number(payload.maxAttempts || 3),
     expiresAt: payload.retain === true ? undefined : new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
@@ -229,6 +230,9 @@ async function execute(job, user, req) {
         limit: 25,
       }, user, req);
       output = { interpretation, results };
+    } else if (job.jobType === "form_mapping") {
+      // Phase 4: not case-scoped - the prompt input is the allow-listed form / registry / checklist metadata, nothing else
+      output = await callModel(job, "form_mapping", { payload: job.input?.formMapping?.payload || "" }, user, req);
     } else {
       const bundle = await contextService.build(job.caseId, user, req);
       const findings = deterministicFindings(bundle);
@@ -453,4 +457,15 @@ async function recoverOne(candidate) {
   await execute(job, user, null).catch(() => null);
 }
 
-module.exports = { applyTaskSuggestions, deterministicFindings, listJobs, listProviders, recoverQueuedJobs, recoverStuckProcessingJobs, review, run, updateProvider, usage };
+/**
+ * Phase 4: one batch of the Gemini form-mapping capability through the SAME budget gate, rate limit, redaction, audit trail and job record as every other AI job.
+ * maxAttempts is 1 on purpose: the caller (form-ai-mapping) owns the retry (the next pipeline run asks again, with a cache), so a failed batch is never re-run in the
+ * background with nobody to use its answer.
+ */
+async function runFormMapping({ payload }, user, req) {
+  if (!user?._id) throw Object.assign(new Error("an AI mapping run needs a user"), { status: 422, code: "AI_USER_REQUIRED", retryable: false });
+  const job = await run("form_mapping", { formMapping: { payload }, maxAttempts: 1 }, user, req);
+  return { data: job.output, model: job.model, promptVersion: job.promptVersion, usage: job.usage?.toObject?.() || job.usage, jobId: String(job._id) };
+}
+
+module.exports = { runFormMapping, applyTaskSuggestions, deterministicFindings, listJobs, listProviders, recoverQueuedJobs, recoverStuckProcessingJobs, review, run, updateProvider, usage };

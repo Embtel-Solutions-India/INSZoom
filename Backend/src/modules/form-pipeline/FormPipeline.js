@@ -12,6 +12,7 @@ const { getService } = require("./FormPipelineJobService");
 const { createAlerter } = require("./PipelineAlerter");
 const { createRunner } = require("./FormPipelineRunner");
 const { createDefaultExecutor } = require("./pipelineExecutor");
+const { defaultStrategies, createCertificationInspector } = require("./repair");
 
 const mode = (env = process.env) => (String(env.FORM_PIPELINE_MODE || "inline").toLowerCase() === "queued" ? "queued" : "inline");
 
@@ -20,7 +21,8 @@ function services() {
   if (!built) {
     const jobService = getService();
     const alerter = createAlerter({ jobService });
-    const runner = createRunner({ jobService, alerter, executor: createDefaultExecutor() });
+    // Phase 4: the concrete repair strategies (each verified; none may touch a mapping, a party or an acceptance decision - see repair/guard.js)
+    const runner = createRunner({ jobService, alerter, executor: createDefaultExecutor(), repairs: defaultStrategies(), inspectResult: createCertificationInspector() });
     built = { jobService, alerter, runner };
   }
   return built;
