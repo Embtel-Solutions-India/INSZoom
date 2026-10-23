@@ -9,12 +9,13 @@ import { useAuth } from '../contexts/AuthContext'
 // ─── constants ────────────────────────────────────────────────────────────────
 const ROLE_ORDER = { super_admin: 0, admin: 1, team_lead: 2, case_manager: 3, attorney: 4 }
 const ROLE_LABEL = { super_admin: 'Super Admin', admin: 'Admin', team_lead: 'Team Lead', case_manager: 'Case Manager', attorney: 'Attorney' }
-const ROLE_BADGE = {
-  super_admin: 'bg-purple-100 text-purple-700',
-  admin: 'bg-blue-100 text-blue-700',
-  team_lead: 'bg-amber-100 text-amber-700',
-  case_manager: 'bg-green-100 text-green-700',
-  attorney: 'bg-rose-100 text-rose-700',
+// Quiet markers (same as Form Governance): a small dot carries the colour, the text stays neutral.
+const ROLE_DOT = {
+  super_admin: 'bg-purple-500',
+  admin: 'bg-blue-500',
+  team_lead: 'bg-amber-500',
+  case_manager: 'bg-emerald-500',
+  attorney: 'bg-rose-500',
 }
 
 // Roles an actor may CREATE (and, on edit, actually reassign someone TO).
@@ -68,20 +69,21 @@ function roleFieldIsLocked(actorRole, currentTargetRole) {
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
-function RoleBadge({ role }) {
+function DotLabel({ dot, children }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_BADGE[role] || 'bg-secondary text-muted-foreground'}`}>
-      {ROLE_LABEL[role] || role}
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+      {children}
     </span>
   )
 }
 
+function RoleBadge({ role }) {
+  return <DotLabel dot={ROLE_DOT[role] || 'bg-slate-300'}>{ROLE_LABEL[role] || role}</DotLabel>
+}
+
 function StatusBadge({ isActive }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-secondary text-muted-foreground'}`}>
-      {isActive ? 'Active' : 'Inactive'}
-    </span>
-  )
+  return <DotLabel dot={isActive ? 'bg-emerald-500' : 'bg-slate-300'}>{isActive ? 'Active' : 'Inactive'}</DotLabel>
 }
 
 function Modal({ title, onClose, children }) {
