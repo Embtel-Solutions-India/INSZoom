@@ -80,8 +80,8 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
     <div className="card space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-bold text-foreground">Uploaded Petition</h3>
-          <p className="text-xs text-muted-foreground">A petition document you attach directly (up to 200 MB, visible to the attorney).</p>
+          <h3 className="text-sm font-bold text-foreground">Petition</h3>
+          <p className="text-xs text-muted-foreground">Upload the petition as many times as needed (PDF, up to 200 MB each, up to 10). Every upload stays in the list, can be opened here, and is visible to the attorney.</p>
         </div>
         {canUpload && (
           <>
@@ -116,6 +116,10 @@ export default function PetitionUploadPanel({ caseId, canUpload, refreshSignal }
         <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" /> {error}
         </div>
+      )}
+
+      {uploads.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No petition has been uploaded for this case yet.</p>
       )}
 
       {uploads.length > 0 && (

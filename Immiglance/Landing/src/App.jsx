@@ -27,6 +27,8 @@ const LegacyHolding = lazy(() => import("./Pages/Auth/LegacyHolding"));
 const EligibilityQuiz = lazy(() => import("./Pages/Eligibility/EligibilityQuiz"));
 const BookConsultation = lazy(() => import("./Pages/Consultation/BookConsultation"));
 const ManageBooking = lazy(() => import("./Pages/Consultation/ManageBooking"));
+const PrivacyPolicy = lazy(() => import("./Pages/Legal/PrivacyPolicy"));
+const TermsAndConditions = lazy(() => import("./Pages/Legal/TermsAndConditions"));
 
 export default function App() {
   return (
@@ -38,6 +40,10 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
         </Route>
+
+        {/* Public legal pages; they carry their own navbar and footer. */}
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
 
         {/* /eligibility used to be a separate category/visa picker page
             (shown with the navbar) before the quiz itself. That picker is

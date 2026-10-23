@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import useHasCase from "../../hooks/useHasCase";
+import SiteFooter from "../../components/SiteFooter";
 import StartAssessmentButton from "../../components/StartAssessmentButton";
 import { leadsApi } from "../../services/api";
 import {
@@ -539,15 +540,7 @@ export default function Home() {
       </section>
 
       {/* ══ FOOTER ══ */}
-      <footer className="border-t border-border">
-        <div className="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center
-          justify-between gap-3 text-sm text-muted-foreground">
-          <div className="flex items-center gap-4">
-            <span>Immiglance © {new Date().getFullYear()}</span>
-          </div>
-          <span>A case evaluation &amp; client portal platform.</span>
-        </div>
-      </footer>
+      <SiteFooter />
 
       {contactResult && (
         <ContactResultModal
