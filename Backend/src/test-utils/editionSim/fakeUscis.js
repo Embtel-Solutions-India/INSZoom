@@ -25,16 +25,20 @@ function createFakeUscis(routes = {}) {
   const table = new Map(Object.entries(routes).map(([url, spec]) => [normalize(url), spec]));
   const hits = new Map();
   const log = [];
+  const served = new Map(); // answers given per ROUTE (a cache-busting query on a known address reaches the same route, like the real site)
   const sleep = (ms, signal) => new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); if (signal) signal.addEventListener("abort", () => { clearTimeout(timer); reject(Object.assign(new Error("aborted"), { name: "AbortError" })); }, { once: true }); });
   const fetchImpl = async (url, init = {}) => {
     const key = normalize(url);
     const count = (hits.get(key) || 0) + 1;
     hits.set(key, count);
     log.push(key);
-    if (!table.has(key)) return new Response("not found", { status: 404, headers: { "content-type": "text/html" } });
-    let spec = table.get(key);
-    if (Array.isArray(spec)) spec = spec[Math.min(count - 1, spec.length - 1)];
-    if (typeof spec === "function") spec = spec({ url, count });
+    const route = table.has(key) ? key : key.split("?")[0];
+    if (!table.has(route)) return new Response("not found", { status: 404, headers: { "content-type": "text/html" } });
+    const nth = (served.get(route) || 0) + 1;
+    served.set(route, nth);
+    let spec = table.get(route);
+    if (Array.isArray(spec)) spec = spec[Math.min(nth - 1, spec.length - 1)];
+    if (typeof spec === "function") spec = spec({ url, count: nth });
     if (spec && spec.delayMs) await sleep(spec.delayMs, init.signal); // a slow server: the real fetcher's timeout aborts the request
     return toResponse(spec);
   };

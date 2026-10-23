@@ -9,9 +9,8 @@ const CERT_CHECK_POLICY = Object.freeze({
   widget_inputs: "critical",       // tick boxes get booleans, drop-downs get one of their options, dates are dates (Phase 3)
   viewer_download: "non_critical", // the filled bytes are a valid PDF with the template's page count
   components_slice: "non_critical", // every supplement the previous edition served can be sliced
-  // Phase 7.6a, only present in a certification made with FORM_PIPELINE_AUTONOMY=on (see FormCertificationService): the real renderer's output is checked, in memory.
-  data_probe: "critical",          // every mapped box, filled with a very long / typed / ticked / real-option value, reads back in full and only in its own party's box
-  artifact_probe: "critical",      // the final file: text inside its box, ticks visible, pages and fields intact, nothing protected filled
+  // Phase 7.6a: data_probe (every mapped box keeps its full data and only in its own party's box) and artifact_probe (the final file is sound) appear only in a certification made
+  // with FORM_PIPELINE_AUTONOMY=on. They need no row here: an unknown check name is CRITICAL (fail closed, see classify below) - which is what they are, once calibrated.
 });
 
 const OVERRIDE_REASON_MIN = 10;

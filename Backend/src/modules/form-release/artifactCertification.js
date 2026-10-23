@@ -10,7 +10,7 @@
 // Nothing is written anywhere: the renderer is given an in-memory case form, the result is a verdict. Dependencies are injectable so the logic is testable without a database
 // or a real PDF. Switch (FORM_PIPELINE_AUTONOMY) handling is the caller's job (FormCertificationService).
 const MappingResolver = require("../form-mapping/services/MappingResolver");
-const { partyOfText } = require("../form-mapping/contract/MappingContractValidator");
+const { partyOfText, isAcknowledged } = require("../form-mapping/contract/MappingContractValidator");
 const { isInterpreterOrPreparerField } = require("../form-mapping/config/blankFieldPolicy");
 const { markerForPath } = require("./markerCertification");
 const ArtifactValidator = require("../form-generation/services/ArtifactValidator");
@@ -64,7 +64,9 @@ function planBoxes({ template, graph, protectedCheck }) {
     if (isInterpreterOrPreparerField({ fieldName: pdfField, pdfFieldName: pdfField, label: edge.targetLabel || field.label, fieldType })) continue; // never filled by the system
     if (protectedCheck && protectedCheck(pdfField, field)) continue;
     seen.add(edge.targetFieldId);
-    boxes.push({ id: edge.targetFieldId, pdfField, fieldType, marker: markerForPath(edge.sourcePath), side: partyOfText(targetNames(edge, field)), maxLength: undefined });
+    // a reviewed exception on the edge (the same contractExceptions mechanism party_markers and the contract use) means a person decided this box may hold the other side's data
+    const reviewed = isAcknowledged(edge, "PARTY_CONTRADICTION") || isAcknowledged(edge, "PARTY_MARKER_MISMATCH") || isAcknowledged(edge, "PARTY_LANDING");
+    boxes.push({ id: edge.targetFieldId, pdfField, fieldType, marker: markerForPath(edge.sourcePath), side: partyOfText(targetNames(edge, field)), reviewed });
   }
   return boxes;
 }
@@ -138,7 +140,7 @@ function expectedFrom(planned, renderReport = {}, { measure }) {
 function partyFailures(planned, readBack) {
   const failures = [];
   for (const item of planned) {
-    if (item.kind !== "text" || !item.box.side) continue;
+    if (item.kind !== "text" || !item.box.side || item.box.reviewed) continue;
     const found = sideOfMarker(readBack.get(item.box.pdfField));
     if (found && found !== item.box.side) failures.push({ check: "PARTY_LANDING", field: String(item.box.pdfField).split(".").pop(), detail: `the box speaks about the ${item.box.side} but holds ${found} data` });
   }

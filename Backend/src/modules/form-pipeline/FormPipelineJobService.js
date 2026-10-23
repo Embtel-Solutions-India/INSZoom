@@ -169,7 +169,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       $set: {
         state: JOB_STATES.DONE, open: false, outcome, completedAt: at, expireAt: new Date(at.getTime() + LIMITS.doneKeptDays * 86400000), "lease.lockedUntil": null, currentStage: null,
       },
-      $unset: { hold: "" }, // Phase 7.0: a finished job no longer holds anything
+      $unset: { hold: "", exhausted: "" }, // Phase 7.0: a finished job no longer holds anything (and is no longer stuck)
       $push: { history: pushHistory(historyEntry(at, JOB_STATES.DONE, null, outcome?.status || "done")) },
     });
   }
@@ -246,6 +246,18 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       $push: { history: pushHistory(historyEntry(at, JOB_STATES.HELD, stage, `exhausted: ${reasonCode}${tried.length ? ` after ${tried.length} strateg${tried.length === 1 ? "y" : "ies"}` : ""}`)) },
     });
     return { state: JOB_STATES.HELD, classification, signature: signature || diagnosis?.signature || errorSignature({ stage, classification }), nextAttemptAt, message: text, exhausted: true };
+  }
+
+  /**
+   * A job that ended held / blocked / dead-lettered AFTER the error-resolution engine ran (exhaust() does this itself for the engine's own dead end): records it as stuck, once.
+   * True the FIRST time (the caller then sends the "forms stuck" e-mail); false when it was already recorded or the job is not in a stuck state. Not lease-fenced: the job has just left running.
+   */
+  async function markExhausted(jobId, { signature, cause } = {}) {
+    const result = await model.updateOne(
+      { _id: jobId, state: { $in: [JOB_STATES.HELD, JOB_STATES.BLOCKED, JOB_STATES.DEAD_LETTER] }, "exhausted.at": { $exists: false } },
+      { $set: { exhausted: { at: now(), signature: signature || undefined, cause: cause || undefined } } }
+    );
+    return result.modifiedCount === 1;
   }
 
   /**
@@ -333,7 +345,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     return model.find({ state: JOB_STATES.PENDING, createdAt: { $lt: cutoff }, $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now() } }] }).select("_id formCode createdAt").lean();
   }
 
-  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, recordResolutions, exhaust, release, manualRetry, setFollowUpMigration, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
+  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, recordResolutions, exhaust, release, manualRetry, setFollowUpMigration, requeueOutdatedHolds, persistentHolds, markEscalated, markExhausted, markAlert, list, get, staleQueued, fenced };
 }
 
 let defaultService = null;

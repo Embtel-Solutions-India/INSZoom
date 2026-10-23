@@ -139,6 +139,8 @@ const KNOWN_LOAD_TIME_CHAINS = new Set([
   "release gate / certification: AutoFillService.js -> case-lifecycle-orchestrator.service.js -> uscis-form.service.js -> VersionManagementService.js -> certPolicy.js",
   "release gate / certification: AutoFillService.js -> case-lifecycle-orchestrator.service.js -> uscis-form.service.js -> VersionManagementService.js -> ReleaseGate.js",
   "release gate / certification: AutoFillService.js -> case-lifecycle-orchestrator.service.js -> visaFormMapping.service.js -> OnDemandFormAcquisitionService.js -> FormCertificationService.js",
+  "form pipeline: AutoFillService.js -> case-lifecycle-orchestrator.service.js -> uscis-form.service.js -> VersionManagementService.js -> caseMigrationQueue.js",
+  "form pipeline: AutoFillService.js -> case-lifecycle-orchestrator.service.js -> visaFormMapping.service.js -> OnDemandFormAcquisitionService.js -> systemActor.js",
 ]);
 const describe = (hit) => `${hit.kind}: ${hit.via.map((file) => path.basename(file)).join(" -> ")}`;
 

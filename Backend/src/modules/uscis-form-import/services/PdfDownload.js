@@ -77,10 +77,12 @@ async function fetchPdfInner(url, deps) {
   const fetcher = deps.fetcher || fetchOfficialSource;
   const env = deps.env || process.env;
   const notes = [];
-  const options = { accept: "pdf", maxBytes: maxBytes(env), timeoutMs: timeoutMs(env) };
+  const baseOptions = { accept: "pdf", maxBytes: maxBytes(env) };
+  const options = { ...baseOptions, timeoutMs: timeoutMs(env) };
 
   const once = async (address) => {
-    const result = await fetcher(address, options);
+    // a longer timeout the error-resolution engine proved works for this address (in memory, expires): used for the retry of that same address (also its cache-busting form)
+    const result = await fetcher(address, { ...baseOptions, timeoutMs: resolveTimeoutHint(address) || options.timeoutMs });
     if (result.ok) return result;
     const violation = (result.violations || [])[0];
     if (violation && ["invalid_url", "not_https", "host_not_uscis", "credentials_in_url", "ip_literal", "non_default_port"].includes(violation.type)) {
@@ -125,9 +127,10 @@ async function fetchPdfInner(url, deps) {
     if (retrimmed.ok && looksComplete(retrimmed.buffer)) {
       buffer = retrimmed.buffer;
       notes.push("the first download was cut off; downloaded again");
-    } else if (retrimmed.ok && retrimmed.buffer.length === buffer.length && retrimmed.buffer.equals(buffer)) {
-      // identical on both downloads: the server really serves this file (some valid PDFs carry more than 2 KB after the last %%EOF) - not a transfer problem, do not block
-      notes.push("no end-of-file marker near the end, but both downloads are identical; accepted");
+    } else if (retrimmed.ok && retrimmed.buffer.length === buffer.length && retrimmed.buffer.equals(buffer) && buffer.indexOf(EOF_MARK) >= 0) {
+      // identical on both downloads AND an end-of-file marker exists earlier in the file: the server really serves this file (some valid PDFs carry more than 2 KB after the last %%EOF) - not a
+      // transfer problem, do not block. A file with NO %%EOF anywhere is a cut-off file: the same cut-off twice is still cut off and fails here, with its real cause, not later as "no fillable fields".
+      notes.push("no end-of-file marker near the end, but both downloads are identical and carry an earlier marker; accepted");
     } else {
       throw codedError("The downloaded PDF is incomplete (no end-of-file marker) after a second download", 502, "PDF_TRUNCATED", "pdf_damaged");
     }
@@ -158,8 +161,13 @@ const codeKey = (formCode) => String(formCode || "").trim().toUpperCase();
 function markFallbackNormalize(formCode, now = Date.now()) { if (codeKey(formCode)) fallbackHints.set(codeKey(formCode), { at: now }); }
 /** True once per mark: the retry of that form's import uses the verified JavaScript normalizer instead of qpdf. */
 function consumeFallbackNormalize(formCode, now = Date.now()) { const hit = fresh(fallbackHints, codeKey(formCode), now); if (hit) fallbackHints.delete(codeKey(formCode)); return Boolean(hit); }
+// "use a longer timeout for this address" (the slow-server fix): a hint the retry of the download reads; per address, in memory, expires
+const timeoutHints = new Map();
+const hintKey = (url) => String(url).replace(/([?&])_dl=\d+&?/, "$1").replace(/[?&]$/, "");
+function setTimeoutHint(url, ms, now = Date.now()) { if (url && Number(ms) > 0) timeoutHints.set(hintKey(url), { at: now, ms: Number(ms) }); }
+function resolveTimeoutHint(url, now = Date.now()) { const hit = fresh(timeoutHints, hintKey(url), now); return hit ? hit.ms : null; }
 function setUrlOverride(fromUrl, toUrl, now = Date.now()) { if (fromUrl && toUrl) urlHints.set(String(fromUrl), { at: now, to: String(toUrl) }); }
 function resolveUrlOverride(url, now = Date.now()) { const hit = fresh(urlHints, String(url), now); return hit ? hit.to : url; }
-function clearHints() { fallbackHints.clear(); urlHints.clear(); }
+function clearHints() { fallbackHints.clear(); urlHints.clear(); timeoutHints.clear(); }
 
-module.exports = { markFallbackNormalize, consumeFallbackNormalize, setUrlOverride, resolveUrlOverride, clearHints, detectXfaOnly, fetchPdf, trimLeadingJunk, looksComplete, inspect, withBuster, maxBytes, timeoutMs };
+module.exports = { setTimeoutHint, resolveTimeoutHint, markFallbackNormalize, consumeFallbackNormalize, setUrlOverride, resolveUrlOverride, clearHints, detectXfaOnly, fetchPdf, trimLeadingJunk, looksComplete, inspect, withBuster, maxBytes, timeoutMs };

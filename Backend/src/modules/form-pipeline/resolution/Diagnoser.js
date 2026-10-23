@@ -71,7 +71,7 @@ function causeOf({ error, stage, message, code, status }) {
   if (code === "PIPELINE_CERTIFICATION_FAILED" || code === "CERTIFICATION_FAILED" || Array.isArray(error?.failedChecks) || stage === "certify") return "cert_failed";
   if (code === "PROMOTION_BUSY") return "promotion_busy";
   if (stage === "migrate_cases" || /^MIGRATION_/.test(code)) return "migration_failed";
-  if (code === "PDF_DAMAGED" || /qpdf normalization failed|xref|truncated|damaged|exit code 2|corrupt|malformed|unexpected eof/i.test(message)) return "pdf_damaged";
+  if (code === "PDF_DAMAGED" || code === "PDF_TRUNCATED" || /qpdf normalization failed|xref|truncated|damaged|exit code 2|corrupt|malformed|unexpected eof/i.test(message)) return "pdf_damaged";
   if (/^(ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE|UND_ERR)/.test(code) || [408, 425, 429].includes(status) || status >= 500 || /timeout|timed out|socket hang up|fetch failed|network|temporarily|rate limit|too many requests|service unavailable|bad gateway/i.test(message) || name === "AbortError") return "network";
   return "unknown";
 }

@@ -67,7 +67,11 @@ function compare(o, n) {
   return { hard: null, score: Math.max(0, Math.min(1, score)), nameExact, kindName, coreEq, labelEq, tooltipEq, meaningEq, sectionOk, sectionEq, pageEq, groupEq, semanticEq, geometry, options };
 }
 
-function classify(facts) {
+// A label that is specific enough to identify a question by itself: more than one word, or at least 8 characters, and not a bare answer word. "Yes" / "No" / "City" can repeat anywhere.
+const GENERIC_LABELS = new Set(["yes", "no", "n a", "na", "other", "none", "city", "state", "date", "name", "number", "unit", "apt", "ste", "flr"]);
+const specificLabel = (label) => Boolean(label) && !GENERIC_LABELS.has(label) && (label.split(" ").length >= 2 || label.length >= 8);
+
+function classify(facts, extra = {}) {
   const reasons = [];
   if (facts.nameExact) reasons.push("same_name");
   if (facts.coreEq) reasons.push("same_name_core");
@@ -83,10 +87,24 @@ function classify(facts) {
   if (facts.nameExact && facts.meaningEq && facts.semanticEq && facts.sectionOk) return { confidence: "high", reasons };
   // B: unique by meaning (label or name core), same place and same shape
   if (labelOrCore && facts.sectionEq && facts.pageEq && facts.semanticEq && facts.geometry.known && facts.geometry.close) return { confidence: "high", reasons };
+  // C (Part N became Part M): the printed words, the page, the widget kind, the option set and the position (within the same tolerance as B) all agree and only the part heading
+  // changed. Carried as high ONLY when no other box of the new edition keeps this box's old heading with the same words (the question did not merely move) and no other box of the
+  // old edition had the new box's heading with the same words (the new box is not the old question's successor under another heading) - the margin rule has already made it unique.
+  if (!facts.sectionOk && facts.labelEq && facts.pageEq && facts.semanticEq && facts.geometry.known && facts.geometry.close && extra.specific && !extra.twin) return { confidence: "high", reasons: [...reasons, "section_heading_changed"] };
   // medium: provably the same thing by meaning, but not where / how it was
   if (labelOrCore && facts.sectionOk && (facts.pageEq || facts.geometry.close || facts.sectionEq)) return { confidence: "medium", reasons };
   if (facts.nameExact && facts.sectionOk) return { confidence: "medium", reasons: [...reasons, "label_changed"] };
   return { confidence: "low", reasons };
+}
+
+/** Only for a pair whose heading differs: is the label specific, and does either side have a same-words box under the OTHER side's heading (a twin)? */
+function headingShiftContext(olds, news, o, newId, facts) {
+  if (facts.sectionOk) return {};
+  const n = news.find((item) => item.id === newId);
+  if (!n || !specificLabel(o.label)) return { specific: false };
+  const homeTwin = news.some((m) => m.id !== n.id && m.kind === o.kind && m.label === o.label && m.section === o.section);
+  const originTwin = olds.some((p) => p.id !== o.id && p.kind === n.kind && p.label === n.label && p.section === n.section);
+  return { specific: true, twin: homeTwin || originTwin };
 }
 
 /**
@@ -118,7 +136,10 @@ function match(oldFields = [], newFields = [], options = {}) {
         }
         continue;
       }
-      if (facts.score < minScore) continue;
+      // a pair whose only difference is the part heading pays the heading penalty and can land just under the floor with no help text to lift it: it stays a CANDIDATE (so it takes part in
+      // the uniqueness margins and can be carried by rule C); it is still never carried unless classify() says so
+      const headingShape = !facts.sectionOk && facts.labelEq && facts.pageEq && facts.semanticEq && facts.geometry.known && facts.geometry.close;
+      if (facts.score < minScore && !(headingShape && facts.score >= minScore - 0.1)) continue;
       candidatesOf.get(o.id).push({ id: n.id, score: facts.score, facts });
       reverse.get(n.id).push({ id: o.id, score: facts.score });
     }
@@ -146,7 +167,7 @@ function match(oldFields = [], newFields = [], options = {}) {
       if (back.ambiguous) result = { ...result, reasons: ["ambiguous"], among: back.among };
       else if (!back.best || back.best.id !== o.id) result = { ...result, reasons: ["claimed_by_better_match"] };
       else {
-        const verdict = classify(forward.best.facts);
+        const verdict = classify(forward.best.facts, headingShiftContext(olds, news, o, forward.best.id, forward.best.facts));
         result = { oldId: o.id, newId: forward.best.id, confidence: verdict.confidence, score: Math.round(forward.best.score * 1000) / 1000, reasons: verdict.reasons };
         if (verdict.confidence !== "none") matched.set(o.id, result);
       }

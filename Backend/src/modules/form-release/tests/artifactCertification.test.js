@@ -118,6 +118,16 @@ test("a party's data landing in the other party's box is PARTY_LANDING", async (
   assert.ok(result.data.failures.some((failure) => failure.check === "PARTY_LANDING"), JSON.stringify(result.data.failures));
 });
 
+test("a reviewed exception on the edge (contractExceptions) means the box may hold the other side's data and is not a failure", async () => {
+  const source = await buildSource();
+  const reviewedGraph = { ...graph, edges: graph.edges.map((item) => (item.targetFieldId === "page1.ben" ? { ...item, sourcePath: "petitioner.name.last", contractExceptions: [{ code: "PARTY_CONTRADICTION", reason: "reviewed: this box really takes the sponsor's name" }] } : item)) };
+  const strict = { ...graph, edges: reviewedGraph.edges.map((item) => ({ ...item, contractExceptions: undefined })) };
+  const swap = await artifact.probeEdition(template, { graph: strict, deps: await deps(source) });
+  assert.ok(swap.data.failures.some((failure) => failure.check === "PARTY_LANDING"), "without the exception it is a failure");
+  const ok = await artifact.probeEdition(template, { graph: reviewedGraph, deps: await deps(source) });
+  assert.equal(ok.data.failures.filter((failure) => failure.check === "PARTY_LANDING").length, 0);
+});
+
 test("sideOfMarker / textOfLength / partyFailures are pure helpers", () => {
   assert.equal(artifact.sideOfMarker("x COMPANY_TEST_003 y"), "petitioner");
   assert.equal(artifact.sideOfMarker("none"), null);

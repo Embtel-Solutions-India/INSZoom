@@ -36,7 +36,7 @@ test("retryWithTimeout and redownload: verify a complete PDF; redownload uses a 
   const pdf = await makePdf();
   const url = "https://www.uscis.gov/sites/default/files/document/forms/i-131.pdf";
   const slow = byUrl({ [url]: pdfResult(pdf) });
-  const t = await make(slow).retryWithTimeout(ctxFor());
+  const t = await make(slow).retryWithTimeout(ctxFor({ error: { message: "Failed to download USCIS PDF: no response within 150 ms", sourceUrl: url } }));
   assert.equal(t.ok, true);
   assert.ok(slow.calls[0].options.timeoutMs >= 3 * PdfDownload.timeoutMs(), "three times the normal timeout");
   const busted = `${url}?_dl=2`;
@@ -55,7 +55,7 @@ test("retryWithTimeout and redownload: verify a complete PDF; redownload uses a 
 test("the address of the failed download is needed: without one nothing is guessed", async () => {
   const deps = createImportDeps({ fetcher: byUrl({}), loadTemplate: async () => null });
   for (const name of ["fetchVariant", "retryWithTimeout", "redownload", "alternateNormalize"]) {
-    const out = await deps[name]({ formCode: "I-999", error: {} });
+    const out = await deps[name]({ formCode: "I-999", error: name === "retryWithTimeout" ? { message: "timed out" } : {} }); // a longer wait only applies to a timeout
     assert.equal(out.ok, false, name);
     assert.match(out.evidence, /not known/);
   }

@@ -51,7 +51,8 @@ test("certPolicy: components_slice stays overridable with off and shadow; with o
   const decision = await withMode("on", () => certPolicy.certificationDecision(failedComponents, req));
   assert.equal(decision.ok, false);
   assert.match(decision.error, /critical check \(components_slice\)/);
-  assert.equal(await withMode("on", () => certPolicy.classify("viewer_download")), "non_critical", "nothing else changes");
+  assert.equal(await withMode("on", () => certPolicy.classify("viewer_download")), "critical", "7.6a: the download check is critical with on too");
+  assert.equal(await withMode("off", () => certPolicy.classify("viewer_download")), "non_critical", "nothing changes with off");
 });
 
 function stubDefinitions(rows) {

@@ -1,7 +1,7 @@
 // Phase 7.8: the edition SIMULATION harness. It drives the REAL production code (field scanner, mapping carry-forward + partial activation, certification, release gate, case migration,
 // renderer, resolution engine, runner, alerter) over a synthetic old -> new edition pair, on a THROWAWAY local database. Only the outside world is replaced:
 //   - uscis.gov            -> a fake `fetch` handed to the real hardened fetcher (test-utils/editionSim/fakeUscis.js)
-//   - template PDF storage -> PDFRenderer.loadTemplateBuffer returns the scenario's bytes (no S3 / disk is read or written)
+//   - template PDF storage -> the real storage service on the LOCAL provider in a temp folder (removed when the harness disconnects); no S3 is touched
 //   - autofill             -> the same "realistic autofill" the 7.7 tests use (status / version side effects of the real one); the data path of autofill is covered by the mapping tests
 //   - e-mail               -> a mocked provider (nothing is sent)
 //   - the edition-acceptance record and the activation protocol are NOT re-run here (form-release / form-edition-policy tests own them): the gate is asked with acceptance supplied and
@@ -58,24 +58,15 @@ async function connect() {
   await pipelineDb.ensureIndexes(MODELS);
   return result;
 }
-async function disconnect() { await pipelineDb.disconnectPipelineTestDB(); }
+async function disconnect() {
+  await pipelineDb.disconnectPipelineTestDB();
+  if (!process.env.LOCAL_STORAGE_PATH_SIM) fs.rmSync(process.env.LOCAL_STORAGE_PATH, { recursive: true, force: true }); // the temp folder this harness created
+}
 function withMode(mode, fn) {
   const previous = process.env.FORM_PIPELINE_AUTONOMY;
   process.env.FORM_PIPELINE_AUTONOMY = mode;
   const restore = () => { if (previous === undefined) delete process.env.FORM_PIPELINE_AUTONOMY; else process.env.FORM_PIPELINE_AUTONOMY = previous; };
   return Promise.resolve().then(fn).finally(restore);
-}
-
-/** Makes PDFRenderer read template bytes from memory (keyed by template id) instead of storage; returns the undo function. */
-function installPdfStore() {
-  const store = new Map();
-  const original = PDFRenderer.loadTemplateBuffer;
-  PDFRenderer.loadTemplateBuffer = async (template) => {
-    const bytes = store.get(String(template._id));
-    if (!bytes) throw new Error(`simulation: no PDF bytes for template ${template._id}`);
-    return bytes;
-  };
-  return { store, restore: () => { PDFRenderer.loadTemplateBuffer = original; } };
 }
 
 let adapterPromise = null;
@@ -168,9 +159,9 @@ async function readBack(buffer, names) {
  *   { id, mode, endState, autonomous, loss, corruption, steps{}, defects[], notes[], pdf{} , durationMs }
  * endState: "released" (the gate promoted it, the cases moved) | "held:<first failing check>" | "error:<step>".
  */
-async function runEditionScenario(scenario, { mode = "on", recorder, logger = silent } = {}) {
+async function runEditionScenario(scenario, { mode = "on", recorder, logger = silent, migrationFault = null } = {}) {
   const started = Date.now();
-  const metrics = { id: scenario.id, label: scenario.label, synthetic: Boolean(scenario.synthetic), mode, endState: "error:setup", autonomous: false, loss: 0, corruption: 0, steps: {}, defects: [], notes: [], pdf: {}, durationMs: 0 };
+  const metrics = { id: migrationFault ? `${scenario.id}+db_error_at_${migrationFault}` : scenario.id, label: scenario.label, synthetic: Boolean(scenario.synthetic), mode, endState: "error:setup", autonomous: false, loss: 0, corruption: 0, steps: {}, defects: [], notes: [], pdf: {}, durationMs: 0 };
   const step = async (name, fn) => {
     try { const value = await fn(); metrics.steps[name] = "ok"; return value; }
     catch (error) { metrics.steps[name] = `failed: ${String(error.message).slice(0, 160)}`; metrics.defects.push({ step: name, error: String(error.stack || error.message).split("\n").slice(0, 3).join(" | ") }); throw Object.assign(error, { simStep: name }); }
@@ -198,6 +189,7 @@ async function runEditionScenario(scenario, { mode = "on", recorder, logger = si
       const mapping = await step("map", () => migrateMappingToEdition(newTemplate, actor, req, { previousTemplate: oldTemplate }));
       metrics.mapping = { activated: Boolean(mapping.activated), partial: Boolean(mapping.partial), reason: mapping.reason || null, leftUnmapped: mapping.leftUnmapped || null, summary: mapping.summary || null, message: mapping.message || null };
 
+      metrics.newFieldIds = ((await USCISFormTemplate.findById(newTemplate._id).lean()).formFields || []).map((field) => `${field.fieldId}=${field.pdfFieldName}`);
       // certify (real checks, real PDF bytes)
       const certified = await step("certify", async () => certify(await USCISFormTemplate.findById(newTemplate._id), { previous: oldTemplate }));
       metrics.certification = { passed: Boolean(certified.passed), failed: (certified.checks || []).filter((c) => !c.passed).map((c) => `${c.name}: ${String(c.detail || "").slice(0, 100)}`) };
@@ -220,8 +212,18 @@ async function runEditionScenario(scenario, { mode = "on", recorder, logger = si
       const released = await USCISFormTemplate.findById(newTemplate._id);
 
       // case migration (real service); then the answers are checked against the scenario's expectation
+      // a database error in the middle of the migration (injected at a checkpoint of the real service): the next run (the sweeper, then the migration again) must finish it
+      if (migrationFault) {
+        let fired = false;
+        const faulty = migrationDeps(mode, { checkpoint: async (point) => { if (!fired && point === migrationFault) { fired = true; throw new Error(`injected database error at ${point}`); } } });
+        const first = await step("case_migration_faulted", () => Migration.migrateCaseFormsToEdition({ newTemplate: released, actor, req, deps: faulty }));
+        const stoppedAt = (await fresh(typed._id)).migrationState?.step || null;
+        const reconciled = await step("case_migration_reconcile", () => Recovery.reconcileIncompleteMigrations({ deps: migrationDeps(mode), actor, req }));
+        metrics.fault = { at: migrationFault, injected: fired, firstRunFailed: first.failed?.length || 0, stoppedAt, reconciled: { examined: reconciled.examined, resumed: reconciled.resumed.length, released: reconciled.released.length, failed: reconciled.failed.length } };
+        if (!fired) metrics.defects.push({ step: "fault", error: `the checkpoint "${migrationFault}" was never reached` });
+      }
       const result = await step("case_migration", () => Migration.migrateCaseFormsToEdition({ newTemplate: released, actor, req, deps: migrationDeps(mode) }));
-      metrics.migration = { considered: result.considered, migrated: result.migrated, verified: result.verified, skippedFrozen: result.skippedFrozen, failed: result.failed?.length || 0, parked: result.parked?.length || 0, unresolved: result.unresolved?.length || 0, valuesArchived: result.valuesArchived || 0 };
+      metrics.migration = { considered: result.considered, migrated: result.migrated, verified: result.verified, skippedFrozen: result.skippedFrozen, failed: result.failed?.length || 0, parked: result.parked?.length || 0, unresolved: result.unresolved?.length || 0, valuesArchived: result.valuesArchived || 0, unresolvedSample: (result.unresolved || []).slice(0, 8).map((u) => `${u.bag || ""} ${(u.oldKeys || []).join(",")}: ${u.code || ""}`.slice(0, 200)), parkedSample: (result.parked || []).slice(0, 2).map((p) => JSON.stringify(p).slice(0, 300)) };
       const after = await fresh(typed._id);
       const archivedText = JSON.stringify(after.editionMigrations || []);
       const wholeDoc = JSON.stringify(after);
@@ -256,29 +258,35 @@ async function runEditionScenario(scenario, { mode = "on", recorder, logger = si
         const id = newIds[name];
         if (id && nonBlank(after.fieldValues?.[id])) metrics.corruption += 1;
       }
+      if (!notMoved && String(after.formTemplateId) !== String(released._id)) metrics.defects.push({ step: "migration", error: "the case form is not on the new edition after the migration" });
+      if (after.migrationState && Recovery.IN_PROGRESS_STEPS.includes(after.migrationState.step)) metrics.defects.push({ step: "migration", error: `the case form is stuck mid-migration (${after.migrationState.step})` });
       const frozenAfter = JSON.stringify(await fresh(frozen._id));
       if (frozenAfter !== frozenBefore) metrics.defects.push({ step: "frozen", error: "a frozen (filed) case form was changed by the migration" });
       if (after.status !== "in_review") metrics.defects.push({ step: "status", error: `workflow status changed to ${after.status}` });
 
       // download: the real renderer on the migrated form, read back from the PDF
-      const releasedMapping = await USCISMappingVersion.findOne({ template: released._id, status: "active" }).lean();
-      const renderTemplate = FormMappingService.applyMappingGraph(JSON.parse(JSON.stringify(released.toObject())), releasedMapping || {});
-      renderTemplate._id = released._id;
-      const names = Object.keys(ANSWERS).map((name) => (Object.prototype.hasOwnProperty.call(scenario.dest, name) ? scenario.dest[name] : name)).filter(Boolean);
+      // a case form that was PARKED stays on the old edition (which must keep opening and downloading with every answer); a migrated one is shown on the new edition
+      const viewTemplate = notMoved ? await USCISFormTemplate.findById(oldTemplate._id) : released;
+      const viewMapping = await USCISMappingVersion.findOne({ template: viewTemplate._id, status: "active" }).lean();
+      const renderTemplate = FormMappingService.applyMappingGraph(JSON.parse(JSON.stringify(viewTemplate.toObject())), viewMapping || {});
+      renderTemplate._id = viewTemplate._id;
+      const dest = (name) => (notMoved ? name : (Object.prototype.hasOwnProperty.call(scenario.dest, name) ? scenario.dest[name] : name));
+      const idsView = notMoved ? oldIds : newIds;
+      metrics.pdfViewedOn = notMoved ? "old edition (case form parked)" : "new edition";
+      const names = Object.keys(ANSWERS).map((name) => dest(name)).filter(Boolean);
       const rendered = await step("download", () => PDFRenderer.render({ caseForm: after, template: renderTemplate, watermark: null, flatten: false }));
       const first = await readBack(rendered.buffer, names);
-      const dest = (name) => (Object.prototype.hasOwnProperty.call(scenario.dest, name) ? scenario.dest[name] : name);
-      const check = (label, ok, note) => { metrics.pdf[label] = ok ? "ok" : `FAIL${note ? `: ${note}` : ""}`; if (!ok && !(scenario.pdfNotes || []).some((n) => n.startsWith(dest(label) || label))) metrics.defects.push({ step: "download", error: `${label} ${note || "not in the downloaded PDF"}` }); };
+      const check = (label, ok, note) => { metrics.pdf[label] = ok ? "ok" : `FAIL${note ? `: ${note}` : ""}`; if (!ok && !(notMoved ? [] : (scenario.pdfNotes || [])).some((n) => n.startsWith(dest(label) || label))) metrics.defects.push({ step: "download", error: `${label} ${note || "not in the downloaded PDF"}` }); };
       const text = (name) => first[dest(name)];
       if (dest("Pt1_CountryOfBirth")) check("long_text_country", text("Pt1_CountryOfBirth")?.value === ANSWERS.Pt1_CountryOfBirth, `length ${String(text("Pt1_CountryOfBirth")?.value || "").length} of ${ANSWERS.Pt1_CountryOfBirth.length}`);
       if (dest("Pt1_Notes")) check("long_text_notes", text("Pt1_Notes")?.value === ANSWERS.Pt1_Notes, `length ${String(text("Pt1_Notes")?.value || "").length} of ${ANSWERS.Pt1_Notes.length}`);
       if (dest("Pt1_ReadOnly")) check("read_only_box", text("Pt1_ReadOnly")?.value === ANSWERS.Pt1_ReadOnly);
       if (dest("Pt1_FamilyName")) check("mapped_box", text("Pt1_FamilyName")?.value === ANSWERS.Pt1_FamilyName);
-      if (dest("Pt2_Married_Yes") && !(scenario.either || []).includes("Pt2_Married_Yes")) check("tick", text("Pt2_Married_Yes")?.value === true);
+      if (dest("Pt2_Married_Yes") && (notMoved || !(scenario.either || []).includes("Pt2_Married_Yes"))) check("tick", text("Pt2_Married_Yes")?.value === true);
       if (dest("Pt2_Visa")) check("dropdown", text("Pt2_Visa")?.value === "H1B");
-      if (dest("Pt2_Status") && !(scenario.pdfNotes || []).length) check("radio", text("Pt2_Status")?.value === "Married");
-      for (const note of scenario.pdfNotes || []) metrics.notes.push(note);
-      for (const name of scenario.blank || []) metrics.pdf[`blank_${name}`] = first[name]?.value ? "FAIL: a box with no source was filled" : "ok";
+      if (dest("Pt2_Status") && (notMoved || !(scenario.pdfNotes || []).length)) check("radio", text("Pt2_Status")?.value === "Married");
+      for (const note of notMoved ? [] : (scenario.pdfNotes || [])) metrics.notes.push(note);
+      for (const name of notMoved ? [] : (scenario.blank || [])) metrics.pdf[`blank_${name}`] = first[name]?.value ? "FAIL: a box with no source was filled" : "ok";
 
       // edit + save: a person ticks the other box and edits two boxes (the real Admin adapter builds the saved value; the write follows the storage contract of overrideFieldById)
       const { convert } = await adapter();
@@ -289,7 +297,7 @@ async function runEditionScenario(scenario, { mode = "on", recorder, logger = si
       const patchOverrides = { ...(current.manualOverrides || {}) };
       const patchData = JSON.parse(JSON.stringify(current.filledData || {}));
       for (const [pdfName, wanted] of Object.entries(edits)) {
-        const id = newIds[dest(pdfName)];
+        const id = idsView[dest(pdfName)];
         if (!id) continue;
         const meta = { fieldMetaByName: { [id]: {} } };
         let value = wanted;
@@ -329,7 +337,10 @@ async function runEditionScenario(scenario, { mode = "on", recorder, logger = si
   metrics.autonomous = metrics.endState === "released" && clean && !metrics.notMigrated;
   if (metrics.endState === "released" && metrics.notMigrated) metrics.endState = "released_cases_parked";
   metrics.clean = clean;
+  // autonomous = released with every answer where it belongs and no human step; held = the gate / mapping stopped it (the live edition untouched); parked = released, but some case forms wait on the old edition
+  metrics.outcome = metrics.autonomous ? "autonomous" : String(metrics.endState).startsWith("held") ? "held" : metrics.endState === "released_cases_parked" ? "parked" : "error";
+  metrics.matchesExpectation = mode !== "on" || !scenario.expectOutcome ? null : metrics.outcome === scenario.expectOutcome && clean;
   return metrics;
 }
 
-module.exports = { connect, disconnect, withMode, installPdfStore, runEditionScenario, createRecorder: pipelineDb.createRecorder, actor, req, silent, sleep, MODELS, MAPPED_TO, ANSWERS, buildBaseEdition, readBack, adapter, FormPipelineJob, USCISFormTemplate, autonomy };
+module.exports = { connect, disconnect, withMode, runEditionScenario, createRecorder: pipelineDb.createRecorder, actor, req, silent, sleep, MODELS, MAPPED_TO, ANSWERS, buildBaseEdition, readBack, adapter, FormPipelineJob, USCISFormTemplate, autonomy };

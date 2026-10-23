@@ -11,6 +11,13 @@ const slugsOf = (formCode) => {
   return [...new Set([base, base.replace(/-/g, "")].filter(Boolean))];
 };
 
+/** Was the failed work a timeout (slow server / no answer in time)? Only then does a longer wait help. */
+function isTimeoutFailure(ctx) {
+  const error = ctx?.error || {};
+  const text = `${error.message || ""} ${error.code || ""} ${error.name || ""}`;
+  return /timeout|timed out|etimedout|aborterror|aborted|no response within/i.test(text); // the official-source fetcher words its own deadline "no response within N ms"
+}
+
 function createImportDeps(options = {}) {
   const lazy = {
     fetcher: () => options.fetcher || require("../../form-edition-policy/OfficialSourceFetcher").fetchOfficialSource,
@@ -63,12 +70,20 @@ function createImportDeps(options = {}) {
       return { ok: true, retry: true, evidence: `${found.evidence} (host form ${other})` };
     },
 
-    /** network: the same address with a much longer timeout. */
+    /**
+     * network: the same address with a much longer timeout. Honest on both sides: it only claims a fix when the failure WAS a timeout, and when it does it leaves the hint the retry of
+     * the download reads (PdfDownload.setTimeoutHint), so the retry really waits longer. Any other failure: ok:false (a longer wait would change nothing).
+     */
     async retryWithTimeout(ctx) {
+      if (!isTimeoutFailure(ctx)) return { ok: false, evidence: "the failure was not a timeout; waiting longer changes nothing" };
       const { url } = await locate(ctx);
       if (!url) return noUrl;
-      const found = await probe(url, { timeoutMs: 3 * lazy.pdfDownload().timeoutMs() });
-      return { ok: found.ok, retry: true, evidence: found.evidence };
+      const PdfDownload = lazy.pdfDownload();
+      const longer = 3 * PdfDownload.timeoutMs();
+      const found = await probe(url, { timeoutMs: longer });
+      if (!found.ok) return { ok: false, evidence: found.evidence };
+      PdfDownload.setTimeoutHint(url, longer);
+      return { ok: true, retry: true, evidence: `${found.evidence} (the retry waits up to ${longer} ms)` };
     },
 
     /** not a PDF / damaged: download the same address again with a cache-busting query; the retry uses that address. */

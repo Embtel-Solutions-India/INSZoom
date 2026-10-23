@@ -134,6 +134,23 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       return { state: transition.state, transition, error };
     }
 
+    // true when this failure was recorded as a (new) dead end and the stuck e-mail was requested; never throws
+    async function announceDeadEnd(error, transition) {
+      try {
+        if (modeOf() !== "on" || !transition || !["held", "blocked", "dead_letter"].includes(transition.state)) return false;
+        if (transition.exhausted || transition.classification?.code === "EDITION_POLICY_HELD") return false;
+        const diagnosis = lastDiagnosis || require("./resolution/Diagnoser").diagnose({ error, stage: currentStage, job });
+        const marked = await jobService.markExhausted(jobId, { signature: diagnosis.signature, cause: diagnosis.cause });
+        if (!marked) return false;
+        logger.warn("form_pipeline_job_exhausted", { jobId: String(jobId), formCode: job.formCode, stage: currentStage, cause: diagnosis.cause, signature: diagnosis.signature, state: transition.state });
+        if (alerter && typeof alerter.announceStuck === "function") await Promise.resolve(alerter.announceStuck({ job: await jobService.get(jobId) })).catch((failure) => logger.warn("form_pipeline_alert_failed", { jobId: String(jobId), error: sanitizeMessage(failure) }));
+        return true;
+      } catch (failure) {
+        logger.warn("form_pipeline_dead_end_failed", { jobId: String(jobId), error: sanitizeMessage(failure) });
+        return false;
+      }
+    }
+
     // a known repair: repair, VERIFY the repair, and only then retry the work once (per-strategy attempt limit across the whole job)
     async function repairAndRetry(error) {
       const fresh = await jobService.get(jobId);
@@ -216,7 +233,10 @@ function createRunner({ jobService, alerter = null, executor, repairs = [], insp
       const transition = await jobService.fail(jobId, lease, { stage: currentStage, error, ...(modeOf() === "on" && lastDiagnosis ? { diagnosis: lastDiagnosis } : {}) }).catch((failure) => (failure instanceof LeaseLostError ? { leaseLost: true } : Promise.reject(failure)));
       if (transition.leaseLost) return { state: "lease_lost" };
       logger.warn("form_pipeline_job_failed", { jobId: String(jobId), formCode: job.formCode, stage: currentStage, state: transition.state, class: transition.classification.class, code: transition.classification.code, message: transition.message });
-      if (alerter) await alerter.announce({ job: await jobService.get(jobId), transition, stage: currentStage });
+      // Phase 7.8: with the engine ON, every dead end it could not cure - blocked, held or dead-lettered, for ANY reason other than the edition-policy hold (which has its own e-mail), including a
+      // programming error - is recorded as stuck and the developer gets the "forms stuck" e-mail once. That e-mail supersedes the generic held / blocked one (dead-letter keeps its own too).
+      const stuck = await announceDeadEnd(error, transition);
+      if (alerter && !(stuck && transition.state !== "dead_letter")) await alerter.announce({ job: await jobService.get(jobId), transition, stage: currentStage });
       return { state: transition.state, transition, error };
     } finally {
       clearInterval(beat);
