@@ -435,66 +435,30 @@ async function startCaseWorkflow(caseData, user, req) {
   }, user, req);
 }
 
-async function createTaskFromAction(workflow, action, user, req, caseData) {
+// A workflow step that used to create a Task. Tasks are only created by a person on the Tasks page, so this now tells the person who would have
+// received it (in-app notification + live pop-up) and records it on the case timeline. No Task document is created.
+async function notifyFromTaskAction(workflow, action, user, req, caseData) {
   const config = action.config || {};
-  const dueDate = config.dueDate || (config.dueInHours ? new Date(Date.now() + Number(config.dueInHours) * 60 * 60 * 1000) : undefined);
   const assignedTo = config.assignedTo || config.userId || resolveAssignee(caseData, config.assignTo) || (config.assignTo ? (await getAvailableUser(config.assignTo, caseData?.teamId || workflow.context?.teamId))?._id : undefined);
-  const warningAt = dueDate && config.reminderBeforeHours ? new Date(new Date(dueDate).getTime() - Number(config.reminderBeforeHours) * 60 * 60 * 1000) : undefined;
-  const task = await Task.create({
-    title: config.title || `Workflow task - ${workflow.name}`,
-    description: config.description,
-    caseId: workflow.caseId,
-    workflowId: workflow._id,
-    workflowTemplateId: workflow.template,
-    clientId: caseData?.user,
-    assignedTo,
-    assignedTeam: config.assignedTeam || config.teamId || caseData?.teamId || workflow.context?.teamId,
-    assignedRole: config.assignTo || config.assignedRole,
-    department: config.department,
-    skillTags: config.skillTags || config.skills || [],
-    assignedBy: user?._id || assignedTo,
-    dueDate,
-    priority: config.priority || workflow.priority || "medium",
-    status: assignedTo ? "assigned" : "pending",
-    category: config.category || "automation",
-    companyId: caseData?.companyId || caseData?.company || workflow.companyId || workflow.context?.companyId,
-    teamId: caseData?.teamId || workflow.context?.teamId,
-    source: "workflow",
-    tags: config.tags || ["workflow"],
-    dependencies: config.dependencies || [],
-    attachments: (config.attachments || []).map((document) => ({ document, label: config.attachmentLabel, attachedBy: user?._id })),
-    reminders: [
-      ...(warningAt ? [{ date: warningAt, sent: false }] : []),
-      ...(config.reminders || []),
-    ],
-    sla: {
-      warningAt,
-      timezone: config.timezone || workflow.recurrence?.timezone || "UTC",
-      businessDaysOnly: Boolean(config.businessDaysOnly),
-    },
-    estimatedHours: config.estimatedHours || 0,
-  });
-  task.auditHistory.push({ action: "workflow_create", performedBy: user?._id, changes: { workflowId: workflow._id }, ipAddress: req?.ip, userAgent: req?.headers?.["user-agent"] });
-  await task.save();
-  workflow.metrics.tasksCreated += 1;
+  const title = config.title || `Workflow action - ${workflow.name}`;
   if (caseData) {
-    caseService.addTimelineEvent(caseData, "task", "Task Assigned", task.title, user, { taskId: task._id, workflowId: workflow._id, assignedTo });
+    caseService.addTimelineEvent(caseData, "workflow", "Action Needed", title, user, { workflowId: workflow._id, assignedTo });
     await caseData.save();
   }
-  if (assignedTo) {
-    await notificationService.createNotification({
-      userId: assignedTo,
-      type: "task_assigned",
-      title: "New Task Assigned",
-      message: task.title,
-      link: `/tasks/${task._id}`,
-      caseId: workflow.caseId,
-      taskId: task._id,
-      source: "workflow",
-    }, user, req);
-    workflow.metrics.notificationsSent += 1;
-  }
-  return task;
+  if (!assignedTo) return { notified: false };
+  await notificationService.createNotification({
+    userId: assignedTo,
+    type: config.notificationType || "workflow",
+    title: "Action needed",
+    message: config.description ? `${title}. ${config.description}` : title,
+    link: workflow.caseId ? `/cases/${workflow.caseId}` : undefined,
+    caseId: workflow.caseId,
+    priority: config.priority || workflow.priority || "medium",
+    channels: ["in_app", "socket"],
+    source: "workflow",
+  }, user, req);
+  workflow.metrics.notificationsSent += 1;
+  return { notified: true, assignedTo };
 }
 
 async function scheduleReminderForTask(taskId, reminderDate) {
@@ -518,7 +482,7 @@ async function executeAction(workflow, action, context, user, req) {
     const config = action.config || {};
     let output = {};
     if (action.type === "create_task") {
-      output.taskId = (await createTaskFromAction(workflow, action, user, req, caseData))._id;
+      Object.assign(output, await notifyFromTaskAction(workflow, action, user, req, caseData));
     } else if (action.type === "notify") {
       const roles = config.roles || [];
       if (roles.length) {
@@ -1011,6 +975,7 @@ module.exports = {
   createTemplateVersion,
   createWorkflow,
   ensureDefaultTemplates,
+  executeAction,
   exportTemplate,
   getAnalytics,
   importTemplate,

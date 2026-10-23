@@ -20,13 +20,14 @@ const STAGES = Object.freeze({
   DETECT: "detect", // ask uscis.gov whether the edition changed
   IMPORT: "import", // resolve + download + normalize (qpdf / XFA) + import, or scan into a draft
   MAP: "map", // carry the mapping forward / apply authored or inferred rules
+  AI_MAP: "ai_map", // Phase 4, optional (FORM_AI_MAPPING=shadow|on): Gemini suggestions for the boxes the rules left unmapped; never fails the pipeline
   CERTIFY: "certify", // fillable, mapping valid, filled round trip, viewer/download, components
   PROMOTE: "promote", // edition-policy gate + existing guarded activation (under the per-form promotion mutex)
   MIGRATE_CASES: "migrate_cases", // open case forms move to the new edition with every saved answer
   FINALIZE: "finalize", // biographic tier, cache
 });
 
-const TRIGGERS = Object.freeze(["catalog_sync", "admin_fetch", "case_acquire", "autopilot", "mapping_save", "edition_upgrade", "manual_retry", "script", "unknown"]);
+const TRIGGERS = Object.freeze(["catalog_sync", "admin_fetch", "case_acquire", "autopilot", "mapping_save", "edition_upgrade", "manual_retry", "script", "case_migration", "unknown"]);
 
 const ERROR_CLASSES = Object.freeze({
   TRANSIENT: "transient", // network / 5xx / timeout: retry with backoff and jitter

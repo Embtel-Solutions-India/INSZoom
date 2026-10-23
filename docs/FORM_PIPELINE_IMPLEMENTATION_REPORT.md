@@ -15,7 +15,11 @@ This is the ONE document that records the implementation of the approved plan in
 | **Test isolation (local database)** | **DONE 2026-10-16** | given 2026-10-16 |
 | **Phase 1** - durable, resumable, fenced pipeline (worker/PM2 production rollout and queued mode NOT switched on) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
 | **Phase 2** - mapping contract, policy, validator, coverage (live autofill unchanged) | **DONE 2026-10-16 - awaiting your review** | given 2026-10-16 |
-| Phases 3 - 6 | Not started | each separately |
+| **Phase 3** - certification that proves correctness, release gate, safe activation, safe case migration, rollback (Admin screen, repair strategies and performance baseline NOT done) | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
+| **Phase 4** - Gemini mapping engine (OFF by default, shadow-first), accuracy gate (closed), plus Phase 3's repair strategies, Admin release screen and performance tooling (live accuracy run blocked: the configured Gemini model is retired) | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
+| **Phase 5** - governance API and Admin screens (overview, per-form status, review queue, frozen cases, AI panel), persisted run summaries, deduped alerts, success / held / digest developer e-mails | **DONE in code 2026-10-22 - awaiting your review** | given 2026-10-22 |
+| **Phase 7** - fully autonomous editions (plan approved 2026-10-22; 7.0 and part of 7.1 built, behind the switch, nothing enabled) | **IN PROGRESS** | approved 2026-10-22 |
+| **Phase 6** - regression and proof (full regression, builds, acceptance checks, safe test runner) | **DONE for what needs no shared database 2026-10-22; shadow runs + performance baseline waiting for your approval** | given 2026-10-22 |
 
 ---
 
@@ -537,6 +541,265 @@ Your review of sections 2, 4 and 6 and the decision on the golden-set reviewer. 
 
 Still open: the reviewer has not yet answered the 424 entries (that is the human step); `ensureCurrentUSCISForm.test.js` still stalls on its 3rd test (pre-existing, unmocked mongoose); Phase 3.
 
+# Phase 3 - certification that proves correctness, one release gate, safe activation, safe case migration, rollback
+
+## 1. Scope and authorization
+You said "implement phase 3" on 2026-10-22 (after the golden set was signed off again that morning and I-131 was rebuilt). Code, tests, two index-only database writes (below) and this report; **no case, user or company was created**, no real e-mail sent, no deploy, and no benchmark was run on the shared database. Everything is additive and fail-closed: nothing here weakens a Phase 0-2 check. The case-migration half (Rule G) was built by a parallel worker in its own files; the rest by me.
+
+## 2. What was built
+| Plan item | Result |
+|---|---|
+| Certification proves correctness (distinct markers) | `form-release/markerCertification.js`, two new certification checks in `FormCertificationService`: **party_markers** - every party gets a distinct synthetic marker (PETITIONER_TEST_001, BENEFICIARY_TEST_002, COMPANY_TEST_003, PREPARER_TEST_004); each active edge is resolved by the REAL `MappingResolver` (transforms, fallbacks, composite sources) and a box may only receive its own side's marker and never two sides at once. The party a box speaks about comes from its own label / section / PDF name, not from the mapping, so the check is not circular. A reviewed exception on an edge (`contractExceptions`) silences only that code on only that edge. **widget_inputs** - each edge is resolved for a fictional client and judged against its box: tick boxes get booleans, a drop-down gets a choice the PDF renderer can select (it uses the renderer's own `fitChoiceValue`, so "H-1B" finds "H1B - SPECIALITY OCCUPATION"), dates are dates. Only what can be observed is judged; the rest is counted as unobserved. In memory: no PDF, no database. |
+| CERT_CHECK_POLICY | `form-release/certPolicy.js`: ONE table. Five critical checks (pdf_fillable, mapping_valid, fill_roundtrip, **party_markers, widget_inputs**), two overridable with a written, audited reason (viewer_download, components_slice). **An unknown check name is now critical** (it used to be overridable, so a crashed certification could have been waved through). |
+| One ReleaseGate | `form-release/ReleaseGate.js`: `promote | restricted_degraded | approval_required | held | blocked`, with every check listed; most severe wins; every error inside a check fails closed. It combines preconditions (approved, mapping active, not deprecated), certification, the edition-acceptance decision (read-only, through the enforcer) and the edition diff. `VersionManagementService.activate` uses it for the preconditions + certification (acceptance is still enforced by `requireAcceptedEdition` and the diff by the mapping activation, so nothing is asked twice and nothing is weaker). The full gate is shown by `GET /api/form-release/templates/:id/gate`. |
+| Activation protocol | `VersionManagementService.activate`: the **new edition goes live while the old one is still live** (readers take the newest active edition, so there is never a moment without a live form), the change is confirmed, only then the old edition is retired and the intent cleared. The intent `{newId, oldIds, step}` is saved WITH the activation (`lifecycle.promotionIntent`). |
+| Crash reconciliation | `VersionManagementService.reconcilePromotions` (run at start-up and every 5 minutes, under a job lock): new live + old live -> finish retiring the old one **only if the acceptance gate still holds**, otherwise retire the new one; neither live -> restore the previous edition **only if the gate still accepts it**, otherwise activate nothing, alert admins and report "no policy-approved edition available"; the single-wording invariant of the plan. |
+| Rollback | `VersionManagementService.rollback` + `POST /api/form-release/forms/:formCode/rollback`: goes through `activate`, so the same certification, acceptance gate and protocol apply (an edition USCIS does not accept can never be restored); needs a retired, certified edition whose mapping version is still stored; **cases are not moved back**, the case forms on the replaced edition are listed for reconciliation. |
+| Case migration safety (Rule G) | `CaseFormEditionMigrationService` rewritten around `CaseFormMigrationRecovery` and the new `CaseFormMigrationSnapshot` collection: a checksummed **pre-image** of every answer record (values, provenance, attribution, reviews, overrides, status, lock, edition pointers) before anything changes; `migrationState` on the case form (snapshotted -> saved -> autofilled -> verified -> completed); **collisions detected before writing** (different values on one target = unresolved, blocks only that case; equal values merge with a recorded reason); a user-sourced `false` is a real answer; provenance and review metadata travel with the value; **database read-back verification** replaces the circular `carried + archived == total`; **safe recovery**: restore from the pre-image only when the current state equals the migration's own expected intermediate state, otherwise `reconciliation_required` with the snapshot kept (no expiry) and the conflicting fields listed; compare-and-set before each save; idempotent restore; `reconcileIncompleteMigrations` resumes a case form interrupted at any step; `planMigration` / `frozenReconciliationReport` are the no-write dry run. Snapshots expire 90 days after a VERIFIED migration and never while unresolved / failed / waiting / on legal hold. |
+| API | `/api/form-release`: `GET /templates/:id/gate`, `GET /forms/:formCode/migration-plan`, `POST /forms/:formCode/rollback`, `POST /reconcile`, `GET /migration-snapshots?caseFormId=` (metadata only, never the answers), `POST /migration-snapshots/:id/restore` (dry run unless told otherwise). Snapshot routes are exactly `admin`; rollback / reconcile `admin` and `super_admin`; gate and plan also `team_lead`. |
+| Schema | `USCISFormTemplate.lifecycle`: `promotionIntent`, `retiredWhy`, `certificationOverride` declared (the schema is strict: **Phase 0's `certificationOverride` had been silently dropped on save** - it was still in the audit log - and now persists). `CaseForm.migrationState` (optional, small). |
+| Indexes (real database, index-only, run with your standing permission for index scripts) | `scripts/createFormReleaseIndexes.js --apply`: all indexes of `caseformmigrationsnapshots` (new, empty; the TTL index on `expiresAt`) and only `caseforms { "migrationState.step": 1 }` (sparse). |
+
+## 3. How safety was kept
+- **Calibrated on live data first** (the Phase 2 lesson): both new checks were run read-only over all 34 live edition graphs (26 have mapped boxes) before being made critical. party_markers: 0 findings (775 mapped boxes actually party-checked). widget_inputs (1,318 boxes checked): the first run showed 55 findings, all noise from the sample client's placeholder answer and from my own dropdown test not using the renderer's matcher; after fixing both, **0 findings**. So no live form fails a new critical check and no edition is blocked by calibration noise.
+- **Existing editions are untouched**: certification only runs on import / promotion / re-certification; a stored certification that lacks the two new checks is not a failure.
+- **The edition-acceptance gate is unchanged** and still the last word; the ReleaseGate reaches it only through a read-only `peekAcceptance` on the enforcer (a test keeps the pipeline importing the enforcer only).
+- **Nothing can make an edition live except `VersionManagementService`**, which already calls the gate (a static test asserts the release module only reads).
+- **Recovery never overwrites a newer edit and never activates an edition the gate refuses.**
+- All DB-backed tests ran on a throwaway local database (never the shared one); nothing was created in any case.
+
+## 4. Verification
+| Check | Result |
+|---|---|
+| New tests | markerCertification 10, releaseGate 9, routes/wiring 5, **promotion / reconcile / rollback on a local database 6**, migration safety (pure 12, local database 15), updated activation tests 5 |
+| Combined run (release, edition policy, pipeline, lifecycle, migration, contract, rewire, I-131, golden, scripts) | **407 tests: 402 pass, 4 skipped (they need real I-140 / I-864 / I-485 templates in the local test database), 1 fail** |
+| The 1 failure | the gate-matrix test still lists the old 2026-10-16 `scripts/repairLegacyMappingFindings.js` (it activates a MAPPING version, not an edition). Unchanged since Phase 2; you chose not to touch it. Nothing of Phase 3 is in that list. |
+| Backend | restarted by itself on every edit and answers `/api/health` |
+| Calibration (read-only, all live forms) | party_markers 0, widget_inputs 0 |
+| Not run | the Admin / Client / Landing / Attorney builds (no frontend file changed); no benchmark on the shared database |
+
+### Checks per entry point (Rule I table)
+| Entry point | Preconditions + certification (ReleaseGate) | Acceptance gate | Edition diff | Protocol |
+|---|---|---|---|---|
+| `VersionManagementService.activate` (lifecycle route, import route, pipeline promote, registry console) | yes | `requireAcceptedEdition` | via mapping activation | new live -> confirm -> retire old, intent saved |
+| Rollback | same (it calls activate) | same | same | same; cases not moved |
+| Promotion reconciler | n/a (finishes / reverts) | re-run on the candidate | n/a | decides from the latest verified policy |
+| `migrateCaseFormsToEdition` | n/a | `requireAcceptedEdition` first | n/a | pre-image, verify, safe recovery |
+| Importer `activateVersion`, `importLocalForm`, 11 seeds, `replaceFormEdition` | unchanged from Phase 0 | `requireAcceptedEdition` | unchanged | unchanged |
+
+## 5. Expected vs actual
+| Item | Plan | Actual |
+|---|---|---|
+| Certification markers rendered into the PDF and reopened | "resolved in memory via MappingResolver -> rendered -> reopened" | Resolved in memory through the real mapper; the existing `fill_roundtrip` still renders and reopens the PDF. The markers themselves are not written into the PDF. |
+| Coverage of the party check | every field | Judged only where a box names one side AND the mapped path has a party root (petitioner / beneficiary / company / checklist keys). Forms whose edges read person.* / contact.* (I-90, I-765, I-485 and parts of others) make no party claim, so they are observed 0 times by this check and rely on the contract's text check. |
+| Unified ReleaseGate "replaces the individual checks" | one gate | One structured decision used by activation for preconditions + certification; acceptance and the edition diff keep their existing enforcement points (asked once, no weakening). |
+| Concrete repair strategies | with certification | **Not built** (see 7). |
+
+## 6. Findings for your review
+1. **Phase 0's certification-override record never reached the template** (strict schema); fixed. Overrides were always audited in the audit log.
+2. **The party check cannot see person.* / contact.* forms** (above). Moving those forms to the generic petitioner / beneficiary paths would bring them into the check.
+3. **Activation now has a short window with two live editions** of one form (new first, old retired a moment later); readers always take the newest, so cases see the new one. A rollback to an older edition shows the newer one for that moment only.
+4. **Frozen-report priority flag**: `frozenReconciliationReport` marks a frozen case "priority" only when the caller supplies `deps.oldEditionNotAccepted` (the enforcer has no read-only "is this edition refused" call beyond `peekAcceptance`, which the pipeline does not yet pass); until then it is `false`.
+5. **A value counts as verified** when its review is approved / confirmed / verified or its attribution says so; a typed or verified value with no box on the new edition blocks that case form from migrating (other unmatched values are archived with a reason).
+6. **Pre-image access is exactly `admin`** (assumption from the plan; no implicit super_admin or team_lead); retention is the plan's initial 90 days, subject to your organization's rules.
+
+## 7. What was NOT done
+Concrete repair strategies for certification failures (the repair framework has none registered); an Admin screen for the gate, the migration plan, rollback and pre-image restore (the API exists); the performance-budget measurement (needs an approved baseline run); `acquireForCase` through the job layer; Rule J; the PM2 worker / queued mode; Phases 4-6 (Gemini mapping, governance screens and e-mails, full regression).
+
+## 8. Gate before the next phase
+Your review of sections 5-7. Phase 4 (Gemini mapping) is unlocked on the golden-set side (signed off 2026-10-22, held-out form I-90) but still needs its own approval, the Gemini key / quota, and the pre-approved accuracy gate.
+
+# Phase 4 - Gemini mapping (shadow-first) + the three items moved over from Phase 3
+
+## 1. Scope and authorization
+You said "implement phase 4 now" on 2026-10-22 and asked that Phase 3's "not done" list be included in it. Built in three parallel parts (engine, accuracy gate, Phase 3 leftovers). Real-database writes: two index-only runs (below) and the evaluation's job records; **no case, user or company was created**. The engine is OFF by default; the accuracy gate is CLOSED; nothing here can change a live mapping today.
+
+## 2. What was built
+| Item | Result |
+|---|---|
+| Gemini mapping engine | `modules/form-ai-mapping/`: `FORM_AI_MAPPING` = **off (default) | shadow | on** (`mode()`; anything invalid is off). Runs as a distinct `form_mapping` capability on the AI platform (budget gate, per-user rate limit, redaction, audit, job record; the question / master-data matcher is untouched). Input per box: PDF name, widget type, printed label, section / page, parent group, neighbour labels, repeated-field info, a slice of the live canonical registry (path, type, role, description, aliases) and the checklist questions' keys / labels / canonical paths - **never an answer, document or any person's data** (a test proves it; a box that looks like client data - SSN, e-mail, phone, long number - is never sent and goes to review). Labels are passed as delimited untrusted DATA. Missing label => review without calling the model. Batches of 20, two at a time, cache keyed by hash(edition checksum, box, registry version, questionnaire schema version, prompt version, model). |
+| Strict output + independent validation | The model may only pick a path FROM the supplied registry with a reason code and the label words it relied on; hand-rolled schema validation, invented paths rejected. Every candidate is re-judged by code (`candidateValidator.js`): registry membership, type / transform compatibility, party ownership from the box's own label / section / name, section-label consistency, questionnaire coverage, repeating / conditional compatibility, conflicts with a live edge through MappingPolicy. The raw Gemini score is stored for audit and never decides. |
+| Risk tiers (decision 3) | `auto_use` only for unambiguous low-risk TEXT mappings that pass every check; address blocks, checkbox / radio / dropdown, conditional, repeating, SSN / A-number and other-party fields stay `needs_review` unless corroborated by a trusted sibling-form mapping or a verified golden fixture; invalid ones `rejected`. |
+| Modes | **shadow**: suggestions are computed and stored (`FormAiMappingSuggestion`, immutable rows), nothing touches any graph. **on**: additionally adds `auto_use` suggestions ONLY for boxes with no edge, ONLY when the accuracy gate is open, as a NEW mapping version of a pending, non-exclusive edition through the normal contract and activation gates (origin "ai", evidence aiValidated + tier). MappingPolicy: an `ai` edge may stay active only with `evidence.aiValidated === true` and `tier === "auto_use"`; every other `ai` edge is still downgraded to review. |
+| Pipeline | One optional stage `ai_map` after the rule mapping, only when the mode is not off, errors logged and swallowed. Deterministic mapping and case creation never depend on Gemini. |
+| Accuracy gate (decision 19) | `form-ai-mapping/accuracy/`: pure `evaluate()` against the signed golden set with the plan's PRE-APPROVED constants (an override can only make them stricter): zero critical role violations, zero data-integrity failures (an auto-used suggestion on a verified-blank, checkbox / radio / dropdown / date, conditional, repeating, SSN / A-number / passport or whole-address box), >= 300 verified auto-used text mappings, precision >= 99% (only counted with that sample), >= 3 forms per main family, every held-out form (I-90) evaluated, >= 25 verified fields per widget type per family. `AiMappingGate.isOpen` is **fail-closed**: open only when the latest append-only `AiMappingGateRecord` met every criterion and has not expired, the golden sign-off is current, the record was made against the same golden draft, prompt version and model, and the form's family was evaluated. The prompt version and model are asked from the engine's own provider, so the two can never disagree. |
+| Evaluation script | `scripts/evaluateAiMapping.js`: offline and read-only by default (judges the stored shadow suggestions); `--record` stores a gate record; `--live` is the ONLY path that calls Gemini and needs explicit flags, the shadow / on mode and hard caps on boxes and estimated cost. |
+| API | `GET /api/form-ai-mapping/status`, `GET /api/form-ai-mapping/suggestions` (read-only; super_admin, admin, team_lead). |
+| Moved from Phase 3 (1) Repair strategies | `form-pipeline/repair/`: `renormalize_pdf` (re-normalize an unloadable stored PDF; verifies every field name is kept, stores under a new key, re-certifies, restores everything and deletes only its own object if the checks still fail; refuses live editions), `rediscover_components` (only when components_slice failed; a failed repair deletes the definitions it created), `clear_template_cache` (stale-cache symptoms only, changes nothing stored). **Never auto-repaired:** `mapping_valid`, `party_markers`, `widget_inputs`, held / lease-lost / promotion-busy / mapping-contract errors, unreviewed edition changes. Each repair is recorded with its verification. |
+| (2) Admin screen | Form Governance > "Show Release Safety" (super_admin, admin, team_lead): the release-gate decision and every check in plain words, the case-form move preview and frozen list, Rollback (super_admin / admin; says cases are NOT moved back; reason required), "Run recovery check", and a pre-image panel (**exactly admin**; dry-run preview before a confirmed restore; shows counts and field paths, never the answers). |
+| (3) Performance tooling | `scripts/perf/`: event-loop / heap meter, the plan's proposed tolerances as constants with a compare that cannot pass until you approve the final numbers, a DB-call counter with the "zero added hot-path DB calls" check, an import scan, and `baselineHttp.js` (dry run by default; `--apply` needs an explicit base URL, token and output file). **Nothing was measured** (see 7). |
+| Indexes (real database, index-only) | `scripts/createAiMappingIndexes.js --apply`: `aimappinggaterecords` and `formaimappingsuggestions` (unique on templateId + targetFieldId + inputHash). |
+
+## 3. How safety was kept
+OFF by default, a closed gate, and shadow never writes to a graph. The gate fails closed on any error or missing information. The model's answer is untrusted: it can only choose from the registry, and code re-judges it. No client data can enter a prompt. The engine's failure (outage, quota, a retired model) only skips the stage - every box becomes "needs review" - which is exactly what happened in the live run below. All database-backed tests ran on the throwaway local database; Gemini was never called by a test.
+
+## 4. Verification
+| Check | Result |
+|---|---|
+| Engine tests (fake provider) | 44 (input and schema 6, engine 17, tiering / policy / apply 11, wiring 10) |
+| Accuracy gate tests | 50 (evaluator 16, gate 11, script 7, local database 4, golden draft 12) |
+| Repair tests / perf tests / Admin screen tests | 18 / 10 / 13 |
+| Combined backend run (engine, gate, pipeline, release, edition policy, contract, migration, scripts, perf, AI infra) | **468 tests: 467 pass, 1 fail** - the same old 2026-10-16 `repairLegacyMappingFindings.js` line in the gate-matrix test (unchanged; nothing of Phases 3-4 is in it) |
+| Admin | `npm run build` passes; full suite 225 of 226 on the worker's run (one renderer test failed under load and passes alone; not re-run in full) |
+| Backend | restarted by itself on every edit, `/api/health` ok |
+
+## 5. The live evaluation (honest result)
+I ran the one real shadow evaluation on the held-out I-90 (capped at 160 boxes and $0.60). **Gemini never answered: all 10 batches failed** with `models/gemini-2.5-flash is no longer available to new users ... use models/gemini-3.8-flash`. The engine behaved as designed (182 boxes -> needs review, reason no_model_answer, nothing stored, no auto-use, nothing changed), so the run proves the failure path, not the AI's accuracy. **There is therefore no accuracy number yet and the gate stays closed.** Setting GEMINI_MODEL for one command had no effect because the model is read from the stored AI provider configuration; an in-process override of the registry also did not reach the call, and I stopped there rather than change your stored settings.
+
+## 6. Findings for your review
+1. **The configured Gemini model is retired for your key**, so every Gemini feature that uses it (this engine, and very likely passport / résumé reading in document intelligence) is failing right now. `Backend/.env` pins `GEMINI_MODEL` and the provider setting stored in the database holds the same name; the code's own default is the always-current alias `gemini-flash-latest`. Fix: change GEMINI_MODEL (to `gemini-flash-latest` or `gemini-3.8-flash`) and update the stored Gemini provider model, then re-run the evaluation. I did not change either.
+2. **The gate cannot open yet even with a working model**: the signed golden set holds 267 verified text entries; the plan needs 300 verified auto-used text mappings and 3 evaluated forms in each main family. The answer key has to grow first.
+3. **Path equality undercounts accuracy for legacy forms**: many live edges read legacy roots (person.* / contact.*), the model chooses generic roots (beneficiary.*); the evaluator compares paths, so a correct pick can look wrong until an equivalence table exists.
+4. **The Phase 3 restore preview returns client answer values to the browser** (the Admin screen discards them); the route should stop sending them.
+5. Autofill / mapping code reaches the pipeline and release modules at load time through the case lifecycle orchestrator (existing wiring); the perf import scan records the four known chains as a ratchet.
+
+## 7. What was NOT done
+Any accuracy measurement (blocked by finding 1); every performance baseline number (needs your approval for a run against the shared database: the runner's endpoint paths are my guess and the autofill-generate and case-creation endpoints are not in it yet); an Admin screen for AI mapping suggestions and the gate (API only); Phases 5 and 6 (governance screens and e-mails, full regression).
+
+## 8. Gate before the next phase
+Your decision on finding 1 (the model), then a live shadow run, then growth of the golden set. "on" mode stays unusable until the gate record says met.
+
+## Phase 4 addendum (same day): model fixed, re-run, switch set, what the gate still needs
+
+- **The retired model was only in the stored AI provider setting** (`aiproviderconfigs`, key gemini: `gemini-2.5-flash`); `.env` already said `gemini-flash-latest`. At your request the stored value was changed to `gemini-flash-latest` (the only write). The 14 "model no longer available" failures are gone.
+- **Re-run on the held-out I-90 (182 boxes, 10 batches): only 2 batches completed** - the others failed with **"You exceeded your current quota ... plan and billing details" (5)**, "high demand" (1) and the 90-second timeout (2). That is the Gemini API account's plan / quota, not code. Where Gemini did answer (40 boxes) its picks matched the golden answer key exactly (12 of 13 with a candidate; the 13th chose the registry's synonym for the A-Number); every one was tiered needs_review (no auto_use), because the key's paths are legacy person.* / contact.* roots on which the party cannot be confirmed, and several boxes have no checklist source. The engine behaved as designed: quota failures only skip batches.
+- **`FORM_AI_MAPPING=on` was set in `Backend/.env`** (restart the backend to pick it up). With the gate closed, "on" stores suggestions and applies nothing; it applies AI mappings only after an evaluation record meets the thresholds. While the Gemini quota is exhausted each import's `ai_map` stage spends its batch timeouts before giving up (it never fails the import).
+- **What the gate needs to open** (no switch, by the plan's design): (1) a Gemini plan with enough quota; (2) live shadow runs over at least 3 forms in each of employment / family / single; (3) a bigger signed golden set - at least 300 VERIFIED auto-used text mappings and 25 verified fields per widget type per family (today 267 verified text entries in total); (4) the engine must actually auto-use that many boxes - it will do so only where the party can be confirmed, which means moving forms from the legacy person.* / contact.* paths to the generic petitioner / beneficiary paths first. Then `evaluateAiMapping.js --live ... --record` stores the record and the gate opens by itself, for 30 days per record.
+
+# Phase 5 - governance and operations (overview, per-form status, review queue, frozen cases, AI panel, alerts and developer e-mails)
+
+## 1. Scope and authorization
+You said "implement phase 5" on 2026-10-22 and allowed all shell commands. Built in three parallel parts (governance API, alerts and e-mails, Admin screens) plus the small Phase 4 leftovers. Real-database writes: three index-only runs (below); the new collections stay empty until the first scheduled run / migration after a backend restart. **No case, user or company was created, no real e-mail was sent (every e-mail test uses a mocked provider), Gemini was not called.**
+
+## 2. What was built
+| Plan item | Result |
+|---|---|
+| Persist catalog-sync / autopilot summaries | `FormPipelineRunSummary` (kind catalog_sync / autopilot / edition_upgrade, started / finished, checked, changed, promoted, held, failed, error; capped at 200 per kind, TTL 90 days). Hooks in `USCISCatalogSyncJob`, `USCISEditionUpgradeJob` and `FormPipelineAutopilot` record AFTER the run and never throw into it. |
+| Pipeline overview + metrics | `GET /api/form-governance/overview` and `/metrics`: mode and worker liveness, jobs by state, the oldest unresolved item and its age, retries (total / last 24 h), stage timings (count, average, p95), blocked and held lists, the last 20 runs, promotions / failures in 24 h, frozen cases open, AI suggestions in 24 h. Built from the Phase 1 job data, nothing new in the job semantics. |
+| Per-form status | `GET /api/form-governance/forms/:formCode/status`: SEVEN separate statuses (import, mapping, coverage, certification with its checks and severity, release decision with its checks, edition policy, monitoring), the latest job's stage timeline, lost mapping edges, "released with an override" and "on hold" blocks. Reuses ReleaseGate, the enforcer's read-only `peekAcceptance`, the stored certification and the coverage stored on the mapping version; never loads a full template document. |
+| Mapping-review queue | `GET /api/form-governance/mapping-review`: read-only list of `needs_review` edges on each form's active / latest mapping version. Approving or rejecting stays in the existing mapping editor (no new write path). |
+| Frozen-case reconciliation list | `FormMigrationReport` rows written after each case migration (frozen report, unresolved, reconciliation-required; an unresolved row never expires) and `GET /api/form-governance/frozen-cases` (priority first). |
+| Admin screens | Form Governance > "Show Operations" (super_admin, admin, team_lead): **Overview** (auto-refresh, Retry on stuck jobs for admin / super_admin with a confirm dialog), **Form status**, **Mapping review**, **Older editions in cases**, **AI mapping** (mode, gate state per family with the reasons in plain words, suggestions per tier, a read-only suggestions table; says "on applies nothing until the gate opens"). Plain-language wording, no technical ids. |
+| Deduped alerts | `PipelineAlerter` rewritten: dedupe per {edition, state, stage, error signature}; in-app notices go to each admin separately with their own dedupe key (a shared key would have shown the notice to the first admin only); high-priority alerts carry a dedupeKey; new notification types `form_pipeline_alert` / `form_pipeline_update`; every delivery audited as `FORM_PIPELINE_ALERT_SENT` / `FORM_PIPELINE_DIGEST_SENT` on entity type `FormPipelineJob`. |
+| Developer e-mails | SUCCESS (the plan's wording: old -> new edition, visa types and case-creation options, release promoted or degraded with the failed non-critical checks and who authorized, coverage, previous edition retained), HELD / APPROVAL REQUIRED ("imported but not promoted: reason. Action needed: ..."), DIGEST (one per run window, up to 50 listed), and the existing FAILURE / BLOCKED / DEAD-LETTER. Registered as templates, in the e-mail policy and in the trigger registry. Failures, holds and dead-letters are never batched into a digest. |
+| E-mail switches | `FORM_PIPELINE_ALERT_EMAIL` (default ishaan@embtelsolutions.com, comma list), `FORM_PIPELINE_EMAIL_FAILURE` / `_HELD` / `_SUCCESS` (default true), `FORM_PIPELINE_EMAIL_MODE` = auto (default: scheduled runs -> one digest, on-demand runs -> individual) | individual | digest, `FORM_PIPELINE_EMAIL_RUN_CAP` (5 individual success e-mails per run window, the rest in the digest), `FORM_PIPELINE_DIGEST_QUIET_MINUTES` (10), `FORM_PIPELINE_DIGEST_FLUSHER`, `FORM_PIPELINE_ADMIN_URL`. No provider configured, or every send fails -> the admins get the in-app notice instead. An e-mail failure never delays or fails a run. |
+| Phase 4 leftovers done here | The restore preview route now returns only the field path and added / removed / changed (never a stored value); `AiMappingGate.status()` (per family, plus the newest evaluation) so the AI panel shows the real gate state instead of "unknown". |
+| Indexes (real database, index-only) | `createFormGovernanceIndexes.js --apply`: `formpipelinerunsummaries`, `formmigrationreports`; `createFormPipelineIndexes.js --apply`: `FormPipelineDigest` (unique open digest per key) and a re-confirmation of the job indexes. |
+
+## 3. How safety was kept
+Everything here is read-only over existing data except the persistence of summaries, reports and digest state. Every hook records after the thing it observes and never throws into it; every e-mail path is best-effort. Role guards are exact (read: super_admin, admin, team_lead; retry / rollback: admin, super_admin; pre-image: exactly admin). The mapping-review queue adds no write path. Bodies carry no secrets, tokens, client data or raw stack traces (tested). The gate-matrix test's allowed-importer list gained the two read-only files (`ReleaseGate`, `FormStatusService`) that read the edition decision through the enforcer's `peekAcceptance`.
+
+## 4. Verification
+| Check | Result |
+|---|---|
+| Governance API | 15 DB-free + 3 local-database tests (every response shape, exact roles, 403 for others) |
+| Alerts and e-mails | 7 config + 6 templates + 15 alerter + 7 local-database digest tests; 94 across the form-pipeline files, 50 in the e-mail suites; mocked provider only |
+| Admin screens | 17 new tests; **whole Admin suite 243 / 243 (27 files)**; `npm run build` passes |
+| Combined backend run (governance, AI mapping, accuracy gate, pipeline, release, edition policy, e-mail, lifecycle, contract, migration, rewire, I-131, golden, scripts, AI infra) | **613 tests: 608 pass, 4 skipped, 1 fail** - the same old 2026-10-16 `repairLegacyMappingFindings.js` line in the gate-matrix test; nothing of Phases 3-5 is in it |
+| Start-up | all 13 modules the server loads at start-up load cleanly. **Your dev backend was not running when I checked (nothing on port 7000); I did not start a second instance - restart it to pick up the new routes, the digest timer and `FORM_AI_MAPPING=on`.** |
+
+## 5. Findings for your review
+1. **`form-pipeline-alert` (Phase 1) was missing from the e-mail trigger registry**, which a test requires for every built-in e-mail; fixed together with the three new e-mails (listed as locked entries).
+2. **A helper in the Admin screens had lost its regex backslashes** (it matched any "d+" part and any character before "value"); fixed with a test.
+3. **Success e-mails are ON by default.** On-demand runs e-mail you individually; scheduled runs send one digest. Switch off with `FORM_PIPELINE_EMAIL_SUCCESS=false` if it is too much.
+4. **Held e-mails are deduped per job and reason, not across jobs of the same edition** (the e-mail policy text says so).
+5. **The overview, run list and frozen-case list start empty**: the summary tables fill from the first scheduled run after a restart; frozen cases only from migrations that run after this change (nothing back-filled).
+6. **Still open from Phase 4:** the Gemini accuracy numbers (account quota), the performance baseline (needs your approval to run against the shared database), the larger golden set and the move to generic paths.
+
+## 6. What was NOT done
+A real e-mail send test and the digest timer observed in the live process (the API process was not running); approving / rejecting from the mapping-review queue (it links to the existing editor); a retention policy beyond the TTLs above; Phase 6.
+
+## 7. Gate before the next phase
+Restart the backend and watch the first scheduled run fill the overview; your decision on finding 3 (success e-mails). Phase 6 (full regression and proof, shadow runs) needs its own approval and, for any run on the shared database, your go-ahead.
+
+# Phase 6 - regression and proof (full regression, builds, acceptance checks, safe test runner; shadow runs and the performance baseline NOT run - they need your approval)
+
+## 1. Scope and authorization
+You said "implement phase 6" on 2026-10-22 and allowed all shell commands. The plan's Phase 6 is "full suite, then shadow runs (separate approval if they touch the shared DB)". I ran the full suite, the four app builds and a pre-change comparison, closed the gaps I found, and stopped before anything that needs the shared database.
+
+**Not run, by the standing rules: the shadow runs, the performance baseline / budget comparison, a real e-mail send, and any case-creating end-to-end test. Each needs your explicit go-ahead.**
+
+## 2. What was done
+| Item | Result |
+|---|---|
+| Full backend regression | 296 test files that cannot reach the shared database: **2,124 tests, 2,104 pass, 20 fail** (plus the 7 new Phase 6 tests below, all pass). The test files that connect to the shared database (28) and to the fixed local test database (47) were not run. |
+| The 20 failures | **None is caused by Phases 3-5.** 18 are pre-existing: I checked out commit 33794ea (before the Phase 3-5 work) in a scratch copy and ran the 12 files that hold them, and the same ones fail there, identically (missing `qpdf` binary, `PDFFidelityService` 10 s timeouts, no stored PDF for a test form, a disclaimer-wording test, a route-count guard, a stale task-creation test from the change that stopped automatic tasks, an `updateQuestion` metadata test, an `i485J` provisioning test, a document-persist test; two download tests also fail when those files run alone and pass in the full run). One is the old `repairLegacyMappingFindings.js` line of the gate-matrix test that you chose to leave. One is a timing-sensitive cache-expiry test (`storage.read-cache`) that failed once under load and passes alone, three runs out of three. The scratch copy was removed. |
+| Four apps build | Admin, Attorney, Client portal, Landing: all `npm run build` green. Admin tests: 243 / 243 (Phase 5 run, unchanged). |
+| **Safe test runner (new)** | `npm run test:safe` (`src/scripts/runSafeTests.js`): sorts every test file into pure / fixed-local-database / shared-database by its content, runs only the first group (`--include-local-db` adds the second), `--list` shows the groups. A test checks the sorter and asserts that no runnable file mentions the shared database. |
+| Phase 6 acceptance checks (new, 7 tests, no database) | hot path (autofill, mapping, PDF generation, case service / controller) has no reference to the pipeline, release gate, Gemini engine, governance, certification or alerts; the form-download controller reaches the edition check only through the acquisition service, under a timeout; the gate, the filing-eligibility predicate and the activation protocol read no environment switch except the evidence-reader opt-in, and carry no bypass flag; the predicate gives the same verdict whatever the environment says; the frozen case-form status list exists once; the safe runner keeps shared-database tests out; every governance and release route is behind `authorizeRoles`. |
+| Code fix found by those checks | `immigration-knowledge-engine.service.js` kept its own copy of the frozen-status list (the plan's "one shared frozen list" rule). It now uses the shared `isFrozen` (same behavior: a form is protected when its status is frozen or it is locked). 2 lines. |
+
+## 3. Plan test list traced to the tests that prove it
+| Plan group | Where it is proven | State |
+|---|---|---|
+| Golden set + precision / recall harness; held-out form; golden-set gate | `form-mapping/tests/golden.draft`, `golden.review.localdb`, `form-ai-mapping/accuracy/tests/*` | passing |
+| Mapping contract: role / invented path / type compatibility / ambiguity / stale `partyRule` / non-active edge / legacy `mapping{}` ignored / report-only legacy validation | `form-mapping/tests/contract.*`, `partyMapping`, `checklist-party-rewire`, `family-role-mapping` | passing |
+| Repair strategies (rich text, download failure, XFA, rename drift) | `form-pipeline/tests/repair.strategies`, `repair.runner.localdb` | passing |
+| Recovery: lease, fence, no duplicates, resume, two-edition race | `form-pipeline/tests/jobService.localdb`, `pipelineRun.localdb`, `realPipelineHooks.localdb` (throwaway local database) | passing |
+| Gate matrix, fail-closed at every entry point | `form-edition-policy/tests/entryPoints`, `enforcer`, `verifierAndGate` | passing except the one old-script line |
+| Evidence workflow, verbatim quote, redirect-safe fetcher, roles, decider != submitter, audit | `form-edition-policy/tests/{service,fetcher,autoEvidence,filingEligibility,models,policy.localdb,readiness.e2e,routesAndWiring,scheduler}`, `scripts/tests/formSourceRedirectCrawl` | passing |
+| Release gate, certification markers, activation protocol, rollback, safe case migration (Rule G), frozen cases, pre-image | `form-release/tests/*`, `form-mapping/tests/migration-safety.*`, `caseFormFreeze` | passing |
+| Gemini with a fake provider (malformed, invented, injection, timeout, conflicting, no client data, tiering) | `form-ai-mapping/tests/*` | passing |
+| Edition regression (`i485-edition-2026-09-18`) | `form-mapping/tests/i485-edition-2026-09-18` | passing |
+| Developer e-mails: dedupe, digest, switches, in-app fallback, no secrets or stack traces | `form-pipeline/tests/alerts.*` | passing |
+| Governance API and Admin screens | `form-governance/tests/*`, Admin `FormGovernanceHub.test.jsx` and the suites around it | passing |
+| Non-disruption (structural) | the new Phase 6 acceptance file | passing |
+| Performance budget comparison, zero extra hot-path DB calls **measured**, event-loop lag during a live pipeline run | tools exist and are unit-tested (`scripts/perf/*`); **no baseline was recorded** | **open - needs approval** |
+| Worker killed mid-stage with the real PM2 worker | simulated in the local-database tests; the real PM2 process was not run | **open - needs a deploy / your go-ahead** |
+| Shadow runs on real forms | not run | **open - needs approval** |
+
+## 4. Findings for your review
+1. **`npm test` is not safe.** It runs every test, and two of them (`o1b-e2e`, `inviteTokenHistory`) connect to the shared database and create records. **My first Phase 6 run included those two** (my own filter missed them because they connect through `config/database`): they created ZZ-TMP test users / cases, the O-1B one failed after 96 s, and both cleaned up after themselves. I then checked the shared database read-only: **no record from today's run is left.** What I did find are 11 old test users from 2026-10-19 (`zz-tmp-tn-*`, `zz-tmp-eb1c-*`, e-mail ending `@e2e-audit.invalid`) and 2 beneficiaries from 2026-09-02 (`h1b.client.*`, `h1b.nocm.*`) that earlier test runs left behind; I did not create them and did not delete them. Say the word and I will remove them (dry run first). From now on use `npm run test:safe`.
+2. **The 18 pre-existing failures** are unrelated to the pipeline, but they mean the full suite is not green. The cheapest fixes: install `qpdf` (4 tests), refresh the disclaimer, route-count and task-creation test expectations (5), and find why `PDFFidelityService` hangs for 10 s per test locally (5 + 2). I did not touch them.
+3. **A form-download action still runs the edition check inside the API request** (`FormGenerationController`, under a 25 s timeout, only when a person presses "check edition"). It is not on the hot path and has a timeout, but it is the one place the plan's "no heavy work on the API thread" is met by a timeout, not by the worker. Moving it to a job is listed under not-done in Phase 3.
+4. **The hot-path claim is structural, not measured.** The tests prove the hot path cannot call the pipeline; they do not measure latency. Measuring needs the baseline run against the shared database.
+
+## 5. What was NOT done
+Shadow runs; the performance baseline and budget comparison; the real PM2 worker kill test; a real e-mail send; the 18 pre-existing failures; the cache-expiry timing flake; the old-script matrix line; the Gemini accuracy numbers (quota); removal of the old test records listed above.
+
+## 6. Gate before calling the whole plan finished
+Your decisions on: running the performance baseline and shadow runs against the shared database (and with which forms), removing the old test records, and fixing or retiring the 18 stale tests. Until the shadow runs and the baseline are done, the plan's acceptance rows "Performance / non-disruption" and "Worker / off-thread" are met structurally and in simulation, not by measurement.
+
+# Phase 7 - fully autonomous editions (7.0 and the first part of 7.1 done; the rest of 7.1 and 7.2-7.8 not started)
+
+## 1. Scope and authorization
+The plan is [FORM_PIPELINE_PHASE7_PLAN.md](FORM_PIPELINE_PHASE7_PLAN.md) (rev 2, approved 2026-10-22). This section covers the first build step: **7.0** (hold contract and stage ladder) and the parts of **7.1** that need no deploy change and no shared-database write. Everything new is additive. The `FORM_PIPELINE_AUTONOMY` switch (`off` default, `shadow`, `on`) gates every behavior change that could alter what a client or a filing sees; nothing is switched on. No database write was made, no case created, no deploy changed.
+
+## 2. What was built
+| Plan item | Result |
+|---|---|
+| 7.0 hold contract | `form-pipeline/holdContract.js`: a held / blocked / dead-lettered job now stores `hold { reasonCode, detail, releaseConditions[], firstHeldAt, lastEvaluatedAt, evaluatedWith{matcher,gate,cert}, escalatedAt }` (`FormPipelineJob.hold`, written by `jobService.fail`; the first-held time survives re-checks of the same reason; a finished job clears it). |
+| 7.0 automatic re-evaluation | `requeueOutdatedHolds`: a hold judged with older code versions than the running ones is requeued once with a fresh attempt budget. It runs the normal pipeline and the same gates; nothing is promoted by it. Existing retry timers (held 12 h, blocked 24 h, transient backoff) are unchanged. |
+| 7.0 escalation | `holdSweep.js` (worker tick): a hold older than `FORM_PIPELINE_HOLD_ESCALATION_DAYS` (default 7) raises ONE in-app admin notice and audit record (`announceEscalation`), says what would release it, and decides nothing. `persistentHolds` is the review list. |
+| 7.0 stage ladder | `stageLadder.js`: every finished run reports `ladder` (detected, fetched, imported, mapped, certified, release_eligible, released, migration_pending / complete / partial) and `levels` (in registry, approved for new cases, eligible for existing cases) in the job outcome. Existing statuses are unchanged. |
+| 7.1 migration honesty | `activateOrPromote` no longer swallows a thrown case migration at info level: the error is warn-logged and returned (`caseMigrationError`); the outcome carries `migration.state` (not_applicable / migration_pending / migration_failed / migration_partial / migration_complete) with counts, and `announceMigrationGap` raises one in-app notice per job and state. A component-discovery failure after activation is warn-logged and shown in the outcome (`components`). |
+| 7.1 pipeline preflight | `form-pipeline/preflight/pipelinePreflight.js`: verifies (never installs) qpdf and its minimum version, the required unique indexes, worker placement, job schema versions, evidence flag, an active admin, the autonomy switch. Report-only by default; `FORM_PIPELINE_PREFLIGHT_ENFORCE=true` makes the worker claim nothing while a critical check fails. Started from `server.js` 20 s after boot, every 30 minutes; admins notified once per distinct failure set; shown in the governance overview. |
+| 7.1 component-discovery regex | `\d` fixed and the form code made generic (the old pattern stripped nothing); a test fails on the old regex. |
+| 7.1 sync failure memory | `FormCatalogSyncService`: skips forms whose job is blocked / held / dead-letter for the same edition date or that failed within 6 h, keeps filling the per-run cap, time budget 45 min. Behind the switch: off = unchanged, shadow = logs only, on = applies. |
+| 7.1 AutoFill target | `AutoFillService.generate({ caseFormId })` loads exactly that case form (404 / 409 on a mismatch); without it the old lookup is untouched. Migration callers not changed yet (7.7). |
+| 7.1 filing artifacts | `FilingArtifactPolicy.js`; `OfficialFormDownloadService` and `FilingPackageService` (and the generated G-28 item in `PetitionAssemblyService`): behind the switch, a filing-status download that ended on an unverified or blank fallback is refused (409), and a package is rebuilt from the clean official render, refusing any watermarked component that cannot be rebuilt. Drafts and attorney-review copies are untouched. |
+| 7.8 fixtures | `scripts/buildFixtureManifest.js` (read-only), `test-utils/editionMutants.js` (pdf-lib synthetic mutants, labeled), `test-utils/fixtures/editions/MANIFEST.json` (hashes and locations only). |
+
+## 3. Verification
+| Check | Result |
+|---|---|
+| New tests | hold contract + ladder + alerter + worker 13; holds on the local throwaway database 7; preflight 12; filing artifact policy 14; failure memory + page-furniture + caseFormId (25 with the existing tests); fixture manifest 9 and mutants 9 |
+| Existing suites touched (jobs, pipeline run, alerter, wiring, governance, phase 6 acceptance, download) | pass |
+| Full safe regression (`npm run test:safe`) | 305 test files, 2,204 tests: 2,185 pass, 19 fail. Same 19 as Phase 6 (18 pre-existing identical at commit 33794ea + the old gate-matrix line); the timing-flaky cache test passed this time; no new failure. Four app builds green. Three regressions my own guard tests caught during the step were fixed (autonomy switch moved to config/ so the hot path does not reach pipeline modules; a duplicated status list; a fixture-script allow-list entry). |
+
+## 4. Findings for your review
+1. **The fixture check found a mislabeled pair.** The stored I-485 "2026-04-09" retired PDF prints footer **2026-09-04**; the I-485 live edition (2026-09-18) has no official PDF URL on its template, so it cannot be compared with the official file. The I-129 2026-09-09 edition is byte-identical to the official PDF (verified); I-129 2026-02-27 is not served by USCIS any more (provenance recorded from our stored copy). I-131 is no longer a pair: the corrected live edition is 2025-01-20, so there is no older edition. The simulation harness therefore needs I-485 re-sourced or the pair redefined; I did not guess.
+2. The component-discovery fix can only raise a similarity score, so a continuation sheet previously marked "review required" only because of its running header may now come back active. Unmeasured without a database run.
+3. The failure-memory skip matches on edition DATE only (the file checksum is not known when the queue is built): a blocked job for the same date but a newer file revision waits for its own 24 h retry.
+4. A generated G-28 section with no form behind it (uploaded or already watermarked) will refuse a final package when the switch is `on`.
+5. Nothing is enabled: preflight is report-only and the autonomy switch is off, so live behavior changed only in what is reported (migration state, hold records, warn logs).
+
+## 5. Not done in this step
+Rest of 7.1: the deploy changes (pinned qpdf, index scripts, worker app: D6, own approval), `hasNewEdition` confirmation, approval actor `system:pipeline`; 7.2 detection and fetch hardening; 7.3 matcher; 7.4 inventory gate; 7.5 components; 7.6 release proof; 7.7 case migration; 7.8 harness and shadow runs.
+
+## 6. Gate before the next step
+Your review of finding 1 (I-485 pair), your answer on D6 (deploy changes), and the go-ahead for 7.2 and 7.3.
+
 ## Appendix A - Per-form results (generated from the run)
 
 Case forms count all statuses; "open" = not finalized / filed / archived. Every row "needs initial evidence".
@@ -612,4 +875,25 @@ Case forms count all statuses; "open" = not finalized / filed / archived. Every 
 | 2026-10-16 | Phase 2 addendum | Legacy findings repaired live, scorer alias fix, golden set draft (424 plain-language entries) + reviewer API/models + sign-off, Admin screens (Import Progress, Golden Set Review, Mapping coverage), reviewer guide | `scripts/repairLegacyMappingFindings.js`, `scripts/buildGoldenSetDraft.js`, `form-mapping/golden/*`, `models/GoldenSet{Review,SignOff}.js`, `form-mapping/routes/goldenSetRoutes.js`, `routes/index.js`, `MappingGraphService.js`, `contract/MappingContractValidator.js`, `Admin/frontend/src/components/{FormPipelineJobsSection,GoldenSetReviewSection,MappingCoveragePanel}.jsx(+tests)`, `services/api.js`, `pages/FormGovernance*.jsx`, `docs/GOLDEN_SET_REVIEW_GUIDE.md`, `docs/golden-set/GOLDEN_SET_DRAFT.csv` |
 | 2026-10-16 | Live form updates (socket only) | When a team member saves or changes a form, everyone who has it open is told over the socket and the screen re-reads it quietly (unsaved typing is kept). Event after the response, no form data in it, join re-checks access; no conflict blocking (last save still wins) | `Backend/src/modules/uscis-forms/caseFormLiveUpdates.js(+test)`, `uscis-form.routes.js` (1 line), `realtime.gateway.js` (join/leave + emit), `Admin/frontend/src/hooks/useCaseFormLiveUpdates.js(+test)`, `contexts/{Socket,Auth}Context.jsx` (optional hooks), `components/uscis/USCISFormRenderer.jsx` (+test) |
 | 2026-10-16 | Delete-form fix | Deleting a form was refused whenever ANY recurring import job (autopilot / edition-upgrade / monitoring / catalog sync) held its lock, which is most of the day. Now only a pipeline job running for THAT form blocks it; the form's waiting (pending / blocked / held) jobs are removed on delete so nothing re-imports it | `Backend/src/modules/form-registry/form-registry.controller.js`, `uscis-lifecycle/tests/jobLocks.test.js` |
+| 2026-10-22 | Phase 3 | Distinct-marker certification (party_markers, widget_inputs) + one CERT_CHECK_POLICY, unified ReleaseGate, activation protocol (new live before old retired, saved intent) with crash reconciliation, rollback, safe case migration (pre-image, read-back verification, safe recovery, sweeper, dry run), release API, recovery sweeps wired into the server, index script (run) | `Backend/src/modules/form-release/*`, `uscis-lifecycle/services/VersionManagementService.js`, `form-mapping/services/{FormCertificationService,CaseFormEditionMigrationService,CaseFormMigrationRecovery}.js`, `models/{CaseFormMigrationSnapshot,CaseForm,USCISFormTemplate}.js`, `form-edition-policy/EditionPolicyEnforcer.js` (read-only peek), `server.js`, `routes/index.js`, `scripts/createFormReleaseIndexes.js`, tests |
+| 2026-10-22 | Phase 4 | Gemini mapping engine (FORM_AI_MAPPING off / shadow / on, form_mapping AI capability, strict validation, risk tiers, shadow store, ai_map stage), accuracy gate + evaluator + script (fail-closed, pre-approved thresholds), MappingPolicy ai_validated tier; repair strategies, Admin release-safety screen, performance tooling; indexes (run) | `Backend/src/modules/form-ai-mapping/*`, `models/{FormAiMappingSuggestion,AiMappingGateRecord,AIJob}.js`, `modules/ai/{ai-orchestration.service,prompt.defaults}.js`, `form-mapping/contract/MappingPolicy.js`, `form-pipeline/{repair/*,FormPipeline,FormPipelineRunner,pipeline.constants}.js`, `OnDemandFormAcquisitionService.js`, `scripts/{evaluateAiMapping,createAiMappingIndexes,perf/*}`, `Admin/frontend/src/components/FormRelease*.jsx`, tests |
+| 2026-10-22 | Phase 5 | form-governance API (overview, metrics, per-form status, mapping-review queue, frozen cases), FormPipelineRunSummary / FormMigrationReport persistence hooks, rewritten PipelineAlerter with dedupe + digest + success / held / digest e-mails and switches, Admin "Operations" screens, AiMappingGate.status, redacted restore preview, three index runs | `Backend/src/modules/form-governance/*`, `models/{FormPipelineRunSummary,FormMigrationReport,FormPipelineDigest}.js`, `form-pipeline/{PipelineAlerter,FormPipelineRunner,FormPipeline,alerts/*}.js`, `modules/email/*` (templates, policy, registry), `notification.constants.js`, `form-release/form-release.routes.js`, `form-ai-mapping/accuracy/AiMappingGate.js`, `scripts/create{FormGovernance,FormPipeline}Indexes.js`, `Admin/frontend/src/components/{FormGovernance*,MappingReviewQueue*,FrozenCases*,AiMapping*}.jsx`, tests |
+| 2026-10-22 | Phase 6 | safe test runner (`npm run test:safe`), 7 Phase 6 acceptance tests, knowledge engine now uses the shared frozen-status list, full regression + four builds + pre-change comparison recorded | `Backend/src/scripts/runSafeTests.js`, `Backend/package.json`, `form-pipeline/tests/phase6.acceptance.test.js`, `cases/immigration-knowledge-engine.service.js` |
 | 2026-10-16 | Keep blank + golden-set reasons | Per-box "Keep blank" (a person decides a box stays empty: no canonical mapping, template default value ignored, not required, enforced on every save, inherited by rebuilds and carried into new editions, counted separately in coverage; Undo; mapping the box again clears it). Golden set "Wrong" now asks why + what to fill instead (or "should be blank"). Additive: with no kept-blank boxes nothing changes | `form-mapping/contract/keepBlank.js`, `MappingGraphService.js`, `FormMappingService.js`, `EditionMigrationService.js`, `ValidationService.js`, `uscis-form.service.js`, `MappingGraphController.js`, `mappingGraphRoutes.js`, `MappingContractValidator.js`, `MappingCoverageService.js`, `golden/GoldenSetService.js`, `models/GoldenSetReview.js`, `Admin/.../FormGovernanceDetail.jsx`, `GoldenSetReviewSection.jsx`, `services/api.js`, tests |
+
+## Phase 7.E - 7.8 - Autonomous editions (built, verified 2026-10-23; switch FORM_PIPELINE_AUTONOMY = off | shadow | on)
+
+Everything is behind the switch (off = today's behavior byte for byte, shadow = log only, on = apply). Plan: docs/FORM_PIPELINE_PHASE7_PLAN.md.
+
+| Step | What was built |
+|---|---|
+| 7.E | Error-resolution engine: Diagnoser, Resolver, Discovery, solution store, catalog of strategies that run and verify; "forms stuck" developer e-mail (DEVELOPER_EMAIL) for every dead end |
+| 7.2 / 7.3 | Official-source resolver (I-485J, I-539A aliases), hardened PDF download (timeouts, truncation, junk before header, hints), pure-JavaScript qpdf fallback, row-based edition detection, import policy |
+| 7.4 / 7.5 / 7.7 | Field inventory (report only), registry-free component discovery, data-conserving case migration, unmapped boxes left blank while the import continues (partial activation) |
+| 7.6a / 7.6b | Data and artifact probes, artifact validator and certification binding; system actor, machine acknowledgement, queued case migration, brand-new form registered unlinked |
+| 7.8 | Edition simulation suite; 35 scenarios; with the switch on 23 (65.7%) end without a human, data loss 0, corruption 0 |
+
+Simulation defects found and fixed: (1) strategies no longer claim a fix that changes nothing (longer-timeout retry really waits longer, only for a timeout); (2) every dead end is recorded as stuck and e-mailed once; (3) a truncated download is diagnosed as a damaged PDF and two identical cut-off downloads are never accepted; (4) a pure "Part 1 became Part 3" shift is carried by the matcher when safe. Still held on purpose: renumbered_part_shift (owner decision on letting high-confidence renames be active).
+
+Verification: full `npm run test:safe` 2,603 tests, 18 fail (all previously known: qpdf missing locally, PDFFidelityService 10 s timeouts, stale tests, the old repairLegacyMappingFindings matrix line); all-37-live-forms snapshot compared with the baseline; Admin, Attorney, Client, Landing builds pass.
+Also fixed in this period: ticked checkboxes not saved (Admin PDFFieldChangeAdapter), and e-mails to the blocked address (EMAIL_BLOCKED_RECIPIENTS; case mail goes to the creator's team lead, else teamlead@immiglance.com).

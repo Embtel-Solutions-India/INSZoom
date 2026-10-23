@@ -18,6 +18,9 @@ const USCISFormComponentDefinition = require("../../../models/USCISFormComponent
 const storageService = require("../../uploads/storage.service");
 const { PDFParse } = require("pdf-parse");
 const logger = require("../../../utils/logger");
+const autonomy = require("../../../config/formPipelineAutonomy");
+const Segmenter = require("./ComponentSegmenter");
+const { stripPageFurniture, textSimilarity, findTrailingBoilerplateStart } = Segmenter;
 
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -77,26 +80,7 @@ async function extractPerPageText(buffer) {
   }
 }
 
-// Trailing pages that are near-identical to each other (boilerplate closing
-// sections - "Additional Information"/interpreter/preparer pages shared by
-// every classification, not scoped to any one component) are detected by
-// simple token-overlap similarity, not assumed to be a fixed count of pages.
-function textSimilarity(a, b) {
-  const tokensA = new Set(a.toLowerCase().split(/\s+/).filter(Boolean));
-  const tokensB = new Set(b.toLowerCase().split(/\s+/).filter(Boolean));
-  if (!tokensA.size || !tokensB.size) return 0;
-  let shared = 0;
-  for (const t of tokensA) if (tokensB.has(t)) shared += 1;
-  return shared / Math.max(tokensA.size, tokensB.size);
-}
-
-function findTrailingBoilerplateStart(pages) {
-  for (let i = pages.length - 1; i > 0; i -= 1) {
-    if (textSimilarity(pages[i], pages[i - 1]) >= 0.6) continue;
-    return i + 1; // 1-indexed page after the last dissimilar pair
-  }
-  return pages.length + 1; // no boilerplate tail detected
-}
+// stripPageFurniture / textSimilarity / findTrailingBoilerplateStart: unchanged, now defined once in ComponentSegmenter (pure) and re-exported below.
 
 // Discovers every registry-referenced component for one parent form against
 // its currently-active template, and upserts USCISFormComponentDefinition
@@ -109,7 +93,7 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
   const componentMappings = await VisaFormMapping.find({
     parentForm: parentFormCode,
     componentType: { $in: ["SUPPLEMENT", "FORM_COMPONENT"] },
-  }).select("formName componentType formTemplateFormCode").lean();
+  }).select("formName componentType formTemplateFormCode componentCode").lean();
 
   const distinctByName = new Map();
   for (const row of componentMappings) {
@@ -130,6 +114,22 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
   const buffer = await storageService.readBuffer(storageKey);
   const pages = await extractPerPageText(buffer);
   const boilerplateStart = findTrailingBoilerplateStart(pages);
+
+  // Phase 7.5 (FORM_PIPELINE_AUTONOMY): the registry-free segmentation of the same PDF. off = not computed at all (today's behavior byte for byte); shadow = computed and only
+  // LOGGED against today's result; on = additionally bounds every range by every real heading and records unregistered supplements as new-component candidates.
+  const mode = autonomy.mode();
+  let segmentation = null;
+  let previousDefs = [];
+  if (mode !== "off") {
+    try {
+      previousDefs = await loadPreviousDefinitions(parentFormCode, template);
+      const registryCandidates = [...distinctByName.values()].map((row) => ({ name: row.formName, componentCode: row.componentCode || componentCodeFor(parentFormCode, row.formName), inUse: Boolean(row.componentCode), source: "registry" }));
+      const previousCandidates = previousDefs.map((def) => ({ name: def.name, componentCode: def.componentCode, inUse: false, source: "previous" }));
+      segmentation = Segmenter.segment({ pages, parentFormCode, candidates: [...registryCandidates, ...previousCandidates] });
+    } catch (error) {
+      logger.warn("uscis_component_segmentation_failed", { parentFormCode, error: error.message });
+    }
+  }
 
   // Find every component's first-match page, skipping any formName the
   // pattern-derivation can't handle (left REVIEW_REQUIRED with a reason,
@@ -158,12 +158,35 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
     found.push({ formName, componentType: row.componentType, startPage: matchPage });
   }
 
+  // Phase 7.5 (on): a heading the registry knows nothing about becomes its own NEW-COMPONENT CANDIDATE (never ACTIVE) and ENDS the previous component's range, instead of
+  // being silently absorbed into it. Registry components are unchanged: a start page they found is never touched.
+  if (mode === "on" && segmentation) {
+    const known = new Set(found.map((item) => item.startPage).filter(Boolean));
+    for (const seg of segmentation.segments) {
+      if (seg.kind !== "component" || seg.headingless || known.has(seg.startPage)) continue;
+      found.push({ formName: seg.headingText, componentType: "FORM_COMPONENT", startPage: seg.startPage, candidate: { code: seg.componentCode, carried: seg.codeSource === "carried" } });
+    }
+  }
+
   found.sort((a, b) => (a.startPage || Infinity) - (b.startPage || Infinity));
 
   const results = [];
   for (let i = 0; i < found.length; i += 1) {
     const current = found[i];
-    const componentCode = `${parentFormCode.replace(/[^A-Za-z0-9]/g, "")}_${(current.formName || "").replace(/[^A-Za-z0-9]+/g, "_").slice(0, 24).toUpperCase()}`;
+    // a registry component keeps the code derived from its registry name (today's rule); in "on" a code the previous edition already used for that name wins, so a renamed
+    // registry entry can never orphan the codes stored on registry rows and open case forms
+    const componentCode = current.candidate ? current.candidate.code : (mode === "on" ? previousCodeFor(previousDefs, current.formName) : null) || componentCodeFor(parentFormCode, current.formName);
+    if (current.candidate) {
+      const nextStartCandidate = found[i + 1]?.startPage;
+      const candidateEnd = Math.max(current.startPage, Math.min(nextStartCandidate ? nextStartCandidate - 1 : pages.length, boilerplateStart - 1));
+      results.push(await upsertDefinition({
+        parentFormCode, template, componentCode, formName: current.formName, componentType: current.componentType,
+        pageRanges: [{ startPage: current.startPage, endPage: candidateEnd }], fieldIds: [], status: "REVIEW_REQUIRED",
+        verificationMethod: CANDIDATE_METHOD,
+        reviewReason: `New component candidate: pages ${current.startPage}-${candidateEnd} start with the heading "${current.formName}", which no registry row and no earlier edition accounts for. It is kept out of the core form's pages; register it (or confirm it) to use it.`,
+      }));
+      continue;
+    }
     if (!current.startPage) {
       results.push(await upsertDefinition({ parentFormCode, template, componentCode, formName: current.formName, componentType: current.componentType, pageRanges: [], fieldIds: [], status: "REVIEW_REQUIRED", reviewReason: current.reviewReason }));
       continue;
@@ -238,9 +261,9 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
       const oldTemplate = await USCISFormTemplate.findById(manual.parentTemplateId);
       const oldPages = await extractPerPageText(await storageService.readBuffer(oldTemplate.artifacts.form.storageKey));
       const oldRange = manual.pageRanges?.[0];
-      const oldText = oldPages.slice((oldRange?.startPage || 1) - 1, oldRange?.endPage || oldPages.length).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
-      const newText = pages.slice(startPage - 1).join(" ").replace(/Page d+ of d+|Form I-d+ Edition [d/]+/g, "");
-      looksSame = textSimilarity(oldText, newText) >= 0.7;
+      const oldText = oldPages.slice((oldRange?.startPage || 1) - 1, oldRange?.endPage || oldPages.length).join(" ");
+      const newText = stripPageFurniture(pages.slice(startPage - 1).join(" "));
+      looksSame = textSimilarity(stripPageFurniture(oldText), newText) >= 0.7;
     } catch (error) {
       looksSame = false;
     }
@@ -251,6 +274,34 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
       status: looksSame ? "ACTIVE" : "REVIEW_REQUIRED",
       reviewReason: looksSame ? undefined : `Trailing pages ${startPage}-${pages.length} no longer look like "${manual.name}".`,
     }));
+  }
+
+  // Phase 7.5 (on): pages after the last component that nothing accounts for (no heading, no registered continuation sheet, no previous counterpart) are an UNCLAIMED RUN. They
+  // become a candidate (kept out of the core render) instead of silently leaking into the core form. Only for a parent that already has an ACTIVE component.
+  if (mode === "on" && segmentation && results.some((item) => item.status === "ACTIVE")) {
+    const covered = new Set();
+    results.forEach((item) => (item.pageRanges || []).forEach((range) => { for (let p = range.startPage; p <= range.endPage; p += 1) covered.add(p); }));
+    const tail = segmentation.segments.find((seg) => seg.kind === "tail");
+    if (tail && !covered.has(tail.startPage)) {
+      results.push(await upsertDefinition({
+        parentFormCode, template, componentCode: `${parentFormCode.replace(/[^A-Za-z0-9]/g, "")}_UNCLAIMED_TAIL`, formName: `Unclaimed pages ${tail.startPage}-${tail.endPage}`, componentType: "FORM_COMPONENT",
+        pageRanges: [{ startPage: tail.startPage, endPage: tail.endPage }], fieldIds: [], status: "REVIEW_REQUIRED", verificationMethod: CANDIDATE_METHOD,
+        reviewReason: `Pages ${tail.startPage}-${tail.endPage} come after the last supplement and match no heading, no registered continuation sheet and nothing in the previous edition. They are kept out of the core form's pages until someone confirms what they are.`,
+      }));
+    }
+  }
+
+  // Phase 7.5 (shadow): what the segmentation says versus what today's discovery decided - logged only, nothing written
+  if (mode === "shadow" && segmentation) {
+    try {
+      const today = results.map((item) => `${item.componentCode}:${item.status}:${(item.pageRanges || []).map((r) => `${r.startPage}-${r.endPage}`).join("+")}`).sort();
+      const seen = segmentation.segments.filter((seg) => seg.kind !== "core").map((seg) => `${seg.kind}:${seg.componentCode || "-"}:${seg.startPage}-${seg.endPage}${seg.codeSource === "derived" ? ":candidate" : ""}`).sort();
+      const registryStarts = new Set(found.map((item) => item.startPage).filter(Boolean));
+      const unregistered = segmentation.segments.filter((seg) => seg.kind === "component" && !seg.headingless && !registryStarts.has(seg.startPage)).map((seg) => ({ startPage: seg.startPage, heading: seg.headingText }));
+      logger.warn("uscis_component_segmentation_shadow", { parentFormCode, templateVersion: template.version, today, segmentation: seen, unregisteredHeadings: unregistered, unclaimedPages: segmentation.unclaimed });
+    } catch (error) {
+      logger.warn("uscis_component_segmentation_shadow_failed", { parentFormCode, error: error.message });
+    }
   }
 
   // Connect every matching VisaFormMapping row's componentCode - only for
@@ -267,10 +318,33 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
     );
   }
 
-  return { parentFormCode, templateVersion: template.version, componentsDiscovered: results.length, results: results.map((r) => ({ componentCode: r.componentCode, status: r.status, pageRanges: r.pageRanges, fieldCount: r.fieldIds.length, reviewReason: r.reviewReason })) };
+  return { parentFormCode, templateVersion: template.version, componentsDiscovered: results.length, results: results.map((r) => ({ componentCode: r.componentCode, status: r.status, pageRanges: r.pageRanges, fieldCount: r.fieldIds.length, reviewReason: r.reviewReason, verificationMethod: r.verificationMethod })) };
 }
 
-async function upsertDefinition({ parentFormCode, template, componentCode, formName, componentType, pageRanges, fieldIds, status, reviewReason }) {
+const CANDIDATE_METHOD = "segmenter_new_component_candidate";
+const componentCodeFor = (parentFormCode, formName) => `${parentFormCode.replace(/[^A-Za-z0-9]/g, "")}_${(formName || "").replace(/[^A-Za-z0-9]+/g, "_").slice(0, 24).toUpperCase()}`;
+
+/** The most recent OTHER edition's definitions of this parent (any status), newest edition first. */
+async function loadPreviousDefinitions(parentFormCode, template) {
+  const defs = await USCISFormComponentDefinition.find({ parentFormCode, parentTemplateId: { $ne: template._id } }).select("parentTemplateId componentCode name status pageRanges verificationMethod discoveredAt").sort({ discoveredAt: -1 }).lean();
+  if (!defs.length) return [];
+  const newest = String(defs[0].parentTemplateId);
+  return defs.filter((def) => String(def.parentTemplateId) === newest && def.verificationMethod !== CANDIDATE_METHOD);
+}
+
+/** A code the previous edition already used for this registry name: the same name exactly, or a renamed entry that is clearly the same component. null = derive it. */
+function previousCodeFor(previousDefs, formName) {
+  const exact = previousDefs.find((def) => def.name === formName);
+  if (exact) return exact.componentCode;
+  let best = null;
+  for (const def of previousDefs) {
+    const score = Segmenter.nameSimilarity(formName, def.name);
+    if (score >= 0.85 && (!best || score > best.score)) best = { score, code: def.componentCode };
+  }
+  return best ? best.code : null;
+}
+
+async function upsertDefinition({ parentFormCode, template, componentCode, formName, componentType, pageRanges, fieldIds, status, reviewReason, verificationMethod = "pdf_text_heading_search+field_page_crossref" }) {
   // findOneAndUpdate silently drops an `undefined` field from the update
   // instead of unsetting it - a re-run that goes from REVIEW_REQUIRED (with
   // a reason) to ACTIVE (no reason) would otherwise leave the previous
@@ -290,7 +364,7 @@ async function upsertDefinition({ parentFormCode, template, componentCode, formN
       status,
       discoverySource: "USCISFormComponentDiscoveryService",
       discoveredAt: new Date(),
-      verificationMethod: "pdf_text_heading_search+field_page_crossref",
+      verificationMethod,
     },
   };
   if (reviewReason) update.$set.reviewReason = reviewReason;
@@ -330,4 +404,8 @@ module.exports = {
   discoverComponentsForParentForm,
   discoverAllRegistryComponents,
   deriveSearchPattern,
+  stripPageFurniture,
+  textSimilarity,
+  findTrailingBoilerplateStart,
+  previousCodeFor,
 };

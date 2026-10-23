@@ -31,3 +31,7 @@ test("shared backend no longer mounts cross-backend synchronization APIs", () =>
   const mounts = mountedPaths().join("\n");
   assert.doesNotMatch(mounts, /sync/i);
 });
+
+test("date reminders only notify: no case date config asks for a Task", () => {
+  assert.equal(service.CASE_DATE_CONFIGS.some((config) => config.task), false);
+});

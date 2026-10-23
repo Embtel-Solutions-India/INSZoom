@@ -11,10 +11,16 @@ function startUSCISCatalogSyncJob(withJobLock) {
   const initialDelayMs = Number(process.env.USCIS_CATALOG_SYNC_INITIAL_DELAY_MS || 10 * 60 * 1000);
   const run = () => withJobLock("uscis-catalog-sync", 3 * 60 * 60 * 1000, async () => {
     const actor = await User.findOne({ role: { $in: ["super_admin", "admin"] } }).sort({ createdAt: 1 });
-    const synced = await runCatalogSync({ user: actor || { role: "super_admin" } });
-    // then the edition-acceptance check for every edition on file - owned by the form-edition-policy subsystem (default off, never throws)
-    await runScheduledEditionChecks();
-    return synced;
+    // Phase 5: the run is recorded for the governance overview AFTER it finishes; recording is fail-safe and never changes the run or its result
+    const task = async () => {
+      const synced = await runCatalogSync({ user: actor || { role: "super_admin" } });
+      // then the edition-acceptance check for every edition on file - owned by the form-edition-policy subsystem (default off, never throws)
+      await runScheduledEditionChecks();
+      return synced;
+    };
+    let governance = null;
+    try { governance = require("../../form-governance/GovernanceRecorder"); } catch { /* governance bookkeeping is optional */ }
+    return governance ? governance.timedRun("catalog_sync", task, require("../../form-governance/summaries").summarizeCatalogSync) : task();
   }).catch((error) => logger.error("uscis_catalog_sync_failed", { error: error.message }));
   const initial = setTimeout(run, Math.max(initialDelayMs, 0));
   initial.unref?.();

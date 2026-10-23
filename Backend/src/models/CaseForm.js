@@ -259,6 +259,24 @@ const caseFormSchema = new mongoose.Schema(
       ),
       default: {},
     },
+    // ─── Phase 3 (case migration safety) ADDITION - optional and small; absent on every case form that was never migrated by the safe migration ───
+    // Where an edition migration of THIS case form stands (see CaseFormMigrationRecovery): a crash at any step is resumed from the recorded step. The pre-image lives in
+    // CaseFormMigrationSnapshot, never here.
+    migrationState: {
+      jobId: String,
+      snapshotId: { type: mongoose.Schema.Types.ObjectId, ref: "CaseFormMigrationSnapshot" },
+      step: { type: String, enum: ["snapshotted", "saved", "autofilled", "verified", "completed", "reconciliation_required", "parked"] },
+      outcome: { type: String, enum: ["migrated", "restored"] },
+      expectedIntermediateChecksum: String,
+      // Phase 7.7 (only written when FORM_PIPELINE_AUTONOMY is on): the status / version the migration must leave unchanged, and the persistent "parked" record of a case form
+      // whose answers cannot be carried safely (it stays on its old edition; re-evaluated when the rules or the matcher change or the case form is edited)
+      expected: mongoose.Schema.Types.Mixed,
+      parked: mongoose.Schema.Types.Mixed,
+      updatedAt: Date,
+      error: String,
+    },
+    // Phase 7.7: set on the case form's generated PDFs when its edition changed: they were made from the OLD edition (nothing is deleted; regenerate to refresh)
+    generatedPdfStale: mongoose.Schema.Types.Mixed,
     // ─── END PHASE 2 ADDITIONS ───────────────────────────────────────────────
   },
   { timestamps: true }
@@ -301,6 +319,8 @@ caseFormSchema.index({ "syncState.requiresRegeneration": 1, updatedAt: -1 });
 // which a compound index leading with caseId cannot satisfy.
 caseFormSchema.index({ caseId: 1, updatedAt: -1 });
 caseFormSchema.index({ updatedAt: -1 });
+// the reconciliation sweeper looks for migrations that stopped half-way (sparse: only migrated case forms carry the field)
+caseFormSchema.index({ "migrationState.step": 1 }, { sparse: true });
 
 const CaseForm = mongoose.model("CaseForm", caseFormSchema);
 

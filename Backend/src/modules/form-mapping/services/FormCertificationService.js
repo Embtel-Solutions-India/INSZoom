@@ -5,6 +5,8 @@
 // Checks (all deterministic, no AI):
 //   pdf_fillable          the stored PDF loads (qpdf-normalized, XFA-free), exposes AcroForm fields, and every scanned field is present
 //   mapping_valid         the active mapping graph validates with zero errors, is non-empty, and (rule-driven forms) holds only rule-verified edges
+//   party_markers         (Phase 3) distinct synthetic markers per party are resolved through the real mapper: each person's data may only land in that person's boxes
+//   widget_inputs         (Phase 3) tick boxes get booleans, drop-downs get a choice the renderer can select, dates are dates
 //   fill_roundtrip        every mapped text field accepts a probe value, the PDF saves, reloads, and reads each probe back - i.e. the filled form is NOT blank
 //   viewer_download       the filled bytes are a valid PDF with the template's page count (what the case manager sees, edits and downloads)
 //   components_slice      every component / supplement the previous edition served can be sliced from this edition
@@ -81,6 +83,20 @@ async function certify(template, { previous = null, persist = true } = {}) {
     return `${graph.edges.length} edges${validation.contract?.summary?.legacyViolations ? `, ${validation.contract.summary.legacyViolations} legacy findings (report only)` : ""}`;
   });
 
+  // Phase 3: prove WHO each box is filled with and that each kind of box gets a value it can hold (in memory; the policy that makes both critical is form-release/certPolicy.js)
+  const targetsById = new Map();
+  (template.formFields || []).forEach((field) => { if (field.fieldId) targetsById.set(field.fieldId, field); if (field.uniqueId) targetsById.set(field.uniqueId, field); });
+  await run(checks, "party_markers", async () => {
+    const report = require("../../form-release/markerCertification").partyMarkerReport({ graph, targetsById });
+    if (report.violations.length) fail(`${report.violations.length} box(es) would receive the wrong party's data, first: ${report.violations[0].field}: ${report.violations[0].reason}`);
+    return `${report.checked} mapped boxes traced to the right party (${report.unobserved} not observable${report.advisories.length ? `, ${report.advisories.length} advisories` : ""})`;
+  });
+  await run(checks, "widget_inputs", async () => {
+    const report = require("../../form-release/markerCertification").widgetInputReport({ graph, targetsById });
+    if (report.violations.length) fail(`${report.violations.length} box(es) would get a value they cannot hold, first: ${report.violations[0].field}: ${report.violations[0].reason}`);
+    return `${report.checked} mapped boxes given a valid value (${report.unobserved} not observable)`;
+  });
+
   let filledBytes = null;
   await run(checks, "fill_roundtrip", async () => {
     const { PDFRenderer, PDFDocument, pdf } = await loadPdf(template);
@@ -110,14 +126,63 @@ async function certify(template, { previous = null, persist = true } = {}) {
     return `${reloaded.getPageCount()} pages, ${filledBytes.length} bytes`;
   });
 
+  // Phase 7.6a (FORM_PIPELINE_AUTONOMY): the probe renders the edition's own PDF in memory with very long / typed / ticked values and checks the final file. 'on' records the two
+  // checks in the certification (critical, see certPolicy); 'shadow' only logs what they would say; 'off' does nothing at all.
+  const probeMode = require("../../../config/formPipelineAutonomy").mode();
+  if (probeMode !== "off") {
+    let probe = null;
+    const probeOnce = async () => { probe = probe || (await require("../../form-release/artifactCertification").probeEdition(template, { graph })); return probe; };
+    const describeFailures = (list) => list.slice(0, 3).map((failure) => `${failure.check}${failure.field ? ` ${failure.field}` : ""}: ${failure.detail}`).join("; ");
+    if (probeMode === "on") {
+      await run(checks, "data_probe", async () => {
+        const result = await probeOnce();
+        if (!result.data.ok) fail(`${result.data.failures.length} box(es) did not keep their data, first: ${describeFailures(result.data.failures)}`);
+        return `${result.data.checked} boxes kept their full data`;
+      });
+      await run(checks, "artifact_probe", async () => {
+        const result = await probeOnce();
+        if (!result.artifact.ok) fail(`${result.artifact.failures.length} problem(s) in the final file, first: ${describeFailures(result.artifact.failures)}`);
+        return `${result.artifact.stats.pages} pages, ${result.artifact.stats.measured} text boxes measured, ${result.artifact.stats.ticks} ticks visible`;
+      });
+    } else {
+      try {
+        const result = await probeOnce();
+        logger.warn("form_certification_probe_shadow", { formCode: template.formCode, version: template.version, dataOk: result.data.ok, artifactOk: result.artifact.ok, wouldFail: [...result.data.failures, ...result.artifact.failures].slice(0, 5) });
+      } catch (error) {
+        logger.warn("form_certification_probe_shadow_failed", { formCode: template.formCode, error: error.message });
+      }
+    }
+  }
+
   await run(checks, "components_slice", async () => {
     const { checkEditionReady } = require("./EditionMigrationService");
     const readiness = await checkEditionReady(template, previous);
     if (!readiness.ready) fail(readiness.problems.join("; "));
+    // Phase 7.5 (FORM_PIPELINE_AUTONOMY=on only): the check is no longer satisfied by "nothing to compare with" - every page after the first supplement must belong to a
+    // component, an unregistered supplement is a problem to resolve, every active component must have fields, and a component the previous edition served keeps a plausible size
+    const autonomyMode = require("../../../config/formPipelineAutonomy").mode();
+    if (autonomyMode !== "off") {
+      const { evaluateComponentSlice } = require("../../uscis-forms/services/ComponentSegmenter");
+      const USCISFormComponentDefinition = require("../../../models/USCISFormComponentDefinition");
+      const previousDefs = previous ? await USCISFormComponentDefinition.find({ parentTemplateId: previous._id, status: "ACTIVE" }).select("componentCode pageRanges fieldIds").lean() : [];
+      const sliceProblems = evaluateComponentSlice({ results: readiness.components, totalPages: Number(template.pdfMetadata?.pageCount) || 0, previousDefs: previousDefs.map((def) => ({ componentCode: def.componentCode, pageRanges: def.pageRanges, fieldCount: (def.fieldIds || []).length })) });
+      if (sliceProblems.length) {
+        if (autonomyMode === "on") fail(sliceProblems.join("; "));
+        logger.warn("form_certification_components_slice_shadow", { formCode: template.formCode, version: template.version, wouldFail: sliceProblems });
+      }
+    }
     return `${readiness.components.length} components`;
   });
 
   const report = { passed: checks.every((check) => check.passed), certifiedAt: new Date(), version: template.version, checks };
+  // Phase 7.6a ('on' only): the certification is bound to the mapping version it tested (ReleaseGate rejects it once the mapping has changed)
+  if (require("../../../config/formPipelineAutonomy").mode() === "on") {
+    const versionId = template.activeMappingVersionId || template.latestMappingVersionId;
+    if (versionId) {
+      report.mappingVersionId = String(versionId);
+      try { report.graphChecksum = (await require("../../../models/USCISMappingVersion").findById(versionId).select("checksum").lean())?.checksum; } catch (error) { /* the id alone binds it */ }
+    }
+  }
   // the coverage report of the mapping that was just certified is kept with its mapping version (never on the template document: I-129 is near the 16 MB limit)
   if (persist) {
     try {

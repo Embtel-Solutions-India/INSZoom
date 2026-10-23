@@ -7,7 +7,8 @@
 //   node src/scripts/createFormPipelineIndexes.js --apply    # connects and creates the indexes (creates the collection if it does not exist)
 // Safe to repeat.
 
-const MODELS = ["FormPipelineJob"];
+// Phase 5E adds FormPipelineDigest (the digest window of the developer e-mails: one OPEN window per key, finished ones expire after 30 days)
+const MODELS = ["FormPipelineJob", "FormPipelineDigest"];
 
 function plan() {
   return MODELS.map((name) => {

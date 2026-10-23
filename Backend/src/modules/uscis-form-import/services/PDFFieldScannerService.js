@@ -10,6 +10,7 @@ const {
 } = require("pdf-lib");
 const crypto = require("crypto");
 const _ = require("lodash");
+const { stableKeyOf, stableGroupOf } = require("../../form-mapping/matching/stableKey");
 
 const ANNOTATION_FLAGS = {
   invisible: 1,
@@ -99,6 +100,10 @@ function inferTextSemanticType(name = "", field) {
   if (/alien|a-number|anumber|a number/.test(value)) return "alienNumber";
   if (/receipt/.test(value)) return "uscisReceiptNumber";
   if (/passport/.test(value)) return "passport";
+  // "Street Number and Name" holds an address line ("123 Main St"), not a number: the word "number" in the PDF name must not make it numeric (a numeric box rejects every real address)
+  if (/street/.test(value)) return field?.isMultiline?.() ? "textarea" : "text";
+  // an apartment / suite / floor number ("4B") and an international postal code ("SW1A 1AA") can hold letters too; a plain US ZIP code stays numeric
+  if (/aptsteflr|apt_ste_flr|aptnumber|apartment number|postal/.test(value)) return "text";
   if (/zip|postal|number|no$|apt|suite|floor|ein|tax id/.test(value)) return "number";
   return field?.isMultiline?.() ? "textarea" : "text";
 }
@@ -575,6 +580,8 @@ class PDFFieldScannerService {
           pdfFieldName: fieldName,
           normalizedName,
           normalizedPath: fieldId,
+          // Phase 7.3: an ADDITIVE identity for edition matching (container-free name + group). It never replaces or feeds fieldId and is not part of the field fingerprint.
+          stableKey: stableKeyOf(fieldName, stableGroupOf(detectGroupId(fieldName, fieldId, pageNumber))),
           type,
           fieldType: type,
           pdfFieldType,

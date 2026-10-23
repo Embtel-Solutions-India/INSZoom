@@ -1,0 +1,936 @@
+{
+ "at": "2026-10-22T21:27:29.915Z",
+ "from": "madaan@bayareaimmigrationservices.com",
+ "cases": [
+  {
+   "caseId": "6ac6d0cd2fe72c7c68af8dc6",
+   "caseNumber": "B197",
+   "source": "admin_direct",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6a8ddf35877b6e7c6b2d5db9",
+    "email": "akash@bayareaimmigrationservices.com",
+    "teamId": null
+   },
+   "why": "created by this team lead"
+  },
+  {
+   "caseId": "6ace89c9e9c10413fef31482",
+   "caseNumber": "B243",
+   "source": "admin_direct",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6a8ddf35877b6e7c6b2d5db9",
+    "email": "akash@bayareaimmigrationservices.com",
+    "teamId": null
+   },
+   "why": "created by this team lead"
+  },
+  {
+   "caseId": "6ace89c9e9c10413fef31496",
+   "caseNumber": "B243-A",
+   "source": "admin_direct",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6a8ddf35877b6e7c6b2d5db9",
+    "email": "akash@bayareaimmigrationservices.com",
+    "teamId": null
+   },
+   "why": "created by this team lead"
+  },
+  {
+   "caseId": "6ad12c3ab50e906992893e63",
+   "caseNumber": "B337",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12c63b50e906992897cc3",
+   "caseNumber": "B338",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12c7eb50e90699289bae7",
+   "caseNumber": "B339",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12c97b50e90699289f901",
+   "caseNumber": "B340",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12cb0b50e9069928a373c",
+   "caseNumber": "B341",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12cc8b50e9069928a7573",
+   "caseNumber": "B342",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12ce1b50e9069928ab3aa",
+   "caseNumber": "B343",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12cfab50e9069928af206",
+   "caseNumber": "B344",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12d14b50e9069928b3052",
+   "caseNumber": "B345",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12d3bb50e9069928b6ec5",
+   "caseNumber": "B346",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12d5bb50e9069928bad31",
+   "caseNumber": "B347",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12d7db50e9069928bec19",
+   "caseNumber": "B348",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12d95b50e9069928c2a8c",
+   "caseNumber": "B349",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12dc3b50e9069928c6959",
+   "caseNumber": "B350",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12df7b50e9069928ca833",
+   "caseNumber": "B351",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12efb9c1841b9f727d4a6",
+   "caseNumber": "B352",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12efd9c1841b9f7281335",
+   "caseNumber": "B353",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12efe9c1841b9f72851cd",
+   "caseNumber": "B354",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f009c1841b9f728907c",
+   "caseNumber": "B355",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f019c1841b9f728cf37",
+   "caseNumber": "B356",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f039c1841b9f7290ded",
+   "caseNumber": "B357",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f049c1841b9f7294cb8",
+   "caseNumber": "B358",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f059c1841b9f7298b84",
+   "caseNumber": "B359",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f069c1841b9f729ca63",
+   "caseNumber": "B360",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f089c1841b9f72a0941",
+   "caseNumber": "B361",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f099c1841b9f72a4829",
+   "caseNumber": "B362",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f0a9c1841b9f72a871d",
+   "caseNumber": "B363",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f0c9c1841b9f72ac6e2",
+   "caseNumber": "B364",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f0d9c1841b9f72b05e8",
+   "caseNumber": "B365",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f0e9c1841b9f72b44f8",
+   "caseNumber": "B366",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f0f9c1841b9f72b8414",
+   "caseNumber": "B367",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f119c1841b9f72bc343",
+   "caseNumber": "B368",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f129c1841b9f72c02a5",
+   "caseNumber": "B369",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f139c1841b9f72c41dd",
+   "caseNumber": "B370",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f159c1841b9f72c812c",
+   "caseNumber": "B371",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f169c1841b9f72cc083",
+   "caseNumber": "B372",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f179c1841b9f72cffe4",
+   "caseNumber": "B373",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f189c1841b9f72d3f4f",
+   "caseNumber": "B374",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f1a9c1841b9f72d7ebc",
+   "caseNumber": "B375",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f1b9c1841b9f72dbe31",
+   "caseNumber": "B376",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f1d9c1841b9f72dfdaf",
+   "caseNumber": "B377",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f1e9c1841b9f72e3d39",
+   "caseNumber": "B378",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f1f9c1841b9f72e7cd6",
+   "caseNumber": "B379",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f209c1841b9f72ebc72",
+   "caseNumber": "B380",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f229c1841b9f72efc23",
+   "caseNumber": "B381",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f239c1841b9f72f3be0",
+   "caseNumber": "B382",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f249c1841b9f72f7ba5",
+   "caseNumber": "B383",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f269c1841b9f72fbb74",
+   "caseNumber": "B384",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f279c1841b9f72ffb4d",
+   "caseNumber": "B385",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f289c1841b9f7303cb5",
+   "caseNumber": "B386",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f2b9c1841b9f7308038",
+   "caseNumber": "B387",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f2c9c1841b9f730c022",
+   "caseNumber": "B388",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f2d9c1841b9f7310023",
+   "caseNumber": "B389",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f2f9c1841b9f7314021",
+   "caseNumber": "B390",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f309c1841b9f7318041",
+   "caseNumber": "B391",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad12f319c1841b9f731c05e",
+   "caseNumber": "B392",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad134979c1841b9f7328f4d",
+   "caseNumber": "B393",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad1349a9c1841b9f732d0f6",
+   "caseNumber": "B394",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  },
+  {
+   "caseId": "6ad136d07f3db46ad876be45",
+   "caseNumber": "B395",
+   "source": "ghl",
+   "before": {
+    "assignedTeamLead": "6a8ddf36877b6e7c6b2d5dbc",
+    "teamId": null
+   },
+   "to": {
+    "id": "6aa970c8152df737f8f5ee15",
+    "email": "teamlead@immiglance.com",
+    "teamId": null
+   },
+   "why": "no team lead created it: the default team lead"
+  }
+ ]
+}

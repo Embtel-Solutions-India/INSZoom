@@ -47,15 +47,29 @@ test("normalizePdf rejects a non-PDF buffer before ever invoking qpdf", async ()
   );
 });
 
-test("normalizePdf throws QPDF_NOT_FOUND when env.qpdfPath points at a missing binary", async () => {
+test("normalizePdf throws QPDF_NOT_FOUND only when qpdf cannot be started even after a fresh re-probe and the bare name (injected, so the result does not depend on this machine having qpdf on PATH)", async () => {
+  const original = await buildFillablePdf();
+  const previousPath = env.qpdfPath;
+  env.qpdfPath = "C:/definitely/not/a/real/qpdf/binary-does-not-exist.exe";
+  const missing = async (binary) => { throw Object.assign(new Error(`spawn ${binary} ENOENT`), { code: "ENOENT", syscall: `spawn ${binary}`, path: binary }); };
+  try {
+    await assert.rejects(
+      () => normalizePdf(original, { exec: missing, ensureQpdf: async () => null, mode: "off" }),
+      (error) => error.code === "QPDF_NOT_FOUND" && error.cause === "tool_spawn"
+    );
+  } finally {
+    env.qpdfPath = previousPath;
+  }
+});
+
+test("normalizePdf heals a wrong QPDF_PATH by itself when qpdf is available another way (re-probe / PATH)", async (t) => {
   const original = await buildFillablePdf();
   const previousPath = env.qpdfPath;
   env.qpdfPath = "C:/definitely/not/a/real/qpdf/binary-does-not-exist.exe";
   try {
-    await assert.rejects(
-      () => normalizePdf(original),
-      (error) => error.code === "QPDF_NOT_FOUND"
-    );
+    let normalized;
+    try { normalized = await normalizePdf(original, { mode: "off" }); } catch (error) { if (error.code === "QPDF_NOT_FOUND") return t.skip("no qpdf anywhere on this machine"); throw error; }
+    assert.ok(Buffer.isBuffer(normalized));
   } finally {
     env.qpdfPath = previousPath;
   }

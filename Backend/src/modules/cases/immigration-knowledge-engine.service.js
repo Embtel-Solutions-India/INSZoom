@@ -10,7 +10,7 @@ const questionnaireService = require("../questionnaires/questionnaire.service");
 const IntelligentQuestionnaireService = require("../questionnaires/intelligent-questionnaire.service");
 const uscisFormService = require("../uscis-forms/uscis-form.service");
 
-const PROTECTED_FORM_STATUSES = new Set(["approved", "ready_for_pdf", "generated", "finalized", "filed", "locked", "archived"]);
+const { isFrozen } = require("../form-mapping/config/caseFormFreeze"); // the one shared definition of a frozen case form
 const FILE_QUESTION_TYPES = new Set(["file", "file-multiple"]);
 
 function idOf(value) {
@@ -453,7 +453,7 @@ class ImmigrationKnowledgeEngineService {
       // principal's canonical version says nothing about the child's own profile.
       const canonicalVersion = isChildForm ? 0 : Number(canonicalState?.version || 0);
       const syncedVersion = Number(form.syncState?.canonicalVersion || 0);
-      if (PROTECTED_FORM_STATUSES.has(form.status) || form.isLocked) {
+      if (isFrozen(form)) {
         if (canonicalVersion > syncedVersion) {
           form.syncState = {
             ...(form.syncState?.toObject?.() || form.syncState || {}),

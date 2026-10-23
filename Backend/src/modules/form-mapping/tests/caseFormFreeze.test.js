@@ -46,6 +46,7 @@ test("no automatic migration path keeps its own list of frozen statuses (only th
     "modules/cases/case-workflow-automation.service.js", // "all forms done" check
     "modules/cases/immigration-knowledge-engine.service.js", // protected-from-AI-rewrite set
     "modules/uscis-forms/uscis-form.service.js", // a $nin filter for listing
+    "modules/form-generation/services/FilingArtifactPolicy.js", // which statuses count as the FILING step (a download / package rule, not a migration freeze)
     "scripts/formEditionPolicyRolloutReport.js", // FINISHED = no longer worked on (a report bucket, not a freeze)
   ];
   const offenders = walk(SRC)

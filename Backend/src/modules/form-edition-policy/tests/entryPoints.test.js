@@ -38,7 +38,10 @@ function stubModels(template) {
   const calls = { updateMany: 0, save: () => template.saves, find: 0, caseFormFind: 0 };
   mock.method(USCISFormTemplate, "findById", async () => template);
   mock.method(USCISFormTemplate, "updateMany", async () => { calls.updateMany += 1; return {}; });
-  mock.method(USCISFormTemplate, "find", () => { calls.find += 1; return { lean: async () => [] }; });
+  // one edition is live now: Phase 3 brings the new one live first, confirms it, and only then retires this one (select/lean chain, exists, updateOne)
+  mock.method(USCISFormTemplate, "find", () => { calls.find += 1; return { select() { return this; }, lean: async () => [{ _id: "old" }] }; });
+  mock.method(USCISFormTemplate, "exists", async () => true);
+  mock.method(USCISFormTemplate, "updateOne", async () => ({}));
   mock.method(CaseForm, "find", async () => { calls.caseFormFind += 1; return []; });
   mock.method(VersionManagementService, "impactAnalysis", async () => ({}));
   mock.method(VersionManagementService, "audit", async () => null);
@@ -203,11 +206,11 @@ test("MATRIX: every other route to activation ends in the guarded function (the 
 test("MATRIX: the pipeline imports only the enforcer (and the 12-hour job only the scheduler) - never the gate, the store or the service directly", () => {
   const importers = walk(SRC).filter((file) => !isTest(file) && !rel(file).startsWith("modules/form-edition-policy/") && /require\([^)]*form-edition-policy/.test(codeOf(file))).map(rel).sort();
   assert.deepEqual(importers, [
-    "models/FormEditionAuditEvent.js", "models/FormEditionDecision.js", "modules/form-mapping/services/CaseFormEditionMigrationService.js", "modules/uscis-form-import/scripts/importLocalForm.js",
-    "modules/uscis-forms/uscis-form-importer.service.js", "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js", "modules/uscis-lifecycle/services/VersionManagementService.js", "routes/index.js", "scripts/formSourceRedirectCrawl.js", "scripts/replaceFormEdition.js", ...SEEDS,
+    "models/FormEditionAuditEvent.js", "models/FormEditionDecision.js", "modules/form-governance/FormStatusService.js", "modules/form-mapping/services/CaseFormEditionMigrationService.js", "modules/form-pipeline/resolution/importDeps.js", "modules/uscis-form-import/services/OnDemandFormAcquisitionService.js", /* Phase 7.6b: reads the edition decision (read-only peek) only to refuse a machine acknowledgement of an edition USCIS does not accept */ "modules/uscis-form-import/services/PdfDownload.js", "modules/uscis-form-import/services/SourceResolver.js", "modules/form-release/ReleaseGate.js", "modules/uscis-form-import/scripts/importLocalForm.js",
+    "modules/uscis-forms/uscis-form-importer.service.js", "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js", "modules/uscis-lifecycle/services/VersionManagementService.js", "routes/index.js", "scripts/buildFixtureManifest.js", "scripts/formSourceRedirectCrawl.js", "scripts/replaceFormEdition.js", "test-utils/editionSim/fakeUscis.js", ...SEEDS,
   ].sort());
   for (const file of importers) {
-    if (file.startsWith("models/") || file === "routes/index.js" || file === "scripts/formSourceRedirectCrawl.js" || file === "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js") continue; // the job: see scheduler.test.js
+    if (file.startsWith("models/") || file === "routes/index.js" || file === "scripts/formSourceRedirectCrawl.js" || file === "scripts/buildFixtureManifest.js" || file === "modules/uscis-form-import/services/SourceResolver.js" || file === "modules/uscis-form-import/services/PdfDownload.js" || file === "modules/form-pipeline/resolution/importDeps.js" || file === "test-utils/editionSim/fakeUscis.js" || file === "modules/uscis-lifecycle/jobs/USCISCatalogSyncJob.js") continue; // the job: see scheduler.test.js
     assert.equal(/EditionPolicyGate|EvidenceService|EditionPolicyStore/.test(codeOf(path.join(SRC, file))), false, `${file} must only use the enforcer`);
     assert.match(codeOf(path.join(SRC, file)), /EditionPolicyEnforcer/);
   }

@@ -1,0 +1,281 @@
+{
+  "generatedAt": "2026-10-22T07:59:22.833Z",
+  "note": "Hashes and locations only; no fixture PDF is stored in the repository. Real editions are 'verified' only against the official source; an old edition USCIS no longer serves stays 'unverified' with our stored copy as its provenance.",
+  "pairs": [
+    {
+      "formCode": "I-485",
+      "requested": {
+        "old": "2026-04-09",
+        "new": "2026-09-18"
+      },
+      "old": {
+        "formCode": "I-485",
+        "edition": "2026-04-09",
+        "version": "2026-04-09",
+        "status": "retired",
+        "synthetic": false,
+        "source": {
+          "templateId": "6aa32ea41f77a09044eefdcb",
+          "storageKey": "government/uscis/I-485/2026-04-09/4b9c1ecf820d2b8594300f34440c285902ca9d5277124bf13f011f617a2455b7/form.pdf",
+          "officialPdfUrl": null,
+          "officialPageUrl": "https://www.uscis.gov/i-485",
+          "editionDateSource": null
+        },
+        "footerEdition": "2026-09-04",
+        "sha256": "7f70d3befba4d37685260dac94a2f00d7d5102680966e716cdf50ee42c81bfda",
+        "bytes": 5480936,
+        "pageCount": 24,
+        "fieldCount": 760,
+        "importedChecksum": "4b9c1ecf820d2b8594300f34440c285902ca9d5277124bf13f011f617a2455b7",
+        "verification": {
+          "footerEditionMatchesTemplate": false,
+          "officialDownloadSha256": null,
+          "officialEqualsStored": null,
+          "officialPageEditionDate": "2026-09-18",
+          "status": "mismatch",
+          "reason": "the stored PDF's footer says 2026-09-04 but the template's edition is 2026-04-09"
+        },
+        "role": "old"
+      },
+      "new": {
+        "formCode": "I-485",
+        "edition": "2026-09-18",
+        "version": "2026-09-18",
+        "status": "active",
+        "synthetic": false,
+        "source": {
+          "templateId": "6ac69e911c3e43666a32af28",
+          "storageKey": "government/uscis/I-485/2026-09-18/e572b1aadcc099692a87442c210435bc4e366735da8acdb31f96782c8bae64bc/form.pdf",
+          "officialPdfUrl": null,
+          "officialPageUrl": "https://www.uscis.gov/i-485",
+          "editionDateSource": null
+        },
+        "footerEdition": "2026-09-18",
+        "sha256": "e8aa5865e3c987ff3dd2f4e43f58594900ceb2a8517bfd59075255296bed15df",
+        "bytes": 5795419,
+        "pageCount": 24,
+        "fieldCount": 730,
+        "importedChecksum": "e572b1aadcc099692a87442c210435bc4e366735da8acdb31f96782c8bae64bc",
+        "verification": {
+          "footerEditionMatchesTemplate": true,
+          "officialDownloadSha256": null,
+          "officialEqualsStored": null,
+          "officialPageEditionDate": "2026-09-18",
+          "status": "unverified",
+          "reason": "the official file could not be fetched (no url); provenance is our stored copy, footer 2026-09-18"
+        },
+        "role": "new"
+      },
+      "verdict": {
+        "status": "mismatch",
+        "reason": "at least one edition contradicts its own footer or the official source"
+      }
+    },
+    {
+      "formCode": "I-129",
+      "requested": {
+        "old": "2026-02-27",
+        "new": "2026-09-09"
+      },
+      "old": {
+        "formCode": "I-129",
+        "edition": "2026-02-27",
+        "version": "2026-02-27",
+        "status": "retired",
+        "synthetic": false,
+        "source": {
+          "templateId": "6a8e07e164c23fe108954e92",
+          "storageKey": "government/uscis/I-129/2026-02-27/edc3cd0be3f7b0e92f01d685322aedca311b9004d59d08e93b5de2aa2ef13468/form.pdf",
+          "officialPdfUrl": null,
+          "officialPageUrl": "https://www.uscis.gov/i-129",
+          "editionDateSource": null
+        },
+        "footerEdition": "2026-02-27",
+        "sha256": "60bc276d4748cfc69eb2cd671ec5d28000c50efe376e4daeed5431e0826fef24",
+        "bytes": 7173579,
+        "pageCount": 38,
+        "fieldCount": 980,
+        "importedChecksum": "edc3cd0be3f7b0e92f01d685322aedca311b9004d59d08e93b5de2aa2ef13468",
+        "verification": {
+          "footerEditionMatchesTemplate": true,
+          "officialDownloadSha256": null,
+          "officialEqualsStored": null,
+          "officialPageEditionDate": "2026-09-09",
+          "status": "unverified",
+          "reason": "the official file could not be fetched (no url); provenance is our stored copy, footer 2026-02-27"
+        },
+        "role": "old"
+      },
+      "new": {
+        "formCode": "I-129",
+        "edition": "2026-09-09",
+        "version": "2026-09-09",
+        "status": "active",
+        "synthetic": false,
+        "source": {
+          "templateId": "6ab5e7d35db30414f5f2901c",
+          "storageKey": "government/uscis/I-129/2026-09-09/32c309d2585cb2818a3def7975541919b1b4c3e87a7c10823599af954567e8e1/form.pdf",
+          "officialPdfUrl": "https://www.uscis.gov/sites/default/files/document/forms/i-129.pdf",
+          "officialPageUrl": "https://www.uscis.gov/i-129",
+          "editionDateSource": null
+        },
+        "footerEdition": "2026-09-09",
+        "sha256": "9dc0e5c26e394cd5e1d7d6c6b41ed83b934f310df392aff42d3e929fc671f939",
+        "bytes": 8857301,
+        "pageCount": 38,
+        "fieldCount": 980,
+        "importedChecksum": "32c309d2585cb2818a3def7975541919b1b4c3e87a7c10823599af954567e8e1",
+        "verification": {
+          "footerEditionMatchesTemplate": true,
+          "officialDownloadSha256": "32c309d2585cb2818a3def7975541919b1b4c3e87a7c10823599af954567e8e1",
+          "officialEqualsStored": true,
+          "officialPageEditionDate": "2026-09-09",
+          "status": "verified",
+          "reason": "the official PDF served today is byte-identical to our copy",
+          "officialFooterEdition": "2026-09-09"
+        },
+        "role": "new"
+      },
+      "verdict": {
+        "status": "unverified",
+        "reason": "at least one edition could not be verified against the official source (see each edition)"
+      }
+    },
+    {
+      "formCode": "I-131",
+      "requested": {
+        "old": "2025-01-20",
+        "new": "current"
+      },
+      "old": {
+        "formCode": "I-131",
+        "edition": "2025-01-20",
+        "version": "2025-01-20",
+        "status": "active",
+        "synthetic": false,
+        "source": {
+          "templateId": "6ad95b7785fdeebd15197c76",
+          "storageKey": "government/uscis/I-131/2025-01-20/e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5/i-131_2025-01-20.pdf",
+          "officialPdfUrl": "https://www.uscis.gov/sites/default/files/document/forms/i-131.pdf",
+          "officialPageUrl": "https://www.uscis.gov/i-131",
+          "editionDateSource": "pdf"
+        },
+        "footerEdition": "2025-01-20",
+        "sha256": "d7bef4f239a14c82b36fc30466d6bc4821ab484b760d9e314bdcd620590ba91a",
+        "bytes": 2164740,
+        "pageCount": 14,
+        "fieldCount": 339,
+        "importedChecksum": "e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5",
+        "verification": {
+          "footerEditionMatchesTemplate": true,
+          "officialDownloadSha256": "e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5",
+          "officialEqualsStored": true,
+          "officialPageEditionDate": "2025-01-20",
+          "status": "verified",
+          "reason": "the official PDF served today is byte-identical to our copy",
+          "officialFooterEdition": "2025-01-20"
+        },
+        "role": "old"
+      },
+      "new": {
+        "formCode": "I-131",
+        "edition": "2025-01-20",
+        "version": "2025-01-20",
+        "status": "active",
+        "synthetic": false,
+        "source": {
+          "templateId": "6ad95b7785fdeebd15197c76",
+          "storageKey": "government/uscis/I-131/2025-01-20/e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5/i-131_2025-01-20.pdf",
+          "officialPdfUrl": "https://www.uscis.gov/sites/default/files/document/forms/i-131.pdf",
+          "officialPageUrl": "https://www.uscis.gov/i-131",
+          "editionDateSource": "pdf"
+        },
+        "footerEdition": "2025-01-20",
+        "sha256": "d7bef4f239a14c82b36fc30466d6bc4821ab484b760d9e314bdcd620590ba91a",
+        "bytes": 2164740,
+        "pageCount": 14,
+        "fieldCount": 339,
+        "importedChecksum": "e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5",
+        "verification": {
+          "footerEditionMatchesTemplate": true,
+          "officialDownloadSha256": "e177bbae35c3df634e7269f1094c93a11c6edf6849fa5fe66fbe3726498d59b5",
+          "officialEqualsStored": true,
+          "officialPageEditionDate": "2025-01-20",
+          "status": "verified",
+          "reason": "the official PDF served today is byte-identical to our copy",
+          "officialFooterEdition": "2025-01-20"
+        },
+        "role": "new"
+      },
+      "verdict": {
+        "status": "not_a_pair",
+        "reason": "both stored editions are 2025-01-20; this is not an old/new edition pair"
+      }
+    }
+  ],
+  "synthetic": [
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.renameFields",
+      "name": "rename",
+      "mutation": "one or more fields renamed; page, rectangle and value unchanged",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.renumberFields",
+      "name": "renumber",
+      "mutation": "line numbers shifted by n in every matching field name (a line inserted above)",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.insertPage",
+      "name": "inserted_page",
+      "mutation": "a page with a supplement heading (and optionally a new field) inserted",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.removeFields",
+      "name": "removed_field",
+      "mutation": "named fields removed",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.changeRadioOptions",
+      "name": "radio_options_changed",
+      "mutation": "a radio group re-created with a different export-value set",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.xfaOnly",
+      "name": "xfa_only",
+      "mutation": "all AcroForm fields removed and an XFA stream added (scans to zero fields)",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.passwordProtected",
+      "name": "password_pdf",
+      "mutation": "trailer /Encrypt marker (not real ciphertext)",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.htmlResponse",
+      "name": "html_response",
+      "mutation": "an HTML error page served with status 200",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    },
+    {
+      "synthetic": true,
+      "generator": "test-utils/editionMutants.oversize",
+      "name": "oversize",
+      "mutation": "trailing padding after %%EOF to exceed a size cap",
+      "appliedTo": "any real or synthetic base PDF, at harness time"
+    }
+  ]
+}

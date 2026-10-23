@@ -4,6 +4,7 @@
 const { originOf, summarize } = require("./MappingPolicy");
 const { validateGraphContract } = require("./MappingContractValidator");
 const { summarizeDefaults } = require("./defaultValueClassifier");
+const { inventoryForCoverage } = require("../inventory/editionCarry");
 
 const CAP = 50; // lists are capped: this is a report, not an export
 
@@ -40,6 +41,7 @@ function computeCoverage({ template = {}, graph = {}, universe, getTemplateField
   // registry paths nothing in this form reads: only counted (a WARNING class, never an error)
   const defaults = summarizeDefaults(template.formFields || []);
   const { byOrigin, byStatus } = summarize(graph);
+  const inventory = inventoryForCoverage({ template, graph, fields }); // Phase 7.4: null (and nothing is computed) while FORM_PIPELINE_AUTONOMY is off
   return {
     generatedAt: new Date(),
     formCode: template.formCode,
@@ -62,6 +64,7 @@ function computeCoverage({ template = {}, graph = {}, universe, getTemplateField
     conflicts: { duplicateTargets: duplicateTargets.length, targets: duplicateTargets.slice(0, CAP), recorded: (graph.conflicts || []).length },
     contract: { valid: contract.valid, ...contract.summary },
     defaults: { total: defaults.total, categories: defaults.categories, flaggedCount: defaults.flagged.length },
+    ...(inventory ? { inventory } : {}),
     warnings: [
       ...(contract.summary.legacyViolations ? [{ code: "LEGACY_CONTRACT_VIOLATIONS", count: contract.summary.legacyViolations }] : []),
       ...(defaults.flagged.length ? [{ code: "FLAGGED_DEFAULT_VALUES", count: defaults.flagged.length }] : []),

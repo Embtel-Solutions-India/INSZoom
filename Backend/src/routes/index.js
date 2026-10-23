@@ -45,6 +45,9 @@ router.use("/form-mappings", require("../modules/form-mapping/routes/mappingGrap
 // Release 0b-1: evidence-resolution path for USCIS form edition acceptance (admin / team_lead only; not wired into any activation path)
 router.use("/form-edition-policy", require("../modules/form-edition-policy/form-edition-policy.routes"));
 router.use("/form-pipeline", require("../modules/form-pipeline/form-pipeline.routes"));
+router.use("/form-ai-mapping", require("../modules/form-ai-mapping/form-ai-mapping.routes")); // Phase 4: read-only status / suggestions of the Gemini mapping engine
+router.use("/form-release", require("../modules/form-release/form-release.routes")); // Phase 3: release gate, migration plan, rollback, reconcile, pre-image restore
+router.use("/form-governance", require("../modules/form-governance/form-governance.routes")); // Phase 5: read-only governance views (overview, form status, mapping review, frozen cases)
 // Phase 2: the golden set (answer key) review - read for staff, answer / sign off only by the named reviewer
 router.use("/golden-set", require("../modules/form-mapping/routes/goldenSetRoutes"));
 router.use("/case-managers", require("../modules/cases/case-manager.routes"));

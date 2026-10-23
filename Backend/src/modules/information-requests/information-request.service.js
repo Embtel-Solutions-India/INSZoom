@@ -265,21 +265,6 @@ async function createRequest(caseData, input, actor, req) {
   }));
   const reference = ensureReference(caseData, questionnaire, recipient, actor, input.dueDate);
 
-  const task = await Task.create({
-    title: `Provide: ${name}`,
-    description,
-    caseId: caseData._id,
-    companyId: caseData.companyId,
-    assignedTo: recipient.userId || undefined,
-    assignedBy: actor._id,
-    category: "client_communication",
-    documentation: { workType: itemKind === "document" ? "document_request" : "client_follow_up", documentType: name, instructions: description },
-    priority: "medium",
-    status: recipient.userId ? "assigned" : "pending",
-    dueDate: input.dueDate,
-    source: "shared",
-  });
-
   caseData.informationRequests.push({
     _id: requestId,
     target: recipient.role,
@@ -297,18 +282,17 @@ async function createRequest(caseData, input, actor, req) {
     assignedTo: recipient.userId || undefined,
     participantId: recipient.participantId || undefined,
     requestedBy: actor._id,
-    task: task._id,
     questionnaireId: questionnaire._id,
     questionKey: key,
     referenceId: reference._id,
   });
-  caseService.addTimelineEvent(caseData, "request", "Information Requested", `${recipient.label} was asked for ${name}.`, actor, { target: recipient.role, taskId: task._id, requestId });
+  caseService.addTimelineEvent(caseData, "request", "Information Requested", `${recipient.label} was asked for ${name}.`, actor, { target: recipient.role, requestId });
   caseService.addAuditEntry(caseData, "information_request_created", `Requested ${name} from ${recipient.label}`, actor, { requestId, questionKey: key, itemKind, recipientRole: recipient.role }, req);
   await caseData.save();
   await caseService.writeAuditLog("information_request_created", caseData, actor, { requestId, itemKind, recipientRole: recipient.role }, req).catch(() => null);
   // Delivery failures must never undo a saved request.
   await notifyRecipient({ caseData, recipient, name, itemKind, description, actor, req }).catch(() => null);
-  return { request: caseData.informationRequests.id(requestId), question, reference, task, recipient };
+  return { request: caseData.informationRequests.id(requestId), question, reference, recipient };
 }
 
 function isAnswered(answer) {
@@ -535,27 +519,12 @@ async function createItemRequest(caseData, input, actor, req) {
   ));
 
   let request = existing;
-  let task = null;
   if (existing) {
     if (note) existing.description = note;
     existing.requestedBy = actor._id;
     existing.requestedAt = new Date();
   } else {
     const requestId = new mongoose.Types.ObjectId();
-    task = await Task.create({
-      title: `Provide: ${name}`,
-      description: note,
-      caseId: ownerCase._id,
-      companyId: ownerCase.companyId,
-      assignedTo: recipient.userId || undefined,
-      assignedBy: actor._id,
-      category: "client_communication",
-      documentation: { workType: itemKind === "document" ? "document_request" : "client_follow_up", documentType: name, instructions: note },
-      priority: "medium",
-      status: recipient.userId ? "assigned" : "pending",
-      dueDate: input.dueDate,
-      source: "shared",
-    });
     ownerCase.informationRequests.push({
       _id: requestId,
       scope: "existing_question",
@@ -572,7 +541,6 @@ async function createItemRequest(caseData, input, actor, req) {
       assignedTo: recipient.userId || undefined,
       participantId: recipient.participantId || undefined,
       requestedBy: actor._id,
-      task: task._id,
       questionnaireId: state.questionnaire._id,
       questionKey,
       responseId: state.responseId,
@@ -581,7 +549,7 @@ async function createItemRequest(caseData, input, actor, req) {
     // A request on a finished checklist re-opens it: the client has something to submit again.
     const reference = (ownerCase.questionnaireReferences || []).find((item) => item.active !== false && String(item.responseId || "") === String(state.responseId));
     if (reference && ["completed", "submitted", "approved", "returned"].includes(reference.status)) reference.status = "in_progress";
-    caseService.addTimelineEvent(ownerCase, "request", "Information Requested", `${recipient.label} was asked for ${name} (now required for this case).`, actor, { target: recipient.role, taskId: task._id, requestId, questionKey });
+    caseService.addTimelineEvent(ownerCase, "request", "Information Requested", `${recipient.label} was asked for ${name} (now required for this case).`, actor, { target: recipient.role, requestId, questionKey });
   }
   caseService.addAuditEntry(ownerCase, existing ? "information_request_resent" : "information_request_created", `${existing ? "Re-sent request for" : "Requested"} ${name} from ${recipient.label}`, actor, { requestId: request._id, questionKey, scope: "existing_question", itemKind, recipientRole: recipient.role }, req);
   await ownerCase.save();

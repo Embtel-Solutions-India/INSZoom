@@ -4,6 +4,9 @@ const { ACTIVE_FORM_FILTER } = require("../../uscis-forms/case-form-selection.se
 const Document = require("../../../models/Document");
 const storageService = require("../../uploads/storage.service");
 const WatermarkService = require("./WatermarkService");
+const FilingArtifactPolicy = require("./FilingArtifactPolicy");
+const autonomy = require("../../../config/formPipelineAutonomy");
+const logger = require("../../../utils/logger");
 
 class FilingPackageService {
   static userId(user) {
@@ -33,6 +36,56 @@ class FilingPackageService {
       return storageService.readBuffer(document.storageKey);
     }
     throw new Error("Package item is missing storage reference");
+  }
+
+  /**
+   * Phase 7.1 (FORM_PIPELINE_AUTONOMY). A FILING package (no watermark requested) must not embed a generated copy that carries a review / FINAL watermark.
+   *   off     -> an empty map: every item is read exactly as before;
+   *   shadow  -> logs "would rebuild" / "would refuse" per form, still returns an empty map;
+   *   on      -> every form item (one with a caseFormId) is rebuilt as a clean, fidelity-verified copy (PDFRenderer.renderFiling) and returned in the map; a form that
+   *              cannot be rebuilt, or any other item that carries a watermark, refuses the whole package (nothing is stored).
+   * Review / draft packages (a watermark was asked for) are never touched. `deps` is injectable for tests.
+   */
+  static async cleanFormBuffers(items, { watermark } = {}, deps = {}) {
+    const buffers = new Map();
+    const mode = autonomy.mode(deps.env || process.env);
+    if (mode === "off" || !FilingArtifactPolicy.isFilingPackage(watermark)) return buffers;
+    const log = deps.logger || logger;
+    const documentMetadata = deps.documentMetadata || (async (item) => (item.documentId ? (await Document.findById(item.documentId).select("metadata.watermark").lean())?.metadata : null));
+    const problems = [];
+    for (const item of items) {
+      let marked = false;
+      try { marked = FilingArtifactPolicy.carriesWatermark(await documentMetadata(item)); } catch (error) { log.warn("filing_package_watermark_check_failed", { error: error.message }); }
+      if (!item.caseFormId) {
+        // nothing to rebuild it from: a watermarked component cannot go into a filing package
+        if (marked) problems.push({ code: "FILING_PACKAGE_WATERMARKED_COMPONENT", message: `"${item.title || item.key || item.documentId}" carries a review watermark and cannot be rebuilt as a clean copy.` });
+        continue;
+      }
+      if (mode === "shadow") {
+        if (marked) log.warn("form_filing_artifact_would_rebuild", { event: "filing_package", caseFormId: String(item.caseFormId), title: item.title || item.key });
+        continue;
+      }
+      try {
+        const caseForm = await (deps.loadCaseForm || ((id) => require("./PDFGenerationService").loadCaseForm(id, { readOnly: true })))(item.caseFormId);
+        const rendered = await (deps.renderer || require("./PDFRenderer")).renderFiling({ caseForm, template: caseForm.formTemplateId.toObject ? caseForm.formTemplateId.toObject() : caseForm.formTemplateId });
+        buffers.set(item, rendered.buffer);
+      } catch (error) {
+        problems.push({ code: error.code || "FILING_PACKAGE_FORM_NOT_VERIFIED", message: `"${item.title || item.key || item.caseFormId}" could not be produced as a clean, verified copy (${error.message}).` });
+      }
+    }
+    if (problems.length) {
+      if (mode === "shadow") {
+        log.warn("form_filing_artifact_would_refuse", { event: "filing_package", problems: problems.map((problem) => problem.code) });
+        return buffers;
+      }
+      const refusal = new Error(`Filing package refused: ${problems.map((problem) => problem.message).join(" ")}`);
+      refusal.status = 409;
+      refusal.statusCode = 409;
+      refusal.code = "FILING_ARTIFACT_NOT_VALIDATED";
+      refusal.problems = problems;
+      throw refusal;
+    }
+    return buffers;
   }
 
   static async assemble({ caseId, items = [], packageType = "filing_package", metadata = {}, watermark }, user, req) {
@@ -72,8 +125,9 @@ class FilingPackageService {
     tocPage.drawText(metadata.title || "USCIS Filing Package", { x: 50, y: 740, size: 18, font, color: rgb(0, 0, 0) });
     packageItems.forEach((item, index) => tocPage.drawText(`${index + 1}. ${item.title || item.name || item.documentId || item.storageKey}`, { x: 60, y: 700 - index * 18, size: 11, font }));
 
+    const cleanBuffers = await this.cleanFormBuffers(packageItems, { watermark });
     for (const item of packageItems) {
-      const sourcePdf = await PDFDocument.load(await this.readItemBuffer(item));
+      const sourcePdf = await PDFDocument.load(cleanBuffers.get(item) || await this.readItemBuffer(item));
       const pages = await packagePdf.copyPages(sourcePdf, sourcePdf.getPageIndices());
       pages.forEach((page) => packagePdf.addPage(page));
     }
@@ -177,6 +231,7 @@ class FilingPackageService {
     const boldFont = await packagePdf.embedFont(StandardFonts.HelveticaBold);
     for (let i = 0; i < reservedTocPages; i += 1) packagePdf.addPage();
 
+    const cleanBuffers = await this.cleanFormBuffers(sections, { watermark });
     const unreadable = [];
     const pageMap = [];
     const outlineEntries = [];
@@ -195,7 +250,7 @@ class FilingPackageService {
     };
 
     for (const section of sections) {
-      const result = await appendBuffer(await this.readItemBuffer(section), section.title);
+      const result = await appendBuffer(cleanBuffers.get(section) || await this.readItemBuffer(section), section.title);
       if (!result) continue;
       outlineEntries.push({ title: section.title, pageIndex: result.firstPageIndex });
       pageMap.push({ key: section.key, type: section.type, pageStart: result.firstPageIndex + 1, pageEnd: result.firstPageIndex + result.pageCount });

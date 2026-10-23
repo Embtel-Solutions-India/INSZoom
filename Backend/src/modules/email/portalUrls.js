@@ -34,4 +34,20 @@ function productionizeLinks(text) {
   return text.replace(LOCAL_ORIGIN_GLOBAL, (match, _host, port) => portalUrl(LOCAL_PORT_PORTAL[String(port || "").slice(1)] || "client"));
 }
 
-module.exports = { portalUrl, productionizeLinks, PRODUCTION };
+// An email only ever links to the recipient's OWN portal (client -> Client, internal team -> Admin, attorney -> Attorney). A link on
+// either of the other two portals - whatever a call site or an admin-written template put there - becomes `fallback`, the
+// recipient's own landing page. Public pages (the landing site, USCIS) are not portal origins and are left alone.
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function confineToPortal(text, portal, fallback) {
+  if (typeof text !== "string" || !text || !fallback || !ENV_KEY[portal]) return text;
+  const own = new Set([portalUrl(portal), PRODUCTION[portal]]);
+  const foreign = Object.keys(ENV_KEY)
+    .filter((other) => other !== portal && other !== "landing")
+    .flatMap((other) => [portalUrl(other), PRODUCTION[other]])
+    .filter((origin) => !own.has(origin));
+  if (!foreign.length) return text;
+  const pattern = new RegExp(`(?:${[...new Set(foreign)].map(escapeRegex).join("|")})(?![\\w.-])(?:[/?#][^\\s"'<>)]*)?`, "gi");
+  return text.replace(pattern, fallback);
+}
+
+module.exports = { portalUrl, productionizeLinks, confineToPortal, PRODUCTION };

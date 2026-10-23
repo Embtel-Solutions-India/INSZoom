@@ -28,6 +28,8 @@ const CaseForm = require("../../../models/CaseForm");
 const VisaFormMapping = require("../../../models/VisaFormMapping");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const logger = require("../../../utils/logger");
+const autonomy = require("../../../config/formPipelineAutonomy");
+const { pageUrlFor: aliasPageUrl } = require("../config/formSourceAliases");
 
 const versionService = new FormVersionService();
 
@@ -90,8 +92,9 @@ const STANDALONE_FORM_CODE_PATTERN = /^[A-Z]{1,3}-\d{2,4}[A-Z]{0,2}$/;
 // check for null rather than fetching a guaranteed-broken/misleading URL.
 function guessedFormPageUrl(formNumber) {
   const formCode = compactSupplementCode(normalizeFormCode(formNumber));
-  if (!STANDALONE_FORM_CODE_PATTERN.test(formCode)) return null;
-  return `https://www.uscis.gov/${formCode.toLowerCase()}`;
+  if (!require("../config/formCodePattern").isStandaloneFormCode(formCode, "importer")) return null; // Phase 7.2: the one shared pattern; with the switch off it IS the old pattern
+  // Phase 7.E: USCIS publishes some forms under another address (I-485J -> /i-485supj); the alias data knows them, everything else keeps the code-derived address
+  return aliasPageUrl(formCode) || `https://www.uscis.gov/${formCode.toLowerCase()}`;
 }
 
 // Resolves {pdfUrl, editionDate, officialPageUrl} for a form number with no
@@ -193,6 +196,17 @@ async function resolveOfficialPdf(formNumber) {
       }
     }
   }
+  // Phase 7.E: last resort before failing - the verified source resolver (it only runs where the paths above found nothing, so a form that resolved before resolves the same way)
+  try {
+    const { resolveSource } = require("./SourceResolver");
+    const found = await resolveSource({ formCode });
+    if (found.ok && found.pdfUrl) {
+      logger.info("uscis_source_resolved_by_fallback", { formCode, via: found.via, pdfUrl: found.pdfUrl });
+      return { pdfUrl: found.pdfUrl, editionDate: null, officialPageUrl: found.pageUrl || guessedFormPageUrl(formCode), formName: formCode };
+    }
+  } catch (error) {
+    logger.warn("uscis_source_resolver_failed", { formCode, error: error.message });
+  }
   throw enterpriseError(
     `Could not locate a current PDF for ${formCode} on uscis.gov — import it manually via the form registry's Upload PDF flow.`,
     422,
@@ -225,6 +239,43 @@ async function inferenceAllowed(template) {
   }
 }
 
+// Phase 7.6b (FORM_PIPELINE_AUTONOMY on / shadow): the pipeline acknowledges an edition difference ITSELF, but only a provably safe one (FormEditionComparisonService.autoAcknowledge:
+// a required flip on a box that still exists, or a rename the field matcher proves and the new graph already carries). It is called ONLY when mapping activation was refused with
+// UNREVIEWED_EDITION_CHANGES - the refusal that otherwise waits for a person. Paths that still reach it with the partial activation in place: a LOSSLESS graph (nothing lost, no
+// box left unmapped) whose edition diff still has required flips / broken checklist traces, and the authored-rules activation. Returns { acknowledged, ... }; never throws.
+async function tryAutoAcknowledge(template, { certification = null } = {}) {
+  if (autonomy.mode() === "off") return { acknowledged: false, reason: "autonomy_off" };
+  try {
+    const FormEditionComparisonService = require("../../form-mapping/services/FormEditionComparisonService");
+    let editionDecision;
+    try { editionDecision = (await require("../../form-edition-policy/EditionPolicyEnforcer").peekAcceptance(template))?.decision; } catch { editionDecision = undefined; }
+    return await FormEditionComparisonService.autoAcknowledge(template, { certification, editionDecision });
+  } catch (error) {
+    logger.warn("uscis_form_auto_acknowledge_failed", { formCode: template?.formCode, error: error.message });
+    return { acknowledged: false, reason: "error", error: error.message };
+  }
+}
+
+// Phase 7.6b (on only): a never-seen form code is registered HIDDEN and LINKED TO NO VISA TYPE - it cannot appear in case creation until a person links it in the registry (the one
+// human decision: which cases need the form). A form the registry already links (derived visa types non-empty) keeps those links. Returns the marker or null.
+async function registerBrandNewFormUnlinked(template) {
+  if (autonomy.mode() !== "on" || !template?._id) return null;
+  try {
+    const others = await USCISFormTemplate.countDocuments({ formCode: template.formCode, _id: { $ne: template._id } });
+    if (others > 0) return null; // another edition of a form we already know
+    const linked = await deriveVisaTypesFromRegistry(template.formCode);
+    if (linked.length) return null;
+    template.visaTypes = [];
+    template.lifecycle = { ...(template.lifecycle?.toObject?.() || template.lifecycle || {}), registeredUnlinked: { at: new Date(), by: "system:pipeline", note: "a new form: registered with no visa type; link it in the form registry to offer it on cases" } };
+    await template.save();
+    logger.info("uscis_form_registered_unlinked", { formCode: template.formCode, templateId: String(template._id) });
+    return template.lifecycle.registeredUnlinked;
+  } catch (error) {
+    logger.warn("uscis_form_register_unlinked_failed", { formCode: template?.formCode, error: error.message });
+    return null;
+  }
+}
+
 // `pipeline` (optional, Phase 1): the job context of the durable pipeline. With it each major step is recorded as a stage of the job and the promotion step is
 // lease-checked and mutex-guarded; without it every stage() below simply runs its function, so behavior is exactly what it was.
 async function activateOrPromote(template, user, req, pipeline = null) {
@@ -234,6 +285,17 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   let migration = null;
   try {
     migration = await stage("map", () => migrateMappingToEdition(template, user, req));
+    if (migration.migrated && !migration.activated && migration.reason === "UNREVIEWED_EDITION_CHANGES") {
+      const acknowledgement = await tryAutoAcknowledge(await USCISFormTemplate.findById(template._id));
+      if (acknowledgement.acknowledged) {
+        try {
+          await MappingGraphService.activate(template._id, user, req);
+          migration = { ...migration, activated: true, autoAcknowledged: true };
+        } catch (error) {
+          logger.info("uscis_form_mapping_activation_after_acknowledgement_failed", { formCode: template.formCode, error: error.message });
+        }
+      }
+    }
     if (migration.migrated) {
       template = await USCISFormTemplate.findById(template._id);
       logger.info("uscis_form_mapping_migrated", { formCode: template.formCode, templateId: String(template._id), activated: migration.activated, reason: migration.reason, lost: migration.lostEdges?.length || 0, source: migration.summary?.source });
@@ -252,7 +314,31 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       template = await USCISFormTemplate.findById(template._id);
     } catch (error) {
       logger.info("uscis_form_rule_mapping_failed", { formCode: template.formCode, error: error.message });
+      if (autonomy.mode() !== "off" && /UNREVIEWED_EDITION_CHANGES/.test(`${error?.code || ""} ${error?.message || ""}`)) {
+        const acknowledgement = await tryAutoAcknowledge(await USCISFormTemplate.findById(template._id));
+        if (acknowledgement.acknowledged) {
+          try {
+            ruleMapping = await stage("map", () => PartyFieldMappingService.apply(template, user, req, { allowInference: false }));
+            template = await USCISFormTemplate.findById(template._id);
+          } catch (again) {
+            logger.info("uscis_form_rule_mapping_after_acknowledgement_failed", { formCode: template.formCode, error: again.message });
+          }
+        }
+      }
     }
+  }
+  // Phase 4 (optional, OFF unless FORM_AI_MAPPING=shadow|on): Gemini suggestions for the boxes the rules left unmapped. Shadow only stores them; "on" adds validated low-risk ones to a
+  // NEW mapping version of a pending edition (and only while the accuracy gate is open) BEFORE certification, so they are certified with the rest. Never fails the pipeline.
+  try {
+    const aiMapping = require("../../form-ai-mapping");
+    if (aiMapping.mode() !== "off") {
+      await stage("ai_map", async () => {
+        try { return await aiMapping.runForTemplate({ template, user, req }); } catch (error) { logger.info("uscis_form_ai_mapping_skipped", { formCode: template.formCode, error: error.message }); return { skipped: true, error: error.message }; }
+      });
+      template = await USCISFormTemplate.findById(template._id);
+    }
+  } catch (error) {
+    logger.info("uscis_form_ai_mapping_skipped", { formCode: template.formCode, error: error.message });
   }
   // The live edition is never replaced until the new one is fully ready (mapping lossless + every component sliceable); otherwise it stays as is.
   let readiness = null;
@@ -288,6 +374,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
   const autoActivate = readyToPromote || (String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true" && Boolean(certification?.passed));
   let activationBlockedReason = null;
+  let componentDiscovery = null; // Phase 7.0: what activation's component discovery reported (an error there is surfaced in the job outcome, not swallowed)
   let activationBlockedCode = null; // e.g. EDITION_POLICY_HELD: lets the pipeline job tell "waiting for a decision" from an ordinary failure
   if (autoActivate && template.status !== "active") {
     // VersionManagementService.activate() requires the edition to already
@@ -298,13 +385,20 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     // (uscis-form.controller.js's approveTemplate/activateTemplate), done
     // here in sequence rather than skipping the approval gate.
     if (template.status !== "review") {
-      template = await VersionManagementService.approve(template._id, user, req);
+      if (autonomy.mode() === "on") {
+        // Phase 7.6b: the pipeline's own approval, recorded as system:pipeline together with the certification it relied on (the certification and both gates still decide the release)
+        const { systemActor } = require("../../form-pipeline/systemActor");
+        template = await VersionManagementService.approve(template._id, systemActor(), req, { machine: { certificationAt: certification?.at || certification?.certifiedAt || null, certificationPassed: Boolean(certification?.passed), mappingVersionId: template.activeMappingVersionId || null } });
+      } else {
+        template = await VersionManagementService.approve(template._id, user, req);
+      }
     }
     // the edition that is live right now (if any): the only one the rescue below may ever put back
     const liveBefore = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
     try {
       // VersionManagementService.activate returns { template, impact, componentDiscovery } - keep the document itself (a later step persists against it)
       const activated = await stage("promote", () => versionService.activate(template._id, user, req));
+      componentDiscovery = activated?.componentDiscovery || null;
       template = activated?.template || (await USCISFormTemplate.findById(template._id));
       logger.info("uscis_form_activated", { formCode: template.formCode, templateId: String(template._id), version: template.version });
     } catch (error) {
@@ -335,17 +429,26 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   // The new edition is live: every visa that used the old one keeps using it (visa types carried over), and every open case form of the old
   // edition moves onto it with all saved values (nothing is dropped; unmatched values are archived on the form).
   let caseMigration = null;
+  let caseMigrationError = null; // Phase 7.0: a migration that threw is REPORTED in the job outcome (it used to be logged at info level and forgotten)
   if (template.status === "active" && certification?.passed && (readyToPromote || (migration?.activated && readiness?.ready))) {
     try {
       const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
       const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
       if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
+      if (autonomy.mode() === "on") {
+        // Phase 7.6b: activate() queued the migration as its own stage (the continuation of this job, or a case_migration job); the outcome is merged into the job's result by the executor
+        logger.info("uscis_form_cases_migration_queued", { formCode: template.formCode, templateId: String(template._id) });
+      } else {
       caseMigration = await stage("migrate_cases", () => migrateCaseFormsToEdition({ newTemplate: template, actor: user, req }));
-      logger.info("uscis_form_cases_migrated", { formCode: template.formCode, ...caseMigration, failed: caseMigration.failed.length });
+      logger.info("uscis_form_cases_migrated", { formCode: template.formCode, considered: caseMigration.considered, migrated: caseMigration.migrated, verified: caseMigration.verified, skippedFrozen: caseMigration.skippedFrozen, valuesCarried: caseMigration.valuesCarried, valuesArchived: caseMigration.valuesArchived, unresolved: (caseMigration.unresolved || []).length, reconciliationRequired: (caseMigration.reconciliationRequired || []).length, failed: caseMigration.failed.length });
+      }
     } catch (error) {
-      logger.info("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
+      caseMigrationError = error.message;
+      logger.warn("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
     }
   }
+  // Phase 5: what the migration left behind (frozen case forms, lost mapping edges) is recorded for the governance screens; fail-safe, never throws, changes nothing
+  try { await require("../../form-governance/GovernanceRecorder").recordMigrationOutcome({ template, caseMigration, lostEdges: migration?.lostEdges, actor: user }); } catch { /* bookkeeping only */ }
 
   // Biographic Activation tier: since full production activation is
   // correctly blocked without a human-reviewed curated mapping (above),
@@ -370,9 +473,13 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     biographicReady: template.mappingStatus === "biographic_active",
     coverage: biographicMapping?.coverage || null,
     migration,
+    // Phase 7: boxes the edition could not map are left unmapped (blank) and the release went on without them (FORM_PIPELINE_AUTONOMY=on)
+    mappingLeftUnmapped: migration?.partial ? migration.leftUnmapped || null : null,
     readiness,
     certification,
     caseMigration,
+    caseMigrationError,
+    componentDiscovery,
   };
 }
 
@@ -390,6 +497,35 @@ async function recordEdition(pipeline, formCode, template, previous) {
   } catch (error) {
     if (error?.name === "LeaseLostError") throw error;
     logger.info("uscis_form_pipeline_record_failed", { formCode, error: error.message });
+  }
+}
+
+// Phase 7.E. The check of an existing form failed with an address problem (HTTP 404/403 on the page, or no PDF located). Resolve the form's REAL address (stored address,
+// alias slugs such as I-485J -> /i-485supj, the parent form's page for I-539A, the stable PDF address, the directory), verify it, remember it (only when
+// FORM_PIPELINE_AUTONOMY=on), and - when the form has a page of its own - check the edition there. Returns { scanResult } (checked at the real page),
+// { sourceResolved } (the PDF is reachable but only through a parent page / stable address, so there is no edition page to compare: nothing is changed and no
+// error is reported) or null (unchanged failure). A failure that is NOT an address problem (503, timeout, a qpdf problem) is never touched. Never throws.
+const ADDRESS_FAILURE = /page fetch failed: (404|403|410)|USCIS_PDF_UNRESOLVED|could not locate a current pdf/i;
+async function recoverFormSource({ formCode, existing, failure, pageUrl, user, req }) {
+  try {
+    if (!ADDRESS_FAILURE.test(String(failure || ""))) return null;
+    const { resolveSource, rememberSource } = require("./SourceResolver");
+    const resolved = await resolveSource({ formCode, template: existing });
+    if (!resolved.ok) {
+      logger.info("uscis_source_resolver_exhausted", { formCode, tried: resolved.tried.length });
+      return null;
+    }
+    const remembered = await rememberSource({ template: existing, resolved });
+    logger.info("uscis_source_resolved", { formCode, via: resolved.via, pageUrl: resolved.pageUrl, pdfUrl: resolved.pdfUrl, remembered });
+    const ownPage = resolved.pageUrl && (resolved.via === "alias" || resolved.via === "stored") && resolved.pageUrl !== pageUrl;
+    if (ownPage) {
+      const scanResult = await USCISScannerService.scanForm({ formType: formCode, pageUrl: resolved.pageUrl }, user, req);
+      if (scanResult.action !== "scan_failed") return { scanResult };
+    }
+    return { sourceResolved: { via: resolved.via, pageUrl: resolved.pageUrl, pdfUrl: resolved.pdfUrl, remembered } };
+  } catch (error) {
+    logger.warn("uscis_source_recovery_failed", { formCode, error: error.message });
+    return null;
   }
 }
 
@@ -417,8 +553,9 @@ async function acquireMissingForm(formCode, user, req, pipeline = null) {
   }, { attempts: 5, label: `import:${formCode}`, onRetry: (info) => logger.info("uscis_form_import_retry", { formCode, attempt: info.attempt, delay: info.delay, error: info.error.message }) }));
   logger.info("uscis_form_download_completed", { formCode, templateId: String(importResult.template._id) });
   await recordEdition(pipeline, formCode, importResult.template, null);
+  const unlinked = await registerBrandNewFormUnlinked(importResult.template); // Phase 7.6b (on only): a never-seen form is registered with no visa type
   const activation = await activateOrPromote(importResult.template, user, req, pipeline);
-  return { ...activation, alreadyActive: false };
+  return { ...activation, alreadyActive: false, ...(unlinked ? { unlinkedNewForm: true } : {}) };
 }
 
 // ensureCurrentUSCISForm — the single entry point that both "a case needs a
@@ -486,13 +623,29 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
     // USCIS unreachable — the existing, previously-validated template is
     // still safe to keep serving. Never let a network failure here break a
     // case that already has a working form.
-    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: error.message });
-    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: error.message };
+    scanResult = { action: "scan_failed", error: error.message };
   }
 
   if (scanResult.action === "scan_failed") {
-    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: scanResult.error });
-    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: scanResult.error };
+    // Phase 7.E: a 404 / unlocatable page is an address problem, not "USCIS unreachable": find the real address (verified), remember it, and check again there
+    const recovered = await recoverFormSource({ formCode, existing, failure: scanResult.error, pageUrl, user, req });
+    if (recovered?.scanResult) {
+      scanResult = recovered.scanResult;
+    } else if (recovered?.sourceResolved) {
+      logger.info("uscis_form_check_completed", { formCode, outcome: "source_resolved_no_edition_page", via: recovered.sourceResolved.via });
+      return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, sourceResolved: recovered.sourceResolved };
+    }
+  }
+
+  if (scanResult.action === "scan_failed") {
+    // Phase 7.E: only a failure to REACH the USCIS page is "USCIS unavailable". A failure of OUR OWN import work (qpdf, normalize, scan, save) is reported with its real stage and
+    // cause. Inside a pipeline job it is thrown so the error-resolution engine can diagnose and fix it (the live edition keeps serving: nothing was changed); everywhere else, and
+    // whenever FORM_PIPELINE_AUTONOMY is off, the caller gets exactly the result it always got (the existing edition and a checkError), with the real stage added.
+    if (scanResult.stage && scanResult.stage !== "page_fetch" && pipeline && require("../../../config/formPipelineAutonomy").mode() !== "off") {
+      throw Object.assign(new Error(scanResult.error), { code: scanResult.code || undefined, cause: scanResult.cause || undefined, stage: scanResult.stage });
+    }
+    logger.info("uscis_form_check_completed", { formCode, outcome: "uscis_unavailable", error: scanResult.error, stage: scanResult.stage });
+    return { template: existing, alreadyActive: true, requiresActivation: false, checked: true, checkError: scanResult.error, ...(scanResult.stage ? { checkStage: scanResult.stage, checkCause: scanResult.cause } : {}) };
   }
 
   if (scanResult.action === "no_change_detected") {
@@ -528,6 +681,27 @@ async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
     comparisonReport: scanResult.comparisonReport,
     checked: true,
     versionChanged: true,
+    ...compactActivationReport(activation),
+  };
+}
+
+/**
+ * Phase 7: what the job outcome / stage ladder needs to say about the run, in COUNTS only (no case-form ids, no answers): whether the mapping was activated (and how many boxes were
+ * left unmapped), the certification verdict, the case-migration counts or its error, and the component-discovery verdict. Additive keys on the result.
+ */
+function compactActivationReport(activation) {
+  const n = (value) => (Array.isArray(value) ? value.length : Number(value) || 0);
+  const migrationRun = activation.caseMigration;
+  return {
+    migration: activation.migration ? { activated: Boolean(activation.migration.activated), partial: Boolean(activation.migration.partial), reason: activation.migration.reason } : null,
+    mappingLeftUnmapped: activation.mappingLeftUnmapped || null,
+    certification: activation.certification ? { passed: Boolean(activation.certification.passed), checks: (activation.certification.checks || []).map((check) => ({ name: check.name, passed: check.passed })) } : null,
+    caseMigration: migrationRun ? {
+      considered: n(migrationRun.considered), migrated: n(migrationRun.migrated), verified: n(migrationRun.verified), skippedFrozen: n(migrationRun.skippedFrozen), failed: n(migrationRun.failed),
+      unresolved: n(migrationRun.unresolved), reconciliationRequired: n(migrationRun.reconciliationRequired), restored: n(migrationRun.restored), inProgress: n(migrationRun.inProgress),
+    } : null,
+    caseMigrationError: activation.caseMigrationError || null,
+    componentDiscovery: activation.componentDiscovery ? { componentsDiscovered: Number(activation.componentDiscovery.componentsDiscovered) || 0, error: activation.componentDiscovery.error } : null,
   };
 }
 
@@ -682,4 +856,7 @@ module.exports = {
   acquireAndActivate,
   acquireForCase,
   guessedFormPageUrl,
+  recoverFormSource,
+  tryAutoAcknowledge,
+  registerBrandNewFormUnlinked,
 };

@@ -4,7 +4,7 @@ const aiJobSchema = new mongoose.Schema(
   {
     jobType: {
       type: String,
-      enum: ["copilot", "case_review", "semantic_search", "task_suggestions", "draft", "ocr_review", "data_quality"],
+      enum: ["copilot", "case_review", "semantic_search", "task_suggestions", "draft", "ocr_review", "data_quality", "form_mapping"],
       required: true,
       index: true,
     },

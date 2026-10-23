@@ -69,6 +69,57 @@ jobs:
           VITE_CLIENT_URL: ${{ vars.IMMIGLANCE_VITE_CLIENT_URL }}
         run: npm run build
 
+      - name: Package Landing
+        run: tar -czf /tmp/landing-frontend.tar.gz -C Immiglance/Landing/dist .
+
+      # ── Immiglance Client ──────────────────────────────────────────────
+      - name: Install Client dependencies
+        working-directory: Immiglance/Client
+        run: npm ci --include=optional
+
+      - name: Build Client
+        working-directory: Immiglance/Client
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.BAIS_VITE_STRIPE_PUBLISHABLE_KEY }}
+          VITE_API_URL: ${{ env.PROD_API_URL }}
+          VITE_ADMIN_URL: ${{ env.PROD_ADMIN_URL }}
+          VITE_ATTORNEY_PORTAL_URL: ${{ env.PROD_ATTORNEY_URL }}
+          VITE_LANDING_URL: ${{ env.PROD_LANDING_URL }}
+          VITE_FIREBASE_VAPID_KEY: ${{ secrets.BAIS_VITE_FIREBASE_VAPID_KEY }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.BAIS_VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.BAIS_VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.BAIS_VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.BAIS_VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.BAIS_VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.BAIS_VITE_FIREBASE_APP_ID }}
+        run: npm run build
+
+      - name: Package Client
+        run: tar -czf /tmp/client-frontend.tar.gz -C Immiglance/Client/dist .
+
+      # ── Admin ────────────────────────────────────────────────────────
+      - name: Install Admin Frontend dependencies
+        working-directory: Admin/frontend
+        run: npm ci --include=optional
+        
+      - name: Build Admin
+        working-directory: Admin/frontend
+        env:
+          VITE_API_URL: ${{ env.PROD_API_URL }}
+          VITE_ADMIN_URL: ${{ env.PROD_ADMIN_URL }}
+          VITE_ATTORNEY_PORTAL_URL: ${{ env.PROD_ATTORNEY_URL }}
+          VITE_CLIENT_URL: ${{ env.PROD_CLIENT_URL }}
+        run: npm run build
+
+      - name: Package Admin
+        run: |
+          tar -czf /tmp/admin-frontend.tar.gz \
+            -C Admin/frontend/dist .
+
+      # =====================================================
+      # CLIENT
+      # =====================================================
+
       - name: Verify Landing build
         working-directory: Immiglance/Landing
         run: |

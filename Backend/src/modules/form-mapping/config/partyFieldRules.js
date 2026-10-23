@@ -193,6 +193,8 @@ RULES["N-400"] = require("./n400FieldRules").N400_RULES;
 RULES["I-129S"] = require("./i129sFieldRules").I129S_RULES;
 // Form I-751: the conditional resident (petitioner.*), the spouse (petitioner.currentSpouse.*) and the children (petitioner.children). EXCLUSIVE as well.
 RULES["I-751"] = require("./i751FieldRules").I751_RULES;
+// Form I-131: the boxes no edge covered (physical description, USCIS online account, I-94 number, the applicant's own phone / e-mail). Not exclusive - the form's existing edges are kept.
+RULES["I-131"] = require("./i131FieldRules").I131_RULES;
 const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751"]);
 
 module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

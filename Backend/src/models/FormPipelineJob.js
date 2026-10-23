@@ -22,7 +22,9 @@ const formPipelineJobSchema = new mongoose.Schema(
     formCode: { type: String, required: true, uppercase: true, trim: true },
     trigger: { type: String, enum: TRIGGERS, default: "unknown" },
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    options: { forceCheck: { type: Boolean, default: false } },
+    // Phase 7.6b: migrateTemplateId = a case_migration job's edition; followUpMigrationTemplateId = an edition released while this job was open (its case migration runs as the
+    // continuation of this job, never as a second open job for the form)
+    options: { forceCheck: { type: Boolean, default: false }, migrateTemplateId: mongoose.Schema.Types.ObjectId, followUpMigrationTemplateId: mongoose.Schema.Types.ObjectId },
     schemaVersion: { type: Number, default: SCHEMA_VERSION, index: true },
     state: { type: String, enum: Object.values(JOB_STATES), default: JOB_STATES.PENDING },
     open: { type: Boolean, default: true }, // true while state is one of OPEN_STATES (kept as a field so a PARTIAL unique index can enforce "one open job per form")
@@ -54,6 +56,16 @@ const formPipelineJobSchema = new mongoose.Schema(
       storageKey: String,
     },
     outcome: { type: mongoose.Schema.Types.Mixed }, // small summary of how a finished run ended
+    // Phase 7.0 hold contract: why the job is held / blocked / dead-lettered, what would release it, when it was last judged and with which code versions
+    hold: {
+      reasonCode: String, errorClass: String, stage: String, detail: String,
+      releaseConditions: { type: [String], default: undefined }, // no default: a job that was never held carries no hold at all
+      firstHeldAt: Date, lastEvaluatedAt: Date, escalatedAt: Date,
+      evaluatedWith: { matcher: Number, gate: Number, cert: Number, resolver: Number },
+    },
+    // Phase 7.E error resolution: every strategy tried for a failure (verified or not), newest last, capped; and the signature the job was exhausted with
+    resolutions: [{ _id: false, strategy: String, ok: Boolean, verified: Boolean, evidence: String, stage: String, signature: String, at: Date }],
+    exhausted: { at: Date, signature: String, cause: String },
     // alert dedupe: one entry per distinct (state|stage|error signature) already announced for this job
     alerts: [{ _id: false, signature: String, kind: String, at: Date }],
     history: [{ _id: false, at: Date, state: String, stage: String, note: String }],
