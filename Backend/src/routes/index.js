@@ -27,6 +27,7 @@ router.use("/teams", require("../modules/teams/team.routes"));
 router.use("/tasks", require("../modules/tasks/task.routes"));
 router.use("/recycle-bin", require("../modules/recycle-bin/recycle-bin.routes"));
 router.use("/canonical", require("../modules/canonical/routes/canonicalRoutes"));
+router.use("/public-forms", require("../modules/public-forms/public-forms.routes")); // public, read-only: latest official blank USCIS forms (Landing + Client "Forms" page)
 router.use("/uscis-forms", require("../modules/uscis-forms/uscis-form.routes"));
 router.use("/uscis/forms", require("../modules/uscis-form-import/routes/uscisFormImportRoutes"));
 router.use("/uscis", require("../modules/uscis-lifecycle/routes/uscisLifecycleRoutes"));

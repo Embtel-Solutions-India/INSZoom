@@ -2,7 +2,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: 210 20% 98%;
+  --background: 0 0% 100%;
   --foreground: 222 30% 12%;
   --card: 0 0% 100%;
   --card-foreground: 222 30% 12%;
@@ -89,6 +89,8 @@
 
   --font-sans: "Satoshi", "Inter", sans-serif;
   --font-serif: "Cabinet Grotesk", "Satoshi", sans-serif;
+  --font-wordmark: "Jost", "Satoshi", "Inter", sans-serif;
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", Menlo, monospace;
 
   --radius-lg: var(--radius);
@@ -502,4 +504,3 @@ button, input, textarea, select { font-family: inherit; }
 /* Dark mode: a "selected" row/tab (bg-blue-50) is dark grey instead of near-white, and blue-700/800 text stays legible on it. */
 .dark .bg-blue-50 { background-color: hsl(0 0% 15%); }
 .dark .text-blue-700, .dark .text-blue-800 { color: #a1dbff; }
-

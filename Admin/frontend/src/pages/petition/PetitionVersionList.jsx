@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FileStack, Sparkles, Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { petitionApi } from '../../services/api'
 import PetitionUploadPanel from './PetitionUploadPanel'
 
@@ -22,8 +22,6 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
   const [packages, setPackages] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [assembling, setAssembling] = useState(false)
-  const [assembleError, setAssembleError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -40,20 +38,6 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
 
   useEffect(() => { load() }, [load])
 
-  const handleAssemble = async () => {
-    setAssembling(true)
-    setAssembleError('')
-    try {
-      const res = await petitionApi.assemble(caseId, {})
-      await load()
-      onOpen(res.data.data._id)
-    } catch (e) {
-      setAssembleError(e.response?.data?.message || 'Failed to assemble petition — check that a package definition exists for this case\'s visa type.')
-    } finally {
-      setAssembling(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -66,36 +50,12 @@ export default function PetitionVersionList({ caseId, canAssemble, onOpen }) {
     <div className="space-y-4">
       <PetitionUploadPanel caseId={caseId} canUpload={canAssemble} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-bold text-foreground">Petition</h3>
-          <p className="text-sm text-muted-foreground">Assemble, review, and file the petition package for this case.</p>
-        </div>
-        {canAssemble && (
-          <button type="button" onClick={handleAssemble} disabled={assembling} className="btn-primary inline-flex items-center gap-2">
-            {assembling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {packages.length ? 'Assemble New Version' : 'Assemble Petition'}
-          </button>
-        )}
-      </div>
-
       {error && (
         <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" /> {error}
         </div>
       )}
-      {assembleError && (
-        <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-          <AlertCircle className="h-4 w-4 shrink-0" /> {assembleError}
-        </div>
-      )}
-
-      {!packages.length && !error ? (
-        <div className="card flex flex-col items-center gap-3 py-16 text-center">
-          <FileStack className="h-10 w-10 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">No petition has been assembled for this case yet.</p>
-        </div>
-      ) : (
+      {!packages.length ? null : (
         <div className="card overflow-hidden !p-0">
           <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-sm">
             <thead className="bg-muted text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">

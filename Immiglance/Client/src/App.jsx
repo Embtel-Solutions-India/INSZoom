@@ -33,6 +33,7 @@ const BookConsultation = lazy(() => import("./Pages/Dashboard/BookConsultation")
 const WaitingForApproval = lazy(() => import("./Pages/Dashboard/WaitingForApproval"));
 const FilingTypeSelection = lazy(() => import("./Pages/Dashboard/FilingTypeSelection"));
 const PlanSelection = lazy(() => import("./Pages/Dashboard/PlanSelection"));
+const Forms = lazy(() => import("./Pages/Dashboard/Forms"));
 const Messages = lazy(() => import("./Pages/Dashboard/Messages"));
 const PaymentSuccess = lazy(() => import("./Pages/Dashboard/PaymentSuccess"));
 const PaymentCancel = lazy(() => import("./Pages/Dashboard/PaymentCancel"));
@@ -78,6 +79,7 @@ export default function App() {
             <Route path="/dashboard/tasks"     element={<Tasks />} />
             <Route path="/dashboard/profile"   element={<Profile />} />
             <Route path="/dashboard/messages"  element={<Messages />} />
+            <Route path="/dashboard/forms"     element={<Forms />} />
             <Route path="/dashboard/plan"      element={<PlanSelection />} />
             <Route path="/dashboard/filing-type" element={<FilingTypeSelection />} />
             <Route path="/dashboard/payments/success" element={<PaymentSuccess />} />

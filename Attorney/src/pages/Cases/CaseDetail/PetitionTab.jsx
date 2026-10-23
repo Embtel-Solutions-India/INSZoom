@@ -119,7 +119,7 @@ export default function PetitionTab() {
       )}
 
       {!packages.length && !uploads.length ? (
-        <p className="text-sm text-muted-foreground card text-center">No petition package has been assembled for this case yet.</p>
+        <p className="text-sm text-muted-foreground card text-center">No petition has been uploaded for this case yet.</p>
       ) : (
         packages.length > 0 && (
           <div className="card !p-0 divide-y divide-border">

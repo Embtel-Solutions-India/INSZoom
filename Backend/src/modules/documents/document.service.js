@@ -24,7 +24,9 @@ const MAX_UPLOAD_SIZE = Number(process.env.MAX_DOCUMENT_UPLOAD_SIZE_BYTES || 250
 // Slots that intentionally hold ONE current file (new uploads become versions
 // of it). Every other checklist documentType accepts up to
 // MAX_FILES_PER_ROW separate entries.
-const SINGLE_SLOT_DOCUMENT_TYPES = new Set(["petition_manual_upload"]);
+// Document types where a new upload REPLACES (versions) the one already there. None right now: a petition can be uploaded several times and every upload stays in the list
+// (the same per-row cap of upload-limits.js applies). Add a type here to bring the replace-on-upload behaviour back for it.
+const SINGLE_SLOT_DOCUMENT_TYPES = new Set([]);
 const UPLOAD_SESSION_TTL_MS = Number(process.env.DOCUMENT_UPLOAD_SESSION_TTL_MS || 24 * 60 * 60 * 1000);
 
 function sameId(left, right) {

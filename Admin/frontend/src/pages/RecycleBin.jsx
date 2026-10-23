@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RotateCcw, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react'
 import { recycleBinApi, invalidateCachedGet } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import ConfirmModal from '../components/ConfirmModal'
@@ -10,6 +11,7 @@ const formatDate = (value) => (value ? new Date(value).toLocaleString() : '')
 // Deleted cases wait here for 30 days. An administrator can restore one (the case, its employee cases, the client accounts, documents, answers, forms and
 // the rest come back as they were); after 30 days the copies and the uploaded files are removed for good.
 export default function RecycleBin() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [items, setItems] = useState(null)
   const [retentionDays, setRetentionDays] = useState(30)
@@ -59,6 +61,14 @@ export default function RecycleBin() {
   return (
     <div className="space-y-6">
       <div>
+        <button
+          type="button"
+          onClick={() => navigate('/crm-cases')}
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Cases
+        </button>
         <h1 className="text-2xl font-semibold tracking-tight text-foreground">Recycle bin</h1>
         <p className="mt-1 text-sm text-muted-foreground">Deleted cases are kept here for {retentionDays} days. Restore one to bring back the case, its employee cases, the client accounts and every record; after {retentionDays} days it is deleted permanently.</p>
       </div>

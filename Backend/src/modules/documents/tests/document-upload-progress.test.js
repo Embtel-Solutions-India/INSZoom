@@ -106,7 +106,7 @@ test("createDocumentFromFile rejects a checklist file over 50 MB", async (t) => 
   );
 });
 
-test("createDocumentFromFile still versions single-slot document types (petition_manual_upload)", async (t) => {
+test("a petition can be uploaded several times: every upload is its own Document, none replaces the earlier one", async (t) => {
   const user = { _id: "client-1", role: "client" };
   const existingDocument = {
     _id: "doc-1",
@@ -114,7 +114,7 @@ test("createDocumentFromFile still versions single-slot document types (petition
     auditHistory: [],
     save: async function save() { return this; },
   };
-  const created = stubCaseAndDocumentModel(t, { singleSlotExisting: existingDocument });
+  const created = stubCaseAndDocumentModel(t, { existingCount: 1, singleSlotExisting: existingDocument });
 
   const result = await documentService.createDocumentFromFile({
     file: fakeFile("petition-v2.pdf"),
@@ -123,9 +123,10 @@ test("createDocumentFromFile still versions single-slot document types (petition
     req: {},
   });
 
-  assert.equal(created.length, 0, "must version the existing document, not call Document.create");
-  assert.equal(result, existingDocument);
-  assert.equal(existingDocument.versions.length, 2);
+  assert.equal(created.length, 1, "the second petition is its own Document");
+  assert.notEqual(result, existingDocument);
+  assert.equal(result.originalName, "petition-v2.pdf");
+  assert.equal(existingDocument.versions.length, 1, "the first petition is untouched");
 });
 
 test("calculateProgress matches an uploaded document's documentType against the case's required checklist", async (t) => {
