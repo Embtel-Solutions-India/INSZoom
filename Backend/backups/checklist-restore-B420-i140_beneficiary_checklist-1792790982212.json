@@ -1,0 +1,146 @@
+[
+  {
+    "_id": "6adbd0029f74875a169045eb",
+    "key": "employee_personal_lastName",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045ec",
+    "key": "employee_personal_firstName",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045ed",
+    "key": "employee_personal_dateOfBirth",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045ee",
+    "key": "employee_personal_cityOfBirth",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045ef",
+    "key": "employee_personal_stateOfBirth",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045f0",
+    "key": "employee_personal_countryOfBirth",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045f1",
+    "key": "employee_personal_currentAddress",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045f4",
+    "key": "employee_personal_phoneSecondary",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045f6",
+    "key": "employee_immigrationStatus_lastArrivalDate",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045f7",
+    "key": "employee_immigrationStatus_i94Number",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045fa",
+    "key": "employee_immigrationStatus_alienNumber",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a169045ff",
+    "key": "i140_beneficiary_degree_evaluation",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904600",
+    "key": "i140_beneficiary_degrees_and_transcripts",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904601",
+    "key": "i140_beneficiary_awards_certifications",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904603",
+    "key": "i140_beneficiary_offer_letter",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904604",
+    "key": "i140_beneficiary_previous_approval_notices",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904605",
+    "key": "i140_beneficiary_passport_pages",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904606",
+    "key": "i140_beneficiary_i94",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904607",
+    "key": "i140_beneficiary_ssn",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904608",
+    "key": "i140_beneficiary_drivers_license_or_state_id",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a16904609",
+    "key": "i140_beneficiary_experience_letters",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a1690460b",
+    "key": "i140_beneficiary_w2",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a1690460c",
+    "key": "i140_dependent_i94_or_passport",
+    "active": false,
+    "isActive": false
+  },
+  {
+    "_id": "6adbd0029f74875a1690460d",
+    "key": "i140_dependent_approval_notice",
+    "active": false,
+    "isActive": false
+  }
+]
