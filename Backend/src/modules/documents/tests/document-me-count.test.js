@@ -22,6 +22,10 @@ test("getMyDocumentsCount returns only the count, scoped to the requesting user,
     { user: userId, originalName: "b.pdf", documentType: "visa", category: "identity" },
     { user: userId, originalName: "c.pdf", documentType: "visa", category: "identity", deletedAt: new Date() },
     { user: otherUserId, originalName: "d.pdf", documentType: "visa", category: "identity" },
+    // made by staff / the system, or only a request for a document that has not arrived: never counted as "uploaded by me"
+    { user: userId, originalName: "e.docx", documentType: "petition_presentation_package", category: "legal", uploadedBy: "system" },
+    { user: userId, originalName: "f.pdf", documentType: "petition_manual_upload", category: "legal", uploadedBy: "admin" },
+    { user: userId, originalName: "g.pdf", documentType: "passport", category: "identity", requestStatus: "requested" },
   ]);
 
   try {

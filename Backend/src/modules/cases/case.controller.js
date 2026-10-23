@@ -515,6 +515,19 @@ exports.getCaseConfig = async (req, res, next) => {
   }
 };
 
+// GET /cases/my/pipeline - the GoHighLevel pipeline stages of the signed-in client's own case, for the portal's progress bar. null when the case is not on a pipeline.
+exports.getMyPipeline = async (req, res, next) => {
+  try {
+    const filter = caseService.buildCaseFilter({}, req.user);
+    let own = req.user.primaryCaseId ? await Case.findOne({ ...filter, _id: req.user.primaryCaseId }).select("integrations.ghl").lean() : null;
+    if (!own) own = await Case.findOne(filter).sort({ createdAt: -1 }).select("integrations.ghl").lean();
+    const pipeline = own ? await require("../../integrations/ghl/ghlCaseOutbound").clientPipelineForCase(own) : null;
+    res.json({ success: true, pipeline });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
 exports.getMyCase = async (req, res, next) => {
   // Stage breakdown for the endpoint that was 504-ing in production: mongo_query
   // isolates the populate fan-out's actual DB time (vs. pool-checkout wait,
