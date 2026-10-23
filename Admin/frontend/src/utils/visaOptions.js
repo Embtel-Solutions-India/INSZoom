@@ -142,6 +142,10 @@ export const registryEntryFor = (option, registryTypes) => {
   return (registryTypes || []).find((entry) => keys.includes(optionKey(entry.visaType))) || null
 }
 
+// Is this option an employer / employee matter according to the registry (GET /cases/visa-types)? Read for EVERY option, curated or not, so EB-2, EB-3,
+// L-1A Extension ... get the employer + employee form like H-1B without a hard-coded list.
+export const isEmployerEmployeeOption = (option, registryTypes) => registryEntryFor(option || {}, registryTypes)?.caseStructure === 'employer_employee'
+
 // Which GoHighLevel pipeline a case lives on. Asked wherever a case is created in the CRM (New case, leads, Add employee);
 // cases that arrive from GHL already carry it.
 export const PIPELINE_CATEGORY_OPTIONS = [

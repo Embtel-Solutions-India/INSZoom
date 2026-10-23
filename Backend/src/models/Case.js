@@ -949,6 +949,8 @@ const caseSchema = new mongoose.Schema(
     notes: String,
     externalNotes: [internalNoteSchema],
     internalNotes: [internalNoteSchema],
+    // The notes typed on the "New case" form (Case Details). Shown on the case Overview page; at most 1000 characters.
+    caseNotes: { type: String, trim: true, maxlength: 1000 },
 
     plan: {
       tier: { type: String, enum: [...PACKAGE_NAMES, ""], default: "" },

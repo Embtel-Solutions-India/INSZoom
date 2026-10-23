@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployeeOption, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -129,7 +129,9 @@ const CreateCaseModal = ({
   const { options: visaOptions, registryTypes } = useVisaOptions()
   const selectedRegistryOption = visaOptions.find((opt) => opt.value === form.visaType && opt.fromRegistry)
   const registryEntry = registryEntryFor(visaOptions.find((opt) => opt.value === form.visaType) || {}, registryTypes)
-  const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee'
+  // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters. It is read for EVERY option - including the curated ones
+  // (EB-2, EB-3, L-1A Extension ...) that are not marked fromRegistry - so a new employer / employee visa gets this form without a code change. The fixed list is only a fallback.
+  const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
   const showFilingPathFields = showFamilyPackageFields
@@ -640,11 +642,13 @@ const CreateCaseModal = ({
             <label className="block text-sm font-medium text-muted-foreground mb-1">Case Details</label>
             <textarea
               rows={3}
+              maxLength={1000}
               value={form.caseDetails}
               onChange={handleChange('caseDetails')}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Internal notes, role details, deadlines, or filing context"
             />
+            <p className="mt-1 text-right text-xs text-muted-foreground">{form.caseDetails.length}/1000</p>
           </div>
 
           <div className="flex gap-3 pt-2">
