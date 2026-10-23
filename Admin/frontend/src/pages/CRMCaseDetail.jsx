@@ -367,6 +367,16 @@ const employeeVisaLabel = (child) => {
 // Documents tab: the "Uploaded By" column is hidden for these two cases only (an explicit exception requested by the business); every other case keeps it.
 const CASES_WITHOUT_UPLOADED_BY = new Set(['B413', 'B413-A'])
 
+// The notes typed when the case was created. New cases carry them in caseNotes; older cases only have the first internal note, which was written at the same moment.
+const creationNotes = (caseData) => {
+  if (!caseData) return ''
+  if (caseData.caseNotes) return String(caseData.caseNotes)
+  const first = (caseData.internalNotes || [])[0]
+  if (!first?.note || !first.createdAt || !caseData.createdAt) return ''
+  const gap = Math.abs(new Date(first.createdAt).getTime() - new Date(caseData.createdAt).getTime())
+  return gap <= 2 * 60 * 1000 && first.category === 'general' ? String(first.note) : ''
+}
+
 const CRMCaseDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -2548,6 +2558,12 @@ const CRMCaseDetail = () => {
                     <p className="font-medium">{new Date(caseData.createdAt).toLocaleDateString()}</p>
                   </div>
                 </div>
+              </div>
+
+              {/* Notes written when the case was created (the "Case Details" box). The section is always here; with no notes it stays empty. */}
+              <div className="card">
+                <h3 className="text-lg font-semibold text-foreground mb-4">Notes</h3>
+                {creationNotes(caseData) && <p className="text-sm text-foreground whitespace-pre-wrap break-words">{creationNotes(caseData)}</p>}
               </div>
 
               {/* Petitioner / Beneficiary — family-workflow (I-130/Green Card)

@@ -40,6 +40,7 @@ router.post(
   body("delegateEmployerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid delegate employer email is required"),
   body("delegateEmployerName").optional({ checkFalsy: true }).isString().trim(),
   body("delegateEmployerPhone").optional({ checkFalsy: true }).isString().trim(),
+  body("caseDetails").optional({ checkFalsy: true }).isString().isLength({ max: 1000 }).withMessage("Notes can be at most 1000 characters"),
   body("dataEntryMode").optional({ checkFalsy: true }).isIn(["not_required", "not_set", "fill_self", "invite"]).withMessage("Invalid dataEntryMode"),
   validate,
   ctrl.createCase
@@ -58,7 +59,7 @@ router.post(
   body("employerName").optional({ checkFalsy: true }).isString(),
   body("employerEmail").optional({ checkFalsy: true }).isEmail().normalizeEmail().withMessage("Valid employer email is required"),
   body("employerCompletionMode").optional({ checkFalsy: true }).isIn(["employer_completes", "invite_employees"]).withMessage("Invalid employer workflow option"),
-  body("caseDetails").optional({ checkFalsy: true }).isString(),
+  body("caseDetails").optional({ checkFalsy: true }).isString().isLength({ max: 1000 }).withMessage("Notes can be at most 1000 characters"),
   validate,
   ctrl.createCaseWithClient
 );

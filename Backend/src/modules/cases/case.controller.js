@@ -1289,6 +1289,7 @@ exports.createCase = async (req, res, next) => {
         primaryOwner: assignedCaseManager || undefined,
         assignedCaseManager: assignedCaseManager || undefined,
         slaDueDates,
+        caseNotes: trimmedCaseDetails || undefined,
         internalNotes: trimmedCaseDetails ? [{
           author: req.user._id,
           note: trimmedCaseDetails,
@@ -3915,6 +3916,7 @@ exports.createCaseWithClient = async (req, res, next) => {
       agentEmail: assignedCaseManager ? req.user.email : undefined,
       primaryOwner: assignedCaseManager,
       assignedCaseManager: assignedCaseManager || undefined,
+      caseNotes: trimmedCaseDetails || undefined,
       internalNotes: trimmedCaseDetails ? [{
         author: req.user._id,
         note: trimmedCaseDetails,
