@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Messages",   to: "/dashboard/messages",  icon: MessagesIcon },
+  { label: "Forms",      to: "/dashboard/forms",     icon: FormsIcon },
 ];
 
 export default function PortalLayout() {
@@ -43,7 +44,7 @@ export default function PortalLayout() {
   const isEmployee = isEmployeeAccount(user);
 
   const visibleNavItems = isEmployee
-    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages"].includes(item.label))
+    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages", "Forms"].includes(item.label))
     : NAV_ITEMS;
 
   const handleLogout = async () => {
@@ -158,6 +159,9 @@ function TasksIcon(props) {
 }
 function ProfileIcon(props) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>;
+}
+function FormsIcon(props) {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /><path d="M8 13h8M8 17h8" /></svg>;
 }
 function DocumentsIcon(props) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>;

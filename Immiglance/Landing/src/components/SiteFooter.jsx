@@ -15,7 +15,7 @@ export default function SiteFooter() {
         <p className="text-center sm:text-left">
           &copy; {Math.max(2026, new Date().getFullYear())} Immiglance. All Rights Reserved. Developed by{" "}
           <a href="https://embtelsolutions.com/" target="_blank" rel="noopener noreferrer" className="font-medium text-foreground hover:underline">
-            Embtel Solutions, Inc
+            Embtel Solutions
           </a>
         </p>
       </div>

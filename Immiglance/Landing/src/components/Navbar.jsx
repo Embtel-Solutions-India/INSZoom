@@ -75,6 +75,8 @@ export default function Navbar() {
 
           <ThemeToggle className="hidden sm:inline-flex" />
 
+          <Link to="/forms" className="text-sm font-semibold px-3 sm:px-4 py-2 rounded-lg text-foreground hover:text-primary transition-all no-underline">Forms</Link>
+
           <a
             href={clientLoginUrl()}
             className="hidden sm:flex text-sm font-semibold px-4 py-2 rounded-lg

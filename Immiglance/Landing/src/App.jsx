@@ -27,6 +27,7 @@ const LegacyHolding = lazy(() => import("./Pages/Auth/LegacyHolding"));
 const EligibilityQuiz = lazy(() => import("./Pages/Eligibility/EligibilityQuiz"));
 const BookConsultation = lazy(() => import("./Pages/Consultation/BookConsultation"));
 const ManageBooking = lazy(() => import("./Pages/Consultation/ManageBooking"));
+const Forms = lazy(() => import("./Pages/Forms/Forms"));
 const PrivacyPolicy = lazy(() => import("./Pages/Legal/PrivacyPolicy"));
 const TermsAndConditions = lazy(() => import("./Pages/Legal/TermsAndConditions"));
 
@@ -39,6 +40,7 @@ export default function App() {
         {/* Layout wrapper */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
+          <Route path="/forms" element={<Forms />} />
         </Route>
 
         {/* Public legal pages; they carry their own navbar and footer. */}
