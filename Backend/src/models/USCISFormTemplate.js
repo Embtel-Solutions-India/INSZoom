@@ -107,6 +107,11 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       // for VersionManagementService.reconcilePromotions() to finish or revert. Phase 0's audited non-critical-check override is stored next to it.
       promotionIntent: mongoose.Schema.Types.Mixed,
       certificationOverride: mongoose.Schema.Types.Mixed,
+      // Phase 7.6b (FORM_PIPELINE_AUTONOMY=on only): the pipeline's own approval, the machine acknowledgement of a provably safe edition diff, and the marker of a brand-new form
+      // that was registered without any visa type (a person links it)
+      approvedByMachine: mongoose.Schema.Types.Mixed,
+      editionReviewMachineAck: mongoose.Schema.Types.Mixed,
+      registeredUnlinked: mongoose.Schema.Types.Mixed,
       comparisonReport: mongoose.Schema.Types.Mixed,
       migrationSuggestions: [mongoose.Schema.Types.Mixed],
       impactAnalysis: mongoose.Schema.Types.Mixed,

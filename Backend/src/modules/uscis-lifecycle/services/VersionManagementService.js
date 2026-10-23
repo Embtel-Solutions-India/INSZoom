@@ -83,20 +83,23 @@ class VersionManagementService {
     return { formCode: template.formCode, futureCasesAffected: "new_case_forms", openCaseForms: "stay_on_their_current_edition_until_migrated (the automatic pipeline migrates open forms with all saved answers; frozen forms are never migrated)", activeCasesUsingForm: activeCases, draftCases, pendingCases, approvedCases, completedCases };
   }
 
-  static async approve(versionId, user, req) {
+  // options.machine (Phase 7.6b, set only by the pipeline with FORM_PIPELINE_AUTONOMY=on): { certificationAt, mappingVersionId } - what the pipeline's own approval relied on.
+  static async approve(versionId, user, req, options = {}) {
     const template = await USCISFormTemplate.findById(versionId);
     if (!template) throw Object.assign(new Error("Form version not found"), { status: 404 });
     template.status = "review";
     template.approvedBy = this.userId(user);
     template.approvedAt = new Date();
-    template.lifecycle = { ...(template.lifecycle || {}), reviewRequestedAt: template.lifecycle?.reviewRequestedAt || new Date(), reviewNotes: req?.body?.notes };
+    template.lifecycle = { ...(template.lifecycle || {}), reviewRequestedAt: template.lifecycle?.reviewRequestedAt || new Date(), reviewNotes: req?.body?.notes, ...(options.machine ? { approvedByMachine: { ...options.machine, actor: "system:pipeline", at: new Date() } } : {}) };
     await template.save();
     await this.audit("VERSION_APPROVED_FOR_REVIEW", template, user, req);
     await this.notify(["super_admin", "admin"], { title: "USCIS version awaiting activation", message: `${template.formCode} ${template.version} is approved for activation review.`, metadata: { versionId } }, user, req);
     return template;
   }
 
-  static async activate(versionId, user, req) {
+  // options.skipCaseMigration (Phase 7.6b): a caller that moves the case forms itself. With FORM_PIPELINE_AUTONOMY=on every OTHER activation (a manual admin activation included)
+  // queues the case migration as its own stage after the release (form-pipeline/caseMigrationQueue.js); off: nothing is queued, exactly as before.
+  static async activate(versionId, user, req, options = {}) {
     const template = await USCISFormTemplate.findById(versionId);
     if (!template) throw Object.assign(new Error("Form version not found"), { status: 404 });
     // Phase 3: ONE structured release decision for the preconditions (approved, mapping active, not deprecated) and the certification (Phase 0: only a certified edition goes live,
@@ -149,7 +152,12 @@ class VersionManagementService {
 
     await this.audit("VERSION_ACTIVATED", template, user, req, { impact, componentDiscovery, ...(certificationCheck.override ? { certificationOverride: certificationCheck.override } : {}) });
     await this.notify(["super_admin", "admin", "case_manager", "attorney"], { title: "USCIS form version activated", message: `${template.formCode} ${template.version} is now active for new cases. Existing cases remain locked to prior editions.`, metadata: { versionId, impact } }, user, req);
-    return { template, impact, componentDiscovery };
+    let caseMigrationScheduled;
+    if (!options.skipCaseMigration) {
+      const scheduled = await require("../../form-pipeline/caseMigrationQueue").scheduleCaseMigration({ template, user, source: "activate" });
+      if (scheduled.scheduled !== "off") caseMigrationScheduled = scheduled;
+    }
+    return { template, impact, componentDiscovery, ...(caseMigrationScheduled ? { caseMigrationScheduled } : {}) };
   }
 
   // Step 3 of the protocol: confirm the new edition is live, retire the ones it replaces, clear the intent. A failure here is NOT thrown (the new edition is live and the form
@@ -237,7 +245,7 @@ class VersionManagementService {
     if (current && String(current._id) === String(target._id)) throw Object.assign(new Error("That edition is already the live one"), { status: 409, statusCode: 409 });
     const mappingOk = target.activeMappingVersionId && (await require("../../../models/USCISMappingVersion").exists({ _id: target.activeMappingVersionId }));
     if (!mappingOk) throw Object.assign(new Error("That edition's mapping version is no longer stored, so it cannot be restored"), { status: 409, statusCode: 409 });
-    const result = await this.activate(target._id, user, req);
+    const result = await this.activate(target._id, user, req, { skipCaseMigration: true }); // a rollback never moves cases back onto the older edition (they are listed for reconciliation)
     const affected = current ? await CaseForm.find({ formTemplateId: current._id }).select("caseId status formCode").lean() : [];
     const report = { formCode: code, restored: { id: String(target._id), version: target.version }, replaced: current ? { id: String(current._id), version: current.version } : null, caseFormsToReconcile: affected.map((item) => ({ caseFormId: String(item._id), caseId: String(item.caseId), status: item.status })), reason: String(reason || "") };
     await this.audit("VERSION_ROLLED_BACK", result.template, user, req, { ...report, caseFormsToReconcile: affected.length });

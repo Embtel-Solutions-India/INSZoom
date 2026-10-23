@@ -28,6 +28,7 @@ const CaseForm = require("../../../models/CaseForm");
 const VisaFormMapping = require("../../../models/VisaFormMapping");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const logger = require("../../../utils/logger");
+const autonomy = require("../../../config/formPipelineAutonomy");
 const { pageUrlFor: aliasPageUrl } = require("../config/formSourceAliases");
 
 const versionService = new FormVersionService();
@@ -238,6 +239,43 @@ async function inferenceAllowed(template) {
   }
 }
 
+// Phase 7.6b (FORM_PIPELINE_AUTONOMY on / shadow): the pipeline acknowledges an edition difference ITSELF, but only a provably safe one (FormEditionComparisonService.autoAcknowledge:
+// a required flip on a box that still exists, or a rename the field matcher proves and the new graph already carries). It is called ONLY when mapping activation was refused with
+// UNREVIEWED_EDITION_CHANGES - the refusal that otherwise waits for a person. Paths that still reach it with the partial activation in place: a LOSSLESS graph (nothing lost, no
+// box left unmapped) whose edition diff still has required flips / broken checklist traces, and the authored-rules activation. Returns { acknowledged, ... }; never throws.
+async function tryAutoAcknowledge(template, { certification = null } = {}) {
+  if (autonomy.mode() === "off") return { acknowledged: false, reason: "autonomy_off" };
+  try {
+    const FormEditionComparisonService = require("../../form-mapping/services/FormEditionComparisonService");
+    let editionDecision;
+    try { editionDecision = (await require("../../form-edition-policy/EditionPolicyEnforcer").peekAcceptance(template))?.decision; } catch { editionDecision = undefined; }
+    return await FormEditionComparisonService.autoAcknowledge(template, { certification, editionDecision });
+  } catch (error) {
+    logger.warn("uscis_form_auto_acknowledge_failed", { formCode: template?.formCode, error: error.message });
+    return { acknowledged: false, reason: "error", error: error.message };
+  }
+}
+
+// Phase 7.6b (on only): a never-seen form code is registered HIDDEN and LINKED TO NO VISA TYPE - it cannot appear in case creation until a person links it in the registry (the one
+// human decision: which cases need the form). A form the registry already links (derived visa types non-empty) keeps those links. Returns the marker or null.
+async function registerBrandNewFormUnlinked(template) {
+  if (autonomy.mode() !== "on" || !template?._id) return null;
+  try {
+    const others = await USCISFormTemplate.countDocuments({ formCode: template.formCode, _id: { $ne: template._id } });
+    if (others > 0) return null; // another edition of a form we already know
+    const linked = await deriveVisaTypesFromRegistry(template.formCode);
+    if (linked.length) return null;
+    template.visaTypes = [];
+    template.lifecycle = { ...(template.lifecycle?.toObject?.() || template.lifecycle || {}), registeredUnlinked: { at: new Date(), by: "system:pipeline", note: "a new form: registered with no visa type; link it in the form registry to offer it on cases" } };
+    await template.save();
+    logger.info("uscis_form_registered_unlinked", { formCode: template.formCode, templateId: String(template._id) });
+    return template.lifecycle.registeredUnlinked;
+  } catch (error) {
+    logger.warn("uscis_form_register_unlinked_failed", { formCode: template?.formCode, error: error.message });
+    return null;
+  }
+}
+
 // `pipeline` (optional, Phase 1): the job context of the durable pipeline. With it each major step is recorded as a stage of the job and the promotion step is
 // lease-checked and mutex-guarded; without it every stage() below simply runs its function, so behavior is exactly what it was.
 async function activateOrPromote(template, user, req, pipeline = null) {
@@ -247,6 +285,17 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   let migration = null;
   try {
     migration = await stage("map", () => migrateMappingToEdition(template, user, req));
+    if (migration.migrated && !migration.activated && migration.reason === "UNREVIEWED_EDITION_CHANGES") {
+      const acknowledgement = await tryAutoAcknowledge(await USCISFormTemplate.findById(template._id));
+      if (acknowledgement.acknowledged) {
+        try {
+          await MappingGraphService.activate(template._id, user, req);
+          migration = { ...migration, activated: true, autoAcknowledged: true };
+        } catch (error) {
+          logger.info("uscis_form_mapping_activation_after_acknowledgement_failed", { formCode: template.formCode, error: error.message });
+        }
+      }
+    }
     if (migration.migrated) {
       template = await USCISFormTemplate.findById(template._id);
       logger.info("uscis_form_mapping_migrated", { formCode: template.formCode, templateId: String(template._id), activated: migration.activated, reason: migration.reason, lost: migration.lostEdges?.length || 0, source: migration.summary?.source });
@@ -265,6 +314,17 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       template = await USCISFormTemplate.findById(template._id);
     } catch (error) {
       logger.info("uscis_form_rule_mapping_failed", { formCode: template.formCode, error: error.message });
+      if (autonomy.mode() !== "off" && /UNREVIEWED_EDITION_CHANGES/.test(`${error?.code || ""} ${error?.message || ""}`)) {
+        const acknowledgement = await tryAutoAcknowledge(await USCISFormTemplate.findById(template._id));
+        if (acknowledgement.acknowledged) {
+          try {
+            ruleMapping = await stage("map", () => PartyFieldMappingService.apply(template, user, req, { allowInference: false }));
+            template = await USCISFormTemplate.findById(template._id);
+          } catch (again) {
+            logger.info("uscis_form_rule_mapping_after_acknowledgement_failed", { formCode: template.formCode, error: again.message });
+          }
+        }
+      }
     }
   }
   // Phase 4 (optional, OFF unless FORM_AI_MAPPING=shadow|on): Gemini suggestions for the boxes the rules left unmapped. Shadow only stores them; "on" adds validated low-risk ones to a
@@ -325,7 +385,13 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     // (uscis-form.controller.js's approveTemplate/activateTemplate), done
     // here in sequence rather than skipping the approval gate.
     if (template.status !== "review") {
-      template = await VersionManagementService.approve(template._id, user, req);
+      if (autonomy.mode() === "on") {
+        // Phase 7.6b: the pipeline's own approval, recorded as system:pipeline together with the certification it relied on (the certification and both gates still decide the release)
+        const { systemActor } = require("../../form-pipeline/systemActor");
+        template = await VersionManagementService.approve(template._id, systemActor(), req, { machine: { certificationAt: certification?.at || certification?.certifiedAt || null, certificationPassed: Boolean(certification?.passed), mappingVersionId: template.activeMappingVersionId || null } });
+      } else {
+        template = await VersionManagementService.approve(template._id, user, req);
+      }
     }
     // the edition that is live right now (if any): the only one the rescue below may ever put back
     const liveBefore = await USCISFormTemplate.findOne({ formCode: template.formCode, status: "active" }).select("_id").lean();
@@ -369,8 +435,13 @@ async function activateOrPromote(template, user, req, pipeline = null) {
       const others = await USCISFormTemplate.find({ formCode: template.formCode, _id: { $ne: template._id } }).select("visaTypes").lean();
       const merged = Array.from(new Set([...(template.visaTypes || []), ...others.flatMap((other) => other.visaTypes || [])]));
       if (merged.length !== (template.visaTypes || []).length) { template.visaTypes = merged; await template.save(); }
+      if (autonomy.mode() === "on") {
+        // Phase 7.6b: activate() queued the migration as its own stage (the continuation of this job, or a case_migration job); the outcome is merged into the job's result by the executor
+        logger.info("uscis_form_cases_migration_queued", { formCode: template.formCode, templateId: String(template._id) });
+      } else {
       caseMigration = await stage("migrate_cases", () => migrateCaseFormsToEdition({ newTemplate: template, actor: user, req }));
       logger.info("uscis_form_cases_migrated", { formCode: template.formCode, considered: caseMigration.considered, migrated: caseMigration.migrated, verified: caseMigration.verified, skippedFrozen: caseMigration.skippedFrozen, valuesCarried: caseMigration.valuesCarried, valuesArchived: caseMigration.valuesArchived, unresolved: (caseMigration.unresolved || []).length, reconciliationRequired: (caseMigration.reconciliationRequired || []).length, failed: caseMigration.failed.length });
+      }
     } catch (error) {
       caseMigrationError = error.message;
       logger.warn("uscis_form_cases_migration_failed", { formCode: template.formCode, error: error.message });
@@ -482,8 +553,9 @@ async function acquireMissingForm(formCode, user, req, pipeline = null) {
   }, { attempts: 5, label: `import:${formCode}`, onRetry: (info) => logger.info("uscis_form_import_retry", { formCode, attempt: info.attempt, delay: info.delay, error: info.error.message }) }));
   logger.info("uscis_form_download_completed", { formCode, templateId: String(importResult.template._id) });
   await recordEdition(pipeline, formCode, importResult.template, null);
+  const unlinked = await registerBrandNewFormUnlinked(importResult.template); // Phase 7.6b (on only): a never-seen form is registered with no visa type
   const activation = await activateOrPromote(importResult.template, user, req, pipeline);
-  return { ...activation, alreadyActive: false };
+  return { ...activation, alreadyActive: false, ...(unlinked ? { unlinkedNewForm: true } : {}) };
 }
 
 // ensureCurrentUSCISForm — the single entry point that both "a case needs a
@@ -785,4 +857,6 @@ module.exports = {
   acquireForCase,
   guessedFormPageUrl,
   recoverFormSource,
+  tryAutoAcknowledge,
+  registerBrandNewFormUnlinked,
 };

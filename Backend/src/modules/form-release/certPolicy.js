@@ -9,11 +9,15 @@ const CERT_CHECK_POLICY = Object.freeze({
   widget_inputs: "critical",       // tick boxes get booleans, drop-downs get one of their options, dates are dates (Phase 3)
   viewer_download: "non_critical", // the filled bytes are a valid PDF with the template's page count
   components_slice: "non_critical", // every supplement the previous edition served can be sliced
+  // Phase 7.6a, only present in a certification made with FORM_PIPELINE_AUTONOMY=on (see FormCertificationService): the real renderer's output is checked, in memory.
+  data_probe: "critical",          // every mapped box, filled with a very long / typed / ticked / real-option value, reads back in full and only in its own party's box
+  artifact_probe: "critical",      // the final file: text inside its box, ticks visible, pages and fields intact, nothing protected filled
 });
 
 const OVERRIDE_REASON_MIN = 10;
 // Phase 7.5: with FORM_PIPELINE_AUTONOMY=on the component check can no longer be overridden (it is no longer vacuous); off / shadow: the table above, unchanged.
-const classify = (name) => (name === "components_slice" && require("../../config/formPipelineAutonomy").mode() === "on" ? "critical" : (CERT_CHECK_POLICY[name] || "critical"));
+// Phase 7.6a: with 'on' the download check can no longer be overridden either.
+const classify = (name) => ((name === "components_slice" || name === "viewer_download") && require("../../config/formPipelineAutonomy").mode() === "on" ? "critical" : (CERT_CHECK_POLICY[name] || "critical"));
 const CRITICAL_CERTIFICATION_CHECKS = Object.freeze(Object.keys(CERT_CHECK_POLICY).filter((name) => CERT_CHECK_POLICY[name] === "critical"));
 
 /** Pure. { ok, error?, override? } - may this edition be activated given its stored certification report and the request. */

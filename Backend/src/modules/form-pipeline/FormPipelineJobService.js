@@ -35,7 +35,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     const at = now();
     try {
       const job = await model.create({
-        formCode: code, trigger, requestedBy, options: { forceCheck: Boolean(options.forceCheck) }, shadow, schemaVersion: SCHEMA_VERSION, state: JOB_STATES.PENDING,
+        formCode: code, trigger, requestedBy, options: { forceCheck: Boolean(options.forceCheck), ...(options.migrateTemplateId ? { migrateTemplateId: options.migrateTemplateId } : {}) }, shadow, schemaVersion: SCHEMA_VERSION, state: JOB_STATES.PENDING,
         nextAttemptAt, history: [historyEntry(at, JOB_STATES.PENDING, null, `queued by ${trigger}`)],
       });
       return { job: job.toObject(), created: true };
@@ -46,6 +46,12 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
       }
       throw error;
     }
+  }
+
+  /** Phase 7.6b: an edition was released while this job is open: its case migration runs as the continuation of THIS job (idempotent: the same edition twice is one follow-up). */
+  async function setFollowUpMigration(jobId, templateId) {
+    const result = await model.updateOne({ _id: jobId, open: true }, { $set: { "options.followUpMigrationTemplateId": templateId } });
+    return result.matchedCount === 1;
   }
 
   /** Expired running jobs go back to pending (their worker died or stalled) or, with no attempts left, to dead_letter. Atomic per job. */
@@ -327,7 +333,7 @@ function createJobService({ model = FormPipelineJob, now = () => new Date(), ran
     return model.find({ state: JOB_STATES.PENDING, createdAt: { $lt: cutoff }, $or: [{ nextAttemptAt: null }, { nextAttemptAt: { $exists: false } }, { nextAttemptAt: { $lte: now() } }] }).select("_id formCode createdAt").lean();
   }
 
-  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, recordResolutions, exhaust, release, manualRetry, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
+  return { enqueue, recoverExpired, claimNext, claimById, heartbeat, assertLease, stageStart, stageFinish, stageFail, setEdition, recordRepair, complete, fail, recordResolutions, exhaust, release, manualRetry, setFollowUpMigration, requeueOutdatedHolds, persistentHolds, markEscalated, markAlert, list, get, staleQueued, fenced };
 }
 
 let defaultService = null;

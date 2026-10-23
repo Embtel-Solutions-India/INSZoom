@@ -79,6 +79,16 @@ async function evaluate(template, { req, deps = {} } = {}) {
   checks.push(pre);
 
   const certification = certificationDecision(template, req);
+  // Phase 7.6a (FORM_PIPELINE_AUTONOMY=on only): a certification is only good for the mapping it tested. Versions are immutable, so a different version id means the mapping was
+  // changed after certifying. A certification stored WITHOUT a version id (every live edition today) is grandfathered, never a failure.
+  if (certification.ok && autonomy.mode() === "on") {
+    const certified = template?.importMetadata?.validationSummary?.certification?.mappingVersionId;
+    const current = template?.activeMappingVersionId || template?.latestMappingVersionId;
+    if (certified && current && String(certified) !== String(current)) {
+      certification.ok = false;
+      certification.error = "The mapping was changed after this edition was certified; it is re-certified automatically before release";
+    }
+  }
   checks.push(certification.ok
     ? { name: "certification", outcome: certification.override ? "degraded" : "pass", detail: certification.override ? `non-critical check(s) overridden: ${certification.override.failed.join(", ")}` : "certified" }
     : { name: "certification", outcome: "blocked", detail: certification.error });

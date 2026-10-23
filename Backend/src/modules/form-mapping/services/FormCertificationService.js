@@ -126,6 +126,34 @@ async function certify(template, { previous = null, persist = true } = {}) {
     return `${reloaded.getPageCount()} pages, ${filledBytes.length} bytes`;
   });
 
+  // Phase 7.6a (FORM_PIPELINE_AUTONOMY): the probe renders the edition's own PDF in memory with very long / typed / ticked values and checks the final file. 'on' records the two
+  // checks in the certification (critical, see certPolicy); 'shadow' only logs what they would say; 'off' does nothing at all.
+  const probeMode = require("../../../config/formPipelineAutonomy").mode();
+  if (probeMode !== "off") {
+    let probe = null;
+    const probeOnce = async () => { probe = probe || (await require("../../form-release/artifactCertification").probeEdition(template, { graph })); return probe; };
+    const describeFailures = (list) => list.slice(0, 3).map((failure) => `${failure.check}${failure.field ? ` ${failure.field}` : ""}: ${failure.detail}`).join("; ");
+    if (probeMode === "on") {
+      await run(checks, "data_probe", async () => {
+        const result = await probeOnce();
+        if (!result.data.ok) fail(`${result.data.failures.length} box(es) did not keep their data, first: ${describeFailures(result.data.failures)}`);
+        return `${result.data.checked} boxes kept their full data`;
+      });
+      await run(checks, "artifact_probe", async () => {
+        const result = await probeOnce();
+        if (!result.artifact.ok) fail(`${result.artifact.failures.length} problem(s) in the final file, first: ${describeFailures(result.artifact.failures)}`);
+        return `${result.artifact.stats.pages} pages, ${result.artifact.stats.measured} text boxes measured, ${result.artifact.stats.ticks} ticks visible`;
+      });
+    } else {
+      try {
+        const result = await probeOnce();
+        logger.warn("form_certification_probe_shadow", { formCode: template.formCode, version: template.version, dataOk: result.data.ok, artifactOk: result.artifact.ok, wouldFail: [...result.data.failures, ...result.artifact.failures].slice(0, 5) });
+      } catch (error) {
+        logger.warn("form_certification_probe_shadow_failed", { formCode: template.formCode, error: error.message });
+      }
+    }
+  }
+
   await run(checks, "components_slice", async () => {
     const { checkEditionReady } = require("./EditionMigrationService");
     const readiness = await checkEditionReady(template, previous);
@@ -147,6 +175,14 @@ async function certify(template, { previous = null, persist = true } = {}) {
   });
 
   const report = { passed: checks.every((check) => check.passed), certifiedAt: new Date(), version: template.version, checks };
+  // Phase 7.6a ('on' only): the certification is bound to the mapping version it tested (ReleaseGate rejects it once the mapping has changed)
+  if (require("../../../config/formPipelineAutonomy").mode() === "on") {
+    const versionId = template.activeMappingVersionId || template.latestMappingVersionId;
+    if (versionId) {
+      report.mappingVersionId = String(versionId);
+      try { report.graphChecksum = (await require("../../../models/USCISMappingVersion").findById(versionId).select("checksum").lean())?.checksum; } catch (error) { /* the id alone binds it */ }
+    }
+  }
   // the coverage report of the mapping that was just certified is kept with its mapping version (never on the template document: I-129 is near the 16 MB limit)
   if (persist) {
     try {

@@ -22,7 +22,9 @@ const formPipelineJobSchema = new mongoose.Schema(
     formCode: { type: String, required: true, uppercase: true, trim: true },
     trigger: { type: String, enum: TRIGGERS, default: "unknown" },
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    options: { forceCheck: { type: Boolean, default: false } },
+    // Phase 7.6b: migrateTemplateId = a case_migration job's edition; followUpMigrationTemplateId = an edition released while this job was open (its case migration runs as the
+    // continuation of this job, never as a second open job for the form)
+    options: { forceCheck: { type: Boolean, default: false }, migrateTemplateId: mongoose.Schema.Types.ObjectId, followUpMigrationTemplateId: mongoose.Schema.Types.ObjectId },
     schemaVersion: { type: Number, default: SCHEMA_VERSION, index: true },
     state: { type: String, enum: Object.values(JOB_STATES), default: JOB_STATES.PENDING },
     open: { type: Boolean, default: true }, // true while state is one of OPEN_STATES (kept as a field so a PARTIAL unique index can enforce "one open job per form")

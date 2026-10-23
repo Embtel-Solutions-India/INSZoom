@@ -32,8 +32,10 @@
 // object, not the top-level `required` boolean USCISFormTemplate's own
 // pre-validate hook derives it from) - requiredChanges() below is the one
 // genuinely new small diff this phase adds, scoped to exactly that gap.
+const crypto = require("crypto");
 const USCISFormTemplate = require("../../../models/USCISFormTemplate");
 const FieldDiffService = require("../../uscis-lifecycle/services/FieldDiffService");
+const autonomy = require("../../../config/formPipelineAutonomy");
 
 function fieldTargetId(field = {}) {
   return field.fieldId || field.id || field.fieldName;
@@ -203,8 +205,103 @@ class FormEditionComparisonService {
     if (!comparison || !comparison.hasBreakingChanges) return { blocked: false, comparison };
     const acknowledgedAt = template.lifecycle?.editionReviewAcknowledgedAt;
     const acknowledgedFor = template.lifecycle?.editionReviewOldTemplateId;
-    const acknowledged = Boolean(acknowledgedAt) && String(acknowledgedFor || "") === String(comparison.oldTemplate.templateId);
+    let acknowledged = Boolean(acknowledgedAt) && String(acknowledgedFor || "") === String(comparison.oldTemplate.templateId);
+    // Phase 7.6b: an acknowledgement made by the PIPELINE is keyed to the exact diff it examined: a different diff needs a new one (a person's acknowledgement is unchanged).
+    const machine = template.lifecycle?.editionReviewMachineAck;
+    if (acknowledged && machine) acknowledged = machine.diffHash === this.diffHash(comparison);
     return { blocked: !acknowledged, comparison };
+  }
+
+  /** Phase 7.6b. A stable fingerprint of WHAT an edition change breaks (affected edges with their reasons, broken checklist traces, required flips) - not of timestamps. */
+  static diffHash(comparison) {
+    const edges = (comparison.affectedMappingEdges || []).map((edge) => [edge.mappingId, edge.targetFieldId, [...(edge.reasons || [])].sort().join("+"), edge.renamedTo?.id || ""]).sort((a, b) => String(a[0] + a[1]).localeCompare(String(b[0] + b[1])));
+    const traces = (comparison.brokenChecklistTraces || []).map((trace) => trace.targetFieldId).sort();
+    const required = (comparison.requiredChanges || []).map((change) => [change.fieldId, change.oldRequired, change.newRequired]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    return crypto.createHash("sha1").update(JSON.stringify({ old: String(comparison.oldTemplate?.templateId), next: String(comparison.newTemplate?.templateId), edges, traces, required })).digest("hex");
+  }
+
+  /**
+   * Phase 7.6b. Is every mapping edge this edition change touches provably still correct? { safe, unsafe: [{ mappingId, targetFieldId, why }], proven: [...] }
+   *   - only a required <-> optional flip on a box that still exists under the same id and kind: the edge still maps the same box, so it is safe;
+   *   - a renamed box: safe ONLY when the 7.3 matcher pairs the old box with the very box the diff names at HIGH confidence AND the new edition's own graph already has an
+   *     ACTIVE edge from the same source to it (it was carried, not guessed);
+   *   - a removed box or an incompatible type change: never safe (those are left unmapped by the partial activation, they are not acknowledged away).
+   * `deps` (tests): { proveRename({ edge, comparison, template }) -> boolean }.
+   */
+  static async proveDiffSafe(comparison, template, deps = {}) {
+    const unsafe = [];
+    const proven = [];
+    for (const edge of comparison.affectedMappingEdges || []) {
+      const reasons = new Set(edge.reasons || []);
+      if (reasons.has("field_removed")) { unsafe.push({ mappingId: edge.mappingId, targetFieldId: edge.targetFieldId, why: "box removed" }); continue; }
+      if (reasons.has("field_type_changed")) { unsafe.push({ mappingId: edge.mappingId, targetFieldId: edge.targetFieldId, why: "box type changed" }); continue; }
+      if (reasons.has("field_renamed")) {
+        let ok = false;
+        try { ok = await (deps.proveRename || this.defaultProveRename.bind(this))({ edge, comparison, template }); } catch { ok = false; }
+        if (!ok) { unsafe.push({ mappingId: edge.mappingId, targetFieldId: edge.targetFieldId, why: "rename not proven by the field matcher and the new graph" }); continue; }
+      }
+      proven.push({ mappingId: edge.mappingId, targetFieldId: edge.targetFieldId, reasons: [...reasons] });
+    }
+    return { safe: unsafe.length === 0, unsafe, proven };
+  }
+
+  static async defaultProveRename({ edge, comparison, template }) {
+    const MappingGraphService = require("./MappingGraphService");
+    const FieldMatcher = require("./matching").match;
+    const [oldTemplate, newTemplate] = await Promise.all([
+      USCISFormTemplate.findById(comparison.oldTemplate.templateId).select("formFields").lean(),
+      USCISFormTemplate.findById(template._id || comparison.newTemplate.templateId).select("formFields").lean(),
+    ]);
+    const newId = edge.renamedTo?.id || edge.renamedTo?.fieldId;
+    if (!oldTemplate || !newTemplate || !newId) return false;
+    const { matched } = FieldMatcher(oldTemplate.formFields || [], newTemplate.formFields || []);
+    const result = matched.get(edge.targetFieldId);
+    if (!result || result.confidence !== "high" || String(result.newId) !== String(newId)) return false;
+    const graph = await MappingGraphService.loadCurrentGraph(newTemplate._id ? { _id: newTemplate._id } : template);
+    return (graph?.edges || []).some((candidate) => candidate.status === "active" && candidate.targetFieldId === newId && candidate.sourcePath === edge.sourcePath);
+  }
+
+  /**
+   * Phase 7.6b - the PIPELINE's own acknowledgement of an edition diff, only with FORM_PIPELINE_AUTONOMY=on (shadow: logged, nothing written; off: nothing).
+   * Called by the pipeline only when mapping activation was refused with UNREVIEWED_EDITION_CHANGES. Acknowledges ONLY a diff proven safe by proveDiffSafe; keyed to the
+   * diff's hash; actor system:pipeline; audited. Never when the certification failed or the edition is not accepted by USCIS. It does not activate anything.
+   * options: { certification, editionDecision, user, req, mode, deps }.
+   */
+  static async autoAcknowledge(templateOrId, options = {}) {
+    const mode = options.mode || autonomy.mode();
+    if (mode === "off") return { acknowledged: false, reason: "autonomy_off" };
+    const template = await USCISFormTemplate.findById(templateOrId?._id || templateOrId);
+    if (!template) return { acknowledged: false, reason: "template_not_found" };
+    if (!template.parentVersion) return { acknowledged: false, reason: "no_parent_edition" };
+    if (options.certification && options.certification.passed === false) return { acknowledged: false, reason: "certification_failed" };
+    if (options.editionDecision === "not_accepted") return { acknowledged: false, reason: "edition_not_accepted" };
+    const comparison = await this.compareEditions(template.parentVersion, template._id);
+    if (!comparison.hasBreakingChanges) return { acknowledged: false, reason: "nothing_to_acknowledge" };
+    const proof = await this.proveDiffSafe(comparison, template, options.deps);
+    if (!proof.safe) return { acknowledged: false, reason: "not_provably_safe", unsafe: proof.unsafe };
+    const diffHash = this.diffHash(comparison);
+    const logger = require("../../../utils/logger");
+    if (mode === "shadow") {
+      logger.warn("edition_diff_auto_acknowledge_shadow", { formCode: template.formCode, templateId: String(template._id), diffHash, edges: proof.proven.length });
+      return { acknowledged: false, shadow: true, wouldAcknowledge: true, diffHash };
+    }
+    const machine = template.lifecycle?.editionReviewMachineAck;
+    if (template.lifecycle?.editionReviewAcknowledgedAt && machine?.diffHash === diffHash && String(template.lifecycle.editionReviewOldTemplateId || "") === String(template.parentVersion)) {
+      return { acknowledged: true, already: true, diffHash };
+    }
+    const MappingGraphService = require("./MappingGraphService");
+    const actor = options.user || require("../../form-pipeline/systemActor").systemActor();
+    template.lifecycle = {
+      ...(template.lifecycle?.toObject?.() || template.lifecycle || {}),
+      editionReviewAcknowledgedAt: new Date(),
+      editionReviewAcknowledgedBy: MappingGraphService.userId(actor),
+      editionReviewOldTemplateId: template.parentVersion,
+      editionReviewMachineAck: { diffHash, at: new Date(), actor: "system:pipeline", edges: proof.proven.length, proven: proof.proven.slice(0, 50) },
+    };
+    template.mappingAuditHistory = [...(template.mappingAuditHistory || []), { action: "EDITION_CHANGES_AUTO_ACKNOWLEDGED", performedAt: new Date(), previousTemplateId: template.parentVersion, affectedMappingEdgeCount: comparison.affectedMappingEdges.length, diffHash }];
+    await template.save();
+    await MappingGraphService.audit("EDITION_CHANGES_AUTO_ACKNOWLEDGED", template, actor, options.req, { previousTemplateId: String(template.parentVersion), diffHash, provenEdges: proof.proven.length });
+    return { acknowledged: true, diffHash, proven: proof.proven.length };
   }
 
   // The explicit human-review step (per the governing spec: "gate
@@ -234,6 +331,7 @@ class FormEditionComparisonService {
       editionReviewAcknowledgedAt: new Date(),
       editionReviewAcknowledgedBy: MappingGraphService.userId(user),
       editionReviewOldTemplateId: template.parentVersion,
+      ...(template.lifecycle?.editionReviewMachineAck ? { editionReviewMachineAck: undefined } : {}), // a person's acknowledgement replaces the pipeline's
     };
     template.mappingAuditHistory = [
       ...(template.mappingAuditHistory || []),

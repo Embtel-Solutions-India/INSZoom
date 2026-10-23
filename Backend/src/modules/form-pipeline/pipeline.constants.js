@@ -27,7 +27,7 @@ const STAGES = Object.freeze({
   FINALIZE: "finalize", // biographic tier, cache
 });
 
-const TRIGGERS = Object.freeze(["catalog_sync", "admin_fetch", "case_acquire", "autopilot", "mapping_save", "edition_upgrade", "manual_retry", "script", "unknown"]);
+const TRIGGERS = Object.freeze(["catalog_sync", "admin_fetch", "case_acquire", "autopilot", "mapping_save", "edition_upgrade", "manual_retry", "script", "case_migration", "unknown"]);
 
 const ERROR_CLASSES = Object.freeze({
   TRANSIENT: "transient", // network / 5xx / timeout: retry with backoff and jitter

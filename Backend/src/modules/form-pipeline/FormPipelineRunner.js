@@ -14,7 +14,8 @@ function summarizeResult(result) {
   if (!result) return { status: "no_result" };
   const template = result.template;
   let status;
-  if (result.checkError) status = "uscis_unreachable";
+  if (result.kind === "case_migration") status = "case_migration"; // Phase 7.6b: a job that only moved case forms onto an already released edition (never reported as a release)
+  else if (result.checkError) status = "uscis_unreachable";
   // result.template is the edition that is LIVE after the run (the old one when the new edition was not promoted), so "was it promoted" is the pipeline's own flag
   else if (result.versionChanged) status = result.requiresActivation ? "kept_in_review" : "activated";
   else if (result.alreadyActive === false) status = result.requiresActivation ? "kept_in_review" : "acquired";
