@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import useCaseDataChanged from "../../hooks/useCaseDataChanged";
 import { resolveDisplayVisa } from "../../utils/visaDisplay";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { isEmployeeAccount } from "../../utils/auth";
-import { casesApi } from "../../services/api";
+import { api, API_BASE_URL, casesApi, documentsApi, employeeProfileApi, messagesApi, profileApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
 import { PLAN_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
@@ -104,25 +105,6 @@ function CaseProgressSkeleton() {
   );
 }
 
-function ActivityFeedSkeleton() {
-  return (
-    <div className="bg-card rounded-lg border border-card-border p-5 animate-pulse" aria-hidden="true">
-      <div className="h-3.5 w-28 bg-secondary rounded mb-4" />
-      <div className="space-y-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-muted shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="h-3 w-3/4 bg-muted rounded mb-2" />
-              <div className="h-2.5 w-1/3 bg-muted rounded" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── Payment Summary ──────────────────────────────────────────────────────── */
 function PaymentSummaryCard({ plan }) {
     if (!plan) return null;
@@ -171,184 +153,88 @@ function PaymentSummaryCard({ plan }) {
     );
   }
 
-/* ── Activity Feed ──────────────────────────────────────────────────────────── */
-function ActivityFeed({ caseData, profileSavedAt }) {
-  const timeAgo = (iso) => {
-    if (!iso) return "Just now";
-    const diff = Date.now() - new Date(iso).getTime();
-    if (!Number.isFinite(diff) || diff < 60000) return "Just now";
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `${minutes} min ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
-    return fmtDate(iso);
-  };
-
-  const timelineItems = [...(caseData?.timeline || [])]
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-    .slice(0, 5)
-    .map((event) => ({
-      time: timeAgo(event.createdAt),
-      text: event.description || event.title,
-      type: event.type === "questionnaire" || event.type === "assignment" ? "success" : event.type === "deadline" ? "warn" : "info",
-    }));
-
-  const items = timelineItems.length ? timelineItems : [
-    caseData ? {
-      time: timeAgo(caseData.updatedAt || caseData.createdAt),
-      text: `Case status is ${String(caseData.status || "active").replace(/_/g, " ")} at ${CASE_STAGES[normalizeCaseStage(caseData)]?.label || "Intake"}.`,
-      type: caseData.status === "pending_assignment" ? "warn" : "info",
-    } : null,
-    profileSavedAt ? { time: timeAgo(profileSavedAt), text: "Your profile information was saved.", type: "success" } : null,
-    { time: "Just now", text: "Welcome to the Immiglance Client Portal.", type: "success" },
-  ].filter(Boolean);
-
-  // Theme-token only (no raw colors) — success is the one signal worth
-  // calling out visually (primary accent); info/warn both read as plain rows.
-  const typeStyles = {
-    success: { dot: "bg-primary", bg: "bg-primary/10" },
-    info:    { dot: "bg-muted-foreground/40", bg: "" },
-    warn:    { dot: "bg-destructive", bg: "bg-destructive/5" },
-  };
-
-  return (
-    <div className="bg-card rounded-lg border border-card-border overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-secondary text-muted-foreground flex items-center justify-center">
-          <Ic.Clock />
-        </div>
-        <h3 className="font-bold text-foreground text-sm">Recent Activity</h3>
-      </div>
-      <ul className="divide-y divide-border">
-        {items.map((item, i) => {
-          const s = typeStyles[item.type] || typeStyles.info;
-          return (
-            <li key={i} className={`flex items-start gap-3 px-5 py-3.5 ${i === 0 ? s.bg : ""}`}>
-              <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${s.dot}`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-foreground leading-snug">{item.text}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{item.time}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
 function agentInitials(name) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return "?";
   return trimmed.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 }
 
-/* ── Case Info Card ─────────────────────────────────────────────────────────── */
+/* ── Case Snapshot: the case at a glance ── */
 function CaseInfo({ caseData, profileData }) {
+  const manager = caseData.assignedCaseManager;
+  const managerName = (typeof manager === "object" && (manager?.displayName || manager?.name)) || "";
+  const facts = [
+    { label: "Case ID", value: caseData.caseId, mono: true },
+    { label: "Stage", value: CASE_STAGES[caseData.currentStage]?.label || "Intake" },
+    { label: "Processing", value: caseData.priority },
+    { label: "Opened", value: fmtDate(caseData.createdAt || caseData.startedDate) },
+    { label: "Citizenship", value: profileData.countryOfCitizenship || "Not provided" },
+    { label: "Nationality", value: profileData.nationality || "Not provided" },
+  ];
   return (
-    <div className="bg-card rounded-lg border border-card-border overflow-hidden">
-      <div className="px-5 py-4 border-b border-border flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-          <Ic.Shield />
+    <div id="case-info" className="overflow-hidden rounded-lg border border-card-border bg-card">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="min-w-0">
+          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Your case</p>
+          <h3 className="mt-1 truncate text-base font-semibold leading-tight text-foreground">{resolveDisplayVisa(caseData)}</h3>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{caseData.visaCategory || "Category not selected"}</p>
         </div>
-        <h3 className="font-bold text-foreground text-sm">Case Information</h3>
+        {caseData.uscisNumber && (
+          <span className="shrink-0 rounded border border-border bg-secondary/50 px-2 py-1 font-mono text-[0.65rem] font-medium text-foreground">{caseData.uscisNumber}</span>
+        )}
       </div>
 
-      <div className="px-5 py-4 space-y-3">
-        {[
-          { label: "Case ID",            value: caseData.caseId                            },
-          { label: "Visa Category",      value: caseData.visaCategory || "Not Selected"    },
-          { label: "Visa Type",          value: resolveDisplayVisa(caseData)               },
-          { label: "Current Stage",      value: CASE_STAGES[caseData.currentStage]?.label || "Intake" },
-          { label: "Processing Type",    value: caseData.priority                          },
-          { label: "USCIS Receipt No.",  value: caseData.uscisNumber                       },
-          { label: "Case Opened",        value: fmtDate(caseData.createdAt || caseData.startedDate) },
-          { label: "Citizenship",        value: profileData.countryOfCitizenship || "Not provided" },
-          { label: "Nationality",        value: profileData.nationality   || "Not provided" },
-        ].map(({ label, value }) => (
-          <div key={label} className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-muted-foreground shrink-0">{label}</span>
-            <span className={`text-xs font-bold text-foreground text-right truncate max-w-40 ${label === "Case ID" || label === "USCIS Receipt No." ? "font-mono" : ""}`}>{value}</span>
+      <dl className="grid grid-cols-2 divide-x divide-border">
+        {facts.map(({ label, value, mono }, index) => (
+          <div key={label} className={`min-w-0 px-5 py-3 ${index >= 2 ? "border-t border-border" : ""}`}>
+            <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{label}</dt>
+            <dd className={`mt-0.5 truncate text-sm font-semibold text-foreground ${mono ? "font-mono" : ""}`} title={String(value ?? "")}>{value || "—"}</dd>
           </div>
         ))}
-      </div>
+      </dl>
 
-      {/* Assigned agent */}
-      <div className="px-5 py-4 border-t border-border bg-secondary">
-        <p className="text-[0.68rem] font-bold uppercase tracking-wider text-muted-foreground mb-3">Assigned Agent</p>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary
-            flex items-center justify-center text-primary-foreground font-bold text-sm shrink-0">
-            {agentInitials(caseData.assignedAgent)}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-foreground">{caseData.assignedAgent}</p>
-            <p className="text-xs text-muted-foreground">Immigration Consultant</p>
-          </div>
+      <div className="flex items-center gap-3 border-t border-border bg-secondary/40 px-5 py-3.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{managerName ? agentInitials(managerName) : "—"}</span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">{managerName || "To be assigned"}</p>
+          <p className="text-xs text-muted-foreground">{managerName ? "Your case manager" : "A case manager will be assigned to you soon"}</p>
         </div>
-        <div className="mt-3 flex gap-2">
-          <Link to="/dashboard/messages"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold
-              bg-card border border-card-border rounded-lg text-muted-foreground hover:bg-muted transition no-underline">
-            <Ic.Mail /> Message
-          </Link>
-          <a href="tel:+15107708700"
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold
-              bg-primary/10 border border-primary/20 rounded-lg text-primary hover:bg-primary/15 transition no-underline">
-            <Ic.Phone /> Call
-          </a>
-        </div>
+        <Link to="/dashboard/messages" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground no-underline transition hover:text-primary" title="Message" aria-label="Message your case manager"><Ic.Mail /></Link>
+        <a href="tel:+15107708700" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground no-underline transition hover:text-primary" title="Call" aria-label="Call your case manager"><Ic.Phone /></a>
       </div>
     </div>
   );
 }
 
-/* ── Quick Actions ──────────────────────────────────────────────────────────── */
+/* ── Quick Actions ─────────────────────────────────────────────────────────── */
 function QuickActions({ profileComplete }) {
   const actions = [
-    { label: "Complete Profile", to: "/dashboard/profile",   icon: Ic.User,   done: profileComplete },
-    { label: "Upload Documents", to: "/dashboard/documents", icon: Ic.Upload, done: false },
-    { label: "View Case Status", to: null, scrollTo: "case-progress", icon: Ic.Shield, done: false },
-    { label: "Contact Agent",    to: "/dashboard/messages", icon: Ic.Agent, done: false },
+    { label: "Upload Documents", to: "/dashboard/documents", icon: Ic.Upload },
+    { label: "View Case Details", scrollTo: "case-info", icon: Ic.Shield },
+    { label: "Message Your Team", to: "/dashboard/messages", icon: Ic.Agent },
+    { label: "Latest USCIS Forms", to: "/dashboard/forms", icon: Ic.Docs },
+    { label: "Complete Profile", to: "/dashboard/profile", icon: Ic.User, done: profileComplete },
   ];
-
-  const btnClass = "relative flex flex-col items-center gap-2 py-4 px-3 rounded-lg border border-card-border bg-card"
-    + " text-foreground text-center no-underline transition-colors hover:bg-secondary cursor-pointer";
-
+  const rowClass = "group flex w-full items-center gap-3 px-5 py-3 text-left text-sm font-medium text-foreground no-underline transition-colors hover:bg-secondary/60 cursor-pointer";
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {actions.map((a) => {
-        const inner = (
-          <>
-            {a.done && (
-              <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                <Ic.Check />
-              </span>
-            )}
-            <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-              <a.icon />
-            </span>
-            <span className="text-xs font-bold leading-tight">{a.label}</span>
-          </>
-        );
-
-        if (a.scrollTo) {
-          return (
-            <button key={a.label} onClick={() => {
-              document.getElementById(a.scrollTo)?.scrollIntoView({ behavior: "smooth" });
-            }} className={btnClass}>
-              {inner}
-            </button>
+    <div className="overflow-hidden rounded-lg border border-card-border bg-card">
+      <div className="border-b border-border px-5 py-3.5"><h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Quick actions</h3></div>
+      <div className="divide-y divide-border">
+        {actions.map((a) => {
+          const inner = (
+            <>
+              <span className="text-primary"><a.icon /></span>
+              <span className="flex-1">{a.label}</span>
+              {a.done ? <span className="text-primary"><Ic.Check /></span> : <span className="text-muted-foreground transition-transform group-hover:translate-x-0.5"><Ic.Arrow /></span>}
+            </>
           );
-        }
-        return (
-          <Link key={a.label} to={a.to} className={btnClass}>
-            {inner}
-          </Link>
-        );
-      })}
+          return a.scrollTo ? (
+            <button key={a.label} type="button" onClick={() => document.getElementById(a.scrollTo)?.scrollIntoView({ behavior: "smooth", block: "center" })} className={rowClass}>{inner}</button>
+          ) : (
+            <Link key={a.label} to={a.to} className={rowClass}>{inner}</Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -365,8 +251,8 @@ const EL_STATUS_LABELS = {
 const EL_STATUS_COLORS = {
   not_started:              "bg-secondary text-muted-foreground border-border",
   professor_assigned:       "bg-secondary text-muted-foreground border-border",
-  draft_in_progress:        "bg-accent text-accent-foreground border-accent-foreground/20",
-  professor_review_pending: "bg-accent text-accent-foreground border-accent-foreground/20",
+  draft_in_progress:        "bg-primary/10 text-primary border-primary/20",
+  professor_review_pending: "bg-primary/10 text-primary border-primary/20",
   revision_needed:          "bg-destructive/10 text-destructive border-destructive/20",
   signed_letter_received:   "bg-primary/10 text-primary border-primary/20",
 };
@@ -411,7 +297,7 @@ const AR_STATUS_LABELS = {
 };
 const AR_STATUS_COLORS = {
   not_started:    "bg-secondary text-muted-foreground border-border",
-  pending_review: "bg-accent text-accent-foreground border-accent-foreground/20",
+  pending_review: "bg-primary/10 text-primary border-primary/20",
   needs_revision: "bg-destructive/10 text-destructive border-destructive/20",
   approved:       "bg-primary/10 text-primary border-primary/20",
   declined:       "bg-destructive/10 text-destructive border-destructive/20",
@@ -498,37 +384,220 @@ function MyTasksCard({ caseData, role }) {
   );
 }
 
-/* ── Case Status (client-facing 5-step summary, matches Immiglance reference) ── */
-function CaseStatusStepper({ caseData }) {
-  const currentIndex = resolveCaseStepIndex(caseData);
+/* ── Welcome banner: who the case belongs to, its details, and its progress through the pipeline ── */
+function greeting() {
+  const hour = new Date().getHours();
+  return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+
+const initialsOf = (name) => String(name || "").trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "?";
+
+// The steps shown are the stages of the case's own GoHighLevel pipeline when it has one (names and count come from there, so they follow any
+// change made in GHL); otherwise the portal's standard five steps.
+function CaseStatusStepper({ caseData, profileData, user, displayName, pipeline }) {
+  const ghlStages = pipeline?.stages?.length ? pipeline.stages : null;
+  const steps = ghlStages ? ghlStages.map((stage) => stage.name) : CASE_STATUS_STEPS;
+  const found = ghlStages ? ghlStages.findIndex((stage) => stage.key === pipeline.currentKey) : -1;
+  const currentIndex = ghlStages ? Math.max(0, found) : resolveCaseStepIndex(caseData);
+  const statusLabel = steps[currentIndex] || "Evaluation In Progress";
+  const email = profileData?.email || user?.email || "—";
+  const phone = profileData?.primaryPhone || caseData?.clientPhone || "—";
+  const details = [
+    { label: "Email", value: email },
+    { label: "Phone", value: phone },
+    { label: "Visa category", value: caseData?.visaCategory && caseData.visaCategory !== "Not Selected" ? caseData.visaCategory : "Not selected" },
+    { label: "Visa type", value: resolveDisplayVisa(caseData) || "Not assigned" },
+    { label: "Case ID", value: caseData?.caseId, mono: true },
+    { label: "Case opened", value: fmtDate(caseData?.createdAt || caseData?.startedDate) },
+  ];
   return (
-    <div className="bg-card rounded-lg border border-card-border p-6">
-      <h2 className="font-serif text-lg font-bold text-foreground mb-4">Case Status</h2>
-      <ul className="space-y-4">
-        {CASE_STATUS_STEPS.map((step, index) => {
-          const done = index < currentIndex;
-          const active = index === currentIndex;
-          return (
-            <li key={step} className="flex items-center gap-3">
-              <span className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center
-                ${done ? "bg-primary border-primary text-primary-foreground"
-                  : active ? "border-primary text-primary"
-                  : "border-border text-transparent"}`}>
-                {done ? <Ic.Check /> : active ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
-              </span>
-              <span className={`text-sm ${active ? "font-bold text-foreground" : done ? "text-foreground" : "text-muted-foreground"}`}>
-                {step}
-              </span>
-              {active && (
-                <span className="ml-auto text-xs font-bold px-2.5 py-1 rounded-full bg-secondary text-foreground">
-                  Current
+    <div className="overflow-hidden rounded-lg border border-card-border bg-card">
+      <div className="flex flex-col gap-4 border-b border-border px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-base font-semibold text-primary-foreground">{initialsOf(displayName)}</span>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">{greeting()}</p>
+            <h1 className="truncate text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">{displayName}</h1>
+          </div>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-md border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground lg:self-center">
+          <span className="h-2 w-2 rounded-full" style={{ background: NAVY }} /> {statusLabel}
+        </span>
+      </div>
+
+      <dl className="grid grid-cols-2 border-b border-border sm:grid-cols-3 lg:grid-cols-6 lg:divide-x lg:divide-border">
+        {details.map((item, index) => (
+          <div key={item.label} className={`min-w-0 px-5 py-3 ${index >= 2 ? "border-t border-border lg:border-t-0" : ""} ${index === 1 || index === 3 || index === 5 ? "" : ""}`}>
+            <dt className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">{item.label}</dt>
+            <dd className={`mt-0.5 truncate text-sm font-semibold text-foreground ${item.mono ? "font-mono" : ""}`} title={String(item.value ?? "")}>{item.value || "—"}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <div className="overflow-x-auto px-5 py-5 sm:px-6">
+        <ol className="grid" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(5.5rem, 1fr))` }}>
+          {steps.map((step, index) => {
+            const done = index < currentIndex;
+            const active = index === currentIndex;
+            return (
+              <li key={`${step}-${index}`} className="relative flex flex-col items-center text-center">
+                {index > 0 && (
+                  <span aria-hidden="true" className="absolute right-1/2 top-3 h-px w-full -translate-y-1/2" style={{ background: index <= currentIndex ? NAVY : TRACK }} />
+                )}
+                <span
+                  className="relative z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 bg-card text-white"
+                  style={{ borderColor: done || active ? NAVY : TRACK, background: done ? NAVY : undefined }}
+                >
+                  {done ? <Ic.Check /> : active ? <span className="h-2 w-2 rounded-full bg-primary" /> : null}
                 </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                <span className={`mt-2 px-1 text-[0.7rem] leading-tight sm:text-xs ${active ? "font-semibold text-foreground" : done ? "font-medium text-foreground" : "text-muted-foreground"}`}>{step}</span>
+                <span className="mt-0.5 text-[0.65rem] text-muted-foreground">{done ? "Completed" : active ? "In progress" : "Pending"}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </div>
+  );
+}
+
+/* ── Charts (plain SVG) ── */
+// The same small palette the Admin dashboard uses for its dots and bars: the theme blue for the main figure, green = done, purple and amber as accents,
+// and a neutral track. Colour is used sparingly - dots, bars, rings - never as a filled block.
+const NAVY = "hsl(var(--primary))";
+const GREEN = "#10b981";
+const PURPLE = "#8b5cf6";
+const AMBER = "#f59e0b";
+const TRACK = "hsl(var(--border))";
+// the chart blue (the same blue as the bars on the Admin dashboard) used wherever a chart or dot needs "blue"
+const CHART_BLUE = "#2563eb";
+
+// segments: [{ value, color }]; the rest of the ring is the soft track
+function DonutChart({ segments, total, center, sub, size = 108, stroke = 10 }) {
+  // (a chart whose data has not arrived yet passes center="—": it draws only the empty track)
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const sum = total ?? segments.reduce((acc, segment) => acc + segment.value, 0);
+  let offset = 0;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="hsl(var(--secondary))" strokeWidth={stroke} />
+        {sum > 0 && segments.map((segment, index) => {
+          const length = (Math.max(0, segment.value) / sum) * circumference;
+          const circle = length > 0 ? (
+            <circle key={index} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={segment.color} strokeWidth={stroke}
+              strokeDasharray={`${length} ${circumference}`} strokeDashoffset={-offset} />
+          ) : null;
+          offset += length;
+          return circle;
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+        <span className="text-lg font-semibold leading-none tabular-nums text-foreground">{center}</span>
+        {sub && <span className="mt-1 text-[0.62rem] font-medium uppercase tracking-wide text-muted-foreground">{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, chart, legend }) {
+  return (
+    <div className="rounded-lg border border-card-border bg-card p-5">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{title}</h3>
+      {subtitle && <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>}
+      <div className="mt-4 flex items-center gap-5">
+        {chart}
+        <ul className="min-w-0 flex-1 space-y-2">
+          {legend.map((item) => (
+            <li key={item.label} className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex min-w-0 items-center gap-2 text-muted-foreground"><span className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} /><span className="truncate">{item.label}</span></span>
+              <span className="font-semibold tabular-nums text-foreground">{item.value}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// How many of the profile's key details are filled in. The fields are read from the same places the Profile page reads them (a client's intake
+// record; an invited employee's canonical profile), so this number can never disagree with what the Profile page shows. null = not known yet.
+const PROFILE_FIELDS = ["firstName", "lastName", "email", "primaryPhone", "address", "city", "state", "zipCode", "country"];
+const canonicalValue = (profile, path) => path.split(".").reduce((current, key) => current?.[key], profile?.canonicalData)?.value || "";
+
+async function loadProfileFields({ isEmployee, caseId, user }) {
+  if (isEmployee) {
+    if (!caseId) return null;
+    const result = await employeeProfileApi.get(caseId);
+    const profile = result?.profile || {};
+    return {
+      firstName: canonicalValue(profile, "firstName"), lastName: canonicalValue(profile, "lastName"), email: canonicalValue(profile, "email") || user?.email || "",
+      primaryPhone: canonicalValue(profile, "phone"), address: canonicalValue(profile, "currentAddress.street"), city: canonicalValue(profile, "currentAddress.city"),
+      state: canonicalValue(profile, "currentAddress.state"), zipCode: canonicalValue(profile, "currentAddress.zipCode"), country: canonicalValue(profile, "currentAddress.country"),
+    };
+  }
+  const result = await profileApi.getIntake();
+  const client = result?.intake?.client || {};
+  return { ...client, email: client.email || user?.email || "" };
+}
+
+function profileCompletion(fields, markedComplete) {
+  if (markedComplete) return 100;
+  if (!fields) return null;
+  const filled = PROFILE_FIELDS.filter((key) => String(fields[key] ?? "").trim()).length;
+  return Math.round((filled / PROFILE_FIELDS.length) * 100);
+}
+
+/* ── Newsletter: the newest official USCIS form editions, straight from the forms library ── */
+function NewsletterCard() {
+  const { data, isPending, isError } = useQuery({ queryKey: ["public-forms"], queryFn: () => api.get("/public-forms"), retry: false, staleTime: 5 * 60 * 1000 });
+  const latest = useMemo(() => [...(data?.data || [])]
+    .filter((form) => form.editionDate)
+    .sort((a, b) => new Date(b.editionDate) - new Date(a.editionDate))
+    .slice(0, 4), [data]);
+  const open = (formCode) => window.open(`${API_BASE_URL}/public-forms/${encodeURIComponent(formCode)}/pdf`, "_blank", "noopener");
+  return (
+    <div className="overflow-hidden rounded-lg border border-card-border bg-card">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Immigration newsletter</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">Newest official USCIS form editions</p>
+        </div>
+        <Link to="/dashboard/forms" className="shrink-0 text-xs font-semibold text-primary no-underline hover:underline">View all</Link>
+      </div>
+      {isPending ? (
+        <div className="space-y-3 p-5" aria-hidden="true">{[0, 1, 2].map((i) => <div key={i} className="h-9 animate-pulse rounded bg-secondary" />)}</div>
+      ) : isError || !latest.length ? (
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">No form updates to show right now.</p>
+      ) : (
+        <ul className="divide-y divide-border">
+          {latest.map((form) => (
+            <li key={form.formCode} className="flex items-center gap-3 px-5 py-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Ic.Docs /></span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">{form.formCode} <span className="font-normal text-muted-foreground">· {form.title}</span></p>
+                <p className="text-xs text-muted-foreground">New edition · {fmtDate(form.editionDate)}</p>
+              </div>
+              <button type="button" onClick={() => open(form.formCode)} className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/5">Read</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* ── KPI tiles: a small coloured dot before the label, like the Admin dashboard ── */
+function KpiCard({ label, value, hint, to, color }) {
+  return (
+    <Link to={to} className="group block rounded-lg border border-card-border bg-card px-5 py-4 no-underline transition-colors hover:border-primary/40">
+      <p className="flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="h-2 w-2 rounded-full" style={{ background: color }} aria-hidden="true" /> {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold leading-none tabular-nums text-foreground">{value}</p>
+      <p className="mt-1.5 truncate text-xs text-muted-foreground">{hint}</p>
+    </Link>
   );
 }
 
@@ -625,10 +694,16 @@ export default function Dashboard() {
     ? (caseError.message || "Unable to load your case right now.")
     : "";
 
+  const queryClient = useQueryClient();
   const { data: workflowRaw } = useQuery({
     queryKey: ["case", "workflow", caseId],
     queryFn: () => casesApi.workflow(caseId),
     enabled: Boolean(caseId),
+    refetchInterval: 30 * 1000,
+  });
+  // Anything that changes on this case (a document reviewed, a checklist approved, a stage moved in the pipeline, a message) refreshes the figures at once.
+  useCaseDataChanged(caseId, () => {
+    ["case", "documents", "messages", "profile", "checklists"].forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
   });
   const workflow = workflowRaw?.workflow || workflowRaw?.data?.workflow || workflowRaw?.data || workflowRaw;
 
@@ -641,8 +716,6 @@ export default function Dashboard() {
       timeline: workflow?.timeline || normalizedCase.timeline,
     };
   }, [normalizedCase, workflow]);
-
-  const savedAt = profileData?.updatedAt;
 
   const displayName = profileData.firstName
     ? `${profileData.firstName}${profileData.lastName ? " " + profileData.lastName : ""}`
@@ -666,13 +739,52 @@ export default function Dashboard() {
   // values for the whole duration of the initial fetch.
   const isInitialCaseLoading = caseIsPending && !caseError;
 
+  // The case's GoHighLevel pipeline stages (null when it is not on a pipeline: the standard steps are shown then).
+  const LIVE = { retry: false, refetchInterval: 30 * 1000 };
+  const { data: pipelineRaw } = useQuery({ queryKey: ["case", "pipeline", caseId], queryFn: casesApi.myPipeline, enabled: Boolean(caseId), ...LIVE });
+  const pipeline = pipelineRaw?.pipeline || null;
+
+  // The figures below are read from the database, never assumed: each is its own small query that refreshes every 30 s and whenever the case changes.
+  // Until a figure has arrived (or if it cannot be read) the tile shows a dash, never a made-up zero.
+  const { data: documentCountRaw } = useQuery({ queryKey: ["documents", "me", "count"], queryFn: documentsApi.count, ...LIVE });
+  const { data: unreadRaw } = useQuery({ queryKey: ["messages", "unread-count"], queryFn: messagesApi.getUnreadCount, ...LIVE });
+  const { data: profileFields } = useQuery({
+    queryKey: ["profile", "fields", isEmployee ? "employee" : "client", caseId || "none"],
+    queryFn: () => loadProfileFields({ isEmployee, caseId, user }),
+    enabled: !isEmployee || Boolean(caseId),
+    ...LIVE,
+  });
+  // Same list and same cache entry as the Documents page, so a "Save progress" or "Submit" there is reflected here the moment it is saved: the server pushes
+  // a change event (which re-reads this), and it is also re-read every 30 s and whenever this page opens.
+  const { data: checklistList } = useQuery({
+    queryKey: ["checklists", "case", caseId],
+    queryFn: async () => (await questionnairesApi.listCaseChecklists(caseId)).data?.checklists || [],
+    enabled: Boolean(caseId),
+    retry: false,
+    refetchInterval: 30 * 1000,
+    refetchOnMount: "always",
+  });
+  const checklistTotal = checklistList ? checklistList.reduce((sum, item) => sum + (Number(item.progress?.totalQuestions) || 0), 0) : null;
+  const checklistAnswered = checklistList ? checklistList.reduce((sum, item) => sum + (Number(item.progress?.answeredTotal) || 0), 0) : null;
+  const numberOrNull = (value) => (value !== undefined && value !== null && Number.isFinite(Number(value)) ? Number(value) : null);
+  const documentCount = numberOrNull(documentCountRaw?.count);
+  const unreadMessages = numberOrNull(unreadRaw?.unreadCount ?? unreadRaw?.count);
+  // "Tasks" are the case's lifecycle milestones - the very list the Tasks page shows
+  const milestones = workflowRaw?.workflow?.progress?.milestones || workflowRaw?.data?.progress?.milestones || null;
+  const taskTotal = milestones ? milestones.length : null;
+  const closedTaskCount = milestones ? milestones.filter((milestone) => milestone.completed).length : null;
+  const openTaskCount = milestones ? taskTotal - closedTaskCount : null;
+  const profilePercent = profileCompletion(profileFields, profileComplete);
+  const profileKnown = profilePercent !== null;
+  const profileShown = profileKnown ? `${profilePercent}%` : "—";
+
   return (
     <div className="min-h-screen bg-background">
 
       {notice && (
-        <div className="bg-accent border-b border-accent-foreground/20 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-accent-foreground">{notice}</p>
-          <button onClick={() => setNotice("")} aria-label="Dismiss" className="text-accent-foreground hover:opacity-80 shrink-0">
+        <div className="bg-primary/10 border-b border-primary/20 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-primary">{notice}</p>
+          <button onClick={() => setNotice("")} aria-label="Dismiss" className="text-primary hover:opacity-80 shrink-0">
             <Ic.X />
           </button>
         </div>
@@ -690,65 +802,94 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Overview header ── */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-2">
-        <h1 className="font-serif text-2xl font-bold text-foreground">Case Overview</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {activeCaseData.visaCategory && activeCaseData.visaCategory !== "Not Selected"
-            ? `${resolveDisplayVisa(activeCaseData)} case for ${displayName}.`
-            : `Case for ${displayName}.`}
-        </p>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-7 space-y-6">
+      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-4 pt-6 sm:px-6 sm:pt-8">
 
         <div id="case-progress">
           {isInitialCaseLoading ? <CaseProgressSkeleton /> : (
-            <CaseStatusStepper caseData={activeCaseData} />
+            <CaseStatusStepper caseData={activeCaseData} profileData={profileData} user={user} displayName={displayName} pipeline={pipeline} />
           )}
         </div>
 
-        <CaseDetailsCard caseData={activeCaseData} profileData={profileData} user={user} />
+        {/* ── KPI tiles ── */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <KpiCard label="Tasks" value={openTaskCount ?? "—"} hint={openTaskCount === null ? "Loading" : openTaskCount ? `${closedTaskCount} of ${taskTotal} done` : "All done"} to="/dashboard/tasks" color={CHART_BLUE} />
+          <KpiCard label="Documents" value={documentCount ?? "—"} hint="Uploaded" to="/dashboard/documents" color={GREEN} />
+          <KpiCard label="Messages" value={unreadMessages ?? "—"} hint="Unread" to="/dashboard/messages" color={PURPLE} />
+          <KpiCard label="Profile" value={profileShown} hint={!profileKnown ? "Loading" : profilePercent === 100 ? "Complete" : "Finish to proceed"} to="/dashboard/profile" color={AMBER} />
+        </div>
 
-        <SignedDeclarationCard caseData={activeCaseData} />
+        {/* ── Charts ── */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <ChartCard
+            title="Your tasks"
+            subtitle={taskTotal ? "Your case checklist" : "Your case checklist will appear here"}
+            chart={<DonutChart segments={[{ value: closedTaskCount || 0, color: GREEN }, { value: openTaskCount || 0, color: CHART_BLUE }]} total={taskTotal || 0} center={taskTotal ? `${closedTaskCount}/${taskTotal}` : "—"} sub="done" />}
+            legend={[
+              { label: "Open", value: openTaskCount ?? "—", color: CHART_BLUE },
+              { label: "Done", value: closedTaskCount ?? "—", color: GREEN },
+            ]}
+          />
+          <ChartCard
+            title="Documents uploaded"
+            subtitle={checklistTotal ? "Questions answered in your checklist" : checklistList ? "No checklist assigned yet" : "Loading"}
+            chart={<DonutChart segments={[{ value: checklistAnswered || 0, color: CHART_BLUE }]} total={checklistTotal || 0} center={checklistTotal ? `${checklistAnswered}/${checklistTotal}` : checklistList ? "0" : "—"} sub={checklistTotal ? "answered" : "no checklist"} />}
+            legend={[
+              { label: "Answered", value: checklistAnswered ?? "—", color: CHART_BLUE },
+              { label: "Remaining", value: checklistTotal === null ? "—" : checklistTotal - checklistAnswered, color: TRACK },
+              { label: "Total questions", value: checklistTotal ?? "—", color: "hsl(var(--muted-foreground) / 0.5)" },
+            ]}
+          />
+          <ChartCard
+            title="Profile"
+            subtitle={profilePercent === 100 ? "All set" : "Complete it to proceed with your case"}
+            chart={<DonutChart segments={[{ value: profilePercent || 0, color: PURPLE }]} total={100} center={profileShown} sub="complete" />}
+            legend={[
+              { label: "Filled in", value: profileShown, color: PURPLE },
+              { label: "Still to add", value: profileKnown ? `${100 - profilePercent}%` : "—", color: TRACK },
+            ]}
+          />
+        </div>
 
-        {!profileComplete && (
-          <div className="bg-accent border border-accent-foreground/20 rounded-lg px-5 py-4 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <Ic.Alert />
-              <span className="text-sm font-semibold text-accent-foreground">Complete your profile to proceed with your case.</span>
+        {!profileComplete && profilePercent !== 100 && (
+          <Link to="/dashboard/profile" className="flex items-center justify-between gap-4 rounded-lg border border-card-border border-l-4 bg-card px-5 py-3.5 no-underline transition-colors hover:bg-secondary/40" style={{ borderLeftColor: NAVY }}>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Complete your profile</p>
+              <p className="text-xs text-muted-foreground">It takes a couple of minutes and lets your team move your case forward.</p>
             </div>
-            <Link to="/dashboard/profile" className="text-sm font-bold text-accent-foreground hover:opacity-80 no-underline shrink-0">
-              Complete Profile →
-            </Link>
-          </div>
+            <span className="shrink-0 rounded-md bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground">Continue</span>
+          </Link>
         )}
 
-        {/* ── Quick Actions ── */}
-        <QuickActions profileComplete={profileComplete} />
+        {/* ── Main columns ── */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <NewsletterCard />
 
-        {isEmployee && <MyTasksCard caseData={caseData} role="employee" />}
-        {/* Real employer_employee cases (verified against production data)
-            never set user.role/applicantType to "employer" - every principal
-            account is role:"client", applicantType:"individual". The
-            authoritative signal for "this is the employer/principal side"
-            is the CASE's own caseRole (Documents.jsx's PrincipalCaseWorkspace
-            branch uses the same field), not anything on the user record. */}
-        {caseData?.caseRole === "principal" && <MyTasksCard caseData={caseData} role="employer" />}
+            {isEmployee && <MyTasksCard caseData={caseData} role="employee" />}
+            {/* Real employer_employee cases (verified against production data)
+                never set user.role/applicantType to "employer" - every principal
+                account is role:"client", applicantType:"individual". The
+                authoritative signal for "this is the employer/principal side"
+                is the CASE's own caseRole (Documents.jsx's PrincipalCaseWorkspace
+                branch uses the same field), not anything on the user record. */}
+            {caseData?.caseRole === "principal" && <MyTasksCard caseData={caseData} role="employer" />}
 
-        {/* ── Expert Letters + Attorney Review ── */}
-        {(activeCaseData.expertLetters?.length > 0 || activeCaseData.attorneyReview?.required) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <ExpertLettersCard letters={activeCaseData.expertLetters} />
-            <AttorneyReviewCard review={activeCaseData.attorneyReview} />
+            {(activeCaseData.expertLetters?.length > 0 || activeCaseData.attorneyReview?.required) && (
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <ExpertLettersCard letters={activeCaseData.expertLetters} />
+                <AttorneyReviewCard review={activeCaseData.attorneyReview} />
+              </div>
+            )}
+
+            <CaseDetailsCard caseData={activeCaseData} profileData={profileData} user={user} />
+            <SignedDeclarationCard caseData={activeCaseData} />
           </div>
-        )}
 
-        {/* ── Activity + Case Info ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {isInitialCaseLoading ? <ActivityFeedSkeleton /> : <ActivityFeed caseData={caseData} profileSavedAt={savedAt} />}
-          <CaseInfo caseData={activeCaseData} profileData={profileData} />
-          {!isEmployee && <PaymentSummaryCard plan={activeCaseData?.plan} />}
+          <div className="space-y-6">
+            <QuickActions profileComplete={profileComplete} />
+            <CaseInfo caseData={activeCaseData} profileData={profileData} />
+            {!isEmployee && <PaymentSummaryCard plan={activeCaseData?.plan} />}
+          </div>
         </div>
 
         {/* Footer */}

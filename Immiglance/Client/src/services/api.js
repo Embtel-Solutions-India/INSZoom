@@ -518,6 +518,7 @@ export const telemetryApi = {
 // ── Cases ────────────────────────────────────────────
 export const casesApi = {
   my: () => api.get("/cases/my"),
+  myPipeline: () => api.get("/cases/my/pipeline"),
   dashboardStats: (params = {}) => {
     const q = new URLSearchParams(params).toString();
     return api.get(`/cases/dashboard/stats${q ? "?" + q : ""}`);

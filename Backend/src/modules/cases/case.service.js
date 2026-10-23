@@ -730,6 +730,8 @@ function populateCaseQueryForClient(query) {
     { path: "beneficiary", select: "fullName email visaType status companyId user passportNumber visaExpirationDate passportExpirationDate" },
     { path: "createdBy", select: "name displayName email role" },
     { path: "timeline.createdBy", select: "name displayName role" },
+    // the client only ever sees the primary case manager, and only by name (serializeCaseForUser already hides the rest for restricted portals)
+    { path: "assignedCaseManager", select: "displayName name" },
   ]);
 }
 

@@ -69,6 +69,9 @@ exports.getMyDocuments = async (req, res, next) => {
 exports.getMyDocumentsCount = async (req, res, next) => {
   try {
     const filter = await documentService.buildDocumentFilter({ ...req.query, userId: req.user._id }, req.user);
+    // "uploaded by me": files the client side put on the case - not drafts staff or the system made, and not placeholders for documents still being asked for
+    filter.uploadedBy = { $in: ["client", "employer", "employee", "beneficiary"] };
+    filter.requestStatus = { $nin: ["requested", "missing", "overdue"] };
     const count = await Document.countDocuments(filter);
     res.json({ success: true, count });
   } catch (error) {

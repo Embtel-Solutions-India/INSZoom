@@ -16,6 +16,7 @@ const staffRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 const managerRoles = ["super_admin", "admin", "team_lead", "case_manager"];
 
 router.get("/my", authenticate, ctrl.getMyCase);
+router.get("/my/pipeline", authenticate, ctrl.getMyPipeline);
 router.get("/config", authenticate, authorizePermissions("cases:read"), ctrl.getCaseConfig);
 router.get("/dashboard/stats", authenticate, authorizePermissions("cases:read"), ctrl.getDashboardStats);
 router.get("/dashboard/team-lead", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:read"), ctrl.getTeamLeadDashboard);

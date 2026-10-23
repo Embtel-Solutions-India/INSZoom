@@ -35,7 +35,7 @@ const RefreshIcon = (props) => <Svg {...props}><path d="M21 12a9 9 0 01-15.5 6.2
 
 function InfoChip({ icon: Icon, children }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground">
+    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-[0.7rem] font-medium text-foreground">
       <Icon size={14} className="text-primary" /> {children}
     </span>
   );
@@ -107,8 +107,8 @@ export default function Forms() {
     <div className="w-full px-4 pb-10 pt-8 sm:px-6 lg:px-8">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">USCIS Forms</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Access the latest official USCIS forms, fetched directly from uscis.gov.</p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">USCIS Forms</h1>
+          <p className="mt-1 text-[0.8125rem] text-muted-foreground">Access the latest official USCIS forms, fetched directly from uscis.gov.</p>
         </div>
         <ViewToggle view={view} onChange={changeView} />
       </div>
@@ -122,7 +122,7 @@ export default function Forms() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search forms (e.g., I-129, I-485, G-28...)"
-            className="h-11 w-full rounded-xl border border-border bg-card pl-11 pr-4 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/15"
+            className="h-10 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-[0.8125rem] text-foreground outline-none transition placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/15"
           />
         </label>
         <div className="flex gap-3">
@@ -131,7 +131,7 @@ export default function Forms() {
             <select
               value={series}
               onChange={(event) => setSeries(event.target.value)}
-              className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-border bg-card pl-4 pr-10 text-sm font-medium text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15"
+              className="h-10 w-full cursor-pointer appearance-none rounded-xl border border-border bg-card pl-4 pr-10 text-[0.8125rem] font-medium text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/15"
             >
               <option value="all">All Forms</option>
               {seriesOptions.map((code) => <option key={code} value={code}>{code} series</option>)}
@@ -173,12 +173,12 @@ export default function Forms() {
                 <button
                   type="button"
                   onClick={() => openForm(form.formCode)}
-                  className="group flex h-full w-full items-start gap-4 rounded-2xl border border-border bg-card p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
+                  className="group flex h-full w-full items-start gap-3.5 rounded-2xl border border-border bg-card p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10"
                 >
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><DocIcon size={22} /></span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground"><DocIcon size={19} /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-lg font-bold leading-tight text-foreground">{form.formCode}</span>
-                    <span className="mt-1 line-clamp-2 block text-sm leading-snug text-muted-foreground">{form.title}</span>
+                    <span className="block text-base font-semibold leading-tight text-foreground">{form.formCode}</span>
+                    <span className="mt-1 line-clamp-2 block text-[0.8125rem] leading-snug text-muted-foreground">{form.title}</span>
                     {formatEdition(form.editionDate) && <span className="mt-2 block text-xs text-muted-foreground">Edition: {formatEdition(form.editionDate)}</span>}
                   </span>
                   <ArrowIcon size={18} className="mt-1 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
@@ -188,24 +188,24 @@ export default function Forms() {
           </ul>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-border bg-card">
-            <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,3fr)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-secondary/60 px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
-              <span>Form Number</span><span>Form Title</span><span>Edition Date</span><span className="w-32 text-right">Action</span>
+            <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,3fr)_minmax(0,1fr)_auto] items-center gap-4 border-b border-border bg-secondary/60 px-5 py-2.5 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+              <span>Form Number</span><span>Form Title</span><span>Edition Date</span><span className="w-28 text-right">Action</span>
             </div>
             <ul className="divide-y divide-border">
               {visible.map((form) => (
-                <li key={form.formCode} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3.5 transition-colors hover:bg-secondary/50 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,3fr)_minmax(0,1fr)_auto]">
+                <li key={form.formCode} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-2.5 transition-colors hover:bg-secondary/50 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,3fr)_minmax(0,1fr)_auto]">
                   <span className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><DocIcon size={17} /></span>
-                    <span className="font-bold text-foreground">{form.formCode}</span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><DocIcon size={15} /></span>
+                    <span className="text-sm font-semibold text-foreground">{form.formCode}</span>
                   </span>
-                  <span className="order-3 col-span-2 text-sm leading-snug text-muted-foreground sm:order-0 sm:col-span-1" title={form.title}>{form.title}</span>
-                  <span className="hidden text-sm text-muted-foreground sm:block">{formatEdition(form.editionDate)}</span>
+                  <span className="order-3 col-span-2 text-[0.8125rem] leading-snug text-muted-foreground sm:order-0 sm:col-span-1" title={form.title}>{form.title}</span>
+                  <span className="hidden text-[0.8125rem] text-muted-foreground sm:block">{formatEdition(form.editionDate)}</span>
                   <button
                     type="button"
                     onClick={() => openForm(form.formCode)}
-                    className="inline-flex w-32 items-center justify-center gap-1.5 justify-self-end rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/5"
+                    className="inline-flex w-28 items-center justify-center gap-1.5 justify-self-end rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/5"
                   >
-                    Open form <ArrowIcon size={15} />
+                    Open form <ArrowIcon size={13} />
                   </button>
                 </li>
               ))}

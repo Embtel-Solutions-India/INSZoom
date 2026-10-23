@@ -6,6 +6,7 @@ import { useMyCase, useMyProfile } from "../hooks/useMyCaseProfile";
 import { resolveDisplayVisa } from "../utils/visaDisplay";
 import { resolveCaseStatusLabel } from "../utils/caseStatusLabel";
 import ThemeToggle from "../components/ThemeToggle";
+import BrandMark from "../components/BrandMark";
 import EnablePushButton from "../components/EnablePushButton";
 import { useBranding } from "../utils/branding";
 
@@ -15,20 +16,25 @@ const NAV_ITEMS = [
   { label: "Profile",    to: "/dashboard/profile",   icon: ProfileIcon },
   { label: "Documents",  to: "/dashboard/documents", icon: DocumentsIcon },
   { label: "Messages",   to: "/dashboard/messages",  icon: MessagesIcon },
-  { label: "Forms",      to: "/dashboard/forms",     icon: FormsIcon },
+  { label: "Latest USCIS Forms", to: "/dashboard/forms", icon: FormsIcon },
 ];
 
 export default function PortalLayout() {
   const branding = useBranding();
-  const [collapsed, setCollapsed] = useState(false);
+  // Desktop-only hide/show of the sidebar (same as the Admin portal); remembered per browser.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebarCollapsed") === "1"; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((prev) => {
+    try { localStorage.setItem("sidebarCollapsed", prev ? "0" : "1"); } catch { /* the choice just is not remembered */ }
+    return !prev;
+  });
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
-  // On mobile the drawer is always full-width labels; "collapsed" only applies from lg up.
-  const slim = collapsed;
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const { data: rawCase } = useMyCase();
@@ -44,7 +50,7 @@ export default function PortalLayout() {
   const isEmployee = isEmployeeAccount(user);
 
   const visibleNavItems = isEmployee
-    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages", "Forms"].includes(item.label))
+    ? NAV_ITEMS.filter((item) => ["Overview", "Documents", "Profile", "Messages", "Latest USCIS Forms"].includes(item.label))
     : NAV_ITEMS;
 
   const handleLogout = async () => {
@@ -58,45 +64,61 @@ export default function PortalLayout() {
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* ── Sidebar (drawer below lg, static from lg up) ── */}
+      {/* ── Sidebar (drawer below lg, static from lg up): the same design as the Admin portal ── */}
       <aside
-        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 h-screen w-64 ${slim ? "lg:w-16" : "lg:w-64"}
-          shrink-0 border-r border-sidebar-border bg-sidebar transform transition-all duration-200 flex flex-col
-          ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`fixed lg:sticky lg:top-0 inset-y-0 left-0 z-50 w-64 h-screen bg-sidebar text-sidebar-foreground border-r border-sidebar-border transform transition-[transform,margin] duration-300 ease-in-out flex flex-col shrink-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        } ${collapsed ? "lg:-translate-x-full lg:-ml-64" : "lg:translate-x-0 lg:ml-0"}`}
       >
-        <div className="h-16 flex items-center gap-2.5 px-4 border-b border-sidebar-border">
-          <Link to="/" className="flex items-center gap-2.5 no-underline min-w-0">
-            <div className="w-8 h-8 rounded-full bg-sidebar-primary flex items-center justify-center shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sidebar-primary-foreground">
-                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
-                <polyline points="16 7 22 7 22 13" />
-              </svg>
+        <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-sidebar-border shrink-0">
+          <Link to="/" className="flex items-center gap-3 min-w-0 no-underline">
+            <BrandMark size="w-9 h-9" />
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-sidebar-foreground leading-tight truncate">{branding.displayName}</h1>
+              <p className="text-[10px] font-medium text-muted-foreground tracking-wide uppercase truncate">Client Portal</p>
             </div>
-            <span className={`font-bold text-sidebar-foreground truncate ${slim ? "lg:hidden" : ""}`}>{branding.displayName}</span>
           </Link>
+          <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close navigation" className="lg:hidden text-muted-foreground hover:text-sidebar-foreground">
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         </div>
 
-        <p className={`px-4 pt-5 pb-2 text-[0.68rem] font-bold uppercase tracking-widest text-muted-foreground ${slim ? "lg:hidden" : ""}`}>
-          Case Portal
-        </p>
-
-        <nav className="flex-1 px-2.5 py-2 space-y-1 overflow-y-auto">
+        <nav className="flex-1 min-h-0 overflow-y-auto p-3 space-y-0.5 pb-4">
           {visibleNavItems.map(({ label, to, icon: Icon }) => (
             <NavLink
               key={label}
               to={to}
               end={to === "/dashboard"}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold no-underline transition-colors
-                ${isActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent"}`
+                `relative w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm no-underline transition-colors duration-150 ${
+                  isActive
+                    ? "bg-primary/10 text-primary font-medium before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+                    : "text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                }`
               }
-              title={slim ? label : undefined}
             >
-              <Icon className="w-[18px] h-[18px] shrink-0" />
-              <span className={`truncate ${slim ? "lg:hidden" : ""}`}>{label}</span>
+              {({ isActive }) => (
+                <>
+                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                  <span className="truncate">{label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
+
+        <div className="shrink-0 p-3 border-t border-sidebar-border">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors duration-150"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span>Logout</span>
+          </button>
+        </div>
       </aside>
 
       {/* ── Main column ── */}
@@ -106,7 +128,7 @@ export default function PortalLayout() {
           <button
             type="button"
             onClick={() => {
-              if (window.matchMedia("(min-width: 1024px)").matches) setCollapsed((c) => !c);
+              if (window.matchMedia("(min-width: 1024px)").matches) toggleCollapsed();
               else setMobileOpen((o) => !o);
             }}
             aria-label="Toggle navigation"

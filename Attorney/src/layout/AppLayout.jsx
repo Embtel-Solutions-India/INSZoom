@@ -78,17 +78,17 @@ export default function AppLayout() {
               <button
                 key={path}
                 onClick={() => { navigate(path); setSidebarOpen(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[0.925rem] transition-colors duration-150 ${
+                className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150 ${
                   active
-                    ? 'bg-sidebar-primary text-sidebar-primary-foreground font-semibold'
-                    : 'text-sidebar-foreground/80 font-medium hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                    ? 'bg-primary/10 text-primary font-medium before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-primary'
+                    : 'text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-foreground'
                 }`}
               >
-                <Icon className={`w-[1.1rem] h-[1.1rem] shrink-0 ${active ? 'text-sidebar-primary-foreground' : 'text-muted-foreground'}`} />
+                <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
                 <span className="truncate">{label}</span>
                 {count > 0 && (
                   <span className={`ml-auto min-w-[1.15rem] h-[1.15rem] px-1 flex items-center justify-center text-[10px] font-semibold rounded-full ${
-                    active ? 'bg-sidebar-primary-foreground/20 text-sidebar-primary-foreground' : 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    active ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
                   }`}>
                     {count > 99 ? '99+' : count}
                   </span>
@@ -101,7 +101,7 @@ export default function AppLayout() {
         <div className="shrink-0 p-3 border-t border-sidebar-border">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-sidebar-foreground/70 hover:bg-destructive/10 hover:text-destructive transition-colors duration-150"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors duration-150"
           >
             <LogOut className="w-4 h-4" />
             <span>Logout</span>

@@ -233,6 +233,27 @@ async function stagesForCase(caseId, user) {
 }
 
 /**
+ * The stages of the GHL pipeline a case sits on, for the CLIENT's own progress bar: the pipeline's own stage names, in order, and where the case is now.
+ * Read-only and never throws - a case that is not on a pipeline (or a pipeline that is not configured) simply returns null and the portal shows its
+ * standard steps instead.
+ */
+async function clientPipelineForCase(caseDoc) {
+  try {
+    const ghl = caseDoc?.integrations?.ghl || {};
+    if (!ghl.pipelineId) return null;
+    const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).lean();
+    if (!config?.mappingsConfirmedAt) return null;
+    const pipeline = (config.pipelines || []).find((item) => item.enabled && item.ghlPipelineId === ghl.pipelineId);
+    if (!pipeline?.stages?.length) return null;
+    const stages = [...pipeline.stages].sort((a, b) => a.order - b.order).map((stage) => ({ key: stage.key, name: stage.name }));
+    return { name: pipeline.ghlPipelineName || null, currentKey: ghl.unifiedStageKey || stages[0].key, stages };
+  } catch (error) {
+    logger.warn?.("client_pipeline_lookup_failed", { error: error.message });
+    return null;
+  }
+}
+
+/**
  * A deleted case must not come back, and its GHL opportunity must go too. The opportunities are queued here as durable "delete_opportunity"
  * jobs that the worker retries (with growing pauses, for as long as it takes) until GHL has removed them: the person deleting never waits
  * for GHL and never sees a failure. While a job is unfinished, the opportunity is never re-imported as a new case (see isDeletionPending).
@@ -286,4 +307,4 @@ async function isDeletionPending(opportunityId) {
   return Boolean(await GHLSyncJob.exists(deletionPendingFilter(opportunityId)));
 }
 
-module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
+module.exports = { queueGhlOpportunityDeletions, runDeleteOpportunity, isDeletionPending, deletionPendingFilter, stagesForCase, clientPipelineForCase, plan, enqueueForCase, sweep, ensureLinked, runCreateCaseOpportunity, runLinkEmployer, isEnabled };
