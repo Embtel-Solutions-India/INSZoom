@@ -13,11 +13,16 @@ import {
   PhoneCall,
 } from 'lucide-react'
 
-const TIER_COLORS = {
-  A: 'bg-green-100 text-green-800',
-  B: 'bg-blue-100 text-blue-800',
-  C: 'bg-amber-100 text-amber-800',
-  D: 'bg-secondary text-muted-foreground',
+// Quiet status marker (same as Form Governance): a small dot carries the state, the text stays neutral.
+const TIER_DOTS = { A: 'bg-emerald-500', B: 'bg-blue-500', C: 'bg-amber-500', D: 'bg-slate-300' }
+
+function StatusDot({ dot, children }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-foreground">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot || 'bg-slate-300'}`} aria-hidden="true" />
+      {children}
+    </span>
+  )
 }
 
 // The freeform override — kept intentionally separate from the state-machine
@@ -37,16 +42,16 @@ const STATUS_LABELS = {
   rejected: 'Rejected',
 }
 
-const STATUS_COLORS = {
-  new: 'bg-amber-100 text-amber-800',
-  contacted: 'bg-blue-100 text-blue-800',
-  booked: 'bg-green-100 text-green-800',
-  converted: 'bg-purple-100 text-purple-800',
-  closed: 'bg-secondary text-muted-foreground',
-  consultation_confirmed: 'bg-indigo-100 text-indigo-800',
-  consultation_completed: 'bg-violet-100 text-violet-800',
-  approved: 'bg-emerald-100 text-emerald-800',
-  rejected: 'bg-red-100 text-red-800',
+const STATUS_DOTS = {
+  new: 'bg-amber-500',
+  contacted: 'bg-blue-500',
+  booked: 'bg-emerald-500',
+  converted: 'bg-purple-500',
+  closed: 'bg-slate-300',
+  consultation_confirmed: 'bg-indigo-500',
+  consultation_completed: 'bg-violet-500',
+  approved: 'bg-emerald-500',
+  rejected: 'bg-red-500',
 }
 
 function initials(name) {
@@ -261,7 +266,7 @@ const Leads = () => {
                     <tr
                       key={lead._id}
                       onClick={() => openLead(lead)}
-                      className={`cursor-pointer transition-colors ${unseen ? 'new-row bg-amber-50 hover:bg-amber-100' : 'hover:bg-muted'}`}
+                      className={`cursor-pointer transition-colors hover:bg-muted ${unseen ? 'new-row bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
@@ -272,9 +277,7 @@ const Leads = () => {
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium text-foreground truncate">{lead.fullName || 'Unknown'}</span>
                               {unseen && (
-                                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white rounded-full">
-                                  New
-                                </span>
+                                <StatusDot dot="bg-amber-500">New</StatusDot>
                               )}
                             </div>
                             <div className="text-xs text-muted-foreground truncate">{lead.email}</div>
@@ -282,9 +285,7 @@ const Leads = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${TIER_COLORS[lead.scoreResult?.tier] || 'bg-secondary text-muted-foreground'}`}>
-                          Tier {lead.scoreResult?.tier || '—'}
-                        </span>
+                        <StatusDot dot={TIER_DOTS[lead.scoreResult?.tier]}>Tier {lead.scoreResult?.tier || '—'}</StatusDot>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{lead.visaPathway || '—'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
@@ -298,9 +299,7 @@ const Leads = () => {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-secondary text-muted-foreground'}`}>
-                          {STATUS_LABELS[lead.status] || lead.status}
-                        </span>
+                        <StatusDot dot={STATUS_DOTS[lead.status]}>{STATUS_LABELS[lead.status] || lead.status}</StatusDot>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-muted-foreground">{timeAgo(lead.createdAt)}</td>
                     </tr>
@@ -425,9 +424,7 @@ function LeadDrawer({
                 {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
               </select>
             ) : (
-              <span className={`inline-block px-2.5 py-1.5 text-xs font-semibold rounded-full ${STATUS_COLORS[lead.status] || 'bg-secondary text-muted-foreground'}`}>
-                {STATUS_LABELS[lead.status] || lead.status}
-              </span>
+              <StatusDot dot={STATUS_DOTS[lead.status]}>{STATUS_LABELS[lead.status] || lead.status}</StatusDot>
             )}
           </div>
 
