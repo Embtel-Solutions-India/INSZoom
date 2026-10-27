@@ -83,7 +83,9 @@ function plan(template, graph, options = {}) {
     if (/PDF417|barcode/i.test(target.targetPdfField)) continue;
     const rules = (byStem.get(stemOf(target.targetPdfField)) || [])
       .filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber))
-      .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField));
+      .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField))
+      // `within`: only the boxes under one named block of the PDF (a name repeated in two blocks of the same form)
+      .filter((rule) => !rule.within || String(target.targetPdfField || "").includes(rule.within));
     if (!rules.length) {
       // exclusive forms keep only rule-backed edges; for an inferred form the importer's unreviewed guesses (status != active) are dropped the same way,
       // while an already-active edge (carried over from a verified earlier edition) is kept
