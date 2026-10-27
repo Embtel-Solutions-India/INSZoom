@@ -68,7 +68,7 @@ test("attorney review: needs an active attorney; records the release; e-mails ea
   assert.equal(mail.recipientRole, "attorney");
   assert.equal(mail.data.petitionName, "Petition.pdf");
   assert.equal(mail.data.note, "Please check section 3");
-  assert.match(mail.data.attorneyPortalUrl, /^https:\/\/attorney\.example\.test\/cases\/c-single$/);
+  assert.equal(mail.data.attorneyPortalUrl, undefined, "no deep link is passed: the e-mail only ever links to the login page");
   assert.match(world.sent.feedback[0].message, /Please review it and give your feedback\./);
   assert.ok(world.sent.events.some((event) => event.event === "petition:review" && event.id === U.attorney));
 
@@ -93,7 +93,7 @@ test("client review e-mails ONLY the audience: the single person; the petitioner
     assert.equal(result.emailed, true);
     assert.deepEqual(world.sent.emails.map((mail) => mail.to), [expected], caseId);
     assert.equal(world.sent.emails[0].key, "petition-client-review");
-    assert.match(world.sent.emails[0].data.petitionLink, /^https:\/\/client\.example\.test\/dashboard\/petition$/);
+    assert.equal(world.sent.emails[0].data.petitionLink, undefined, "no deep link is passed: the e-mail only ever links to the login page");
     assert.equal(world.sent.bells.length, 1, "one bell notice, to the audience");
     assert.ok(world.reviews.get(documentId).clientReview.sentAt);
     assert.ok(!world.sent.emails.some((mail) => /cm@firm|alex@law|ben@x|eli@corp/.test(mail.to)));
@@ -252,7 +252,7 @@ test("the FIRST client feedback on a petition e-mails the case manager and the t
   assert.equal(first[0].data.clientName, "Olive Other");
   assert.equal(first[0].data.petitionName, "Team Petition.pdf");
   assert.equal(first[0].data.messagePreview, "Please correct my business address on page 2.");
-  assert.match(first[0].data.caseLink, /^https:\/\/admin\.example\.test\/crm-cases\/c-team$/);
+  assert.equal(first[0].data.caseLink, undefined, "no deep link is passed: the e-mail only ever links to the login page");
   assert.ok(first.every((mail) => mail.recipientRole === "case_manager" || mail.recipientRole === "team_lead"));
 
   await world.service.postMessage({ user: olive, documentId: "d4", body: "Also the date of incorporation." });
@@ -309,10 +309,10 @@ test("the first-feedback e-mail is registered (template, audience, policy, trigg
   assert.match(read("emailPolicy.js"), /"petition-feedback-received": \{ when:/);
   assert.match(read("emailTriggers.registry.js"), /t\("petition-feedback-received"/);
   const template = require("../../email/templates/petition-feedback-received");
-  const html = template.bodyLines({ recipientName: "Casey", caseNumber: "T-1", clientName: "Olive", petitionName: "P.pdf", messagePreview: "Fix <script>x</script>", caseLink: "https://admin.example.test/crm-cases/c1" }).join("\n");
+  const html = template.bodyLines({ recipientName: "Casey", caseNumber: "T-1", clientName: "Olive", petitionName: "P.pdf", messagePreview: "Fix <script>x</script>", }).join("\n");
   assert.match(template.subject({ caseNumber: "T-1" }), /Client feedback received on the petition — T-1/);
   assert.match(html, /Hello Casey,/);
-  assert.match(html, /href="https:\/\/admin\.example\.test\/crm-cases\/c1"/);
+  assert.deepEqual(links(html), [], "no link of its own: the staff e-mail shell adds the one \"Log in to Admin\" button (the Admin login page)");
   assert.match(html, /further messages are not e-mailed/);
   assert.doesNotMatch(html, /<script>|undefined|\[object/);
 });
@@ -396,23 +396,26 @@ test("the two new e-mails are registered everywhere an e-mail must be: template,
   assert.match(service, /"petition-attorney-review": "attorney"/);
 });
 
-test("the e-mail texts: professional, name the case and the petition, carry the link, and escape the case manager's note", () => {
+const links = (html) => [...html.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g)].map((match) => ({ href: match[1], label: match[2] }));
+const { portalUrl } = require("../../email/portalUrls");
+
+test("the e-mail texts: professional, name the case and the petition, carry only the login button, and escape the case manager's note", () => {
   const client = require("../../email/templates/petition-client-review");
   const attorney = require("../../email/templates/petition-attorney-review");
-  const clientData = { clientName: "Sam", caseNumber: "S-1", petitionName: "Petition.pdf", note: "Check <b>page 2</b>\nThanks", petitionLink: "https://client.example.test/dashboard/petition" };
+  const clientData = { clientName: "Sam", caseNumber: "S-1", petitionName: "Petition.pdf", note: "Check <b>page 2</b>\nThanks", petitionLink: "https://elsewhere.example.test/deep/link" };
   const clientHtml = client.bodyLines(clientData).join("\n");
   assert.match(client.subject(clientData), /Your petition is ready for your review — S-1/);
   assert.match(clientHtml, /Hi Sam,/);
   assert.match(clientHtml, /Petition\.pdf/);
-  assert.match(clientHtml, /href="https:\/\/client\.example\.test\/dashboard\/petition"/);
+  assert.deepEqual(links(clientHtml), [{ href: `${portalUrl("client")}/login`, label: "Sign In to Review Your Petition" }], "one button: the client portal login page, whatever link a caller passes");
   assert.match(clientHtml, /Check &lt;b>page 2&lt;\/b>\s*<br\/>Thanks/, "note is escaped, line break kept");
   assert.doesNotMatch(clientHtml, /<b>page 2/);
-  const attorneyData = { attorneyName: "Alex", caseNumber: "S-1", clientName: "Sam Single", visaType: "H-1B", petitionName: "Petition.pdf", attorneyPortalUrl: "https://attorney.example.test/cases/c1" };
+  const attorneyData = { attorneyName: "Alex", caseNumber: "S-1", clientName: "Sam Single", visaType: "H-1B", petitionName: "Petition.pdf", attorneyPortalUrl: "https://elsewhere.example.test/cases/c1" };
   const attorneyHtml = attorney.bodyLines(attorneyData).join("\n");
   assert.match(attorney.subject(attorneyData), /Petition ready for your review — S-1/);
   assert.match(attorneyHtml, /Hello Alex,/);
   assert.match(attorneyHtml, /Sam Single/);
-  assert.match(attorneyHtml, /href="https:\/\/attorney\.example\.test\/cases\/c1"/);
+  assert.deepEqual(links(attorneyHtml), [{ href: `${portalUrl("attorney")}/login`, label: "Sign In to Review the Petition" }], "one button: the attorney portal login page, whatever link a caller passes");
   assert.doesNotMatch(attorneyHtml, /undefined|\[object/);
   assert.doesNotMatch(clientHtml, /undefined|\[object/);
 });

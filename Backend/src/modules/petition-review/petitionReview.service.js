@@ -95,7 +95,7 @@ function createPetitionReviewService(deps = {}) {
       if (!attorney?.email || attorney.isActive === false) continue;
       const result = await quietly("petition_attorney_email_failed", () => emailService().sendTemplateEmail("petition-attorney-review", {
         to: attorney.email, recipientRole: "attorney", caseId: caseData._id, userId: attorney._id, source: "shared",
-        data: { attorneyName: name(attorney), caseNumber: caseLabel(caseData), clientName: caseData.clientName || "", visaType: caseData.visaType || caseData.visaCategory || "", petitionName: fileNameOf(document), note: cleanNote, attorneyPortalUrl: `${portalUrl("attorney")}/cases/${caseData._id}` },
+        data: { attorneyName: name(attorney), caseNumber: caseLabel(caseData), clientName: caseData.clientName || "", visaType: caseData.visaType || caseData.visaCategory || "", petitionName: fileNameOf(document), note: cleanNote },
       }));
       if (result?.sent) emailed += 1;
     }
@@ -117,7 +117,7 @@ function createPetitionReviewService(deps = {}) {
     if (audience.user.email) {
       const result = await quietly("petition_client_email_failed", () => emailService().sendTemplateEmail("petition-client-review", {
         to: audience.user.email, recipientRole: audience.user.role, caseId: caseData._id, userId: audience.user._id, source: "shared",
-        data: { clientName: name(audience.user), caseNumber: caseLabel(caseData), petitionName: fileNameOf(document), note: cleanNote, petitionLink: `${portalUrl("client")}/dashboard/petition` },
+        data: { clientName: name(audience.user), caseNumber: caseLabel(caseData), petitionName: fileNameOf(document), note: cleanNote },
       }));
       emailed = Boolean(result?.sent);
     }
@@ -212,7 +212,7 @@ function createPetitionReviewService(deps = {}) {
         if (!member?.email || member.isActive === false) continue;
         await quietly("petition_first_feedback_email_failed", () => emailService().sendTemplateEmail("petition-feedback-received", {
           to: member.email, recipientRole: member.role, caseId: caseData._id, userId: member._id, source: "shared",
-          data: { recipientName: name(member), caseNumber: caseLabel(caseData), clientName: name(author), petitionName: fileNameOf(document), messagePreview: preview(text), caseLink: `${portalUrl("admin")}/crm-cases/${caseData._id}` },
+          data: { recipientName: name(member), caseNumber: caseLabel(caseData), clientName: name(author), petitionName: fileNameOf(document), messagePreview: preview(text) },
         }));
       }
     });
