@@ -257,6 +257,13 @@ connectDB()
     const paymentMaintenance = startPaymentMaintenance();
     const reminderGeneration = startReminderGeneration();
     const checklistReminders = startChecklistReminders();
+    // USCIS News & Updates: reads the public USCIS newsroom feed/articles into MongoDB (NEWS_SYNC_ENABLED=false switches it off); isolated and fail-safe, it can never stop the server from starting
+    let newsSync = null;
+    try {
+      newsSync = require("./modules/news/news.job").startNewsSyncJob();
+    } catch (error) {
+      logger.error("news_sync_not_started", { error: error?.message });
+    }
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
@@ -305,6 +312,7 @@ connectDB()
       clearInterval(paymentMaintenance);
       clearInterval(reminderGeneration);
       if (checklistReminders) clearInterval(checklistReminders);
+      if (newsSync) clearInterval(newsSync);
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);

@@ -27,6 +27,7 @@ const COLUMNS = [
     title: "Resources",
     links: [
       { label: "Latest USCIS Forms", to: "/forms" },
+      { label: "USCIS News & Updates", to: "/news" },
       { label: "Book a Consultation", to: "/consultation/book" },
     ],
   },

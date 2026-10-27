@@ -28,6 +28,8 @@ const EligibilityQuiz = lazy(() => import("./Pages/Eligibility/EligibilityQuiz")
 const BookConsultation = lazy(() => import("./Pages/Consultation/BookConsultation"));
 const ManageBooking = lazy(() => import("./Pages/Consultation/ManageBooking"));
 const Forms = lazy(() => import("./Pages/Forms/Forms"));
+const News = lazy(() => import("./Pages/News/News"));
+const NewsArticle = lazy(() => import("./Pages/News/NewsArticle"));
 const PrivacyPolicy = lazy(() => import("./Pages/Legal/PrivacyPolicy"));
 const TermsAndConditions = lazy(() => import("./Pages/Legal/TermsAndConditions"));
 
@@ -41,6 +43,9 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<Home />} />
           <Route path="/forms" element={<Forms />} />
+          {/* USCIS News & Updates: public, read-only; the pages carry their own footer */}
+          <Route path="/news" element={<News />} />
+          <Route path="/news/:slug" element={<NewsArticle />} />
         </Route>
 
         {/* Public legal pages; they carry their own navbar and footer. */}

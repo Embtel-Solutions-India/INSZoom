@@ -1,0 +1,108 @@
+/* Styles of the imported USCIS article body. Everything is scoped under .news-article-body, so nothing here can change any other page of the site.
+   The words and the structure (headings, lists, tables, figures) are the source's; this file only makes them readable inside the Immiglance theme (light and dark tokens). */
+.news-article-body {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.news-article-body > :first-child { margin-top: 0; }
+.news-article-body p,
+.news-article-body ul,
+.news-article-body ol,
+.news-article-body dl,
+.news-article-body figure,
+.news-article-body blockquote,
+.news-article-body pre,
+.news-article-body .news-table-scroll { margin: 1.1em 0 0; }
+
+.news-article-body h2,
+.news-article-body h3,
+.news-article-body h4,
+.news-article-body h5,
+.news-article-body h6 { margin: 2em 0 0; font-weight: 700; line-height: 1.3; color: hsl(var(--foreground)); }
+.news-article-body h2 { font-size: 1.5rem; }
+.news-article-body h3 { font-size: 1.25rem; }
+.news-article-body h4 { font-size: 1.125rem; }
+.news-article-body h5,
+.news-article-body h6 { font-size: 1rem; }
+.news-article-body h2 + *,
+.news-article-body h3 + *,
+.news-article-body h4 + * { margin-top: 0.6em; }
+
+.news-article-body strong,
+.news-article-body b { font-weight: 700; }
+.news-article-body em,
+.news-article-body i { font-style: italic; }
+.news-article-body u { text-decoration: underline; }
+.news-article-body sub,
+.news-article-body sup { font-size: 0.75em; line-height: 0; }
+.news-article-body small { font-size: 0.875em; }
+.news-article-body hr { margin: 2em 0; border: 0; border-top: 1px solid hsl(var(--border)); }
+
+/* lists: the source's own marker type (type="i", "a", "1" ...) is honoured */
+.news-article-body ul { list-style-type: disc; padding-left: 1.6rem; }
+.news-article-body ul ul { list-style-type: circle; }
+.news-article-body ul ul ul { list-style-type: square; }
+.news-article-body ol { padding-left: 1.8rem; }
+.news-article-body ol:not([type]) { list-style-type: decimal; }
+.news-article-body ol[type="1"] { list-style-type: decimal; }
+.news-article-body ol[type="a"] { list-style-type: lower-alpha; }
+.news-article-body ol[type="A"] { list-style-type: upper-alpha; }
+.news-article-body ol[type="i"] { list-style-type: lower-roman; }
+.news-article-body ol[type="I"] { list-style-type: upper-roman; }
+.news-article-body li { margin-top: 0.4em; padding-left: 0.2rem; }
+.news-article-body li > ul,
+.news-article-body li > ol { margin-top: 0.4em; }
+.news-article-body dt { margin-top: 0.8em; font-weight: 700; }
+.news-article-body dd { margin-left: 1.5rem; }
+
+/* links: always underlined; a link that leaves the site is marked and announced */
+.news-article-body a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 3px; }
+.news-article-body a:hover { text-decoration-thickness: 2px; }
+.news-article-body a:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; border-radius: 2px; }
+.news-article-body a[target="_blank"]::after {
+  content: "\2197";
+  content: "\2197" / " (opens in a new tab)";
+  display: inline-block;
+  margin-left: 0.15em;
+  font-size: 0.8em;
+  text-decoration: none;
+}
+
+/* tables: wide tables scroll inside their own box instead of widening the page */
+.news-article-body .news-table-scroll { overflow-x: auto; border: 1px solid hsl(var(--border)); border-radius: 0.5rem; -webkit-overflow-scrolling: touch; }
+.news-article-body table { width: 100%; min-width: 30rem; border-collapse: collapse; font-size: 0.95rem; line-height: 1.5; overflow-wrap: normal; }
+.news-article-body caption { caption-side: top; padding: 0.7rem 0.9rem; text-align: left; font-weight: 700; }
+.news-article-body th,
+.news-article-body td { padding: 0.6rem 0.85rem; border: 1px solid hsl(var(--border)); text-align: left; vertical-align: top; }
+.news-article-body th { background: hsl(var(--secondary)); font-weight: 700; }
+
+/* figures: never cropped or stretched, the source's proportions are kept */
+.news-article-body figure { margin-left: 0; margin-right: 0; }
+.news-article-body img { display: block; max-width: 100%; height: auto; border-radius: 0.5rem; }
+.news-article-body figcaption { margin-top: 0.6rem; font-size: 0.875rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+
+.news-article-body blockquote { padding-left: 1rem; border-left: 4px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+.news-article-body pre { overflow-x: auto; padding: 0.9rem 1rem; border-radius: 0.5rem; background: hsl(var(--secondary)); font-size: 0.9rem; }
+.news-article-body code { font-size: 0.9em; }
+
+/* the source's alignment classes */
+.news-article-body .text-align-left { text-align: left; }
+.news-article-body .text-align-center { text-align: center; }
+.news-article-body .text-align-right { text-align: right; }
+.news-article-body .text-align-justify { text-align: justify; }
+.news-article-body img.align-center,
+.news-article-body figure.align-center { margin-left: auto; margin-right: auto; }
+.news-article-body img.align-right,
+.news-article-body figure.align-right { margin-left: auto; margin-right: 0; }
+
+/* shown where an image of the original article could not be reproduced here */
+.news-article-body .news-media-notice { padding: 0.75rem 1rem; border: 1px dashed hsl(var(--border)); border-radius: 0.5rem; background: hsl(var(--secondary)); font-size: 0.875rem; color: hsl(var(--muted-foreground)); }
+
+@media (max-width: 640px) {
+  .news-article-body { font-size: 1rem; line-height: 1.7; }
+  .news-article-body h2 { font-size: 1.3rem; }
+  .news-article-body h3 { font-size: 1.15rem; }
+}
