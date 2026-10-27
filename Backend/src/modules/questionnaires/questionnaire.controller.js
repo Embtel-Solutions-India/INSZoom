@@ -228,6 +228,16 @@ exports.editCaseChecklist = async (req, res, next) => {
   }
 };
 
+// Case manager: the questions deleted from one checklist for this case only (shown under "Deleted questions" with a Restore button).
+exports.listRemovedCaseChecklistQuestions = async (req, res, next) => {
+  try {
+    const data = await require("./case-checklist.service").listRemovedQuestions(req.params.caseId, { checklistId: req.query.checklistId }, req.user);
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.getQuestionnaire = async (req, res, next) => {
   try {
     const questionnaire = await findQuestionnaire(req.params.id, res);

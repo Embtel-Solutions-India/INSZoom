@@ -13,7 +13,7 @@ const User = require("../../models/User");
 const caseService = require("../cases/case.service");
 const logger = require("../../utils/logger");
 
-const BACKGROUND_OPS = new Set(["update", "remove"]);
+const BACKGROUND_OPS = new Set(["update", "remove", "restore"]);
 const MAX_ATTEMPTS = Number(process.env.CHECKLIST_EDIT_MAX_ATTEMPTS || 60);
 const LEASE_MS = Number(process.env.CHECKLIST_EDIT_LEASE_MS || 2 * 60 * 1000);
 // 2 s, 4 s, 8 s ... never more than 5 minutes between tries
@@ -31,7 +31,7 @@ const supportsBackground = (op) => BACKGROUND_OPS.has(op);
 
 // Same checks the synchronous edit makes before touching anything, so a request that could never succeed is refused now, not retried forever.
 async function enqueueEdit(caseId, body = {}, user) {
-  if (!supportsBackground(body.op)) throw httpError(400, "Only removing or changing a question can be done in the background");
+  if (!supportsBackground(body.op)) throw httpError(400, "Only removing, restoring or changing a question can be done in the background");
   if (!body.checklistId || !body.questionKey) throw httpError(400, "checklistId and questionKey are required");
   const caseData = await Case.findById(caseId);
   if (!caseData) throw httpError(404, "Case not found");

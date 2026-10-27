@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Plus, Trash2, Loader2, Info } from 'lucide-react'
+import { X, Plus, Trash2, Loader2, Info, RotateCcw } from 'lucide-react'
 import { questionnairesApi, invalidateCachedGet } from '../services/api'
 
 // How a question's answer is collected, in plain words (what the client actually sees).
@@ -38,10 +38,10 @@ const NEW_TYPES = [
 // Removing a question or changing its wording is shown at once and handed to the server as a background job (it retries until it succeeds). Until the
 // server's own list no longer disagrees, a reload (re-opening the editor, another panel refreshing) keeps showing the change, so a row never pops back.
 const PENDING_TTL_MS = 2 * 60 * 1000 // if the server never confirms, the screen returns to what the server says
-const pendingChanges = new Map() // `${caseId}|${checklistId}` -> { removed: Map(key -> at), labels: Map(key -> { label, at }) }
+const pendingChanges = new Map() // `${caseId}|${checklistId}` -> { removed: Map(key -> at), labels: Map(key -> { label, at }), restored: Map(key -> at) }
 function pendingFor(caseId, checklistId) {
   const id = `${caseId}|${checklistId}`
-  if (!pendingChanges.has(id)) pendingChanges.set(id, { removed: new Map(), labels: new Map() })
+  if (!pendingChanges.has(id)) pendingChanges.set(id, { removed: new Map(), labels: new Map(), restored: new Map() })
   return pendingChanges.get(id)
 }
 function applyPending(questions, pending) {
@@ -63,6 +63,7 @@ const SEND_RETRY_DELAYS_MS = [0, 1000, 2000, 4000, 8000, 15000] // only for the 
 export default function ChecklistEditorModal({ caseId, checklist, onClose, onSaved }) {
   const [questions, setQuestions] = useState([])
   const [sections, setSections] = useState([])
+  const [deleted, setDeleted] = useState([]) // questions removed from this case's copy of the checklist; listed under the live ones with a Restore button
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyKey, setBusyKey] = useState('')
@@ -83,7 +84,24 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       const all = [...(data.questions || []), ...(data.hiddenQuestions || [])]
       const unique = [...new Map(all.map((question) => [question.key, question])).values()]
         .filter((question) => question.active !== false && question.type !== 'page_break' && question.type !== 'section_break')
-      setQuestions(applyPending(unique, pendingFor(caseId, checklist.checklistId)))
+      const pending = pendingFor(caseId, checklist.checklistId)
+      const pendingRemoved = unique.filter((question) => pending.removed.has(question.key)) // deleted on screen, the server has not caught up yet
+      // the deleted list is secondary: a failure to read it never blocks the editor
+      let removed = []
+      try {
+        const removedResponse = await questionnairesApi.getRemovedCaseChecklistQuestions(caseId, checklist.checklistId)
+        removed = removedResponse.data?.data?.questions || []
+      } catch {
+        removed = []
+      }
+      const now = Date.now()
+      const liveKeys = new Set(unique.map((question) => question.key))
+      for (const [key, at] of pending.restored) if (liveKeys.has(key) || now - at > PENDING_TTL_MS) pending.restored.delete(key) // confirmed, or given up
+      const restoring = removed.filter((question) => pending.restored.has(question.key)) // restored on screen, the server has not caught up yet
+      const live = applyPending(unique, pending)
+      setQuestions([...live, ...restoring.filter((question) => !live.some((item) => item.key === question.key)).map((question) => ({ ...question, active: true, isActive: true }))])
+      const deletedList = [...removed.filter((question) => !pending.restored.has(question.key)), ...pendingRemoved]
+      setDeleted([...new Map(deletedList.map((question) => [question.key, question])).values()])
       setSections(data.questionnaire?.sections || [])
       if (!quiet) setDrafts({})
     } catch (err) {
@@ -139,17 +157,32 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
       const pending = pendingFor(caseId, checklist.checklistId)
       pending.removed.delete(body.questionKey)
       pending.labels.delete(body.questionKey)
+      pending.restored.delete(body.questionKey)
       await load(true) // back to what the server has (a reload clears any message, so the reason is shown after it)
       setError(problem)
     })
   }
 
   const removeQuestion = (question) => {
-    pendingFor(caseId, checklist.checklistId).removed.set(question.key, Date.now())
+    const pending = pendingFor(caseId, checklist.checklistId)
+    pending.removed.set(question.key, Date.now())
+    pending.restored.delete(question.key)
     setQuestions((current) => current.filter((item) => item.key !== question.key))
+    setDeleted((current) => (current.some((item) => item.key === question.key) ? current : [...current, question]))
     setDrafts((current) => { const next = { ...current }; delete next[question.key]; return next })
     setError('')
     sendInBackground({ op: 'remove', questionKey: question.key })
+  }
+
+  // Bring a deleted question back for this case only: it moves up into its section at once; the server does the work in order after any delete still in flight.
+  const restoreQuestion = (question) => {
+    const pending = pendingFor(caseId, checklist.checklistId)
+    pending.restored.set(question.key, Date.now())
+    pending.removed.delete(question.key)
+    setDeleted((current) => current.filter((item) => item.key !== question.key))
+    setQuestions((current) => (current.some((item) => item.key === question.key) ? current : [...current, { ...question, active: true, isActive: true }]))
+    setError('')
+    sendInBackground({ op: 'restore', questionKey: question.key })
   }
 
   const saveLabel = (question, label) => {
@@ -161,6 +194,7 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
   }
 
   const groups = useMemo(() => arrangeLikeClient(questions, sections), [questions, sections])
+  const deletedGroups = useMemo(() => arrangeLikeClient(deleted, sections), [deleted, sections])
 
   const draftOf = (question) => drafts[question.key] || {}
   const setDraft = (question, patch) => setDrafts((current) => ({ ...current, [question.key]: { ...current[question.key], ...patch } }))
@@ -229,6 +263,40 @@ export default function ChecklistEditorModal({ caseId, checklist, onClose, onSav
               ))}
               {!questions.length && <li className="text-sm text-muted-foreground">This checklist has no questions.</li>}
             </ul>
+          )}
+
+          {!loading && deleted.length > 0 && (
+            <div className="mt-6 border-t border-border pt-4" data-testid="deleted-questions">
+              <h3 className="text-sm font-bold text-foreground">Deleted questions ({deleted.length})</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Deleted from this case only. Restore a question to show it again in this case's checklist, in the Admin portal and for the client.</p>
+              <ul className="mt-3 space-y-3">
+                {deletedGroups.map((group) => (
+                  <Fragment key={group.key}>
+                    <li className="pt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground" aria-hidden="true">{group.title}</li>
+                    {group.items.map((question) => (
+                      <li key={question.key} className="rounded-xl border border-border bg-secondary/40 p-3" data-testid={`deleted-question-${question.key}`}>
+                        <p className="text-xs font-medium text-muted-foreground">Question</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{question.label}</p>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                            <span className="text-muted-foreground">Answer type</span>
+                            <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold text-foreground">{typeLabel(question.type)}</span>
+                            {['radio', 'select', 'multiselect', 'multi_select'].includes(question.type) && (question.options || []).length > 0 && (
+                              <span className="min-w-0 truncate text-muted-foreground" title={(question.options || []).map((option) => option.label ?? option).join(', ')}>
+                                Options: {(question.options || []).map((option) => option.label ?? option).join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          <button type="button" className="btn-secondary inline-flex items-center gap-1 text-xs" data-testid={`restore-question-${question.key}`} onClick={() => restoreQuestion(question)}>
+                            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Restore
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </Fragment>
+                ))}
+              </ul>
+            </div>
           )}
 
           <div className="mt-5 rounded-xl border border-dashed border-border p-3">
