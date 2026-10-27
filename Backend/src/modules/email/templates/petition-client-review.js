@@ -7,7 +7,8 @@ function subject(data = {}) {
 }
 
 function bodyLines(data = {}) {
-  const link = data.petitionLink || `${portalUrl("client")}/dashboard/petition`;
+  // the one thing to click is the login page; the Petition page is one click after signing in
+  const login = `${portalUrl("client")}/login`;
   const lines = [
     `Hi ${data.clientName || "there"},`,
     `Your case manager has prepared the petition for case ${data.caseNumber || "your case"} and is asking for your review.`,
@@ -16,7 +17,7 @@ function bodyLines(data = {}) {
   if (data.note) lines.push(`<strong>Note from your case manager:</strong><br/>${String(data.note).replace(/</g, "&lt;").replace(/\n/g, "<br/>")}`);
   lines.push(
     "Please sign in to your Immiglance portal and open the Petition page. You can read the petition there and send your feedback in the panel beside it, including any changes you would like. Your case manager is notified as soon as you reply.",
-    `<a href="${link}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Review Your Petition</a>`,
+    `<a href="${login}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:700;">Sign In to Review Your Petition</a>`,
     "Regards,<br>The Immiglance Team"
   );
   return lines;

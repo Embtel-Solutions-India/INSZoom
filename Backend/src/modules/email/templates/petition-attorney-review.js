@@ -6,7 +6,8 @@ function subject(data = {}) {
 }
 
 function bodyLines(data = {}) {
-  const link = data.attorneyPortalUrl || `${portalUrl("attorney")}/dashboard`;
+  // the one thing to click is the login page; the case is one click after signing in
+  const login = `${portalUrl("attorney")}/login`;
   const lines = [
     `Hello ${data.attorneyName || "there"},`,
     "The case manager has uploaded the petition for the case below and is asking for your review.",
@@ -14,8 +15,8 @@ function bodyLines(data = {}) {
   ];
   if (data.note) lines.push(`<strong>Note from the case manager:</strong><br/>${String(data.note).replace(/</g, "&lt;").replace(/\n/g, "<br/>")}`);
   lines.push(
-    "Open the case in the Attorney Portal and select the Petition tab to read the petition. Please share your comments or your approval with the case manager through the Messages / Feedback section of the case.",
-    `<a href="${link}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;">Review the Petition</a>`,
+    "Sign in to the Attorney Portal, open the case and select the Petition tab to read the petition. Please share your comments or your approval with the case manager through the Messages / Feedback section of the case.",
+    `<a href="${login}" style="display:inline-block;padding:12px 24px;background:#1e3a5f;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:700;">Sign In to Review the Petition</a>`,
     "Regards,<br>The Immiglance Team"
   );
   return lines;
