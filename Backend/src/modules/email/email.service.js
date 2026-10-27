@@ -22,8 +22,15 @@ const caseAudience = require("../notifications/caseAudience");
 const SUPPRESS_ALL_EXEMPT = new Set(["password-reset"]);
 // Everyone who works in the Admin portal ("team_member" is the generic internal-team marker some call sites pass instead of a User.role).
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager", "paralegal", "finance", "hr", "team_member"];
+// Emails that go to the client and to nobody else (see sendTemplateEmail).
+const CLIENT_ONLY_TEMPLATES = new Set(["checklist-incomplete-reminder", "checklist-received-client", "petition-client-review"]);
 const TEMPLATE_AUDIENCE = {
   "case-created-client": "client",
+  "checklist-incomplete-reminder": "client",
+  "checklist-received-client": "client",
+  "petition-client-review": "client",
+  "petition-feedback-received": "team_member",
+  "petition-attorney-review": "attorney",
   "case-created-team-lead": "team_member",
   "case-assigned-case-manager": "team_member",
   "client-intake-submitted-case-manager": "team_member",
@@ -91,6 +98,11 @@ function resolveAudience(templateKey, recipientRole) {
 // email content should ever live in a controller or service.
 const TEMPLATES = {
   "case-created-client": require("./templates/case-created-client"),
+  "checklist-incomplete-reminder": require("./templates/checklist-incomplete-reminder"),
+  "checklist-received-client": require("./templates/checklist-received-client"),
+  "petition-client-review": require("./templates/petition-client-review"),
+  "petition-feedback-received": require("./templates/petition-feedback-received"),
+  "petition-attorney-review": require("./templates/petition-attorney-review"),
   "case-created-team-lead": require("./templates/case-created-team-lead"),
   "case-assigned-case-manager": require("./templates/case-assigned-case-manager"),
   "client-intake-submitted-case-manager": require("./templates/client-intake-submitted-case-manager"),
@@ -266,7 +278,7 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   // [system.set_password_link] / [system.login_link]: the exact pages the client's email button opens.
   const clientOrigin = portalUrl("client");
   if (templateKey === "client-portal-invitation" && !data.setPasswordLink && data.token) data = { ...data, setPasswordLink: `${clientOrigin}/accept-invite?token=${data.token}` };
-  if (templateKey === "case-created-client" && !data.loginLink) data = { ...data, loginLink: `${clientOrigin}/login` };
+  if ((templateKey === "case-created-client" || templateKey === "checklist-incomplete-reminder") && !data.loginLink) data = { ...data, loginLink: `${clientOrigin}/login` };
   const builtIn = TEMPLATES[templateKey];
   const eventTrigger = !builtIn ? triggerRegistry.getTrigger(templateKey) : null;
   if (!builtIn && !eventTrigger) throw new Error(`Unknown email template: ${templateKey}`);
@@ -285,6 +297,12 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   // Guards for EVERY email (see emailPolicy.js): never a malformed or placeholder
   // address, and never the same email to the same person for the same case twice
   // in a short window (retried requests, bursts). Credential/invite mails are exempt.
+  // The checklist reminder / received e-mails are for the CLIENT ONLY: never a staff or attorney recipient, and no extra To / CC / BCC from a caller or from an admin-written template.
+  const clientOnly = CLIENT_ONLY_TEMPLATES.has(templateKey);
+  if (clientOnly) {
+    cc = undefined;
+    if (recipientRole && (STAFF_ROLES.includes(recipientRole) || recipientRole === "attorney")) return skip("client_only", "this email is only ever sent to the client");
+  }
   const badAddress = emailPolicy.undeliverableReason(to);
   if (badAddress) return skip(badAddress, badAddress === "invalid_address" ? "invalid email address" : "placeholder/test email domain");
   // Internal staff outside this case's team (another team lead / case manager, any admin / super admin) never get the case's emails.
@@ -330,11 +348,11 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   if (custom?.suppressed) return skip("disabled_by_admin", "This email is switched off on the Email Templates page");
   if (custom) {
     const deliverable = (list) => list.filter((address) => !emailPolicy.undeliverableReason(address));
-    const finalTo = deliverable(custom.recipients.to);
+    const finalTo = clientOnly ? deliverable([String(to).toLowerCase()]) : deliverable(custom.recipients.to);
     if (!finalTo.length) return skip("undeliverable_address", "No deliverable recipient address");
-    const extraCc = deliverable([...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])]);
+    const extraCc = clientOnly ? [] : deliverable([...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])]);
     return dispatch({
-      templateKey, to: finalTo.join(", "), cc: extraCc, bcc: deliverable(custom.recipients.bcc),
+      templateKey, to: finalTo.join(", "), cc: extraCc, bcc: clientOnly ? [] : deliverable(custom.recipients.bcc),
       subject: custom.subject, html: confine(custom.html), text: confine(custom.text), data, caseId, userId, triggeredBy, source, attachments,
     });
   }

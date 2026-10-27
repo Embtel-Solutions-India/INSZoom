@@ -9,6 +9,8 @@ const USCISMappingVersion = require("../../../models/USCISMappingVersion");
 const MappingGraphService = require("./MappingGraphService");
 const { RULES, EXCLUSIVE_FORMS } = require("../config/partyFieldRules");
 const { inferRules } = require("./FieldRuleInferenceService");
+const { PARTY_FORM_SPECS, SUPPLEMENT_HEADER_GROUPS } = require("../config/partyFormSpecs");
+const { inferRulesForParties } = require("./PartRuleInferenceService");
 const UnlockedMirrorService = require("./UnlockedMirrorService");
 
 const SKIP_TYPES = new Set(["checkbox", "radio", "signature", "button"]);
@@ -46,9 +48,78 @@ function remapTransform(transform, rule) {
   return { ...transform, countryPath: remapPath(transform.countryPath, rule) };
 }
 
-// authored rules always win; a form without any gets conservative rules inferred from its own field names (FieldRuleInferenceService)
-function rulesFor(template, { allowInference = true } = {}) {
-  if (RULES[template.formCode]) return { rules: RULES[template.formCode], inferred: false };
+// a form whose parties a person has decided (config/partyFormSpecs.js): rules built by code from that decision. A part-based spec needs the part of every box
+// (options.partOf, read from the PDF's printed headings by apply()); without it nothing is mapped rather than guessed.
+const FACT_FALLBACK = { primaryPhone: "phone", alienRegistrationNumber: "aNumber" };
+// The spec of the supplement a component belongs to (config/partyFormSpecs.js, spec.components keyed by a component-code prefix), or null.
+const componentSpecFor = (spec, componentCode) => {
+  const key = Object.keys(spec?.components || {}).find((prefix) => String(componentCode).startsWith(prefix));
+  return key ? spec.components[key] : null;
+};
+
+// A form made of a main part and supplements that are slices of its own PDF (the I-129): the main part is located by its "Part N." headings, every supplement by its "Section N." headings
+// inside its own page range (PartLocatorService.scopeMapFor). Never throws (an unreadable PDF -> nothing mapped by part).
+async function scopeMapForSpec(template, spec) {
+  try {
+    const defs = await require("../../../models/USCISFormComponentDefinition").find({ parentTemplateId: template._id }).select("componentCode pageRanges").lean();
+    const matched = defs.filter((def) => componentSpecFor(spec, def.componentCode));
+    const firstSlice = defs.length ? Math.min(...defs.map((def) => def.pageRanges[0].startPage)) : Infinity;
+    const scopes = [{ key: "MAIN", kind: "Part", pageRanges: [{ startPage: 1, endPage: Number.isFinite(firstSlice) ? firstSlice - 1 : 9999 }] }, ...matched.map((def) => ({ key: def.componentCode, kind: "Section", pageRanges: def.pageRanges }))];
+    return await require("./PartLocatorService").scopeMapFor(template, scopes);
+  } catch (_error) {
+    return new Map();
+  }
+}
+
+function specRules(template, { partOf, scopeMap } = {}) {
+  const spec = PARTY_FORM_SPECS[template.formCode];
+  if (!spec) return null;
+  if (spec.components) {
+    if (!scopeMap || !scopeMap.size) return { rules: [], inferred: true };
+    const byScope = new Map();
+    for (const field of MappingGraphService.getTemplateFields(template)) {
+      const info = scopeMap.get(field.targetPdfField);
+      if (info) byScope.set(info.scope, [...(byScope.get(info.scope) || []), field]);
+    }
+    const out = [];
+    const run = (scopeKey, groups) => out.push(...inferRulesForParties(byScope.get(scopeKey) || [], (field) => scopeMap.get(field.targetPdfField).n, groups).rules);
+    if (spec.groups) run("MAIN", spec.groups);
+    for (const scopeKey of byScope.keys()) {
+      const component = scopeKey === "MAIN" ? null : componentSpecFor(spec, scopeKey);
+      if (component) run(scopeKey, [...SUPPLEMENT_HEADER_GROUPS, ...(component.groups || [])]);
+    }
+    return { rules: out.map((rule) => ({ ...rule, decided: true })), inferred: true };
+  }
+  if (spec.identity) {
+    const { party, fallbackParty } = spec.identity;
+    const rules = inferRules(template, (item) => MappingGraphService.getTemplateFields(item)).filter((rule) => rule.to.startsWith(`${party}.`)).map((rule) => {
+      const fact = rule.to.slice(party.length + 1);
+      const fallback = fallbackParty ? `${fallbackParty}.${FACT_FALLBACK[fact] || fact}` : undefined;
+      return { ...rule, inferred: false, decided: true, ...(fallback && !/uscisOnline/.test(fact) ? { fallback } : {}) };
+    });
+    return { rules, inferred: true };
+  }
+  if (!partOf || !partOf.size) return { rules: [], inferred: true };
+  const fields = MappingGraphService.getTemplateFields(template);
+  const { rules } = inferRulesForParties(fields, (field) => partOf.get(field.targetPdfField) ?? 0, spec.groups);
+  return { rules: rules.map((rule) => ({ ...rule, decided: true })), inferred: true };
+}
+
+// authored rules always win; then a decided party spec; a form without any gets conservative rules inferred from its own field names (FieldRuleInferenceService)
+function rulesFor(template, { allowInference = true, partOf, scopeMap } = {}) {
+  if (RULES[template.formCode]) {
+    // a form with authored rules AND decided parts: the authored rules stay as they are; a decided rule is added only for boxes the authored rules do not already cover. "Covered" means the
+    // same box name on the same page: a name that repeats on another page of the form (the I-129's supplements reuse their box names) is a different box.
+    const authored = RULES[template.formCode];
+    const spec = PARTY_FORM_SPECS[template.formCode];
+    const decided = spec?.groups || spec?.components ? specRules(template, { partOf, scopeMap }) : null;
+    if (!decided) return { rules: authored, inferred: false };
+    const covers = (stem, pages) => authored.some((rule) => rule.stems.some((candidate) => candidate.toLowerCase() === stem.toLowerCase()) && (!rule.pages || (pages || []).some((page) => rule.pages.includes(page))));
+    const added = decided.rules.map((rule) => ({ ...rule, stems: rule.stems.filter((stem) => !covers(stem, rule.pages)) })).filter((rule) => rule.stems.length);
+    return { rules: [...authored, ...added], inferred: true };
+  }
+  const decided = specRules(template, { partOf, scopeMap });
+  if (decided) return decided;
   if (!allowInference) return { rules: [], inferred: true };
   return { rules: inferRules(template, (item) => MappingGraphService.getTemplateFields(item)), inferred: true };
 }
@@ -83,7 +154,9 @@ function plan(template, graph, options = {}) {
     if (/PDF417|barcode/i.test(target.targetPdfField)) continue;
     const rules = (byStem.get(stemOf(target.targetPdfField)) || [])
       .filter((rule) => !rule.pages || rule.pages.includes(target.pageNumber))
-      .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField));
+      .filter((rule) => rule.index === undefined || rule.index === indexOf(target.targetPdfField))
+      // `within`: only the boxes under one named block of the PDF (a name repeated in two blocks of the same form)
+      .filter((rule) => !rule.within || String(target.targetPdfField || "").includes(rule.within));
     if (!rules.length) {
       // exclusive forms keep only rule-backed edges; for an inferred form the importer's unreviewed guesses (status != active) are dropped the same way,
       // while an already-active edge (carried over from a verified earlier edition) is kept
@@ -105,8 +178,10 @@ function plan(template, graph, options = {}) {
     const existing = edgesByTarget.get(target.targetFieldId);
     if (existing) {
       const isBox = Boolean(boxTransformOf(rule));
-      const nextTransform = isBox ? boxTransformOf(rule) : (rule.transform || remapTransform(existing.transform, rule) || defaultTransform(target.type));
-      const nextCondition = isBox ? undefined : remapCondition(existing.condition, rule);
+      // a rule a person DECIDED replaces a leftover review-status guess completely - its old transform and condition belonged to the guess's source and would leave stale metadata
+      const replacesGuess = Boolean(rule.decided) && existing.status !== "active";
+      const nextTransform = isBox ? boxTransformOf(rule) : (rule.transform || (replacesGuess ? null : remapTransform(existing.transform, rule)) || defaultTransform(target.type));
+      const nextCondition = isBox || replacesGuess ? undefined : remapCondition(existing.condition, rule);
       if (existing.sourcePath === sourcePath && JSON.stringify(existing.transform) === JSON.stringify(nextTransform) && JSON.stringify(existing.condition) === JSON.stringify(nextCondition)) { report.unchanged += 1; continue; }
       const index = outIndex.get(target.targetFieldId);
       out[index] = {
@@ -120,7 +195,8 @@ function plan(template, graph, options = {}) {
       if (nextCondition) out[index].condition = nextCondition; else delete out[index].condition;
       if (isBox) out[index].mappingType = "checkbox";
       if ("fallback" in rule) { if (rule.fallback === null) delete out[index].fallback; else out[index].fallback = rule.fallback; }
-      if (EXCLUSIVE_FORMS.has(formCode) || (rule.inferred && existing.status !== "active")) {
+      // a rule a person DECIDED (partyFormSpecs) replaces a leftover review-status guess completely, exactly as for an exclusive form - otherwise the guess stays "review" and the mapping is never ready
+      if (EXCLUSIVE_FORMS.has(formCode) || (rule.decided && existing.status !== "active") || (rule.inferred && existing.status !== "active")) {
         // a verified rule replaces the old guess completely: no inherited fallback source, no inherited review status
         if (!rule.fallback) delete out[index].fallback;
         out[index].status = "active";
@@ -216,15 +292,19 @@ function plan(template, graph, options = {}) {
 async function apply(templateOrId, user, req, { dryRun = false, activate = true, allowInference = true, mirrorsOnly = false } = {}) {
   const template = typeof templateOrId === "object" && templateOrId.save ? templateOrId : await USCISFormTemplate.findById(templateOrId);
   if (!template) throw Object.assign(new Error("USCIS form template not found"), { status: 404 });
-  const hasRules = !mirrorsOnly && rulesFor(template, { allowInference }).rules.length > 0;
+  // a part-based spec needs the part of every box, read once from the stored PDF's printed headings
+  const spec = PARTY_FORM_SPECS[template.formCode];
+  const scopeMap = spec?.components ? await scopeMapForSpec(template, spec) : undefined;
+  const partOf = spec?.groups && !spec.components ? await require("./PartLocatorService").partMapFor(template) : undefined;
+  const hasRules = !mirrorsOnly && rulesFor(template, { allowInference, partOf, scopeMap }).rules.length > 0;
   if (!hasRules && !UnlockedMirrorService.hasCandidates(template)) return { formCode: template.formCode, skipped: "no authored or inferable rules for this form" };
   const current = await MappingGraphService.loadCurrentGraph(template);
   // the edges of the LIVE mapping version are the ones a copy may be based on (a draft version's edges were never reviewed)
   const live = await USCISMappingVersion.findOne({ template: template._id, status: "active" }).select("graph.edges.targetFieldId").lean();
   const trustedTargetIds = new Set((live?.graph?.edges || []).map((edge) => edge.targetFieldId));
-  const { graph, report } = plan(template, current, { allowInference, mirrorsOnly, trustedTargetIds });
+  const { graph, report } = plan(template, current, { allowInference, mirrorsOnly, trustedTargetIds, partOf, scopeMap });
   report.validation = graph.validation.summary;
-  const staleUnmapped = hasRules && (EXCLUSIVE_FORMS.has(template.formCode) || rulesFor(template, { allowInference }).inferred) && (current.unmappedTargets || []).length > 0;
+  const staleUnmapped = hasRules && (EXCLUSIVE_FORMS.has(template.formCode) || rulesFor(template, { allowInference, partOf, scopeMap }).inferred) && (current.unmappedTargets || []).length > 0;
   if (dryRun || (report.created === 0 && report.rewired === 0 && !report.mirrored && !report.removed && !staleUnmapped)) return { ...report, saved: false };
   if (!graph.validation.valid) return { ...report, saved: false, error: "graph does not validate", errors: graph.validation.errors.slice(0, 5) };
   const version = await MappingGraphService.persistVersion(template, graph, user);

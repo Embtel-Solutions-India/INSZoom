@@ -115,10 +115,59 @@ function labelFromNamingPattern(fieldName, pageNumber) {
   return pageNumber ? `Page ${pageNumber} field` : undefined;
 }
 
-function deriveLabel({ fieldName, tooltip, pageNumber, formCode, fallback }) {
+// A tooltip copied from another form is shared by boxes that are not alike (G-1650: "Enter Given Name (First Name) as it appears on the Credit Card" sits on the bank name,
+// routing number and account number boxes too). Such a tooltip is trusted only for a box whose own name words appear in it; the others are labelled from their field name.
+const NAME_STOP = new Set(["cb", "rb", "chk", "txt", "tf", "line", "pg", "pt", "sf", "form"]);
+const ABBREVIATIONS = { amt: "Amount", num: "Number", addr: "Address", tel: "Telephone", dob: "Date of Birth" };
+const stemOfName = (fieldName) => String(fieldName || "").split(".").pop().replace(/\[\d+\]$/, "");
+function nameWords(fieldName) {
+  return stemOfName(fieldName).replace(/^(?:CB|RB|TF|TXT|CHK)_/i, "").replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/\s+/).filter((word) => word && !NAME_STOP.has(word.toLowerCase()) && !/^\d+$/.test(word));
+}
+const humanizeFieldName = (fieldName) => nameWords(fieldName).map((word) => ABBREVIATIONS[word.toLowerCase()] || word).join(" ").trim() || undefined;
+// The tooltip texts that sit on boxes with three or more different names AND are a real sentence (five words or more). USCIS legitimately shares short tooltips ("Select Yes",
+// "Enter City/Town, State, ZIP Code" across an address block); a long sentence repeated on unrelated boxes is a tooltip that was copied from another form.
+const MIN_SHARED_STEMS = 3;
+const MIN_TOOLTIP_WORDS = 5;
+function untrustedTooltipIndex(fields = []) {
+  const byTooltip = new Map();
+  for (const field of fields) {
+    const tooltip = String(field.tooltip || "").trim();
+    if (!tooltip) continue;
+    const stems = byTooltip.get(tooltip) || new Set();
+    stems.add(stemOfName(field.fieldName));
+    byTooltip.set(tooltip, stems);
+  }
+  return new Set([...byTooltip.entries()].filter(([tooltip, stems]) => stems.size >= MIN_SHARED_STEMS && tooltip.split(/\s+/).length >= MIN_TOOLTIP_WORDS).map(([tooltip]) => tooltip));
+}
+// Words that say nothing about WHICH box this is (a part / line number, "name", "number", ...): never evidence that a tooltip belongs to the box.
+const GENERIC_WORDS = new Set(["name", "number", "date", "code", "type", "info", "information", "enter", "select", "text", "field", "box"]);
+const POSITION_TOKEN = /^(?:p|pt|part|pg|page|line|item|sf|sub|subform)\d*[a-z]?$/i;
+const meaningfulNameWords = (fieldName) => nameWords(fieldName)
+  .map((word) => word.toLowerCase().replace(/\d+$/, ""))
+  .filter((word) => word.length >= 3 && !POSITION_TOKEN.test(word) && !GENERIC_WORDS.has(word));
+// a shared tooltip is the box's own when at least one meaningful word of the box's name appears in it ("CityTown3" in "Enter City/Town, State, ZIP Code");
+// with no such word (BankName / RoutingNumber under "Enter Given Name ... Credit Card") it was copied from somewhere else
+const tooltipCoversName = (tooltip, fieldName) => {
+  const text = String(tooltip || "").toLowerCase();
+  const own = meaningfulNameWords(fieldName);
+  return own.length === 0 || own.some((word) => text.includes(word));
+};
+// a box called just "TextField1" / "CheckBox2" has no name worth showing instead of its tooltip
+const GENERIC_BOX_NAME = /^(text ?field|check ?box|button|radio ?button|drop ?down|list ?box|combo ?box)\d*$/i;
+
+function deriveLabel({ fieldName, tooltip, pageNumber, formCode, fallback, visibleLabel, tooltipUntrusted }) {
   const crosswalkNote = crosswalkLabel(fieldName, formCode);
   if (crosswalkNote) return { label: crosswalkNote, labelSource: "crosswalk_note" };
+  // the text printed beside the box, when it contradicts both the tooltip and the field name (VisibleTextLabelService)
+  if (visibleLabel) return { label: `Select this box for ${visibleLabel}`, labelSource: "visible_text" };
+  if (tooltipUntrusted && !tooltipCoversName(tooltip, fieldName)) {
+    const named = humanizeFieldName(fieldName);
+    if (named) return { label: named, labelSource: "field_name" };
+  }
   const tooltipLabel = labelFromTooltip(tooltip, fieldName);
+  // a tooltip that is only the box's own camel-case name ("BusinessName") reads better as words
+  if (tooltipLabel && !/\s/.test(tooltipLabel) && tooltipLabel === stemOfName(fieldName) && !GENERIC_BOX_NAME.test(tooltipLabel) && nameWords(fieldName).length >= 2 && !/\d/.test(tooltipLabel)) return { label: humanizeFieldName(fieldName) || tooltipLabel, labelSource: "field_name" };
   if (tooltipLabel) return { label: tooltipLabel, labelSource: "pdf_tooltip" };
   const namingLabel = labelFromNamingPattern(fieldName, pageNumber);
   if (namingLabel) return { label: namingLabel, labelSource: "naming_pattern" };
@@ -132,7 +181,9 @@ function deriveLabel({ fieldName, tooltip, pageNumber, formCode, fallback }) {
 // fields at all (USCISFormImporterService keeps them, for PDF-flattening
 // completeness - see that file's own note) or filter them at a later,
 // review-facing boundary (uscis-form.service.js's buildSections()).
-function enrichFields(fields = [], formCode) {
+function enrichFields(fields = [], formCode, options = {}) {
+  const untrusted = untrustedTooltipIndex(fields);
+  const visibleLabels = options.visibleLabels instanceof Map ? options.visibleLabels : new Map();
   return fields.map((field) => {
     // `tooltip` (the raw /TU string) is only needed transiently, to derive
     // a label - it is deliberately NOT included in the returned object.
@@ -149,6 +200,8 @@ function enrichFields(fields = [], formCode) {
       pageNumber: field.pageNumber,
       formCode,
       fallback: field.label || field.fieldLabel,
+      visibleLabel: visibleLabels.get(field.fieldName),
+      tooltipUntrusted: untrusted.has(String(tooltip || "").trim()),
     });
     return { ...rest, label, fieldLabel: label, labelSource, uscisUseOnly: false };
   });
@@ -162,5 +215,7 @@ module.exports = {
   labelFromTooltip,
   labelFromNamingPattern,
   deriveLabel,
+  humanizeFieldName,
+  untrustedTooltipIndex,
   enrichFields,
 };

@@ -167,6 +167,10 @@ const notifyProgressSaved = (input, user, req) => alertTeam({ ...input, kind: "s
 
 // "Submit" - called by each submit endpoint after the submission has been committed. Fire-and-forget (never awaited by the
 // caller's response path): returns a promise that always resolves.
-const notifySubmitted = (input, user, req) => alertTeam({ ...input, kind: "submitted", verified: true }, user, req);
+const notifySubmitted = (input, user, req) => {
+  // The client's own "your checklist has been received" e-mail (checklist-reminder.service.js): a fire-and-forget check that can never delay or affect the submit or the team alert below.
+  try { require("../notifications/checklist-reminder.service").evaluateInBackground(input?.caseId); } catch (_error) { /* never affects the submit */ }
+  return alertTeam({ ...input, kind: "submitted", verified: true }, user, req);
+};
 
 module.exports = { notifyProgressSaved, notifySubmitted, fillerLabel, answeredQuestions };

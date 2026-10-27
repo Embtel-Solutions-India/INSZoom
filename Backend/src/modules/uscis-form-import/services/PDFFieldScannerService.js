@@ -96,7 +96,8 @@ function inferTextSemanticType(name = "", field) {
   if (/email|e-mail/.test(value)) return "email";
   if (/phone|telephone|tel|mobile|cell|fax/.test(value)) return "phone";
   if (/currency|amount|fee|salary|wage|income|cost|price|dollar|\$/.test(value)) return "currency";
-  if (/ssn|social security/.test(value)) return "ssn";
+  // "ssn" as a word or abbreviation only - not inside "BusiNESSName" / "ClaSSName"
+  if (/(?<![a-z])ssn|ssn(?![a-z])|social security/.test(value)) return "ssn";
   if (/alien|a-number|anumber|a number/.test(value)) return "alienNumber";
   if (/receipt/.test(value)) return "uscisReceiptNumber";
   if (/passport/.test(value)) return "passport";

@@ -249,6 +249,8 @@ class USCISFormImporterService {
         const xfa = require("./PdfDownload").detectXfaOnly(normalizedBuffer);
         if (xfa.xfaOnly && !xfa.hasAcroForm) throw xfaOnlyError(xfa, input.pdfUrl);
       }
+      // the PDF must be the form that was asked for (its own footers say which form it is); a wrong file is refused before anything is stored (FormIdentityService)
+      await require("./FormIdentityService").assertMatches(normalizedBuffer, input.formType || input.formCode || input.formNumber);
       const scanResult = await this.scanner.scan(normalizedBuffer);
       this.validation.validateFields(scanResult, { allowEmpty: (input.provider || "uscis") === "uscis" });
       // Explicit stop even when validateFields' allowEmpty would otherwise
@@ -277,7 +279,9 @@ class USCISFormImporterService {
       // fields still need to exist there; they're filtered out later, at
       // the review-facing boundary (uscis-form.service.js's buildSections()),
       // not at storage time.
-      scanResult.fields = FieldLabelEnrichmentService.enrichFields(scanResult.fields, metadata.formCode);
+      // (a box whose tooltip and name are both contradicted by the text printed beside it is labelled from that text - VisibleTextLabelService; fails safe to nothing)
+      const visibleLabels = await require("./VisibleTextLabelService").collect(normalizedBuffer, scanResult.fields);
+      scanResult.fields = FieldLabelEnrichmentService.enrichFields(scanResult.fields, metadata.formCode, { visibleLabels });
       const sameVersion = await USCISFormTemplate.findOne({ formCode: metadata.formCode, version: metadata.version });
       const sameVersionChecksum = sameVersion?.artifacts?.form?.checksum || sameVersion?.importMetadata?.checksum || sameVersion?.lifecycle?.sourceChecksum;
       if (sameVersion && sameVersionChecksum && sameVersionChecksum !== sourceChecksum) {

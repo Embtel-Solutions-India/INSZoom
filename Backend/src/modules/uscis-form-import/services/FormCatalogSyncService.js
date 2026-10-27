@@ -36,8 +36,8 @@ function classify(published, installed, options = {}) {
 
 /** Phase 7.2 (FORM_PIPELINE_AUTONOMY=on). One code pattern; the edition is "new" only when LATER (an older or future page date never triggers an import); the same edition with a different official PDF file is a "revision". */
 function classifyShared(published, installed) {
-  if (!isStandaloneFormCode(published.formCode, "sync", "on")) return { action: "skip", reason: "not a standalone form" };
-  if (!installed) return { action: "import_new", reason: "not in the software" };
+  // "standalone" decides which NEW forms are discovered from the directory; a form already in the software (EOIR-29 is live) must keep being tracked for new editions
+  if (!installed) return isStandaloneFormCode(published.formCode, "sync", "on") ? { action: "import_new", reason: "not in the software" } : { action: "skip", reason: "not a standalone form" };
   if (!published.editionDate) return { action: "skip", reason: "published edition unknown" };
   const installedDate = installed.importMetadata?.publishedEditionDate || installed.editionDate;
   if (!installedDate) return { action: "check_edition", reason: "installed edition date unknown" };
@@ -97,9 +97,39 @@ function defaultDeps() {
     // the form's own page is authoritative for its current edition (the directory listing often omits it)
     async publishedEdition(formCode) {
       // Phase 7.E: the form's real page when USCIS publishes it under another address (I-485J -> /i-485supj); otherwise the code-derived address as before
-      const pageUrl = require("../config/formSourceAliases").pageUrlFor(formCode) || `https://www.uscis.gov/${formCode.toLowerCase()}`;
-      const html = await USCISScannerService.fetchPage(pageUrl);
-      return USCISScannerService.extractFormPageMetadata(html, pageUrl, formCode).editionDate || null;
+      // Every address the form may be published under, in the resolver's own order (the alias data first, then the code-derived spellings: "i-485a", "i-485supa" - a form with a letter
+      // after its number is tried as "sup" + letter too, as USCIS publishes I-485A / I-485J under).
+      const described = require("./SourceResolver").describeForm(formCode);
+      const pageSlugs = described.pageSlugs.length ? described.pageSlugs : [formCode.toLowerCase()];
+      let pageError = null;
+      for (const slug of pageSlugs) {
+        const pageUrl = `https://www.uscis.gov/${slug}`;
+        try {
+          const html = await USCISScannerService.fetchPage(pageUrl);
+          const edition = USCISScannerService.extractFormPageMetadata(html, pageUrl, formCode).editionDate || null;
+          if (edition) return edition;
+        } catch (error) {
+          pageError = pageError || error;
+        }
+      }
+      // A form with no page of its own (I-539A is printed inside I-539's file; every page address answers 404): the SAME resolver the importer uses looks for it - the parent's page
+      // (the I-539 page links I-539A's PDF too), the stable PDF address under every spelling, the directory - and its edition is the one printed in the footer of that PDF.
+      const resolved = await require("./SourceResolver").resolveSource({ formCode, steps: ["parent_page", "stable_pdf", "directory"] });
+      if (resolved.ok) {
+        try {
+          const { buffer } = await require("./PdfDownload").fetchPdf(resolved.pdfUrl);
+          const iso = await require("./FormIdentityService").footerEdition(buffer);
+          if (iso) return new Date(`${iso}T00:00:00.000Z`);
+        } catch (error) {
+          resolved.tried.push({ url: resolved.pdfUrl, status: null, note: `edition not readable from the PDF footer: ${String(error.message).slice(0, 80)}` });
+        }
+      }
+      // nothing found: say WHERE it looked, so the sync can report it (never a silent skip)
+      throw Object.assign(new Error(pageError ? pageError.message : "the form's edition could not be found"), { code: "EDITION_SOURCE_NOT_FOUND", tried: resolved.tried });
+    },
+    // every form code that has a live edition (read-only): the ones the directory does not list are still checked
+    async installedFormCodes() {
+      return USCISFormTemplate.distinct("formCode", { status: "active" });
     },
     async installedTemplate(formCode) {
       const projection = autonomyConfig.mode() === "off" ? "formCode version editionDate importMetadata.publishedEditionDate" : "formCode version editionDate importMetadata.publishedEditionDate importMetadata.checksum lifecycle.sourceChecksum";
@@ -161,14 +191,43 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   const maxFormsPerRun = Number(options.maxFormsPerRun || process.env.USCIS_CATALOG_MAX_FORMS_PER_RUN || 15);
   const maxPages = Number(options.maxPages || process.env.USCIS_SYNC_MAX_PAGES || 30);
   const startedAt = Date.now();
-  const published = (await deps.listPublishedForms({ maxPages })).filter((form) => !options.only?.length || options.only.includes(form.formCode));
+  let published = (await deps.listPublishedForms({ maxPages })).filter((form) => !options.only?.length || options.only.includes(form.formCode));
+  // An installed form the directory does not list (a supplement printed inside its parent's file, such as I-539A, has no directory row) must still be checked for a new edition: without
+  // this it would never be looked at again. Its published edition is then read from its own page, or - with no page - from the footer of its own PDF (deps.publishedEdition).
+  if (typeof deps.installedFormCodes === "function") {
+    try {
+      const listed = new Set(published.map((form) => form.formCode));
+      const unlisted = (await deps.installedFormCodes()).filter((code) => !listed.has(code) && (!options.only?.length || options.only.includes(code)));
+      published = [...published, ...unlisted.map((code) => ({ formCode: code, editionDate: null }))];
+    } catch (error) {
+      logger.warn("uscis_catalog_sync_installed_codes_unavailable", { error: error.message }); // never blocks the sync
+    }
+  }
 
+  // a parent-only code (I-854: its page offers Form I-854A and Form I-854B, there is no Form I-854) is replaced by its lettered forms, which carry the same edition and page
+  try {
+    const { parentOnlyChildren } = require("../config/formSourceAliases");
+    const expanded = new Map();
+    for (const form of published) {
+      const children = parentOnlyChildren(form.formCode);
+      if (!children) { if (!expanded.has(form.formCode)) expanded.set(form.formCode, form); continue; }
+      for (const code of children) if (!expanded.has(code)) expanded.set(code, { ...form, formCode: code, pdfUrl: undefined });
+    }
+    published = [...expanded.values()];
+  } catch (error) {
+    logger.warn("uscis_catalog_sync_parent_only_expansion_failed", { error: error.message }); // never blocks the sync
+  }
+  // installed forms whose published edition could not be found anywhere: reported (log + summary), never silently skipped
+  const unresolved = [];
   // classify every form (cheap: one page fetch for forms already installed whose listing shows no edition)
   const classified = await inBatches(published, Number(options.concurrency || 4), async (form) => {
     try {
       const installed = await deps.installedTemplate(form.formCode);
       let edition = form.editionDate;
-      if (installed && !edition) edition = await deps.publishedEdition(form.formCode).catch(() => null);
+      if (installed && !edition) {
+        edition = await deps.publishedEdition(form.formCode).catch((error) => { unresolved.push({ formCode: form.formCode, reason: String(error.message).slice(0, 160), tried: (error.tried || []).slice(0, 12) }); return null; });
+        if (!edition && !unresolved.some((entry) => entry.formCode === form.formCode)) unresolved.push({ formCode: form.formCode, reason: "the published edition is unknown", tried: [] });
+      }
       let published = { ...form, editionDate: edition };
       let decision = classify(published, installed);
       // Phase 7.2: a form on the SAME edition may still have a new official PDF file (a silent revision): compare file fingerprints of the same kind
@@ -201,6 +260,7 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
   // same edition, different official PDF file: detected and reported. It is queued only when the import path can act on it (deps.supportsRevisionImport) - until then a queued job would find "no change" every run
   const revisions = classified.filter((item) => item.action === "revision");
   if (revisions.length) logger.warn("uscis_catalog_sync_revisions_detected", { forms: revisions.map((item) => item.formCode) });
+  if (unresolved.length) logger.warn("uscis_catalog_sync_edition_unresolved", { forms: unresolved.map((entry) => ({ formCode: entry.formCode, reason: entry.reason, tried: entry.tried.map((step) => `${step.url || "-"} ${step.status ?? ""} ${step.note || ""}`.trim()) })) });
   const queuedRevisions = deps.supportsRevisionImport ? revisions : [];
   const candidates = [...upgrades, ...queuedRevisions, ...news];
   // Phase 7.1 failure memory: forms that would only repeat a known failure must not occupy the per-run slots (FORM_PIPELINE_AUTONOMY: off = unchanged, shadow = log only, on = applied)
@@ -226,6 +286,7 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
     upgradesFound: upgrades.length,
     newFormsFound: news.length,
     ...(mode !== "off" ? { discoveredNotImported, revisionsDetected: revisions.map((item) => item.formCode) } : {}),
+    ...(unresolved.length ? { editionUnresolved: unresolved } : {}),
     queued: queue.map((item) => `${item.formCode}(${item.action})`),
     deferred: Math.max(upgrades.length + queuedRevisions.length + news.length - queue.length - (autonomy === "on" ? memorySkipped.length : 0), 0),
     skippedKnownFailures: memorySkipped,

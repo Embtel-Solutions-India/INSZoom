@@ -14,6 +14,12 @@ function startUSCISCatalogSyncJob(withJobLock) {
     // Phase 5: the run is recorded for the governance overview AFTER it finishes; recording is fail-safe and never changes the run or its result
     const task = async () => {
       const synced = await runCatalogSync({ user: actor || { role: "super_admin" } });
+      // leftover non-live copies of forms that are now live are cleared away - only after the open cases have moved onto the live edition and only when nothing references them
+      // (StaleEditionCleanupService; USCIS_STALE_CLEANUP=false switches it off; it never throws)
+      if (String(process.env.USCIS_STALE_CLEANUP || "true").toLowerCase() !== "false") await require("../../uscis-form-import/services/StaleEditionCleanupService").cleanupAll().catch(() => null);
+      // the owner's decided parties are applied to the live forms, a finished-but-never-activated draft mapping is activated, a form with nothing to map reads "Fully mapped"
+      // (MappingMaintenanceService; FORM_MAPPING_MAINTENANCE=false switches it off; it never throws)
+      await require("../../form-mapping/services/MappingMaintenanceService").runAll().catch(() => null);
       // then the edition-acceptance check for every edition on file - owned by the form-edition-policy subsystem (default off, never throws)
       await runScheduledEditionChecks();
       return synced;

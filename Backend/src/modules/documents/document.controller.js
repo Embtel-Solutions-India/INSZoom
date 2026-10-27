@@ -23,6 +23,12 @@ async function findAccessibleDocument(id, user) {
     error.statusCode = 403;
     throw error;
   }
+  // an unreleased petition upload does not exist for an attorney / client (petition-review/petitionGate.js)
+  if (!(await require("../petition-review/petitionGate").viewerMaySee(user, document))) {
+    const error = new Error("Document not found");
+    error.statusCode = 404;
+    throw error;
+  }
   return document;
 }
 

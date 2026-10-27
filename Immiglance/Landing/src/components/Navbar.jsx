@@ -25,7 +25,8 @@ const LINKS = [
   { label: "For Individuals", to: "/#individuals" },
   { label: "For Businesses", to: "/#businesses" },
   { label: "How It Works", to: "/#process" },
-  { label: "Forms", to: "/forms" },
+  { label: "Latest Forms", to: "/forms" },
+  { label: "News & Updates", to: "/news" },
   { label: "About Us", to: "/#about" },
 ];
 
@@ -67,9 +68,9 @@ export default function Navbar() {
           <span className="truncate font-sans text-lg font-extrabold tracking-tight text-foreground">{branding.displayName}</span>
         </Link>
 
-        <div className="hidden items-center gap-1 lg:flex">
+        <div className="hidden items-center gap-0.5 lg:flex xl:gap-1">
           {LINKS.map((link) => (
-            <Link key={link.label} to={link.to} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-foreground/80 no-underline transition hover:bg-secondary hover:text-foreground">
+            <Link key={link.label} to={link.to} className="whitespace-nowrap rounded-lg px-2 py-2 text-[0.8125rem] font-semibold text-foreground/80 no-underline transition hover:bg-secondary hover:text-foreground xl:px-3.5 xl:text-sm">
               {link.label}
             </Link>
           ))}

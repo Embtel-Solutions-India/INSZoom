@@ -879,3 +879,24 @@ export const adminApi = {
   toggleStatus: (userId) => api.put(`/admin/users/${userId}/toggle-status`),
   documents: () => api.get("/admin/documents"),
 };
+
+// Petition page: the petitions the case manager sent for MY review (single applicant / petitioner / employer only), the PDF, and the feedback thread with the case manager.
+export const petitionReviewApi = {
+  list: () => api.get("/petition-review/client/petitions"),
+  // resolves with a Blob; `download` makes the server answer as an attachment
+  file: async (documentId, { download = false } = {}) => {
+    const response = await api.get(`/petition-review/client/petitions/${encodeURIComponent(documentId)}/file${download ? "?download=1" : ""}`);
+    return response.blob();
+  },
+  messages: (documentId, { limit = 50, before } = {}) => {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (before) query.set("before", before);
+    return api.get(`/petition-review/documents/${encodeURIComponent(documentId)}/messages?${query.toString()}`);
+  },
+  send: (documentId, body, clientMessageId) => api.post(`/petition-review/documents/${encodeURIComponent(documentId)}/messages`, { body, clientMessageId }),
+  markRead: (documentId) => api.post(`/petition-review/documents/${encodeURIComponent(documentId)}/messages/read`, {}),
+  // The viewer: a signed link for this one petition (the server starts reading the big file at once), a long-poll that says when it is ready, and the stream the PDF viewer loads by URL.
+  viewLink: (documentId) => api.post(`/petition-review/documents/${encodeURIComponent(documentId)}/view-link`, {}),
+  ready: (token) => api.get(`/petition-review/stream/${encodeURIComponent(token)}/ready`),
+  streamUrl: (token, { download = false } = {}) => `${API_BASE_URL}/petition-review/stream/${encodeURIComponent(token)}${download ? "?download=1" : ""}`,
+};

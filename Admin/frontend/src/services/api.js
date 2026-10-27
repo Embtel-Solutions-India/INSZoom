@@ -850,3 +850,18 @@ export const ghlApi = {
   reconcileNow: () => api.post('/integrations/ghl/reconcile', {}, { timeout: 600_000 }),
   retryJob: (jobId) => api.post(`/integrations/ghl/jobs/${jobId}/retry`),
 }
+
+// Petition review: release an uploaded petition to the attorney(s) and / or the client-side audience (single applicant / petitioner / employer), and the feedback
+// conversation with that audience. Both release actions e-mail the people concerned.
+export const petitionReviewApi = {
+  list: (caseId) => api.get(`/petition-review/cases/${caseId}`),
+  sendToAttorney: (caseId, documentId, note) => api.post(`/petition-review/cases/${caseId}/documents/${documentId}/attorney-review`, { note }),
+  sendToClient: (caseId, documentId, note) => api.post(`/petition-review/cases/${caseId}/documents/${documentId}/client-review`, { note }),
+  messages: (documentId, params = { limit: 100 }) => api.get(`/petition-review/documents/${documentId}/messages`, { params }),
+  send: (documentId, body, clientMessageId) => api.post(`/petition-review/documents/${documentId}/messages`, { body, clientMessageId }),
+  markRead: (documentId) => api.post(`/petition-review/documents/${documentId}/messages/read`, {}),
+  // The viewer: a signed link for one petition (the server starts reading the big file at once), a long-poll that says when it is ready, and the stream the PDF viewer loads by URL.
+  viewLink: (documentId) => api.post(`/petition-review/documents/${documentId}/view-link`, {}),
+  ready: (token) => api.get(`/petition-review/stream/${encodeURIComponent(token)}/ready`),
+  streamUrl: (token, { download = false } = {}) => `${api.defaults.baseURL}/petition-review/stream/${encodeURIComponent(token)}${download ? '?download=1' : ''}`,
+}

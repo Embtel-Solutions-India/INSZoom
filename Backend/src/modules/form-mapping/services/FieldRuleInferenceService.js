@@ -46,6 +46,42 @@ function parse(stem) {
   return { part: Number.isFinite(number) ? section * 100 + number : Infinity, line, token };
 }
 
+// Forms whose boxes carry no "Part N" prefix (single-block forms such as G-1145 / G-1650: "LastName", "sfApplicantPetitionerName.GivenName"). The filer's block is then the first
+// NAMED block of the PDF (the parent segment of the box name, e.g. sfApplicantPetitionerName) that holds a family-name box and is not about someone / something else - a bank
+// account holder, a card holder, a payer. A block that names the applicant / requester stays the filer's even when it also says "petitioner". Boxes whose names are not
+// numbered but live in no named block (G-1145's "#subform[0]") form one block together. Because the same box names can repeat in another block of the form, a rule found in a
+// named block is limited to it (`within`), so the other block's boxes are never filled with the filer's data.
+const GENERIC_BLOCK = /^(form\d*|#.*|pg?\d*|page\d*|subform\d*|pt\d+.*|part\d+.*)$/i;
+const FILER_BLOCK = /applicant|requester|requestor|filer|aboutyou|yourinfo/i;
+const NOT_FILER_BLOCK = /bank|accountholder|cardholder|creditcard|payer|billing|prepar|interpret|attorney|represent|sign|spouse|parent|child|dependent|sponsor|employer|company|beneficiary|relative|household|other|prior|previous/i;
+const blockOf = (pdfField) => {
+  const parents = String(pdfField || "").split(".").slice(0, -1).map((segment) => segment.replace(/\[\d+\]$/, "")).filter((segment) => segment && !GENERIC_BLOCK.test(segment));
+  return parents.length ? parents[parents.length - 1] : "";
+};
+function inferUnnumbered(usable) {
+  const items = usable.filter((item) => !Number.isFinite(item.part)).map((item) => ({ ...item, block: blockOf(item.field.targetPdfField) }));
+  const eligible = items.filter((item) => !item.block || FILER_BLOCK.test(item.block) || !NOT_FILER_BLOCK.test(item.block));
+  const isFamily = (item) => /^(familyname|lastname|surname)$/.test(item.token);
+  const blocks = [...new Set(eligible.filter(isFamily).map((item) => item.block))];
+  if (!blocks.length) return [];
+  const block = blocks.find((name) => FILER_BLOCK.test(name)) ?? blocks[0];
+  const rules = new Map(); // canonical path -> { stems, options }
+  for (const item of eligible.filter((entry) => entry.block === block)) {
+    const entry = DICTIONARY.find(([pattern]) => pattern.test(item.token));
+    if (!entry) continue;
+    const [, to, options = {}] = entry;
+    const found = rules.get(to);
+    if (found) found.stems.add(item.stem); else rules.set(to, { stems: new Set([item.stem]), options });
+  }
+  // a name repeated in another block of the same form needs the block restriction; a name that is unique needs none
+  const blocksByStem = new Map();
+  items.forEach((item) => blocksByStem.set(item.stem, new Set([...(blocksByStem.get(item.stem) || []), item.block])));
+  return [...rules.entries()].map(([to, found]) => {
+    const repeated = block && [...found.stems].some((stem) => blocksByStem.get(stem).size > 1);
+    return R(to, [...found.stems], { ...found.options, ...(repeated ? { within: block } : {}) });
+  });
+}
+
 // template: a USCISFormTemplate (or anything MappingGraphService.getTemplateFields understands). Returns rules in the partyFieldRules.js shape.
 // The filer's own block is the LOWEST-numbered part that holds a family-name field (Part 1 on most forms, Part 2 on others); inside it only the first line of
 // each fact counts. Part numbers are compared as numbers, so "P10" is never mistaken for "P1".
@@ -55,7 +91,7 @@ function inferRules(template, getTemplateFields) {
     .filter(({ stem, type }) => stem && !["checkbox", "radio", "signature", "button", "dropdown"].includes(type) && !OTHER_PERSON.test(stem))
     .map((item) => ({ ...item, ...parse(item.stem) }));
   const identityPart = Math.min(...usable.filter((item) => /^(familyname|lastname|surname)$/.test(item.token) && Number.isFinite(item.part)).map((item) => item.part));
-  if (!Number.isFinite(identityPart)) return [];
+  if (!Number.isFinite(identityPart)) return inferUnnumbered(usable);
   const candidates = new Map(); // canonical path -> best { line, stems, options }
   for (const item of usable.filter((entry) => entry.part === identityPart)) {
     const entry = DICTIONARY.find(([pattern]) => pattern.test(item.token));

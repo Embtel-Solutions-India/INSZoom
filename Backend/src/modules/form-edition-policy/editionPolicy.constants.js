@@ -33,6 +33,22 @@ const VERIFICATION_RESULTS = Object.freeze({
 });
 
 // Reasons the gate can return (stable strings: the Admin screen and later the entry points compare against them).
+// OWNER POLICY (decided by the product owner, 2026-10-28): for these forms uscis.gov publishes no edition / acceptance statement at all, so the edition printed in the PDF's OWN footer
+// ("Form G-325R Edition 09/04/26") is the approved edition. It applies ONLY to the forms listed here, ONLY when the gate holds no record for the edition (never over an explicit
+// not-accepted / held / conflicting decision), and ONLY when the stored PDF's footer edition equals the template's edition date. Any other form keeps the evidence workflow unchanged.
+const OWNER_FOOTER_EDITION_FORMS = Object.freeze(new Set(["G-325R", "G-639"]));
+
+// OWNER POLICY (2026-10-28): the edition USCIS approves for a whole FORM FAMILY, stated by the owner as one date: "the approved edition of Form I-485 is 09/18/26, and the same goes for
+// the supplement forms" (I-485A, I-485J, "I-485 Supplement A / J" ...). A form belongs to the family by the number before any supplement letters (familyOf). Same safeguards as above:
+// only when the gate holds NO record for the edition (a recorded decision always wins), and only for exactly this edition date - a stray copy dated otherwise stays held.
+const OWNER_APPROVED_EDITIONS = Object.freeze({ "I-485": "2026-09-18" });
+
+/** "I-485A", "I-485 SUPPLEMENT J", "i-485 sup a", "I-485SUPA" -> "I-485" (the number every supplement of a form shares), or "" when the code has none. */
+function familyOf(formCode) {
+  const match = /^([A-Z]{1,4}-\d{1,4})/.exec(String(formCode || "").toUpperCase().replace(/\s+/g, ""));
+  return match ? match[1] : "";
+}
+
 const GATE_REASONS = Object.freeze({
   NO_POLICY: "no_policy",
   NOT_ACCEPTED: "not_accepted_by_uscis",
@@ -67,5 +83,5 @@ const EDITION_IDENTIFIER_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 module.exports = {
   EVIDENCE_ROLES, DECISIONS, DECISION_STATUSES, RECORDABLE_DECISIONS, RESTRICTING_DECISIONS, AUDIT_EVENT_TYPES,
-  VERIFICATION_RESULTS, GATE_REASONS, LIMITS, FRESHNESS_WINDOW_MS, REVIEW_WINDOW_DAYS, EDITION_IDENTIFIER_PATTERN,
+  OWNER_FOOTER_EDITION_FORMS, OWNER_APPROVED_EDITIONS, familyOf, VERIFICATION_RESULTS, GATE_REASONS, LIMITS, FRESHNESS_WINDOW_MS, REVIEW_WINDOW_DAYS, EDITION_IDENTIFIER_PATTERN,
 };

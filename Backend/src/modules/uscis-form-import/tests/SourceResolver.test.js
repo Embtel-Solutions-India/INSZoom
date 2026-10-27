@@ -176,3 +176,24 @@ test("the import path: guessedFormPageUrl uses the alias page, other forms keep 
   assert.equal(guessedFormPageUrl("I-539A"), `${BASE}/i-539a`);
   assert.equal(guessedFormPageUrl("I-129 O/P Classification Supplement"), null);
 });
+
+// ---- a supplement with no page of its own is found on its PARENT's page (I-539A on the I-539 page) ----
+test("I-539A: no page of its own, found on the I-539 page that links both forms; the trail says where it looked", async () => {
+  const { resolveSource } = require("../services/SourceResolver");
+  const html = '<a href="/sites/default/files/document/forms/i-539.pdf">Form I-539</a> <a href="/sites/default/files/document/forms/i-539a.pdf">Form I-539A, Supplemental Information for Application to Extend/Change Nonimmigrant Status</a>';
+  const fetch = async (url, { accept }) => {
+    if (accept === "pdf") return url.endsWith("/i-539a.pdf") ? { ok: true, status: 200, bytes: Buffer.from("%PDF-1.7 fake"), finalUrl: url } : { ok: false, status: 404 };
+    if (url === "https://www.uscis.gov/i-539") return { ok: true, status: 200, bytes: Buffer.from(html), finalUrl: url };
+    return { ok: false, status: 404 }; // the form's own page does not exist
+  };
+  const found = await resolveSource({ formCode: "I-539A", deps: { fetch }, steps: ["alias", "parent_page", "stable_pdf"] });
+  assert.equal(found.ok, true);
+  assert.equal(found.via, "parent_page");
+  assert.equal(found.pageUrl, "https://www.uscis.gov/i-539");
+  assert.match(found.pdfUrl, /i-539a\.pdf$/);
+  assert.ok(found.tried.some((step) => step.status === 404), "the failed addresses are in the trail");
+  // nothing anywhere: not ok, with the whole trail (the error mechanism)
+  const nothing = await resolveSource({ formCode: "I-539A", deps: { fetch: async () => ({ ok: false, status: 404 }) }, steps: ["alias", "parent_page", "stable_pdf"] });
+  assert.equal(nothing.ok, false);
+  assert.ok(nothing.tried.length >= 3);
+});

@@ -90,3 +90,44 @@ test("enrichFields marks barcode fields uscis_use_only and never assigns them a 
   assert.equal(result[1].fieldLabel, "Item 5, Sex - Male widget");
   assert.equal(result[1].tooltip, undefined);
 });
+
+// ---- a PDF whose tooltips / names were copied from another form (G-1650) ----
+const test2 = require("node:test");
+const assert2 = require("node:assert/strict");
+const Enrich = require("../services/FieldLabelEnrichmentService");
+const Visible = require("../services/VisibleTextLabelService");
+const { inferTextSemanticType: infer } = (() => { try { return require("../services/PDFFieldScannerService"); } catch (_e) { return {}; } })();
+
+test2("a tooltip shared by boxes with different names is trusted only where the box's own name words appear in it", () => {
+  const shared = "Enter Given Name (First Name) as it appears on the Credit Card";
+  const fields = [
+    { fieldName: "f[0].A[0].GivenName[0]", tooltip: shared, type: "text", pageNumber: 1 },
+    { fieldName: "f[0].B[0].BankName[0]", tooltip: shared, type: "text", pageNumber: 1 },
+    { fieldName: "f[0].B[0].RoutingNumber[0]", tooltip: shared, type: "number", pageNumber: 1 },
+  ];
+  const labels = Object.fromEntries(Enrich.enrichFields(fields, "X-1").map((field) => [field.fieldName.split(".").pop(), field.label]));
+  assert2.equal(labels["GivenName[0]"], shared);
+  assert2.equal(labels["BankName[0]"], "Bank Name");
+  assert2.equal(labels["RoutingNumber[0]"], "Routing Number");
+});
+
+test2("humanizeFieldName splits camel case, drops prefixes and expands abbreviations", () => {
+  assert2.equal(Enrich.humanizeFieldName("a.b.AuthorizedPaymentAmt[0]"), "Authorized Payment Amount");
+  assert2.equal(Enrich.humanizeFieldName("a.CB_AccountType[1]"), "Account Type");
+});
+
+test2("printed text beside a check box is used only when it contradicts both the tooltip and the name", () => {
+  const box = { left: 10, right: 20, bottom: 100, top: 110 };
+  const items = [{ text: "Checking Account", x: 24, y: 101, width: 70, height: 10 }, { text: "Far", x: 400, y: 101, width: 20, height: 10 }];
+  assert2.equal(Visible.labelRightOf(box, items), "Checking Account");
+  assert2.equal(Visible.labelRightOf({ ...box, bottom: 300, top: 310 }, items), undefined);
+  assert2.equal(Visible.contradicts("Checking Account", "Select this box for Master Card", "CB_CreditCardType"), true);
+  assert2.equal(Visible.contradicts("Yes", "Select Yes", "P1_Yes"), false);
+  assert2.equal(Visible.contradicts("Business Account", "Select this box for Business Account", "CB_AccountType"), false);
+});
+
+test2("a box is typed ssn only for the word SSN, not for the letters inside BusinessName", () => {
+  if (!infer) return;
+  assert2.notEqual(infer("form1[0].sfBankAccountInformation[0].BusinessName[0]"), "ssn");
+  assert2.equal(infer("form1[0].Part1[0].Line7_SSN[0]"), "ssn");
+});

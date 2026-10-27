@@ -62,7 +62,8 @@ function normalizeFormCode(value = "") {
 // (I-918 Supplement B -> I918B) is enough to let that same, already-correct
 // fallback do its job — no other logic in this file changes.
 function compactSupplementCode(formCode) {
-  return formCode.replace(/^([A-Z]{1,3}-\d{2,4})\s+SUPPLEMENT\s+([A-Z0-9]{1,2})$/, "$1$2");
+  // "Supplement", "Supp." and "Sup" are all spellings of the same word ("I-485 Supplement A" = "I-485 Sup A" = "I-485A")
+  return formCode.replace(/^([A-Z]{1,3}-\d{2,4})\s+(?:SUPPLEMENT|SUPP\.?|SUP\.?)\s*([A-Z0-9]{1,2})$/, "$1$2");
 }
 
 function enterpriseError(message, statusCode, code) {
@@ -278,6 +279,11 @@ async function registerBrandNewFormUnlinked(template) {
 
 // `pipeline` (optional, Phase 1): the job context of the durable pipeline. With it each major step is recorded as a stage of the job and the promotion step is
 // lease-checked and mutex-guarded; without it every stage() below simply runs its function, so behavior is exactly what it was.
+// A freshly imported edition is ALREADY in status "review" - the status only means "not live yet". What approval records is approvedBy / approvedAt (VersionManagementService.approve),
+// so that is what decides whether the approval step still has to run. (Testing the status instead skipped the approval of every new form, and activation then stopped at
+// "Approve the USCIS form edition before activation" even though the edition had been certified.) Approval never bypasses certification, the release gate or the acceptance gate.
+const needsApproval = (template) => !(template && template.approvedAt && template.approvedBy);
+
 async function activateOrPromote(template, user, req, pipeline = null) {
   const stage = (name, fn) => (pipeline ? pipeline.stage(name, fn) : fn());
   // Carry the field mapping onto this edition automatically (previous edition's graph, or the form's authored crosswalk). A lossless result
@@ -384,7 +390,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
     // via the registry console's own "Approve"/"Activate" buttons
     // (uscis-form.controller.js's approveTemplate/activateTemplate), done
     // here in sequence rather than skipping the approval gate.
-    if (template.status !== "review") {
+    if (needsApproval(template)) {
       if (autonomy.mode() === "on") {
         // Phase 7.6b: the pipeline's own approval, recorded as system:pipeline together with the certification it relied on (the certification and both gates still decide the release)
         const { systemActor } = require("../../form-pipeline/systemActor");
@@ -582,7 +588,11 @@ async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
     logger.info("uscis_form_acquisition_deduplicated", { formCode });
     return inFlightEnsures.get(dedupeKey);
   }
-  const run = ensureCurrentUSCISFormInner(formCode, user, req, options).finally(() => {
+  const run = ensureCurrentUSCISFormInner(formCode, user, req, options).then((result) => {
+    // every stored template's labels / types are brought up to the current rules by the pipeline itself, after the caller's answer is ready (TemplateLabelHealService; never throws)
+    try { require("./TemplateLabelHealService").scheduleHeal(result?.template); } catch (_error) { /* bookkeeping only */ }
+    return result;
+  }).finally(() => {
     inFlightEnsures.delete(dedupeKey);
   });
   inFlightEnsures.set(dedupeKey, run);
@@ -590,6 +600,9 @@ async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
 }
 
 async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
+  // a code USCIS publishes only as lettered forms (I-854 -> I-854A / I-854B) is not a form: say so and point at the real ones, never store the first lettered file under the parent's name
+  const lettered = require("../config/formSourceAliases").parentOnlyChildren(formCode);
+  if (lettered) throw enterpriseError(`"${formCode}" is not a form of its own - USCIS publishes it as ${lettered.join(" and ")}. Import those instead.`, 422, "USCIS_FORM_PARENT_ONLY");
   const forceCheck = Boolean(options.forceCheck);
   const pipeline = options.pipeline || null;
   const ttlMs = Number(process.env.USCIS_ENSURE_CHECK_TTL_MS || 12 * 60 * 60 * 1000);
@@ -858,5 +871,6 @@ module.exports = {
   guessedFormPageUrl,
   recoverFormSource,
   tryAutoAcknowledge,
+  needsApproval,
   registerBrandNewFormUnlinked,
 };

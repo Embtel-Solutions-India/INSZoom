@@ -195,6 +195,43 @@ RULES["I-129S"] = require("./i129sFieldRules").I129S_RULES;
 RULES["I-751"] = require("./i751FieldRules").I751_RULES;
 // Form I-131: the boxes no edge covered (physical description, USCIS online account, I-94 number, the applicant's own phone / e-mail). Not exclusive - the form's existing edges are kept.
 RULES["I-131"] = require("./i131FieldRules").I131_RULES;
-const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751"]);
+// Form I-129 supplements (L Classification Section 1: the beneficiary's foreign employment dates and the petitioner's employer abroad) - authored and page-restricted, see i129SupplementRules.js.
+RULES["I-129"] = [...RULES["I-129"], ...require("./i129SupplementRules").I129_SUPPLEMENT_RULES];
+// EOIR-29: the appellant / petitioner signs and gives a mailing address on page 2; page 1 holds the A-Numbers. (The AR-11 template dated 2026-02-01 holds this same PDF - a wrong
+// file, caught by FormIdentityService - so AR-11 has no rules of its own here: the real AR-11 is a different form.)
+const APPELLANT = [
+  R("petitioner.fullName", "Name", { pages: [2] }),
+  R("petitioner.address.line1", "Street Number and Name", { pages: [2] }),
+  R("petitioner.address.line2", "Apartment Number or Unit Number (if any)", { pages: [2] }),
+  R("petitioner.address.city", "City", { pages: [2] }),
+  R("petitioner.address.state", "State", { pages: [2] }),
+  R("petitioner.address.zip", "Zip Code", { pages: [2] }),
+  R("petitioner.aNumber", "A-Number, if any", { pages: [1] }),
+  R("beneficiary.alienRegistrationNumber", "DHS Anumber", { pages: [1] }),
+];
+RULES["EOIR-29"] = APPELLANT;
+// I-193 (waiver of passport / visa): one person, the filer - the petitioner; on an employer-employee case the petitioner is the company, so the employee (beneficiary) is used.
+const FILER_OR_EMPLOYEE = (fact, stems, options = {}) => R(`petitioner.${fact}`, stems, { fallback: `beneficiary.${fact}`, ...options });
+RULES["I-193"] = [
+  FILER_OR_EMPLOYEE("lastName", "MY_NAME_IS_LAST"),
+  FILER_OR_EMPLOYEE("firstName", "MY_NAME_IS_FIRST"),
+  FILER_OR_EMPLOYEE("middleName", "MY_NAME_IS_MIDDLE"),
+  FILER_OR_EMPLOYEE("dateOfBirth", "Date_Of_Birth"),
+  FILER_OR_EMPLOYEE("placeOfBirth", "PLACE_OF_BIRTH"),
+  FILER_OR_EMPLOYEE("countryOfCitizenship", "THE_COUNTRY_OF_WHICH_I_AM_A_CITIZEN_SUBJECT_OR_NATIONA", { transform: { type: "country" } }),
+];
+// I-956F / I-956G: address information only (Part 2, Item 3)
+const ADDRESS_ONLY = [
+  R("petitioner.address.line1", "P2_Line3_StreetNumberName", { pages: [2] }),
+  R("petitioner.address.line2", "P2_Line3_AptSteFlrNumber", { pages: [2] }),
+  R("petitioner.address.city", "P2_Line3_CityOrTown", { pages: [2] }),
+  R("petitioner.address.state", "P2_Line3_State", { pages: [2] }),
+  R("petitioner.address.zip", "P2_Line3_ZIPCode", { pages: [2] }),
+  R("petitioner.address.country", "P2_Line3_Country", { pages: [2], transform: { type: "country" } }),
+];
+RULES["I-956F"] = ADDRESS_ONLY;
+RULES["I-956G"] = ADDRESS_ONLY;
+// every rule above is the product owner's decision, complete for its form: EXCLUSIVE, so no guessed value can reach a box no rule covers
+const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751", "EOIR-29", "I-193", "I-956F", "I-956G"]);
 
 module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

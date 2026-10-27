@@ -57,6 +57,9 @@ async function backupTemplate(template, graph) {
 
 async function certify(template, { previous = null, persist = true } = {}) {
   const checks = [];
+  // a form with nothing for a case to fill (config/partyFormSpecs.js NO_MAPPING_FORMS: a fee schedule, a form no case holds data for) is certified on the PDF itself - it has no mapping
+  // to validate and no value to write; every other check still runs
+  const noMapping = require("../config/partyFormSpecs").NO_MAPPING_FORMS.has(template.formCode);
   const graph = await MappingGraphService.loadCurrentGraph(template).catch(() => ({ edges: [] }));
   const fieldNames = new Set((template.formFields || []).map((field) => field.pdfFieldName || field.fieldName || field.originalName).filter(Boolean));
 
@@ -70,6 +73,7 @@ async function certify(template, { previous = null, persist = true } = {}) {
   });
 
   await run(checks, "mapping_valid", async () => {
+    if (noMapping && !(graph.edges || []).length) return "nothing for a case to fill - released without a mapping";
     if (!(graph.edges || []).length) fail("the mapping graph is empty");
     const validation = await MappingGraphService.validateWithContract(graph, template);
     if (validation.errors?.length) fail(`${validation.errors.length} mapping errors, first: ${JSON.stringify(validation.errors[0]).slice(0, 200)}`);
@@ -105,6 +109,12 @@ async function certify(template, { previous = null, persist = true } = {}) {
     for (const edge of graph.edges || []) {
       if (edge.status !== "active" || SKIP_TYPES.has(String(edge.targetType || "").toLowerCase())) continue;
       if (PDFRenderer.setFormField(form, { pdfField: edge.targetPdfField, value: PROBE, type: "text" }, template.formCode)) written.push(edge.targetPdfField);
+    }
+    if (!written.length && noMapping && !(graph.edges || []).length) {
+      // nothing to fill: prove the PDF itself saves and reloads, which is what the viewer / download serve
+      filledBytes = Buffer.from(await pdf.save());
+      await PDFDocument.load(filledBytes, { ignoreEncryption: true });
+      return "no mapped fields (nothing for a case to fill); the PDF saves and reloads";
     }
     if (!written.length) fail("no mapped field accepted a value - the filled form would be blank");
     // the real render path (PDFRenderer) runs this before save(); an empty rich-text field otherwise makes pdf-lib's updateFieldAppearances throw

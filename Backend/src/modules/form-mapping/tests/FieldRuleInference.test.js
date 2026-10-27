@@ -122,3 +122,28 @@ test("P10 is never read as P1 and a Part 2 identity block is found when there is
   assert.deepEqual(rules["beneficiary.lastName"], ["P2_L2_FamilyName"]);
   assert.ok(!rules["beneficiary.email"], "Part 10 is not the filer's block");
 });
+
+// single-block forms with no "Part N" prefix (G-1145 / G-1650): the filer's block is found by name, and a block about someone else (the bank account holder) is never filled
+test("an unnumbered form: the unique boxes map; a repeated name is limited to the applicant block, never the bank account holder's", () => {
+  const named = (path, type = "text") => ({ fieldId: path, fieldName: path, pdfFieldName: path, label: path, type, pageNumber: 1, section: "Page 1" });
+  const g1145 = { formCode: "G-1145", version: "x", editionDate: new Date(), formFields: [
+    named("form1[0].#subform[0].LastName[0]"), named("form1[0].#subform[0].FirstName[0]"), named("form1[0].#subform[0].MiddleName[0]"),
+    named("form1[0].#subform[0].Email[0]", "email"), named("form1[0].#subform[0].MobilePhoneNumber[0]", "phone"), named("form1[0].#pageSet[0].Page1[0].PDF417BarCode1[0]", "textarea"),
+  ] };
+  const one = toMap(inferRules(g1145, getFields));
+  assert.deepEqual(one["beneficiary.lastName"], ["LastName"]);
+  assert.deepEqual(one["beneficiary.mobilePhone"], ["MobilePhoneNumber"]);
+  assert.ok(one["beneficiary.email"]);
+
+  const g1650 = { formCode: "G-1650", version: "x", editionDate: new Date(), formFields: [
+    named("form1[0].PG1[0].sfApplicantPetitionerName[0].GivenName[0]"), named("form1[0].PG1[0].sfApplicantPetitionerName[0].FamilyName[0]"),
+    named("form1[0].PG1[0].sfBankAccountHolderInfo[0].GivenName[0]"), named("form1[0].PG1[0].sfBankAccountHolderInfo[0].FamilyName[0]"),
+    named("form1[0].PG1[0].sfBankAccountInformation[0].BankName[0]"),
+  ] };
+  const rules = inferRules(g1650, getFields);
+  assert.deepEqual(rules.map((rule) => [rule.to, rule.within]).sort(), [["beneficiary.firstName", "sfApplicantPetitionerName"], ["beneficiary.lastName", "sfApplicantPetitionerName"]]);
+  const plan = PartyFieldMappingService.plan(g1650, { edges: [], nodes: {} }, { allowInference: true });
+  const mapped = plan.graph.edges.map((edge) => edge.targetPdfField);
+  assert.equal(mapped.length, 2);
+  assert.ok(mapped.every((name) => name.includes("sfApplicantPetitionerName")), "no bank account holder box is filled");
+});

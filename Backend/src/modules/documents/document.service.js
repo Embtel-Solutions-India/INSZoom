@@ -88,7 +88,15 @@ async function canAccessDocument(user, document) {
   return false;
 }
 
+// A petition upload that was not released to the viewer (see petition-review/petitionGate.js) never appears in a document list.
 async function buildDocumentFilter(query, user) {
+  const filter = await buildBaseDocumentFilter(query, user);
+  const hidden = await require("../petition-review/petitionGate").listCondition(user, query.caseId);
+  if (hidden) filter.$and = [...(filter.$and || []), hidden];
+  return filter;
+}
+
+async function buildBaseDocumentFilter(query, user) {
   const filter = { deletedAt: { $exists: false } };
   if (query.caseId) {
     // A child case in a principal/child family (any employer_employee or
@@ -514,6 +522,8 @@ async function createDocumentFromFile({ file, body, user, req }) {
   if (context.caseData && body.documentType === "petition_manual_upload") {
     caseService.addAuditEntry(context.caseData, "petition_manual_upload", `A petition document was uploaded by ${user.name || user.displayName || "staff"}.`, user, { documentId: document._id }, req);
     await context.caseData.save();
+    // the petition starts out visible to the case team only; the case manager releases it to the attorney(s) and / or the client (modules/petition-review)
+    await require("../petition-review/petitionReview.data").ensureReview(document._id, context.caseData._id).catch(() => null);
   }
   announceDocumentChange(document, user, "upload");
   return document;
@@ -1030,7 +1040,16 @@ function populateDocumentQuery(query) {
   ]);
 }
 
+// Reading a stored file is retried (storage hiccups, timeouts) before anyone sees an error; a petition PDF - often hundreds of pages - is also kept in memory for a while so
+// the next open and the viewer's byte-range requests are instant (petition-review/petitionBufferCache.js).
 async function readDocumentBuffer(document) {
+  const cache = require("../petition-review/petitionBufferCache");
+  const read = () => cache.withRetries(() => readDocumentBufferOnce(document));
+  if (document.documentType === "petition_manual_upload" && document.storageKey) return cache.getOrLoad(`${document._id}:${document.storageKey}`, read);
+  return read();
+}
+
+async function readDocumentBufferOnce(document) {
   if (document.storageKey) {
     return storageService.readBuffer(document.storageKey);
   }

@@ -4,9 +4,9 @@
 // or "Enter Other Type of Petitioner"), a few are copies of a box on another page, and some can never be typed into (signatures, the PDF417 barcodes). The
 // importer copies that flag onto every field (template.formFields[].readOnly), which used to lock all of them in the editor and in the downloaded PDF.
 //
-// This policy decides, at read time and without changing any stored template: a read-only flag still locks a field only when it is a signature, a barcode,
-// a computed field, or a widget that cannot be filled in at all (a button, an unknown kind). Every other read-only field is fillable - text / date / number
-// boxes, checkboxes, and also drop-downs (e.g. the "State" list), list boxes and radio groups, which USCIS flags read-only for the same reasons.
+// This policy decides, at read time and without changing any stored template: a read-only flag still locks a field only when it is a signature, a barcode, or a
+// widget that cannot be filled in at all (a button, an unknown kind). Every other read-only field is fillable - text / date / number boxes, checkboxes, drop-downs
+// (e.g. the "State" list), list boxes, radio groups, and fields the form computes by script (the case manager may override the computed value).
 // One rule for the workspace the editor opens and for the PDF that is generated.
 const lower = (value) => String(value ?? "").toLowerCase();
 
@@ -40,7 +40,6 @@ function isPlainFillableKind(field = {}) {
 // true when this read-only flag must still lock the field
 function keepsLock(field = {}) {
   if (isSignatureField(field) || isBarcodeField(field)) return true;
-  if (field.calculated === true) return true;
   return !isPlainFillableKind(field);
 }
 

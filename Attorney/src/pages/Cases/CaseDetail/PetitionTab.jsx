@@ -22,15 +22,31 @@ function PetitionPreviewModal({ title, fetcher, onClose }) {
   const [url, setUrl] = useState(null)
   const [error, setError] = useState('')
 
+  // A big petition can take a while to read from storage. A timeout / server hiccup is retried quietly (the server keeps the file ready after the first read); only a
+  // document that is really not there - or many failed attempts in a row - ends in a message.
   useEffect(() => {
     let objectUrl
-    fetcher()
-      .then(({ data }) => {
-        objectUrl = URL.createObjectURL(data)
-        setUrl(objectUrl)
-      })
-      .catch((err) => setError(err.response?.data?.message || 'Could not load this document.'))
-    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+    let cancelled = false
+    ;(async () => {
+      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+      for (let attempt = 0; attempt < 8 && !cancelled; attempt += 1) {
+        try {
+          const { data } = await fetcher()
+          if (cancelled) return
+          objectUrl = URL.createObjectURL(data)
+          setUrl(objectUrl)
+          return
+        } catch (err) {
+          const status = err.response?.status
+          if ([401, 403, 404].includes(status) || attempt === 7) {
+            if (!cancelled) setError(err.response?.data?.message || 'Could not load this document.')
+            return
+          }
+          await pause(Math.min(1000 * 2 ** attempt, 8000))
+        }
+      }
+    })()
+    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [fetcher])
 
   return (

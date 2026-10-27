@@ -20,7 +20,8 @@ const alnum = (value) => upper(value).replace(/[^A-Z0-9]/g, "");
 
 /** I-485J, "I-485 Supplement J", "I-918SUPA" ... -> { base: "I-485", letter: "J" | null } */
 function splitCode(formCode) {
-  const compact = upper(formCode).replace(/\s+/g, "").replace(/SUPPLEMENT/g, "SUP");
+  // "Supplement", "Supp." and "Sup." are all "SUP"
+  const compact = upper(formCode).replace(/\s+/g, "").replace(/SUPPLEMENT|SUPP\.?|SUP\./g, "SUP");
   const match = compact.match(/^([A-Z]{1,3}-\d{2,4})(?:SUP)?([A-Z]{1,2})?$/);
   return match ? { base: match[1], letter: match[2] || null } : { base: compact, letter: null };
 }

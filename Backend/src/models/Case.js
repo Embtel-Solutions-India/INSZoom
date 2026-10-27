@@ -859,6 +859,19 @@ const caseSchema = new mongoose.Schema(
     // (pre-validate hook below) - its auto-assigned checklists stay drafts, invisible to the client, until a case
     // manager approves each one. Cases created before the gate existed have no value here and are treated as
     // fully approved (deliberately no schema default, which would also flip them on load).
+    // Client checklist reminders (modules/notifications/checklist-reminder.service.js): bookkeeping only, written with updateOne (never the document save), read by nothing else.
+    checklistReminder: {
+      eligible: { type: Boolean }, // the client has a visible checklist to complete
+      submitted: { type: Boolean }, // the client pressed Submit (Save progress does not count)
+      startedAt: Date, // when the 3-day cycle began
+      nextDueAt: Date, // the next reminder is due from this moment
+      lastReminderAt: Date,
+      reminderCount: { type: Number, default: 0 },
+      submittedAt: Date,
+      receivedEmailedAt: Date, // "your checklist has been received" was sent
+      evaluatedAt: Date,
+      lastOutcome: String,
+    },
     checklistApproval: {
       required: { type: Boolean },
       // checklistIds (baseKey|targetRole) of staff-requested checklists a case manager has not released to the client yet
