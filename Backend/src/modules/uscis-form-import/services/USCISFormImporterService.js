@@ -277,7 +277,9 @@ class USCISFormImporterService {
       // fields still need to exist there; they're filtered out later, at
       // the review-facing boundary (uscis-form.service.js's buildSections()),
       // not at storage time.
-      scanResult.fields = FieldLabelEnrichmentService.enrichFields(scanResult.fields, metadata.formCode);
+      // (a box whose tooltip and name are both contradicted by the text printed beside it is labelled from that text - VisibleTextLabelService; fails safe to nothing)
+      const visibleLabels = await require("./VisibleTextLabelService").collect(normalizedBuffer, scanResult.fields);
+      scanResult.fields = FieldLabelEnrichmentService.enrichFields(scanResult.fields, metadata.formCode, { visibleLabels });
       const sameVersion = await USCISFormTemplate.findOne({ formCode: metadata.formCode, version: metadata.version });
       const sameVersionChecksum = sameVersion?.artifacts?.form?.checksum || sameVersion?.importMetadata?.checksum || sameVersion?.lifecycle?.sourceChecksum;
       if (sameVersion && sameVersionChecksum && sameVersionChecksum !== sourceChecksum) {
