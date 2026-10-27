@@ -7,7 +7,7 @@ const checklistEditJobSchema = new mongoose.Schema(
   {
     caseId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
     checklistId: { type: String, required: true },
-    op: { type: String, enum: ["update", "remove"], required: true },
+    op: { type: String, enum: ["update", "remove", "restore"], required: true },
     questionKey: { type: String, required: true },
     patch: { type: mongoose.Schema.Types.Mixed, default: {} },
     requestedBy: { type: mongoose.Schema.Types.ObjectId, required: true },

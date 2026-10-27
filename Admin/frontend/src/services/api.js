@@ -411,6 +411,7 @@ export const questionnairesApi = {
   // Case manager: release draft checklists to the client (body: { checklistIds } or { all: true }).
   approveCaseChecklists: (caseId, body) => api.post(`/questionnaires/case/${caseId}/checklists/approve`, body),
   // Case manager: edit / add / remove a question on this case's own copy of a checklist (never the shared template).
+  getRemovedCaseChecklistQuestions: (caseId, checklistId) => api.get(`/questionnaires/case/${caseId}/checklists/removed-questions`, { params: { checklistId } }),
   editCaseChecklist: (caseId, body) => api.post(`/questionnaires/case/${caseId}/checklists/edit`, body),
   removeCaseChecklist: (caseId, body) => api.post(`/questionnaires/case/${caseId}/checklists/remove`, body),
   createQuestion: (id, payload) => api.post(`/questionnaires/${id}/questions`, payload),

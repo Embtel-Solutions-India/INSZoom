@@ -375,7 +375,7 @@ function cleanOptions(options) {
 }
 
 async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, patch = {} } = {}, user, req) {
-  if (!["update", "add", "remove"].includes(op)) throw httpError(400, "op must be update, add or remove");
+  if (!["update", "add", "remove", "restore"].includes(op)) throw httpError(400, "op must be update, add, remove or restore");
   // the case the checklist is managed on (the principal, for a child case's shared checklist): its copy is edited and every child sees it
   caseId = await managingCaseFor(caseId, wantedId, user);
   const { questionnaire: copy } = await forkChecklist(caseId, wantedId, user, req);
@@ -417,6 +417,17 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
 
   const question = await Question.findOne({ questionnaire: copy._id, key: questionKey });
   if (!question) throw httpError(404, "Question not found on this checklist");
+  if (op === "restore") {
+    // the reverse of remove: the question (and any answer kept on record) comes back on this case's copy only
+    if (question.active === false || question.isActive === false) {
+      question.active = true;
+      question.isActive = true;
+      await question.save();
+      caseService.addAuditEntry(await Case.findById(caseId), "restore_checklist_question", "Deleted checklist question restored for this case", user, { checklistId: wantedId, questionKey }, req);
+    }
+    await broadcastEdited(caseId, user);
+    return { questionnaireId: copy._id, question };
+  }
   if (op === "remove") {
     // retired, never deleted: an answer already given stays on record
     question.active = false;
@@ -441,6 +452,17 @@ async function editChecklist(caseId, { op, checklistId: wantedId, questionKey, p
   return { questionnaireId: copy._id, question };
 }
 
+// The questions deleted from one checklist FOR THIS CASE (retired on the case's own copy, never from the template), in the checklist's order.
+// Read-only; a checklist that was never customised has none.
+async function listRemovedQuestions(caseId, { checklistId: wantedId } = {}, user) {
+  caseId = await managingCaseFor(caseId, wantedId, user);
+  await loadCase(caseId, user);
+  const entry = await findEntry(caseId, wantedId);
+  if (!isCaseCopyKey(entry.questionnaire.key)) return { questions: [], sections: [] };
+  const questions = await Question.find({ questionnaire: entry.questionnaire._id, $or: [{ active: false }, { isActive: false }] }).sort({ order: 1 }).lean();
+  return { questions: questions.filter((question) => !["page_break", "section_break"].includes(question.type)), sections: entry.questionnaire.sections || [] };
+}
+
 async function broadcastEdited(caseId, user) {
   const principal = await Case.findById(caseId).select("user delegateEmployerUser assignedCaseManager additionalCaseManagers").lean();
   // the employee cases under a principal are served its customised checklists too, so their sessions refresh as well
@@ -448,4 +470,4 @@ async function broadcastEdited(caseId, user) {
   broadcastChecklistsChanged([principal, ...children], "edited", user);
 }
 
-module.exports = { approveChecklists, inheritParentApprovals, removeChecklist, forkChecklist, editChecklist, baseKey };
+module.exports = { approveChecklists, inheritParentApprovals, removeChecklist, forkChecklist, editChecklist, listRemovedQuestions, baseKey };
