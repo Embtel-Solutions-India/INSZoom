@@ -35,6 +35,7 @@ const FilingTypeSelection = lazy(() => import("./Pages/Dashboard/FilingTypeSelec
 const PlanSelection = lazy(() => import("./Pages/Dashboard/PlanSelection"));
 const Forms = lazy(() => import("./Pages/Dashboard/Forms"));
 const Messages = lazy(() => import("./Pages/Dashboard/Messages"));
+const Petition = lazy(() => import("./Pages/Dashboard/Petition"));
 const PaymentSuccess = lazy(() => import("./Pages/Dashboard/PaymentSuccess"));
 const PaymentCancel = lazy(() => import("./Pages/Dashboard/PaymentCancel"));
 
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/dashboard/tasks"     element={<Tasks />} />
             <Route path="/dashboard/profile"   element={<Profile />} />
             <Route path="/dashboard/messages"  element={<Messages />} />
+            <Route path="/dashboard/petition"  element={<Petition />} />
             <Route path="/dashboard/forms"     element={<Forms />} />
             <Route path="/dashboard/plan"      element={<PlanSelection />} />
             <Route path="/dashboard/filing-type" element={<FilingTypeSelection />} />
