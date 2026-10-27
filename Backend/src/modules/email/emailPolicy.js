@@ -117,6 +117,8 @@ const SEND_RULES = {
   "lead-rejected": { when: "Staff decline a lead - sent to the prospect.", unless: "—" },
   "quiz-lead-internal": { when: "A new lead or consultation request arrives - sent to the configured lead-notification address.", unless: "Eligibility-quiz submissions no longer notify anyone." },
   "case-created-client": { when: "A case is created for a client who already has a working portal account.", unless: "The client still has to set a password (they get the combined invitation email instead)." },
+  "checklist-incomplete-reminder": { when: "A client has a checklist they can see and have not SUBMITTED (Save progress does not count). First email 3 days after the checklist reached them, then every 3 days until they press Submit.", unless: "They have submitted; the case is closed, on hold or cancelled; the account is inactive; the checklist is still waiting for a case manager's approval; or CHECKLIST_REMINDER_EMAILS=false." },
+  "checklist-received-client": { when: "A client presses Submit and every checklist they have to complete is submitted - sent once to the client.", unless: "The checklist was already acknowledged in the last 24 hours, or the case was already submitted before this email existed." },
   "case-created-team-lead": { when: "A new case is created and routed to a team lead.", unless: "No team lead is assigned to the case." },
   "case-assigned-case-manager": { when: "A case is assigned to a case manager - sent to that case manager.", unless: "The case is already assigned to the same case manager." },
   "case-manager-assigned": { when: "A case manager is assigned - the client is told who it is.", unless: "The client has no email address." },

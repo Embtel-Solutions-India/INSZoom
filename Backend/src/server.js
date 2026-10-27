@@ -149,6 +149,19 @@ function startReminderGeneration() {
   return setInterval(run, intervalMs);
 }
 
+// Client checklist e-mails: a reminder every 3 days while the checklist is not submitted, and "your checklist has been received" after Submit (see checklist-reminder.service.js).
+// CHECKLIST_REMINDER_EMAILS=false switches it off; the pass is bounded and never throws.
+function startChecklistReminders() {
+  if (String(process.env.CHECKLIST_REMINDER_EMAILS || "true").toLowerCase() === "false") return null;
+  const intervalMs = Number(process.env.CHECKLIST_REMINDER_JOB_INTERVAL_MS || 10 * 60 * 1000);
+  const initialDelayMs = Number(process.env.CHECKLIST_REMINDER_INITIAL_DELAY_MS || 90 * 1000);
+  const run = () =>
+    withJobLock("checklist-reminders", intervalMs * 3, () => require("./modules/notifications/checklist-reminder.service").runAll())
+      .catch((error) => logger.error("checklist_reminders_failed", { error }));
+  scheduleInitialRun(run, initialDelayMs);
+  return setInterval(run, intervalMs);
+}
+
 function startAIMaintenance() {
   const intervalMs = Number(process.env.AI_JOB_RECOVERY_INTERVAL_MS || 60 * 1000);
   const initialDelayMs = Number(process.env.AI_JOB_RECOVERY_INITIAL_DELAY_MS || 40 * 1000);
@@ -243,6 +256,7 @@ connectDB()
     const appointmentMaintenance = startAppointmentMaintenance();
     const paymentMaintenance = startPaymentMaintenance();
     const reminderGeneration = startReminderGeneration();
+    const checklistReminders = startChecklistReminders();
     const aiMaintenance = startAIMaintenance();
     const eodReportMaintenance = startEodReportMaintenance();
     const uscisMonitoring = startUSCISMonitoringJob(withJobLock);
@@ -290,6 +304,7 @@ connectDB()
       clearInterval(appointmentMaintenance);
       clearInterval(paymentMaintenance);
       clearInterval(reminderGeneration);
+      if (checklistReminders) clearInterval(checklistReminders);
       clearInterval(aiMaintenance);
       clearInterval(eodReportMaintenance);
       if (uscisMonitoring) clearInterval(uscisMonitoring);

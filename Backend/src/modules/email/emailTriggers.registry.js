@@ -36,6 +36,8 @@ const TRIGGERS = [
 
   t("case-created-client", "Case Created - Existing Client (Login)", "Case", "client", "A case is created for a client who already has a password: the email sends them to the login page.", { groups: ["Client", "Case"] }),
 
+  t("checklist-incomplete-reminder", "Checklist Not Submitted - Reminder (Every 3 Days)", "Questionnaire", "client", "The client has not pressed Submit on their checklist (Save progress does not count): every 3 days they are asked to log in and complete it, with a login button only. Stops the moment they submit.", { groups: ["Client", "Case"] }),
+  t("checklist-received-client", "Checklist Received (Client)", "Questionnaire", "client", "The client pressed Submit and every checklist they had to complete is submitted: they are told it was received and the case manager will contact them shortly.", { groups: ["Client", "Case"] }),
   t("case-created-team-lead", "Case Created (Team Lead)", "Internal Team", "team_member", "The team lead is told a new case awaits assignment.", { groups: ["Client", "Case", "Team Lead"] }),
   t("case-assigned-case-manager", "Case Assigned to Case Manager", "Internal Team", "team_member", "A case manager is told a case was assigned to them.", { groups: ["Client", "Case", "Case Manager"] }),
   t("case-manager-assigned", "Case Manager Assigned", "Internal Team", "team_member", "A case manager assignment is announced.", { groups: ["Client", "Case", "Case Manager"] }),
