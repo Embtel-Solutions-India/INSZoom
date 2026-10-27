@@ -18,12 +18,13 @@ test("a field USCIS marks read-only is fillable when it is a text / date / numbe
   assert.equal(effectiveReadOnly(field({ fieldType: "dropdown", pdfFieldType: undefined })), false); // the importer type alone is enough
 });
 
-test("signatures, barcodes, computed fields and widgets nobody can fill in keep their lock", () => {
+test("only signatures, barcodes and widgets nobody can fill in keep their lock - a computed field is editable", () => {
   assert.equal(effectiveReadOnly(field({ fieldType: "signature", fieldName: "form1[0].#subform[5].Line1a_SignatureofPetitioner[0]" })), true);
   assert.equal(effectiveReadOnly(field({ fieldType: "textarea", fieldName: "form1[0].Page1[0].PDF417BarCode1[0]", fieldLabel: "Form 1 0 Page Set 0 Page 1 0 Pdf 417 Bar Code 1 0" })), true);
-  assert.equal(effectiveReadOnly(field({ calculated: true })), true);
-  // a computed drop-down, or a signature / barcode widget of any kind, stays locked
-  assert.equal(effectiveReadOnly(field({ fieldType: "dropdown", pdfFieldType: "dropdown", calculated: true })), true);
+  // a field the form computes by script is editable (the case manager may override the value)
+  assert.equal(effectiveReadOnly(field({ calculated: true })), false);
+  assert.equal(effectiveReadOnly(field({ fieldType: "dropdown", pdfFieldType: "dropdown", calculated: true })), false);
+  // a signature / barcode widget of any kind stays locked
   assert.equal(effectiveReadOnly(field({ fieldType: "radio", pdfFieldType: "radio", fieldName: "form1[0].Page1[0].PDF417BarCode1[0]" })), true);
   assert.equal(effectiveReadOnly(field({ fieldType: "signature", pdfFieldType: "dropdown" })), true);
   // push buttons and unknown widget kinds cannot be filled in

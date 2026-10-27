@@ -133,3 +133,11 @@ test("ensureCurrentUSCISForm: concurrent calls for the same form are deduplicate
   assert.equal(importSpy.mock.callCount(), 1, "concurrent callers must share one in-flight acquisition, not each trigger a download");
   results.forEach((result) => assert.equal(result.template, importedTemplate));
 });
+
+test("needsApproval: a freshly imported edition (status review, never approved) must be approved; an approved one must not be approved twice", () => {
+  assert.equal(service.needsApproval({ status: "review" }), true);
+  assert.equal(service.needsApproval({ status: "draft" }), true);
+  assert.equal(service.needsApproval({ status: "review", approvedAt: new Date() }), true, "approvedAt without approvedBy is not an approval");
+  assert.equal(service.needsApproval({ status: "review", approvedAt: new Date(), approvedBy: "u1" }), false);
+  assert.equal(service.needsApproval(null), true);
+});

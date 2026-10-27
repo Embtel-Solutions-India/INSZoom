@@ -9,8 +9,8 @@
 // on uses the shared pattern. The mode is read when a pattern is asked for, never at load time.
 const autonomy = require("../../../config/formPipelineAutonomy");
 
-const SHARED_BODY = "(?:[A-Z]{1,3}-\\d{2,4}[A-Z]{0,3}|I-9)";
-const SUPPLEMENT = "(?:[\\s_-]+SUPPLEMENT[\\s_-]+[A-Z])?";
+const SHARED_BODY = "(?:[A-Z]{1,3}-\\d{2,4}(?:SUP[A-Z]|[A-Z]{0,3})|I-9)"; // a supplement may be written glued with "sup": I-918SUPA, I-485SUPJ (the owner's rule: "sup" for forms with letters after the number)
+const SUPPLEMENT = "(?:[\\s_-]+(?:SUPPLEMENT|SUPP\\.?|SUP\\.?)[\\s_-]+[A-Z])?"; // "I-485 Supplement A", "I-485 Supp. A" and "I-485 Sup A" are the same form
 
 const LEGACY = Object.freeze({
   // USCISScannerService.FORM_CODE_PATTERN (global search inside text)
@@ -22,6 +22,7 @@ const LEGACY = Object.freeze({
 });
 const SHARED_SCAN = `\\b(${SHARED_BODY}${SUPPLEMENT})\\b`;
 const SHARED_STANDALONE = new RegExp(`^${SHARED_BODY}$`);
+const EXPLICIT_IMPORT_ONLY = /^EOIR-\d{1,4}[A-Z]?$/;
 
 /** A fresh global, case-insensitive search regex (callers use matchAll / exec loops, so it must not be shared state). */
 function scanPattern(mode = autonomy.mode()) {
@@ -35,6 +36,9 @@ function scanPattern(mode = autonomy.mode()) {
 function isStandaloneFormCode(code, legacyKind = "importer", mode = autonomy.mode()) {
   const text = String(code || "");
   if (mode !== "on") return LEGACY[legacyKind].test(text);
+  // A form a person (or the pipeline) asks for BY CODE may be a DOJ / EOIR form that uscis.gov hosts (EOIR-29: its own page and PDF). The text scan and the catalog sync still skip EOIR
+  // codes - a mention in running text is not a catalog form - so this applies to the importer's explicit request only.
+  if (legacyKind === "importer" && EXPLICIT_IMPORT_ONLY.test(text)) return true;
   return SHARED_STANDALONE.test(text) || LEGACY[legacyKind].test(text);
 }
 

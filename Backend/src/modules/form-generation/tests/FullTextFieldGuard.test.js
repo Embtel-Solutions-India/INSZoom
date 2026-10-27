@@ -133,18 +133,18 @@ test("a read-only drop-down (State), list box and radio group are made writable 
   list.addOptions(["A", "B"]);
   list.addToPage(page, { x: 10, y: 600, width: 80, height: 40 });
   list.enableReadOnly();
-  // a drop-down that is a computed field keeps its lock
+  // a drop-down that is a computed field is writable too (only signatures and barcodes stay locked)
   const computed = form.createDropdown("form1[0].#subform[1].Computed[0]");
   computed.addOptions(["X"]);
   computed.addToPage(page, { x: 10, y: 560, width: 80, height: 18 });
   computed.enableReadOnly();
 
   const meta = new Map([["form1[0].#subform[1].Computed[0]", { fieldType: "dropdown", calculated: true }]]);
-  assert.equal(unlockReadOnlyFields(form, meta), 3);
+  assert.equal(unlockReadOnlyFields(form, meta), 4);
   assert.equal(state.isReadOnly(), false);
   assert.equal(radio.isReadOnly(), false);
   assert.equal(list.isReadOnly(), false);
-  assert.equal(computed.isReadOnly(), true);
+  assert.equal(computed.isReadOnly(), false);
 
   state.select("NY");
   assert.deepEqual(state.getSelected(), ["NY"]);

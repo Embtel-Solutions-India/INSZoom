@@ -29,7 +29,9 @@ const isDateLike = (type) => /date/.test(norm(type));
 
 /** The party a piece of form text speaks about: "petitioner" (employer / sponsor side), "beneficiary" (the person the form is for), or null when unclear / both. */
 function partyOfText(text) {
-  const value = norm(text);
+  // "Alien Registration Number" / "Alien Number" is the NAME of a USCIS identifier (the A-Number) that belongs to whoever holds it - a petitioner who is a permanent resident has one too.
+  // The word "alien" there says nothing about which party the box is for, so it is not read as the beneficiary (I-800A "Part 2 ... Alien Registration Number" is the petitioner's).
+  const value = norm(text).replace(/\balien\s+(?:registration\s+)?(?:number|no\.?)\b|\balien\s+file\s+number\b/g, " ");
   const petitioner = /\b(petitioner|employer|sponsor|company|organization)\b/.test(value);
   const beneficiary = /\b(beneficiary|applicant|worker|employee|alien)\b/.test(value);
   if (petitioner === beneficiary) return null; // both or neither: not a contradiction we can prove

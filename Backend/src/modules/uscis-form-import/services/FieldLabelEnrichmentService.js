@@ -118,14 +118,17 @@ function labelFromNamingPattern(fieldName, pageNumber) {
 // A tooltip copied from another form is shared by boxes that are not alike (G-1650: "Enter Given Name (First Name) as it appears on the Credit Card" sits on the bank name,
 // routing number and account number boxes too). Such a tooltip is trusted only for a box whose own name words appear in it; the others are labelled from their field name.
 const NAME_STOP = new Set(["cb", "rb", "chk", "txt", "tf", "line", "pg", "pt", "sf", "form"]);
-const ABBREVIATIONS = { amt: "Amount", num: "Number", no: "Number", addr: "Address", tel: "Telephone", dob: "Date of Birth" };
+const ABBREVIATIONS = { amt: "Amount", num: "Number", addr: "Address", tel: "Telephone", dob: "Date of Birth" };
 const stemOfName = (fieldName) => String(fieldName || "").split(".").pop().replace(/\[\d+\]$/, "");
 function nameWords(fieldName) {
   return stemOfName(fieldName).replace(/^(?:CB|RB|TF|TXT|CHK)_/i, "").replace(/_/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
     .split(/\s+/).filter((word) => word && !NAME_STOP.has(word.toLowerCase()) && !/^\d+$/.test(word));
 }
 const humanizeFieldName = (fieldName) => nameWords(fieldName).map((word) => ABBREVIATIONS[word.toLowerCase()] || word).join(" ").trim() || undefined;
-// The tooltip texts that sit on boxes with two or more different names.
+// The tooltip texts that sit on boxes with three or more different names AND are a real sentence (five words or more). USCIS legitimately shares short tooltips ("Select Yes",
+// "Enter City/Town, State, ZIP Code" across an address block); a long sentence repeated on unrelated boxes is a tooltip that was copied from another form.
+const MIN_SHARED_STEMS = 3;
+const MIN_TOOLTIP_WORDS = 5;
 function untrustedTooltipIndex(fields = []) {
   const byTooltip = new Map();
   for (const field of fields) {
@@ -135,13 +138,23 @@ function untrustedTooltipIndex(fields = []) {
     stems.add(stemOfName(field.fieldName));
     byTooltip.set(tooltip, stems);
   }
-  return new Set([...byTooltip.entries()].filter(([, stems]) => stems.size >= 2).map(([tooltip]) => tooltip));
+  return new Set([...byTooltip.entries()].filter(([tooltip, stems]) => stems.size >= MIN_SHARED_STEMS && tooltip.split(/\s+/).length >= MIN_TOOLTIP_WORDS).map(([tooltip]) => tooltip));
 }
+// Words that say nothing about WHICH box this is (a part / line number, "name", "number", ...): never evidence that a tooltip belongs to the box.
+const GENERIC_WORDS = new Set(["name", "number", "date", "code", "type", "info", "information", "enter", "select", "text", "field", "box"]);
+const POSITION_TOKEN = /^(?:p|pt|part|pg|page|line|item|sf|sub|subform)\d*[a-z]?$/i;
+const meaningfulNameWords = (fieldName) => nameWords(fieldName)
+  .map((word) => word.toLowerCase().replace(/\d+$/, ""))
+  .filter((word) => word.length >= 3 && !POSITION_TOKEN.test(word) && !GENERIC_WORDS.has(word));
+// a shared tooltip is the box's own when at least one meaningful word of the box's name appears in it ("CityTown3" in "Enter City/Town, State, ZIP Code");
+// with no such word (BankName / RoutingNumber under "Enter Given Name ... Credit Card") it was copied from somewhere else
 const tooltipCoversName = (tooltip, fieldName) => {
   const text = String(tooltip || "").toLowerCase();
-  const own = nameWords(fieldName).map((word) => word.toLowerCase()).filter((word) => word.length >= 3);
-  return own.length > 0 && own.every((word) => text.includes(word));
+  const own = meaningfulNameWords(fieldName);
+  return own.length === 0 || own.some((word) => text.includes(word));
 };
+// a box called just "TextField1" / "CheckBox2" has no name worth showing instead of its tooltip
+const GENERIC_BOX_NAME = /^(text ?field|check ?box|button|radio ?button|drop ?down|list ?box|combo ?box)\d*$/i;
 
 function deriveLabel({ fieldName, tooltip, pageNumber, formCode, fallback, visibleLabel, tooltipUntrusted }) {
   const crosswalkNote = crosswalkLabel(fieldName, formCode);
@@ -154,7 +167,7 @@ function deriveLabel({ fieldName, tooltip, pageNumber, formCode, fallback, visib
   }
   const tooltipLabel = labelFromTooltip(tooltip, fieldName);
   // a tooltip that is only the box's own camel-case name ("BusinessName") reads better as words
-  if (tooltipLabel && !/\s/.test(tooltipLabel) && tooltipLabel === stemOfName(fieldName)) return { label: humanizeFieldName(fieldName) || tooltipLabel, labelSource: "field_name" };
+  if (tooltipLabel && !/\s/.test(tooltipLabel) && tooltipLabel === stemOfName(fieldName) && !GENERIC_BOX_NAME.test(tooltipLabel) && nameWords(fieldName).length >= 2 && !/\d/.test(tooltipLabel)) return { label: humanizeFieldName(fieldName) || tooltipLabel, labelSource: "field_name" };
   if (tooltipLabel) return { label: tooltipLabel, labelSource: "pdf_tooltip" };
   const namingLabel = labelFromNamingPattern(fieldName, pageNumber);
   if (namingLabel) return { label: namingLabel, labelSource: "naming_pattern" };

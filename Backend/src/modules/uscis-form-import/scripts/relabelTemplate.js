@@ -39,42 +39,11 @@ async function relabelTemplate(formCode, { dryRun = false } = {}) {
     error.code = "NO_PDF_ARTIFACT";
     throw error;
   }
-  const raw = await storageService.readBuffer(key);
-  const normalized = await normalizePdf(raw);
-  const scanner = new PDFFieldScannerService();
-  const scanResult = await scanner.scan(normalized);
-
-  const tooltipQueueByName = new Map();
-  scanResult.fields.forEach((field) => {
-    const queue = tooltipQueueByName.get(field.fieldName) || [];
-    queue.push({ tooltip: field.tooltip, type: field.type });
-    tooltipQueueByName.set(field.fieldName, queue);
-  });
-  const cursorByName = new Map();
-  const withTooltip = template.formFields.map((field) => {
-    const plain = field.toObject ? field.toObject() : field;
-    const cursor = cursorByName.get(plain.fieldName) || 0;
-    cursorByName.set(plain.fieldName, cursor + 1);
-    const rescanned = (tooltipQueueByName.get(plain.fieldName) || [])[cursor] || {};
-    return { ...plain, tooltip: rescanned.tooltip, rescannedType: rescanned.type };
-  });
-
-  // the text printed beside a box wins over a tooltip / name it contradicts (VisibleTextLabelService)
-  const visibleLabels = await require("../services/VisibleTextLabelService").collect(normalized, withTooltip);
-  const enriched = FieldLabelEnrichmentService.enrichFields(withTooltip, template.formCode, { visibleLabels }).map(({ rescannedType, ...field }) => {
-    // a box stored as an SSN only because its name contains the letters "ssn" (BusiNESSName) goes back to what a fresh scan says it is
-    if (field.type === "ssn" && rescannedType && rescannedType !== "ssn") {
-      const fix = (value) => (value === "ssn" ? rescannedType : value);
-      return { ...field, type: rescannedType, fieldType: fix(field.fieldType), semanticType: fix(field.semanticType) };
-    }
-    return field;
-  });
-  const changes = enriched.map((field, index) => ({ field: field.fieldName, from: template.formFields[index]?.label, to: field.label, source: field.labelSource, typeFrom: template.formFields[index]?.type, typeTo: field.type })).filter((item) => item.from !== item.to || item.typeFrom !== item.typeTo);
+  // the work is TemplateLabelHealService's (the pipeline runs the same code by itself); this script only runs it on demand for one form
+  const heal = require("../services/TemplateLabelHealService");
+  const { enriched, changes } = await heal.computeChanges(template);
   if (dryRun) return { template, fieldCount: enriched.length, labelSourceCounts: {}, changes, dryRun: true };
-  template.formFields = enriched;
-  template.markModified("formFields");
-  await template.save();
-
+  await heal.applyChanges(template, { enriched, changes });
   const labelSourceCounts = {};
   enriched.forEach((field) => {
     labelSourceCounts[field.labelSource || "uscis_use_only"] = (labelSourceCounts[field.labelSource || "uscis_use_only"] || 0) + 1;

@@ -22,7 +22,7 @@ function decide(checks = []) {
 
 const approvedAndMapped = (template) => {
   if (!template.approvedAt || !template.approvedBy) return { name: "approved", outcome: "blocked", detail: "Approve the USCIS form edition before activation" };
-  if (template.mappingStatus !== "active") return { name: "mapping_active", outcome: "blocked", detail: "Activate and validate the form mapping before activating this USCIS edition" };
+  if (template.mappingStatus !== "active" && !require("../form-mapping/config/partyFormSpecs").NO_MAPPING_FORMS.has(template.formCode)) return { name: "mapping_active", outcome: "blocked", detail: "Activate and validate the form mapping before activating this USCIS edition" };
   if (template.officialStatus === "deprecated") return { name: "not_deprecated", outcome: "blocked", detail: "A deprecated USCIS edition cannot be activated for new cases" };
   return { name: "preconditions", outcome: "pass", detail: "approved, mapping active, not deprecated" };
 };

@@ -3,14 +3,16 @@
 // (pdfjs-dist), no AI and no guessing: a check box / radio gets the text immediately to its right on the same line, and only when that text shares no word with either the
 // box's tooltip or its field name. Everything fails safe - any error, or a form with no text layer, returns nothing and the existing label is kept.
 const STOP = new Set(["select", "this", "box", "for", "check", "enter", "the", "and", "your", "form", "item", "part", "page", "any"]);
-const words = (text) => String(text || "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 3 && !STOP.has(word));
+// the usual USCIS abbreviations count as the word they stand for ("Ste." is "Suite")
+const EXPAND = { ste: "suite", apt: "apartment", flr: "floor", num: "number", amt: "amount" };
+const words = (text) => String(text || "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).map((word) => EXPAND[word] || word).filter((word) => word.length >= 3 && !STOP.has(word));
 
 const MAX_PAGES = 60;
 const MAX_GAP_PT = 70; // how far right of the box the printed label may start
 const JOIN_GAP_PT = 6; // text pieces closer than this on one line belong to the same label
 
 async function loadTextItems(buffer, pageNumbers) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await require("../../../utils/pdfjsShared").loadPdfjs();
   const task = pdfjs.getDocument({ data: new Uint8Array(buffer), disableFontFace: true, isEvalSupported: false, useSystemFonts: false, verbosity: 0 });
   const doc = await task.promise;
   const pages = new Map();
@@ -38,7 +40,8 @@ function labelRightOf(box, items) {
     parts.push(item);
   }
   const text = parts.map((part) => part.text).join(" ").replace(/\s+/g, " ").trim();
-  return /[A-Za-z]{3}/.test(text) && text.length <= 60 ? text : undefined;
+  // a short label only: a Yes / No answer or a whole sentence beside a box is not a label to replace the form's own with
+  return /[A-Za-z]{3}/.test(text) && text.length <= 40 && text.split(" ").length <= 5 && !/^(?:yes|no|none|n\/a)(?![a-z])/i.test(text) ? text : undefined;
 }
 
 /** Pure: true when the printed text contradicts BOTH the tooltip and the field name (so neither can be the box's real meaning). */
@@ -47,7 +50,8 @@ function contradicts(printed, tooltip, fieldName) {
   if (!printedWords.size) return false;
   const stem = String(fieldName || "").split(".").pop().replace(/\[\d+\]$/, "").replace(/_/g, " ");
   const known = new Set([...words(tooltip), ...words(stem)]);
-  return ![...printedWords].some((word) => known.has(word));
+  // a word of the printed text that matches (or is the start / end of) a known word is not a contradiction ("Check" / "Checking")
+  return ![...printedWords].some((word) => [...known].some((other) => other === word || (Math.min(word.length, other.length) >= 4 && (other.startsWith(word) || word.startsWith(other)))));
 }
 
 /**
@@ -61,9 +65,23 @@ async function collect(buffer, fields) {
     if (!boxes.length || !buffer) return result;
     const pageOf = (field) => field.pageNumber || field.coordinates.pageNumber;
     const pages = await loadTextItems(buffer, new Set(boxes.map(pageOf)));
+    // A box is relabelled only when its WHOLE group (the boxes of one question: same name, different [n]) is contradicted by the text printed beside it. If even one box's
+    // printed text agrees with its tooltip or name, the geometry or the tooltips are as likely to be right as the guess, and the group is left alone (I-131A's Suite /
+    // Floor / Apartment boxes carry their labels on the other side of the box; G-1650's Checking / Savings group is contradicted in every box).
+    const groups = new Map();
     for (const field of boxes) {
       const printed = labelRightOf(field.coordinates.boundingBox, pages.get(pageOf(field)) || []);
-      if (printed && contradicts(printed, field.tooltip, field.fieldName)) result.set(field.fieldName, printed);
+      const group = String(field.fieldName || "").replace(/\[\d+\]$/, "");
+      const entry = groups.get(group) || [];
+      entry.push({ field, printed, bad: Boolean(printed) && contradicts(printed, field.tooltip, field.fieldName) });
+      groups.set(group, entry);
+    }
+    for (const [group, entry] of groups) {
+      if (entry.length < 2 || !entry.every((item) => item.printed && item.bad)) continue;
+      // the same words, only in a different order (suite / floor / apartment read as floor / apartment / suite): the labels are on the other side of the boxes, not wrong
+      if (!contradicts(entry.map((item) => item.printed).join(" "), entry.map((item) => item.field.tooltip).join(" "), group.split(".").pop())) continue;
+      if (new Set(entry.map((item) => item.printed)).size !== entry.length) continue; // two boxes cannot carry the same label
+      entry.forEach((item) => result.set(item.field.fieldName, item.printed));
     }
   } catch (_error) {
     return new Map();

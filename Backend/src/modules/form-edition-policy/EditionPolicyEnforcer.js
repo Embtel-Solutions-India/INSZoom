@@ -9,7 +9,7 @@
 // Rule J (the four filing-ready case steps) is deliberately NOT enforced in this release.
 
 const gate = require("./EditionPolicyGate");
-const { GATE_REASONS } = require("./editionPolicy.constants");
+const { GATE_REASONS, OWNER_FOOTER_EDITION_FORMS, OWNER_APPROVED_EDITIONS, familyOf } = require("./editionPolicy.constants");
 
 class EditionPolicyHeldError extends Error {
   constructor({ formCode, editionIdentifier, reasons, entryPoint, decision }) {
@@ -34,6 +34,43 @@ function setDepsForTests(deps) { depsOverride = deps; }
 function defaultDeps() {
   const service = require("./EvidenceService").getService();
   return { service, store: require("./EditionPolicyStore").mongoStore, autoEvidence: process.env.FORM_EDITION_AUTO_EVIDENCE === "true" };
+}
+
+// the edition date printed in the footers of the template's own stored PDF (ISO day) or null; tests inject deps.footerEdition
+async function defaultFooterEdition(template) {
+  let key = template?.artifacts?.form?.storageKey || template?.pdfStorageKey;
+  // a caller may hand over a partial template (no storage key): the key is read from the stored template itself, so the policy never depends on which fields the caller selected
+  if (!key && template?._id) {
+    const stored = await require("../../models/USCISFormTemplate").findById(template._id).select("pdfStorageKey artifacts.form.storageKey").lean();
+    key = stored?.artifacts?.form?.storageKey || stored?.pdfStorageKey;
+  }
+  if (!key) return null;
+  const buffer = await require("../uploads/storage.service").readBuffer(key);
+  return require("../uscis-form-import/services/FormIdentityService").footerEdition(buffer);
+}
+
+/**
+ * OWNER POLICY (see OWNER_FOOTER_EDITION_FORMS): turns the gate's "no record" answer into allowed for the listed forms when the PDF's own footer edition equals this edition. It
+ * never overrides a recorded decision (not accepted / held / stale / conflicting keep blocking) and never applies to a form that is not on the list. Returns the allowed result or null.
+ */
+async function ownerApprovedEditionAllowed(edition, gateResult) {
+  const approved = OWNER_APPROVED_EDITIONS[familyOf(edition.formCode)];
+  if (!approved || approved !== edition.editionIdentifier) return null;
+  if (gateResult?.allowed || !(gateResult?.reasons || []).length || gateResult.reasons.some((reason) => reason !== GATE_REASONS.NO_POLICY)) return null; // a recorded decision always wins
+  return { allowed: true, decision: "accepted", status: "owner_policy", reasons: [], ownerPolicy: "approved_edition", approvedEdition: approved, decisionVersion: null };
+}
+
+// both owner policies, one question: is this edition allowed by the owner's standing decision? (null = no)
+async function ownerPolicyAllowed(edition, gateResult, template, deps) {
+  return (await ownerApprovedEditionAllowed(edition, gateResult)) || (await ownerFooterEditionAllowed(edition, gateResult, template, deps));
+}
+
+async function ownerFooterEditionAllowed(edition, gateResult, template, deps) {
+  if (!OWNER_FOOTER_EDITION_FORMS.has(edition.formCode)) return null;
+  if (gateResult?.allowed || !(gateResult?.reasons || []).length || gateResult.reasons.some((reason) => reason !== GATE_REASONS.NO_POLICY)) return null;
+  const footer = await (deps.footerEdition || defaultFooterEdition)(template);
+  if (!footer || footer !== edition.editionIdentifier) return null;
+  return { allowed: true, decision: "accepted", status: "owner_policy", reasons: [], ownerPolicy: "footer_edition", footerEdition: footer, decisionVersion: null };
 }
 const logger = () => require("../../utils/logger");
 
@@ -67,7 +104,12 @@ async function requireAcceptedEdition(template, { entryPoint, actor } = {}) {
       }
     }
 
-    const result = await gate.check(edition.formCode, edition.editionIdentifier, { store: deps.store });
+    let result = await gate.check(edition.formCode, edition.editionIdentifier, { store: deps.store });
+    const owner = result.allowed ? null : await ownerPolicyAllowed(edition, result, template, deps);
+    if (owner) {
+      result = owner;
+      logger().info("form_edition_owner_policy_allowed", { formCode: edition.formCode, edition: edition.editionIdentifier, rule: owner.ownerPolicy, entryPoint });
+    }
     if (!result.allowed) {
       logger().info("form_edition_policy_held", { formCode: edition.formCode, edition: edition.editionIdentifier, entryPoint, reasons: result.reasons });
       if (deps.service?.recordOutcome) await deps.service.recordOutcome({ formCode: edition.formCode, editionIdentifier: edition.editionIdentifier, outcome: result.decision === "not_accepted" ? "blocked" : "held", entryPoint, actor, reasons: result.reasons });
@@ -92,7 +134,8 @@ async function peekAcceptance(template) {
     const deps = depsOverride || defaultDeps();
     const edition = editionOf(template);
     if (!edition.editionIdentifier) return { allowed: false, decision: "held", reasons: [edition.why] };
-    return await gate.check(edition.formCode, edition.editionIdentifier, { store: deps.store });
+    const result = await gate.check(edition.formCode, edition.editionIdentifier, { store: deps.store });
+    return result.allowed ? result : (await ownerPolicyAllowed(edition, result, template, deps)) || result;
   } catch {
     return { allowed: false, decision: "held", reasons: [GATE_REASONS.GATE_ERROR] }; // fail closed
   }

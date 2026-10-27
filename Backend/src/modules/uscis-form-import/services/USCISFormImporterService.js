@@ -249,6 +249,8 @@ class USCISFormImporterService {
         const xfa = require("./PdfDownload").detectXfaOnly(normalizedBuffer);
         if (xfa.xfaOnly && !xfa.hasAcroForm) throw xfaOnlyError(xfa, input.pdfUrl);
       }
+      // the PDF must be the form that was asked for (its own footers say which form it is); a wrong file is refused before anything is stored (FormIdentityService)
+      await require("./FormIdentityService").assertMatches(normalizedBuffer, input.formType || input.formCode || input.formNumber);
       const scanResult = await this.scanner.scan(normalizedBuffer);
       this.validation.validateFields(scanResult, { allowEmpty: (input.provider || "uscis") === "uscis" });
       // Explicit stop even when validateFields' allowEmpty would otherwise

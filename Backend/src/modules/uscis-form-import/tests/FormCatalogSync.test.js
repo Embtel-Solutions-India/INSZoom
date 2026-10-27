@@ -92,3 +92,44 @@ test("when an edition check finds nothing new, the page's date is recorded so th
   // and once recorded, the same form is up to date
   assert.equal(classify({ formCode: "G-28", editionDate: d("2018-09-17") }, { editionDate: d("2026-09-22"), importMetadata: { publishedEditionDate: d("2018-09-17") } }).action, "up_to_date");
 });
+
+// ---- tracking forms that are already installed (the 12-hour sync) ----
+test("an installed form whose code the discovery rule skips (EOIR-29) is still compared edition by edition; a NEW one is still not discovered", () => {
+  const { classifyShared } = require("../services/FormCatalogSyncService");
+  const installed = { formCode: "EOIR-29", editionDate: new Date("2026-02-01"), importMetadata: { publishedEditionDate: new Date("2026-02-01") } };
+  assert.equal(classifyShared({ formCode: "EOIR-29", editionDate: new Date("2026-06-01") }, installed).action, "upgrade");
+  assert.equal(classifyShared({ formCode: "EOIR-29", editionDate: new Date("2026-02-01") }, installed).action, "up_to_date");
+  assert.equal(classifyShared({ formCode: "EOIR-29", editionDate: new Date("2026-06-01") }, null).action, "skip", "not discovered as a new catalog form");
+  assert.equal(classifyShared({ formCode: "I-130", editionDate: new Date("2026-06-01") }, null).action, "import_new");
+});
+
+test("an installed form the directory does not list (I-539A) is still checked, and a new edition of it is imported", async () => {
+  const deps = fakeDeps({ published: [{ formCode: "I-130", editionDate: d("2024-04-01") }], installed: { "I-130": { editionDate: d("2024-04-01") }, "I-539A": { editionDate: d("2024-08-28") } } });
+  deps.installedFormCodes = async () => ["I-130", "I-539A"];
+  deps.publishedEdition = async (code) => (code === "I-539A" ? d("2026-06-01") : null); // read from the form's own PDF footer when it has no page
+  const summary = await runCatalogSync({ maxFormsPerRun: 5 }, deps);
+  assert.deepEqual(deps.imported, ["I-539A"]);
+  assert.ok(summary.queued.includes("I-539A(upgrade)"), JSON.stringify(summary.queued));
+});
+
+test("an unlisted installed form whose edition did not change is left alone, and a failing lookup never stops the sync", async () => {
+  const deps = fakeDeps({ published: [], installed: { "I-539A": { editionDate: d("2024-08-28") } } });
+  deps.installedFormCodes = async () => ["I-539A"];
+  deps.publishedEdition = async () => d("2024-08-28");
+  await runCatalogSync({ maxFormsPerRun: 5 }, deps);
+  assert.deepEqual(deps.imported, []);
+  const broken = fakeDeps({ published: [], installed: {} });
+  broken.installedFormCodes = async () => { throw new Error("database busy"); };
+  await assert.doesNotReject(runCatalogSync({ maxFormsPerRun: 5 }, broken));
+});
+
+test("an installed form whose edition cannot be found anywhere is REPORTED with where it looked - never silently skipped - and the sync carries on", async () => {
+  const deps = fakeDeps({ published: [{ formCode: "I-130", editionDate: d("2026-06-01") }], installed: { "I-130": { editionDate: d("2024-04-01") }, "I-539A": { editionDate: d("2024-08-28") } } });
+  deps.installedFormCodes = async () => ["I-130", "I-539A"];
+  deps.publishedEdition = async () => { throw Object.assign(new Error("USCIS page fetch failed: 404"), { code: "EDITION_SOURCE_NOT_FOUND", tried: [{ url: "https://www.uscis.gov/i-539a", status: 404, note: "unreachable" }, { url: "https://www.uscis.gov/i-539", status: 200, note: "page does not name or link this form" }] }); };
+  const summary = await runCatalogSync({ maxFormsPerRun: 5 }, deps);
+  assert.deepEqual(deps.imported, ["I-130"], "the form that WAS found is still imported");
+  assert.equal(summary.editionUnresolved.length, 1);
+  assert.equal(summary.editionUnresolved[0].formCode, "I-539A");
+  assert.equal(summary.editionUnresolved[0].tried.length, 2, "it says where it looked");
+});

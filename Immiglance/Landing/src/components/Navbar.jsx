@@ -25,7 +25,7 @@ const LINKS = [
   { label: "For Individuals", to: "/#individuals" },
   { label: "For Businesses", to: "/#businesses" },
   { label: "How It Works", to: "/#process" },
-  { label: "Forms", to: "/forms" },
+  { label: "Latest Forms", to: "/forms" },
   { label: "About Us", to: "/#about" },
 ];
 

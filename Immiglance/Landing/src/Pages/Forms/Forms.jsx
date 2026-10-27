@@ -107,7 +107,7 @@ export default function Forms() {
     <div className="mx-auto w-full max-w-[96rem] px-5 py-10 sm:px-8 lg:px-12">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">USCIS Forms</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Latest USCIS Forms</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">Access the latest official USCIS forms, fetched directly from uscis.gov.</p>
         </div>
         <ViewToggle view={view} onChange={changeView} />

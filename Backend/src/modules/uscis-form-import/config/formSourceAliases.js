@@ -20,7 +20,7 @@ const ALIASES = Object.freeze({
 
 /** "I-485 Supplement J" / "I-485 SUPPLEMENT J" / "i-485j" -> the key used above ("I-485SUPJ" is folded to the lettered form where an entry exists). */
 function aliasKey(formCode) {
-  const compact = String(formCode || "").toUpperCase().replace(/\s+/g, "").replace(/SUPPLEMENT/g, "SUP");
+  const compact = String(formCode || "").toUpperCase().replace(/\s+/g, "").replace(/SUPPLEMENT|SUPP\.?|SUP\./g, "SUP");
   if (ALIASES[compact]) return compact;
   const withoutSup = compact.replace(/^([A-Z]{1,3}-\d{2,4})SUP([A-Z0-9]{1,2})$/, "$1$2");
   if (ALIASES[withoutSup]) return withoutSup;
