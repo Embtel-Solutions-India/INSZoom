@@ -204,6 +204,19 @@ async function runCatalogSync(options = {}, deps = defaultDeps()) {
     }
   }
 
+  // a parent-only code (I-854: its page offers Form I-854A and Form I-854B, there is no Form I-854) is replaced by its lettered forms, which carry the same edition and page
+  try {
+    const { parentOnlyChildren } = require("../config/formSourceAliases");
+    const expanded = new Map();
+    for (const form of published) {
+      const children = parentOnlyChildren(form.formCode);
+      if (!children) { if (!expanded.has(form.formCode)) expanded.set(form.formCode, form); continue; }
+      for (const code of children) if (!expanded.has(code)) expanded.set(code, { ...form, formCode: code, pdfUrl: undefined });
+    }
+    published = [...expanded.values()];
+  } catch (error) {
+    logger.warn("uscis_catalog_sync_parent_only_expansion_failed", { error: error.message }); // never blocks the sync
+  }
   // installed forms whose published edition could not be found anywhere: reported (log + summary), never silently skipped
   const unresolved = [];
   // classify every form (cheap: one page fetch for forms already installed whose listing shows no edition)

@@ -52,3 +52,16 @@ test("a supplement written glued with SUP (I-918SUPA, I-485SUPJ) is a standalone
   assert.equal(patterns.isStandaloneFormCode("I-918SUPAB", "importer", "on"), false);
   assert.equal(patterns.isStandaloneFormCode("I-918SUPA", "importer", "off"), false, "with the switch off nothing changes");
 });
+
+test("the G-845 Supplement resolves under every spelling, and is importable by code (glued full word) while the sync keeps its own rule", () => {
+  const patterns = require("../config/formCodePattern");
+  for (const spelling of ["G-845SUPPLEMENT", "G-845 Supplement", "G-845 Sup", "g-845 supp.", "G-845SUP"]) {
+    assert.equal(aliasKey(spelling), "G-845SUP", spelling);
+    assert.equal(pageUrlFor(spelling), "https://www.uscis.gov/g-845-supplement", spelling);
+    assert.equal(describeForm(spelling).pdfSlugs[0], "g-845sup", spelling);
+  }
+  assert.equal(patterns.isStandaloneFormCode("G-845SUPPLEMENT", "importer", "on"), true);
+  assert.equal(patterns.isStandaloneFormCode("G-845SUPPLEMENT", "sync", "on"), false, "the catalog sync keeps skipping it (existing rule)");
+  assert.equal(patterns.isStandaloneFormCode("G-845SUPPLEMENT", "importer", "off"), false);
+  assert.equal(aliasKey("G-845"), null, "the main G-845 is untouched");
+});

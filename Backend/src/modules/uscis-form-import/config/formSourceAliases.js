@@ -16,7 +16,24 @@ const ALIASES = Object.freeze({
   "I-918SUPA": { pageSlugs: [], pdfSlugs: ["i-918supa"], parent: "I-918" },
   "I-918SUPB": { pageSlugs: [], pdfSlugs: ["i-918supb"], parent: "I-918" },
   "I-131A": { pageSlugs: ["i-131a"], pdfSlugs: ["i-131a"], parent: "I-131" },
+  // the G-845 Supplement: its own page (uscis.gov/g-845-supplement) and file (g-845sup.pdf); written "G-845 Supplement", "G-845 Sup" or "G-845SUPPLEMENT" it is one form
+  "G-845SUP": { pageSlugs: ["g-845-supplement"], pdfSlugs: ["g-845sup"], parent: "G-845" },
+  // I-854 has no form of its own: its page (uscis.gov/i-854) offers Form I-854A and Form I-854B - see PARENT_ONLY
+  "I-854A": { pageSlugs: ["i-854"], pdfSlugs: ["i-854a"], parent: "I-854" },
+  "I-854B": { pageSlugs: ["i-854"], pdfSlugs: ["i-854b"], parent: "I-854" },
 });
+
+// Form codes USCIS lists as ONE page / row but publishes ONLY as lettered forms (the page of "I-854" offers Form I-854A and Form I-854B; there is no Form I-854). Such a code is never fetched or
+// stored as a form of its own - the pipeline fetches its lettered forms instead. Kept as DATA: a new family needs one line here and no code change.
+const PARENT_ONLY = Object.freeze({
+  "I-854": ["I-854A", "I-854B"],
+});
+
+/** The lettered forms of a parent-only code ("I-854", "i-854" -> ["I-854A", "I-854B"]), or null when the code is an ordinary form. */
+function parentOnlyChildren(formCode) {
+  const compact = String(formCode || "").toUpperCase().replace(/\s+/g, "");
+  return PARENT_ONLY[compact] ? [...PARENT_ONLY[compact]] : null;
+}
 
 /** "I-485 Supplement J" / "I-485 SUPPLEMENT J" / "i-485j" -> the key used above ("I-485SUPJ" is folded to the lettered form where an entry exists). */
 function aliasKey(formCode) {
@@ -39,4 +56,4 @@ const pageUrlFor = (formCode) => {
   return alias?.pageSlugs?.length ? `https://www.uscis.gov/${alias.pageSlugs[0]}` : null;
 };
 
-module.exports = { ALIASES, aliasKey, aliasFor, pageUrlFor };
+module.exports = { ALIASES, PARENT_ONLY, parentOnlyChildren, aliasKey, aliasFor, pageUrlFor };

@@ -133,3 +133,29 @@ test("an installed form whose edition cannot be found anywhere is REPORTED with 
   assert.equal(summary.editionUnresolved[0].formCode, "I-539A");
   assert.equal(summary.editionUnresolved[0].tried.length, 2, "it says where it looked");
 });
+
+// ---- a code USCIS publishes only as lettered forms (I-854 -> I-854A / I-854B) ----
+test("a parent-only code (I-854) is never imported as a form: the sync imports its lettered forms instead, with the same edition", async () => {
+  const deps = fakeDeps({ published: [{ formCode: "I-854", editionDate: d("2025-01-20"), pageUrl: "https://www.uscis.gov/i-854" }, { formCode: "I-130", editionDate: d("2024-04-01") }], installed: { "I-130": { editionDate: d("2024-04-01") } } });
+  const summary = await runCatalogSync({ maxFormsPerRun: 10 }, deps);
+  assert.deepEqual([...deps.imported].sort(), ["I-854A", "I-854B"]);
+  assert.ok(!deps.imported.includes("I-854"));
+  assert.equal(summary.newFormsFound, 2);
+});
+
+test("the parent-only data: I-854 has two forms and no form of its own; ordinary codes are untouched", () => {
+  const { parentOnlyChildren, aliasFor, pageUrlFor } = require("../config/formSourceAliases");
+  assert.deepEqual(parentOnlyChildren("I-854"), ["I-854A", "I-854B"]);
+  assert.deepEqual(parentOnlyChildren(" i-854 "), ["I-854A", "I-854B"]);
+  assert.equal(parentOnlyChildren("I-854A"), null);
+  assert.equal(parentOnlyChildren("I-130"), null);
+  assert.equal(aliasFor("I-854B").pdfSlugs[0], "i-854b");
+  assert.equal(pageUrlFor("I-854A"), "https://www.uscis.gov/i-854");
+});
+
+test("asking the importer for I-854 itself is a permanent, clearly worded block - never a stored wrong form", async () => {
+  const acquisition = require("../services/OnDemandFormAcquisitionService");
+  await assert.rejects(acquisition.ensureCurrentUSCISForm("I-854", { _id: "u1" }, {}, {}), (error) => error.code === "USCIS_FORM_PARENT_ONLY" && /I-854A and I-854B/.test(error.message));
+  const { classifyError } = require("../../form-pipeline/errorClassifier");
+  assert.equal(classifyError(Object.assign(new Error("x"), { code: "USCIS_FORM_PARENT_ONLY" })).retryable, false);
+});

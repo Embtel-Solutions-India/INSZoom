@@ -22,7 +22,7 @@ const LEGACY = Object.freeze({
 });
 const SHARED_SCAN = `\\b(${SHARED_BODY}${SUPPLEMENT})\\b`;
 const SHARED_STANDALONE = new RegExp(`^${SHARED_BODY}$`);
-const EXPLICIT_IMPORT_ONLY = /^EOIR-\d{1,4}[A-Z]?$/;
+const EXPLICIT_IMPORT_ONLY = /^(?:EOIR-\d{1,4}[A-Z]?|[A-Z]{1,3}-\d{2,4}SUPPLEMENT)$/; // an EOIR form, or a supplement written glued with the full word (G-845SUPPLEMENT)
 
 /** A fresh global, case-insensitive search regex (callers use matchAll / exec loops, so it must not be shared state). */
 function scanPattern(mode = autonomy.mode()) {

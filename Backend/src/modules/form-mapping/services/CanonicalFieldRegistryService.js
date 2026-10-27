@@ -189,6 +189,13 @@ const BASE_FIELDS = [
   PARTY_CHECKLIST_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
 }
 
+// Joint sponsor paths under both party roots (petitioner.jointSponsor.* for family cases, beneficiary.jointSponsor.* for employer-employee cases) - see canonical/config/jointSponsorPaths.js. Additive only.
+{
+  const { JOINT_SPONSOR_FIELDS } = require("../../canonical/config/jointSponsorPaths");
+  const known = new Set(BASE_FIELDS.map((field) => field.path));
+  JOINT_SPONSOR_FIELDS.forEach((field) => { if (!known.has(field.path)) BASE_FIELDS.push({ aliases: [], ...field }); });
+}
+
 // H-4 change-of-status checklist paths - see canonical/config/h4CanonicalPaths.js. Additive only.
 {
   const { H4_CANONICAL_FIELDS } = require("../../canonical/config/h4CanonicalPaths");

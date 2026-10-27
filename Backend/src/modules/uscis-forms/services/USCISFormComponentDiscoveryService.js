@@ -97,6 +97,9 @@ async function discoverComponentsForParentForm(parentFormCode, options = {}) {
 
   const distinctByName = new Map();
   for (const row of componentMappings) {
+    // a continuation sheet registered by hand (I-129 Attachment-1, see form-mapping/config/continuationSheets.js) has no heading of its own to match: it is re-derived further below as a
+    // trailing run. A registry row that LISTS it must not make discovery search for a heading and create a duplicate "review required" component.
+    if (row.componentCode && require("../../form-mapping/config/continuationSheets").CONTINUATION_SHEET_CODES.has(row.componentCode)) continue;
     if (!distinctByName.has(row.formName)) distinctByName.set(row.formName, row);
   }
 

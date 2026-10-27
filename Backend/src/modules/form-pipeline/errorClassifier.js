@@ -15,7 +15,7 @@ const BLOCKED_CODES = new Set(["USCIS_PDF_UNRESOLVED", "USCIS_FORM_NOT_STANDALON
   // Phase 7.2: our own import refused the file for a reason retrying the same bytes cannot change (the resolution engine looks for another way; the job retries slowly)
   "NORMALIZE_INPUT_NOT_PDF", "NORMALIZED_SCAN_EMPTY_FIELDS", "TEMPLATE_TOO_LARGE", "DOWNLOADED_RESOURCE_NOT_PDF", "PDF_TOO_LARGE",
   // the downloaded PDF is a different form than the one asked for (FormIdentityService): the same address returns the same wrong file
-  "FORM_PDF_MISMATCH"]);
+  "FORM_PDF_MISMATCH", "USCIS_FORM_PARENT_ONLY"]);
 const BLOCKED_MESSAGE = /\b(invalid pdf|not a pdf|corrupt|malformed|encrypted|qpdf normalization failed|no fillable|no form fields|could not locate a current pdf|pdf is empty|unsupported pdf)\b/i;
 const TRANSIENT_MESSAGE = /\b(timeout|timed out|socket hang up|network|fetch failed|temporarily|rate limit|too many requests|service unavailable|bad gateway|gateway timeout|econn|aborted)\b/i;
 

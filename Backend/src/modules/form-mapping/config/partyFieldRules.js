@@ -195,6 +195,8 @@ RULES["I-129S"] = require("./i129sFieldRules").I129S_RULES;
 RULES["I-751"] = require("./i751FieldRules").I751_RULES;
 // Form I-131: the boxes no edge covered (physical description, USCIS online account, I-94 number, the applicant's own phone / e-mail). Not exclusive - the form's existing edges are kept.
 RULES["I-131"] = require("./i131FieldRules").I131_RULES;
+// Form I-129 supplements (L Classification Section 1: the beneficiary's foreign employment dates and the petitioner's employer abroad) - authored and page-restricted, see i129SupplementRules.js.
+RULES["I-129"] = [...RULES["I-129"], ...require("./i129SupplementRules").I129_SUPPLEMENT_RULES];
 // EOIR-29: the appellant / petitioner signs and gives a mailing address on page 2; page 1 holds the A-Numbers. (The AR-11 template dated 2026-02-01 holds this same PDF - a wrong
 // file, caught by FormIdentityService - so AR-11 has no rules of its own here: the real AR-11 is a different form.)
 const APPELLANT = [

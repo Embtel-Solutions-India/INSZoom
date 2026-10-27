@@ -600,6 +600,9 @@ async function ensureCurrentUSCISForm(formNumber, user, req, options = {}) {
 }
 
 async function ensureCurrentUSCISFormInner(formCode, user, req, options) {
+  // a code USCIS publishes only as lettered forms (I-854 -> I-854A / I-854B) is not a form: say so and point at the real ones, never store the first lettered file under the parent's name
+  const lettered = require("../config/formSourceAliases").parentOnlyChildren(formCode);
+  if (lettered) throw enterpriseError(`"${formCode}" is not a form of its own - USCIS publishes it as ${lettered.join(" and ")}. Import those instead.`, 422, "USCIS_FORM_PARENT_ONLY");
   const forceCheck = Boolean(options.forceCheck);
   const pipeline = options.pipeline || null;
   const ttlMs = Number(process.env.USCIS_ENSURE_CHECK_TTL_MS || 12 * 60 * 60 * 1000);
