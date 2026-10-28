@@ -529,6 +529,10 @@ const caseSchema = new mongoose.Schema(
     organization: { type: mongoose.Schema.Types.ObjectId, ref: "Company", index: true },
     parentCase: { type: mongoose.Schema.Types.ObjectId, ref: "Case", index: true },
     childCases: [{ type: mongoose.Schema.Types.ObjectId, ref: "Case", index: true }],
+    // Principal cases only: case managers assigned to one or more of this matter's employee/beneficiary child cases (but not
+    // necessarily to the principal itself). Derived, never edited by hand - see modules/cases/caseManagerAccess.js. Lets such a
+    // case manager open the principal (employer) case while seeing only their own child cases inside it.
+    childCaseManagers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     linkedCases: [linkedCaseSchema],
     // Single-party filings (COS/extension/EAD/reinstatement — see
     // Backend/src/config/filingTypes.js) are standalone by design: this is
@@ -1394,6 +1398,16 @@ caseSchema.pre("save", function flagGhlCaseSync(next) {
 });
 caseSchema.post("save", function queueGhlCaseSync(doc) {
   if (doc.$locals?.ghlNeedsSync) require("../integrations/ghl/ghlOutboundHooks").caseSaved(doc._id);
+});
+
+// Keep the principal's childCaseManagers in step when a child's case managers change through save(). The bulk paths
+// (cascades) call syncPrincipalChildManagers themselves. Background only - never delays or fails the save.
+caseSchema.pre("save", function flagChildManagerSync(next) {
+  this.$locals.childManagersChanged = Boolean(this.parentCase) && (this.isNew || this.isModified("assignedCaseManager") || this.isModified("additionalCaseManagers"));
+  next();
+});
+caseSchema.post("save", function syncChildManagers(doc) {
+  if (doc.$locals?.childManagersChanged) require("../modules/cases/caseManagerAccess").syncPrincipalChildManagers(doc.parentCase);
 });
 
 caseSchema.pre("validate", function gateNewCaseChecklists(next) {

@@ -2,7 +2,7 @@ const Case = require("../../models/Case");
 const User = require("../../models/User");
 const { normalizeRole } = require("../authorization/roleHierarchy");
 const caseService = require("./case.service");
-const { idOf, isCaseManagerOfCase } = require("./caseManagerAccess");
+const { idOf, isCaseManagerOfCase, syncPrincipalChildManagers } = require("./caseManagerAccess");
 
 // Additional case managers on a case (see caseManagerAccess.js). Pure data operations - HTTP, notifications and realtime
 // live in case-managers.controller.js. The primary case manager (assignedCaseManager) is still changed through the
@@ -50,6 +50,7 @@ async function cascadeToChildren(principalCase, userId, op) {
   if (principalCase.caseRole !== "principal") return 0;
   const update = op === "add" ? { $addToSet: { additionalCaseManagers: userId } } : { $pull: { additionalCaseManagers: userId } };
   const result = await Case.updateMany({ parentCase: principalCase._id, assignmentOverridden: { $ne: true } }, update);
+  syncPrincipalChildManagers(principalCase._id);
   return result.modifiedCount || 0;
 }
 

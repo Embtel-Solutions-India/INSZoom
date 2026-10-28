@@ -19,6 +19,8 @@ export const KEEP_ALIVE_ROUTES = [
   '/dashboard',
   '/leads',
   '/crm-cases',
+  '/corporations',
+  '/clients',
   '/crm-cases/:id',
   '/uscis-forms',
   '/form-governance',

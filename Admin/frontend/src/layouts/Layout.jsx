@@ -222,7 +222,7 @@ const Layout = () => {
                 {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
               </button>
               <h2 className="text-sm font-semibold text-foreground hidden md:block">
-                {filteredMenuItems.find(item => isActive(item.path))?.label || 'Dashboard'}
+                {filteredMenuItems.find(item => isActive(item.path))?.label || (location.pathname.startsWith('/crm-cases') ? 'Cases' : 'Dashboard')}
               </h2>
             </div>
 

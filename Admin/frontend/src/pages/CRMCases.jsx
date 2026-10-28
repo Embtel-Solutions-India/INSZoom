@@ -41,7 +41,15 @@ const PENDING_QUEUE_ROLES = ['super_admin', 'admin', 'team_lead']
 const listName = (caseItem) => caseItem.clientName || caseItem.employeeContact?.name || ''
 const listEmail = (caseItem) => caseItem.clientEmail || caseItem.employeeContact?.email || ''
 
-const CRMCases = () => {
+// The two sidebar pages share this screen: Corporations (employer matters) and Clients (family + single-party matters).
+// With no caseGroup it is the all-cases list (/crm-cases).
+const GROUP_COPY = {
+  corporations: { title: 'Corporations', subtitle: 'Employer matters and their employees', search: 'Search corporations or employees…', empty: 'This page lists employer cases and their employees. When you create one, it will appear here.' },
+  clients: { title: 'Clients', subtitle: 'Family and single-applicant cases', search: 'Search clients…', empty: 'This page lists family and single-applicant cases. When you create one, it will appear here.' },
+}
+
+const CRMCases = ({ caseGroup } = {}) => {
+  const copy = GROUP_COPY[caseGroup]
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
@@ -91,6 +99,11 @@ const CRMCases = () => {
   const [pendingQueue, setPendingQueue] = useState([])
   const [pendingQueueLoading, setPendingQueueLoading] = useState(true)
   const canSeePendingQueue = PENDING_QUEUE_ROLES.includes(user?.role)
+
+  // On the Corporations / Clients pages the queue only lists that page's kind of case.
+  const pendingQueueForGroup = caseGroup
+    ? pendingQueue.filter((item) => (caseGroup === 'corporations' ? item.caseStructure === 'employer_employee' : item.caseStructure !== 'employer_employee'))
+    : pendingQueue
 
   const fetchPendingQueue = async () => {
     if (!canSeePendingQueue) return
@@ -201,7 +214,7 @@ const CRMCases = () => {
       if (!hasLoadedOnce.current) setLoading(true)
       else setRefreshing(true)
       setError('')
-      const params = { page, limit, ...deepLinkFilters }
+      const params = { page, limit, excludeChildCases: true, ...(caseGroup ? { caseGroup } : {}), ...deepLinkFilters }
       if (stageFilter) params.stage = stageFilter
       if (statusFilter) params.status = statusFilter
       if (appliedSearch) params.search = appliedSearch
@@ -343,8 +356,8 @@ const CRMCases = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">CRM Cases</h1>
-          <p className="text-muted-foreground mt-1">Manage cases imported from Client Portal</p>
+          <h1 className="text-2xl font-bold text-foreground">{copy?.title || 'CRM Cases'}</h1>
+          <p className="text-muted-foreground mt-1">{copy?.subtitle || 'Manage cases imported from Client Portal'}</p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="hidden sm:flex items-center rounded-lg border border-border bg-card p-0.5">
@@ -421,16 +434,16 @@ const CRMCases = () => {
 
       {/* Phase 7 — Pending Assignment queue: principal/single cases only,
           never child cases (enforced server-side by getTeamLeadDashboard). */}
-      {canSeePendingQueue && !pendingQueueLoading && pendingQueue.length > 0 && (
+      {canSeePendingQueue && !pendingQueueLoading && pendingQueueForGroup.length > 0 && (
         <div className="rounded-2xl border border-border bg-muted overflow-hidden">
           <div className="px-5 py-3 border-b border-border flex items-center gap-2">
             <Inbox className="w-4 h-4 text-muted-foreground" />
             <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">
-              Pending Assignment ({pendingQueue.length})
+              Pending Assignment ({pendingQueueForGroup.length})
             </h2>
           </div>
           <div className="divide-y divide-border">
-            {pendingQueue.map((caseItem) => (
+            {pendingQueueForGroup.map((caseItem) => (
               <div
                 key={caseItem._id}
                 className="px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-secondary"
@@ -460,7 +473,7 @@ const CRMCases = () => {
           <SearchInput
             value={searchTerm}
             onChange={setSearchTerm}
-            placeholder="Search cases…"
+            placeholder={copy?.search || 'Search cases…'}
             className="w-full sm:flex-1 sm:min-w-[200px]"
           />
           <FilterSelect
@@ -539,7 +552,7 @@ const CRMCases = () => {
           </div>
         ) : cases.length === 0 ? (
           <div className="px-6 py-12 text-center text-muted-foreground text-sm">
-            No cases found. Sync from Client Portal to get started.
+            {copy?.empty || 'No cases found. Sync from Client Portal to get started.'}
           </div>
         ) : viewMode === 'board' ? (
           // Groups this SAME page of already-fetched `cases` by status - no

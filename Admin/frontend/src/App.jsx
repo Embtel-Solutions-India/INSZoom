@@ -17,6 +17,7 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const EODReports = lazy(() => import('./pages/EODReports'))
 const Leads = lazy(() => import('./pages/Leads'))
 const CRMCases = lazy(() => import('./pages/CRMCases'))
+const CaseGroupPage = lazy(() => import('./pages/CaseGroupPage'))
 const CRMCaseDetail = lazy(() => import('./pages/CRMCaseDetail'))
 const Pipeline = lazy(() => import('./pages/Pipeline'))
 const Messaging = lazy(() => import('./pages/Messaging'))
@@ -95,6 +96,22 @@ function App() {
                 element={
                   <ProtectedRoute module="cases">
                     <CRMCases />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="corporations"
+                element={
+                  <ProtectedRoute module="cases">
+                    <CaseGroupPage caseGroup="corporations" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="clients"
+                element={
+                  <ProtectedRoute module="cases">
+                    <CaseGroupPage caseGroup="clients" />
                   </ProtectedRoute>
                 }
               />

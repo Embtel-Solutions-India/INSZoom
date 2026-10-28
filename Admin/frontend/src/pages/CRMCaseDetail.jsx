@@ -2045,11 +2045,11 @@ const CRMCaseDetail = () => {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/crm-cases')}
+          onClick={() => navigate(caseData?.caseStructure === 'employer_employee' ? '/corporations' : '/clients')}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Cases
+          {caseData?.caseStructure === 'employer_employee' ? 'Back to Corporations' : 'Back to Clients'}
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
@@ -2165,7 +2165,10 @@ const CRMCaseDetail = () => {
           to each; overridden children are skipped by any future cascade from
           this principal's own assignment. */}
       {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (() => {
-        const visibleChildCases = (childCases || []).filter((child) => showRemovedEmployees || child.status !== 'removed')
+        // Newest first; the table below shows about three rows and scrolls inside the card for the rest.
+        const visibleChildCases = (childCases || [])
+          .filter((child) => showRemovedEmployees || child.status !== 'removed')
+          .sort((a, b) => (new Date(b.createdAt || 0) - new Date(a.createdAt || 0)) || ((b.childIndex || '') > (a.childIndex || '') ? 1 : -1))
         const removedCount = (childCases || []).filter((child) => child.status === 'removed').length
         const isEmployerMatter = caseData.caseStructure === 'employer_employee'
         // 'removed' is the pill emails/panels elsewhere call "withdrawn" —
@@ -2185,7 +2188,7 @@ const CRMCaseDetail = () => {
           <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">Employees ({caseData.childCaseCount})</h3>
+                <h3 className="text-lg font-semibold text-foreground">{isEmployerMatter ? `Employees (${caseData.scopedChildView ? visibleChildCases.length : caseData.childCaseCount})` : 'Beneficiary'}</h3>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Assigning this matter's case manager applies to every child case below except those marked overridden.
                 </p>
@@ -2197,7 +2200,7 @@ const CRMCaseDetail = () => {
                     Show withdrawn ({removedCount})
                   </label>
                 )}
-                {isEmployerMatter && (
+                {isEmployerMatter && !caseData.scopedChildView && (
                   <button
                     type="button"
                     onClick={handleAddEmployee}
@@ -2217,11 +2220,11 @@ const CRMCaseDetail = () => {
             ) : visibleChildCases.length === 0 ? (
               <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="max-h-72 overflow-auto">
                 {/* The four action buttons always sit on ONE line; the text columns (name, visa, workflow, case manager) wrap to give them room,
                     so the table fits the card at normal widths. The scroll wrapper only appears on a very narrow screen, as a last resort. */}
                 <table className="w-full table-auto divide-y divide-border">
-                  <thead className="bg-muted">
+                  <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
