@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import WrappingSelect from './ui/WrappingSelect'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
@@ -131,6 +132,18 @@ const CreateCaseModal = ({
   const registryEntry = registryEntryFor(visaOptions.find((opt) => opt.value === form.visaType) || {}, registryTypes)
   // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters. It is read for EVERY option - including the curated ones
   // (EB-2, EB-3, L-1A Extension ...) that are not marked fromRegistry - so a new employer / employee visa gets this form without a code change. The fixed list is only a fallback.
+  // Listed employer cases first, then family visas, then single-party filings, each under a small grey heading (order inside a group is unchanged).
+  const visaGroupOf = (opt) => {
+    if (FAMILY_PACKAGE_VISA_TYPES.has(opt.value) || FAMILY_SINGLE_CASE_VISA_TYPES.has(opt.value)) return 1
+    if (SINGLE_PARTY_FILING_TYPE_KEYS[opt.value]) return 2
+    if (EMPLOYMENT_VISA_TYPES.has(opt.value) || opt.caseStructure === 'employer_employee' || isEmployerEmployeeOption(opt, registryTypes)) return 0
+    return 2
+  }
+  const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant']
+  const groupedVisaOptions = visaOptions
+    .map((opt, index) => ({ opt, index, rank: visaGroupOf(opt) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ opt, rank }) => ({ ...opt, group: VISA_GROUP_LABELS[rank] }))
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)
@@ -342,17 +355,13 @@ const CreateCaseModal = ({
 
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1">Visa Type *</label>
-            <select
+            <WrappingSelect
               required
               value={form.visaType}
-              onChange={handleChange('visaType')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="" disabled>Select visa type</option>
-              {visaOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+              onChange={(value) => handleChange('visaType')({ target: { value } })}
+              options={groupedVisaOptions}
+              placeholder="Select visa type"
+            />
           </div>
 
           <div>

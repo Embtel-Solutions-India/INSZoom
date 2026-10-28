@@ -225,6 +225,11 @@ class MappingResolver {
         const digits = String(value ?? "").replace(/\D/g, "");
         return digits || undefined;
       }
+      // First letter, upper-cased: a middle-initial box takes "A", never the whole middle name.
+      case "initial": {
+        const letter = String(value ?? "").trim().charAt(0).toUpperCase();
+        return letter || undefined;
+      }
       // Part of ONE free-text address answer - see AddressParser (never
       // guesses; returns undefined when the text does not show the part).
       case "address":

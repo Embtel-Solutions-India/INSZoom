@@ -231,7 +231,50 @@ const ADDRESS_ONLY = [
 ];
 RULES["I-956F"] = ADDRESS_ONLY;
 RULES["I-956G"] = ADDRESS_ONLY;
+// I-956 (Regional Center designation): the filer is the regional center entity, i.e. the petitioner. Part 2 only - the entity's legal name, EIN, address (Item 8),
+// telephone (Item 9) and e-mail (Item 11, the first of the two e-mail-typed boxes; the second is the website). Everything else on the form (project description,
+// persons involved, certifier / preparer / interpreter blocks) is about someone else or free narrative and stays blank for staff.
+RULES["I-956"] = [
+  R("petitioner.name", "P2_Line1_RegCtrEntityLegalName", { pages: [1] }),
+  R("petitioner.ein", "P2_Line7_RegEntFedEmployerNum", { pages: [2], transform: { type: "digits" } }),
+  R("petitioner.address.line1", "P2_Line8_StreetNumberName", { pages: [2] }),
+  R("petitioner.address.line2", "P2_Line8_AptSteFlrNumber", { pages: [2] }),
+  R("petitioner.address.city", "P2_Line8_CityOrTown", { pages: [2] }),
+  R("petitioner.address.state", "P2_Line8_State", { pages: [2] }),
+  R("petitioner.address.zip", "P2_Line8_ZIPCode", { pages: [2] }),
+  R("petitioner.address.country", "P2_Line8_Country", { pages: [2], transform: { type: "country" } }),
+  R("petitioner.phone", "P3_Line4_DaytimeTelePhoneNumber", { pages: [2], transform: { type: "phone" } }),
+  R("petitioner.email", "P3_Line6_Email", { pages: [2], index: 0 }),
+];
+// N-644 (posthumous citizenship): the applicant block (page 1, Part 1 items 1-9) is the person the case is for - beneficiary.*, as for the other identity-only forms.
+// The decedent's block and the military / family history (Part 2, page 2) have no canonical source, and the telephone is split into area code + number: all left blank.
+const LAST_FIRST_MIDDLE = { type: "concat", fields: ["beneficiary.lastName", "beneficiary.firstName", "beneficiary.middleName"], separator: ", " };
+RULES["N-644"] = [
+  R("beneficiary.fullName", "ApplicanLastFirstMiddleName", { pages: [1], transform: LAST_FIRST_MIDDLE }),
+  R("beneficiary.address", "ApplicantAddress", { pages: [1] }),
+  R("beneficiary.city", "ApplicantCityStateCountryZip", { pages: [1], transform: { type: "concat", fields: ["beneficiary.city", "beneficiary.state", "beneficiary.zipCode"], separator: ", " } }),
+  R("beneficiary.dateOfBirth", "ApplicantDOB", { pages: [1] }),
+  R("beneficiary.alienRegistrationNumber", "ApplicantAnumber", { pages: [1], transform: { type: "digits" } }),
+  R("beneficiary.email", "ApplicantE-MailAddress", { pages: [1] }),
+];
+// I-9 (employment eligibility verification): Section 1 (page 1) is the employee - beneficiary.* (the employee on an employer-employee case) - and the employee's name is repeated at the
+// top of Supplement A (page 3) and Supplement B (page 4). Section 2 is the employer's and the document lists / status boxes depend on the employee's answers: left blank. Box names
+// containing a "." (the List A document lines) are never matched, since a rule stem is the last dot-separated part of the name.
+RULES["I-9"] = [
+  R("beneficiary.lastName", ["Last Name (Family Name)", "Last Name Family Name from Section 1", "Last Name Family Name from Section 1-2"]),
+  R("beneficiary.firstName", ["First Name Given Name", "First Name Given Name from Section 1", "First Name Given Name from Section 1-2"]),
+  R("beneficiary.middleName", ["Employee Middle Initial (if any)", "Middle initial if any from Section 1", "Middle initial if any from Section 1-2"], { transform: { type: "initial" } }),
+  R("beneficiary.address", "Address Street Number and Name", { pages: [1] }),
+  R("beneficiary.apartment", "Apt Number (if any)", { pages: [1] }),
+  R("beneficiary.city", "City or Town", { pages: [1] }),
+  R("beneficiary.state", "State", { pages: [1] }),
+  R("beneficiary.zipCode", "ZIP Code", { pages: [1] }),
+  R("beneficiary.dateOfBirth", "Date of Birth mmddyyyy", { pages: [1] }),
+  R("beneficiary.ssn", "US Social Security Number", { pages: [1], transform: { type: "digits" } }),
+  R("beneficiary.email", "Employees E-mail Address", { pages: [1] }),
+  R("beneficiary.primaryPhone", "Telephone Number", { pages: [1], transform: { type: "phone" } }),
+];
 // every rule above is the product owner's decision, complete for its form: EXCLUSIVE, so no guessed value can reach a box no rule covers
-const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751", "EOIR-29", "I-193", "I-956F", "I-956G"]);
+const EXCLUSIVE_FORMS = new Set(["I-824", "I-864", "N-400", "I-129S", "I-751", "EOIR-29", "I-193", "I-956F", "I-956G", "I-956", "N-644", "I-9"]);
 
 module.exports = { RULES, FULL_NAME, EXCLUSIVE_FORMS };

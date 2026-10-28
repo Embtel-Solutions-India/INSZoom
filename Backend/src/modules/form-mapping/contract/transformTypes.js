@@ -2,7 +2,7 @@
 // source and fails if this list and the resolver ever drift apart, so the contract can never accept a transform the resolver does not run (or reject one it does).
 const APPLY_TRANSFORMS = Object.freeze([
   "date", "dateFormat", "boolean", "checkbox", "arrayItem", "digits", "address", "country", "cityCountry", "usState", "nonUsProvince", "listItem", "constant", "join", "digitAt",
-  "string", "uppercase", "lowercase", "ssn", "alienNumber", "uscisReceiptNumber", "phone", "direct",
+  "string", "uppercase", "lowercase", "ssn", "alienNumber", "uscisReceiptNumber", "phone", "initial", "direct",
 ]);
 // derived values (MappingResolver.resolveDerivedValue): computed from other paths, so their referenced paths must exist
 const DERIVED_TRANSFORMS = Object.freeze(["fullName", "concat", "age", "yearsOfExperience", "countryName", "radio", "dropdown"]);
