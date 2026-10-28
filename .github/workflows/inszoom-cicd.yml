@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - main
-  # Test a branch before it reaches main. The deploy job below still runs only for a push to main.
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
