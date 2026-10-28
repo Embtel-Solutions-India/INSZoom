@@ -7,6 +7,8 @@ import { useAuth } from "../../context/AuthContext";
 import { isEmployeeAccount } from "../../utils/auth";
 import { api, API_BASE_URL, casesApi, documentsApi, employeeProfileApi, messagesApi, profileApi, questionnairesApi } from "../../services/api";
 import { useMyCase, useMyProfile } from "../../hooks/useMyCaseProfile";
+import { LANDING_URL } from "../../components/CrossAppRedirect";
+import { splitHeadline } from "../../utils/headline";
 import { PLAN_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "../../config/planConfig";
 import { CASE_STATUS_STEPS, resolveCaseStepIndex } from "../../utils/caseStatusLabel";
 
@@ -549,37 +551,42 @@ function profileCompletion(fields, markedComplete) {
   return Math.round((filled / PROFILE_FIELDS.length) * 100);
 }
 
-/* ── Newsletter: the newest official USCIS form editions, straight from the forms library ── */
+/* ── Newsletter: the latest USCIS news - headings only (short, never the whole article); a click opens the full article on the public site ── */
 function NewsletterCard() {
-  const { data, isPending, isError } = useQuery({ queryKey: ["public-forms"], queryFn: () => api.get("/public-forms"), retry: false, staleTime: 5 * 60 * 1000 });
-  const latest = useMemo(() => [...(data?.data || [])]
-    .filter((form) => form.editionDate)
-    .sort((a, b) => new Date(b.editionDate) - new Date(a.editionDate))
-    .slice(0, 4), [data]);
-  const open = (formCode) => window.open(`${API_BASE_URL}/public-forms/${encodeURIComponent(formCode)}/pdf`, "_blank", "noopener");
+  // refreshed on its own every few minutes and whenever the window is focused again, so a newly published USCIS item appears without a reload
+  const { data, isPending, isError } = useQuery({
+    queryKey: ["latest-news-headings"],
+    queryFn: () => api.get("/news?page=1&limit=5"),
+    retry: false,
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+  const latest = useMemo(() => (data?.data?.items || []).slice(0, 5), [data]);
+  const articleUrl = (slug) => `${LANDING_URL}/news/${encodeURIComponent(slug)}`;
   return (
     <div className="overflow-hidden rounded-lg border border-card-border bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Immigration newsletter</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">Newest official USCIS form editions</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Latest news from USCIS</p>
         </div>
-        <Link to="/dashboard/forms" className="shrink-0 text-xs font-semibold text-primary no-underline hover:underline">View all</Link>
+        <a href={`${LANDING_URL}/news`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-semibold text-primary no-underline hover:underline">View all<span className="sr-only"> news (opens in a new tab)</span></a>
       </div>
       {isPending ? (
         <div className="space-y-3 p-5" aria-hidden="true">{[0, 1, 2].map((i) => <div key={i} className="h-9 animate-pulse rounded bg-secondary" />)}</div>
       ) : isError || !latest.length ? (
-        <p className="px-5 py-8 text-center text-sm text-muted-foreground">No form updates to show right now.</p>
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">No news to show right now.</p>
       ) : (
         <ul className="divide-y divide-border">
-          {latest.map((form) => (
-            <li key={form.formCode} className="flex items-center gap-3 px-5 py-3">
+          {latest.map((item) => (
+            <li key={item.slug} className="flex items-center gap-3 px-5 py-3">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Ic.Docs /></span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">{form.formCode} <span className="font-normal text-muted-foreground">· {form.title}</span></p>
-                <p className="text-xs text-muted-foreground">New edition · {fmtDate(form.editionDate)}</p>
+                <a href={articleUrl(item.slug)} target="_blank" rel="noopener noreferrer" title={item.title} className="line-clamp-2 text-sm font-normal leading-snug text-foreground/80 no-underline hover:text-primary hover:underline"><strong className="font-semibold text-foreground">{splitHeadline(item.title).lead}</strong>{splitHeadline(item.title).rest}</a>
+                <p className="mt-0.5 text-xs text-muted-foreground">{item.categoryLabel}{item.publishedAt ? ` · ${fmtDate(item.publishedAt)}` : ""}</p>
               </div>
-              <button type="button" onClick={() => open(form.formCode)} className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/5">Read</button>
+              <a href={articleUrl(item.slug)} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-primary no-underline transition hover:bg-primary/5">Read<span className="sr-only"> {item.title} (opens in a new tab)</span></a>
             </li>
           ))}
         </ul>

@@ -79,10 +79,11 @@
 .news-article-body td { padding: 0.6rem 0.85rem; border: 1px solid hsl(var(--border)); text-align: left; vertical-align: top; }
 .news-article-body th { background: hsl(var(--secondary)); font-weight: 700; }
 
-/* figures: never cropped or stretched, the source's proportions are kept */
-.news-article-body figure { margin-left: 0; margin-right: 0; }
-.news-article-body img { display: block; max-width: 100%; height: auto; border-radius: 0.5rem; }
-.news-article-body figcaption { margin-top: 0.6rem; font-size: 0.875rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+/* figures: centred, a little smaller than the column, never cropped or stretched - width and height both stay "auto" so the source's proportions are kept whatever the
+   page's own width / height attributes say */
+.news-article-body figure { margin-left: 0; margin-right: 0; text-align: center; }
+.news-article-body img { display: block; width: auto; height: auto; max-width: min(100%, 34rem); max-height: 22rem; margin-left: auto; margin-right: auto; border-radius: 0.5rem; }
+.news-article-body figcaption { margin-top: 0.6rem; font-size: 0.875rem; line-height: 1.5; color: hsl(var(--muted-foreground)); text-align: center; }
 
 .news-article-body blockquote { padding-left: 1rem; border-left: 4px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
 .news-article-body pre { overflow-x: auto; padding: 0.9rem 1rem; border-radius: 0.5rem; background: hsl(var(--secondary)); font-size: 0.9rem; }
@@ -93,16 +94,13 @@
 .news-article-body .text-align-center { text-align: center; }
 .news-article-body .text-align-right { text-align: right; }
 .news-article-body .text-align-justify { text-align: justify; }
-.news-article-body img.align-center,
-.news-article-body figure.align-center { margin-left: auto; margin-right: auto; }
-.news-article-body img.align-right,
-.news-article-body figure.align-right { margin-left: auto; margin-right: 0; }
 
 /* shown where an image of the original article could not be reproduced here */
 .news-article-body .news-media-notice { padding: 0.75rem 1rem; border: 1px dashed hsl(var(--border)); border-radius: 0.5rem; background: hsl(var(--secondary)); font-size: 0.875rem; color: hsl(var(--muted-foreground)); }
 
 @media (max-width: 640px) {
   .news-article-body { font-size: 1rem; line-height: 1.7; }
+  .news-article-body img { max-height: 18rem; }
   .news-article-body h2 { font-size: 1.3rem; }
   .news-article-body h3 { font-size: 1.15rem; }
 }
