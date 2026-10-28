@@ -60,6 +60,9 @@ const PACKAGE_OPTIONS = [
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
 
+// RFE / NOIR / NOID: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
+const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid']
+
 const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
 
 // What a PERM case is created with - shown read-only on the create form.
@@ -134,15 +137,16 @@ const CreateCaseModal = ({
   // (EB-2, EB-3, L-1A Extension ...) that are not marked fromRegistry - so a new employer / employee visa gets this form without a code change. The fixed list is only a fallback.
   // Listed employer cases first, then family visas, then single-party filings, each under a small grey heading (order inside a group is unchanged).
   const visaGroupOf = (opt) => {
+    if (NOTICE_RESPONSE_TYPES.includes(opt.value)) return 3
     if (FAMILY_PACKAGE_VISA_TYPES.has(opt.value) || FAMILY_SINGLE_CASE_VISA_TYPES.has(opt.value)) return 1
     if (SINGLE_PARTY_FILING_TYPE_KEYS[opt.value]) return 2
     if (EMPLOYMENT_VISA_TYPES.has(opt.value) || opt.caseStructure === 'employer_employee' || isEmployerEmployeeOption(opt, registryTypes)) return 0
     return 2
   }
-  const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant']
+  const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID)']
   const groupedVisaOptions = visaOptions
     .map((opt, index) => ({ opt, index, rank: visaGroupOf(opt) }))
-    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .sort((a, b) => a.rank - b.rank || (a.rank === 3 ? NOTICE_RESPONSE_TYPES.indexOf(a.opt.value) - NOTICE_RESPONSE_TYPES.indexOf(b.opt.value) : a.index - b.index))
     .map(({ opt, rank }) => ({ ...opt, group: VISA_GROUP_LABELS[rank] }))
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'

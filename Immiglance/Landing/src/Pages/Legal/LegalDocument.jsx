@@ -14,7 +14,7 @@ export default function LegalDocument({ title, effective, intro, sections, other
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
-      <main className="flex-1">
+      <main className="relative z-0 flex-1">
         <article className="max-w-3xl mx-auto px-5 sm:px-6 py-12 text-foreground">
           <header className="mb-8 border-b border-border pb-6">
             <h1 className="text-3xl font-bold tracking-tight">{title}</h1>

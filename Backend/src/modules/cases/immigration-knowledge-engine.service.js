@@ -556,8 +556,7 @@ class ImmigrationKnowledgeEngineService {
       return value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
     });
     const configurationIssues = [];
-    if (!templates.length) configurationIssues.push({ type: "uscis_forms", message: `No active metadata-scoped USCIS form templates match ${caseData.visaType}.` });
-    if (!questionnaires.length) configurationIssues.push({ type: "questionnaire", message: `No active metadata-scoped questionnaire matches ${caseData.visaType}.` });
+    // (a case with no matching USCIS form template or checklist is no longer a configuration problem: forms are managed with Manage forms, and a checklist can be built per case with special requests)
 
     const planSnapshot = {
       visaType: caseData.visaType,

@@ -864,7 +864,8 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
     const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
       visaType,
       pipelineCategory: pipelineCategoryFor(visaType),
-      hasChecklist: coverage[visaType]?.hasChecklist !== false,
+      hasChecklist: category.customChecklist ? true : coverage[visaType]?.hasChecklist !== false,
+      customChecklist: Boolean(category.customChecklist),
       label: category.label || visaType,
       caseStructure: category.caseStructure,
       noForms: Boolean(category.noForms),

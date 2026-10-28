@@ -222,7 +222,7 @@ export default function InformationRequestPanel({ caseId, caseData, onCaseUpdate
                 {request.description && <p className="mt-1 text-sm text-muted-foreground">{request.description}</p>}
                 <AnswerPreview request={request} onOpenFile={openFile} busyKey={busyKey} />
                 {/* the case manager can fill this request for the client: text answers and documents (syncs to Required / Uploaded Documents) */}
-                <RequestAnswerControl request={request} caseId={caseId} onSaved={load} />
+                <RequestAnswerControl request={request} caseId={request.caseId || caseId} onSaved={load} />
                 {(request.providedIn || []).map((item) => (
                   <div key={`${item.responseId}-${item.questionKey}`}>
                     <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-green-700">Already provided in the client's checklist: {item.label}</p>

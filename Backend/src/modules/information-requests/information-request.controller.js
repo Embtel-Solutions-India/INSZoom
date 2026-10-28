@@ -15,7 +15,7 @@ exports.listRecipients = async (req, res, next) => {
   try {
     const caseData = await loadCase(req, res);
     if (!caseData) return;
-    res.json({ success: true, recipients: await service.listRecipients(caseData) });
+    res.json({ success: true, recipients: await service.listRecipientsForPanel(caseData, req.user) });
   } catch (error) {
     next(error);
   }
@@ -28,7 +28,13 @@ exports.list = async (req, res, next) => {
     // Requests the client already satisfied on their own checklist flip to Received before listing, so the panel is right the moment it opens.
     const { changed } = await service.reconcileFulfilment({ caseId: caseData._id, user: req.user, req }).catch(() => ({ changed: 0 }));
     const current = changed ? (await Case.findById(caseData._id)) || caseData : caseData;
-    res.json({ success: true, requests: await service.listRequestsWithAnswers(current) });
+    let requests = (await service.listRequestsWithAnswers(current)).map((item) => ({ ...item, caseId: String(current._id) }));
+    // on the matter's own case, the requests sent to its employees / beneficiaries are listed too (each answers on that person's case)
+    if (current.caseRole === "principal") {
+      const forPeople = await service.listChildRequests(current, req.user).catch(() => []);
+      requests = requests.concat(forPeople).sort((a, b) => new Date(a.requestedAt || a.createdAt || 0) - new Date(b.requestedAt || b.createdAt || 0));
+    }
+    res.json({ success: true, requests });
   } catch (error) {
     next(error);
   }

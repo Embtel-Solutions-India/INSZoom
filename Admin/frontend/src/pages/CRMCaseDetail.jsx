@@ -3482,11 +3482,15 @@ const CRMCaseDetail = () => {
                 {formsWarning}
               </div>
             )}
-            {caseData?.knowledgePlan?.status === 'needs_configuration' && (
-              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                {(caseData.knowledgePlan.configurationIssues || []).map((issue) => issue.message).join(' ')}
-              </div>
-            )}
+            {/* "No matching form template / questionnaire" is not shown any more (forms are managed with Manage forms; a checklist can be built with special requests): only real problems are */}
+            {caseData?.knowledgePlan?.status === 'needs_configuration' && (() => {
+              const issues = (caseData.knowledgePlan.configurationIssues || []).filter((issue) => !['uscis_forms', 'questionnaire'].includes(issue.type))
+              return issues.length > 0 ? (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {issues.map((issue) => issue.message).join(' ')}
+                </div>
+              ) : null
+            })()}
             {formsError && caseForms.length > 0 && (
               <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 <span>Showing the last successfully loaded forms — refreshing failed: {formsError}</span>
