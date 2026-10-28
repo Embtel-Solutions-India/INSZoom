@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
 import { casesApi } from '../services/api'
+import WrappingSelect from './ui/WrappingSelect'
 import { useVisaOptions, registryEntryFor, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
 
 // "Add employee" - the visa (and filing type, e.g. H-1B Extension) is asked FIRST: every employee of one employer can
@@ -60,10 +61,13 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
 
         <div>
           <label className="mb-1 block text-sm font-medium text-muted-foreground">Visa *</label>
-          <select className="input-field" value={visaType} onChange={(e) => { setVisaType(e.target.value); setPetitionSubType('') }} disabled={busy}>
-            <option value="" disabled>Select the employee's visa</option>
-            {options.map((option) => <option key={option.visaType} value={option.visaType}>{option.label}</option>)}
-          </select>
+          <WrappingSelect
+            value={visaType}
+            onChange={(value) => { setVisaType(value); setPetitionSubType('') }}
+            options={options.map((option) => ({ value: option.visaType, label: option.label }))}
+            placeholder="Select the employee's visa"
+            disabled={busy}
+          />
         </div>
 
         {subTypes.length > 0 && (

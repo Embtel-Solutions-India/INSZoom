@@ -900,6 +900,12 @@ async function getCaseLinks(caseData) {
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);
+  // The stored childCaseCount can outlive child cases that were deleted (the Employees panel then read "Employees (2)" over an empty list):
+  // bring it down to what exists. Never raises it, never throws, runs after the read.
+  if (caseData.caseRole === "principal" && childCases.length < (caseData.childCaseCount || 0)) {
+    Case.updateOne({ _id: caseId }, { $set: { childCaseCount: childCases.length } }, { timestamps: false }).catch(() => {});
+    caseData.childCaseCount = childCases.length;
+  }
   return { parentCase, childCases: await withInviteStatus(childCases, caseData) };
 }
 

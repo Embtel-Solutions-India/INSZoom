@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, UserRound, Search, ChevronLeft, ChevronRight, Users, UserPlus, Calendar, Mail, ArrowUpRight, FolderOpen, List, LayoutGrid } from 'lucide-react'
-import api from '../services/api'
+import { Building2, UserRound, Search, ChevronLeft, ChevronRight, Users, UserPlus, Calendar, Mail, ArrowUpRight, FolderOpen, List, LayoutGrid, Trash2 } from 'lucide-react'
+import api, { casesApi, invalidateCachedGet } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
+import ConfirmModal from '../components/ConfirmModal'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
 
@@ -27,6 +29,9 @@ const GROUPS = {
 }
 
 const PAGE_SIZE = 25
+
+// same delete rule as the all-cases page (CRMCases.jsx). New Case and the Recycle bin live on that page only.
+const CAN_DELETE_CASE_ROLES = ['super_admin', 'admin', 'team_lead']
 
 const titleCase = (value) => String(value || '').replace(/_/g, ' ')
 const formatDate = (value) => {
@@ -55,6 +60,10 @@ export default function CaseGroupPage({ caseGroup }) {
   const [total, setTotal] = useState(0)
   const [overallTotal, setOverallTotal] = useState(null)
   const fetchSeq = useRef(0)
+  const { user } = useAuth()
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
+  const canDelete = CAN_DELETE_CASE_ROLES.includes(user?.role)
 
   const baseParams = { excludeChildCases: true, caseGroup }
 
@@ -93,6 +102,26 @@ export default function CaseGroupPage({ caseGroup }) {
   useEffect(() => { fetchOverallTotal() }, [fetchOverallTotal])
   useRouteRevisit(() => { fetchCases(); fetchOverallTotal() })
 
+  // moves the case (and its child cases) to the recycle bin, exactly as the all-cases page does
+  const runDeleteCase = async () => {
+    if (!deleteTarget) return
+    const target = deleteTarget
+    const previousCases = cases
+    setDeleteTarget(null)
+    setDeleteError('')
+    setCases((list) => list.filter((item) => item._id !== target._id))
+    try {
+      await casesApi.deletePermanently(target._id)
+      invalidateCachedGet('/cases')
+      fetchCases()
+      fetchOverallTotal()
+    } catch (err) {
+      setCases(previousCases)
+      setDeleteTarget(target)
+      setDeleteError(err.response?.data?.message || err.message || 'Could not delete the case. Please try again.')
+    }
+  }
+
   useEffect(() => {
     const handle = setTimeout(() => {
       setPage(1)
@@ -119,11 +148,25 @@ export default function CaseGroupPage({ caseGroup }) {
             <p className="mt-0.5 text-sm text-muted-foreground">{group.subtitle}</p>
           </div>
         </div>
-        <div>
-          <p className="text-3xl font-bold leading-none text-foreground tabular-nums">{overallTotal ?? '–'}</p>
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Total cases</p>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div>
+            <p className="text-3xl font-bold leading-none text-foreground tabular-nums">{overallTotal ?? '–'}</p>
+            <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Total cases</p>
+          </div>
         </div>
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Are you sure?"
+          message={`Case ${deleteTarget.caseNumber}${deleteTarget.clientName ? ` (${deleteTarget.clientName})` : ''} will be moved to the recycle bin, together with its documents, answers, forms and messages${(deleteTarget.childCases?.length || deleteTarget.caseRole === 'principal') ? ', and all of its child cases' : ''}. It disappears from the portals now and can be restored from the Recycle Bin for 30 days; after that it is deleted permanently.`}
+          confirmLabel="Yes, move to recycle bin"
+          cancelLabel="No"
+          error={deleteError}
+          onConfirm={runDeleteCase}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
 
       {/* Toolbar: search, sort and the Cards / List switch */}
       <div className="space-y-3">
@@ -207,6 +250,7 @@ export default function CaseGroupPage({ caseGroup }) {
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Case manager</th>
                   <th className="px-4 py-3">Created</th>
+                  {canDelete && <th className="px-4 py-3"><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -225,6 +269,19 @@ export default function CaseGroupPage({ caseGroup }) {
                       <td className="px-4 py-3 capitalize text-muted-foreground">{titleCase(item.status)}</td>
                       <td className="px-4 py-3 text-foreground">{manager || <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">Awaiting assignment</span>}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{formatDate(item.createdAt)}</td>
+                      {canDelete && (
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); setDeleteError('') }}
+                            title="Delete case"
+                            aria-label={`Delete case ${item.caseNumber}`}
+                            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -284,7 +341,24 @@ export default function CaseGroupPage({ caseGroup }) {
                         <span className="truncate">{manager}</span>
                       </p>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 dark:text-amber-400"><UserPlus className="h-3.5 w-3.5" />{awaiting ? 'Awaiting assignment' : 'Unassigned'}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/crm-cases/${item._id}?assign=case_manager`) }}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800 dark:text-amber-400"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />{awaiting ? 'Assign case manager' : 'Unassigned'}
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(item); setDeleteError('') }}
+                        title="Delete case"
+                        aria-label={`Delete case ${item.caseNumber}`}
+                        className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     )}
                   </div>
                 </div>

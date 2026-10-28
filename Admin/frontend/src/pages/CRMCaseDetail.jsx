@@ -948,7 +948,7 @@ const CRMCaseDetail = () => {
       clientIntakeApi.caseIntake(id, { view: 'client' })
         .then((intakeResponse) => setIntakeBundle(intakeResponse?.data?.intake || null))
         .catch(() => setIntakeBundle(null))
-      if (nextCase.caseRole === 'principal' && nextCase.childCaseCount > 0) {
+      if (nextCase.caseRole === 'principal' && (nextCase.childCaseCount > 0 || nextCase.caseStructure === 'employer_employee')) {
         casesApi.getRelated(id, { scope: 'children' })
           .then((relatedResponse) => setChildCases(relatedResponse.data.childCases || []))
           .catch((error) => {
@@ -2164,7 +2164,7 @@ const CRMCaseDetail = () => {
       {/* Phase 7 — a principal case shows its child cases and who's assigned
           to each; overridden children are skipped by any future cascade from
           this principal's own assignment. */}
-      {caseData.caseRole === 'principal' && caseData.childCaseCount > 0 && (() => {
+      {caseData.caseRole === 'principal' && (caseData.childCaseCount > 0 || caseData.caseStructure === 'employer_employee') && (() => {
         // Newest first; the table below shows about three rows and scrolls inside the card for the rest.
         const visibleChildCases = (childCases || [])
           .filter((child) => showRemovedEmployees || child.status !== 'removed')
@@ -2188,7 +2188,7 @@ const CRMCaseDetail = () => {
           <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-foreground">{isEmployerMatter ? `Employees (${caseData.scopedChildView ? visibleChildCases.length : caseData.childCaseCount})` : 'Beneficiary'}</h3>
+                <h3 className="text-lg font-semibold text-foreground">{isEmployerMatter ? `Employees (${caseData.scopedChildView || childCases !== null ? visibleChildCases.length : caseData.childCaseCount})` : 'Beneficiary'}</h3>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Assigning this matter's case manager applies to every child case below except those marked overridden.
                 </p>
@@ -2218,7 +2218,7 @@ const CRMCaseDetail = () => {
             {childCases === null ? (
               <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
             ) : visibleChildCases.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-muted-foreground">No child cases yet.</p>
+              <p className="px-5 py-4 text-sm text-muted-foreground">{isEmployerMatter ? 'No employees on this matter yet. Use + Add Employee to add one.' : 'No child cases yet.'}</p>
             ) : (
               <div className="max-h-72 overflow-auto">
                 {/* The four action buttons always sit on ONE line; the text columns (name, visa, workflow, case manager) wrap to give them room,
