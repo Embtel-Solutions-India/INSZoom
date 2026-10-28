@@ -8,6 +8,7 @@ const DocumentExtraction = require("../../models/DocumentExtraction");
 const USCISFormTemplate = require("../../models/USCISFormTemplate");
 const USCISFormComponentDefinition = require("../../models/USCISFormComponentDefinition");
 const caseService = require("../cases/case.service");
+const { scopedChildIdsFor } = require("../cases/caseManagerAccess");
 const caseFormSelection = require("./case-form-selection.service");
 const CanonicalProfileService = require("../canonical/services/CanonicalProfileService");
 const FormMappingService = require("../form-mapping/services/FormMappingService");
@@ -1262,7 +1263,10 @@ async function listCaseForms(caseId, user, req) {
   // even though its child had them - confirmed live against real cases
   // (B001-B008, B029, B075, B076, ...), not a fixture-only issue. Mirror the
   // same childCases-or-self resolution here for the read path.
-  const caseIds = caseData.childCases?.length ? caseData.childCases : [caseData._id];
+  let caseIds = caseData.childCases?.length ? caseData.childCases : [caseData._id];
+  // A case manager assigned to only some of the matter's employees lists only those employees' forms.
+  const scopedChildIds = await scopedChildIdsFor(caseData, user).catch(() => null);
+  if (scopedChildIds) caseIds = scopedChildIds;
   // Same secondaryPreferred rationale as activeTemplatesCached() above - this
   // is the exact query confirmed (via mongodb_query_performance /
   // mongodb_connection_closed logging) to be the one stalling on the

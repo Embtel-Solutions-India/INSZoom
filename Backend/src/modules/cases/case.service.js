@@ -21,7 +21,7 @@ const env = require("../../config/env");
 const { CASE_LIFECYCLE_STAGES, CRM_STAGE_TO_INDEX, STAGE_NAMES } = require("./case.constants");
 const { openRfeDeadlineFilter } = require("./case-manager-analytics.service");
 const participantService = require("./case-participant.service");
-const { isCaseManagerOfCase, caseManagerMatch, allCaseManagerIds } = require("./caseManagerAccess");
+const { isCaseManagerOfCase, caseManagerMatch, allCaseManagerIds, isChildScopedCaseManager, healChildScope } = require("./caseManagerAccess");
 
 const ADMIN_ROLES = ["super_admin", "admin"];
 const STAFF_ROLES = ["super_admin", "admin", "team_lead", "case_manager"];
@@ -162,7 +162,7 @@ function canAccessCase(user, caseData) {
   if (sameId(caseData.beneficiary?.user, user._id)) return true;
   if (sameId(caseData.primaryOwner, user._id) || sameId(caseData.secondaryOwner, user._id)) return true;
   if (sameId(caseData.assignedTeamLead, user._id)) return true;
-  if (role === "case_manager") return isCaseManagerOfCase(caseData, user._id) || sameId(caseData.primaryOwner, user._id);
+  if (role === "case_manager") return isCaseManagerOfCase(caseData, user._id) || sameId(caseData.primaryOwner, user._id) || isChildScopedCaseManager(caseData, user._id);
   if (role === "employer") return sameId(caseData.employerUser, user._id) || sameId(caseData.companyId, user.companyId) || sameId(caseData.employer, user.companyId) || sameId(caseData.organization, user.companyId);
   if (role === "employee") return sameId(caseData.employeeUser, user._id) || sameId(caseData.user, user._id) || sameId(caseData.beneficiary?.user, user._id);
   // Family/sponsor visa (K-1/K-3) two-party path — additive, mirrors the
@@ -269,6 +269,20 @@ function buildCaseFilterFields(query) {
     const roles = String(query.caseRole).split(",").map((r) => r.trim()).filter(Boolean);
     if (roles.length) filter.caseRole = roles.length > 1 ? { $in: roles } : roles[0];
   }
+  // Staff case list: hide employee/beneficiary child cases (they are shown inside their principal case instead). $nin, not $in on
+  // principal/single, so legacy cases with no caseRole still list. An explicit caseRole above wins.
+  if (!query.caseRole && ["true", "1"].includes(String(query.excludeChildCases))) filter.caseRole = { $nin: ["employee", "beneficiary"] };
+  // Admin "Corporations" / "Clients" pages. corporations = employer matters; clients = family + single-party matters;
+  // uncategorized = anything else. Cases made through the family workflow (K-1/K-3, I-130 packages, I-824) and the single-party
+  // filings (H-4, change of status...) are created WITHOUT a caseStructure, so they are recognised by their own markers:
+  // two-party family fields, or caseType individual_filing. An explicit caseStructure wins.
+  if (!query.caseStructure && query.caseGroup) {
+    const unstructured = { caseStructure: { $nin: ["single", "employer_employee", "family"] } };
+    const clientMarkers = { $or: [{ petitionerUser: { $exists: true, $ne: null } }, { beneficiaryUser: { $exists: true, $ne: null } }, { caseType: "individual_filing" }] };
+    if (query.caseGroup === "corporations") filter.caseStructure = "employer_employee";
+    else if (query.caseGroup === "clients") filter.$and = [...(filter.$and || []), { $or: [{ caseStructure: { $in: ["single", "family"] } }, { $and: [unstructured, clientMarkers] }] }];
+    else if (query.caseGroup === "uncategorized") filter.$and = [...(filter.$and || []), unstructured, { $nor: [clientMarkers] }];
+  }
   if (query.caseStructure) filter.caseStructure = query.caseStructure;
   if (query.caseType) filter.caseType = query.caseType;
   if (query.petitionType) filter.petitionType = query.petitionType;
@@ -299,6 +313,11 @@ function buildCaseSearchOr(search) {
     { caseNumber: { $regex: search, $options: "i" } },
     { uscisReceiptNumber: { $regex: search, $options: "i" } },
     { petitionType: { $regex: search, $options: "i" } },
+    // an employee case that is not invited yet is identified by these, not by clientName/clientEmail
+    { "pendingEmployee.name": { $regex: search, $options: "i" } },
+    { "pendingEmployee.email": { $regex: search, $options: "i" } },
+    { "employeeIdentity.name": { $regex: search, $options: "i" } },
+    { "employeeIdentity.email": { $regex: search, $options: "i" } },
   ] };
 }
 
@@ -329,6 +348,25 @@ async function resolveCaseSearchFilter(query, user) {
     if (!noTextIndex) throw error;
   }
   return buildCaseFilter(query, user);
+}
+
+// The staff case list hides employee/beneficiary child cases (excludeChildCases) but rolls them up into their principal: a
+// search that matches an employee lists the employer's matter, and a case manager assigned only to some employees sees that
+// matter (opening it shows just their employees). Falls back to the plain path when there is nothing to roll up.
+async function resolveStaffListFilter(query, user) {
+  const exclude = ["true", "1"].includes(String(query.excludeChildCases));
+  const needsRollUp = exclude && !query.caseRole && (query.search || normalizeRole(user?.role) === "case_manager");
+  if (!needsRollUp) return resolveCaseSearchFilter(query, user);
+  const childFilter = buildCaseFilter({ ...query, excludeChildCases: undefined, caseRole: "employee,beneficiary" }, user);
+  const parentIds = (await Case.distinct("parentCase", childFilter)).filter(Boolean);
+  const direct = query.search ? buildCaseFilter(query, user) : await resolveCaseSearchFilter(query, user);
+  if (!parentIds.length) return direct;
+  if (normalizeRole(user?.role) === "case_manager") {
+    // record the scoped access so the matter can be opened (assignments older than the field, or a path that skipped the sync)
+    Case.updateMany({ _id: { $in: parentIds }, childCaseManagers: { $ne: user._id } }, { $addToSet: { childCaseManagers: user._id } }, { timestamps: false }).catch(() => {});
+  }
+  // no $text here: it cannot sit inside an $or
+  return { $or: [direct, { _id: { $in: parentIds } }] };
 }
 
 function buildCaseSort(query = {}) {
@@ -798,7 +836,7 @@ async function getAccessibleCaseOrThrow(id, user, { omit } = {}) {
     error.statusCode = 404;
     throw error;
   }
-  if (!canAccessCase(user, caseData)) {
+  if (!canAccessCase(user, caseData) && !(await healChildScope(caseData, user).catch(() => false))) {
     const error = new Error("Not authorized to access this case");
     error.statusCode = 403;
     throw error;
@@ -858,7 +896,7 @@ async function getCaseLinks(caseData) {
     // Phase 9 - also select clientEmail/dataEntryMode so the invite panel can tell "not yet invited" from "invited" (clientEmail is set by
     // inviteEmployee) without a second round-trip.
     Case.find({ parentCase: caseId })
-      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status stage caseRole childIndex petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
+      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status stage caseRole childIndex createdAt petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);
@@ -1019,6 +1057,7 @@ module.exports = {
   buildRestrictedCaseOwnershipFilter,
   canAccessRestrictedChildCase,
   resolveCaseSearchFilter,
+  resolveStaffListFilter,
   buildCaseSort,
   canAccessCase,
   hasActiveAttorneyAccess,

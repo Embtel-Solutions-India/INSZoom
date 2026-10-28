@@ -1,5 +1,6 @@
 import {
   Briefcase,
+  Building2,
   CheckCircle,
   DollarSign,
   FileCheck2,
@@ -11,6 +12,7 @@ import {
   MessageSquare,
   Scale,
   Settings,
+  UserRound,
   Users,
 } from 'lucide-react'
 
@@ -131,6 +133,8 @@ export const getSidebarMenuItems = (user) => {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ADMIN_PORTAL_ROLES },
     { path: '/leads', icon: Inbox, label: 'Leads', roles: LEADS_ROLES },
     { path: '/crm-cases', icon: Briefcase, label: 'Cases', roles: ADMIN_PORTAL_ROLES },
+    { path: '/corporations', icon: Building2, label: 'Corporations', roles: ADMIN_PORTAL_ROLES },
+    { path: '/clients', icon: UserRound, label: 'Clients', roles: ADMIN_PORTAL_ROLES },
     // Same page for everyone; a case manager gets their own private board ("My Pipeline"), enforced server-side.
     { path: '/pipeline', icon: LayoutGrid, label: 'Pipeline', roles: ['super_admin', 'admin', 'team_lead'] },
     { path: '/pipeline', icon: LayoutGrid, label: 'My Pipeline', roles: ['case_manager'] },

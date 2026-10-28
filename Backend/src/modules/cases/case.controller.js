@@ -17,6 +17,7 @@ const User = require("../../models/User");
 const { resolveDocumentRequirements } = require("../document-requirements/document-requirement.resolver");
 const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
+const { scopedChildIdsFor, syncPrincipalChildManagers } = require("./caseManagerAccess");
 const caseManagersService = require("./case-managers.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
@@ -362,6 +363,7 @@ async function cascadeAssignmentToChildren(principalCase, fieldSet) {
     ),
     Case.updateMany({ ...childFilter, status: { $ne: "pending_assignment" } }, { $set: fieldSet }),
   ]);
+  syncPrincipalChildManagers(principalCase._id);
   return (pendingResult.modifiedCount || 0) + (otherResult.modifiedCount || 0);
 }
 
@@ -900,7 +902,7 @@ exports.getCases = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-    const filter = await caseService.resolveCaseSearchFilter(req.query, req.user);
+    const filter = await caseService.resolveStaffListFilter(req.query, req.user);
     timer.mark("filter_resolved", { page, limit });
     const sort = caseService.buildCaseSort(req.query);
     const skip = (page - 1) * limit;
@@ -948,6 +950,13 @@ exports.getCase = async (req, res, next) => {
     // canonicalHistory (up to ~300 KB) is read by no screen: leave it out of this read (see case.service CASE_OMIT_HISTORY)
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_HISTORY });
     const serialized = caseService.serializeCaseForUser(caseData, req.user);
+    // a case manager assigned to only some of this matter's employees sees just those inside the employer case
+    const scopedChildIds = await scopedChildIdsFor(caseData, req.user);
+    if (scopedChildIds) {
+      const allowed = new Set(scopedChildIds.map(String));
+      serialized.childCases = (serialized.childCases || []).filter((child) => allowed.has(String(child?._id || child)));
+      serialized.scopedChildView = true;
+    }
     await require("../../integrations/ghl/ghlStageNames").attachStageNames([caseData], [serialized]);
     res.json({ success: true, case: serialized, caseSummary: caseService.summarizeCase(caseData), data: serialized });
   } catch (error) {
@@ -2112,6 +2121,7 @@ exports.assignCaseManager = async (req, res, next) => {
         return 0;
       });
       await caseManagersService.cascadeToChildren(caseData, assignee, "remove").catch(() => 0);
+      syncPrincipalChildManagers(caseData._id);
     }
 
     const lifecycle = await lifecycleOrchestrator.onAssignment(caseData, req.user, req);
@@ -3014,7 +3024,7 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
       Case.find({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] } })
         .populate("companyId", "name legalName")
         .populate("beneficiary", "firstName lastName fullName email")
-        .select("caseNumber clientName clientEmail visaType visaCategory priority status package plan companyId beneficiary journeyProgress createdAt questionnaireData")
+        .select("caseNumber clientName clientEmail visaType visaCategory priority status package plan companyId beneficiary journeyProgress createdAt questionnaireData caseStructure")
         .sort({ createdAt: -1 })
         .limit(25)
         .maxTimeMS(8000),
@@ -3192,6 +3202,14 @@ exports.linkCase = async (req, res, next) => {
   }
 };
 
+// A case manager who is on only some of a matter's child cases gets just those back; everyone else gets the list unchanged.
+async function limitToScopedChildren(principal, user, childCases) {
+  const scopedChildIds = await scopedChildIdsFor(principal, user);
+  if (!scopedChildIds) return childCases;
+  const allowed = new Set(scopedChildIds.map(String));
+  return (childCases || []).filter((child) => allowed.has(String(child?._id || child)));
+}
+
 exports.getRelated = async (req, res, next) => {
   try {
     // ?scope=children: the principal/child links only (what the Employees panels read and poll). Same access check and the same child rows
@@ -3200,10 +3218,11 @@ exports.getRelated = async (req, res, next) => {
       const lookup = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user, { omit: caseService.CASE_OMIT_LOOKUP });
       if (caseService.isRestrictedPortalRole(req.user?.role)) return res.json({ success: true, parentCase: null, childCases: [] });
       const links = await caseService.getCaseLinks(lookup);
-      return res.json({ success: true, parentCase: links.parentCase, childCases: links.childCases });
+      return res.json({ success: true, parentCase: links.parentCase, childCases: await limitToScopedChildren(lookup, req.user, links.childCases) });
     }
     const caseData = await caseService.getAccessibleCaseOrThrow(req.params.id, req.user);
     const related = await caseService.getRelatedRecords(caseData);
+    related.childCases = await limitToScopedChildren(caseData, req.user, related.childCases);
     if (caseService.isRestrictedPortalRole(req.user?.role)) {
       return res.json({
         success: true,

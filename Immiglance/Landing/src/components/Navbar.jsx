@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import BrandMark from "./BrandMark";
+import ThemeToggle from "./ThemeToggle";
 import { useBranding } from "../utils/branding";
 import { getSessionId } from "../utils/eligibilitySession";
 
@@ -29,6 +30,8 @@ const LINKS = [
   { label: "News & Updates", to: "/news" },
   { label: "About Us", to: "/#about" },
 ];
+
+const SECTION_IDS = LINKS.filter((l) => l.to.includes("#")).map((l) => l.to.split("#")[1]);
 
 const MenuIcon = () => (
   <svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -60,8 +63,35 @@ export default function Navbar() {
   // Close mobile menu on route change
   useEffect(() => { setMenuOpen(false); }, [location.pathname, location.hash]);
 
+  // Home-page section currently in view (scroll-spy), seeded from the URL hash.
+  const [section, setSection] = useState("");
+  useEffect(() => {
+    setSection(location.pathname === "/" ? location.hash.replace("#", "") : "");
+    if (location.pathname !== "/") return undefined;
+    const els = SECTION_IDS.map((id) => document.getElementById(id)).filter(Boolean);
+    if (!els.length) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible.length) setSection(visible[0].target.id);
+        else if (window.scrollY < 100) setSection("");
+      },
+      { rootMargin: "-30% 0px -60% 0px" }
+    );
+    els.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [location.pathname, location.hash]);
+
+  const isActive = (to) => {
+    const [path, hash] = to.split("#");
+    if (hash) return location.pathname === "/" && section === hash;
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+  const linkClass = (to, base) =>
+    `${base} ${isActive(to) ? "bg-secondary text-primary" : "text-foreground/80 hover:bg-secondary hover:text-foreground"}`;
+
   return (
-    <nav className={`sticky top-0 z-50 bg-white/95 backdrop-blur-sm transition-shadow duration-200 ${scrolled ? "shadow-sm shadow-black/10" : ""} border-b border-border`}>
+    <nav className={`sticky top-0 z-50 bg-background/95backdrop-blur-sm transition-shadow duration-200 ${scrolled ? "shadow-sm shadow-black/10" : ""} border-b border-border`}>
       <div className="mx-auto flex h-18 max-w-7xl items-center justify-between gap-6 px-5 sm:px-6 lg:px-8">
         <Link to="/" className="flex min-w-0 shrink-0 items-center gap-2 no-underline">
           <BrandMark size="w-8 h-8" />
@@ -70,13 +100,14 @@ export default function Navbar() {
 
         <div className="hidden items-center gap-0.5 lg:flex xl:gap-1">
           {LINKS.map((link) => (
-            <Link key={link.label} to={link.to} className="whitespace-nowrap rounded-lg px-2 py-2 text-[0.8125rem] font-semibold text-foreground/80 no-underline transition hover:bg-secondary hover:text-foreground xl:px-3.5 xl:text-sm">
+            <Link key={link.label} to={link.to} aria-current={isActive(link.to) ? "page" : undefined} className={linkClass(link.to, "whitespace-nowrap rounded-lg px-2 py-2 text-[0.8125rem] font-semibold no-underline transition xl:px-3.5 xl:text-sm")}>
               {link.label}
             </Link>
           ))}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
           <a href={clientLoginUrl()} className="hidden rounded-lg px-4 py-2 text-sm font-semibold text-foreground no-underline transition hover:bg-secondary sm:flex">
             Sign In
           </a>
@@ -99,9 +130,9 @@ export default function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="space-y-1 border-t border-border bg-white px-4 py-3 shadow-lg shadow-black/5 lg:hidden">
+        <div className="space-y-1 border-t border-border bg-background px-4 py-3 shadow-lg shadow-black/5 lg:hidden">
           {LINKS.map((link) => (
-            <Link key={link.label} to={link.to} className="block rounded-lg px-4 py-3 text-sm font-semibold text-foreground no-underline hover:bg-secondary">
+            <Link key={link.label} to={link.to} aria-current={isActive(link.to) ? "page" : undefined} className={linkClass(link.to, "block rounded-lg px-4 py-3 text-sm font-semibold no-underline")}>
               {link.label}
             </Link>
           ))}
