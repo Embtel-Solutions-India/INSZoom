@@ -56,6 +56,9 @@ const PARTY_FORM_SPECS = {
 
 // Forms that have nothing for a case to fill (a fee schedule, a form with no fields a case holds): they are released on certification alone, with no mapping.
 const NO_MAPPING_FORMS = new Set(["G-1055", "G-1651"]);
+// ...and any form the pipeline itself found to have nothing to map: no authored rules and nothing inferable from its box names (the pipeline records
+// lifecycle.autoNoMapping when it reaches that conclusion), so a new form never waits for a person to add it to the list above.
+const isNoMappingForm = (template) => NO_MAPPING_FORMS.has(template?.formCode) || Boolean(template?.lifecycle?.autoNoMapping);
 
 // The header every supplement of a form made of slices starts with: Item 1 the petitioner's name, Item 2 the beneficiary's name (Section 0 = above the supplement's first "Section" heading).
 // Names only - the header also holds boxes that are neither (the treaty country of an E supplement).
@@ -64,4 +67,4 @@ const SUPPLEMENT_HEADER_GROUPS = Object.freeze([
   Object.freeze({ party: "beneficiary", parts: [0], facts: ["fullName", "lastName", "firstName", "middleName"] }),
 ]);
 
-module.exports = { PARTY_FORM_SPECS, NO_MAPPING_FORMS, SUPPLEMENT_HEADER_GROUPS };
+module.exports = { PARTY_FORM_SPECS, NO_MAPPING_FORMS, isNoMappingForm, SUPPLEMENT_HEADER_GROUPS };

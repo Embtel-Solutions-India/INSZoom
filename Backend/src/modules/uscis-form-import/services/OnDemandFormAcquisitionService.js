@@ -346,6 +346,22 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   } catch (error) {
     logger.info("uscis_form_ai_mapping_skipped", { formCode: template.formCode, error: error.message });
   }
+  // A form with no authored rules and nothing inferable from its own box names has nothing for a case to fill. It is released on certification alone (the same path as
+  // config NO_MAPPING_FORMS) instead of waiting for a person to list it: the pipeline records why on the template. Only when the mapping really is empty.
+  let autoNoMapping = false;
+  try {
+    if (autonomy.mode() === "on" && ruleMapping?.skipped && template.mappingStatus !== "active" && !template.lifecycle?.autoNoMapping) {
+      const currentGraph = await MappingGraphService.loadCurrentGraph(template).catch(() => ({ edges: [] }));
+      if (!(currentGraph.edges || []).length) {
+        template.lifecycle = { ...(template.lifecycle?.toObject?.() || template.lifecycle || {}), autoNoMapping: { at: new Date(), by: "system:pipeline", reason: ruleMapping.skipped } };
+        await template.save();
+        logger.info("uscis_form_auto_no_mapping", { formCode: template.formCode, templateId: String(template._id) });
+      }
+    }
+    autoNoMapping = Boolean(template.lifecycle?.autoNoMapping);
+  } catch (error) {
+    logger.info("uscis_form_auto_no_mapping_failed", { formCode: template?.formCode, error: error.message });
+  }
   // The live edition is never replaced until the new one is fully ready (mapping lossless + every component sliceable); otherwise it stays as is.
   let readiness = null;
   if (migration?.activated) {
@@ -377,7 +393,7 @@ async function activateOrPromote(template, user, req, pipeline = null) {
   } catch (error) {
     certification = { passed: false, checks: [{ name: "certification", passed: false, detail: error.message }] };
   }
-  const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
+  const readyToPromote = Boolean(certification?.passed) && ((Boolean(ruleMapping) && !ruleMapping.skipped) || autoNoMapping || (Boolean(migration?.activated) && Boolean(readiness?.ready)));
   const autoActivate = readyToPromote || (String(process.env.USCIS_ONDEMAND_AUTOACTIVATE || "").toLowerCase() === "true" && Boolean(certification?.passed));
   let activationBlockedReason = null;
   let componentDiscovery = null; // Phase 7.0: what activation's component discovery reported (an error there is surfaced in the job outcome, not swallowed)

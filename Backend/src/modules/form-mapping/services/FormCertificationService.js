@@ -59,7 +59,7 @@ async function certify(template, { previous = null, persist = true } = {}) {
   const checks = [];
   // a form with nothing for a case to fill (config/partyFormSpecs.js NO_MAPPING_FORMS: a fee schedule, a form no case holds data for) is certified on the PDF itself - it has no mapping
   // to validate and no value to write; every other check still runs
-  const noMapping = require("../config/partyFormSpecs").NO_MAPPING_FORMS.has(template.formCode);
+  const noMapping = require("../config/partyFormSpecs").isNoMappingForm(template);
   const graph = await MappingGraphService.loadCurrentGraph(template).catch(() => ({ edges: [] }));
   const fieldNames = new Set((template.formFields || []).map((field) => field.pdfFieldName || field.fieldName || field.originalName).filter(Boolean));
 

@@ -103,7 +103,7 @@ async function readPdfText(buffer) {
 }
 
 // Page furniture that can sit right after the form number but is never a title ("For USCIS Only" box, agency banner, OMB / expiry line).
-const TITLE_NOISE = /^(for\s+uscis\s+(use\s+)?only|department of homeland security|u\.?\s?s\.?\s+citizenship and immigration services|omb\s+no|expires\b|page\s+\d|form\s+[a-z]{1,4}-?\d+[a-z]?(\s|$)|start here)/i;
+const TITLE_NOISE = /^(for\s+uscis\s+(use\s+)?only|department of homeland security|u\.?\s?s\.?\s+citizenship and immigration services|omb\s+no|expires\b|page\s+\d|form\s+[a-z]{1,4}-?\d+[a-z]?(\s|$)|start here|samples*$)/i;
 
 function extractTitle(text = "", formNumber) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);

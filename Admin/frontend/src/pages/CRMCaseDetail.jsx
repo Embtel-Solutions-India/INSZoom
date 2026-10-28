@@ -2213,7 +2213,18 @@ const CRMCaseDetail = () => {
               </div>
             </div>
             {employeeActionMessage && (
-              <div className="px-5 py-2 text-sm bg-secondary/50 text-foreground border-b border-border">{employeeActionMessage}</div>
+              <div className="flex items-start justify-between gap-3 px-5 py-2 text-sm bg-secondary/50 text-foreground border-b border-border">
+                <span>{employeeActionMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setEmployeeActionMessage('')}
+                  aria-label="Dismiss message"
+                  title="Dismiss"
+                  className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             )}
             {childCases === null ? (
               <p className="px-5 py-4 text-sm text-muted-foreground">Loading…</p>
@@ -2231,7 +2242,7 @@ const CRMCaseDetail = () => {
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
                       <th className="px-3 py-2"></th>
                     </tr>
@@ -2270,7 +2281,7 @@ const CRMCaseDetail = () => {
                           <td className="px-3 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
                           </td>
-                          <td className="px-3 py-2.5">
+                          <td className="px-3 py-2.5 text-center">
                             {isEmployerMatter && (
                               <span
                                 className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${employeeFills ? 'bg-primary/10 text-primary' : 'bg-secondary text-foreground'}`}

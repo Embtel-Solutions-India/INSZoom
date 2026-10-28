@@ -18,6 +18,7 @@ const { resolveDocumentRequirements } = require("../document-requirements/docume
 const generateCaseNumber = require("./caseId");
 const caseService = require("./case.service");
 const { scopedChildIdsFor, syncPrincipalChildManagers } = require("./caseManagerAccess");
+const { pruneStaleCaseLinks, reclaimOrphanClientSideAccount } = require("../auth/staleCaseLinks");
 const caseManagersService = require("./case-managers.service");
 const workflowService = require("./case.workflow.service");
 const lifecycleOrchestrator = require("./case-lifecycle-orchestrator.service");
@@ -1198,6 +1199,8 @@ exports.createCase = async (req, res, next) => {
     }
 
     const existingUser = await User.findOne({ email }).select("+password +inviteTokenHash");
+    // a leftover account of a deleted case (employee / employer with no live case) is reusable as the client
+    if (existingUser && normalizeRole(existingUser.role) !== "client") await reclaimOrphanClientSideAccount(existingUser, "client");
     if (existingUser && normalizeRole(existingUser.role) !== "client") {
       return res.status(409).json({
         success: false,
@@ -1205,6 +1208,8 @@ exports.createCase = async (req, res, next) => {
         message: "This email address belongs to a non-client account",
       });
     }
+    // links to cases that were deleted (they are in the recycle bin) do not count: the email is free for a new case, and the new case becomes the client's landing case
+    if (existingUser) await pruneStaleCaseLinks(existingUser);
     if (existingUser?.primaryCaseId || (existingUser?.caseIds || []).length) {
       return res.status(409).json({
         success: false,
@@ -2379,6 +2384,8 @@ exports.inviteEmployee = async (req, res, next) => {
     // The SAME employee being given access again (their invitation was withdrawn so the employer could fill in part of the file):
     // they already belong to this case, so they get the "access returned" email instead of a first invitation.
     const isRegrant = Boolean(employeeUser) && cleanEmail(childCase.clientEmail) === normalizedEmail;
+    // a leftover client account of a deleted case (no live case at all) is reusable: it takes the employee role instead of blocking the invite
+    if (employeeUser && employeeUser.role !== childCase.caseRole) await reclaimOrphanClientSideAccount(employeeUser, childCase.caseRole, { exceptCaseId: childCase._id });
     if (employeeUser && employeeUser.role !== childCase.caseRole) {
       return res.status(409).json({ success: false, code: "EMAIL_IN_USE", message: "That email already belongs to another account type. Use a different email for this employee." });
     }
@@ -2386,7 +2393,9 @@ exports.inviteEmployee = async (req, res, next) => {
       const alreadyAccepted = Boolean(employeeUser.password);
       employeeUser.name = employeeUser.name || trimmedName;
       employeeUser.displayName = employeeUser.displayName || trimmedName;
-      employeeUser.primaryCaseId = employeeUser.primaryCaseId || childCase._id;
+      // an account whose earlier case was withdrawn (or is gone) lands on this new case, never on the withdrawn one
+      const primaryStillLive = employeeUser.primaryCaseId ? await Case.exists({ _id: employeeUser.primaryCaseId, status: { $ne: "removed" } }) : false;
+      employeeUser.primaryCaseId = primaryStillLive ? employeeUser.primaryCaseId : childCase._id;
       employeeUser.principalCaseId = principal._id;
       employeeUser.caseRole = childCase.caseRole;
       if (!alreadyAccepted) {
@@ -2545,6 +2554,7 @@ exports.removeEmployee = async (req, res, next) => {
     await caseService.writeAuditLog("remove_employee", childCase, req.user, {}, req);
     require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
+    announceEmployeesChanged(childCase.parentCase, childCase._id, req.user, "employee_removed");
     return res.status(200).json({
       success: true,
       message: "Employee removed. All data has been preserved.",
@@ -2581,12 +2591,22 @@ exports.restoreEmployee = async (req, res, next) => {
       return res.status(403).json({ success: false, message: "Only staff can restore a removed employee" });
     }
 
+    // a withdrawn employee's email is free for others; restoring is refused if that email has been taken since
+    const restoreEmail = cleanEmail(childCase.clientEmail || childCase.employeeIdentity?.email);
+    if (restoreEmail) {
+      const holder = await User.findOne({ email: restoreEmail }).select("role _id").lean();
+      const takenByOther = holder && (holder.role !== childCase.caseRole || (await Case.exists({ _id: { $ne: childCase._id }, status: { $ne: "removed" }, $or: [{ user: holder._id }, { clientEmail: restoreEmail }] })));
+      if (takenByOther) {
+        return res.status(409).json({ success: false, code: "EMAIL_IN_USE", message: "This employee's email is now used by another case or account, so the employee cannot be restored. Change the email first." });
+      }
+    }
     childCase.status = childCase.previousStatus || "active";
     childCase.previousStatus = undefined;
     await childCase.save();
     await caseService.writeAuditLog("restore_employee", childCase, req.user, {}, req);
     require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
 
+    announceEmployeesChanged(childCase.parentCase, childCase._id, req.user, "employee_restored");
     return res.status(200).json({
       success: true,
       message: "Employee restored.",
@@ -2994,6 +3014,7 @@ exports.addEmployeeSlot = async (req, res, next) => {
     require("../../integrations/ghl/ghlOutboundHooks").employeeChanged(childCase._id); // GHL: no-op unless enabled; never blocks
     try { await require("../questionnaires/employer-visa-checklists.service").ensureEmployerChecklistForVisa(principal._id, { visaType: employeeVisa.visaType, petitionSubType: employeeVisa.petitionSubType }, req.user, req); } catch (_error) { /* a new visa gets its employer checklist (draft); never blocks Add Employee */ }
 
+    announceEmployeesChanged(principal._id, childCase._id, req.user, "employee_added");
     return res.status(201).json({
       success: true,
       message: `Employee slot ${childCaseNumber} added.`,
@@ -3006,6 +3027,11 @@ exports.addEmployeeSlot = async (req, res, next) => {
     handleError(err, next);
   }
 };
+
+// Tells every open session of the matter (the employer's Client portal, Admin, attorneys) that its employee list changed, so it re-reads at once instead of on its next poll. Never throws.
+function announceEmployeesChanged(principalId, childId, actor, reason) {
+  try { require("../realtime/caseLiveUpdates").notifyCaseDataChanged([principalId, childId].filter(Boolean), "employees", { actor, reason }); } catch (_error) { /* live update only */ }
+}
 
 exports.getTeamLeadDashboard = async (req, res, next) => {
   try {

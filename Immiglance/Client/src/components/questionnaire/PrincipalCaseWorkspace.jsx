@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { casesApi } from "../../services/api";
+import useCaseDataChanged from "../../hooks/useCaseDataChanged";
 import useQuestionnaireAnswers from "../../hooks/useQuestionnaireAnswers";
 import { CaseRoleChecklistView } from "./CaseRoleChecklist";
 import DataEntryModeModal from "./DataEntryModeModal";
@@ -85,6 +86,11 @@ export default function PrincipalCaseWorkspace({ activeCase }) {
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [principalId]);
+
+  // An employee added, removed or restored by staff in Admin shows up here at once (the 30 s poll above stays as the fallback).
+  useCaseDataChanged(principalId, (payload) => {
+    if (!payload?.scope || payload.scope.includes("employees")) fetchChildren(true);
+  });
 
   const employerHasAnyAnswer = Object.values(employerQa.answers || {}).some(
     (value) => value !== "" && value !== null && value !== undefined

@@ -112,6 +112,8 @@ const uscisFormTemplateSchema = new mongoose.Schema(
       approvedByMachine: mongoose.Schema.Types.Mixed,
       editionReviewMachineAck: mongoose.Schema.Types.Mixed,
       registeredUnlinked: mongoose.Schema.Types.Mixed,
+      // the pipeline found nothing to map on this form (no authored rules, nothing inferable): it is released on certification alone, like config NO_MAPPING_FORMS
+      autoNoMapping: mongoose.Schema.Types.Mixed,
       comparisonReport: mongoose.Schema.Types.Mixed,
       migrationSuggestions: [mongoose.Schema.Types.Mixed],
       impactAnalysis: mongoose.Schema.Types.Mixed,
