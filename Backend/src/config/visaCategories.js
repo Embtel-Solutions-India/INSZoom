@@ -327,6 +327,14 @@ const VISA_CATEGORIES = {
   Naturalization: { caseStructure: "single", forms: ["n-400"], label: "Naturalization" },
   "Certificate of Citizenship": { caseStructure: "single", forms: ["n-600"], label: "Certificate of Citizenship" },
   "Replacement Citizenship Certificate": { caseStructure: "single", forms: ["n-565"], label: "Replacement Citizenship/Naturalization Document" },
+
+  // ─── NOTICE RESPONSES (RFE / NOIR / NOID) ─────────────────────────────────
+  // One workflow for the three USCIS notices: a single-party case with NO checklist assigned at creation (customChecklist). The case manager
+  // builds the checklist for each case through the Documents tab's special requests. They are offered in the New Case dropdown although no
+  // authored checklist exists for them (the dropdown otherwise hides a case type without one).
+  RFE: { caseStructure: "single", forms: [], customChecklist: true, label: "Request for Evidence" },
+  NOIR: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Revoke" },
+  NOID: { caseStructure: "single", forms: [], customChecklist: true, label: "Notice of Intent to Deny" },
 };
 
 /**
@@ -353,6 +361,11 @@ function hasNoForms(visaType) {
 // own isDefault + visaType + checklistRole, the same path every checklist-driven case uses).
 function getNoFormChecklistKeys(visaType) {
   return hasNoForms(visaType) ? [...(VISA_CATEGORIES[visaType].checklists || [])] : [];
+}
+
+// True for a case type whose checklist the case manager builds per case (RFE / NOIR / NOID): none is assigned at creation, and it is still offered at case creation.
+function hasCustomChecklist(visaType) {
+  return Boolean(VISA_CATEGORIES[visaType]?.customChecklist);
 }
 
 // The filing types a visa must be created with (H-1B -> New/Extension/...); empty for visas with no such choice.
@@ -387,6 +400,7 @@ module.exports = {
   VISA_CATEGORIES,
   hasNoForms,
   getNoFormChecklistKeys,
+  hasCustomChecklist,
   getCaseStructure,
   getFormIds,
   getSubTypes,

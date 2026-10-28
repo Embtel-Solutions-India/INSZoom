@@ -839,10 +839,10 @@ export default function Dashboard() {
           <ChartCard
             title="Documents uploaded"
             subtitle={checklistTotal ? "Questions answered in your checklist" : checklistList ? "No checklist assigned yet" : "Loading"}
-            chart={<DonutChart segments={[{ value: checklistAnswered || 0, color: CHART_BLUE }]} total={checklistTotal || 0} center={checklistTotal ? `${checklistAnswered}/${checklistTotal}` : checklistList ? "0" : "—"} sub={checklistTotal ? "answered" : "no checklist"} />}
+            chart={<DonutChart segments={[{ value: checklistAnswered || 0, color: CHART_BLUE }, { value: Math.max((checklistTotal || 0) - (checklistAnswered || 0), 0), color: AMBER }]} total={checklistTotal || 0} center={checklistTotal ? `${checklistAnswered}/${checklistTotal}` : checklistList ? "0" : "—"} sub={checklistTotal ? "answered" : "no checklist"} />}
             legend={[
               { label: "Answered", value: checklistAnswered ?? "—", color: CHART_BLUE },
-              { label: "Remaining", value: checklistTotal === null ? "—" : checklistTotal - checklistAnswered, color: TRACK },
+              { label: "Remaining", value: checklistTotal === null ? "—" : checklistTotal - checklistAnswered, color: AMBER },
               { label: "Total questions", value: checklistTotal ?? "—", color: "hsl(var(--muted-foreground) / 0.5)" },
             ]}
           />

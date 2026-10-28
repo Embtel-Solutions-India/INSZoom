@@ -15,6 +15,7 @@ const { isSharedRoleForChildCase } = require("../cases/sharedCaseRoles");
 const realtimeGateway = require("../realtime/realtime.gateway");
 const { allCaseManagerIds } = require("../cases/caseManagerAccess");
 const { evaluateRequest, sameRecipientRole } = require("./request-fulfilment");
+const { scopedChildIdsFor } = require("../cases/caseManagerAccess");
 
 // Generic staff "Request information" flow.
 //
@@ -99,12 +100,42 @@ function buildRecipients(caseData, users = {}) {
     if (userId) push({ id: `f:${role}:${idOf(userId)}`, role, userId });
   });
   // Single-person client: the case owner, when not already represented above.
-  if (caseData?.user && !options.some((option) => option.userId === idOf(caseData.user))) {
-    push({ id: `f:client:${idOf(caseData.user)}`, role: "client", userId: caseData.user, name: caseData.clientName, email: caseData.clientEmail });
+  // ...but never a second entry for a person already listed under another role (the beneficiary / employee of the same case, matched by login or by e-mail).
+  if (caseData?.user) {
+    const ownerId = idOf(caseData.user);
+    const ownerEmail = clean(caseData.clientEmail || users[ownerId]?.email).toLowerCase();
+    const alreadyListed = options.some((option) => option.userId === ownerId || (ownerEmail && option.email === ownerEmail));
+    if (!alreadyListed) push({ id: `f:client:${ownerId}`, role: "client", userId: caseData.user, name: caseData.clientName, email: caseData.clientEmail });
   }
   return options;
 }
 
+// Pure: one "Send to" option per employee / beneficiary child case of a matter. The request is created on that child case, so only that person's checklist shows it.
+// `userId` is set only for an invited person who has their own login (the child case is then owned by them, not by the employer).
+function buildChildRecipients(principal, children = []) {
+  return children
+    .filter((child) => child && child.status !== "removed" && ["employee", "beneficiary"].includes(child.caseRole))
+    .sort((a, b) => String(a.childIndex || "").localeCompare(String(b.childIndex || "")))
+    .map((child) => {
+      const role = child.caseRole === "beneficiary" ? "beneficiary" : "employee";
+      const invited = Boolean(child.user) && (!principal?.user || idOf(child.user) !== idOf(principal.user));
+      const name = clean(child.employeeIdentity?.name) || clean(child.pendingEmployee?.name) || clean(child.clientName) || `Slot ${clean(child.caseNumber)}`;
+      const email = clean(child.employeeIdentity?.email || child.pendingEmployee?.email || child.clientEmail).toLowerCase();
+      return {
+        id: `c:${idOf(child._id)}`,
+        role,
+        roleLabel: ROLE_LABELS[role],
+        childCaseId: idOf(child._id),
+        participantId: null,
+        userId: invited ? idOf(child.user) : null,
+        name,
+        email,
+        label: `${ROLE_LABELS[role]} - ${name}${email ? ` (${email})` : ""}`,
+      };
+    });
+}
+
+// The case's own participants (employer / petitioner / client ...). Unchanged: the per-item "Request" flow and every other caller keep exactly this list.
 async function listRecipients(caseData) {
   const ids = new Set();
   [caseData.employerUser, caseData.employeeUser, caseData.petitionerUser, caseData.beneficiaryUser, caseData.jointSponsorUser, caseData.user].forEach((id) => id && ids.add(idOf(id)));
@@ -113,6 +144,26 @@ async function listRecipients(caseData) {
   const users = {};
   found.forEach((user) => { users[idOf(user)] = { name: userName(user), email: user.email }; });
   return buildRecipients(caseData, users);
+}
+
+// "Send to" of the Documents tab's special-request section. `user` is the staff member asking: a case manager who is on only some of the matter's employees is offered only those.
+//  - an employee / beneficiary case: that one person, nobody else (not the employer, not another employee);
+//  - the matter's own case (employer / petitioner): its own participants plus every active employee / beneficiary, each addressed on their own case;
+//  - any other case (single, family two-party): its participants, as before.
+async function listRecipientsForPanel(caseData, user) {
+  if (["employee", "beneficiary"].includes(caseData.caseRole) && caseData.parentCase) {
+    const parent = await Case.findById(caseData.parentCase).select("user").lean();
+    return buildChildRecipients(parent || {}, [caseData]);
+  }
+  const options = await listRecipients(caseData);
+  if (caseData.caseRole === "principal") {
+    let children = await Case.find({ parentCase: caseData._id, status: { $ne: "removed" }, caseRole: { $in: ["employee", "beneficiary"] } })
+      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user caseRole childIndex status").lean();
+    const scoped = user ? await scopedChildIdsFor(caseData, user).catch(() => null) : null;
+    if (scoped) { const allowed = new Set(scoped.map(String)); children = children.filter((child) => allowed.has(String(child._id))); }
+    options.push(...buildChildRecipients(caseData, children));
+  }
+  return options;
 }
 
 // Pure: the Question document fields for one request.
@@ -244,10 +295,16 @@ async function notifyRecipient({ caseData, recipient, name, itemKind, descriptio
   return null;
 }
 
-async function createRequest(caseData, input, actor, req) {
-  const recipients = await listRecipients(caseData);
+async function createRequest(matterCase, input, actor, req) {
+  const recipients = await listRecipientsForPanel(matterCase, actor);
   const recipient = recipients.find((option) => option.id === input.recipientId);
   if (!recipient) throw httpError(400, "Recipient is not a participant of this case");
+  // A request to an employee / beneficiary is created on THEIR case, so it appears in their checklist only. Everyone else's request is created on this case, as before.
+  let caseData = matterCase;
+  if (recipient.childCaseId && idOf(recipient.childCaseId) !== idOf(matterCase._id)) {
+    caseData = await Case.findById(recipient.childCaseId);
+    if (!caseData || caseData.status === "removed" || idOf(caseData.parentCase) !== idOf(matterCase._id)) throw httpError(404, "That person's case is no longer available");
+  }
   const name = clean(input.name);
   const itemKind = input.itemKind;
   if (!name) throw httpError(400, "Item name is required");
@@ -460,6 +517,20 @@ async function listRequestsWithAnswers(caseData) {
   return out;
 }
 
+// The requests sent to the employees / beneficiaries of a matter live on their own cases; the matter's panel lists them together with its own.
+async function listChildRequests(principal, user) {
+  const out = [];
+  let children = await Case.find({ parentCase: principal._id, "informationRequests.0": { $exists: true } });
+  const scoped = user ? await scopedChildIdsFor(principal, user).catch(() => null) : null;
+  if (scoped) { const allowed = new Set(scoped.map(String)); children = children.filter((child) => allowed.has(String(child._id))); }
+  for (const child of children) {
+    await reconcileFulfilment({ caseId: child._id, user, req: null }).catch(() => null);
+    const fresh = (await Case.findById(child._id)) || child;
+    for (const item of await listRequestsWithAnswers(fresh)) out.push({ ...item, caseId: idOf(child._id) });
+  }
+  return out;
+}
+
 // ── "Request" on an item that is ALREADY on the client's checklist ─────────────────────────────────────────────────────────────────────
 // The case manager clicks Request next to a text answer or a document row. That question becomes REQUIRED FOR THIS CASE ONLY (the shared
 // questionnaire is never edited): the client is e-mailed what is being asked, sees the item flagged "Requested by your case manager", and
@@ -618,6 +689,9 @@ module.exports = {
   buildRecipients,
   buildQuestionPayload,
   listRecipients,
+  listRecipientsForPanel,
+  buildChildRecipients,
+  listChildRequests,
   createRequest,
   markAnswered,
   isAnswered,

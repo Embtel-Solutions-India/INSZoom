@@ -6,7 +6,9 @@
 //                           activated is activated through the normal gated MappingGraphService.activate. That version is already the one autofill reads; activating it only makes the form's
 //                           status say so ("Draft mapping" -> "Fully mapped"). A draft with any review item or any error is never touched.
 //   3. labelNoMappingForms - a form with nothing for a case to fill (config NO_MAPPING_FORMS: a fee schedule) is "Fully mapped": it has no mapping to be incomplete.
-//   4. registerContinuationSheets - a continuation sheet of a form (I-129 Attachment-1) carries its owner-given name and is listed, conditionally, for every visa type that files the form.
+//   4. promoteReadyEditions - a form that has NO live edition at all, whose edition is approved, mapped (or has nothing to map) and that the release gate itself rates "promote", is activated through the
+//                           normal VersionManagementService.activate (release gate and edition-acceptance gate both run inside it). Nothing live is ever replaced by this step; needs FORM_PIPELINE_AUTONOMY on.
+//   5. registerContinuationSheets - a continuation sheet of a form (I-129 Attachment-1) carries its owner-given name and is listed, conditionally, for every visa type that files the form.
 //
 // Fail-safe: never throws, every step is bounded and reports what it did; FORM_MAPPING_MAINTENANCE=false switches it off.
 const logger = require("../../../utils/logger");
@@ -76,10 +78,44 @@ async function activateReadyDrafts({ dryRun = false, only } = {}) {
   return results;
 }
 
+/** 4. Activate an approved, mapped edition of a form that has no live edition, when the release gate says "promote". Never replaces a live edition. */
+async function promoteReadyEditions({ dryRun = false, only } = {}) {
+  const results = [];
+  if (require("../../../config/formPipelineAutonomy").mode() !== "on") return results;
+  const Template = model("USCISFormTemplate");
+  const candidates = await Template.find({
+    status: { $in: ["review", "draft"] },
+    approvedAt: { $ne: null },
+    approvedBy: { $ne: null },
+    $or: [{ mappingStatus: "active" }, { "lifecycle.autoNoMapping": { $exists: true } }],
+    ...(only?.length ? { formCode: { $in: only } } : {}),
+  }).select("_id formCode version").lean();
+  const ReleaseGate = require("../../form-release/ReleaseGate");
+  const FormVersionService = require("../../uscis-form-import/services/FormVersionService");
+  for (const candidate of candidates) {
+    const label = { formCode: candidate.formCode, version: candidate.version };
+    try {
+      if (await Template.exists({ formCode: candidate.formCode, status: "active" })) continue; // a live edition is never replaced here
+      if (await model("FormPipelineJob").exists({ formCode: candidate.formCode, open: true })) { results.push({ ...label, skipped: "a pipeline job for the form is still open" }); continue; }
+      const template = await Template.findById(candidate._id);
+      const verdict = await ReleaseGate.evaluate(template, { req: request("mapping-maintenance") });
+      if (verdict.decision !== "promote") { results.push({ ...label, skipped: `release gate: ${verdict.decision}` }); continue; }
+      if (dryRun) { results.push({ ...label, wouldPromote: true }); continue; }
+      await new FormVersionService().activate(template._id, actor(), request("mapping-maintenance"));
+      results.push({ ...label, promoted: true });
+      logger.info("mapping_maintenance_edition_promoted", { formCode: candidate.formCode, version: candidate.version });
+    } catch (error) {
+      results.push({ ...label, error: error.message });
+      logger.warn("mapping_maintenance_promote_failed", { formCode: candidate.formCode, error: error.message });
+    }
+  }
+  return results;
+}
+
 /** 3. Forms with nothing to map read "Fully mapped". */
 async function labelNoMappingForms({ dryRun = false } = {}) {
   const USCISFormTemplate = model("USCISFormTemplate");
-  const stale = await USCISFormTemplate.find({ status: "active", formCode: { $in: [...NO_MAPPING_FORMS] }, mappingStatus: { $ne: "active" } }).select("formCode mappingStatus").lean();
+  const stale = await USCISFormTemplate.find({ status: "active", mappingStatus: { $ne: "active" }, $or: [{ formCode: { $in: [...NO_MAPPING_FORMS] } }, { "lifecycle.autoNoMapping": { $exists: true } }] }).select("formCode mappingStatus").lean();
   if (!dryRun && stale.length) await USCISFormTemplate.updateMany({ _id: { $in: stale.map((item) => item._id) } }, { $set: { mappingStatus: "active" } }, { timestamps: false });
   return stale.map((item) => ({ formCode: item.formCode, was: item.mappingStatus }));
 }
@@ -115,13 +151,13 @@ async function registerContinuationSheets({ dryRun = false } = {}) {
 
 /** All four, in order. Never throws. */
 async function runAll({ dryRun = false } = {}) {
-  const summary = { specs: [], drafts: [], noMapping: [], sheets: [] };
+  const summary = { specs: [], drafts: [], promoted: [], noMapping: [], sheets: [] };
   if (!enabled()) return { skipped: "disabled" };
-  for (const [key, step] of [["specs", applyDecidedSpecs], ["drafts", activateReadyDrafts], ["noMapping", labelNoMappingForms], ["sheets", registerContinuationSheets]]) {
+  for (const [key, step] of [["specs", applyDecidedSpecs], ["drafts", activateReadyDrafts], ["promoted", promoteReadyEditions], ["noMapping", labelNoMappingForms], ["sheets", registerContinuationSheets]]) {
     try { summary[key] = await step({ dryRun }); } catch (error) { logger.warn("mapping_maintenance_step_failed", { step: key, error: error.message }); }
   }
   try { require("../../uscis-forms/uscis-form.service").invalidateTemplateCache(); } catch (_error) { /* cache only */ }
   return summary;
 }
 
-module.exports = { runAll, applyDecidedSpecs, activateReadyDrafts, labelNoMappingForms, registerContinuationSheets, enabled };
+module.exports = { runAll, applyDecidedSpecs, activateReadyDrafts, promoteReadyEditions, labelNoMappingForms, registerContinuationSheets, enabled };
