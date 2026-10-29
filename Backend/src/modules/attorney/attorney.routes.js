@@ -20,6 +20,10 @@ router.get("/dashboard", authenticate, requireAttorney, authorizePermissions("da
 
 router.get("/cases/:caseId", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.getCase);
 
+router.post("/cases/:caseId/activity", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.recordActivity);
+router.post("/cases/:caseId/review-complete", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.completeReview);
+router.post("/cases/:caseId/review-reopen", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.reopenReview);
+
 router.get(
   "/cases/:caseId/feedback",
   authenticate,

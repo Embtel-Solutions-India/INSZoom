@@ -20,6 +20,8 @@ import FeedbackTab from './pages/Cases/CaseDetail/FeedbackTab'
 import TimelineTab from './pages/Cases/CaseDetail/TimelineTab'
 import MessagesPage from './pages/Messages/MessagesPage'
 import TasksPage from './pages/Tasks/TasksPage'
+import TaskOverviewPage from './pages/Tasks/TaskOverviewPage'
+import TaskDetailPage from './pages/Tasks/TaskDetailPage'
 import usePushNotifications from './hooks/usePushNotifications'
 
 function PushRegistrar() {
@@ -69,7 +71,9 @@ export default function App() {
                     Both routes render the same split list + chat page. */}
                 <Route path="/messages" element={<MessagesPage />} />
                 <Route path="/messages/:caseId" element={<MessagesPage />} />
-                <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/tasks" element={<TaskOverviewPage />} />
+                <Route path="/tasks/my-tasks" element={<TasksPage />} />
+                <Route path="/tasks/:id" element={<TaskDetailPage />} />
                 <Route path="/cases/:caseId" element={<CaseDetailLayout />}>
                   <Route index element={<Navigate to="overview" replace />} />
                   <Route path="overview" element={<OverviewTab />} />

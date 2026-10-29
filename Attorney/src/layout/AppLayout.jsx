@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import ErrorBoundary from '../components/ErrorBoundary'
 import EnablePushButton from '../components/EnablePushButton'
 import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
@@ -157,7 +158,9 @@ export default function AppLayout() {
         </header>
 
         <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 lg:p-6">
-          <Outlet />
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       <EnablePushButton />
       </div>
