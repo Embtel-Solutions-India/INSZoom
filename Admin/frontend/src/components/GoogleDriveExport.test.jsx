@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, configure } from '@testing-library/react'
+
+// Each test loads a fresh copy of the component (its status cache and Picker settings are read at import time). When the whole suite runs in
+// parallel that import can take a few seconds, so this file waits longer than the 1s / 5s defaults. It changes nothing about what is asserted.
+configure({ asyncUtilTimeout: 10000 })
+vi.setConfig({ testTimeout: 30000 })
 
 const api = { status: vi.fn(), listFolders: vi.fn(), lookupLinks: vi.fn(), sync: vi.fn(), job: vi.fn(), retry: vi.fn(), createFolder: vi.fn(), connectStart: vi.fn(), activate: vi.fn(), removeAccount: vi.fn(), validateFolder: vi.fn(), pickerToken: vi.fn() }
 vi.mock('../services/api', () => ({ googleDriveApi: new Proxy({}, { get: (_t, name) => (...args) => api[name](...args) }) }))
@@ -25,6 +30,22 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/cases/c1')
 })
 
+// A stand-in for Google's Picker: records how it was built and lets a test "pick" a folder.
+let built
+function fakePickerApi() {
+  built = { views: [], features: [] }
+  class DocsView {
+    constructor(id) { built.views.push(this); this.id = id; this.opts = {} }
+    setIncludeFolders(v) { this.opts.includeFolders = v; return this } setSelectFolderEnabled(v) { this.opts.selectFolder = v; return this } setMimeTypes(v) { this.opts.mime = v; return this }
+    setEnableDrives(v) { this.opts.drives = v; return this } setLabel(v) { this.opts.label = v; return this } setParent(v) { this.opts.parent = v; return this } setOwnedByMe(v) { this.opts.ownedByMe = v; return this }
+  }
+  class PickerBuilder {
+    addView() { return this } enableFeature(f) { built.features.push(f); return this } setOAuthToken(t) { built.token = t; return this } setDeveloperKey(k) { built.key = k; return this } setAppId(a) { built.appId = a; return this }
+    setOrigin(o) { built.origin = o; return this } setTitle(t) { built.title = t; return this } setCallback(cb) { built.callback = cb; return this } build() { return { setVisible: (v) => { built.visible = v } } }
+  }
+  return { DocsView, PickerBuilder, ViewId: { FOLDERS: 'FOLDERS', DOCS: 'DOCS' }, Feature: { SUPPORT_DRIVES: 'SUPPORT_DRIVES' }, Action: { PICKED: 'picked', CANCEL: 'cancel' } }
+}
+
 describe('GoogleDriveExport', () => {
   it('the button reads "Add to Drive" with the Google Drive logo to the right of the word', async () => {
     await mount({ enabled: true, configured: true, connected: false, status: 'disconnected' })
@@ -33,7 +54,9 @@ describe('GoogleDriveExport', () => {
     const logo = button.querySelector('svg[aria-label="Google Drive"]')
     expect(logo).toBeTruthy()
     expect(logo.previousElementSibling.textContent).toBe('Add to Drive') // logo comes after the text
-    expect(logo.querySelectorAll('path').length).toBe(6)
+    expect(logo.getAttribute('viewBox')).toBe('0 0 1280 1186') // the new three-lobe Drive mark
+    expect(logo.querySelectorAll('path').length).toBe(4) // green, the green-to-blue sheen, blue, yellow
+    expect(logo.querySelectorAll('linearGradient').length).toBe(3)
   })
 
   it('renders nothing when the feature is off or the status call fails (existing screen unchanged)', async () => {
@@ -152,16 +175,7 @@ describe('GoogleDriveExport', () => {
 
   describe('with Google Picker configured', () => {
     // A stand-in for Google's Picker: records how it was built and lets the test "pick" a folder.
-    let built
-    const fakePicker = () => {
-      built = { views: [], features: [] }
-      class DocsView { constructor(id) { built.views.push(this); this.id = id; this.opts = {} } setIncludeFolders(v) { this.opts.includeFolders = v; return this } setSelectFolderEnabled(v) { this.opts.selectFolder = v; return this } setMimeTypes(v) { this.opts.mime = v; return this } setEnableDrives(v) { this.opts.drives = v; return this } }
-      class PickerBuilder {
-        addView() { return this } enableFeature(f) { built.features.push(f); return this } setOAuthToken(t) { built.token = t; return this } setDeveloperKey(k) { built.key = k; return this } setAppId(a) { built.appId = a; return this }
-        setOrigin(o) { built.origin = o; return this } setTitle(t) { built.title = t; return this } setCallback(cb) { built.callback = cb; return this } build() { return { setVisible: (v) => { built.visible = v } } }
-      }
-      window.google = { picker: { DocsView, PickerBuilder, ViewId: { FOLDERS: 'FOLDERS' }, Feature: { SUPPORT_DRIVES: 'SUPPORT_DRIVES' }, Action: { PICKED: 'picked', CANCEL: 'cancel' } } }
-    }
+    const fakePicker = () => { window.google = { picker: fakePickerApi() } }
     beforeEach(() => { vi.stubEnv('VITE_GOOGLE_PICKER_API_KEY', 'picker-key'); vi.stubEnv('VITE_GOOGLE_CLOUD_PROJECT_NUMBER', '12345'); fakePicker() })
     afterEach(() => { vi.unstubAllEnvs(); delete window.google })
 
@@ -183,7 +197,10 @@ describe('GoogleDriveExport', () => {
       await waitFor(() => expect(built.visible).toBe(true))
       expect(built).toMatchObject({ token: 'short-lived', key: 'picker-key', appId: '12345' })
       expect(built.features).toContain('SUPPORT_DRIVES')
-      expect(built.views.length).toBe(2) // My Drive and shared drives
+      expect(built.views.map((v) => v.opts.label)).toEqual(['My Drive', 'Shared with me', 'Shared drives'])
+      expect(built.views[0].opts.parent).toBe('root') // opens My Drive so folders open into their subfolders
+      expect(built.views[1].opts.ownedByMe).toBe(false)
+      expect(built.views[2].opts.drives).toBe(true)
       expect(built.views.every((v) => v.opts.selectFolder === true && v.opts.includeFolders === true)).toBe(true)
 
       await act(async () => { await built.callback({ action: 'picked', docs: [{ id: 'F9' }] }) })
@@ -292,6 +309,109 @@ describe('GoogleDriveExport', () => {
       expect(screen.queryByText(/accounts, switch/)).toBeNull()
       expect(screen.queryByTestId('drive-accounts')).toBeNull()
     })
+  })
+
+  describe('folder browser (when Google\'s window is unavailable or not wanted)', () => {
+    const connected = { enabled: true, configured: true, connected: true, status: 'connected', email: 'me@example.com' }
+    const toFolderStep = async () => {
+      fireEvent.click(await screen.findByTestId('add-to-drive-button'))
+      fireEvent.click(await screen.findByLabelText('passport.pdf'))
+      fireEvent.click(screen.getByTestId('drive-next'))
+    }
+
+    it('walks into existing folders and subfolders, selects one, and creates a new folder inside the folder that is open', async () => {
+      api.listFolders.mockImplementation((parentId) => ok({ folders: parentId === 'root' ? [{ id: 'f1', name: 'Smith Family' }] : parentId === 'f1' ? [{ id: 'f2', name: 'Petitions' }] : [], recent: [] }))
+      api.createFolder.mockReturnValue(ok({ folder: { id: 'new9', name: 'Evidence' } }))
+      api.sync.mockReturnValue(ok({ jobId: 'j3' }))
+      api.job.mockReturnValue(ok({ job: { id: 'j3', status: 'completed', folderName: 'Evidence', counts: { synced: 1, updated: 0, skipped: 0, failed: 0 }, items: [{ documentId: 'd1', name: 'passport.pdf', status: 'synced' }] } }))
+      await mount(connected)
+      await toFolderStep()
+
+      const browser = await screen.findByTestId('drive-browser')
+      expect(await screen.findByText('Smith Family')).toBeTruthy()
+      expect(api.listFolders).toHaveBeenCalledWith('root')
+
+      fireEvent.click(screen.getByText('Smith Family')) // open an existing folder
+      expect(await screen.findByText('Petitions')).toBeTruthy() // its subfolder
+      expect(api.listFolders).toHaveBeenCalledWith('f1')
+      expect(browser.textContent).toMatch(/My Drive.*\/.*Smith Family/s)
+
+      fireEvent.click(screen.getByText('Petitions')) // go one level deeper
+      await waitFor(() => expect(api.listFolders).toHaveBeenCalledWith('f2'))
+      expect(await screen.findByPlaceholderText('New folder inside "Petitions"')).toBeTruthy()
+      fireEvent.change(screen.getByPlaceholderText('New folder inside "Petitions"'), { target: { value: 'Evidence' } })
+      fireEvent.click(screen.getByRole('button', { name: /Create/i }))
+      await waitFor(() => expect(api.createFolder).toHaveBeenCalledWith('Evidence', 'f2')) // created INSIDE the existing subfolder
+      fireEvent.click(await screen.findByTestId('drive-start'))
+      await waitFor(() => expect(api.sync).toHaveBeenCalledWith({ documentIds: ['d1'], folderId: 'new9', caseId: 'c1' }))
+    })
+
+    it('selecting an existing folder checks it with Google first, and breadcrumbs go back up', async () => {
+      api.listFolders.mockImplementation((parentId) => ok({ folders: parentId === 'root' ? [{ id: 'f1', name: 'Smith Family' }] : [], recent: [] }))
+      api.validateFolder.mockReturnValue(ok({ folder: { id: 'f1', name: 'Smith Family' } }))
+      await mount(connected)
+      await toFolderStep()
+      fireEvent.click(await screen.findByText('Smith Family'))
+      await waitFor(() => expect(api.listFolders).toHaveBeenCalledWith('f1'))
+      fireEvent.click(screen.getByRole('button', { name: 'My Drive' })) // breadcrumb
+      fireEvent.click(await screen.findByRole('button', { name: 'Select' }))
+      await waitFor(() => expect(api.validateFolder).toHaveBeenCalledWith('f1'))
+      expect(await screen.findByText(/Optional: create a new folder inside “Smith Family”/)).toBeTruthy()
+    })
+
+    it('a folder the account cannot write to is refused with the reason', async () => {
+      api.listFolders.mockReturnValue(ok({ folders: [{ id: 'ro', name: 'Read only' }], recent: [] }))
+      api.validateFolder.mockImplementation(() => Promise.reject({ response: { data: { message: 'The connected Google account cannot add files to that folder' } } }))
+      await mount(connected)
+      await toFolderStep()
+      await screen.findByText('Read only')
+      fireEvent.click(screen.getByRole('button', { name: 'Select' }))
+      expect(await screen.findByText(/cannot add files to that folder/i)).toBeTruthy()
+      expect(screen.getByTestId('drive-start').disabled).toBe(true)
+    })
+
+    it('shows why a folder list could not load instead of an empty list', async () => {
+      api.listFolders.mockImplementation(() => Promise.reject({ response: { data: { message: 'Google Drive access was revoked or expired.' } } }))
+      await mount(connected)
+      await toFolderStep()
+      expect(await screen.findByText(/revoked or expired/i)).toBeTruthy()
+    })
+
+    describe('with Google Picker configured', () => {
+      beforeEach(() => { vi.stubEnv('VITE_GOOGLE_PICKER_API_KEY', 'picker-key'); vi.stubEnv('VITE_GOOGLE_CLOUD_PROJECT_NUMBER', '12345'); window.google = { picker: {} } })
+      afterEach(() => { vi.unstubAllEnvs(); delete window.google })
+
+      it('if Google\'s window cannot be opened, the user is told and gets the folder browser instead of a stuck screen', async () => {
+        api.pickerToken.mockImplementation(() => Promise.reject({ response: { data: { message: 'Could not prepare Google Drive.' } } }))
+        api.listFolders.mockReturnValue(ok({ folders: [{ id: 'f1', name: 'Smith Family' }], recent: [] }))
+        await mount(connected)
+        await toFolderStep()
+        expect(await screen.findByText(/Could not prepare Google Drive/)).toBeTruthy()
+        expect(await screen.findByTestId('drive-browser')).toBeTruthy()
+        expect(await screen.findByText('Smith Family')).toBeTruthy()
+        expect(screen.queryByText(/Opening Google Drive/)).toBeNull()
+      })
+
+      it('a "browse here instead" link is always available next to Google\'s window', async () => {
+        api.pickerToken.mockReturnValue(ok({ accessToken: 't', expiresIn: 1800 }))
+        window.google.picker = fakePickerApi()
+        api.listFolders.mockReturnValue(ok({ folders: [{ id: 'f1', name: 'Smith Family' }], recent: [] }))
+        await mount(connected)
+        await toFolderStep()
+        await waitFor(() => expect(built.visible).toBe(true))
+        expect(screen.queryByText(/Opening Google Drive/)).toBeNull() // the dialog is not stuck "opening" while Google's window is up
+        fireEvent.click(await screen.findByTestId('drive-browse-instead'))
+        expect(await screen.findByText('Smith Family')).toBeTruthy()
+        expect(api.listFolders).toHaveBeenCalledWith('root')
+      })
+    })
+  })
+
+  it('an account saved before the Drive permission was widened is asked to reconnect once, with the reason', async () => {
+    await mount({ enabled: true, configured: true, connected: false, status: 'reconnect_required', email: 'me@work.com', lastError: 'Immiglance now needs access to your whole Google Drive so you can pick existing folders and subfolders. Please reconnect this account once.', accounts: [{ id: 'A1', email: 'me@work.com', status: 'reconnect_required', active: true }] })
+    fireEvent.click(await screen.findByTestId('add-to-drive-button'))
+    expect(await screen.findByText(/needs access to your whole Google Drive/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Reconnect my Google Drive/i })).toBeTruthy()
   })
 
   it('reopens with a message after returning from Google, and cleans the URL', async () => {

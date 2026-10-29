@@ -31,7 +31,7 @@ const otherUser = { _id: oid(), role: "case_manager" };
 let tick = 0;
 
 function addAccount(owner, { email, status = "connected", active = false } = {}) {
-  const conn = { _id: oid(), userId: String(owner._id), googleAccountId: `g-${oid()}`, googleEmail: email, status, active, connectedAt: new Date(Date.now() + tick++ * 1000) };
+  const conn = { _id: oid(), userId: String(owner._id), googleAccountId: `g-${oid()}`, googleEmail: email, status, active, scopes: [driveClient.REQUIRED_SCOPE], connectedAt: new Date(Date.now() + tick++ * 1000) };
   world.conns.push(conn);
   return conn;
 }
@@ -460,10 +460,10 @@ function stubGoogle({ tokens, payload }) {
   };
   return () => { driveClient.newOAuthClient = realNew; };
 }
-const GOOD = { refresh_token: "rt-1", id_token: "id", scope: "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/drive.file" };
+const GOOD = { refresh_token: "rt-1", id_token: "id", scope: `openid https://www.googleapis.com/auth/userinfo.email ${driveClient.REQUIRED_SCOPE}` };
 const query = (url) => Object.fromEntries(new URL(url).searchParams);
 
-test("connect: the Google URL asks for the account picker, offline access, PKCE and only the drive.file scope; state is stored hashed", async () => {
+test("connect: the Google URL asks for the account picker, offline access, PKCE and only the configured Drive scope; state is stored hashed", async () => {
   reset();
   stateRows.length = 0;
   const { authUrl } = await connectionService.startConnect(user, "/crm-cases/abc");
@@ -472,8 +472,8 @@ test("connect: the Google URL asks for the account picker, offline access, PKCE 
   assert.equal(params.prompt, "select_account consent");
   assert.equal(params.code_challenge_method, "S256");
   assert.ok(params.code_challenge);
-  assert.match(params.scope, /drive\.file/);
-  assert.doesNotMatch(params.scope, /auth\/drive(\s|$)/, "never the broad drive scope");
+  assert.equal(params.scope, `${driveClient.REQUIRED_SCOPE} openid email`, "exactly the configured Drive scope, nothing extra");
+  assert.ok(!/drive\.readonly|drive\.metadata|drive\.appdata/.test(params.scope), "no other Drive scope is ever requested");
   assert.notEqual(params.include_granted_scopes, "true");
   assert.equal(stateRows.length, 1);
   assert.notEqual(stateRows[0].stateHash, params.state, "only a hash of the state is stored");
@@ -566,4 +566,69 @@ test("connect: a hostile return path cannot become an open redirect", async () =
   try { url = new URL(await connectionService.handleCallback({ code: "c", state: query(authUrl).state })); } finally { restore(); }
   assert.notEqual(url.hostname, "evil.example");
   assert.equal(url.pathname, "/");
+});
+
+// ---------- the Drive permission (GOOGLE_DRIVE_SCOPES) ----------
+
+test("scope: the app asks Google for exactly the configured Drive scope (+ openid, email), never anything wider", async () => {
+  assert.deepEqual(driveClient.SCOPES, [driveClient.REQUIRED_SCOPE, "openid", "email"]);
+  assert.ok([driveClient.DRIVE_FILE_SCOPE, driveClient.DRIVE_FULL_SCOPE].includes(driveClient.REQUIRED_SCOPE));
+});
+
+test("scope: an account saved with a narrower grant than the app now needs is flagged for ONE reconnect, with the reason, and not used", async () => {
+  reset();
+  const narrow = driveClient.REQUIRED_SCOPE === driveClient.DRIVE_FULL_SCOPE ? [driveClient.DRIVE_FILE_SCOPE, "openid"] : [];
+  if (driveClient.REQUIRED_SCOPE === driveClient.DRIVE_FILE_SCOPE) return; // nothing is narrower than drive.file with a populated list
+  mainAccount.scopes = narrow;
+  const status = await connectionService.getStatus(user);
+  assert.equal(status.connected, false);
+  assert.equal(status.status, "reconnect_required");
+  assert.match(status.lastError, /whole Google Drive/);
+  assert.equal(status.accounts[0].status, "reconnect_required");
+  assert.equal(mainAccount.status, "connected", "stored status untouched: it is only a derived state");
+  const a = addDoc("a.pdf", "A");
+  await assert.rejects(syncService.createJob(user, { documentIds: [a], folderId: "F" }), (error) => error.code === "RECONNECT_REQUIRED" && /whole Google Drive/.test(error.message));
+  assert.equal(world.calls.length, 0);
+  // reconnecting (a fresh grant with the full scope) clears it
+  mainAccount.scopes = [driveClient.REQUIRED_SCOPE];
+  assert.equal((await connectionService.getStatus(user)).connected, true);
+});
+
+test("scope: hasRequiredScope rules (legacy records, narrow vs full grants)", async () => {
+  const { DRIVE_FILE_SCOPE, DRIVE_FULL_SCOPE, REQUIRED_SCOPE, hasRequiredScope } = driveClient;
+  assert.equal(hasRequiredScope([REQUIRED_SCOPE, "openid"]), true);
+  assert.equal(hasRequiredScope([DRIVE_FULL_SCOPE]), true, "the full scope always satisfies a drive.file requirement");
+  assert.equal(hasRequiredScope(["openid", "email"]), false);
+  assert.equal(hasRequiredScope(undefined), REQUIRED_SCOPE === DRIVE_FILE_SCOPE, "records saved before scopes were stored only pass under drive.file");
+  if (REQUIRED_SCOPE === DRIVE_FULL_SCOPE) assert.equal(hasRequiredScope([DRIVE_FILE_SCOPE]), false);
+});
+
+test("scope: a callback whose grant does not include the required scope is rejected and saves nothing", async () => {
+  reset();
+  stateRows.length = 0;
+  const before = JSON.stringify(world.conns);
+  const { authUrl } = await connectionService.startConnect(user, "/");
+  const narrowGrant = driveClient.REQUIRED_SCOPE === driveClient.DRIVE_FULL_SCOPE ? "openid https://www.googleapis.com/auth/drive.file" : "openid email";
+  const restore = stubGoogle({ tokens: { ...GOOD, scope: narrowGrant }, payload: { sub: "s1", email: "e@x.com" } });
+  try {
+    assert.equal(query(await connectionService.handleCallback({ code: "c", state: query(authUrl).state })).reason, "scope_missing");
+  } finally { restore(); }
+  assert.equal(JSON.stringify(world.conns), before);
+});
+
+test("scope: GOOGLE_DRIVE_SCOPES is read in one place; only the two known Drive scopes are honoured, anything else falls back to drive.file", async () => {
+  const resolve = (value) => {
+    const saved = process.env.GOOGLE_DRIVE_SCOPES;
+    if (value === undefined) delete process.env.GOOGLE_DRIVE_SCOPES; else process.env.GOOGLE_DRIVE_SCOPES = value;
+    delete require.cache[require.resolve("../../../config/env")];
+    const scope = require("../../../config/env").googleDrive.driveScope;
+    if (saved === undefined) delete process.env.GOOGLE_DRIVE_SCOPES; else process.env.GOOGLE_DRIVE_SCOPES = saved;
+    delete require.cache[require.resolve("../../../config/env")];
+    return scope;
+  };
+  assert.equal(resolve("https://www.googleapis.com/auth/drive"), "https://www.googleapis.com/auth/drive");
+  assert.equal(resolve("https://www.googleapis.com/auth/drive.file"), "https://www.googleapis.com/auth/drive.file");
+  assert.equal(resolve("openid, https://www.googleapis.com/auth/drive"), "https://www.googleapis.com/auth/drive");
+  assert.equal(resolve("https://www.googleapis.com/auth/drive.readonly"), "https://www.googleapis.com/auth/drive.file", "a scope this feature does not understand is never requested");
+  assert.equal(resolve(""), "https://www.googleapis.com/auth/drive.file");
 });

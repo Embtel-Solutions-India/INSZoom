@@ -53,6 +53,10 @@ function returnUrl(returnPath, params) {
 
 const notConnected = (message, code) => Object.assign(new Error(message), { statusCode: 409, code });
 
+const UPGRADE_MESSAGE = "Immiglance now needs access to your whole Google Drive so you can pick existing folders and subfolders. Please reconnect this account once.";
+const needsUpgrade = (account) => account.status === "connected" && !driveClient.hasRequiredScope(account.scopes);
+const effectiveStatus = (account) => (needsUpgrade(account) ? "reconnect_required" : account.status);
+
 // The user's accounts, newest first. Connections that were removed are not listed.
 const listConnections = (userId) => GoogleDriveConnection.find({ userId, status: { $ne: "disconnected" } }).sort({ connectedAt: -1 }).lean();
 
@@ -72,26 +76,27 @@ async function getActive(userId) {
 async function requireActive(user) {
   const active = await getActive(user._id);
   if (!active) throw notConnected("Connect your Google Drive first.", "NOT_CONNECTED");
+  if (needsUpgrade(active)) throw notConnected(UPGRADE_MESSAGE, "RECONNECT_REQUIRED");
   if (active.status !== "connected") throw notConnected("This Google account needs to be reconnected. Reconnect it or switch to another account.", "RECONNECT_REQUIRED");
   return active;
 }
 
-const presentAccount = (account) => ({ id: String(account._id), email: account.googleEmail || null, status: account.status, active: Boolean(account.active), connectedAt: account.connectedAt || null });
+const presentAccount = (account) => ({ id: String(account._id), email: account.googleEmail || null, status: effectiveStatus(account), active: Boolean(account.active), connectedAt: account.connectedAt || null });
 
 async function getStatus(user) {
   const accounts = await listConnections(user._id);
   const active = accounts.length ? await getActive(user._id) : null;
-  const connected = active?.status === "connected";
+  const connected = Boolean(active) && effectiveStatus(active) === "connected";
   return {
     enabled: true,
     configured: driveClient.isConfigured(),
     // top level = the active account (what the dialog uses)
-    status: active?.status || "disconnected",
+    status: active ? effectiveStatus(active) : "disconnected",
     connected,
     email: active?.googleEmail || null,
     connectedAt: active?.connectedAt || null,
     lastSuccessfulSyncAt: active?.lastSuccessfulSyncAt || null,
-    lastError: active?.status === "reconnect_required" ? active.lastError?.message || null : null,
+    lastError: active && needsUpgrade(active) ? UPGRADE_MESSAGE : active?.status === "reconnect_required" ? active.lastError?.message || null : null,
     accounts: accounts.map((account) => presentAccount({ ...account, active: Boolean(active) && String(account._id) === String(active._id) })),
   };
 }
@@ -140,7 +145,7 @@ async function handleCallback(query) {
     const codeVerifier = secretBox.decrypt(stateRow.codeVerifierEnc, env.googleDrive.tokenEncryptionKey);
     const { tokens } = await client.getToken({ code, codeVerifier });
     const granted = String(tokens.scope || "").split(/\s+/);
-    if (!granted.includes(driveClient.DRIVE_FILE_SCOPE)) return returnUrl(returnPath, { gdrive: "error", reason: "scope_missing" });
+    if (!driveClient.hasRequiredScope(granted)) return returnUrl(returnPath, { gdrive: "error", reason: "scope_missing" });
     if (!tokens.refresh_token) return returnUrl(returnPath, { gdrive: "error", reason: "no_refresh_token" });
 
     let identity = {};
