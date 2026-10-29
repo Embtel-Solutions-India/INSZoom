@@ -8,7 +8,6 @@ const ctrl = require("./google-drive.controller");
 // Mounted at /api/integrations/google-drive. Everything answers 404 while GOOGLE_DRIVE_INTEGRATION_ENABLED is not "true" (status excepted:
 // the Admin UI uses it to decide whether to show the button at all).
 const staffRoles = ["super_admin", "admin", "team_lead", "case_manager"];
-const adminRoles = ["super_admin", "admin"];
 const perUser = (max) => rateLimit({ windowMs: 60 * 1000, max, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => String(req.user?._id || "anon") });
 const callbackLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 
@@ -20,11 +19,11 @@ router.get("/status", authenticate, authorizeRoles(...staffRoles), ctrl.status);
 router.use(ctrl.requireEnabled);
 router.use(authenticate, authorizeRoles(...staffRoles));
 
-// Connection management: administrators only.
-router.post("/connect/start", ctrl.requireManager, authorizePermissions("settings:manage_integrations"), ctrl.requireConfigured, perUser(10), ctrl.connectStart);
-router.post("/disconnect", ctrl.requireManager, authorizePermissions("settings:manage_integrations"), perUser(10), ctrl.disconnect);
+// Each team member connects and disconnects THEIR OWN Google account (nothing here is shared between users).
+router.post("/connect/start", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(10), ctrl.connectStart);
+router.post("/disconnect", authorizePermissions("documents:read"), perUser(10), ctrl.disconnect);
 
-// Using the shared connection: any staff member (each document is still checked against that person's own access).
+// Using your own connection: each document is still checked against that person's access to the case.
 router.post("/picker-token", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(30), ctrl.pickerToken);
 router.post("/folders/validate", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(60), ctrl.validateFolder);
 router.post("/folders", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(30), ctrl.createFolder);

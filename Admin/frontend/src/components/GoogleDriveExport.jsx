@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Cloud, ExternalLink, FolderOpen, FolderPlus,
 import { googleDriveApi } from '../services/api'
 
 // "Add to Drive": copies the selected case documents into a Google Drive folder. The files stay in Immiglance; Drive gets a copy
-// (re-adding a changed file updates that same copy). The Google account is the ORGANISATION's, connected once by an admin.
+// (re-adding a changed file updates that same copy). Each team member connects and uses THEIR OWN Google account and folders.
 // Renders nothing at all unless the server reports the feature as enabled, so it can never affect a screen where it is switched off.
 
 const PICKER_KEY = import.meta.env.VITE_GOOGLE_PICKER_API_KEY
@@ -75,7 +75,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
     const query = params.toString()
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`)
     setOpen(true)
-    if (outcome === 'connected') { setNotice('Google Drive is connected.'); loadStatus(true).then(setStatus) }
+    if (outcome === 'connected') { setNotice('Your Google Drive is connected.'); loadStatus(true).then(setStatus) }
     else setError(REASONS[reason] || REASONS.connect_failed)
   }, [status?.enabled])
 
@@ -107,9 +107,9 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
   }
 
   const disconnect = async () => {
-    if (!window.confirm('Disconnect Google Drive for the whole organisation? Files already copied to Drive stay there.')) return
+    if (!window.confirm('Disconnect your Google Drive? Files already copied to Drive stay there.')) return
     setBusy('disconnect'); setError('')
-    try { await googleDriveApi.disconnect(); setStatus(await loadStatus(true)); setFolder(null); setNotice('Google Drive was disconnected.') }
+    try { await googleDriveApi.disconnect(); setStatus(await loadStatus(true)); setFolder(null); setNotice('Your Google Drive was disconnected.') }
     catch (err) { setError(errorText(err, 'Could not disconnect.')) } finally { setBusy('') }
   }
 
@@ -190,7 +190,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Add to Google Drive</h3>
-                <p className="text-xs text-muted-foreground">Copies go to Drive. The files stay in Immiglance.</p>
+                <p className="text-xs text-muted-foreground">Copies go to your own Google Drive. The files stay in Immiglance.</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground" aria-label="Close"><X className="h-5 w-5" /></button>
             </div>
@@ -201,23 +201,21 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
 
               {!connected && (
                 <div className="rounded-xl border border-border p-4 text-sm">
-                  {status.status === 'reconnect_required' ? <p className="mb-3 text-foreground">Google Drive access expired or was revoked{status.email ? ` for ${status.email}` : ''}.</p> : <p className="mb-3 text-foreground">Google Drive is not connected yet. One connection is shared by the whole team.</p>}
-                  {status.canManage
-                    ? <button type="button" onClick={connect} disabled={busy === 'connect' || !status.configured} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"><Cloud className="h-4 w-4" /> {busy === 'connect' ? 'Opening Google…' : status.status === 'reconnect_required' ? 'Reconnect Google Drive' : 'Connect Google Drive'}</button>
-                    : <p className="text-muted-foreground">Ask an administrator to connect Google Drive.</p>}
-                  {status.canManage && !status.configured && <p className="mt-2 text-xs text-muted-foreground">The server is missing Google Drive settings; check the backend configuration.</p>}
+                  {status.status === 'reconnect_required' ? <p className="mb-3 text-foreground">Your Google Drive access expired or was revoked{status.email ? ` for ${status.email}` : ''}.</p> : <p className="mb-3 text-foreground">Connect your own Google Drive to copy these documents into your folders. Each team member connects their own account.</p>}
+                  <button type="button" onClick={connect} disabled={busy === 'connect' || !status.configured} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"><Cloud className="h-4 w-4" /> {busy === 'connect' ? 'Opening Google…' : status.status === 'reconnect_required' ? 'Reconnect my Google Drive' : 'Connect my Google Drive'}</button>
+                  {!status.configured && <p className="mt-2 text-xs text-muted-foreground">Google Drive is not fully set up on the server yet. Please contact an administrator.</p>}
                 </div>
               )}
 
               {connected && !job && (
                 <>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Connected as <strong className="text-foreground">{status.email || 'Google account'}</strong></span>
-                    {status.canManage && <button type="button" onClick={disconnect} disabled={busy === 'disconnect'} className="text-red-600 hover:underline">Disconnect</button>}
+                    <span>Your Google Drive: <strong className="text-foreground">{status.email || 'Google account'}</strong></span>
+                    <button type="button" onClick={disconnect} disabled={busy === 'disconnect'} className="text-red-600 hover:underline">Disconnect</button>
                   </div>
 
                   <section>
-                    <h4 className="mb-2 text-sm font-semibold text-foreground">1. Destination folder</h4>
+                    <h4 className="mb-2 text-sm font-semibold text-foreground">1. Destination folder in your Drive</h4>
                     {folder
                       ? <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"><span className="flex items-center gap-2 text-foreground"><FolderOpen className="h-4 w-4" /> {folder.name}</span><button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => setFolder(null)}>Change</button></div>
                       : (
@@ -227,7 +225,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                           )}
                           {folders.length > 0 && (
                             <div>
-                              <p className="mb-1 text-xs text-muted-foreground">Recent and Immiglance-created folders</p>
+                              <p className="mb-1 text-xs text-muted-foreground">Your recent and Immiglance-created folders</p>
                               <div className="flex flex-wrap gap-2">{folders.map((f) => <button key={f.id} type="button" onClick={() => setFolder(f)} className="rounded-full border border-border px-3 py-1 text-xs text-foreground hover:bg-muted">{f.name}</button>)}</div>
                             </div>
                           )}
@@ -276,7 +274,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 text-xs text-muted-foreground">The files are still in Immiglance. Drive now holds a copy in “{job.folderName}”.</p>
+                  <p className="mt-2 text-xs text-muted-foreground">The files are still in Immiglance. Your Drive now holds a copy in “{job.folderName}”.</p>
                 </section>
               )}
             </div>

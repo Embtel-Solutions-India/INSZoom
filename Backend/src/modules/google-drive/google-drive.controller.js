@@ -4,9 +4,6 @@ const driveClient = require("./drive.client");
 const connectionService = require("./connection.service");
 const syncService = require("./sync.service");
 
-const ADMIN_ROLES = ["super_admin", "admin"];
-const canManage = (user) => ADMIN_ROLES.includes(String(user?.role));
-
 function fail(res, error, fallbackMessage) {
   if (error instanceof driveClient.DriveError) {
     const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 502;
@@ -28,16 +25,10 @@ function requireConfigured(req, res, next) {
   return next();
 }
 
-function requireManager(req, res, next) {
-  if (!canManage(req.user)) return res.status(403).json({ success: false, message: "Only an administrator can manage the Google Drive connection." });
-  return next();
-}
-
 async function status(req, res) {
   try {
     if (!env.googleDrive.enabled) return res.json({ success: true, enabled: false });
-    const result = await connectionService.getStatus();
-    res.json({ success: true, ...result, canManage: canManage(req.user) });
+    res.json({ success: true, ...(await connectionService.getStatus(req.user)) });
   } catch (error) {
     fail(res, error, "Could not read Google Drive status.");
   }
@@ -74,7 +65,7 @@ async function disconnect(req, res) {
 // Short-lived access token for Google Picker only (never the refresh token). Not cached anywhere.
 async function pickerToken(req, res) {
   try {
-    const accessToken = await driveClient.getAccessToken(connectionService.resolveOrgId());
+    const accessToken = await driveClient.getAccessToken(req.user._id);
     res.set("Cache-Control", "no-store");
     res.json({ success: true, accessToken, expiresIn: 1800 });
   } catch (error) {
@@ -86,7 +77,7 @@ async function validateFolder(req, res) {
   try {
     const folderId = String(req.body?.folderId || "").trim();
     if (!folderId) return res.status(400).json({ success: false, message: "folderId is required." });
-    res.json({ success: true, folder: await driveClient.getFolder(connectionService.resolveOrgId(), folderId) });
+    res.json({ success: true, folder: await driveClient.getFolder(req.user._id, folderId) });
   } catch (error) {
     if (error?.code === "NOT_FOUND") return res.status(404).json({ success: false, code: "NOT_FOUND", message: "That folder was not found, or the connected Google account cannot access it." });
     fail(res, error, "Could not check that folder.");
@@ -95,12 +86,12 @@ async function validateFolder(req, res) {
 
 async function createFolder(req, res) {
   try {
-    const orgId = connectionService.resolveOrgId();
+    const userId = req.user._id;
     const name = String(req.body?.name || "").replace(/[\u0000-\u001f]/g, "").trim();
     if (!name || name.length > 200) return res.status(400).json({ success: false, message: "Enter a folder name (up to 200 characters)." });
     const parentId = req.body?.parentId ? String(req.body.parentId) : undefined;
-    if (parentId) await driveClient.getFolder(orgId, parentId); // must exist and be writable
-    const folder = await driveClient.createFolder(orgId, name, parentId);
+    if (parentId) await driveClient.getFolder(userId, parentId); // must exist and be writable
+    const folder = await driveClient.createFolder(userId, name, parentId);
     await connectionService.audit(req.user._id, "google_drive.folder_created", { folderId: folder.id });
     res.status(201).json({ success: true, folder: { id: folder.id, name: folder.name, webViewLink: folder.webViewLink } });
   } catch (error) {
@@ -110,8 +101,7 @@ async function createFolder(req, res) {
 
 async function listFolders(req, res) {
   try {
-    const orgId = connectionService.resolveOrgId();
-    const [folders, recent] = await Promise.all([driveClient.listAppFolders(orgId, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders()]);
+    const [folders, recent] = await Promise.all([driveClient.listAppFolders(req.user._id, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders(req.user)]);
     res.json({ success: true, folders, recent });
   } catch (error) {
     fail(res, error, "Could not list folders.");
@@ -156,4 +146,4 @@ async function lookupLinks(req, res) {
   }
 }
 
-module.exports = { callback, connectStart, createFolder, disconnect, getJob, listFolders, lookupLinks, pickerToken, requireConfigured, requireEnabled, requireManager, retryJob, startSync, status, validateFolder };
+module.exports = { callback, connectStart, createFolder, disconnect, getJob, listFolders, lookupLinks, pickerToken, requireConfigured, requireEnabled, retryJob, startSync, status, validateFolder };

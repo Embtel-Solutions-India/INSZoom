@@ -4,7 +4,6 @@ const mongoose = require("mongoose");
 // Single use, expires after 10 minutes.
 const googleDriveOAuthStateSchema = new mongoose.Schema({
   stateHash: { type: String, required: true, unique: true },
-  orgId: { type: String, required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   codeVerifierEnc: String,
   returnPath: String,
