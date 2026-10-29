@@ -19,6 +19,10 @@ const googleDriveJobSchema = new mongoose.Schema(
   {
     // The user whose Google Drive receives the copies; jobs are private to them.
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    // Which of the user's connected Google accounts received (or will receive) the copies; fixed when the job starts, so switching the
+    // active account afterwards never redirects a running job.
+    connectionId: { type: mongoose.Schema.Types.ObjectId, ref: "GoogleDriveConnection", index: true },
+    accountEmail: String,
     caseId: { type: mongoose.Schema.Types.ObjectId, ref: "Case" },
     folderId: { type: String, required: true },
     folderName: String,

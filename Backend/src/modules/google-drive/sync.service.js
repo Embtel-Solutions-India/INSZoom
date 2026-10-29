@@ -9,7 +9,7 @@ const storageService = require("../uploads/storage.service");
 const documentService = require("../documents/document.service");
 const petitionGate = require("../petition-review/petitionGate");
 const driveClient = require("./drive.client");
-const { audit, ensureIndexes } = require("./connection.service");
+const { audit, ensureIndexes, getActive, requireActive } = require("./connection.service");
 
 const MAX_DOCUMENTS_PER_JOB = 100;
 const GLOBAL_CONCURRENCY = 3; // simultaneous Drive uploads across all jobs in this process
@@ -17,7 +17,7 @@ const STALE_JOB_MS = 10 * 60 * 1000;
 
 // ---- in-process bookkeeping (jobs run inside the API process; all durable state is in Mongo) ----
 const runningJobs = new Set(); // jobIds being executed by this process
-const activeDocs = new Set(); // `${userId}:${documentId}:${folderId}` currently uploading: a second request for the same copy is skipped
+const activeDocs = new Set(); // `${connectionId}:${documentId}:${folderId}` currently uploading: a second request for the same copy is skipped
 let slotsInUse = 0;
 const slotWaiters = [];
 
@@ -66,12 +66,9 @@ async function setItem(jobId, documentId, patch) {
 
 // ---- creating a job ----
 async function createJob(user, { documentIds, folderId, caseId, force }) {
-  const userId = user._id;
   await ensureIndexes();
-  const connection = await GoogleDriveConnection.findOne({ userId }).lean();
-  if (!connection || connection.status !== "connected") {
-    throw Object.assign(new Error(connection?.status === "reconnect_required" ? "Your Google Drive access expired. Please reconnect it." : "Connect your Google Drive first."), { statusCode: 409 });
-  }
+  const connection = await requireActive(user); // the account the person has switched to (clear NOT_CONNECTED / RECONNECT_REQUIRED errors)
+  const connectionId = connection._id;
   const ids = [...new Set((documentIds || []).map(String))].filter((id) => mongoose.isValidObjectId(id));
   if (!ids.length) throw Object.assign(new Error("Select at least one document."), { statusCode: 400 });
   if (ids.length > MAX_DOCUMENTS_PER_JOB) throw Object.assign(new Error(`You can add up to ${MAX_DOCUMENTS_PER_JOB} documents at a time.`), { statusCode: 400 });
@@ -79,7 +76,7 @@ async function createJob(user, { documentIds, folderId, caseId, force }) {
 
   let folder;
   try {
-    folder = await driveClient.getFolder(userId, folderId);
+    folder = await driveClient.getFolder(connectionId, folderId);
   } catch (error) {
     if (error instanceof driveClient.DriveError) throw Object.assign(new Error(error.code === "NOT_FOUND" ? "That folder was not found, or the connected Google account cannot access it." : error.message), { statusCode: error.status && error.status < 500 ? error.status : 502 });
     throw error;
@@ -99,6 +96,8 @@ async function createJob(user, { documentIds, folderId, caseId, force }) {
 
   const job = await GoogleDriveJob.create({
     requestedBy: user._id,
+    connectionId,
+    accountEmail: connection.googleEmail,
     caseId: mongoose.isValidObjectId(caseId) ? caseId : undefined,
     folderId: folder.id,
     folderName: folder.name,
@@ -162,13 +161,13 @@ async function finalizeJob(jobId) {
   const succeeded = job.items.filter((item) => ["synced", "updated"].includes(item.status)).length;
   const status = failed === 0 ? "completed" : failed === job.items.length ? "failed" : "completed_with_errors";
   await GoogleDriveJob.updateOne({ _id: jobId }, { $set: { status, finishedAt: new Date() } });
-  if (succeeded) await GoogleDriveConnection.updateOne({ userId: job.requestedBy }, { $set: { lastSuccessfulSyncAt: new Date() } }).catch(() => {});
+  if (succeeded) await GoogleDriveConnection.updateOne({ _id: job.connectionId }, { $set: { lastSuccessfulSyncAt: new Date() } }).catch(() => {});
   await audit(job.requestedBy, "google_drive.sync_finished", { jobId: String(jobId), status, succeeded, failed });
 }
 
 async function processItem(job, item, user) {
-  const userId = job.requestedBy;
-  const lockKey = `${userId}:${item.documentId}:${job.folderId}`;
+  const connectionId = job.connectionId;
+  const lockKey = `${connectionId}:${item.documentId}:${job.folderId}`;
   if (activeDocs.has(lockKey)) {
     await setItem(job._id, item.documentId, { status: "skipped", reason: "This file is already being added to this folder." });
     return;
@@ -190,11 +189,11 @@ async function processItem(job, item, user) {
     const mimeType = doc.mimeType || doc.fileType || "application/octet-stream";
     const appProperties = { immiglanceDoc: String(doc._id) };
 
-    let link = await GoogleDriveFileLink.findOne({ userId, documentId: doc._id, driveFolderId: job.folderId });
+    let link = await GoogleDriveFileLink.findOne({ connectionId, documentId: doc._id, driveFolderId: job.folderId });
     let meta = null;
     if (link) {
       try {
-        meta = await driveClient.getFileMeta(userId, link.driveFileId);
+        meta = await driveClient.getFileMeta(connectionId, link.driveFileId);
       } catch (error) {
         if (!(error instanceof driveClient.DriveError) || error.code !== "NOT_FOUND") throw error;
       }
@@ -213,27 +212,27 @@ async function processItem(job, item, user) {
         uploaded = { id: meta.id, name: meta.name, webViewLink: meta.webViewLink, md5Checksum: meta.md5Checksum };
         if (link.status === "linked") outcome = "synced";
       } else {
-        uploaded = await driveClient.uploadFile(userId, { fileId: link.driveFileId, existing: true, name, mimeType, buffer });
+        uploaded = await driveClient.uploadFile(connectionId, { fileId: link.driveFileId, existing: true, name, mimeType, buffer });
         outcome = link.status === "linked" ? "updated" : "synced";
       }
     } else {
       // New copy: the Drive file ID is generated and saved BEFORE uploading so a crash cannot leave an untracked copy.
-      const fileId = link && link.status === "pending" ? link.driveFileId : await driveClient.generateFileId(userId);
+      const fileId = link && link.status === "pending" ? link.driveFileId : await driveClient.generateFileId(connectionId);
       if (!link) {
-        link = await GoogleDriveFileLink.create({ userId, documentId: doc._id, caseId: doc.caseId, driveFolderId: job.folderId, driveFolderName: job.folderName, driveFileId: fileId, status: "pending" });
+        link = await GoogleDriveFileLink.create({ connectionId, documentId: doc._id, caseId: doc.caseId, driveFolderId: job.folderId, driveFolderName: job.folderName, driveFileId: fileId, status: "pending" });
       } else if (link.driveFileId !== fileId || link.status === "linked") {
         link.driveFileId = fileId;
         link.status = "pending";
         await link.save();
       }
-      uploaded = await driveClient.uploadFile(userId, { fileId, existing: false, name, mimeType, buffer, parentId: job.folderId, appProperties });
+      uploaded = await driveClient.uploadFile(connectionId, { fileId, existing: false, name, mimeType, buffer, parentId: job.folderId, appProperties });
     }
 
     if (uploaded.md5Checksum && uploaded.md5Checksum !== localMd5) {
       throw new driveClient.DriveError("Google Drive reported different content than was sent", { code: "VERIFY_FAILED", retryable: true });
     }
     await GoogleDriveFileLink.updateOne(
-      { userId, documentId: doc._id, driveFolderId: job.folderId },
+      { connectionId, documentId: doc._id, driveFolderId: job.folderId },
       { $set: { driveFileId: uploaded.id, driveName: uploaded.name || name, webViewLink: uploaded.webViewLink, status: "linked", sourceChecksum: sha, sourceVersion: doc.currentVersion, driveMd5: localMd5, lastSyncedAt: new Date(), driveFolderName: job.folderName, caseId: doc.caseId } }
     );
     await setItem(job._id, item.documentId, { status: outcome, reason: outcome === "updated" ? "Updated the existing Drive copy." : undefined, driveFileId: uploaded.id, webViewLink: uploaded.webViewLink });
@@ -283,8 +282,8 @@ async function retryJob(user, jobId) {
   if (!job || !canSeeJob(user, job)) return null;
   job = await repairIfStale(job);
   if (["queued", "running"].includes(job.status)) throw Object.assign(new Error("This job is still running."), { statusCode: 409 });
-  const connection = await GoogleDriveConnection.findOne({ userId: user._id }).lean();
-  if (!connection || connection.status !== "connected") throw Object.assign(new Error("Your Google Drive is not connected. Please reconnect it."), { statusCode: 409 });
+  const connection = job.connectionId ? await GoogleDriveConnection.findOne({ _id: job.connectionId, userId: user._id }).lean() : null;
+  if (!connection || connection.status !== "connected") throw Object.assign(new Error(`The Google account${job.accountEmail ? ` ${job.accountEmail}` : ""} for this job is not connected any more. Reconnect it, or add the files again from the account you want.`), { statusCode: 409, code: "RECONNECT_REQUIRED" });
   await GoogleDriveJob.updateOne(
     { _id: jobId },
     { $set: { status: "queued", "items.$[bad].status": "pending" }, $unset: { "items.$[bad].reason": "", "items.$[bad].errorCode": "", finishedAt: "" } },
@@ -299,7 +298,9 @@ async function retryJob(user, jobId) {
 async function lookupLinks(user, documentIds) {
   const ids = [...new Set((documentIds || []).map(String))].filter((id) => mongoose.isValidObjectId(id)).slice(0, 300);
   if (!ids.length) return {};
-  const links = await GoogleDriveFileLink.find({ userId: user._id, documentId: { $in: ids }, status: "linked" }).select("documentId driveFolderName webViewLink lastSyncedAt").lean();
+  const active = await getActive(user._id);
+  if (!active) return {};
+  const links = await GoogleDriveFileLink.find({ connectionId: active._id, documentId: { $in: ids }, status: "linked" }).select("documentId driveFolderName webViewLink lastSyncedAt").lean();
   if (!links.length) return {};
   const docs = await Document.find({ _id: { $in: [...new Set(links.map((link) => String(link.documentId)))] } }).lean();
   const allowed = new Set();
@@ -314,7 +315,9 @@ async function lookupLinks(user, documentIds) {
 }
 
 async function recentFolders(user) {
-  const jobs = await GoogleDriveJob.find({ requestedBy: user._id }).sort({ createdAt: -1 }).limit(40).select("folderId folderName folderLink").lean();
+  const active = await getActive(user._id);
+  if (!active) return [];
+  const jobs = await GoogleDriveJob.find({ requestedBy: user._id, connectionId: active._id }).sort({ createdAt: -1 }).limit(40).select("folderId folderName folderLink").lean();
   const seen = new Set();
   const folders = [];
   jobs.forEach((job) => {

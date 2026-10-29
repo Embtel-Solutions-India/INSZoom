@@ -133,6 +133,33 @@ test("drive client: invalid_grant marks the connection reconnect_required and is
   }
 });
 
+test("drive client: a server-side client/secret problem does NOT discard the saved connection", async () => {
+  const client = require("../drive.client");
+  const updates = stubConnection();
+  const restore = stubRefresh(client, async () => {
+    throw Object.assign(new Error("invalid_client"), { response: { data: { error: "invalid_client" } } });
+  });
+  try {
+    client.dropToken("t6");
+    await assert.rejects(client.getFolder("t6", "x"), (error) => error.code === "SERVER_CONFIG" && error.status === 503);
+    assert.equal(updates.length, 0, "connection record untouched, so fixing the server config restores access without reconnecting");
+  } finally {
+    restore();
+  }
+});
+
+test("drive client: a token this server cannot decrypt (different key) is reported but the stored connection is left alone", async () => {
+  const client = require("../drive.client");
+  const updates = stubConnection({ refreshTokenEnc: secretBox.encrypt("rt", "z".repeat(44)) });
+  try {
+    client.dropToken("t7");
+    await assert.rejects(client.getFolder("t7", "x"), (error) => error.code === "RECONNECT_REQUIRED" && /could not be read on this server/.test(error.message));
+    assert.equal(updates.length, 0, "other servers with the right key keep working");
+  } finally {
+    stubConnection();
+  }
+});
+
 test("drive client: small files use multipart, large files use a resumable session; pre-generated ID is sent", async () => {
   const client = require("../drive.client");
   stubConnection();
