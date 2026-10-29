@@ -42,21 +42,21 @@ function isConfigured() {
   );
 }
 
-// ---- access tokens: refreshed from the stored (encrypted) refresh token, cached in memory only, one refresh in flight per org ----
-const tokenCache = new Map(); // orgId -> { token, expiresAt }
-const refreshing = new Map(); // orgId -> Promise
+// ---- access tokens: refreshed from the stored (encrypted) refresh token, cached in memory only, one refresh in flight per user ----
+const tokenCache = new Map(); // userId -> { token, expiresAt }
+const refreshing = new Map(); // userId -> Promise
 
-function dropToken(orgId) {
-  tokenCache.delete(orgId);
+function dropToken(userId) {
+  tokenCache.delete(String(userId));
 }
 
-async function markReconnectRequired(orgId, message) {
-  dropToken(orgId);
-  await GoogleDriveConnection.updateOne({ orgId }, { $set: { status: "reconnect_required", lastError: { code: "invalid_grant", message, at: new Date() } } }).catch(() => {});
+async function markReconnectRequired(userId, message) {
+  dropToken(userId);
+  await GoogleDriveConnection.updateOne({ userId }, { $set: { status: "reconnect_required", lastError: { code: "invalid_grant", message, at: new Date() } } }).catch(() => {});
 }
 
-async function refreshAccessToken(orgId) {
-  const connection = await GoogleDriveConnection.findOne({ orgId }).select("+refreshTokenEnc");
+async function refreshAccessToken(userId) {
+  const connection = await GoogleDriveConnection.findOne({ userId }).select("+refreshTokenEnc");
   if (!connection || connection.status === "disconnected" || !connection.refreshTokenEnc) {
     throw new DriveError("Google Drive is not connected", { status: 409, code: "NOT_CONNECTED" });
   }
@@ -67,7 +67,7 @@ async function refreshAccessToken(orgId) {
   try {
     refreshToken = secretBox.decrypt(connection.refreshTokenEnc, env.googleDrive.tokenEncryptionKey);
   } catch {
-    await markReconnectRequired(orgId, "Saved authorization could not be read; reconnect required");
+    await markReconnectRequired(userId, "Saved authorization could not be read; reconnect required");
     throw new DriveError("The saved Google authorization could not be read. An admin needs to reconnect Google Drive.", { status: 409, code: "RECONNECT_REQUIRED" });
   }
   const client = newOAuthClient();
@@ -75,25 +75,26 @@ async function refreshAccessToken(orgId) {
   try {
     const { credentials } = await client.refreshAccessToken();
     const entry = { token: credentials.access_token, expiresAt: credentials.expiry_date || Date.now() + 50 * 60 * 1000 };
-    tokenCache.set(orgId, entry);
+    tokenCache.set(userId, entry);
     return entry;
   } catch (error) {
     const text = `${error?.message || ""} ${error?.response?.data?.error || ""}`;
     if (/invalid_grant|unauthorized_client|invalid_client/i.test(text)) {
-      await markReconnectRequired(orgId, "Google rejected the saved authorization");
+      await markReconnectRequired(userId, "Google rejected the saved authorization");
       throw new DriveError("Google Drive access was revoked or expired. An admin needs to reconnect it.", { status: 409, code: "RECONNECT_REQUIRED" });
     }
     throw new DriveError("Could not refresh Google access. Try again shortly.", { status: 502, code: "TOKEN_REFRESH_FAILED", retryable: true });
   }
 }
 
-async function getAccessToken(orgId) {
-  const cached = tokenCache.get(orgId);
+async function getAccessToken(userId) {
+  userId = String(userId)
+  const cached = tokenCache.get(userId);
   if (cached && cached.expiresAt - Date.now() > 60 * 1000) return cached.token;
-  if (!refreshing.has(orgId)) {
-    refreshing.set(orgId, refreshAccessToken(orgId).finally(() => refreshing.delete(orgId)));
+  if (!refreshing.has(userId)) {
+    refreshing.set(userId, refreshAccessToken(userId).finally(() => refreshing.delete(userId)));
   }
-  return (await refreshing.get(orgId)).token;
+  return (await refreshing.get(userId)).token;
 }
 
 // ---- request helper: guarded JSON parsing, retry on 429/5xx/network with backoff ----
@@ -119,14 +120,14 @@ function parseJson(text) {
   }
 }
 
-async function driveRequest(orgId, url, options = {}) {
+async function driveRequest(userId, url, options = {}) {
   let lastError;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
-      const token = await getAccessToken(orgId);
+      const token = await getAccessToken(userId);
       const response = await fetch(url, { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } });
       if (response.status === 401 && attempt < MAX_ATTEMPTS) {
-        dropToken(orgId);
+        dropToken(userId);
         continue;
       }
       const body = parseJson(await response.text());
@@ -152,18 +153,18 @@ async function driveRequest(orgId, url, options = {}) {
 // ---- folders ----
 const FOLDER_FIELDS = "id,name,mimeType,trashed,webViewLink,capabilities(canAddChildren)";
 
-async function getFolder(orgId, folderId) {
-  const { body } = await driveRequest(orgId, `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=${encodeURIComponent(FOLDER_FIELDS)}&supportsAllDrives=true`);
+async function getFolder(userId, folderId) {
+  const { body } = await driveRequest(userId, `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=${encodeURIComponent(FOLDER_FIELDS)}&supportsAllDrives=true`);
   if (body.mimeType !== FOLDER_MIME) throw new DriveError("That item is not a folder", { status: 400, code: "NOT_A_FOLDER" });
   if (body.trashed) throw new DriveError("That folder is in the Drive trash", { status: 400, code: "FOLDER_TRASHED" });
   if (body.capabilities && body.capabilities.canAddChildren === false) throw new DriveError("The connected Google account cannot add files to that folder", { status: 403, code: "FOLDER_READ_ONLY" });
   return { id: body.id, name: body.name, webViewLink: body.webViewLink };
 }
 
-async function createFolder(orgId, name, parentId) {
+async function createFolder(userId, name, parentId) {
   const metadata = { name, mimeType: FOLDER_MIME, appProperties: { immiglance: "1" } };
   if (parentId) metadata.parents = [parentId];
-  const { body } = await driveRequest(orgId, `${DRIVE_API}/files?fields=id,name,webViewLink&supportsAllDrives=true`, {
+  const { body } = await driveRequest(userId, `${DRIVE_API}/files?fields=id,name,webViewLink&supportsAllDrives=true`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(metadata),
@@ -172,23 +173,23 @@ async function createFolder(orgId, name, parentId) {
 }
 
 // Under drive.file this lists only folders the app created (or that were picked); Google Picker is how a user reaches any other folder.
-async function listAppFolders(orgId, parentId = "root") {
+async function listAppFolders(userId, parentId = "root") {
   const q = `mimeType='${FOLDER_MIME}' and '${String(parentId).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' in parents and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id,name,webViewLink)", pageSize: "100", orderBy: "name", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const { body } = await driveRequest(orgId, `${DRIVE_API}/files?${params}`);
+  const { body } = await driveRequest(userId, `${DRIVE_API}/files?${params}`);
   return body.files || [];
 }
 
 // ---- files ----
-async function generateFileId(orgId) {
-  const { body } = await driveRequest(orgId, `${DRIVE_API}/files/generateIds?count=1&space=drive`);
+async function generateFileId(userId) {
+  const { body } = await driveRequest(userId, `${DRIVE_API}/files/generateIds?count=1&space=drive`);
   const id = body.ids?.[0];
   if (!id) throw new DriveError("Google did not return a file ID", { code: "GENERATE_IDS_FAILED", retryable: true });
   return id;
 }
 
-async function getFileMeta(orgId, fileId) {
-  const { body } = await driveRequest(orgId, `${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=id,name,trashed,parents,md5Checksum,webViewLink&supportsAllDrives=true`);
+async function getFileMeta(userId, fileId) {
+  const { body } = await driveRequest(userId, `${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=id,name,trashed,parents,md5Checksum,webViewLink&supportsAllDrives=true`);
   return body;
 }
 
@@ -210,7 +211,7 @@ function multipartBody(metadata, mimeType, buffer) {
 const UPLOAD_FIELDS = "id,name,webViewLink,md5Checksum,size";
 
 // Creates (fileId = pre-generated ID inside parentId) or, with existing = true, updates that Drive file's content in place.
-async function uploadFile(orgId, { fileId, existing, name, mimeType, buffer, parentId, appProperties }) {
+async function uploadFile(userId, { fileId, existing, name, mimeType, buffer, parentId, appProperties }) {
   const mime = mimeType || "application/octet-stream";
   const metadata = existing ? {} : { id: fileId, name, parents: [parentId], appProperties };
   if (buffer.length <= MULTIPART_LIMIT) {
@@ -218,20 +219,20 @@ async function uploadFile(orgId, { fileId, existing, name, mimeType, buffer, par
     const url = existing
       ? `${DRIVE_UPLOAD_API}/files/${encodeURIComponent(fileId)}?uploadType=multipart&fields=${UPLOAD_FIELDS}&supportsAllDrives=true`
       : `${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=${UPLOAD_FIELDS}&supportsAllDrives=true`;
-    return (await driveRequest(orgId, url, { method: existing ? "PATCH" : "POST", headers: { "Content-Type": contentType }, body })).body;
+    return (await driveRequest(userId, url, { method: existing ? "PATCH" : "POST", headers: { "Content-Type": contentType }, body })).body;
   }
   // Larger files: open a resumable session, then send the whole content in one PUT.
   const initUrl = existing
     ? `${DRIVE_UPLOAD_API}/files/${encodeURIComponent(fileId)}?uploadType=resumable&fields=${UPLOAD_FIELDS}&supportsAllDrives=true`
     : `${DRIVE_UPLOAD_API}/files?uploadType=resumable&fields=${UPLOAD_FIELDS}&supportsAllDrives=true`;
-  const init = await driveRequest(orgId, initUrl, {
+  const init = await driveRequest(userId, initUrl, {
     method: existing ? "PATCH" : "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(buffer.length) },
     body: JSON.stringify(metadata),
   });
   const sessionUrl = init.headers.get("location");
   if (!sessionUrl) throw new DriveError("Google did not start an upload session", { code: "UPLOAD_SESSION_FAILED", retryable: true });
-  const token = await getAccessToken(orgId);
+  const token = await getAccessToken(userId);
   const response = await fetch(sessionUrl, { method: "PUT", headers: { "Content-Type": mime, Authorization: `Bearer ${token}` }, body: buffer });
   const parsed = parseJson(await response.text());
   if (!response.ok) throw classify(response.status, parsed);

@@ -8,12 +8,8 @@ const GoogleDriveFileLink = require("../../models/GoogleDriveFileLink");
 const GoogleDriveJob = require("../../models/GoogleDriveJob");
 const driveClient = require("./drive.client");
 
-// One shared firm connection for now. Every query in this module is scoped by the value this returns, so moving to a connection per
-// organisation later means changing this function (to read the user's organisation) and nothing else.
-const DEFAULT_ORG_ID = "default";
-function resolveOrgId() {
-  return DEFAULT_ORG_ID;
-}
+// Each team member connects THEIR OWN Google account: the connection, folders, copies (links) and job history are all keyed by the
+// user's id and are private to them. Nothing here is shared between users.
 
 // mongoose autoIndex is off in this deployment, so the (small, new) collections create their own indexes once, on first use.
 let indexesReady = null;
@@ -46,9 +42,8 @@ function returnUrl(returnPath, params) {
   return url.toString();
 }
 
-async function getStatus() {
-  const orgId = resolveOrgId();
-  const connection = await GoogleDriveConnection.findOne({ orgId }).lean();
+async function getStatus(user) {
+  const connection = await GoogleDriveConnection.findOne({ userId: user._id }).lean();
   const connected = connection?.status === "connected";
   return {
     enabled: true,
@@ -64,13 +59,11 @@ async function getStatus() {
 
 async function startConnect(user, returnPath) {
   await ensureIndexes();
-  const orgId = resolveOrgId();
   const client = driveClient.newOAuthClient();
   const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
   const state = crypto.randomBytes(32).toString("base64url");
   await GoogleDriveOAuthState.create({
     stateHash: hashState(state),
-    orgId,
     userId: user._id,
     codeVerifierEnc: secretBox.encrypt(codeVerifier, env.googleDrive.tokenEncryptionKey),
     returnPath: safeReturnPath(returnPath),
@@ -88,7 +81,8 @@ async function startConnect(user, returnPath) {
 }
 
 // Google redirects the browser here. There is no session on this request (auth is a Bearer header), so the single-use state row,
-// created by an authenticated request and bound to that user, is what authorizes it. Always answers with a redirect back to Admin.
+// created by an authenticated request and bound to that user, is what authorizes it: whoever started the flow is the user whose
+// connection is saved. Always answers with a redirect back to Admin.
 async function handleCallback(query) {
   const { code, state, error: googleError } = query || {};
   let returnPath = "/";
@@ -113,12 +107,12 @@ async function handleCallback(query) {
       const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: env.google.oauthClientId });
       identity = ticket.getPayload() || {};
     }
-    const orgId = stateRow.orgId;
-    const existing = await GoogleDriveConnection.findOne({ orgId }).lean();
+    const userId = stateRow.userId;
+    const existing = await GoogleDriveConnection.findOne({ userId }).lean();
     const accountChanged = Boolean(existing?.googleAccountId && identity.sub && existing.googleAccountId !== identity.sub);
 
     await GoogleDriveConnection.findOneAndUpdate(
-      { orgId },
+      { userId },
       {
         $set: {
           status: "connected",
@@ -126,17 +120,17 @@ async function handleCallback(query) {
           googleEmail: identity.email,
           scopes: granted,
           refreshTokenEnc: secretBox.encrypt(tokens.refresh_token, env.googleDrive.tokenEncryptionKey),
-          connectedBy: stateRow.userId,
           connectedAt: new Date(),
         },
         $unset: { lastError: "" },
       },
       { upsert: true, new: true }
     );
-    driveClient.dropToken(orgId);
-    // Links point at files in the previous account; they are only a de-duplication cache, so they are dropped (nothing in Drive is touched).
-    if (accountChanged) await GoogleDriveFileLink.deleteMany({ orgId });
-    await audit(stateRow.userId, "google_drive.connected", { accountChanged });
+    driveClient.dropToken(userId);
+    // Links point at files in the user's previous Google account; they are only a de-duplication cache, so they are dropped
+    // (nothing in Drive is touched).
+    if (accountChanged) await GoogleDriveFileLink.deleteMany({ userId });
+    await audit(userId, "google_drive.connected", { accountChanged });
     return returnUrl(returnPath, { gdrive: "connected" });
   } catch (error) {
     // Never echo Google's response; the message may contain codes or tokens.
@@ -146,8 +140,8 @@ async function handleCallback(query) {
 }
 
 async function disconnect(user) {
-  const orgId = resolveOrgId();
-  const connection = await GoogleDriveConnection.findOne({ orgId }).select("+refreshTokenEnc");
+  const userId = user._id;
+  const connection = await GoogleDriveConnection.findOne({ userId }).select("+refreshTokenEnc");
   if (!connection) return { disconnected: true };
   if (connection.refreshTokenEnc) {
     try {
@@ -156,18 +150,18 @@ async function disconnect(user) {
       /* revocation is best effort; the local token is removed regardless */
     }
   }
-  await GoogleDriveConnection.updateOne({ orgId }, { $set: { status: "disconnected" }, $unset: { refreshTokenEnc: "", lastError: "" } });
-  driveClient.dropToken(orgId);
-  await audit(user._id, "google_drive.disconnected", {});
+  await GoogleDriveConnection.updateOne({ userId }, { $set: { status: "disconnected" }, $unset: { refreshTokenEnc: "", lastError: "" } });
+  driveClient.dropToken(userId);
+  await audit(userId, "google_drive.disconnected", {});
   return { disconnected: true };
 }
 
 async function audit(userId, action, metadata) {
   try {
-    await require("../../models/AuditLog").create({ userId, action, entityType: "google_drive", entityId: resolveOrgId(), details: action, metadata, source: "api" });
+    await require("../../models/AuditLog").create({ userId, action, entityType: "google_drive", entityId: String(userId), details: action, metadata, source: "api" });
   } catch {
     /* an audit failure must never affect the action */
   }
 }
 
-module.exports = { audit, disconnect, ensureIndexes, getStatus, handleCallback, resolveOrgId, safeReturnPath, startConnect };
+module.exports = { audit, disconnect, ensureIndexes, getStatus, handleCallback, safeReturnPath, startConnect };

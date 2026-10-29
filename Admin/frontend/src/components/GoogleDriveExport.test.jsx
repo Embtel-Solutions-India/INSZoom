@@ -33,18 +33,25 @@ describe('GoogleDriveExport', () => {
     expect(failed.container.firstChild).toBeNull()
   })
 
-  it('tells a non-admin to ask an administrator when Drive is not connected', async () => {
-    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected', canManage: false })
+  it('every user is asked to connect their OWN Drive (no administrator needed)', async () => {
+    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected' })
     fireEvent.click(await screen.findByTestId('add-to-drive-button'))
-    expect(await screen.findByText(/Ask an administrator to connect Google Drive/i)).toBeTruthy()
-    expect(screen.queryByText(/Connect Google Drive/)).toBeNull()
+    expect(await screen.findByText(/Each team member connects their own account/i)).toBeTruthy()
+    expect(screen.queryByText(/administrator/i)).toBeNull()
   })
 
-  it('lets an admin start the Google connection', async () => {
-    api.connectStart.mockReturnValue(ok({ authUrl: '#google-consent' }))
-    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected', canManage: true })
+  it('says so when the server is not set up for Drive yet', async () => {
+    await mount({ enabled: true, configured: false, connected: false, status: 'disconnected' })
     fireEvent.click(await screen.findByTestId('add-to-drive-button'))
-    fireEvent.click(await screen.findByRole('button', { name: /Connect Google Drive/i }))
+    expect(await screen.findByText(/not fully set up on the server/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Connect my Google Drive/i }).disabled).toBe(true)
+  })
+
+  it('lets the user start the connection to their own Google account', async () => {
+    api.connectStart.mockReturnValue(ok({ authUrl: '#google-consent' }))
+    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected' })
+    fireEvent.click(await screen.findByTestId('add-to-drive-button'))
+    fireEvent.click(await screen.findByRole('button', { name: /Connect my Google Drive/i }))
     await waitFor(() => expect(api.connectStart).toHaveBeenCalledWith('/cases/c1'))
   })
 
@@ -56,9 +63,9 @@ describe('GoogleDriveExport', () => {
       { documentId: 'd2', name: 'degree.pdf', status: 'skipped', reason: 'Already in Drive and unchanged.' },
       { documentId: 'd3', name: 'offer.pdf', status: 'failed', reason: 'Google Drive could not be reached. Press Retry to try again.' },
     ] } }))
-    await mount({ enabled: true, configured: true, connected: true, status: 'connected', email: 'firm@example.com', canManage: false })
+    await mount({ enabled: true, configured: true, connected: true, status: 'connected', email: 'me@example.com' })
     fireEvent.click(await screen.findByTestId('add-to-drive-button'))
-    expect(await screen.findByText('firm@example.com')).toBeTruthy()
+    expect(await screen.findByText('me@example.com')).toBeTruthy()
     expect(await screen.findByText('In Drive')).toBeTruthy() // d2 already has a copy
 
     const start = screen.getByTestId('drive-start')
@@ -86,7 +93,7 @@ describe('GoogleDriveExport', () => {
 
   it('reopens with a message after returning from Google, and cleans the URL', async () => {
     window.history.replaceState({}, '', '/cases/c1?gdrive=error&reason=cancelled')
-    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected', canManage: true })
+    await mount({ enabled: true, configured: true, connected: false, status: 'disconnected' })
     expect(await screen.findByText(/Google sign-in was cancelled/i)).toBeTruthy()
     expect(window.location.search).toBe('')
   })

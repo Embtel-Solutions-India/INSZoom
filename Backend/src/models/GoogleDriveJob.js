@@ -17,8 +17,8 @@ const itemSchema = new mongoose.Schema(
 
 const googleDriveJobSchema = new mongoose.Schema(
   {
-    orgId: { type: String, required: true, index: true },
-    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    // The user whose Google Drive receives the copies; jobs are private to them.
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     caseId: { type: mongoose.Schema.Types.ObjectId, ref: "Case" },
     folderId: { type: String, required: true },
     folderName: String,
