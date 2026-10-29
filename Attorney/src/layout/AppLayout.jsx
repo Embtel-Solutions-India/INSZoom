@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import ErrorBoundary from '../components/ErrorBoundary'
 import EnablePushButton from '../components/EnablePushButton'
-import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, Newspaper, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import NotificationBell from '../components/NotificationBell'
@@ -19,6 +19,7 @@ const NAV = [
   { path: '/cases', label: 'My Cases', icon: Briefcase },
   { path: '/messages', label: 'Messages', icon: MessageSquare, unreadKey: 'messages' },
   { path: '/tasks', label: 'Tasks', icon: CheckCircle },
+  { path: '/news', label: 'News & Updates', icon: Newspaper },
 ]
 
 export default function AppLayout() {

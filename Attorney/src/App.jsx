@@ -22,6 +22,8 @@ import MessagesPage from './pages/Messages/MessagesPage'
 import TasksPage from './pages/Tasks/TasksPage'
 import TaskOverviewPage from './pages/Tasks/TaskOverviewPage'
 import TaskDetailPage from './pages/Tasks/TaskDetailPage'
+import News from './pages/News/News'
+import NewsArticle from './pages/News/NewsArticle'
 import usePushNotifications from './hooks/usePushNotifications'
 
 function PushRegistrar() {
@@ -74,6 +76,8 @@ export default function App() {
                 <Route path="/tasks" element={<TaskOverviewPage />} />
                 <Route path="/tasks/my-tasks" element={<TasksPage />} />
                 <Route path="/tasks/:id" element={<TaskDetailPage />} />
+                <Route path="/news" element={<News />} />
+                <Route path="/news/:slug" element={<NewsArticle />} />
                 <Route path="/cases/:caseId" element={<CaseDetailLayout />}>
                   <Route index element={<Navigate to="overview" replace />} />
                   <Route path="overview" element={<OverviewTab />} />
