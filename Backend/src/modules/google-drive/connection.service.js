@@ -8,22 +8,31 @@ const GoogleDriveFileLink = require("../../models/GoogleDriveFileLink");
 const GoogleDriveJob = require("../../models/GoogleDriveJob");
 const driveClient = require("./drive.client");
 
-// Each team member connects THEIR OWN Google account: the connection, folders, copies (links) and job history are all keyed by the
-// user's id and are private to them. Nothing here is shared between users.
+// Each team member connects THEIR OWN Google account(s): they can connect several and switch between them (one is "active").
+// Connections, folders, copies (links) and job history are all private to the user; nothing is shared between users.
 
-// mongoose autoIndex is off in this deployment, so the (small, new) collections create their own indexes once, on first use.
+// mongoose autoIndex is off in this deployment, so the (small, new) collections create their own indexes once, on first use. Indexes
+// left behind by earlier builds of this feature (one-connection-per-user / per-organisation keys) are removed first: they would reject
+// a second account or a new link.
+const LEGACY_INDEX = (index) => (index.name === "userId_1" && index.unique) || Object.keys(index.key || {}).includes("orgId") || (index.unique && Object.keys(index.key || {}).join() === "userId,documentId,driveFolderId") || (index.unique && Object.keys(index.key || {}).join() === "userId,driveFileId");
+async function dropLegacyIndexes(model) {
+  try {
+    const indexes = await model.collection.indexes();
+    for (const index of indexes.filter(LEGACY_INDEX)) await model.collection.dropIndex(index.name);
+  } catch (error) {
+    if (error?.codeName !== "NamespaceNotFound" && error?.code !== 26) throw error; // a collection that does not exist yet has nothing to clean
+  }
+}
+
 let indexesReady = null;
 function ensureIndexes() {
   if (!indexesReady) {
-    indexesReady = Promise.all([
-      GoogleDriveConnection.createIndexes(),
-      GoogleDriveOAuthState.createIndexes(),
-      GoogleDriveFileLink.createIndexes(),
-      GoogleDriveJob.createIndexes(),
-    ]).catch((error) => {
-      indexesReady = null; // try again next time; the feature keeps working without them, only de-duplication guarantees are weaker
-      logger.error("google_drive_index_creation_failed", { error });
-    });
+    indexesReady = Promise.all([dropLegacyIndexes(GoogleDriveConnection), dropLegacyIndexes(GoogleDriveFileLink), dropLegacyIndexes(GoogleDriveJob)])
+      .then(() => Promise.all([GoogleDriveConnection.createIndexes(), GoogleDriveOAuthState.createIndexes(), GoogleDriveFileLink.createIndexes(), GoogleDriveJob.createIndexes()]))
+      .catch((error) => {
+        indexesReady = null; // try again next time; the feature keeps working without them, only de-duplication guarantees are weaker
+        logger.error("google_drive_index_creation_failed", { error });
+      });
   }
   return indexesReady;
 }
@@ -42,21 +51,53 @@ function returnUrl(returnPath, params) {
   return url.toString();
 }
 
+const notConnected = (message, code) => Object.assign(new Error(message), { statusCode: 409, code });
+
+// The user's accounts, newest first. Connections that were removed are not listed.
+const listConnections = (userId) => GoogleDriveConnection.find({ userId, status: { $ne: "disconnected" } }).sort({ connectedAt: -1 }).lean();
+
+// The account the dialog is using. If none is marked active (older data, or the active one was removed) the most recent usable account is
+// promoted, so a user who has any connected account is never asked to connect again.
+async function getActive(userId) {
+  const accounts = await listConnections(userId);
+  if (!accounts.length) return null;
+  const active = accounts.find((account) => account.active);
+  if (active) return active;
+  const fallback = accounts.find((account) => account.status === "connected") || accounts[0];
+  await GoogleDriveConnection.updateOne({ _id: fallback._id }, { $set: { active: true } });
+  return { ...fallback, active: true };
+}
+
+// For every endpoint that talks to Drive: the active account, or a clear "connect / reconnect" error.
+async function requireActive(user) {
+  const active = await getActive(user._id);
+  if (!active) throw notConnected("Connect your Google Drive first.", "NOT_CONNECTED");
+  if (active.status !== "connected") throw notConnected("This Google account needs to be reconnected. Reconnect it or switch to another account.", "RECONNECT_REQUIRED");
+  return active;
+}
+
+const presentAccount = (account) => ({ id: String(account._id), email: account.googleEmail || null, status: account.status, active: Boolean(account.active), connectedAt: account.connectedAt || null });
+
 async function getStatus(user) {
-  const connection = await GoogleDriveConnection.findOne({ userId: user._id }).lean();
-  const connected = connection?.status === "connected";
+  const accounts = await listConnections(user._id);
+  const active = accounts.length ? await getActive(user._id) : null;
+  const connected = active?.status === "connected";
   return {
     enabled: true,
     configured: driveClient.isConfigured(),
-    status: connection?.status || "disconnected",
+    // top level = the active account (what the dialog uses)
+    status: active?.status || "disconnected",
     connected,
-    email: connected || connection?.status === "reconnect_required" ? connection.googleEmail || null : null,
-    connectedAt: connection?.connectedAt || null,
-    lastSuccessfulSyncAt: connection?.lastSuccessfulSyncAt || null,
-    lastError: connection?.status === "reconnect_required" ? connection.lastError?.message || null : null,
+    email: active?.googleEmail || null,
+    connectedAt: active?.connectedAt || null,
+    lastSuccessfulSyncAt: active?.lastSuccessfulSyncAt || null,
+    lastError: active?.status === "reconnect_required" ? active.lastError?.message || null : null,
+    accounts: accounts.map((account) => presentAccount({ ...account, active: Boolean(active) && String(account._id) === String(active._id) })),
   };
 }
 
+// Starts connecting a Google account (the first one, an extra one, or a reconnect). `select_account` makes Google ask which account, so
+// adding a second Drive really lets the user pick a different one instead of silently reusing the signed-in account.
 async function startConnect(user, returnPath) {
   await ensureIndexes();
   const client = driveClient.newOAuthClient();
@@ -70,7 +111,7 @@ async function startConnect(user, returnPath) {
   });
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
-    prompt: "consent", // forces a refresh token even if this account authorized the app before
+    prompt: "select_account consent", // pick the account; consent forces a refresh token even if this account authorized the app before
     scope: driveClient.SCOPES,
     state,
     code_challenge: codeChallenge,
@@ -81,8 +122,8 @@ async function startConnect(user, returnPath) {
 }
 
 // Google redirects the browser here. There is no session on this request (auth is a Bearer header), so the single-use state row,
-// created by an authenticated request and bound to that user, is what authorizes it: whoever started the flow is the user whose
-// connection is saved. Always answers with a redirect back to Admin.
+// created by an authenticated request and bound to that user, is what authorizes it: whoever started the flow is the user the account
+// is saved for. Always answers with a redirect back to Admin.
 async function handleCallback(query) {
   const { code, state, error: googleError } = query || {};
   let returnPath = "/";
@@ -107,30 +148,28 @@ async function handleCallback(query) {
       const ticket = await client.verifyIdToken({ idToken: tokens.id_token, audience: env.google.oauthClientId });
       identity = ticket.getPayload() || {};
     }
+    if (!identity.sub) return returnUrl(returnPath, { gdrive: "error", reason: "no_identity" });
     const userId = stateRow.userId;
-    const existing = await GoogleDriveConnection.findOne({ userId }).lean();
-    const accountChanged = Boolean(existing?.googleAccountId && identity.sub && existing.googleAccountId !== identity.sub);
 
-    await GoogleDriveConnection.findOneAndUpdate(
-      { userId },
+    // The same Google account again (a reconnect) refreshes that connection; a different account is added next to the others.
+    const saved = await GoogleDriveConnection.findOneAndUpdate(
+      { userId, googleAccountId: identity.sub },
       {
         $set: {
           status: "connected",
-          googleAccountId: identity.sub,
           googleEmail: identity.email,
           scopes: granted,
           refreshTokenEnc: secretBox.encrypt(tokens.refresh_token, env.googleDrive.tokenEncryptionKey),
           connectedAt: new Date(),
+          active: true, // the account just connected becomes the active one
         },
         $unset: { lastError: "" },
       },
       { upsert: true, new: true }
     );
-    driveClient.dropToken(userId);
-    // Links point at files in the user's previous Google account; they are only a de-duplication cache, so they are dropped
-    // (nothing in Drive is touched).
-    if (accountChanged) await GoogleDriveFileLink.deleteMany({ userId });
-    await audit(userId, "google_drive.connected", { accountChanged });
+    await GoogleDriveConnection.updateMany({ userId, _id: { $ne: saved._id } }, { $set: { active: false } });
+    driveClient.dropToken(saved._id);
+    await audit(userId, "google_drive.connected", { connectionId: String(saved._id) });
     return returnUrl(returnPath, { gdrive: "connected" });
   } catch (error) {
     // Never echo Google's response; the message may contain codes or tokens.
@@ -139,10 +178,21 @@ async function handleCallback(query) {
   }
 }
 
-async function disconnect(user) {
-  const userId = user._id;
-  const connection = await GoogleDriveConnection.findOne({ userId }).select("+refreshTokenEnc");
-  if (!connection) return { disconnected: true };
+// Makes one of the user's own accounts the active one.
+async function activate(user, connectionId) {
+  const target = await GoogleDriveConnection.findOne({ _id: connectionId, userId: user._id, status: { $ne: "disconnected" } }).lean();
+  if (!target) return null;
+  await GoogleDriveConnection.updateMany({ userId: user._id, _id: { $ne: target._id } }, { $set: { active: false } });
+  await GoogleDriveConnection.updateOne({ _id: target._id }, { $set: { active: true } });
+  await audit(user._id, "google_drive.account_switched", { connectionId: String(target._id) });
+  return target;
+}
+
+// Removes one of the user's own accounts: access is revoked at Google, the saved token and the copy records are deleted. Files already
+// in that Drive are not touched. If it was the active account, another connected one becomes active.
+async function removeAccount(user, connectionId) {
+  const connection = await GoogleDriveConnection.findOne({ _id: connectionId, userId: user._id }).select("+refreshTokenEnc");
+  if (!connection) return null;
   if (connection.refreshTokenEnc) {
     try {
       await driveClient.revokeRefreshToken(secretBox.decrypt(connection.refreshTokenEnc, env.googleDrive.tokenEncryptionKey));
@@ -150,10 +200,12 @@ async function disconnect(user) {
       /* revocation is best effort; the local token is removed regardless */
     }
   }
-  await GoogleDriveConnection.updateOne({ userId }, { $set: { status: "disconnected" }, $unset: { refreshTokenEnc: "", lastError: "" } });
-  driveClient.dropToken(userId);
-  await audit(userId, "google_drive.disconnected", {});
-  return { disconnected: true };
+  await GoogleDriveFileLink.deleteMany({ connectionId: connection._id });
+  await GoogleDriveConnection.deleteOne({ _id: connection._id });
+  driveClient.dropToken(connection._id);
+  await audit(user._id, "google_drive.account_removed", { connectionId: String(connection._id) });
+  await getActive(user._id); // promotes another account if the removed one was active
+  return { removed: true };
 }
 
 async function audit(userId, action, metadata) {
@@ -164,4 +216,4 @@ async function audit(userId, action, metadata) {
   }
 }
 
-module.exports = { audit, disconnect, ensureIndexes, getStatus, handleCallback, safeReturnPath, startConnect };
+module.exports = { activate, audit, ensureIndexes, getActive, getStatus, handleCallback, listConnections, removeAccount, requireActive, safeReturnPath, startConnect };

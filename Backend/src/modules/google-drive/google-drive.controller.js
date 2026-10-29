@@ -9,7 +9,7 @@ function fail(res, error, fallbackMessage) {
     const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 502;
     return res.status(status === 401 ? 502 : status).json({ success: false, code: error.code, message: error.message });
   }
-  if (error?.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+  if (error?.statusCode) return res.status(error.statusCode).json({ success: false, ...(error.code ? { code: error.code } : {}), message: error.message });
   logger.error("google_drive_request_failed", { error });
   return res.status(500).json({ success: false, message: fallbackMessage || "Google Drive request failed." });
 }
@@ -54,18 +54,33 @@ async function callback(req, res) {
   }
 }
 
-async function disconnect(req, res) {
+// Switch which of the user's own connected Google accounts the dialog uses.
+async function activateAccount(req, res) {
   try {
-    res.json({ success: true, ...(await connectionService.disconnect(req.user)) });
+    const account = await connectionService.activate(req.user, req.params.id);
+    if (!account) return res.status(404).json({ success: false, message: "That Google account is not connected." });
+    res.json({ success: true, ...(await connectionService.getStatus(req.user)) });
   } catch (error) {
-    fail(res, error, "Could not disconnect Google Drive.");
+    fail(res, error, "Could not switch Google account.");
+  }
+}
+
+// Remove one of the user's own connected accounts (revokes access at Google; files already in that Drive are untouched).
+async function removeAccount(req, res) {
+  try {
+    const result = await connectionService.removeAccount(req.user, req.params.id);
+    if (!result) return res.status(404).json({ success: false, message: "That Google account is not connected." });
+    res.json({ success: true, ...(await connectionService.getStatus(req.user)) });
+  } catch (error) {
+    fail(res, error, "Could not remove the Google account.");
   }
 }
 
 // Short-lived access token for Google Picker only (never the refresh token). Not cached anywhere.
 async function pickerToken(req, res) {
   try {
-    const accessToken = await driveClient.getAccessToken(req.user._id);
+    const active = await connectionService.requireActive(req.user);
+    const accessToken = await driveClient.getAccessToken(active._id);
     res.set("Cache-Control", "no-store");
     res.json({ success: true, accessToken, expiresIn: 1800 });
   } catch (error) {
@@ -77,7 +92,7 @@ async function validateFolder(req, res) {
   try {
     const folderId = String(req.body?.folderId || "").trim();
     if (!folderId) return res.status(400).json({ success: false, message: "folderId is required." });
-    res.json({ success: true, folder: await driveClient.getFolder(req.user._id, folderId) });
+    res.json({ success: true, folder: await driveClient.getFolder((await connectionService.requireActive(req.user))._id, folderId) });
   } catch (error) {
     if (error?.code === "NOT_FOUND") return res.status(404).json({ success: false, code: "NOT_FOUND", message: "That folder was not found, or the connected Google account cannot access it." });
     fail(res, error, "Could not check that folder.");
@@ -86,12 +101,12 @@ async function validateFolder(req, res) {
 
 async function createFolder(req, res) {
   try {
-    const userId = req.user._id;
+    const connectionId = (await connectionService.requireActive(req.user))._id;
     const name = String(req.body?.name || "").replace(/[\u0000-\u001f]/g, "").trim();
     if (!name || name.length > 200) return res.status(400).json({ success: false, message: "Enter a folder name (up to 200 characters)." });
     const parentId = req.body?.parentId ? String(req.body.parentId) : undefined;
-    if (parentId) await driveClient.getFolder(userId, parentId); // must exist and be writable
-    const folder = await driveClient.createFolder(userId, name, parentId);
+    if (parentId) await driveClient.getFolder(connectionId, parentId); // must exist and be writable
+    const folder = await driveClient.createFolder(connectionId, name, parentId);
     await connectionService.audit(req.user._id, "google_drive.folder_created", { folderId: folder.id });
     res.status(201).json({ success: true, folder: { id: folder.id, name: folder.name, webViewLink: folder.webViewLink } });
   } catch (error) {
@@ -101,7 +116,7 @@ async function createFolder(req, res) {
 
 async function listFolders(req, res) {
   try {
-    const [folders, recent] = await Promise.all([driveClient.listAppFolders(req.user._id, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders(req.user)]);
+    const [folders, recent] = await Promise.all([driveClient.listAppFolders((await connectionService.requireActive(req.user))._id, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders(req.user)]);
     res.json({ success: true, folders, recent });
   } catch (error) {
     fail(res, error, "Could not list folders.");
@@ -146,4 +161,4 @@ async function lookupLinks(req, res) {
   }
 }
 
-module.exports = { callback, connectStart, createFolder, disconnect, getJob, listFolders, lookupLinks, pickerToken, requireConfigured, requireEnabled, retryJob, startSync, status, validateFolder };
+module.exports = { activateAccount, callback, connectStart, createFolder, removeAccount, getJob, listFolders, lookupLinks, pickerToken, requireConfigured, requireEnabled, retryJob, startSync, status, validateFolder };

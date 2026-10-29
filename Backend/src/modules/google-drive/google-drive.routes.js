@@ -19,9 +19,10 @@ router.get("/status", authenticate, authorizeRoles(...staffRoles), ctrl.status);
 router.use(ctrl.requireEnabled);
 router.use(authenticate, authorizeRoles(...staffRoles));
 
-// Each team member connects and disconnects THEIR OWN Google account (nothing here is shared between users).
+// Each team member connects THEIR OWN Google account(s), switches between them, and can remove them (nothing is shared between users).
 router.post("/connect/start", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(10), ctrl.connectStart);
-router.post("/disconnect", authorizePermissions("documents:read"), perUser(10), ctrl.disconnect);
+router.post("/accounts/:id/activate", authorizePermissions("documents:read"), perUser(30), ctrl.activateAccount);
+router.post("/accounts/:id/remove", authorizePermissions("documents:read"), perUser(10), ctrl.removeAccount);
 
 // Using your own connection: each document is still checked against that person's access to the case.
 router.post("/picker-token", authorizePermissions("documents:read"), ctrl.requireConfigured, perUser(30), ctrl.pickerToken);
