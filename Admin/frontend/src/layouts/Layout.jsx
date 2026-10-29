@@ -8,6 +8,7 @@ import EnablePushButton from '../components/EnablePushButton'
 import BrandMark from '../components/BrandMark'
 import { useBranding } from '../utils/branding'
 import useScrollRestoration from '../hooks/useScrollRestoration'
+import { useCaseOriginTracker } from '../utils/caseOrigin'
 import {
   LayoutDashboard,
   Briefcase,
@@ -48,6 +49,7 @@ const Layout = () => {
   const navigate = useNavigate()
   const location = useLocation()
   useScrollRestoration() // back to a list returns to exactly where you were, then stops
+  useCaseOriginTracker() // remembers which list (Cases / Corporations / Clients) a case was opened from, for its back button
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // Desktop-only collapse; remembered per browser.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {

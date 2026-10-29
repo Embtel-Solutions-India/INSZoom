@@ -374,8 +374,8 @@ const CRMCases = ({ caseGroup } = {}) => {
               <LayoutGrid className="w-3.5 h-3.5" /> Board
             </button>
           </div>
-          {['super_admin', 'admin'].includes(user?.role) && (
-            // a small text button, no border: opens the page where deleted cases can be restored
+          {CAN_DELETE_CASE_ROLES.includes(user?.role) && (
+            // a small text button, no border: opens the page where deleted cases can be restored (shown to everyone who can delete a case)
             <button
               type="button"
               onClick={() => navigate('/recycle-bin')}

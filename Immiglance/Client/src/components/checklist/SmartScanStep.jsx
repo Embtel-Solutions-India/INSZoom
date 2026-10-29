@@ -100,7 +100,7 @@ export default function SmartScanStep({ caseId, onScanComplete, onSkip }) {
   if (optionsState === "loading") {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-secondary border-t-primary" />
       </div>
     );
   }
@@ -139,7 +139,7 @@ export default function SmartScanStep({ caseId, onScanComplete, onSkip }) {
                   />
                   {scan.status === "scanning" ? (
                     <span className="inline-flex h-8 w-8 items-center justify-center">
-                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-secondary border-t-primary" />
                     </span>
                   ) : scan.status === "error" ? (
                     <button

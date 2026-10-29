@@ -6,7 +6,7 @@ const authorizePermissions = require("../../middleware/authorizePermissions");
 const validate = require("../../middleware/validate");
 const service = require("./recycle-bin.service");
 
-// Deleted cases held for 30 days. Admins and super admins see the bin, restore from it and can remove an item for good before its time.
+// Deleted cases held for 30 days. Admins, super admins and team leads (who can delete cases) see the bin and restore from it; only admins and super admins can remove an item for good before its time.
 const validId = [param("id").isMongoId().withMessage("Valid recycle bin item ID is required"), validate];
 const wrap = (handler) => async (req, res, next) => {
   try {
@@ -17,11 +17,11 @@ const wrap = (handler) => async (req, res, next) => {
   }
 };
 
-router.get("/", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), wrap(async (req, res) => {
+router.get("/", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:delete"), wrap(async (req, res) => {
   res.json({ success: true, retentionDays: service.RETENTION_DAYS, items: await service.listEntries() });
 }));
 
-router.post("/:id/restore", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ...validId, wrap(async (req, res) => {
+router.post("/:id/restore", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:delete"), ...validId, wrap(async (req, res) => {
   const result = await service.restoreEntry(req.params.id, req.user);
   res.json({ success: true, message: `Restored ${result.caseNumbers.join(", ")}.`, ...result });
 }));

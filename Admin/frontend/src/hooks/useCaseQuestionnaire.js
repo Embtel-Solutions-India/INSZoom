@@ -28,6 +28,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
     documentQuestions: [],
     fieldQuestions: [],
     answers: [],
+    responseId: null,
     requestedItems: [],
     loading: true,
     error: null,
@@ -50,6 +51,7 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
         documentQuestions: data.documentQuestions || [],
         fieldQuestions: data.fieldQuestions || [],
         answers: data.answers || [],
+        responseId: data.responseId || null,
         requestedItems: data.requestedItems || [],
         loading: false,
         error: null,
@@ -82,7 +84,9 @@ export default function useCaseQuestionnaire(caseId, targetRole, options = {}) {
   // responseId already on the loaded answers (every answer in this
   // questionnaire's response shares one) makes the edit land on the same
   // record the client's own save did, regardless of who the caller is.
-  const responseId = state.answers[0]?.responseId
+  // The response the server resolved for this checklist, which exists even while it has no answers yet (a blank checklist). Reading it only from the first
+  // answer made a save on a blank checklist go to a different (the case manager's own) response, so the value never showed up after saving.
+  const responseId = state.responseId || state.answers[0]?.responseId
 
   const saveAnswer = useCallback(async (questionKey, value) => {
     if (!state.questionnaire?._id) throw new Error('Questionnaire not loaded')

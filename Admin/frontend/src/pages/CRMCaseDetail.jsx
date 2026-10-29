@@ -4,6 +4,8 @@ import api from '../services/api'
 import { pipelineCategoryLabel } from '../utils/visaOptions'
 import AddEmployeeModal from '../components/AddEmployeeModal'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
+import GoogleDriveExport from '../components/GoogleDriveExport'
+import { useCaseOrigin } from '../utils/caseOrigin'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
@@ -379,6 +381,7 @@ const creationNotes = (caseData) => {
 
 const CRMCaseDetail = () => {
   const { id } = useParams()
+  const caseOrigin = useCaseOrigin(id) // the list this case was opened from (Cases / Corporations / Clients), for the back button
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
@@ -699,6 +702,8 @@ const CRMCaseDetail = () => {
   const [employeeActionMessage, setEmployeeActionMessage] = useState('')
   const [inviteDraft, setInviteDraft] = useState(null) // { childId, name, email }
   const [showAddEmployee, setShowAddEmployee] = useState(false)
+  // Themed, centred confirmation (replaces the browser's own confirm box): { title, message, confirmLabel, tone, onConfirm }
+  const [confirmRequest, setConfirmRequest] = useState(null)
 
   // Tab-specific data and loading states
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
@@ -1028,8 +1033,12 @@ const CRMCaseDetail = () => {
   const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
   const handleEmployerFillsInstead = (child) => {
     const who = child.clientName || 'this employee'
-    if (!window.confirm(`Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`)) return
-    runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in')
+    setConfirmRequest({
+      title: 'Employer fills instead?',
+      message: `Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`,
+      confirmLabel: 'Yes, switch',
+      onConfirm: () => runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in'),
+    })
   }
   // Employer-filled slot -> invited employee: opens the name/email row under the slot; "Send invite" then switches the slot's mode.
   const handleStartInvite = (child) => {
@@ -1047,8 +1056,13 @@ const CRMCaseDetail = () => {
   }
   const handleRestoreEmployee = (childCaseId) => runEmployeeAction(`restore:${childCaseId}`, () => casesApi.restoreEmployee(childCaseId), 'Employee restored')
   const handleRemoveEmployee = (childCaseId) => {
-    if (!window.confirm('Remove this employee from the matter? Their data is kept and this can be undone.')) return
-    runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed')
+    setConfirmRequest({
+      title: 'Withdraw this employee?',
+      message: 'This employee is removed from the matter and loses access. Their data is kept and this can be undone with Restore.',
+      confirmLabel: 'Yes, withdraw',
+      tone: 'danger',
+      onConfirm: () => runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed'),
+    })
   }
 
   const fetchDocuments = useCallback(async (force = false) => {
@@ -2045,11 +2059,11 @@ const CRMCaseDetail = () => {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate(caseData?.caseStructure === 'employer_employee' ? '/corporations' : '/clients')}
+          onClick={() => navigate(caseOrigin?.path || (caseData?.caseStructure === 'employer_employee' ? '/corporations' : '/clients'))}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
-          {caseData?.caseStructure === 'employer_employee' ? 'Back to Corporations' : 'Back to Clients'}
+          {caseOrigin ? `Back to ${caseOrigin.label}` : caseData?.caseStructure === 'employer_employee' ? 'Back to Corporations' : 'Back to Clients'}
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
@@ -2403,6 +2417,17 @@ const CRMCaseDetail = () => {
         )
       })()}
 
+      {confirmRequest && (
+        <ConfirmModal
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          cancelLabel="Cancel"
+          tone={confirmRequest.tone}
+          onConfirm={() => { const { onConfirm } = confirmRequest; setConfirmRequest(null); onConfirm() }}
+          onCancel={() => setConfirmRequest(null)}
+        />
+      )}
       {showAddEmployee && (
         <AddEmployeeModal
           principalId={id}
@@ -3293,14 +3318,17 @@ const CRMCaseDetail = () => {
               <h3 className="text-lg font-semibold text-foreground">Uploaded Documents ({documents.length})</h3>
               <p className="text-sm text-muted-foreground">View, upload, and review documents attached to this case.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCaseDocumentUpload((current) => !current)}
-              className="btn-primary inline-flex items-center justify-center gap-2 text-sm"
-            >
-              <Upload className="h-4 w-4" />
-              {showCaseDocumentUpload ? 'Hide Upload' : 'Upload Document'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <GoogleDriveExport caseId={id} documents={documents} getName={getDocumentName} />
+              <button
+                type="button"
+                onClick={() => setShowCaseDocumentUpload((current) => !current)}
+                className="btn-primary inline-flex items-center justify-center gap-2 text-sm"
+              >
+                <Upload className="h-4 w-4" />
+                {showCaseDocumentUpload ? 'Hide Upload' : 'Upload Document'}
+              </button>
+            </div>
           </div>
           {showCaseDocumentUpload && (
             <div className="mb-5">
