@@ -697,3 +697,23 @@ Proceed, but as a **new, flag-gated, additive module** that treats the existing 
 Keep `drive.file`; do not move to the full `drive` scope without an explicit business decision (D1). Keep sync manual (D9), keep the flag off until the release checklist (§16.4) passes, and obtain the privacy/legal sign-off (D8) before any client document is copied to a customer Google account.
 
 **Nothing in this report is implemented.**
+
+---
+
+## Addendum (2026-10-30) — decisions made after this plan was written
+
+These supersede the matching recommendations above; the rest of the plan stands.
+
+| Plan said | Owner decided / what was built |
+|---|---|
+| One Google account for the whole organisation (D5), connected by an admin | **Per user**: each team member connects their own Google account(s), can hold several, and switches between them. One is active; copies, links, folders and job history are private to the user. `orgId` was dropped from the new collections. |
+| Scope `drive.file` only (D1), with a Picker spike to prove picked folders are writable | **Full `drive` scope**, set with `GOOGLE_DRIVE_SCOPES`. Reason: existing-folder and subfolder selection through the Picker was unreliable under `drive.file` (access is limited to app-created or explicitly picked items). With `drive` the connected account can validate and write to any folder it can open. |
+| Folder choice in an Immiglance-built UI | Step 1 selects documents in the app; step 2 opens **Google's own Picker** (My Drive, Shared with me, Shared drives). A small in-app folder browser exists only as a fallback if the Picker is not configured or cannot open. |
+| Admin-only connect/disconnect | Any staff role connects their own account; only the owner of a connection can switch to it or remove it. |
+
+**What the wider scope means (not a code issue, but a release one):**
+
+- `https://www.googleapis.com/auth/drive` is a Google **restricted** scope. For a production app used by people outside the owning Google Workspace, the OAuth consent screen needs Google's verification, and restricted-scope apps that store data on their servers are normally subject to an annual third-party security assessment. Until then, only listed test users (or users in the owning Workspace if the app is "Internal") can connect, and others see an "unverified app" warning.
+- A leaked refresh token would expose the whole of that person's Drive, not only files Immiglance created. Tokens are stored AES-256-GCM encrypted with a dedicated key, never sent to the browser (the Picker gets a short-lived access token only), and removing an account revokes the token at Google.
+- Accounts connected before the scope was widened are **flagged "reconnect once"** (derived state; nothing is overwritten) and are not used until reconnected.
+- Reverting to the narrower scope is a one-line env change (`GOOGLE_DRIVE_SCOPES=https://www.googleapis.com/auth/drive.file`); accounts with a wider grant keep working.

@@ -7,9 +7,21 @@ const GoogleDriveConnection = require("../../models/GoogleDriveConnection");
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-// drive.file: the app only sees files/folders it created or that a user picked in Google Picker. openid/email only label the account.
+// The Drive permission comes from GOOGLE_DRIVE_SCOPES (config/env.js). With the full "drive" scope the app can open any existing folder and
+// create subfolders inside it; with "drive.file" it only sees what it created or what the user picked in Google Picker. openid/email only
+// label the account.
 const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-const SCOPES = [DRIVE_FILE_SCOPE, "openid", "email"];
+const DRIVE_FULL_SCOPE = "https://www.googleapis.com/auth/drive";
+const REQUIRED_SCOPE = env.googleDrive.driveScope;
+const SCOPES = [REQUIRED_SCOPE, "openid", "email"];
+
+// Does a connection's granted scopes cover what the app now asks for? A connection made before the scope was widened does not, and has to
+// be reconnected (Google ties a saved token to the scopes it was granted). Old records with no scope list are fine under drive.file.
+function hasRequiredScope(granted) {
+  const scopes = Array.isArray(granted) ? granted : [];
+  if (!scopes.length) return REQUIRED_SCOPE === DRIVE_FILE_SCOPE;
+  return REQUIRED_SCOPE === DRIVE_FULL_SCOPE ? scopes.includes(DRIVE_FULL_SCOPE) : scopes.includes(DRIVE_FILE_SCOPE) || scopes.includes(DRIVE_FULL_SCOPE);
+}
 const MULTIPART_LIMIT = 5 * 1024 * 1024;
 const MAX_ATTEMPTS = 4;
 
@@ -174,7 +186,8 @@ async function createFolder(connectionId, name, parentId) {
   return body;
 }
 
-// Under drive.file this lists only folders the app created (or that were picked); Google Picker is how a user reaches any other folder.
+// Folders directly inside `parentId` ("root" = My Drive). Under the full drive scope that is every folder; under drive.file only those the app
+// created or that were picked.
 async function listAppFolders(connectionId, parentId = "root") {
   const q = `mimeType='${FOLDER_MIME}' and '${String(parentId).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' in parents and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id,name,webViewLink)", pageSize: "100", orderBy: "name", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
@@ -252,6 +265,9 @@ async function revokeRefreshToken(refreshToken) {
 
 module.exports = {
   DRIVE_FILE_SCOPE,
+  DRIVE_FULL_SCOPE,
+  REQUIRED_SCOPE,
+  hasRequiredScope,
   DriveError,
   FOLDER_MIME,
   SCOPES,

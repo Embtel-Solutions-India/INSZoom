@@ -213,6 +213,13 @@ const env = {
   // connection belongs to the organisation (one shared firm account for now); nothing org-specific is ever read from the environment.
   googleDrive: {
     enabled: process.env.GOOGLE_DRIVE_INTEGRATION_ENABLED === "true",
+    // The Google Drive permission requested from users, from GOOGLE_DRIVE_SCOPES (space/comma separated). "…/auth/drive" = browse and use ANY
+    // existing folder (a Google-restricted scope); "…/auth/drive.file" = only files/folders Immiglance creates or the user picks. Anything else
+    // in the variable is ignored, and unset means the narrower drive.file.
+    driveScope: (() => {
+      const asked = String(process.env.GOOGLE_DRIVE_SCOPES || "").split(/[\s,]+/).filter(Boolean);
+      return asked.includes("https://www.googleapis.com/auth/drive") ? "https://www.googleapis.com/auth/drive" : "https://www.googleapis.com/auth/drive.file";
+    })(),
     redirectUri: process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || (nodeEnv === "production" ? "" : "http://localhost:7000/api/integrations/google-drive/callback"),
     redirectUriSafe: nodeEnv !== "production" || !isUnsafeOrigin(process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || ""),
     // Where the browser is sent back to after Google's consent screen (the Admin portal origin only; the path comes from a validated value).
