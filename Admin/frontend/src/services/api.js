@@ -865,3 +865,18 @@ export const petitionReviewApi = {
   ready: (token) => api.get(`/petition-review/stream/${encodeURIComponent(token)}/ready`),
   streamUrl: (token, { download = false } = {}) => `${api.defaults.baseURL}/petition-review/stream/${encodeURIComponent(token)}${download ? '?download=1' : ''}`,
 }
+
+// Organisation-level Google Drive ("Add to Drive"). Every route 404s on the server unless the feature is enabled; status says whether to show the button.
+export const googleDriveApi = {
+  status: () => api.get(`/integrations/google-drive/status`),
+  connectStart: (returnPath) => api.post(`/integrations/google-drive/connect/start`, { returnPath }),
+  disconnect: () => api.post(`/integrations/google-drive/disconnect`, {}),
+  pickerToken: () => api.post(`/integrations/google-drive/picker-token`, {}),
+  validateFolder: (folderId) => api.post(`/integrations/google-drive/folders/validate`, { folderId }),
+  createFolder: (name, parentId) => api.post(`/integrations/google-drive/folders`, { name, ...(parentId ? { parentId } : {}) }),
+  listFolders: (parentId) => api.get(`/integrations/google-drive/folders`, { params: parentId ? { parentId } : {} }),
+  lookupLinks: (documentIds) => api.post(`/integrations/google-drive/links/lookup`, { documentIds }),
+  sync: (payload) => api.post(`/integrations/google-drive/sync`, payload),
+  job: (jobId) => api.get(`/integrations/google-drive/jobs/${jobId}`),
+  retry: (jobId) => api.post(`/integrations/google-drive/jobs/${jobId}/retry`, {}),
+}

@@ -4,6 +4,8 @@ import api from '../services/api'
 import { pipelineCategoryLabel } from '../utils/visaOptions'
 import AddEmployeeModal from '../components/AddEmployeeModal'
 import GhlVisaSelectBanner from '../components/GhlVisaSelectBanner'
+import GoogleDriveExport from '../components/GoogleDriveExport'
+import { useCaseOrigin } from '../utils/caseOrigin'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import KeepTab from '../components/KeepTab'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
@@ -379,6 +381,7 @@ const creationNotes = (caseData) => {
 
 const CRMCaseDetail = () => {
   const { id } = useParams()
+  const caseOrigin = useCaseOrigin(id) // the list this case was opened from (Cases / Corporations / Clients), for the back button
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuth()
@@ -2056,11 +2059,11 @@ const CRMCaseDetail = () => {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate(caseData?.caseStructure === 'employer_employee' ? '/corporations' : '/clients')}
+          onClick={() => navigate(caseOrigin?.path || (caseData?.caseStructure === 'employer_employee' ? '/corporations' : '/clients'))}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3"
         >
           <ArrowLeft className="w-4 h-4" />
-          {caseData?.caseStructure === 'employer_employee' ? 'Back to Corporations' : 'Back to Clients'}
+          {caseOrigin ? `Back to ${caseOrigin.label}` : caseData?.caseStructure === 'employer_employee' ? 'Back to Corporations' : 'Back to Clients'}
         </button>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
@@ -3315,14 +3318,17 @@ const CRMCaseDetail = () => {
               <h3 className="text-lg font-semibold text-foreground">Uploaded Documents ({documents.length})</h3>
               <p className="text-sm text-muted-foreground">View, upload, and review documents attached to this case.</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowCaseDocumentUpload((current) => !current)}
-              className="btn-primary inline-flex items-center justify-center gap-2 text-sm"
-            >
-              <Upload className="h-4 w-4" />
-              {showCaseDocumentUpload ? 'Hide Upload' : 'Upload Document'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <GoogleDriveExport caseId={id} documents={documents} getName={getDocumentName} />
+              <button
+                type="button"
+                onClick={() => setShowCaseDocumentUpload((current) => !current)}
+                className="btn-primary inline-flex items-center justify-center gap-2 text-sm"
+              >
+                <Upload className="h-4 w-4" />
+                {showCaseDocumentUpload ? 'Hide Upload' : 'Upload Document'}
+              </button>
+            </div>
           </div>
           {showCaseDocumentUpload && (
             <div className="mb-5">

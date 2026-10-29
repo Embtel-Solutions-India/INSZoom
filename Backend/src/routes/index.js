@@ -91,5 +91,7 @@ router.use("/telemetry", require("../modules/telemetry/telemetry.routes"));
 router.use("/attorney", require("../modules/attorney/attorney.routes"));
 // GoHighLevel integration — every handler 503s unless GHL_ENABLED=true.
 router.use("/integrations/ghl", require("../integrations/ghl/ghl.routes"));
+// Organisation-level Google Drive ("Add to Drive") — every route 404s unless GOOGLE_DRIVE_INTEGRATION_ENABLED=true.
+router.use("/integrations/google-drive", require("../modules/google-drive/google-drive.routes"));
 
 module.exports = router;

@@ -209,6 +209,17 @@ const env = {
       return Boolean(this.oauthClientId && this.oauthClientSecret && this.oauthRedirectUri);
     },
   },
+  // Google Drive "Add to Drive" integration (modules/google-drive). Separate from `google` above so the login flow is untouched. The
+  // connection belongs to the organisation (one shared firm account for now); nothing org-specific is ever read from the environment.
+  googleDrive: {
+    enabled: process.env.GOOGLE_DRIVE_INTEGRATION_ENABLED === "true",
+    redirectUri: process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || (nodeEnv === "production" ? "" : "http://localhost:7000/api/integrations/google-drive/callback"),
+    redirectUriSafe: nodeEnv !== "production" || !isUnsafeOrigin(process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || ""),
+    // Where the browser is sent back to after Google's consent screen (the Admin portal origin only; the path comes from a validated value).
+    adminPortalUrl: process.env.ADMIN_PORTAL_URL || (nodeEnv === "production" ? "" : "http://localhost:3002"),
+    // Dedicated key for encrypting refresh tokens at rest (deliberately not STORAGE_ENCRYPTION_KEY).
+    tokenEncryptionKey: process.env.GOOGLE_TOKEN_ENCRYPTION_KEY || "",
+  },
   adminEmails: (process.env.ADMIN_EMAILS || "")
     .split(",")
     .map((email) => email.trim().toLowerCase())

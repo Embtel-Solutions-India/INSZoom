@@ -1,0 +1,159 @@
+const env = require("../../config/env");
+const logger = require("../../utils/logger");
+const driveClient = require("./drive.client");
+const connectionService = require("./connection.service");
+const syncService = require("./sync.service");
+
+const ADMIN_ROLES = ["super_admin", "admin"];
+const canManage = (user) => ADMIN_ROLES.includes(String(user?.role));
+
+function fail(res, error, fallbackMessage) {
+  if (error instanceof driveClient.DriveError) {
+    const status = error.status && error.status >= 400 && error.status < 600 ? error.status : 502;
+    return res.status(status === 401 ? 502 : status).json({ success: false, code: error.code, message: error.message });
+  }
+  if (error?.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+  logger.error("google_drive_request_failed", { error });
+  return res.status(500).json({ success: false, message: fallbackMessage || "Google Drive request failed." });
+}
+
+// Everything except /status answers 404 while the feature is off, exactly as if the routes did not exist.
+function requireEnabled(req, res, next) {
+  if (!env.googleDrive.enabled) return res.status(404).json({ success: false, message: "Not found" });
+  return next();
+}
+
+function requireConfigured(req, res, next) {
+  if (!driveClient.isConfigured()) return res.status(503).json({ success: false, message: "Google Drive is not fully configured on the server." });
+  return next();
+}
+
+function requireManager(req, res, next) {
+  if (!canManage(req.user)) return res.status(403).json({ success: false, message: "Only an administrator can manage the Google Drive connection." });
+  return next();
+}
+
+async function status(req, res) {
+  try {
+    if (!env.googleDrive.enabled) return res.json({ success: true, enabled: false });
+    const result = await connectionService.getStatus();
+    res.json({ success: true, ...result, canManage: canManage(req.user) });
+  } catch (error) {
+    fail(res, error, "Could not read Google Drive status.");
+  }
+}
+
+async function connectStart(req, res) {
+  try {
+    res.json({ success: true, ...(await connectionService.startConnect(req.user, req.body?.returnPath)) });
+  } catch (error) {
+    fail(res, error, "Could not start the Google connection.");
+  }
+}
+
+// Public by necessity (a browser redirect from Google carries no Bearer token); authorized by the single-use state row.
+async function callback(req, res) {
+  try {
+    if (!env.googleDrive.enabled || !driveClient.isConfigured()) return res.status(404).json({ success: false, message: "Not found" });
+    res.set("Cache-Control", "no-store");
+    return res.redirect(await connectionService.handleCallback(req.query));
+  } catch (error) {
+    logger.error("google_drive_callback_unhandled", { error });
+    return res.redirect(new URL("/?gdrive=error&reason=connect_failed", env.googleDrive.adminPortalUrl).toString());
+  }
+}
+
+async function disconnect(req, res) {
+  try {
+    res.json({ success: true, ...(await connectionService.disconnect(req.user)) });
+  } catch (error) {
+    fail(res, error, "Could not disconnect Google Drive.");
+  }
+}
+
+// Short-lived access token for Google Picker only (never the refresh token). Not cached anywhere.
+async function pickerToken(req, res) {
+  try {
+    const accessToken = await driveClient.getAccessToken(connectionService.resolveOrgId());
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, accessToken, expiresIn: 1800 });
+  } catch (error) {
+    fail(res, error, "Could not prepare Google Drive.");
+  }
+}
+
+async function validateFolder(req, res) {
+  try {
+    const folderId = String(req.body?.folderId || "").trim();
+    if (!folderId) return res.status(400).json({ success: false, message: "folderId is required." });
+    res.json({ success: true, folder: await driveClient.getFolder(connectionService.resolveOrgId(), folderId) });
+  } catch (error) {
+    if (error?.code === "NOT_FOUND") return res.status(404).json({ success: false, code: "NOT_FOUND", message: "That folder was not found, or the connected Google account cannot access it." });
+    fail(res, error, "Could not check that folder.");
+  }
+}
+
+async function createFolder(req, res) {
+  try {
+    const orgId = connectionService.resolveOrgId();
+    const name = String(req.body?.name || "").replace(/[\u0000-\u001f]/g, "").trim();
+    if (!name || name.length > 200) return res.status(400).json({ success: false, message: "Enter a folder name (up to 200 characters)." });
+    const parentId = req.body?.parentId ? String(req.body.parentId) : undefined;
+    if (parentId) await driveClient.getFolder(orgId, parentId); // must exist and be writable
+    const folder = await driveClient.createFolder(orgId, name, parentId);
+    await connectionService.audit(req.user._id, "google_drive.folder_created", { folderId: folder.id });
+    res.status(201).json({ success: true, folder: { id: folder.id, name: folder.name, webViewLink: folder.webViewLink } });
+  } catch (error) {
+    fail(res, error, "Could not create the folder.");
+  }
+}
+
+async function listFolders(req, res) {
+  try {
+    const orgId = connectionService.resolveOrgId();
+    const [folders, recent] = await Promise.all([driveClient.listAppFolders(orgId, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders()]);
+    res.json({ success: true, folders, recent });
+  } catch (error) {
+    fail(res, error, "Could not list folders.");
+  }
+}
+
+async function startSync(req, res) {
+  try {
+    const { documentIds, folderId, caseId, force } = req.body || {};
+    const job = await syncService.createJob(req.user, { documentIds, folderId, caseId, force });
+    res.status(202).json({ success: true, jobId: job._id });
+  } catch (error) {
+    fail(res, error, "Could not start adding files to Drive.");
+  }
+}
+
+async function getJob(req, res) {
+  try {
+    const job = await syncService.getJob(req.user, req.params.id);
+    if (!job) return res.status(404).json({ success: false, message: "Job not found." });
+    res.json({ success: true, job });
+  } catch (error) {
+    fail(res, error, "Could not read job progress.");
+  }
+}
+
+async function retryJob(req, res) {
+  try {
+    const job = await syncService.retryJob(req.user, req.params.id);
+    if (!job) return res.status(404).json({ success: false, message: "Job not found." });
+    res.status(202).json({ success: true, job });
+  } catch (error) {
+    fail(res, error, "Could not retry.");
+  }
+}
+
+async function lookupLinks(req, res) {
+  try {
+    res.json({ success: true, links: await syncService.lookupLinks(req.user, req.body?.documentIds) });
+  } catch (error) {
+    fail(res, error, "Could not read Drive status for these documents.");
+  }
+}
+
+module.exports = { callback, connectStart, createFolder, disconnect, getJob, listFolders, lookupLinks, pickerToken, requireConfigured, requireEnabled, requireManager, retryJob, startSync, status, validateFolder };
