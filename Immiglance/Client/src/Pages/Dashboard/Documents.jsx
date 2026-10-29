@@ -943,6 +943,8 @@ export default function Documents() {
     setScanStep("checklist");
   };
 
+  const hasSectionNav = sectionCounts.length > 0 || Boolean(employeeWaitingOnInvite);
+
   if (shouldShowScanStep) {
     return (
       <div className="min-h-screen bg-background">
@@ -1056,9 +1058,10 @@ export default function Documents() {
         </div>
       )}
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:grid lg:grid-cols-[240px_1fr] lg:gap-8">
+      {/* With no checklist sections (a case whose checklist is only what the case manager requests), there is no section rail: the content is one centred column instead of being pushed right by an empty rail. */}
+      <div className={`mx-auto px-4 py-6 sm:px-6 ${hasSectionNav ? "max-w-7xl lg:grid lg:grid-cols-[240px_1fr] lg:gap-8" : "max-w-4xl"}`}>
         {/* Desktop section nav — sticky rail */}
-        <nav aria-label="Checklist sections" className="hidden lg:block">
+        <nav aria-label="Checklist sections" className={hasSectionNav ? "hidden lg:block" : "hidden"}>
           <div className="sticky top-24 space-y-1 rounded-xl border border-border bg-card p-2">
             {presentRoleGroups.length > 1 ? (
               presentRoleGroups.map((roleGroup) => (

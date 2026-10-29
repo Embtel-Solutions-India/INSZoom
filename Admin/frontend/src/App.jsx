@@ -206,7 +206,7 @@ function App() {
               <Route
                 path="recycle-bin"
                 element={
-                  <ProtectedRoute requiredRoles={['super_admin', 'admin']}>
+                  <ProtectedRoute requiredRoles={['super_admin', 'admin', 'team_lead']}>
                     <RecycleBin />
                   </ProtectedRoute>
                 }

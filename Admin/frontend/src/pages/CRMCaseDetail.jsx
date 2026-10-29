@@ -699,6 +699,8 @@ const CRMCaseDetail = () => {
   const [employeeActionMessage, setEmployeeActionMessage] = useState('')
   const [inviteDraft, setInviteDraft] = useState(null) // { childId, name, email }
   const [showAddEmployee, setShowAddEmployee] = useState(false)
+  // Themed, centred confirmation (replaces the browser's own confirm box): { title, message, confirmLabel, tone, onConfirm }
+  const [confirmRequest, setConfirmRequest] = useState(null)
 
   // Tab-specific data and loading states
   const [fetched, setFetched] = useState({ overview: true, documents: false, forms: false, petition: true, strategy: false, payments: false, letters: false, notes: false, tracking: false })
@@ -1028,8 +1030,12 @@ const CRMCaseDetail = () => {
   const handleResendInvite = (childCaseId) => runEmployeeAction(`resend:${childCaseId}`, () => casesApi.resendEmployeeInvite(id, childCaseId), 'Invitation re-sent')
   const handleEmployerFillsInstead = (child) => {
     const who = child.clientName || 'this employee'
-    if (!window.confirm(`Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`)) return
-    runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in')
+    setConfirmRequest({
+      title: 'Employer fills instead?',
+      message: `Switch ${who} to "employer fills"? Their invitation is cancelled and they lose access to this case. Anything already entered is kept.`,
+      confirmLabel: 'Yes, switch',
+      onConfirm: () => runEmployeeAction(`mode:${child._id}`, () => casesApi.setEmployeeDataEntryMode(id, child._id, { mode: 'fill_self' }), 'Workflow changed: the employer now fills this employee in'),
+    })
   }
   // Employer-filled slot -> invited employee: opens the name/email row under the slot; "Send invite" then switches the slot's mode.
   const handleStartInvite = (child) => {
@@ -1047,8 +1053,13 @@ const CRMCaseDetail = () => {
   }
   const handleRestoreEmployee = (childCaseId) => runEmployeeAction(`restore:${childCaseId}`, () => casesApi.restoreEmployee(childCaseId), 'Employee restored')
   const handleRemoveEmployee = (childCaseId) => {
-    if (!window.confirm('Remove this employee from the matter? Their data is kept and this can be undone.')) return
-    runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed')
+    setConfirmRequest({
+      title: 'Withdraw this employee?',
+      message: 'This employee is removed from the matter and loses access. Their data is kept and this can be undone with Restore.',
+      confirmLabel: 'Yes, withdraw',
+      tone: 'danger',
+      onConfirm: () => runEmployeeAction(`remove:${childCaseId}`, () => casesApi.removeEmployee(childCaseId), 'Employee removed'),
+    })
   }
 
   const fetchDocuments = useCallback(async (force = false) => {
@@ -2403,6 +2414,17 @@ const CRMCaseDetail = () => {
         )
       })()}
 
+      {confirmRequest && (
+        <ConfirmModal
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          cancelLabel="Cancel"
+          tone={confirmRequest.tone}
+          onConfirm={() => { const { onConfirm } = confirmRequest; setConfirmRequest(null); onConfirm() }}
+          onCancel={() => setConfirmRequest(null)}
+        />
+      )}
       {showAddEmployee && (
         <AddEmployeeModal
           principalId={id}
