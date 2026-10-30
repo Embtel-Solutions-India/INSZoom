@@ -1,10 +1,12 @@
-import { Suspense, useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useParams, Link } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { attorneyApi } from '../../../services/api'
 import CaseStatusBadge from '../../../components/CaseStatusBadge'
 import WorkStateBadge, { isNotableCaseStatus } from '../../../components/WorkStateBadge'
 import { useSocket } from '../../../context/SocketContext'
+import { caseIdentity } from '../../../utils/caseIdentity'
+import CaseMeta from '../../../components/CaseMeta'
 
 // Case-related tabs only — no Payments (no billing access, see
 // permissions.registry.js's attorney grant), no Expert Letters (a stub
@@ -24,10 +26,10 @@ import { useSocket } from '../../../context/SocketContext'
 // decision - an attorney should not see the forms tab at all, not even
 // read-only (see FormsTab.jsx's removal + services/api.js's
 // previewForm/downloadForm removal in the same change).
+// UPDATE: Documents and Checklists were removed by product decision - the attorney works from the Overview (with the employee / beneficiary slots), the petition the case
+// manager sends for review, and the Feedback conversation. Their addresses still resolve (to the Overview) so an old link or bookmark does not break.
 const TABS = [
   { to: 'overview', label: 'Overview' },
-  { to: 'documents', label: 'Documents' },
-  { to: 'checklists', label: 'Checklists' },
   { to: 'petition', label: 'Petition' },
   { to: 'tracking', label: 'USCIS Tracking' },
   { to: 'feedback', label: 'Feedback' },
@@ -49,6 +51,8 @@ export default function CaseDetailLayout() {
   const [review, setReview] = useState({ status: 'in_review', workState: 'assigned' })
   const { pathname } = useLocation()
   const [reviewBusy, setReviewBusy] = useState(false)
+  // true when this is an employee / beneficiary slot opened through its matter: read-only, with no review of its own (the review belongs to the matter)
+  const [viaParent, setViaParent] = useState(false)
   const [reviewError, setReviewError] = useState('')
 
   const toggleReview = async () => {
@@ -70,6 +74,7 @@ export default function CaseDetailLayout() {
       .case(caseId)
       .then(({ data }) => {
         setCaseData(data.case)
+        setViaParent(Boolean(data.viaParent))
         // Keep "active" if the activity ping already landed while this request was in flight.
         setReview((prev) => {
           const incoming = data.review || { status: 'in_review', workState: 'assigned' }
@@ -93,9 +98,12 @@ export default function CaseDetailLayout() {
 
   // Opening the case, or moving to another tab of it, counts as work on it: the case becomes active for this attorney.
   // Fire-and-forget - a failed ping must never get in the way of reading the case.
+  const openedFor = useRef(null)
   useEffect(() => {
+    const kind = openedFor.current === caseId ? undefined : 'open'
+    openedFor.current = caseId
     attorneyApi
-      .recordActivity(caseId)
+      .recordActivity(caseId, kind)
       .then(({ data }) => setReview((prev) => (prev.workState === 'reviewed' ? prev : { ...prev, workState: data.workState || 'active' })))
       .catch(() => {})
   }, [caseId, pathname])
@@ -114,8 +122,13 @@ export default function CaseDetailLayout() {
     })
     // An answer saved, a document uploaded / reviewed or a checklist approved on this case (client portal or Admin): the tabs re-read it
     // (refreshToken). Bursts are coalesced server-side; this just re-reads.
+    // Only what the attorney can see matters here: employee / beneficiary slots and the petition's release. (Answers and checklists are not shown in this portal, so a client
+    // typing an answer never makes this page re-read anything.)
     const unsubDataChanged = subscribe('case:data_changed', (payload) => {
       if (String(payload?.caseId) !== String(caseId)) return
+      const scope = payload?.scope || []
+      if (!scope.includes('employees') && !scope.includes('documents') && !scope.includes('tracking')) return
+      fetchCase()
       setRefreshToken((t) => t + 1)
     })
     return () => {
@@ -139,22 +152,31 @@ export default function CaseDetailLayout() {
     )
   }
   if (!caseData) return <Loader2 className="w-6 h-6 animate-spin text-primary" />
+  const identity = caseIdentity(caseData)
 
   return (
     <div className="space-y-4">
-      <Link to="/cases" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-        <ArrowLeft className="w-4 h-4" /> Back to my cases
-      </Link>
+      {viaParent && caseData.parentCase?._id ? (
+        <Link to={`/cases/${caseData.parentCase._id}/overview`} className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to matter {caseData.parentCase.caseNumber || ''}
+        </Link>
+      ) : (
+        <Link to="/cases" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+          <ArrowLeft className="w-4 h-4" /> Back to my cases
+        </Link>
+      )}
 
       <div className="flex items-start sm:items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-foreground font-serif break-words">{caseData.caseNumber || caseData.caseId}</h1>
-          <p className="text-sm text-muted-foreground">{caseData.clientName} · {caseData.visaType}</p>
+          <h1 className="text-xl font-bold text-foreground font-serif break-words">{identity.name}</h1>
+          <CaseMeta email={identity.email} caseId={identity.caseId} visa={caseData.visaType} />
         </div>
         <div className="shrink-0 flex flex-col sm:flex-row items-end sm:items-center gap-2">
-          <WorkStateBadge state={review.workState} />
+          {!viaParent && <WorkStateBadge state={review.workState} />}
           {isNotableCaseStatus(caseData.status) && <CaseStatusBadge status={caseData.status} />}
-          {review.status === 'reviewed' ? (
+          {viaParent ? (
+            <span className="badge badge-neutral">Employee case - read only</span>
+          ) : review.status === 'reviewed' ? (
             <div className="flex items-center gap-2">
               <span className="badge badge-success inline-flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />

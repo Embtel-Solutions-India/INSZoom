@@ -3,7 +3,7 @@
 //
 //   attorney review -> the case's attorneys (active access grant) see it in the Attorney Portal and are e-mailed ("petition-attorney-review")
 //   client review   -> ONLY the case's petition audience (single person / petitioner / employer, see petitionAudience.js) sees it and is e-mailed ("petition-client-review")
-//   feedback thread -> between that audience and the case team; attorneys are not in it
+//   feedback thread -> between that audience and the case team; attorneys are not in it (an attorney reads the released petition and answers through the case's staff-only Feedback thread)
 //
 // Every function throws an Error with .status for a refusal; side effects after the main write (e-mail, bell, live events) are best-effort and can never fail the request.
 const { pickAudience, idOf } = require("./petitionAudience");
@@ -63,10 +63,10 @@ function createPetitionReviewService(deps = {}) {
     }
   }
 
-  async function bell(userId, author, { title, message, caseId, link, documentId, kind }) {
+  async function bell(userId, author, { title, message, caseId, link, documentId, kind, channels }) {
     return quietly("petition_review_bell_failed", () =>
       (deps.createNotification || require("../notifications/notification.service").createNotification)(
-        { userId, type: kind === "message" ? "message" : "document", category: kind === "message" ? "message" : "document", title, message, caseId, link, priority: "high", channels: ["in_app", "socket"], metadata: { documentId: String(documentId), kind: "petition" }, source: "shared" },
+        { userId, type: kind === "message" ? "message" : "document", category: kind === "message" ? "message" : "document", title, message, caseId, link, priority: "high", channels: channels || ["in_app", "socket"], metadata: { documentId: String(documentId), kind: "petition" }, source: "shared" },
         author
       )
     );
@@ -98,6 +98,16 @@ function createPetitionReviewService(deps = {}) {
         data: { attorneyName: name(attorney), caseNumber: caseLabel(caseData), clientName: caseData.clientName || "", visaType: caseData.visaType || caseData.visaCategory || "", petitionName: fileNameOf(document), note: cleanNote },
       }));
       if (result?.sent) emailed += 1;
+    }
+    // in-app notice + browser push to every attorney with access; opens straight on the case's Petition page. Best-effort, never blocks the release.
+    for (const grant of grants) {
+      bell(idOf(grant.attorneyId), actor, {
+        title: "Petition ready for your review", message: `Case ${caseLabel(caseData)}: ${fileNameOf(document)}`, caseId: caseData._id, documentId,
+        link: `/cases/${caseData._id}/petition`, kind: "review", channels: ["in_app", "socket", "push"],
+      });
+      quietly("petition_attorney_timeline_failed", () => (deps.recordTimeline || require("../attorney/attorneyTimeline.service").record)({
+        caseId: caseData._id, attorneyId: idOf(grant.attorneyId), type: "petition_received", title: "Petition received for review", description: fileNameOf(document), meta: { documentId: String(documentId) },
+      }));
     }
     quietly("petition_live_update_failed", () => require("../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "documents", { actor, reason: "petition_attorney_review" }));
     emit([...teamIds(caseData), ...grants.map((grant) => grant.attorneyId)], "petition:review", { caseId: String(caseData._id), documentId: String(documentId), stage: "attorney" });
@@ -152,6 +162,26 @@ function createPetitionReviewService(deps = {}) {
     return { audience: audience ? { role: audience.role, name: name(audience.user) } : null, attorneys: (caseData.attorneyAccess || []).filter((grant) => grant.status === "active").length, items };
   }
 
+  const hasOwnGrant = (caseData, user) => (caseData.attorneyAccess || []).some((grant) => grant.status === "active" && idOf(grant.attorneyId) === String(user._id));
+  // an employee / beneficiary slot is open to the attorney granted its parent matter
+  const hasAttorneyGrant = async (caseData, user) => hasOwnGrant(caseData, user) || (caseData.parentCase ? hasOwnGrant((await data.getCases([caseData.parentCase]))[0] || {}, user) : false);
+
+  // The petitions the case manager released for attorney review on ONE case, for an attorney with an active grant on it. Nothing unreleased is ever listed.
+  async function listForAttorney({ caseId, user }) {
+    if (roleOf(user) !== "attorney") throw refuse(403, "Only an attorney can open this list.");
+    const caseData = await data.getCase(caseId);
+    if (!caseData || !(await hasAttorneyGrant(caseData, user))) throw refuse(404, "Case not found.");
+    const documents = await data.listPetitionDocuments(caseData._id);
+    const reviews = documents.length ? await data.getReviews(documents.map((document) => document._id)) : [];
+    const released = new Map(reviews.filter((review) => review.attorneyReview?.sentAt).map((review) => [String(review.documentId), review]));
+    return {
+      items: documents.filter((document) => released.has(String(document._id))).map((document) => {
+        const review = released.get(String(document._id));
+        return { documentId: String(document._id), caseId: String(caseData._id), caseNumber: caseLabel(caseData), fileName: fileNameOf(document), uploadedAt: document.createdAt, sentAt: review.attorneyReview.sentAt, note: review.attorneyReview.note || "" };
+      }).sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt)),
+    };
+  }
+
   async function listForClient({ user }) {
     const cases = await data.casesOfUser(user._id);
     if (!cases.length) return { items: [] };
@@ -181,6 +211,10 @@ function createPetitionReviewService(deps = {}) {
       if (!canAccessCase(user, caseData)) throw refuse(403, "You do not have permission to access this petition.");
       return { side: "staff", document, caseData, review };
     }
+    if (roleOf(user) === "attorney") {
+      if ((await hasAttorneyGrant(caseData, user)) && review?.attorneyReview?.sentAt) return { side: "attorney", document, caseData, review };
+      throw refuse(404, "This petition was not found.");
+    }
     const audience = pickAudience(caseData, await loadParent(caseData));
     if (audience && audience.userId === String(user._id) && review?.clientReview?.sentAt) return { side: "client", document, caseData, review, audience };
     throw refuse(404, "This petition was not found."); // not "forbidden": a person outside the audience learns nothing about it
@@ -194,7 +228,8 @@ function createPetitionReviewService(deps = {}) {
   }
 
   async function listMessages({ user, documentId, limit = 50, before }) {
-    await authorizeThread(user, documentId);
+    const { side } = await authorizeThread(user, documentId);
+    if (side === "attorney") throw refuse(403, "Attorneys give petition feedback in the case's Feedback.");
     const cap = Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 100);
     const beforeDate = before ? new Date(before) : null;
     const rows = await data.listMessages(documentId, { limit: cap, before: beforeDate && !Number.isNaN(beforeDate.getTime()) ? beforeDate : null });
@@ -223,6 +258,7 @@ function createPetitionReviewService(deps = {}) {
     if (!text) throw refuse(400, "Write a message first.");
     if (text.length > MAX_BODY) throw refuse(400, `A message can be at most ${MAX_BODY} characters.`);
     const { side, caseData, document, audience: knownAudience, review } = await authorizeThread(user, documentId);
+    if (side === "attorney") throw refuse(403, "Attorneys give petition feedback in the case's Feedback.");
     if (side === "staff" && !review?.clientReview?.sentAt) throw refuse(409, "Send the petition for client review first; the client can then read and answer here.");
     const clean = String(clientMessageId || "").slice(0, 64);
     if (clean) {
@@ -250,7 +286,12 @@ function createPetitionReviewService(deps = {}) {
   const warm = (document) => quietly("petition_warm_failed", () => data.readDocumentBuffer(document));
 
   async function createViewLink({ user, documentId }) {
-    const { side, document } = await authorizeThread(user, documentId);
+    const { side, document, caseData } = await authorizeThread(user, documentId);
+    if (side === "attorney") {
+      quietly("petition_attorney_timeline_failed", () => (deps.recordTimeline || require("../attorney/attorneyTimeline.service").record)({
+        caseId: caseData._id, attorneyId: String(user._id), type: "petition_viewed", title: "Opened the petition", description: fileNameOf(document), meta: { documentId: String(documentId) }, dedupeMinutes: 10,
+      }));
+    }
     warm(document); // the slow part (storage read + decrypt) starts now, while the browser is still setting the viewer up
     return { token: viewToken().sign({ documentId, userId: user._id, side }), expiresInSeconds: viewToken().TTL_SECONDS };
   }
@@ -268,7 +309,7 @@ function createPetitionReviewService(deps = {}) {
       return { document };
     }
     const { side, document } = await authorizeThread({ ...user, _id: payload.uid }, payload.doc);
-    if (side !== "client") throw refuse(403, "This account cannot open the petition.");
+    if (side !== payload.side) throw refuse(403, "This account cannot open the petition.");
     return { document };
   }
 
@@ -288,12 +329,13 @@ function createPetitionReviewService(deps = {}) {
   }
 
   async function markRead({ user, documentId }) {
-    await authorizeThread(user, documentId);
+    const { side } = await authorizeThread(user, documentId);
+    if (side === "attorney") throw refuse(403, "Attorneys give petition feedback in the case's Feedback.");
     await data.markRead(documentId, user._id);
     return { ok: true };
   }
 
-  return { sendForAttorneyReview, sendForClientReview, listForStaff, listForClient, readFile, listMessages, postMessage, markRead, authorizeThread, audienceOf, createViewLink, streamFile, streamReady };
+  return { sendForAttorneyReview, sendForClientReview, listForStaff, listForClient, listForAttorney, readFile, listMessages, postMessage, markRead, authorizeThread, audienceOf, createViewLink, streamFile, streamReady };
 }
 
 module.exports = { createPetitionReviewService, MANAGER_ROLES, LATEST, MAX_BODY };

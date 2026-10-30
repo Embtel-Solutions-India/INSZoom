@@ -5,6 +5,7 @@ const Task = require("../../models/Task");
 const Feedback = require("../../models/Feedback");
 const caseService = require("../cases/case.service");
 const attorneyTrends = require("./attorneyTrends.service");
+const attorneyTimeline = require("./attorneyTimeline.service");
 const feedbackService = require("../feedback/feedback.service");
 const attorneyAccessService = require("./attorneyAccess.service");
 
@@ -72,6 +73,9 @@ const touchActivityQuietly = (caseId, attorneyId) => touchActivity(caseId, attor
 exports.recordActivity = async (req, res, next) => {
   try {
     await touchActivity(req.params.caseId, req.user._id);
+    if (req.body?.kind === "open") {
+      attorneyTimeline.record({ caseId: req.params.caseId, attorneyId: req.user._id, type: "case_opened", title: "You opened the case", dedupeMinutes: 30 });
+    }
     // Any movement makes an untouched case active; a case already marked reviewed stays reviewed.
     res.json({ success: true, workState: workStateFor(req.authorizedCase, req.user._id) === "reviewed" ? "reviewed" : "active" });
   } catch (error) {
@@ -283,18 +287,117 @@ function buildDashboardInsights({ attorneyId, cases, grantCases, tasks, unread }
 // service the staff portals use (getAccessibleCaseOrThrow re-checks access
 // via canAccessCase, which is attorney-aware; the double check is
 // intentional defense in depth, not redundancy to remove).
+// The case record for a case the guard already authorised. An employee slot reached through its parent matter is loaded directly (the shared access rule only knows a
+// grant on the case itself); everything else keeps going through the shared loader and its own double check.
+async function loadAuthorizedCase(req, { omit } = {}) {
+  if (!req.accessViaParent) return caseService.getAccessibleCaseOrThrow(req.params.caseId, req.user, { omit });
+  const query = Case.findById(req.params.caseId);
+  if (omit && omit.length) query.select(omit.map((field) => `-${field}`).join(" "));
+  const caseData = await caseService.populateCaseQuery(query);
+  if (!caseData) throw Object.assign(new Error("Case not found"), { statusCode: 404 });
+  return caseData;
+}
+
 exports.getCase = async (req, res, next) => {
   try {
     // A case document is ~520 KB (canonicalHistory alone ~400 KB) and every byte is paid for over the wire from the database.
     // None of the attorney screens read these five bulky fields (verified: no reference in Attorney/src, and serializing the
     // case without them changes only those keys), so they are left out - the staff case read already omits canonicalHistory
     // for the same reason (case.controller.js, CASE_OMIT_HISTORY; the full list is CASE_OMIT_LOOKUP in case.service.js).
-    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.caseId, req.user, { omit: caseService.CASE_OMIT_LOOKUP });
+    // questionnaireData (~12 KB) is kept: the Overview shows the visa variant the client chose (e.g. O-1A), exactly as Admin's does.
+    // An employee / beneficiary slot has no attorney grant of its own - the attorney is assigned to the MATTER - so its "Assigned Staff" shows the matter's attorneys
+    // (read alongside the slot, so no extra wait).
+    const [caseData, parentGrants] = await Promise.all([
+      loadAuthorizedCase(req, { omit: caseService.CASE_OMIT_LOOKUP.filter((field) => field !== "questionnaireData") }),
+      req.accessViaParent
+        ? Case.findById(req.accessViaParent).select("attorneyAccess").populate("attorneyAccess.attorneyId", "name displayName email role").lean()
+        : null,
+    ]);
+    const serialized = caseService.serializeCaseForUser(caseData, req.user);
+    if (parentGrants) serialized.attorneyAccess = parentGrants.attorneyAccess || [];
     res.json({
       success: true,
-      case: caseService.serializeCaseForUser(caseData, req.user),
+      viaParent: Boolean(req.accessViaParent),
+      case: serialized,
       review: { ...reviewFor(req.authorizedCase || caseData, req.user._id), workState: workStateFor(req.authorizedCase || caseData, req.user._id) },
     });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// The employee / beneficiary slots of an employer matter (or the beneficiary of a family case): the same rows Admin's Overview lists, read-only. The attorney's
+// grant is on the principal case, so these are summaries only - there is no way to open or change a child case from here.
+exports.getChildren = async (req, res, next) => {
+  try {
+    // Fast path: the guard already read the matter (role, structure, owner, data-entry mode), so this makes ONE read of the slots and ONE more for the names / invite state,
+    // instead of loading the whole matter with its ~15 lookups first. (Each database round trip costs ~300 ms; the number of sequential ones is what makes this fast or slow.)
+    const principal = req.authorizedCase;
+    if (principal.caseRole !== "principal") return res.json({ success: true, children: [], structure: principal.caseStructure || "" });
+    const rows = await Case.find({ parentCase: principal._id })
+      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status caseRole childIndex createdAt petitionSubType employeeDataEntryMode assignedCaseManager")
+      .sort({ childIndex: 1, createdAt: 1 })
+      .lean();
+    const principalUser = String(principal.user?._id || principal.user || "");
+    const invitedIds = [...new Set(rows.map((row) => String(row.user?._id || row.user || "")).filter((id) => id && id !== principalUser))];
+    const managerIds = [...new Set(rows.map((row) => String(row.assignedCaseManager || "")).filter(Boolean))];
+    const [accounts, managers] = await Promise.all([
+      invitedIds.length ? User.find({ _id: { $in: invitedIds } }).select("+password").lean() : [],
+      managerIds.length ? User.find({ _id: { $in: managerIds } }).select("name displayName").lean() : [],
+    ]);
+    const accepted = new Set(accounts.filter((account) => account.password).map((account) => String(account._id)));
+    const managerById = new Map(managers.map((manager) => [String(manager._id), manager]));
+    const children = rows.map((child) => {
+      const invited = Boolean(child.user) && String(child.user?._id || child.user) !== principalUser;
+      const mode = child.employeeDataEntryMode || (invited ? "invite" : principal.dataEntryMode);
+      const manager = managerById.get(String(child.assignedCaseManager || ""));
+      return {
+        _id: String(child._id),
+        caseNumber: child.caseNumber,
+        name: child.clientName || child.employeeIdentity?.name || child.pendingEmployee?.name || "",
+        email: child.clientEmail || child.employeeIdentity?.email || child.pendingEmployee?.email || "",
+        visaType: child.visaType || "",
+        petitionSubType: child.petitionSubType || "",
+        status: child.status,
+        invited,
+        inviteStatus: !invited ? "none" : accepted.has(String(child.user?._id || child.user)) ? "accepted" : "pending",
+        employeeFills: mode === "invite",
+        caseManagerName: manager?.name || manager?.displayName || "",
+        createdAt: child.createdAt,
+        childIndex: child.childIndex || "",
+      };
+    });
+    res.json({ success: true, children, structure: principal.caseStructure || "" });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// USCIS tracking, exactly what Admin's USCIS Tracking tab shows (status, filing, RFE, notices, case timeline), read-only. Same service and same stored record Admin saves,
+// so a change there is what is read here. Notice files are listed by name only - this portal does not open them.
+exports.getTracking = async (req, res, next) => {
+  try {
+    const caseData = await Case.findById(req.params.caseId).select("immigrationLifecycle timeline");
+    if (!caseData) return res.status(404).json({ success: false, message: "Case not found" });
+    const result = await require("../immigration-lifecycle/services/TrackingService").get(caseData);
+    res.json({
+      success: true,
+      data: {
+        tracking: result.tracking,
+        timeline: result.timeline,
+        governmentDocuments: (result.governmentDocuments || []).map((doc) => ({ _id: doc._id, originalName: doc.originalName, documentType: doc.documentType, reviewStatus: doc.reviewStatus, createdAt: doc.createdAt })),
+      },
+    });
+  } catch (error) {
+    handleError(error, next);
+  }
+};
+
+// The attorney's personal timeline of this case (see attorneyTimeline.service.js): assigned, opened, petition received / read, feedback given, review completed.
+exports.getTimeline = async (req, res, next) => {
+  try {
+    const events = await attorneyTimeline.list({ caseId: req.params.caseId, attorneyId: req.user._id });
+    res.json({ success: true, timeline: attorneyTimeline.compose({ grant: grantFor(req.authorizedCase, req.user._id), events }) });
   } catch (error) {
     handleError(error, next);
   }
@@ -314,6 +417,9 @@ function setReview(reviewed) {
       );
       if (!result.matchedCount) return res.status(403).json({ success: false, message: "Access denied to this case" });
       if (reviewed) touchActivityQuietly(req.params.caseId, req.user._id);
+      attorneyTimeline.record(reviewed
+        ? { caseId: req.params.caseId, attorneyId: req.user._id, type: "review_completed", title: "Review completed", description: "You marked your review of this case complete." }
+        : { caseId: req.params.caseId, attorneyId: req.user._id, type: "review_reopened", title: "Review reopened", description: "You reopened your review of this case." });
       res.json({ success: true, review: { status: reviewed ? "reviewed" : "in_review", reviewedAt } });
     } catch (error) {
       handleError(error, next);
@@ -343,6 +449,7 @@ exports.createFeedback = async (req, res, next) => {
       files: req.files || [],
     });
     touchActivityQuietly(req.params.caseId, req.user._id);
+    attorneyTimeline.record({ caseId: req.params.caseId, attorneyId: req.user._id, type: "feedback_sent", title: "You sent feedback to the case manager", description: String(req.body?.message || "").trim().slice(0, 140) || "(attachment)" });
     res.status(201).json({ success: true, feedback });
   } catch (error) {
     handleError(error, next);
@@ -361,6 +468,7 @@ exports.replyToFeedback = async (req, res, next) => {
       files: req.files || [],
     });
     touchActivityQuietly(req.params.caseId, req.user._id);
+    attorneyTimeline.record({ caseId: req.params.caseId, attorneyId: req.user._id, type: "feedback_sent", title: "You sent feedback to the case manager", description: String(req.body?.message || "").trim().slice(0, 140) || "(attachment)" });
     res.status(201).json({ success: true, feedback });
   } catch (error) {
     handleError(error, next);

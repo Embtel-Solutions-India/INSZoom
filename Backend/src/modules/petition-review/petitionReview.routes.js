@@ -6,6 +6,8 @@
 //   CLIENT PORTAL (the case's petition audience only: single person / petitioner / employer):
 //     GET  /api/petition-review/client/petitions                                petitions released to me, with the latest 5 feedback messages each
 //     GET  /api/petition-review/client/petitions/:documentId/file[?download=1]  the PDF (inline for the viewer, attachment for Download)
+//   ATTORNEY PORTAL (an attorney with an active grant on the case):
+//     GET  /api/petition-review/attorney/cases/:caseId/petitions               the petitions released for attorney review on that case (opened through the VIEWER routes below)
 //   VIEWER (fast opening of a big PDF; see petitionViewToken.js):
 //     POST /api/petition-review/documents/:documentId/view-link                a signed link for ONE petition and ONE person; starts reading the file in the background
 //     GET  /api/petition-review/stream/:token/ready                            long-poll (about 12 s): { ready } once the file is in memory - the viewer just asks again, never an error
@@ -105,6 +107,8 @@ function createRouter(services = {}) {
   router.get("/cases/:caseId", managers, handle((req) => service.listForStaff({ caseId: req.params.caseId, user: req.user })));
   router.post("/cases/:caseId/documents/:documentId/attorney-review", managers, handle((req) => service.sendForAttorneyReview({ caseId: req.params.caseId, documentId: req.params.documentId, actor: req.user, note: note(req), req }), 201));
   router.post("/cases/:caseId/documents/:documentId/client-review", managers, handle((req) => service.sendForClientReview({ caseId: req.params.caseId, documentId: req.params.documentId, actor: req.user, note: note(req), req }), 201));
+
+  router.get("/attorney/cases/:caseId/petitions", authorizeRoles("attorney"), handle((req) => service.listForAttorney({ caseId: req.params.caseId, user: req.user })));
 
   router.get("/client/petitions", handle((req) => service.listForClient({ user: req.user })));
   router.get("/client/petitions/:documentId/file", async (req, res, next) => {

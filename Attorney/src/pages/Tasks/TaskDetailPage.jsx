@@ -118,8 +118,9 @@ export default function TaskDetailPage() {
               <h2 className="text-sm font-semibold text-foreground mb-3">Linked case</h2>
               <div className="flex items-center justify-between gap-3 rounded-lg bg-muted p-4">
                 <div className="min-w-0">
-                  <p className="font-semibold text-foreground truncate">{caseRef.caseNumber || caseRef.caseId}</p>
-                  {caseRef.clientName && <p className="text-sm text-muted-foreground truncate">{caseRef.clientName}</p>}
+                  {caseRef.clientName && <p className="font-semibold text-foreground truncate">{caseRef.clientName}</p>}
+                  {caseRef.clientEmail && <p className="text-sm font-medium text-foreground/80 truncate">{caseRef.clientEmail}</p>}
+                  <p className="text-sm text-muted-foreground truncate">Case ID <span className="font-semibold text-foreground">{caseRef.caseNumber || caseRef.caseId}</span></p>
                 </div>
                 {caseRef._id && <Link to={`/cases/${caseRef._id}/overview`} className="text-sm font-medium text-primary hover:underline shrink-0">View case</Link>}
               </div>

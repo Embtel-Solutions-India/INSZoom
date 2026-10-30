@@ -27,8 +27,12 @@ async function recipientsOf(caseId) {
   for (const grant of caseData.attorneyAccess || []) if (grant?.status === "active") ids.add(idOf(grant.attorneyId));
   if (caseData.parentCase) {
     // an employee case: the employer (who holds the principal case) sees it in their Employees dashboard
-    const parent = await Case.findById(caseData.parentCase).select("user delegateEmployerUser assignedCaseManager additionalCaseManagers").lean();
-    if (parent) [parent.user, parent.delegateEmployerUser, ...allCaseManagerIds(parent)].forEach((id) => ids.add(idOf(id)));
+    const parent = await Case.findById(caseData.parentCase).select("user delegateEmployerUser assignedCaseManager additionalCaseManagers attorneyAccess").lean();
+    if (parent) {
+      [parent.user, parent.delegateEmployerUser, ...allCaseManagerIds(parent)].forEach((id) => ids.add(idOf(id)));
+      // the attorney granted the matter can open its slots, so hears about them too
+      for (const grant of parent.attorneyAccess || []) if (grant?.status === "active") ids.add(idOf(grant.attorneyId));
+    }
   }
   ids.delete("");
   return { caseNumber: caseData.caseNumber, userIds: [...ids] };
