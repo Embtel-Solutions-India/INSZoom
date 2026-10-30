@@ -2125,13 +2125,13 @@ const CRMCaseDetail = () => {
       {isAwaitingAssignment() && (
         <div
           role="status"
-          className="flex flex-col gap-2 rounded-lg border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-1.5 rounded-md border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50/70 px-3 py-1.5 sm:flex-row sm:items-center sm:justify-between"
         >
-          <div className="flex min-w-0 items-center gap-2.5">
-            <Bell className="h-4 w-4 shrink-0 text-amber-600" />
-            <p className="min-w-0 text-sm text-amber-950">
-              <span className="font-semibold">Awaiting staff assignment</span>
-              <span className="hidden text-amber-800 md:inline"> &middot; Review the intake, package and document checklist, then assign an owner.</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Bell className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+            <p className="min-w-0 text-xs text-amber-950">
+              <span className="text-sm font-semibold">Awaiting staff assignment</span>
+              <span className="hidden text-amber-800 xl:inline"> &middot; Review the intake, package and document checklist, then assign an owner.</span>
             </p>
           </div>
           <button
@@ -2140,9 +2140,9 @@ const CRMCaseDetail = () => {
               setAssignError('')
               setShowAssignModal(true)
             }}
-            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1"
           >
-            <UserPlus className="h-3.5 w-3.5" />
+            <UserPlus className="h-3 w-3" />
             Assign Staff
           </button>
         </div>

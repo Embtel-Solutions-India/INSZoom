@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { casesApi } from '../services/api'
 
-// The ONE visa-type dropdown list. "New case" (CreateCaseModal) and the GoHighLevel "Visa selection required" banner both
-// build their options here, so a case type added, removed or relabelled shows up in both with no second edit.
+// The ONE visa-type dropdown list. "New case" (CreateCaseModal), "Add employee" and the GoHighLevel "Visa selection required" banner all
+// build their options here, so a case type added, removed or relabelled shows up in all of them with no second edit.
+//
+// The list itself lives on the SERVER (Backend/src/config/visaDropdown.js, served as `options` by GET /cases/visa-types and shared with the client
+// portal's "Add employee"), so a change there reaches every portal. VISA_TYPE_OPTIONS below is only the emergency fallback for when that request
+// fails; a backend test fails if the two ever differ.
 export const VISA_TYPE_OPTIONS = [
   { value: 'h1b', label: 'H-1B' },
   { value: 'h1b1', label: 'H-1B1' },
@@ -120,18 +124,24 @@ export const structureByKey = (registryTypes) => new Map((registryTypes || []).m
 // Loads the registry (GET /cases/visa-types) on every mount, so the lists are always current, and returns the shared options.
 export function useVisaOptions({ enabled = true } = {}) {
   const [registryTypes, setRegistryTypes] = useState([])
+  const [serverOptions, setServerOptions] = useState(null)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState(false)
   useEffect(() => {
     if (!enabled) return undefined
     let cancelled = false
     casesApi.visaTypes()
-      .then((res) => { if (!cancelled) setRegistryTypes(res.data?.data || []) })
+      .then((res) => {
+        if (cancelled) return
+        setRegistryTypes(res.data?.data || [])
+        // the server's own list (the same in every portal); an older server without it falls back to merging here
+        if (Array.isArray(res.data?.options) && res.data.options.length) setServerOptions(res.data.options)
+      })
       .catch((err) => { console.error('Error fetching case types:', err); if (!cancelled) setError(true) }) // the curated list still works
       .finally(() => { if (!cancelled) setLoaded(true) })
     return () => { cancelled = true }
   }, [enabled])
-  const options = useMemo(() => mergeRegistryOptions(registryTypes), [registryTypes])
+  const options = useMemo(() => serverOptions || mergeRegistryOptions(registryTypes), [serverOptions, registryTypes])
   return { options, registryTypes, loaded, error }
 }
 
@@ -145,6 +155,42 @@ export const registryEntryFor = (option, registryTypes) => {
 // Is this option an employer / employee matter according to the registry (GET /cases/visa-types)? Read for EVERY option, curated or not, so EB-2, EB-3,
 // L-1A Extension ... get the employer + employee form like H-1B without a hard-coded list.
 export const isEmployerEmployeeOption = (option, registryTypes) => registryEntryFor(option || {}, registryTypes)?.caseStructure === 'employer_employee'
+
+// How the dropdown is grouped everywhere it is shown (New case, the GoHighLevel visa banner): employer cases first, then family visas, then single-party
+// filings, each under a small grey heading; order inside a group is unchanged. These sets also steer which form "New case" shows for the chosen visa
+// (components/CreateCaseModal.jsx imports them for that routing).
+export const SINGLE_PARTY_FILING_TYPE_KEYS = {
+  h4extension: 'H4_EXTENSION',
+  h4ead: 'H4_EAD',
+  h4extensionead: 'H4_EXTENSION_EAD',
+  cosf1: 'COS_F1',
+  f1reinstatement: 'F1_REINSTATEMENT',
+  cosf2: 'COS_F2',
+  cosb1: 'COS_B1',
+  cosb2: 'COS_B2',
+  cosh4: 'COS_H4',
+}
+export const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
+export const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
+// RFE / NOIR / NOID: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
+export const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid']
+export const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
+const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID)']
+
+// The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters; the fixed sets above are only a fallback.
+export const groupVisaOptions = (options, registryTypes) => {
+  const visaGroupOf = (opt) => {
+    if (NOTICE_RESPONSE_TYPES.includes(opt.value)) return 3
+    if (FAMILY_PACKAGE_VISA_TYPES.has(opt.value) || FAMILY_SINGLE_CASE_VISA_TYPES.has(opt.value)) return 1
+    if (SINGLE_PARTY_FILING_TYPE_KEYS[opt.value]) return 2
+    if (EMPLOYMENT_VISA_TYPES.has(opt.value) || opt.caseStructure === 'employer_employee' || isEmployerEmployeeOption(opt, registryTypes)) return 0
+    return 2
+  }
+  return (options || [])
+    .map((opt, index) => ({ opt, index, rank: visaGroupOf(opt) }))
+    .sort((a, b) => a.rank - b.rank || (a.rank === 3 ? NOTICE_RESPONSE_TYPES.indexOf(a.opt.value) - NOTICE_RESPONSE_TYPES.indexOf(b.opt.value) : a.index - b.index))
+    .map(({ opt, rank }) => ({ ...opt, group: VISA_GROUP_LABELS[rank] }))
+}
 
 // Which GoHighLevel pipeline a case lives on. Asked wherever a case is created in the CRM (New case, leads, Add employee);
 // cases that arrive from GHL already carry it.

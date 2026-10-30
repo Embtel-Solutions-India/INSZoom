@@ -3,7 +3,7 @@ import WrappingSelect from './ui/WrappingSelect'
 import { casesApi, usersApi, familyWorkflowApi, singlePartyFilingsApi } from '../services/api'
 import { X } from 'lucide-react'
 import { H1B_SUBTYPES } from '../utils/visaDisplay'
-import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployeeOption, PIPELINE_CATEGORY_OPTIONS } from '../utils/visaOptions'
+import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployeeOption, groupVisaOptions, PIPELINE_CATEGORY_OPTIONS, SINGLE_PARTY_FILING_TYPE_KEYS, FAMILY_PACKAGE_VISA_TYPES, FAMILY_SINGLE_CASE_VISA_TYPES, EMPLOYMENT_VISA_TYPES } from '../utils/visaOptions'
 
 
 // Maps this modal's own visaType option value to the backend's
@@ -11,17 +11,6 @@ import { VISA_TYPE_OPTIONS, useVisaOptions, registryEntryFor, isEmployerEmployee
 // visaType present here is a single-party filing and is created via
 // singlePartyFilingsApi.createCase instead of casesApi.create - every other
 // visa type is unaffected.
-const SINGLE_PARTY_FILING_TYPE_KEYS = {
-  h4extension: 'H4_EXTENSION',
-  h4ead: 'H4_EAD',
-  h4extensionead: 'H4_EXTENSION_EAD',
-  cosf1: 'COS_F1',
-  f1reinstatement: 'F1_REINSTATEMENT',
-  cosf2: 'COS_F2',
-  cosb1: 'COS_B1',
-  cosb2: 'COS_B2',
-  cosh4: 'COS_H4',
-}
 
 // familyBased() (Backend/src/modules/form-registry/seeds/visaFormMappings.seed.js)
 // visa types - each gets the "Filing Path" choice below, and is created via
@@ -29,12 +18,11 @@ const SINGLE_PARTY_FILING_TYPE_KEYS = {
 // the generic casesApi.create, since that's the only path that actually
 // assigns the I-130/Green-Card/I-864 checklists (see
 // family-workflow.controller.js's ensureFamilyChecklistReferences).
-const FAMILY_PACKAGE_VISA_TYPES = new Set(['ir1', 'cr1', 'ir2', 'cr2', 'ir3', 'ir4', 'ir5', 'f1family', 'f2a', 'f2b', 'f3', 'f4'])
+// (FAMILY_PACKAGE_VISA_TYPES, FAMILY_SINGLE_CASE_VISA_TYPES, NOTICE_RESPONSE_TYPES, EMPLOYMENT_VISA_TYPES and SINGLE_PARTY_FILING_TYPE_KEYS live in utils/visaOptions.js: the dropdown grouping uses them too)
 // K-1/K-3 are ONE shared petitioner+beneficiary case too - they must go
 // through familyWorkflowApi.createCase as well (never casesApi.create, which
 // used to spawn a principal + lettered beneficiary child case). They have no
 // filing-path/relationship choice, so they skip those two fields.
-const FAMILY_SINGLE_CASE_VISA_TYPES = new Set(['k1', 'k3', 'i824'])
 // I-824 also records the underlying approved petition / requested action (all optional; staff verify them - see family-workflow createFamilyCase)
 const I824_VISA_TYPE = 'i824'
 
@@ -59,11 +47,6 @@ const PACKAGE_OPTIONS = [
   { value: 'Attorney Review Package', label: 'Attorney Review Package' },
   { value: 'Full Attorney Filing Package', label: 'Full Attorney Filing Package' },
 ]
-
-// RFE / NOIR / NOID: no checklist is assigned; the case manager builds it per case with special requests (Documents tab)
-const NOTICE_RESPONSE_TYPES = ['rfe', 'noir', 'noid']
-
-const EMPLOYMENT_VISA_TYPES = new Set(['h1b', 'h1b1', 'l1a', 'l1b', 'o1a', 'o1b', 'o2', 'p1a', 'p1b', 'p2', 'p3', 'tn', 'e1', 'e2', 'e3', 'r1', 'eb1b', 'eb1c', 'perm'])
 
 // What a PERM case is created with - shown read-only on the create form.
 const PERM_STRUCTURE = [
@@ -135,19 +118,8 @@ const CreateCaseModal = ({
   const registryEntry = registryEntryFor(visaOptions.find((opt) => opt.value === form.visaType) || {}, registryTypes)
   // The registry (config/visaCategories.js) is the source of truth for which case types are employer / employee matters. It is read for EVERY option - including the curated ones
   // (EB-2, EB-3, L-1A Extension ...) that are not marked fromRegistry - so a new employer / employee visa gets this form without a code change. The fixed list is only a fallback.
-  // Listed employer cases first, then family visas, then single-party filings, each under a small grey heading (order inside a group is unchanged).
-  const visaGroupOf = (opt) => {
-    if (NOTICE_RESPONSE_TYPES.includes(opt.value)) return 3
-    if (FAMILY_PACKAGE_VISA_TYPES.has(opt.value) || FAMILY_SINGLE_CASE_VISA_TYPES.has(opt.value)) return 1
-    if (SINGLE_PARTY_FILING_TYPE_KEYS[opt.value]) return 2
-    if (EMPLOYMENT_VISA_TYPES.has(opt.value) || opt.caseStructure === 'employer_employee' || isEmployerEmployeeOption(opt, registryTypes)) return 0
-    return 2
-  }
-  const VISA_GROUP_LABELS = ['Employment based', 'Family based', 'Single applicant', 'Notice responses (RFE, NOIR, NOID)']
-  const groupedVisaOptions = visaOptions
-    .map((opt, index) => ({ opt, index, rank: visaGroupOf(opt) }))
-    .sort((a, b) => a.rank - b.rank || (a.rank === 3 ? NOTICE_RESPONSE_TYPES.indexOf(a.opt.value) - NOTICE_RESPONSE_TYPES.indexOf(b.opt.value) : a.index - b.index))
-    .map(({ opt, rank }) => ({ ...opt, group: VISA_GROUP_LABELS[rank] }))
+  // Employer cases first, then family visas, then single-party filings, each under a small grey heading (shared with the GoHighLevel visa banner: utils/visaOptions.js)
+  const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
   const showEmployerFields = EMPLOYMENT_VISA_TYPES.has(form.visaType) || selectedRegistryOption?.caseStructure === 'employer_employee' || isEmployerEmployeeOption(visaOptions.find((opt) => opt.value === form.visaType), registryTypes)
   const needsH1bType = form.visaType === 'h1b'
   const showFamilyPackageFields = FAMILY_PACKAGE_VISA_TYPES.has(form.visaType)

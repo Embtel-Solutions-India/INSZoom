@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { casesApi } from '../services/api'
-import { useVisaOptions, registryEntryFor } from '../utils/visaOptions'
+import { useVisaOptions, registryEntryFor, groupVisaOptions } from '../utils/visaOptions'
+import WrappingSelect from './ui/WrappingSelect'
 import { useAuth } from '../contexts/AuthContext'
 
 // Cases that arrive from GoHighLevel have no visa type yet, and nothing visa-driven
@@ -30,10 +31,17 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
     }),
     [visa.options, visa.registryTypes]
   )
+  // the SAME dropdown as "New case": same list, same grouping (employment / family / single applicant), same component
+  const selectOptions = useMemo(
+    () => groupVisaOptions(options, visa.registryTypes)
+      .filter((opt) => opt.selectable)
+      .map((opt) => ({ value: opt.visaType, label: opt.label, group: opt.group })),
+    [options, visa.registryTypes]
+  )
 
   if (!pending && !done) return null
   if (done) {
-    return <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Visa type saved. Checklists and forms are being prepared and will appear shortly.</div>
+    return <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">Visa type saved. Checklists and forms are being prepared and will appear shortly.</div>
   }
 
   const save = async () => {
@@ -52,38 +60,37 @@ export default function GhlVisaSelectBanner({ caseData, onUpdated }) {
   }
 
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold text-amber-900">Visa selection required</p>
-          <p className="text-sm text-amber-800">
-            This case came from GoHighLevel without a visa type. Checklists, forms and questionnaires are set up once a visa type is chosen.
+    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+        <div className="flex min-w-0 flex-1 items-start gap-2 md:items-center">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 md:mt-0" />
+          <p className="min-w-0 text-amber-800">
+            <span className="text-sm font-semibold text-amber-900">Visa selection required</span>
+            <span className="block text-xs lg:inline"> <span className="hidden lg:inline">&middot; </span>This case came from GoHighLevel without a visa type. Checklists, forms and questionnaires are set up once a visa type is chosen.</span>
           </p>
-          {canSelect ? (
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <select
-                value={selected}
-                onChange={(event) => setSelected(event.target.value)}
-                aria-label="Visa type"
-                className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-foreground sm:w-80"
-              >
-                <option value="">Select visa type…</option>
-                {options.map((opt) => (
-                  <option key={opt.value} value={opt.visaType} disabled={!opt.selectable}>{opt.label}</option>
-                ))}
-              </select>
-              <button type="button" className="btn-primary flex items-center justify-center gap-2" disabled={!selected || saving} onClick={save}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Set visa type
-              </button>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-amber-800">Your team lead selects the visa type for this case.</p>
-          )}
-          {error || visa.error ? <p className="mt-2 text-sm text-red-700">{error || 'Could not load the visa type list.'}</p> : null}
         </div>
+        {canSelect ? (
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="w-full sm:w-72">
+              <WrappingSelect
+                value={selected}
+                onChange={setSelected}
+                options={selectOptions}
+                placeholder="Select visa type…"
+                ariaLabel="Visa type"
+                disabled={saving}
+              />
+            </div>
+            <button type="button" className="btn-primary flex items-center justify-center gap-2 !px-3 !py-1.5 !text-sm" disabled={!selected || saving} onClick={save}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Set visa type
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-800">Your team lead selects the visa type for this case.</p>
+        )}
       </div>
+      {error || visa.error ? <p className="mt-1.5 text-xs text-red-700">{error || 'Could not load the visa type list.'}</p> : null}
     </div>
   )
 }

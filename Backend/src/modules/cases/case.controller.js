@@ -840,41 +840,47 @@ exports.upgradeToPremiumProcessing = async (req, res, next) => {
 // against (config/visaCategories.js). The Admin "Create case" dropdown reads this, so a case type added to the registry is
 // selectable without touching the frontend. `unmapped` lists types that have form-registry rows but no creatable case-type entry
 // (they would be rejected at creation), so a gap is visible instead of silent.
+async function loadCreatableVisaTypes({ withUnmapped = true } = {}) {
+  const { VISA_CATEGORIES } = require("../../config/visaCategories");
+  const VisaFormMapping = require("../../models/VisaFormMapping");
+  // Which case types actually have a checklist behind them (questionnaires/checklistCoverage.js). The Create Case dropdown
+  // offers only those; if the lookup fails nothing is hidden (every type reads as covered).
+  let coverage = {};
+  try { coverage = await require("../questionnaires/checklistCoverage").loadChecklistCoverage(Object.keys(VISA_CATEGORIES)); } catch (_error) { coverage = {}; }
+  // Which GoHighLevel pipeline each case type belongs to (Immigrant / Non-Immigrant): the SAME rule GHL sync uses (the GHL visa mapping table,
+  // else the visa's classification), so the New case / Add employee dropdowns preselect it from the registry and never drift from it.
+  let pipelineEntries = [];
+  let pipelineCategoryFor = () => undefined;
+  try {
+    const aux = require("../../integrations/ghl/ghlAuxOutbound");
+    const env = require("../../config/env");
+    if (env.ghl.enabled && env.ghl.locationId) {
+      const config = await require("../../models/GHLIntegration").findOne({ locationId: env.ghl.locationId }).select("visaMapping").lean();
+      pipelineEntries = config?.visaMapping?.entries || [];
+    }
+    pipelineCategoryFor = (visaType) => aux.categoryForVisa(visaType, "", pipelineEntries);
+  } catch (_error) { /* the dropdown simply has no preselection */ }
+  const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
+    visaType,
+    pipelineCategory: pipelineCategoryFor(visaType),
+    hasChecklist: category.customChecklist ? true : coverage[visaType]?.hasChecklist !== false,
+    customChecklist: Boolean(category.customChecklist),
+    label: category.label || visaType,
+    caseStructure: category.caseStructure,
+    noForms: Boolean(category.noForms),
+    formCount: (category.forms || []).length,
+    forms: category.forms || [],
+    subTypes: category.subTypes || [],
+  }));
+  const registryTypes = withUnmapped ? await VisaFormMapping.distinct("visaType", { active: true }).catch(() => []) : [];
+  return { data, unmapped: registryTypes.filter((visaType) => !VISA_CATEGORIES[visaType]).sort() };
+}
+
+// `options` is THE visa dropdown list (config/visaDropdown.js): the same entries, labels and order in every portal.
 exports.listCreatableVisaTypes = async (req, res, next) => {
   try {
-    const { VISA_CATEGORIES } = require("../../config/visaCategories");
-    const VisaFormMapping = require("../../models/VisaFormMapping");
-    // Which case types actually have a checklist behind them (questionnaires/checklistCoverage.js). The Create Case dropdown
-    // offers only those; if the lookup fails nothing is hidden (every type reads as covered).
-    let coverage = {};
-    try { coverage = await require("../questionnaires/checklistCoverage").loadChecklistCoverage(Object.keys(VISA_CATEGORIES)); } catch (_error) { coverage = {}; }
-    // Which GoHighLevel pipeline each case type belongs to (Immigrant / Non-Immigrant): the SAME rule GHL sync uses (the GHL visa mapping table,
-    // else the visa's classification), so the New case / Add employee dropdowns preselect it from the registry and never drift from it.
-    let pipelineEntries = [];
-    let pipelineCategoryFor = () => undefined;
-    try {
-      const aux = require("../../integrations/ghl/ghlAuxOutbound");
-      const env = require("../../config/env");
-      if (env.ghl.enabled && env.ghl.locationId) {
-        const config = await require("../../models/GHLIntegration").findOne({ locationId: env.ghl.locationId }).select("visaMapping").lean();
-        pipelineEntries = config?.visaMapping?.entries || [];
-      }
-      pipelineCategoryFor = (visaType) => aux.categoryForVisa(visaType, "", pipelineEntries);
-    } catch (_error) { /* the dropdown simply has no preselection */ }
-    const data = Object.entries(VISA_CATEGORIES).map(([visaType, category]) => ({
-      visaType,
-      pipelineCategory: pipelineCategoryFor(visaType),
-      hasChecklist: category.customChecklist ? true : coverage[visaType]?.hasChecklist !== false,
-      customChecklist: Boolean(category.customChecklist),
-      label: category.label || visaType,
-      caseStructure: category.caseStructure,
-      noForms: Boolean(category.noForms),
-      formCount: (category.forms || []).length,
-      forms: category.forms || [],
-      subTypes: category.subTypes || [],
-    }));
-    const registryTypes = await VisaFormMapping.distinct("visaType", { active: true }).catch(() => []);
-    res.json({ success: true, data, unmapped: registryTypes.filter((visaType) => !VISA_CATEGORIES[visaType]).sort() });
+    const { data, unmapped } = await loadCreatableVisaTypes();
+    res.json({ success: true, data, unmapped, options: require("../../config/visaDropdown").mergeRegistryOptions(data) });
   } catch (error) {
     handleError(error, next);
   }
@@ -885,10 +891,20 @@ exports.listCreatableVisaTypes = async (req, res, next) => {
 // static, non-sensitive list and employers (clients) are the ones who add employees from the client portal.
 exports.listEmployeeVisaOptions = async (req, res, next) => {
   try {
-    const { VISA_CATEGORIES } = require("../../config/visaCategories");
-    const data = Object.entries(VISA_CATEGORIES)
-      .filter(([, category]) => category.caseStructure === "employer_employee")
-      .map(([visaType, category]) => ({ visaType, label: category.label || visaType, subTypes: category.subTypes || [], noForms: Boolean(category.noForms) }));
+    let data;
+    try {
+      // the employer-matter part of THE visa dropdown list (config/visaDropdown.js): the same visas, labels and order as Admin's "New case" / "Add employee"
+      const dropdown = require("../../config/visaDropdown");
+      const { data: registryTypes } = await loadCreatableVisaTypes({ withUnmapped: false });
+      data = dropdown.employerEmployeeOptions(dropdown.mergeRegistryOptions(registryTypes), registryTypes).map(({ visaType, label, subTypes, noForms }) => ({ visaType, label, subTypes, noForms }));
+      if (!data.length) throw new Error("empty visa dropdown");
+    } catch (_error) {
+      // never leave the "Add employee" form without a list: the registry's own labels, as before
+      const { VISA_CATEGORIES } = require("../../config/visaCategories");
+      data = Object.entries(VISA_CATEGORIES)
+        .filter(([, category]) => category.caseStructure === "employer_employee")
+        .map(([visaType, category]) => ({ visaType, label: category.label || visaType, subTypes: category.subTypes || [], noForms: Boolean(category.noForms) }));
+    }
     res.json({ success: true, data });
   } catch (error) {
     handleError(error, next);
