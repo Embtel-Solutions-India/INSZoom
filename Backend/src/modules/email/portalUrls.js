@@ -46,8 +46,32 @@ function confineToPortal(text, portal, fallback) {
     .flatMap((other) => [portalUrl(other), PRODUCTION[other]])
     .filter((origin) => !own.has(origin));
   if (!foreign.length) return text;
-  const pattern = new RegExp(`(?:${[...new Set(foreign)].map(escapeRegex).join("|")})(?![\\w.-])(?:[/?#][^\\s"'<>)]*)?`, "gi");
+  // The logo image in the email header is served by the Admin site and is not a link: it is never rewritten.
+  const pattern = new RegExp(`(?:${[...new Set(foreign)].map(escapeRegex).join("|")})(?![\\w.-])(?!/logo\\.png)(?:[/?#][^\\s"'<>)]*)?`, "gi");
   return text.replace(pattern, fallback);
 }
 
-module.exports = { portalUrl, productionizeLinks, confineToPortal, PRODUCTION };
+// Every call-to-action button in an email opens the recipient's own LOGIN page - never a dashboard or a case page. Only buttons that
+// point at the recipient's own portal (or at nothing, "#") are changed; a button that is the working link itself (set a password,
+// reset a password, accept an invite - they carry a token) and public pages are left exactly as they are. The same address is
+// replaced in the plain-text version. Returns { html, text }.
+const BUTTON_TAG = /<a\b[^>]*display:inline-block[^>]*>/gi;
+const FUNCTIONAL_LINK = /token=|reset|accept-invite|set-password|invite/i;
+function buttonsToLogin(html, text, portal) {
+  if (typeof html !== "string" || !ENV_KEY[portal]) return { html, text };
+  const origin = portalUrl(portal);
+  const login = `${origin}/login`;
+  const changes = new Set();
+  html.replace(BUTTON_TAG, (tag) => {
+    const href = (/href="([^"]*)"/i.exec(tag) || [])[1];
+    if (href === undefined || href === login || FUNCTIONAL_LINK.test(href)) return tag;
+    if (href === "#" || href === origin || href.startsWith(`${origin}/`) || href.startsWith(`${origin}?`)) changes.add(href);
+    return tag;
+  });
+  const nextHtml = html.replace(BUTTON_TAG, (tag) => tag.replace(/href="([^"]*)"/i, (m, href) => (changes.has(href) ? `href="${login}"` : m)));
+  let nextText = text;
+  for (const from of changes) if (from !== "#" && typeof nextText === "string") nextText = nextText.split(from).join(login);
+  return { html: nextHtml, text: nextText };
+}
+
+module.exports = { portalUrl, productionizeLinks, confineToPortal, buttonsToLogin, PRODUCTION };

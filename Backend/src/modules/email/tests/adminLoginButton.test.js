@@ -38,8 +38,9 @@ test("case manager, team lead, admin and super admin each get the Admin login bu
   }
   assert.equal(sent.length, 4);
   for (const mail of sent) {
-    assert.ok(mail.html.includes(`href="${LOGIN}"`) && mail.html.includes("Log in to Admin"), `${mail.to} has the button`);
-    assert.ok(mail.text.includes(`Log in to Admin: ${LOGIN}`));
+    // one button only, and it opens the Admin login page (the email's own button when it has one, otherwise "Log in to Admin")
+    assert.equal(mail.html.split("display:inline-block").length - 1, 1, `${mail.to} has exactly one button`);
+    assert.ok(mail.html.includes(`href="${LOGIN}"`), `${mail.to} button opens the login page`);
   }
 });
 

@@ -58,7 +58,10 @@ test("every built-in email, sent without a recipientRole, links only to its audi
       assert.ok(!others.some((origin) => href.startsWith(origin)), `${trigger.key}: ${href} is on another portal (own: ${own})`);
     }
     const clientAudience = emailService.TEMPLATE_AUDIENCE[trigger.key] === "client";
-    assert.equal(sent[0].html.includes("Log in to Admin"), !clientAudience && emailService.TEMPLATE_AUDIENCE[trigger.key] === "team_member", `${trigger.key}: Admin login button`);
+    // every email has at most one button; a staff email's button opens the Admin login page
+    const buttons = sent[0].html.split("display:inline-block").length - 1;
+    assert.ok(buttons <= 1, `${trigger.key}: one button at most`);
+    if (!clientAudience && emailService.TEMPLATE_AUDIENCE[trigger.key] === "team_member") assert.ok(sent[0].html.includes(`href="${ORIGINS.staff}/login"`), `${trigger.key}: Admin login button`);
   }
 });
 

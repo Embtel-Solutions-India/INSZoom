@@ -2,11 +2,11 @@ const EmailLog = require("../../models/EmailLog");
 const { getProvider } = require("./providers");
 const env = require("../../config/env");
 const logger = require("../../utils/logger");
-const { layoutHtml, renderCustom, adminLoginText } = require("./emailRenderer");
+const { layoutHtml, renderCustom, adminLoginText, keepOneButton } = require("./emailRenderer");
 const customization = require("./emailCustomization.service");
 const triggerRegistry = require("./emailTriggers.registry");
 const emailPolicy = require("./emailPolicy");
-const { portalUrl, productionizeLinks, confineToPortal } = require("./portalUrls");
+const { portalUrl, productionizeLinks, confineToPortal, buttonsToLogin } = require("./portalUrls");
 const caseAudience = require("../notifications/caseAudience");
 
 // Dev/testing-phase audience gate (see env.js's emailSuppressStaffAndAttorney
@@ -344,6 +344,12 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   const ownPortal = audience === "team_member" ? "admin" : audience;
   const ownLanding = defaultPortalLink(templateKey, recipientRole, caseId);
   const confine = (content) => (locked ? content : confineToPortal(productionizeLinks(content), ownPortal, ownLanding));
+  // Buttons always open the recipient's login page (see buttonsToLogin); locked security emails keep their exact links.
+  const toLogin = (htmlContent, textContent) => {
+    if (locked) return { html: htmlContent, text: textContent };
+    const login = buttonsToLogin(htmlContent, textContent, ownPortal);
+    return keepOneButton(login.html, login.text);
+  };
   const custom = await resolveCustomization(templateKey, { to, data, caseId, adminLogin });
   if (custom?.suppressed) return skip("disabled_by_admin", "This email is switched off on the Email Templates page");
   if (custom) {
@@ -351,9 +357,10 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
     const finalTo = clientOnly ? deliverable([String(to).toLowerCase()]) : deliverable(custom.recipients.to);
     if (!finalTo.length) return skip("undeliverable_address", "No deliverable recipient address");
     const extraCc = clientOnly ? [] : deliverable([...new Set([...(cc ? [].concat(cc) : []), ...custom.recipients.cc])]);
+    const customFinal = toLogin(confine(custom.html), confine(custom.text));
     return dispatch({
       templateKey, to: finalTo.join(", "), cc: extraCc, bcc: clientOnly ? [] : deliverable(custom.recipients.bcc),
-      subject: custom.subject, html: confine(custom.html), text: confine(custom.text), data, caseId, userId, triggeredBy, source, attachments,
+      subject: custom.subject, html: customFinal.html, text: customFinal.text, data, caseId, userId, triggeredBy, source, attachments,
     });
   }
 
@@ -361,9 +368,8 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
 
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
-  const html = confine(wrapHtml(subject, lines, { adminLogin }));
   const bodyText = lines.join("\n\n");
-  const text = confine([bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n"));
+  const { html, text } = toLogin(confine(wrapHtml(subject, lines, { adminLogin })), confine([bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n")));
 
   return dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source, attachments });
 }

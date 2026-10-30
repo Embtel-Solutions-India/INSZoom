@@ -164,6 +164,35 @@ async function driveRequest(connectionId, url, options = {}) {
   throw new DriveError("Could not reach Google Drive", { code: "NETWORK", retryable: true });
 }
 
+// ---- folder-list memory: the same list asked for again within a few seconds (going Back, a double click, two tabs) is answered from memory, and
+// identical requests that arrive together share ONE Google call. Per connected account, in this process only, never persisted; errors are never
+// kept; creating a folder clears that account's lists so a new folder shows at once. DRIVE_LIST_CACHE_MS=0 switches it off (default 30 s). ----
+const LIST_CACHE_MS = process.env.DRIVE_LIST_CACHE_MS !== undefined && process.env.DRIVE_LIST_CACHE_MS !== "" ? Number(process.env.DRIVE_LIST_CACHE_MS) || 0 : 30000;
+const LIST_CACHE_MAX = 300;
+const listCache = new Map(); // `${connectionId}|${request}` -> { at, value }
+const listInFlight = new Map(); // same key -> Promise
+
+async function cachedList(connectionId, requestKey, load) {
+  const key = `${connectionId}|${requestKey}`;
+  const hit = listCache.get(key);
+  if (hit && Date.now() - hit.at < LIST_CACHE_MS) return hit.value;
+  if (listInFlight.has(key)) return listInFlight.get(key);
+  const pending = load().then((value) => {
+    if (LIST_CACHE_MS > 0) {
+      listCache.set(key, { at: Date.now(), value });
+      while (listCache.size > LIST_CACHE_MAX) listCache.delete(listCache.keys().next().value);
+    }
+    return value;
+  }).finally(() => listInFlight.delete(key));
+  listInFlight.set(key, pending);
+  return pending;
+}
+
+function invalidateFolderLists(connectionId) {
+  const prefix = `${connectionId}|`;
+  for (const key of [...listCache.keys()]) if (key.startsWith(prefix)) listCache.delete(key);
+}
+
 // ---- folders ----
 const FOLDER_FIELDS = "id,name,mimeType,trashed,webViewLink,parents,driveId,capabilities(canAddChildren)";
 
@@ -185,6 +214,7 @@ async function createFolder(connectionId, name, parentId) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(metadata),
   });
+  invalidateFolderLists(connectionId);
   return body;
 }
 
@@ -217,6 +247,9 @@ const presentFolder = (file) => ({
 async function listSharedDrives(connectionId, { pageToken } = {}) {
   const params = new URLSearchParams({ pageSize: "100", fields: "nextPageToken,drives(id,name,capabilities(canAddChildren))" });
   if (pageToken) params.set("pageToken", pageToken);
+  return cachedList(connectionId, `drives?${params}`, () => loadSharedDrives(connectionId, params));
+}
+async function loadSharedDrives(connectionId, params) {
   const { body } = await driveRequest(connectionId, `${DRIVE_API}/drives?${params}`);
   return {
     folders: (body.drives || []).map((drive) => ({ id: drive.id, name: drive.name, webViewLink: `https://drive.google.com/drive/folders/${drive.id}`, parentId: null, driveId: drive.id, shared: true, owner: null, isSharedDrive: true, canAddChildren: drive.capabilities?.canAddChildren !== false })),
@@ -248,8 +281,10 @@ async function listFolders(connectionId, { parentId = "root", view, query, pageT
     if (parentId !== "root") params.set("corpora", "allDrives"); // inside a shared drive's folder the plain "user" corpus can miss items
   }
   if (pageToken) params.set("pageToken", pageToken);
-  const { body } = await driveRequest(connectionId, `${DRIVE_API}/files?${params}`);
-  return { folders: (body.files || []).map(presentFolder), nextPageToken: body.nextPageToken || null };
+  return cachedList(connectionId, `files?${params}`, async () => {
+    const { body } = await driveRequest(connectionId, `${DRIVE_API}/files?${params}`);
+    return { folders: (body.files || []).map(presentFolder), nextPageToken: body.nextPageToken || null };
+  });
 }
 
 // ---- files ----
@@ -330,6 +365,7 @@ module.exports = {
   SCOPES,
   createFolder,
   dropToken,
+  invalidateFolderLists,
   generateFileId,
   getAccessToken,
   getFileMeta,

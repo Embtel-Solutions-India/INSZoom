@@ -170,3 +170,100 @@ describe('folder browser: long lists and permissions', () => {
     expect(screen.queryByPlaceholderText(/New folder name/)).toBeNull() // never silently creates it in My Drive
   })
 })
+
+describe('folder browser: Back goes up one Drive folder', () => {
+  const tree = (parent) => {
+    if (parent === 'a') return ok({ folders: [{ id: 'b', name: 'Child B', canAddChildren: true }], nextPageToken: null })
+    if (parent === 'b') return ok({ folders: [{ id: 'c', name: 'Grandchild C', canAddChildren: true }], nextPageToken: null })
+    return ok({ folders: [{ id: 'a', name: 'Top A', canAddChildren: true }], recent: [] })
+  }
+
+  it('is disabled at the top of My Drive, and each press moves up exactly one folder level', async () => {
+    api.listFolders.mockImplementation((parent) => tree(parent))
+    const browser = await openBrowser()
+    await screen.findByText('Top A')
+    const back = within(browser).getByTestId('drive-folder-up')
+    expect(back.disabled).toBe(true) // nothing above My Drive
+
+    fireEvent.click(screen.getByText('Top A'))
+    fireEvent.click(await screen.findByText('Child B'))
+    expect(await screen.findByText('Grandchild C')).toBeTruthy() // inside Top A / Child B
+    expect(back.disabled).toBe(false)
+
+    fireEvent.click(back) // up to Top A's list (the parent's list), not out of the browser
+    expect(await screen.findByText('Child B')).toBeTruthy()
+    expect(screen.queryByText('Grandchild C')).toBeNull()
+    expect(screen.getByTestId('drive-browser')).toBeTruthy() // still choosing a folder, same step
+
+    fireEvent.click(within(browser).getByTestId('drive-folder-up')) // up to My Drive's list
+    expect(await screen.findByText('Top A')).toBeTruthy()
+    expect(within(browser).getByTestId('drive-folder-up').disabled).toBe(true)
+  })
+
+  it('inside a Shared with me folder, Back returns to the Shared with me list', async () => {
+    api.listFolders.mockImplementation((parent, options) => {
+      if (options?.view === 'shared') return ok({ folders: [{ id: 's1', name: 'Shared One', canAddChildren: true }], nextPageToken: null })
+      if (parent === 's1') return ok({ folders: [{ id: 's2', name: 'Inner', canAddChildren: true }], nextPageToken: null })
+      return ok({ folders: [], recent: [] })
+    })
+    const browser = await openBrowser()
+    fireEvent.click(within(browser).getByTestId('drive-tab-shared'))
+    fireEvent.click(await screen.findByText('Shared One'))
+    await screen.findByText('Inner')
+    fireEvent.click(within(browser).getByTestId('drive-folder-up'))
+    expect(await screen.findByText('Shared One')).toBeTruthy()
+    expect(within(browser).getByTestId('drive-tab-shared').getAttribute('aria-pressed')).toBe('true') // still on the same tab
+  })
+
+  it('on a search result list, Back closes the search and shows the normal folders again', async () => {
+    api.listFolders.mockImplementation((_parent, options) => (options?.q
+      ? ok({ folders: [{ id: 'x1', name: 'Smith Family', canAddChildren: true }], nextPageToken: null })
+      : ok({ folders: [{ id: 'mine', name: 'Owned by me', canAddChildren: true }], recent: [] })))
+    const browser = await openBrowser()
+    await screen.findByText('Owned by me')
+    fireEvent.change(within(browser).getByTestId('drive-search'), { target: { value: 'smith' } })
+    await screen.findByText('Smith Family')
+    fireEvent.click(within(browser).getByTestId('drive-folder-up'))
+    expect(await screen.findByText('Owned by me')).toBeTruthy()
+    expect(within(browser).getByTestId('drive-search').value).toBe('')
+  })
+})
+
+describe('folder browser: a list already seen is shown at once', () => {
+  it('going Back shows the earlier folder list immediately, while Google is still being asked for a fresh copy', async () => {
+    let rootCalls = 0
+    let releaseRefresh
+    api.listFolders.mockImplementation((parent) => {
+      if (parent === 'a') return ok({ folders: [{ id: 'b', name: 'Child B', canAddChildren: true }], nextPageToken: null })
+      rootCalls += 1
+      if (rootCalls === 1) return ok({ folders: [{ id: 'a', name: 'Top A', canAddChildren: true }], recent: [] })
+      return new Promise((resolve) => { releaseRefresh = () => resolve({ data: { folders: [{ id: 'a', name: 'Top A', canAddChildren: true }, { id: 'n', name: 'Added meanwhile', canAddChildren: true }], recent: [] } }) })
+    })
+    const browser = await openBrowser()
+    fireEvent.click(await screen.findByText('Top A'))
+    await screen.findByText('Child B')
+    fireEvent.click(within(browser).getByTestId('drive-folder-up'))
+    expect(screen.getByText('Top A')).toBeTruthy() // already on screen, before the second answer from Google exists
+    expect(screen.queryByText('Loading folders…')).toBeNull()
+    await waitFor(() => expect(releaseRefresh).toBeTruthy())
+    releaseRefresh()
+    expect(await screen.findByText('Added meanwhile')).toBeTruthy() // and the quiet refresh brings in anything new
+  })
+
+  it('if the quiet refresh fails, the list that was already shown stays (no error box over a good list)', async () => {
+    let rootCalls = 0
+    api.listFolders.mockImplementation((parent) => {
+      if (parent === 'a') return ok({ folders: [{ id: 'b', name: 'Child B', canAddChildren: true }], nextPageToken: null })
+      rootCalls += 1
+      return rootCalls === 1 ? ok({ folders: [{ id: 'a', name: 'Top A', canAddChildren: true }], recent: [] }) : Promise.reject({ response: { data: { message: 'Google is busy' } } })
+    })
+    const browser = await openBrowser()
+    fireEvent.click(await screen.findByText('Top A'))
+    await screen.findByText('Child B')
+    fireEvent.click(within(browser).getByTestId('drive-folder-up'))
+    await waitFor(() => expect(rootCalls).toBe(2))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(screen.getByText('Top A')).toBeTruthy()
+    expect(screen.queryByText('Google is busy')).toBeNull()
+  })
+})
