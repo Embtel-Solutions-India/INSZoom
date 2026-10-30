@@ -165,14 +165,16 @@ async function driveRequest(connectionId, url, options = {}) {
 }
 
 // ---- folders ----
-const FOLDER_FIELDS = "id,name,mimeType,trashed,webViewLink,capabilities(canAddChildren)";
+const FOLDER_FIELDS = "id,name,mimeType,trashed,webViewLink,parents,driveId,capabilities(canAddChildren)";
 
+// Checks that the folder exists, is a real (non-trashed) folder and the connected account may add files to it, and keeps the original
+// Drive identifiers (folder ID, name, parent ID, shared-drive ID) so they can be stored with the job. Used before any upload.
 async function getFolder(connectionId, folderId) {
   const { body } = await driveRequest(connectionId, `${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=${encodeURIComponent(FOLDER_FIELDS)}&supportsAllDrives=true`);
   if (body.mimeType !== FOLDER_MIME) throw new DriveError("That item is not a folder", { status: 400, code: "NOT_A_FOLDER" });
   if (body.trashed) throw new DriveError("That folder is in the Drive trash", { status: 400, code: "FOLDER_TRASHED" });
   if (body.capabilities && body.capabilities.canAddChildren === false) throw new DriveError("The connected Google account cannot add files to that folder", { status: 403, code: "FOLDER_READ_ONLY" });
-  return { id: body.id, name: body.name, webViewLink: body.webViewLink };
+  return { id: body.id, name: body.name, webViewLink: body.webViewLink, parentId: body.parents?.[0] || null, driveId: body.driveId || null };
 }
 
 async function createFolder(connectionId, name, parentId) {
@@ -187,12 +189,67 @@ async function createFolder(connectionId, name, parentId) {
 }
 
 // Folders directly inside `parentId` ("root" = My Drive). Under the full drive scope that is every folder; under drive.file only those the app
-// created or that were picked.
+// created or that were picked. Kept as the simple, first-page-only form for existing callers; the browser uses listFolders (paging, views, search).
 async function listAppFolders(connectionId, parentId = "root") {
   const q = `mimeType='${FOLDER_MIME}' and '${String(parentId).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}' in parents and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id,name,webViewLink)", pageSize: "100", orderBy: "name", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
   const { body } = await driveRequest(connectionId, `${DRIVE_API}/files?${params}`);
   return body.files || [];
+}
+
+const escapeQuery = (value) => String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+const LIST_FIELDS = "nextPageToken,files(id,name,webViewLink,parents,driveId,shared,ownedByMe,modifiedTime,owners(displayName),capabilities(canAddChildren))";
+const presentFolder = (file) => ({
+  id: file.id,
+  name: file.name,
+  webViewLink: file.webViewLink,
+  modifiedTime: file.modifiedTime || null,
+  parentId: file.parents?.[0] || null,
+  driveId: file.driveId || null,
+  shared: Boolean(file.shared) || file.ownedByMe === false,
+  owner: file.ownedByMe === false ? file.owners?.[0]?.displayName || null : null,
+  // false only when Google says so; an absent value is treated as writable and re-checked by getFolder before any upload
+  canAddChildren: file.capabilities?.canAddChildren !== false,
+});
+
+// Shared drives the connected account is a member of (paged). Needs the full Drive scope; under drive.file Google refuses and the caller
+// gets a DriveError it can explain.
+async function listSharedDrives(connectionId, { pageToken } = {}) {
+  const params = new URLSearchParams({ pageSize: "100", fields: "nextPageToken,drives(id,name,capabilities(canAddChildren))" });
+  if (pageToken) params.set("pageToken", pageToken);
+  const { body } = await driveRequest(connectionId, `${DRIVE_API}/drives?${params}`);
+  return {
+    folders: (body.drives || []).map((drive) => ({ id: drive.id, name: drive.name, webViewLink: `https://drive.google.com/drive/folders/${drive.id}`, parentId: null, driveId: drive.id, shared: true, owner: null, isSharedDrive: true, canAddChildren: drive.capabilities?.canAddChildren !== false })),
+    nextPageToken: body.nextPageToken || null,
+  };
+}
+
+/**
+ * Folder discovery for the in-app browser. Exactly one of:
+ *   query       - folders anywhere the account can reach (My Drive, Shared with me, shared drives) whose name contains it
+ *   view=shared - folders other people shared with the account ("Shared with me")
+ *   view=drives - the shared drives the account belongs to
+ *   parentId    - the folders inside one folder ("root" = My Drive; a shared drive's ID lists its top level)
+ * Newest-modified first. Always paged (pass the returned nextPageToken back in), never returns trashed folders, and only ever returns what Google lets this
+ * account see - the access check is Google's, not ours.
+ */
+async function listFolders(connectionId, { parentId = "root", view, query, pageToken } = {}) {
+  if (view === "drives" && !query) return listSharedDrives(connectionId, { pageToken });
+  const base = `mimeType='${FOLDER_MIME}' and trashed=false`;
+  // most recently changed folders first, so the ones people are working in sit at the top (ties fall back to Google's own order)
+  const params = new URLSearchParams({ fields: LIST_FIELDS, pageSize: "100", orderBy: "modifiedTime desc", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  if (query) {
+    params.set("q", `${base} and name contains '${escapeQuery(query)}'`);
+    params.set("corpora", "allDrives");
+  } else if (view === "shared") {
+    params.set("q", `${base} and sharedWithMe=true`);
+  } else {
+    params.set("q", `${base} and '${escapeQuery(parentId)}' in parents`);
+    if (parentId !== "root") params.set("corpora", "allDrives"); // inside a shared drive's folder the plain "user" corpus can miss items
+  }
+  if (pageToken) params.set("pageToken", pageToken);
+  const { body } = await driveRequest(connectionId, `${DRIVE_API}/files?${params}`);
+  return { folders: (body.files || []).map(presentFolder), nextPageToken: body.nextPageToken || null };
 }
 
 // ---- files ----
@@ -279,6 +336,8 @@ module.exports = {
   getFolder,
   isConfigured,
   listAppFolders,
+  listFolders,
+  listSharedDrives,
   md5,
   newOAuthClient,
   revokeRefreshToken,

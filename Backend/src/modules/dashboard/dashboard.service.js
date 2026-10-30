@@ -1,4 +1,5 @@
 const os = require("os");
+const { withCountable } = require("../cases/countableCase");
 const Answer = require("../../models/Answer");
 const Appointment = require("../../models/Appointment");
 const AuditLog = require("../../models/AuditLog");
@@ -98,7 +99,7 @@ async function executiveMetrics(query = {}) {
     Client.countDocuments(range),
     Company.countDocuments(range),
     Beneficiary.countDocuments(range),
-    Case.countDocuments(range),
+    Case.countDocuments(withCountable(range)),
     paymentTotals(range),
     Document.aggregate([{ $match: range }, { $group: { _id: null, count: { $sum: 1 }, storageBytes: { $sum: { $ifNull: ["$size", "$fileSize"] } } } }]),
     Notification.countDocuments({ category: { $in: ["security", "system"] }, isRead: false }),
@@ -128,7 +129,7 @@ async function executiveMetrics(query = {}) {
 }
 
 async function caseAnalytics(query = {}, user) {
-  const match = { ...dateRange(query), ...scopedCaseFilter(user) };
+  const match = withCountable({ ...dateRange(query), ...scopedCaseFilter(user) });
   const [total, active, closed, byStage, byVisaType, byPackage, byStatus, priority, rfeTrends, processingTimes] = await Promise.all([
     Case.countDocuments(match),
     Case.countDocuments({ ...match, status: "active" }),

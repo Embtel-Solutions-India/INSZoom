@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Case = require("../../models/Case");
 const { caseManagerMatch } = require("./caseManagerAccess");
+const { COUNTABLE_CASE } = require("./countableCase");
 const env = require("../../config/env");
 const GHLIntegration = require("../../models/GHLIntegration");
 const Payment = require("../../models/Payment");
@@ -244,7 +245,7 @@ const PRIORITY_RANK = { urgent: 5, high: 4, "Premium Processing": 3, medium: 2, 
 
 // The case manager's currently assigned, still-active cases (not period-filtered): highest priority first, then newest.
 async function assignedCasesList(caseManagerId, limit = 8) {
-  const rows = await Case.find({ $and: [caseManagerMatch(objectId(caseManagerId)), { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
+  const rows = await Case.find({ $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE, { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
     .select("caseNumber clientName visaType priority status createdAt")
     .lean();
   return rows
@@ -266,6 +267,36 @@ async function finalStageMatch() {
   return clauses;
 }
 
+// Cases sitting in a GHL stage whose name matches `include` (and not `exclude`), as $or clauses. Matched by name so renamed keys still work.
+async function stageClauses(include, exclude) {
+  const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).select("pipelines").lean().catch(() => null);
+  const clauses = [];
+  (config?.pipelines || []).forEach((pipeline) => {
+    const keys = (pipeline.stages || []).filter((stage) => include.test(stage.name || "") && !(exclude && exclude.test(stage.name || ""))).map((stage) => stage.key);
+    if (keys.length) clauses.push({ "integrations.ghl.pipelineId": pipeline.ghlPipelineId, "integrations.ghl.unifiedStageKey": { $in: keys } });
+  });
+  return clauses;
+}
+
+// The four outcome tiles, driven by the GHL pipeline stage the case has been moved to (status is only a fallback for cases without a card).
+async function outcomesSection(caseManagerFilter) {
+  const [approvedStages, rejectedStages, rfeStages] = await Promise.all([
+    stageClauses(/approv/i, /disapprov|unapprov/i),
+    stageClauses(/disapprov|unapprov|reject|denied/i),
+    stageClauses(/rfe/i),
+  ]);
+  const count = (clauses) => (clauses.length ? Case.countDocuments({ $and: [caseManagerFilter, { $or: clauses }] }) : 0);
+  const rfeOr = [...rfeStages, { status: "rfe" }];
+  const [approved, rejected, rfe, needsAttention] = await Promise.all([
+    count([...approvedStages, { status: "approved" }]),
+    count([...rejectedStages, { status: { $in: ["rejected", "denied"] } }]),
+    count(rfeOr),
+    // needs attention = any case that has gotten an RFE: in the RFE stage, or with an open RFE deadline on it
+    count([...rfeOr, openRfeDeadlineFilter()]),
+  ]);
+  return { approved, rejected, rfe, needsAttention };
+}
+
 const trendOf = (current, previous) => {
   if (!previous) return { direction: current > 0 ? "up" : "flat", percent: null, isNew: current > 0 };
   const percent = Math.round(((current - previous) / previous) * 100);
@@ -278,7 +309,7 @@ async function summarySection(caseManagerId, caseManagerFilter) {
   const finals = await finalStageMatch();
   const isClosed = { $or: [{ status: { $in: ["closed", "completed", "approved", "rejected", "denied"] } }, ...finals] };
   const notClosed = { $nor: isClosed.$or };
-  const mine = caseManagerMatch(objectId(caseManagerId));
+  const mine = { $and: [caseManagerMatch(objectId(caseManagerId)), COUNTABLE_CASE] };
   const now = Date.now();
   const d30 = new Date(now - 30 * DAY_MS);
   const d60 = new Date(now - 60 * DAY_MS);
@@ -305,15 +336,17 @@ async function summarySection(caseManagerId, caseManagerFilter) {
 async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS } = {}) {
   // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager,
   // limited to cases created in the selected period.
-  const caseManagerFilter = { $and: [caseManagerMatch(objectId(caseManagerId)), { createdAt: periodRange(period) }] };
+  const periodFilter = { $and: [caseManagerMatch(objectId(caseManagerId)), { createdAt: periodRange(period) }] };
+  const caseManagerFilter = { $and: [...periodFilter.$and, COUNTABLE_CASE] };
 
   const [totalCasesInScope, activeTotal, caseIds] = await Promise.all([
     Case.countDocuments(caseManagerFilter),
     Case.countDocuments({ ...caseManagerFilter, status: { $nin: ACTIVE_EXCLUDED_STATUSES } }),
-    Case.find(caseManagerFilter).distinct("_id"),
+    // payments belong to whichever case holds them, including an employer matter, so they are not narrowed to countable cases
+    Case.find(periodFilter).distinct("_id"),
   ]);
 
-  const [attention, close, payments, activity, byVisaType, byStage, assignedCases, trend, summary] = await Promise.all([
+  const [attention, close, payments, activity, byVisaType, byStage, assignedCases, trend, summary, outcomes] = await Promise.all([
     attentionSection(caseManagerFilter),
     closeSection(caseManagerFilter),
     paymentsSection(caseIds),
@@ -323,6 +356,7 @@ async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_S
     assignedCasesList(caseManagerId),
     assignedTrend(caseManagerFilter, period),
     summarySection(caseManagerId, caseManagerFilter),
+    outcomesSection(caseManagerFilter),
   ]);
 
   return {
@@ -337,6 +371,7 @@ async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_S
     assignedCases,
     trend,
     summary,
+    outcomes,
   };
 }
 

@@ -27,6 +27,8 @@ const googleDriveJobSchema = new mongoose.Schema(
     folderId: { type: String, required: true },
     folderName: String,
     folderLink: String,
+    folderParentId: String, // the destination's parent folder and shared-drive IDs as Google reported them when the job started
+    folderDriveId: String,
     force: { type: Boolean, default: false },
     status: { type: String, enum: ["queued", "running", "completed", "completed_with_errors", "failed"], default: "queued" },
     items: [itemSchema],

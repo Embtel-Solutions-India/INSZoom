@@ -80,45 +80,99 @@ export function DriveLogo({ className = 'h-4 w-4' }) {
   )
 }
 
-// A folder browser used ONLY when Google's own folder window is not available (no Picker key on the server, it could not be opened, or the user
-// chooses it). It walks the user's real Drive one level at a time, so any existing folder and subfolder can be reached.
-function FolderBrowser({ onSelect, onLocation, disabled }) {
-  const [trail, setTrail] = useState([{ id: 'root', name: 'My Drive' }])
-  const [items, setItems] = useState(null)
-  const [problem, setProblem] = useState('')
-  const here = trail[trail.length - 1]
+// A folder browser used when Google's own folder window is not available (no Picker key on the server, it could not be opened) or the user
+// prefers it. It walks the user's real Drive one level at a time and reaches every folder the connected account may open:
+//   My Drive · Shared with me (folders other people shared) · Shared drives, plus a name search across all three.
+// Long lists load page by page ("Load more"), and folders the account can only view are shown but cannot be chosen as a destination.
+const TABS = [
+  { id: 'root', label: 'My Drive', testId: 'drive-tab-mine' },
+  { id: '__shared', label: 'Shared with me', testId: 'drive-tab-shared' },
+  { id: '__drives', label: 'Shared drives', testId: 'drive-tab-drives' },
+]
+const isVirtual = (id) => String(id).startsWith('__')
 
-  useEffect(() => { onLocation(here.id === 'root' ? null : here) }, [here.id]) // eslint-disable-line react-hooks/exhaustive-deps
+function FolderBrowser({ onSelect, onLocation, disabled }) {
+  const [trail, setTrail] = useState([TABS[0]])
+  const [items, setItems] = useState(null)
+  const [nextPageToken, setNextPageToken] = useState(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [problem, setProblem] = useState('')
+  const [searchText, setSearchText] = useState('')
+  const [term, setTerm] = useState('') // the search text once typing pauses
+  const root = trail[0]
+  const here = trail[trail.length - 1]
+  const searching = term.length >= 2 && trail.length === 1
+  const virtualHere = searching || isVirtual(here.id)
+
+  // Wait for a pause in typing before asking Google, and go back to the top level so the results are what is shown.
+  useEffect(() => {
+    const timer = setTimeout(() => { const next = searchText.trim(); setTerm(next.length >= 2 ? next : ''); if (next.length >= 2) setTrail((current) => current.slice(0, 1)) }, 350)
+    return () => clearTimeout(timer)
+  }, [searchText])
+
+  useEffect(() => {
+    onLocation(virtualHere ? { virtual: true, name: here.name } : here.id === 'root' ? null : here)
+  }, [here.id, virtualHere]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const request = (pageToken) => {
+    if (searching) return googleDriveApi.listFolders(null, { q: term, ...(pageToken ? { pageToken } : {}) })
+    if (here.id === '__shared') return googleDriveApi.listFolders(null, { view: 'shared', ...(pageToken ? { pageToken } : {}) })
+    if (here.id === '__drives') return googleDriveApi.listFolders(null, { view: 'drives', ...(pageToken ? { pageToken } : {}) })
+    return pageToken ? googleDriveApi.listFolders(here.id, { pageToken }) : googleDriveApi.listFolders(here.id)
+  }
+
   useEffect(() => {
     let active = true
-    setItems(null); setProblem('')
-    googleDriveApi.listFolders(here.id)
-      .then((res) => { if (active) setItems(res.data.folders || []) })
+    setItems(null); setProblem(''); setNextPageToken(null)
+    request()
+      .then((res) => { if (active) { setItems(res.data.folders || []); setNextPageToken(res.data.nextPageToken || null) } })
       .catch((err) => { if (active) { setItems([]); setProblem(err?.response?.data?.message || 'Could not list the folders.') } })
     return () => { active = false }
-  }, [here.id])
+  }, [here.id, searching, term]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadMore = async () => {
+    setLoadingMore(true)
+    try {
+      const res = await request(nextPageToken)
+      setItems((current) => [...(current || []), ...(res.data.folders || [])])
+      setNextPageToken(res.data.nextPageToken || null)
+    } catch (err) { setProblem(err?.response?.data?.message || 'Could not load more folders.') } finally { setLoadingMore(false) }
+  }
+
+  const switchTab = (tab) => { setSearchText(''); setTerm(''); setTrail([tab]) }
+  const open = (item) => setTrail([...trail, { id: item.id, name: item.name }])
+  const emptyText = problem || (searching ? `No folders match “${term}”.` : here.id === '__shared' ? 'No folders have been shared with this Google account.' : here.id === '__drives' ? 'This Google account is not a member of any shared drive.' : 'No folders here.')
 
   return (
     <div className="rounded-lg border border-border text-sm" data-testid="drive-browser">
-      <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2.5">
+        {TABS.map((tab) => (
+          <button key={tab.id} type="button" onClick={() => switchTab(tab)} data-testid={tab.testId} aria-pressed={root.id === tab.id} className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${root.id === tab.id ? 'bg-primary-600 text-white' : 'bg-secondary text-muted-foreground hover:bg-muted'}`}>{tab.label}</button>
+        ))}
+        <input type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search folders" aria-label="Search folders" data-testid="drive-search" maxLength={100} className="input-field ml-auto h-8 w-full text-xs sm:w-48" />
+      </div>
+      <div className="flex flex-wrap items-center gap-1 border-b border-border px-4 py-2 text-xs text-muted-foreground">
         {trail.map((crumb, index) => (
           <span key={crumb.id} className="flex items-center gap-1">
             {index > 0 && <span>/</span>}
-            <button type="button" className="hover:underline" onClick={() => setTrail(trail.slice(0, index + 1))}>{crumb.name}</button>
+            <button type="button" className="hover:underline" onClick={() => setTrail(trail.slice(0, index + 1))}>{index === 0 && term.length >= 2 ? `Search “${term}”` : crumb.name}</button>
           </span>
         ))}
       </div>
-      <ul className="max-h-56 divide-y divide-border overflow-y-auto">
-        {items === null && <li className="px-3 py-3 text-xs text-muted-foreground">Loading folders…</li>}
-        {items?.length === 0 && <li className="px-3 py-3 text-xs text-muted-foreground">{problem || 'No folders here.'}</li>}
+      <ul className="max-h-64 divide-y divide-border overflow-y-auto">
+        {items === null && <li className="px-4 py-3.5 text-xs text-muted-foreground">Loading folders…</li>}
+        {items?.length === 0 && <li className="px-4 py-3.5 text-xs text-muted-foreground">{emptyText}</li>}
         {items?.map((item) => (
-          <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2">
-            <button type="button" onClick={() => setTrail([...trail, { id: item.id, name: item.name }])} className="flex min-w-0 items-center gap-2 text-left text-foreground hover:underline"><FolderOpen className="h-4 w-4 shrink-0" /><span className="truncate">{item.name}</span></button>
-            <button type="button" onClick={() => onSelect(item)} disabled={disabled} className="shrink-0 text-xs text-blue-600 hover:underline">Select</button>
+          <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+            <button type="button" onClick={() => open(item)} className="flex min-w-0 items-center gap-2.5 text-left text-foreground hover:underline"><FolderOpen className="h-4 w-4 shrink-0" /><span className="truncate">{item.name}</span>{item.isSharedDrive && <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">Shared drive</span>}{!item.isSharedDrive && item.owner && <span className="shrink-0 truncate text-xs text-muted-foreground">Shared by {item.owner}</span>}</button>
+            {item.canAddChildren === false
+              ? <span className="shrink-0 text-xs text-muted-foreground" title="This Google account can only view this folder, so files cannot be added to it">View only</span>
+              : <button type="button" onClick={() => onSelect(item)} disabled={disabled} className="shrink-0 text-xs text-blue-600 hover:underline">Select</button>}
           </li>
         ))}
+        {nextPageToken && <li className="px-4 py-2.5 text-center"><button type="button" onClick={loadMore} disabled={loadingMore} className="text-xs text-blue-600 hover:underline" data-testid="drive-load-more">{loadingMore ? 'Loading…' : 'Load more folders'}</button></li>}
       </ul>
-      <div className="flex justify-end border-t border-border px-3 py-2"><button type="button" onClick={() => onSelect(here)} disabled={disabled} className="btn-secondary text-xs">Use “{here.name}”</button></div>
+      {!virtualHere && <div className="flex justify-end border-t border-border px-4 py-2.5"><button type="button" onClick={() => onSelect(here)} disabled={disabled} className="btn-secondary text-xs">Use “{here.name}”</button></div>}
     </div>
   )
 }
@@ -406,9 +460,11 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                       {folder
                         ? <div className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"><span className="flex items-center gap-2 text-foreground"><FolderOpen className="h-4 w-4" /> {folder.name}</span><button type="button" className="text-xs text-blue-600 hover:underline" disabled={busy === 'pick'} onClick={() => { if (PICKER_ENABLED && !browse) chooseWithPicker(); else setFolder(null) }}>Choose a different folder</button></div>
                         : PICKER_ENABLED && !browse
-                          ? <div className="space-y-2"><div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground"><span className="flex-1">{busy === 'pick' ? 'Opening Google Drive…' : busy === 'check' ? 'Checking the folder…' : 'No folder chosen yet.'}</span><button type="button" onClick={chooseWithPicker} disabled={busy === 'pick' || busy === 'check'} className="btn-secondary inline-flex items-center gap-2 text-sm"><FolderOpen className="h-4 w-4" /> Open Google Drive</button></div><button type="button" onClick={() => setBrowse(true)} className="text-xs text-blue-600 hover:underline" data-testid="drive-browse-instead">Cannot see Google Drive&apos;s window? Browse your folders here instead</button></div>
+                          ? <div className="space-y-2"><div className="flex items-center gap-3 rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground"><span className="flex-1">{busy === 'pick' ? 'Opening Google Drive…' : busy === 'check' ? 'Checking the folder…' : 'No folder chosen yet.'}</span><button type="button" onClick={chooseWithPicker} disabled={busy === 'pick' || busy === 'check'} className="btn-secondary inline-flex items-center gap-2 text-sm"><FolderOpen className="h-4 w-4" /> Open Google Drive</button></div><button type="button" onClick={() => setBrowse(true)} className="text-xs text-blue-600 hover:underline" data-testid="drive-browse-instead">Search or browse your folders here instead (My Drive, Shared with me, Shared drives)</button></div>
                           : <FolderBrowser onSelect={useFolder} onLocation={setBrowseAt} disabled={busy === 'check'} />}
-                      {(folder || browse || !PICKER_ENABLED) && (
+                      {(folder || browse || !PICKER_ENABLED) && (!folder && browseAt?.virtual ? (
+                        <p className="mt-3 text-xs text-muted-foreground">Open a folder to create a new folder inside it.</p>
+                      ) : (
                         <div className="mt-3">
                           <p className="mb-1 text-xs text-muted-foreground">{folder ? `Optional: create a new folder inside “${folder.name}” and use it instead` : browseAt ? `Or create a new folder inside “${browseAt.name}”` : 'Or create a new folder in My Drive'}</p>
                           <div className="flex gap-2">
@@ -416,7 +472,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                             <button type="button" onClick={createFolder} disabled={!newName.trim() || busy === 'create'} className="btn-secondary inline-flex shrink-0 items-center gap-2 text-sm disabled:opacity-60"><FolderPlus className="h-4 w-4" /> {busy === 'create' ? 'Creating…' : 'Create'}</button>
                           </div>
                         </div>
-                      )}
+                      ))}
                     </section>
                   )}
                 </>
