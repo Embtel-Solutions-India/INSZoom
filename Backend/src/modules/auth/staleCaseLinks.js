@@ -64,4 +64,22 @@ async function reclaimOrphanClientSideAccount(user, newRole, { exceptCaseId, ...
   }
 }
 
-module.exports = { pruneStaleCaseLinks, reclaimOrphanClientSideAccount };
+/**
+ * Frees the email of a person whose every case was withdrawn (a removed employee / beneficiary) or deleted, so it can be used for a NEW case: the account takes the role the new
+ * case needs and its dead links to the withdrawn cases are dropped. An account that still has a live case is left exactly as it is (the email is genuinely in use), and so are
+ * staff / attorney / admin accounts. `fromRoles` limits which current roles may be freed (e.g. only a leftover employee, never a client who simply has no case yet).
+ * Fail-safe like the two helpers it combines: never throws, always returns the user.
+ */
+async function releaseLeftoverAccount(user, newRole, { fromRoles, ...deps } = {}) {
+  try {
+    if (!user) return user;
+    if (fromRoles && !fromRoles.includes(user.role)) return user;
+    await reclaimOrphanClientSideAccount(user, newRole, deps);
+    await pruneStaleCaseLinks(user, deps);
+  } catch (error) {
+    logger.warn("leftover_account_release_failed", { error: error.message });
+  }
+  return user;
+}
+
+module.exports = { pruneStaleCaseLinks, reclaimOrphanClientSideAccount, releaseLeftoverAccount };

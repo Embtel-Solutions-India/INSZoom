@@ -119,6 +119,10 @@ export const attorneyApi = {
   dashboard: () => api.get('/attorney/dashboard'),
   cases: (params = {}) => api.get('/attorney/cases', { params }),
   case: (caseId) => api.get(`/attorney/cases/${caseId}`),
+  // Any movement on a case (opening it, a tab, a document, sending feedback) marks it active for this attorney.
+  recordActivity: (caseId) => api.post(`/attorney/cases/${caseId}/activity`),
+  completeReview: (caseId) => api.post(`/attorney/cases/${caseId}/review-complete`),
+  reopenReview: (caseId) => api.post(`/attorney/cases/${caseId}/review-reopen`),
   feedback: (caseId) => api.get(`/attorney/cases/${caseId}/feedback`),
   sendFeedback: (caseId, message, files = [], clientMessageId, uploadIds = []) =>
     api.post(`/attorney/cases/${caseId}/feedback`, toFeedbackFormData(message, files, clientMessageId, uploadIds), feedbackPostConfig(files)),
@@ -188,6 +192,7 @@ export const notificationsApi = {
 // caseId filtering needed here.
 export const tasksApi = {
   myTasks: (params = {}) => api.get('/tasks/my-tasks', { params }),
+  stats: () => api.get('/tasks/stats/dashboard'),
   get: (id) => api.get(`/tasks/${id}`),
   // The backend defaults assignedTo to self when omitted and rejects
   // (403) any explicit assignedTo other than the caller for a non-admin/

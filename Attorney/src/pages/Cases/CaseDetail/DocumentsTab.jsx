@@ -49,6 +49,11 @@ export default function DocumentsTab() {
   const [error, setError] = useState('')
   const [openDoc, setOpenDoc] = useState(null)
 
+  // Opening a document is movement on the case (it becomes active for this attorney).
+  useEffect(() => {
+    if (openDoc) attorneyApi.recordActivity(caseId).catch(() => {})
+  }, [openDoc, caseId])
+
   useEffect(() => {
     caseDataApi
       .documents(caseId)

@@ -18,7 +18,9 @@ async function requireAttorneyAccess(req, res, next) {
       return res.status(400).json({ success: false, message: "Invalid case id" });
     }
 
-    const caseDoc = await Case.findById(caseId).select("+attorneyAccess");
+    // Only the grants and the deleted flag are needed for this check. Loading the whole case here cost a full copy of
+    // the document (~500 KB, ~2 s from the database) on EVERY attorney request, before the handler even started.
+    const caseDoc = await Case.findById(caseId).select("attorneyAccess deletedAt").lean();
     if (!caseDoc || caseDoc.deletedAt) {
       // Same response as "not granted" on purpose — an attorney probing IDs
       // must not be able to tell an existing case they lack access to apart

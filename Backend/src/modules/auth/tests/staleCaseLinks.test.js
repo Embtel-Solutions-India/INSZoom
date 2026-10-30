@@ -94,3 +94,47 @@ test("a withdrawn (removed) case does not count as live, so its email is release
   await pruneStaleCaseLinks({ _id: "u1", primaryCaseId: "c1", caseIds: ["c1"] }, deps);
   assert.deepEqual(seen.status, { $ne: "removed" });
 });
+
+const { releaseLeftoverAccount } = require("../staleCaseLinks");
+// both helpers share one fake database: `live` = ids of cases that still exist and are not withdrawn
+const releaseDeps = ({ hasLiveCase, liveIds = [] }, calls = []) => ({
+  CaseModel: {
+    exists: async () => (hasLiveCase ? { _id: "x" } : null),
+    find: (query) => ({ select: () => ({ lean: async () => query._id.$in.filter((id) => liveIds.includes(String(id))).map((id) => ({ _id: id })) }) }),
+  },
+  UserModel: { updateOne: async (...args) => { calls.push(args); } },
+});
+
+test("a withdrawn employee's email is released: the account becomes a client and its dead link to the withdrawn case is dropped", async () => {
+  const calls = [];
+  const user = { _id: "u1", email: "w@x.com", role: "employee", caseIds: ["withdrawn1"], primaryCaseId: "withdrawn1" };
+  await releaseLeftoverAccount(user, "client", releaseDeps({ hasLiveCase: false }, calls));
+  assert.equal(user.role, "client");
+  assert.deepEqual(user.caseIds, []);
+  assert.equal(user.primaryCaseId, undefined);
+});
+
+test("an employee who still has a live case elsewhere keeps their account untouched", async () => {
+  const calls = [];
+  const user = { _id: "u1", email: "w@x.com", role: "employee", caseIds: ["live1"], primaryCaseId: "live1" };
+  await releaseLeftoverAccount(user, "client", releaseDeps({ hasLiveCase: true, liveIds: ["live1"] }, calls));
+  assert.equal(user.role, "employee");
+  assert.deepEqual(user.caseIds, ["live1"]);
+  assert.equal(calls.length, 0, "nothing is written");
+});
+
+test("fromRoles keeps a client who merely has no case yet from being re-roled as a beneficiary", async () => {
+  const calls = [];
+  const user = { _id: "u1", email: "c@x.com", role: "client", caseIds: [] };
+  await releaseLeftoverAccount(user, "beneficiary", { fromRoles: ["employee", "employer"], ...releaseDeps({ hasLiveCase: false }, calls) });
+  assert.equal(user.role, "client");
+  assert.equal(calls.length, 0);
+});
+
+test("releasing never throws, whatever fails, and a missing user passes straight through", async () => {
+  const user = { _id: "u1", role: "employee", caseIds: ["c1"] };
+  const broken = { CaseModel: { exists: async () => { throw new Error("db down"); }, find: () => { throw new Error("db down"); } }, UserModel: {} };
+  assert.equal(await releaseLeftoverAccount(user, "client", broken), user);
+  assert.equal(user.role, "employee");
+  assert.equal(await releaseLeftoverAccount(null, "client", broken), null);
+});

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet, useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useParams, Link } from 'react-router-dom'
+import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { attorneyApi } from '../../../services/api'
 import CaseStatusBadge from '../../../components/CaseStatusBadge'
+import WorkStateBadge, { isNotableCaseStatus } from '../../../components/WorkStateBadge'
 import { useSocket } from '../../../context/SocketContext'
 
 // Case-related tabs only — no Payments (no billing access, see
@@ -44,11 +45,37 @@ export default function CaseDetailLayout() {
   // on next manual reload.
   const [refreshToken, setRefreshToken] = useState(0)
   const { subscribe, connected } = useSocket()
+  // This attorney's own "review complete" state for the case (separate from the case's status).
+  const [review, setReview] = useState({ status: 'in_review', workState: 'assigned' })
+  const { pathname } = useLocation()
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewError, setReviewError] = useState('')
+
+  const toggleReview = async () => {
+    const done = review.status === 'reviewed'
+    setReviewBusy(true)
+    setReviewError('')
+    try {
+      const { data } = await (done ? attorneyApi.reopenReview(caseId) : attorneyApi.completeReview(caseId))
+      setReview({ ...data.review, workState: done ? 'active' : 'reviewed' })
+    } catch (err) {
+      setReviewError(err.response?.data?.message || 'Could not update the review. Please try again.')
+    } finally {
+      setReviewBusy(false)
+    }
+  }
 
   const fetchCase = useCallback(() => {
     return attorneyApi
       .case(caseId)
-      .then(({ data }) => setCaseData(data.case))
+      .then(({ data }) => {
+        setCaseData(data.case)
+        // Keep "active" if the activity ping already landed while this request was in flight.
+        setReview((prev) => {
+          const incoming = data.review || { status: 'in_review', workState: 'assigned' }
+          return prev.workState === 'active' && incoming.workState === 'assigned' ? { ...incoming, workState: 'active' } : incoming
+        })
+      })
       .catch((err) => {
         setError(
           err.response?.status === 403
@@ -63,6 +90,15 @@ export default function CaseDetailLayout() {
     setError('')
     fetchCase()
   }, [caseId, fetchCase])
+
+  // Opening the case, or moving to another tab of it, counts as work on it: the case becomes active for this attorney.
+  // Fire-and-forget - a failed ping must never get in the way of reading the case.
+  useEffect(() => {
+    attorneyApi
+      .recordActivity(caseId)
+      .then(({ data }) => setReview((prev) => (prev.workState === 'reviewed' ? prev : { ...prev, workState: data.workState || 'active' })))
+      .catch(() => {})
+  }, [caseId, pathname])
 
   useEffect(() => {
     if (!connected) return
@@ -115,8 +151,28 @@ export default function CaseDetailLayout() {
           <h1 className="text-xl font-bold text-foreground font-serif break-words">{caseData.caseNumber || caseData.caseId}</h1>
           <p className="text-sm text-muted-foreground">{caseData.clientName} · {caseData.visaType}</p>
         </div>
-        <div className="shrink-0"><CaseStatusBadge status={caseData.status} /></div>
+        <div className="shrink-0 flex flex-col sm:flex-row items-end sm:items-center gap-2">
+          <WorkStateBadge state={review.workState} />
+          {isNotableCaseStatus(caseData.status) && <CaseStatusBadge status={caseData.status} />}
+          {review.status === 'reviewed' ? (
+            <div className="flex items-center gap-2">
+              <span className="badge badge-success inline-flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Review complete{review.reviewedAt ? ` · ${new Date(review.reviewedAt).toLocaleDateString()}` : ''}
+              </span>
+              <button type="button" onClick={toggleReview} disabled={reviewBusy} className="text-xs text-muted-foreground hover:text-foreground underline disabled:opacity-50">
+                Reopen
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={toggleReview} disabled={reviewBusy} className="btn-primary inline-flex items-center gap-1.5 text-sm disabled:opacity-60">
+              {reviewBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Review complete
+            </button>
+          )}
+        </div>
       </div>
+      {reviewError && <p className="text-xs text-destructive">{reviewError}</p>}
 
       <nav className="flex gap-1 border-b border-border overflow-x-auto overflow-y-hidden -mx-1 px-1 sm:mx-0 sm:px-0">
         {TABS.map((tab) => (
@@ -134,7 +190,9 @@ export default function CaseDetailLayout() {
         ))}
       </nav>
 
-      <Outlet context={{ caseData, refreshToken }} />
+      <Suspense fallback={<Loader2 className="w-6 h-6 animate-spin text-primary" />}>
+        <Outlet context={{ caseData, refreshToken }} />
+      </Suspense>
     </div>
   )
 }

@@ -31,6 +31,7 @@ const { buildI824Details, isI824 } = require("./i824CaseDetails");
 // re-invented, so a newly created petitioner gets the identical account
 // setup (invite token, referral code) any other client does.
 const { generateOpaqueToken, hashToken } = require("../auth/password.service");
+const { releaseLeftoverAccount } = require("../auth/staleCaseLinks");
 const { generateUniqueReferralCode } = require("../../utils/referralCode");
 
 const VALID_PROCESSING_PATHS = new Set(["PETITION_ONLY", "ADJUSTMENT_OF_STATUS", "CONSULAR", ""]);
@@ -295,6 +296,9 @@ exports.createFamilyCase = async (req, res, next) => {
 
     let petitionerUser = await User.findOne({ email: petitionerEmail });
     let petitionerSetupToken = null;
+    // A person whose every earlier case was withdrawn (a removed employee / beneficiary) or deleted has their email released for this new case: the leftover account
+    // becomes the client the case needs and its links to the withdrawn cases are dropped. An account that still has a live case is left exactly as it was.
+    if (petitionerUser) await releaseLeftoverAccount(petitionerUser, "client");
     if (petitionerUser) {
       petitionerUser.name = petitionerUser.name || petitionerName;
       petitionerUser.displayName = petitionerUser.displayName || petitionerName;
@@ -319,6 +323,8 @@ exports.createFamilyCase = async (req, res, next) => {
     }
 
     const beneficiaryUser = await User.findOne({ email: beneficiaryEmail });
+    // the same release for a withdrawn employee / beneficiary whose email is now the family beneficiary (a client who just has no case yet is not re-roled)
+    if (beneficiaryUser) await releaseLeftoverAccount(beneficiaryUser, "beneficiary", { fromRoles: ["employee", "employer", "beneficiary"] });
     const beneficiary = await Beneficiary.findOneAndUpdate(
       { email: beneficiaryEmail },
       { email: beneficiaryEmail, fullName: beneficiaryName, user: beneficiaryUser?._id, type: "family", source: "shared" },

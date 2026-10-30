@@ -103,6 +103,13 @@ const attorneyAccessSchema = new mongoose.Schema(
     assignedAt: { type: Date, default: Date.now },
     status: { type: String, enum: ["active", "revoked"], default: "active" },
     revokedAt: { type: Date },
+    // The attorney's own "review complete" flag for this case. Absent on older grants = still in review.
+    reviewStatus: { type: String, enum: ["in_review", "reviewed"], default: "in_review" },
+    reviewedAt: { type: Date },
+    // First time this attorney did anything on the case (opened it, a tab, a document, sent feedback) = the case is "active" for them.
+    // Absent on older grants = not started. lastActivityAt is the most recent such movement (updated at most once a minute).
+    engagedAt: { type: Date },
+    lastActivityAt: { type: Date },
   },
   { _id: true }
 );
