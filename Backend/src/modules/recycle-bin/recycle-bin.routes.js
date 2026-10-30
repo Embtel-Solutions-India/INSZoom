@@ -26,7 +26,7 @@ router.post("/:id/restore", authenticate, authorizeRoles("super_admin", "admin",
   res.json({ success: true, message: `Restored ${result.caseNumbers.join(", ")}.`, ...result });
 }));
 
-router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin"), authorizePermissions("cases:delete"), ...validId, wrap(async (req, res) => {
+router.delete("/:id", authenticate, authorizeRoles("super_admin", "admin", "team_lead"), authorizePermissions("cases:delete"), ...validId, wrap(async (req, res) => {
   const result = await service.purgeNow(req.params.id, req.user);
   res.json({ success: true, message: `${result.caseNumbers.join(", ")} permanently deleted.` });
 }));

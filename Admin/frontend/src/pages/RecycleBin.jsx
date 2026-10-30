@@ -109,7 +109,7 @@ export default function RecycleBin() {
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> Restore
                     </button>
                   )}
-                  {item.status !== 'capturing' && ['super_admin', 'admin'].includes(user?.role) && (
+                  {item.status !== 'capturing' && ['super_admin', 'admin', 'team_lead'].includes(user?.role) && (
                     <button type="button" className="btn-secondary inline-flex items-center gap-1.5 text-xs text-rose-700" onClick={() => { setError(''); setConfirm({ item, action: 'purge' }) }}>
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Delete permanently
                     </button>

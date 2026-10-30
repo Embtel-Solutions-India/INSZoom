@@ -2245,20 +2245,20 @@ const CRMCaseDetail = () => {
             ) : visibleChildCases.length === 0 ? (
               <p className="px-5 py-4 text-sm text-muted-foreground">{isEmployerMatter ? 'No employees on this matter yet. Use + Add Employee to add one.' : 'No child cases yet.'}</p>
             ) : (
-              <div className="max-h-72 overflow-auto">
+              <div className="max-h-72 overflow-y-auto overflow-x-hidden">
                 {/* The four action buttons always sit on ONE line; the text columns (name, visa, workflow, case manager) wrap to give them room,
                     so the table fits the card at normal widths. The scroll wrapper only appears on a very narrow screen, as a last resort. */}
                 <table className="w-full table-auto divide-y divide-border">
                   <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
-                      <th className="px-3 py-2"></th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Login email</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Visa</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                      <th className="px-2 py-2 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Case Manager</th>
+                      <th className="px-2 py-2"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -2276,9 +2276,9 @@ const CRMCaseDetail = () => {
                           className={isRemoved ? 'opacity-60' : 'cursor-pointer hover:bg-muted/40 transition-colors'}
                           onClick={isRemoved ? undefined : () => navigate(`/crm-cases/${child._id}`)}
                         >
-                          <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{child.caseNumber}</td>
-                          <td className="px-3 py-2.5 text-sm text-muted-foreground break-words">{child.clientName || child.employeeContact?.name || child.pendingEmployee?.name || 'Employee Slot'}</td>
-                          <td className="max-w-[14rem] px-3 py-2.5 text-sm" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-2 py-2.5 whitespace-nowrap text-[13px] font-medium text-foreground">{child.caseNumber}</td>
+                          <td className="px-2 py-2.5 text-[13px] text-muted-foreground break-words">{child.clientName || child.employeeContact?.name || child.pendingEmployee?.name || 'Employee Slot'}</td>
+                          <td className="max-w-[12rem] px-2 py-2.5 text-sm" onClick={(e) => e.stopPropagation()}>
                             {(child.clientEmail || child.employeeContact?.email) ? (
                               <>
                                 {/* one line: a long email is cut with an ellipsis (full address on hover) instead of wrapping */}
@@ -2291,11 +2291,11 @@ const CRMCaseDetail = () => {
                               </>
                             ) : <span className="text-muted-foreground">-</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-foreground">{employeeVisaLabel(child)}</td>
-                          <td className="px-3 py-2.5">
+                          <td className="px-2 py-2.5 text-[13px] text-foreground">{employeeVisaLabel(child)}</td>
+                          <td className="px-2 py-2.5">
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${pill.className}`}>{pill.label}</span>
                           </td>
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-2.5 text-center">
                             {isEmployerMatter && (
                               <span
                                 className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${employeeFills ? 'bg-primary/10 text-primary' : 'bg-secondary text-foreground'}`}
@@ -2305,7 +2305,7 @@ const CRMCaseDetail = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-sm text-muted-foreground">
+                          <td className="px-2 py-2.5 text-[13px] text-muted-foreground">
                             {child.assignedCaseManager?.name || child.assignedCaseManager?.displayName || 'Unassigned'}
                             {child.assignmentOverridden && (
                               <span className="ml-2 px-2 py-0.5 text-xs font-semibold rounded-full bg-orange-100 text-orange-800">
@@ -2313,14 +2313,14 @@ const CRMCaseDetail = () => {
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                          <td className="px-2 py-2.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-nowrap items-center justify-end gap-1">
                             {isRemoved ? (
                               <button
                                 type="button"
                                 onClick={() => handleRestoreEmployee(child._id)}
                                 disabled={employeeActionBusy === `restore:${child._id}`}
-                                className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
+                                className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
                               >
                                 {employeeActionBusy === `restore:${child._id}` ? 'Restoring…' : 'Restore'}
                               </button>
@@ -2329,7 +2329,7 @@ const CRMCaseDetail = () => {
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/crm-cases/${child._id}`)}
-                                  className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600 bg-primary-600/10 text-primary-600 hover:bg-primary-600/20"
+                                  className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600 bg-primary-600/10 text-primary-600 hover:bg-primary-600/20"
                                 >
                                   View →
                                 </button>
@@ -2342,7 +2342,7 @@ const CRMCaseDetail = () => {
                                     onClick={() => handleCopySetupLink(child)}
                                     disabled={employeeActionBusy === `link:${child._id}`}
                                     title="Copy a one-time link the employee opens to set their own password"
-                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
+                                    className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50"
                                   >
                                     {employeeActionBusy === `link:${child._id}` ? 'Copying…' : 'Copy setup link'}
                                   </button>
@@ -2353,7 +2353,7 @@ const CRMCaseDetail = () => {
                                     onClick={() => handleStartInvite(child)}
                                     disabled={employeeActionBusy === `mode:${child._id}`}
                                     title="Invite the employee to fill in their own information (the employer is filling it in now)"
-                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     Invite Employee
                                   </button>
@@ -2363,7 +2363,7 @@ const CRMCaseDetail = () => {
                                     onClick={() => handleResendInvite(child._id)}
                                     disabled={inviteState === 'accepted' || employeeActionBusy === `resend:${child._id}`}
                                     title={inviteState === 'accepted' ? 'This employee has already accepted their invitation' : 'Send this employee a fresh invitation email'}
-                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {employeeActionBusy === `resend:${child._id}` ? 'Resending…' : 'Resend Invite'}
                                   </button>
@@ -2374,7 +2374,7 @@ const CRMCaseDetail = () => {
                                     onClick={() => handleEmployerFillsInstead(child)}
                                     disabled={inviteState === 'none' || employeeActionBusy === `mode:${child._id}`}
                                     title={inviteState === 'none' ? "The employer already fills in this employee's information" : "Cancel the invitation and let the employer fill in this employee's information"}
-                                    className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-primary-600/50 text-primary-600 hover:bg-primary-600/10 disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     {employeeActionBusy === `mode:${child._id}` ? 'Switching…' : 'Employer fills instead'}
                                   </button>
@@ -2383,7 +2383,7 @@ const CRMCaseDetail = () => {
                                   type="button"
                                   onClick={() => handleRemoveEmployee(child._id)}
                                   disabled={employeeActionBusy === `remove:${child._id}`}
-                                  className="px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap rounded-md border border-red-600/50 text-red-600 hover:bg-red-600/10 disabled:opacity-50"
+                                  className="px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap rounded-md border border-red-600/50 text-red-600 hover:bg-red-600/10 disabled:opacity-50"
                                 >
                                   Withdraw
                                 </button>

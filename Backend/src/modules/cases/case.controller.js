@@ -1,4 +1,5 @@
 const path = require("path");
+const { withCountable } = require("./countableCase");
 const { validateEmployeeSlots } = require("./employee-slots");
 const { validateIdentityInput, employeeContact, isUninvitedEmployee } = require("./employee-identity");
 const { NEW_CASE_FORM_SELECTION } = require("../../config/caseFormSelection");
@@ -984,7 +985,7 @@ exports.getCase = async (req, res, next) => {
 
 exports.getDashboardStats = async (req, res, next) => {
   try {
-    const filter = caseService.buildCaseFilter({ ...req.query, status: req.query.status || "active" }, req.user);
+    const filter = withCountable(caseService.buildCaseFilter({ ...req.query, status: req.query.status || "active" }, req.user));
     const [totalCases, newCases, casesByStage, casesByVisaType, pendingAttorneyReview] = await Promise.all([
       Case.countDocuments(filter),
       Case.countDocuments({ ...filter, createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } }),
@@ -3071,7 +3072,7 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
         .sort({ createdAt: -1 })
         .limit(25)
         .maxTimeMS(8000),
-      Case.countDocuments({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } }).maxTimeMS(8000),
+      Case.countDocuments(withCountable({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } })).maxTimeMS(8000),
       Case.find({ ...teamFilter, priority: { $in: ["high", "urgent", "Premium Processing"] }, status: { $nin: ["closed", "archived"] } }).sort({ updatedAt: -1 }).limit(25).maxTimeMS(8000),
       Case.countDocuments({ ...teamFilter, ...queueRoleFilter, assignedCaseManager: { $exists: false }, status: { $nin: ["closed", "archived"] }, createdAt: { $lte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }).maxTimeMS(8000),
       // Perf fix: $lookup against `users` can't use an index and does a
@@ -3080,7 +3081,7 @@ exports.getTeamLeadDashboard = async (req, res, next) => {
       // indexed User.find({_id:{$in:...}}) below, instead of joining inside
       // the aggregate pipeline itself.
       Case.aggregate([
-        { $match: { ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } } },
+        { $match: withCountable({ ...teamFilter, assignedCaseManager: { $exists: true }, status: { $nin: ["closed", "archived"] } }) },
         // A case counts toward every case manager on it (primary + additional).
         { $project: { status: 1, caseManagers: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }] } } },
         { $unwind: "$caseManagers" },

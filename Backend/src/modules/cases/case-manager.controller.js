@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { withCountable } = require("./countableCase");
 const Case = require("../../models/Case");
 const Payment = require("../../models/Payment");
 const Task = require("../../models/Task");
@@ -63,7 +64,7 @@ const PENDING_CASE_STATUSES = ["pending_assignment", "assigned", "pending_approv
 async function buildManagerMetrics() {
   const [caseRows, taskRows, paymentRows] = await Promise.all([
     Case.aggregate([
-      { $match: { assignedCaseManager: { $ne: null } } },
+      { $match: withCountable({ assignedCaseManager: { $ne: null } }) },
       // A case counts toward every case manager on it (primary + additional).
       { $project: { status: 1, managers: { $setUnion: [["$assignedCaseManager"], { $ifNull: ["$additionalCaseManagers", []] }] } } },
       { $unwind: "$managers" },

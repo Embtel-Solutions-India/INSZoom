@@ -154,7 +154,7 @@ const CaseManagerAnalyticsPanel = () => {
     )
   }
 
-  const { active, attention, close, payments, activity, byVisaType, byStage = [], assignedCases = [], trend = { granularity: 'day', points: [] }, summary } = data
+  const { active, attention, close, payments, activity, byVisaType, byStage = [], assignedCases = [], trend = { granularity: 'day', points: [] }, summary, outcomes = { approved: 0, rejected: 0, rfe: 0, needsAttention: 0 } } = data
   const maxVisaCount = Math.max(1, ...byVisaType.map((v) => v.count))
   const stageRows = byStage.map((row, index) => ({ ...row, color: STAGE_COLORS[index % STAGE_COLORS.length] })).filter((row) => row.count > 0)
   const maxStageCount = Math.max(1, ...stageRows.map((v) => v.count))
@@ -200,16 +200,10 @@ const CaseManagerAnalyticsPanel = () => {
 
         {/* KPI strip */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <MetricCard label="Total cases" value={data.totalCasesInScope} dot={STATUS_COLORS.neutral} onClick={() => navigate('/crm-cases')} />
-          <MetricCard label="Active cases" value={active.total} dot={STATUS_COLORS.info} onClick={() => navigate('/crm-cases')} />
-          <MetricCard label="Approved" value={close.approved} sub={close.approvalRatio === null ? undefined : `${close.approvalRatio}% approval ratio`} dot={STATUS_COLORS.good} />
-          <MetricCard label="Rejected" value={close.denied} dot={STATUS_COLORS.critical} />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <MetricCard label="On hold" value={attention.onHold.total} sub={`${attention.onHold.byReason.nonPayment} non-payment · ${attention.onHold.byReason.other} other`} dot={STATUS_COLORS.warning} onClick={() => navigate('/crm-cases?status=on_hold')} />
-          <MetricCard label="Overdue RFE" value={attention.overdueRfe.total} sub={attention.overdueRfe.items[0] ? `next due in ${attention.overdueRfe.items[0].daysRemaining}d` : 'none pending'} dot={STATUS_COLORS.critical} onClick={() => navigate('/crm-cases?rfeOverdue=1')} />
-          <MetricCard label="Needs attention" value={attention.needsAttentionTotal} sub="deduplicated by case" dot={STATUS_COLORS.critical} onClick={() => navigate('/crm-cases?attention=1')} />
+          <MetricCard label="Approved" value={outcomes.approved} sub="moved to Approved" dot={STATUS_COLORS.good} />
+          <MetricCard label="Rejected" value={outcomes.rejected} sub="moved to Disapproved" dot={STATUS_COLORS.critical} />
+          <MetricCard label="RFE" value={outcomes.rfe} sub="moved to RFE" dot={STATUS_COLORS.warning} onClick={() => navigate('/crm-cases?rfeOverdue=1')} />
+          <MetricCard label="Needs attention" value={outcomes.needsAttention} sub="cases that received an RFE" dot={STATUS_COLORS.critical} onClick={() => navigate('/crm-cases?attention=1')} />
         </div>
 
         {/* Two cards per row: Close outcomes | Activity distribution chart */}
