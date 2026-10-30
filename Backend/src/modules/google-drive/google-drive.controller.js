@@ -114,10 +114,42 @@ async function createFolder(req, res) {
   }
 }
 
+const DRIVE_ID = /^[\w-]{1,200}$/;
+const PAGE_TOKEN = /^[\w\-.~=+/%]{1,2000}$/;
+const LIST_VIEWS = new Set(["shared", "drives"]);
+const badRequest = (message) => Object.assign(new Error(message), { statusCode: 400 });
+
+// GET /folders?parentId=&view=shared|drives&q=&pageToken=
+//   (nothing)      folders inside My Drive's top level (or inside parentId), first page
+//   parentId       folders inside that folder (any folder the account can open, including inside shared drives)
+//   view=shared    "Shared with me"; view=drives the shared drives the account belongs to
+//   q              search folders by name across My Drive, Shared with me and shared drives
+//   pageToken      the nextPageToken from the previous response, to load the next page
+// `fullAccess` says whether the connection holds the full Drive scope: without it Google only exposes folders the app created or the user
+// picked in Google's window, so Shared with me / Shared drives / search cannot be listed here (they still work in Google's own window).
 async function listFolders(req, res) {
   try {
-    const [folders, recent] = await Promise.all([driveClient.listAppFolders((await connectionService.requireActive(req.user))._id, req.query.parentId ? String(req.query.parentId) : "root"), syncService.recentFolders(req.user)]);
-    res.json({ success: true, folders, recent });
+    const parentId = req.query.parentId ? String(req.query.parentId) : "root";
+    const view = req.query.view ? String(req.query.view) : undefined;
+    const pageToken = req.query.pageToken ? String(req.query.pageToken) : undefined;
+    const query = String(req.query.q || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 100);
+    if (parentId !== "root" && !DRIVE_ID.test(parentId)) throw badRequest("That folder is not valid.");
+    if (view && !LIST_VIEWS.has(view)) throw badRequest("Unknown folder view.");
+    if (pageToken && !PAGE_TOKEN.test(pageToken)) throw badRequest("That page of folders is not valid.");
+
+    const connectionId = (await connectionService.requireActive(req.user))._id;
+    const plainFirstPage = !query && !view && !pageToken && parentId === "root";
+    const [page, recent] = await Promise.all([
+      driveClient.listFolders(connectionId, { parentId, view, query: query || undefined, pageToken }).catch((error) => {
+        // Narrow (drive.file) connection: say what the limit is instead of an unexplained Google refusal.
+        if (error instanceof driveClient.DriveError && error.code === "FORBIDDEN" && driveClient.REQUIRED_SCOPE !== driveClient.DRIVE_FULL_SCOPE && (view || query)) {
+          throw new driveClient.DriveError("Shared folders and search need full Google Drive access. Use Google's own folder window, or ask an administrator to enable full Drive access and reconnect.", { status: 403, code: "SCOPE_LIMITED" });
+        }
+        throw error;
+      }),
+      plainFirstPage ? syncService.recentFolders(req.user) : Promise.resolve([]),
+    ]);
+    res.json({ success: true, folders: page.folders, nextPageToken: page.nextPageToken, recent, fullAccess: driveClient.REQUIRED_SCOPE === driveClient.DRIVE_FULL_SCOPE });
   } catch (error) {
     fail(res, error, "Could not list folders.");
   }

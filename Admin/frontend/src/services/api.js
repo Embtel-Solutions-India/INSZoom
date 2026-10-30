@@ -875,7 +875,8 @@ export const googleDriveApi = {
   pickerToken: () => api.post(`/integrations/google-drive/picker-token`, {}),
   validateFolder: (folderId) => api.post(`/integrations/google-drive/folders/validate`, { folderId }),
   createFolder: (name, parentId) => api.post(`/integrations/google-drive/folders`, { name, ...(parentId ? { parentId } : {}) }),
-  listFolders: (parentId) => api.get(`/integrations/google-drive/folders`, { params: parentId ? { parentId } : {} }),
+  // options (all optional): { view: 'shared' | 'drives', q: search text, pageToken }. Called with just a parent ID it behaves exactly as before.
+  listFolders: (parentId, options) => api.get(`/integrations/google-drive/folders`, { params: { ...(parentId ? { parentId } : {}), ...(options || {}) } }),
   lookupLinks: (documentIds) => api.post(`/integrations/google-drive/links/lookup`, { documentIds }),
   sync: (payload) => api.post(`/integrations/google-drive/sync`, payload),
   job: (jobId) => api.get(`/integrations/google-drive/jobs/${jobId}`),

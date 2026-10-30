@@ -102,6 +102,8 @@ async function createJob(user, { documentIds, folderId, caseId, force }) {
     folderId: folder.id,
     folderName: folder.name,
     folderLink: folder.webViewLink,
+    folderParentId: folder.parentId || undefined,
+    folderDriveId: folder.driveId || undefined,
     force: Boolean(force),
     items,
     status: items.some((item) => item.status === "pending") ? "queued" : "completed", // nothing eligible: all skipped, each with its reason
