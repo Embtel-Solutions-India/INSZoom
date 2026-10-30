@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import ErrorBoundary from '../components/ErrorBoundary'
+import PageLoading from '../components/PageLoading'
 import EnablePushButton from '../components/EnablePushButton'
-import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, Newspaper, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutDashboard, Briefcase, MessageSquare, CheckCircle, Newspaper, Search, LogOut, Menu, X, Moon, Sun, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import NotificationBell from '../components/NotificationBell'
@@ -29,6 +30,15 @@ export default function AppLayout() {
   const location = useLocation()
   useScrollRestoration() // back to a list returns to exactly where you were, then stops
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+
+  // Same as the Admin portal's global search: Enter opens the cases list filtered by what was typed.
+  const handleSearchSubmit = (event) => {
+    event.preventDefault()
+    const term = searchValue.trim()
+    if (!term) return
+    navigate(`/cases?q=${encodeURIComponent(term)}`)
+  }
   // Desktop-only collapse; remembered per browser.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebarCollapsed') === '1' } catch { return false }
@@ -134,6 +144,21 @@ export default function AppLayout() {
               </span>
             </div>
 
+            {/* Global search */}
+            <form onSubmit={handleSearchSubmit} role="search" className="flex-1 max-w-md hidden sm:block">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  placeholder="Search cases, clients, case numbers…"
+                  aria-label="Search your cases"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-input text-foreground placeholder:text-muted-foreground rounded-md focus:ring-2 focus:ring-ring focus:border-ring outline-none transition-all"
+                />
+              </div>
+            </form>
+
             <div className="flex items-center gap-1 sm:gap-3 ml-auto shrink-0">
               <button
                 onClick={toggleTheme}
@@ -160,7 +185,9 @@ export default function AppLayout() {
 
         <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 lg:p-6">
           <ErrorBoundary resetKey={location.pathname}>
-            <Outlet />
+            <Suspense fallback={<PageLoading />}>
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </main>
       <EnablePushButton />

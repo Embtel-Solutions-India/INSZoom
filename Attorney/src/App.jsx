@@ -1,3 +1,4 @@
+import { lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './auth/AuthContext'
@@ -8,22 +9,22 @@ import RequireAttorney from './auth/RequireAttorney'
 import LoginPage from './auth/LoginPage'
 import SSOHandler from './auth/SSOHandler'
 import AppLayout from './layout/AppLayout'
-import Dashboard from './pages/Dashboard'
-import CaseListPage from './pages/Cases/CaseListPage'
-import CaseDetailLayout from './pages/Cases/CaseDetail/CaseDetailLayout'
-import OverviewTab from './pages/Cases/CaseDetail/OverviewTab'
-import DocumentsTab from './pages/Cases/CaseDetail/DocumentsTab'
-import ChecklistsTab from './pages/Cases/CaseDetail/ChecklistsTab'
-import PetitionTab from './pages/Cases/CaseDetail/PetitionTab'
-import TrackingTab from './pages/Cases/CaseDetail/TrackingTab'
-import FeedbackTab from './pages/Cases/CaseDetail/FeedbackTab'
-import TimelineTab from './pages/Cases/CaseDetail/TimelineTab'
-import MessagesPage from './pages/Messages/MessagesPage'
-import TasksPage from './pages/Tasks/TasksPage'
-import TaskOverviewPage from './pages/Tasks/TaskOverviewPage'
-import TaskDetailPage from './pages/Tasks/TaskDetailPage'
-import News from './pages/News/News'
-import NewsArticle from './pages/News/NewsArticle'
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const CaseListPage = lazy(() => import('./pages/Cases/CaseListPage'))
+const CaseDetailLayout = lazy(() => import('./pages/Cases/CaseDetail/CaseDetailLayout'))
+const OverviewTab = lazy(() => import('./pages/Cases/CaseDetail/OverviewTab'))
+const DocumentsTab = lazy(() => import('./pages/Cases/CaseDetail/DocumentsTab'))
+const ChecklistsTab = lazy(() => import('./pages/Cases/CaseDetail/ChecklistsTab'))
+const PetitionTab = lazy(() => import('./pages/Cases/CaseDetail/PetitionTab'))
+const TrackingTab = lazy(() => import('./pages/Cases/CaseDetail/TrackingTab'))
+const FeedbackTab = lazy(() => import('./pages/Cases/CaseDetail/FeedbackTab'))
+const TimelineTab = lazy(() => import('./pages/Cases/CaseDetail/TimelineTab'))
+const MessagesPage = lazy(() => import('./pages/Messages/MessagesPage'))
+const TasksPage = lazy(() => import('./pages/Tasks/TasksPage'))
+const TaskOverviewPage = lazy(() => import('./pages/Tasks/TaskOverviewPage'))
+const TaskDetailPage = lazy(() => import('./pages/Tasks/TaskDetailPage'))
+const News = lazy(() => import('./pages/News/News'))
+const NewsArticle = lazy(() => import('./pages/News/NewsArticle'))
 import usePushNotifications from './hooks/usePushNotifications'
 
 function PushRegistrar() {

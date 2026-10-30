@@ -139,16 +139,11 @@ export function Sparkline({ values, color }) {
   )
 }
 
-// "vs last week" wording from two real values. unit "pts" is for percentages.
-export function weekDelta(current, previous, unit) {
+// "N% from last week" from two real counts, worded like the Admin task overview. Growth from zero reads as 100%.
+// `direction` (+1 / 0 / -1) drives the arrow and the colour.
+export function weekDelta(current, previous) {
   const diff = current - previous
-  if (diff === 0) return { text: 'No change vs last week', direction: 0 }
-  const sign = diff > 0 ? '+' : '−'
-  const abs = Math.abs(diff)
-  if (unit === 'pts') return { text: `${sign}${abs} pts vs last week`, direction: Math.sign(diff) }
-  if (previous > 0) {
-    const pct = Math.round((abs / previous) * 1000) / 10
-    return { text: `${sign}${pct}% vs last week`, direction: Math.sign(diff) }
-  }
-  return { text: `${sign}${abs} vs last week`, direction: Math.sign(diff) }
+  if (diff === 0) return { text: '0% from last week', direction: 0 }
+  const pct = previous > 0 ? Math.round((Math.abs(diff) / previous) * 100) : 100
+  return { text: `${pct}% from last week`, direction: Math.sign(diff) }
 }

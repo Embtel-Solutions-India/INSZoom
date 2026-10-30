@@ -36,17 +36,17 @@ test("active counts cases started by that day and not yet reviewed", () => {
   assert.equal(active.current, 2); // the second and third; the fourth is reviewed now
 });
 
-test("reviewed % only counts cases reviewed by that day", () => {
+test("reviewed counts only cases reviewed by that day", () => {
   const cases = [
     { attorneyAccess: [grant({ assignedAt: ago(30), reviewStatus: "reviewed", reviewedAt: ago(2) })] },
     { attorneyAccess: [grant({ assignedAt: ago(30) })] },
   ];
-  const { reviewedPct } = computeTrends({ cases, userId: ME, now });
-  assert.equal(reviewedPct.previous, 0);
-  assert.equal(reviewedPct.current, 50);
+  const { reviewed } = computeTrends({ cases, userId: ME, now });
+  assert.equal(reviewed.previous, 0);
+  assert.equal(reviewed.current, 1);
 });
 
 test("no data gives flat zero series, never NaN", () => {
   const t = computeTrends({ cases: [], userId: ME, now });
-  for (const key of ["assigned", "active", "reviewedPct"]) assert.deepEqual(t[key].series, Array(8).fill(0));
+  for (const key of ["assigned", "active", "reviewed"]) assert.deepEqual(t[key].series, Array(8).fill(0));
 });

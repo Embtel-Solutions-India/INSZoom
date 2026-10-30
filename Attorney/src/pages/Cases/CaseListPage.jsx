@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowUpRight, Briefcase, Building2, Calendar, CheckCircle2, ChevronLeft, ChevronRight, FolderOpen, LayoutGrid, List, Mail, Search, UserRound, Users,
 } from 'lucide-react'
@@ -40,11 +40,15 @@ const Segmented = ({ label, options, value, onChange }) => (
 
 export default function CaseListPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [urlParams] = useSearchParams()
+  const urlSearch = (urlParams.get('q') || '').trim()
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-  const [appliedSearch, setAppliedSearch] = useState('')
+  // The navbar search sends people here as /cases?q=...; start from that term.
+  const [search, setSearch] = useState(urlSearch)
+  const [appliedSearch, setAppliedSearch] = useState(urlSearch)
   const [group, setGroup] = useState('')
   const [sortOrder, setSortOrder] = useState('desc')
   const [view, setView] = useState('cards')
@@ -79,6 +83,12 @@ export default function CaseListPage() {
   }, [])
 
   useEffect(() => { fetchCases() }, [fetchCases])
+
+  // Searching again from the navbar while already on this page (same or new term) re-applies it.
+  useEffect(() => {
+    if (urlSearch) setSearch(urlSearch)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key])
 
   useEffect(() => {
     const handle = setTimeout(() => {

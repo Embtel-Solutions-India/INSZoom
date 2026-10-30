@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useParams, Link } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { attorneyApi } from '../../../services/api'
@@ -190,7 +190,9 @@ export default function CaseDetailLayout() {
         ))}
       </nav>
 
-      <Outlet context={{ caseData, refreshToken }} />
+      <Suspense fallback={<Loader2 className="w-6 h-6 animate-spin text-primary" />}>
+        <Outlet context={{ caseData, refreshToken }} />
+      </Suspense>
     </div>
   )
 }

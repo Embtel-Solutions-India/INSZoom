@@ -36,7 +36,8 @@ function StatCard({ icon: Icon, label, value, hint, tone, dot, delta, upIsGood =
           {delta.text}
         </p>
       )}
-      {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+      {/* a card with a week-over-week trend shows just that line; the extra hint is only for cards without one */}
+      {hint && !delta && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
       {trend && <div className="mt-auto pt-3 -mx-1"><Sparkline values={trend} color={trendColor} /></div>}
       {footer && <div className="mt-auto pt-3 flex items-end min-h-[48px]">{footer}</div>}
     </div>
@@ -80,8 +81,8 @@ export default function Dashboard() {
             : 'All caught up') : undefined}
           footer={<Link to="/messages" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">Open messages <ArrowRight className="w-3.5 h-3.5" /></Link>} />
         {insights && (
-          <StatCard icon={CheckCircle2} label="Reviewed" dot="bg-indigo-500" value={`${pct}%`} hint={`${insights.reviewed.reviewed} of ${stats.totalCases} cases`} tone="text-primary"
-            delta={trends?.reviewedPct && weekDelta(trends.reviewedPct.current, trends.reviewedPct.previous, 'pts')} trend={trends?.reviewedPct?.series} trendColor="#6366f1" />
+          <StatCard icon={CheckCircle2} label="Reviewed" dot="bg-indigo-500" value={insights.reviewed.reviewed} hint={`${pct}% of ${stats.totalCases} ${stats.totalCases === 1 ? 'case' : 'cases'} reviewed`} tone="text-primary"
+            delta={trends?.reviewed && weekDelta(trends.reviewed.current, trends.reviewed.previous)} trend={trends?.reviewed?.series} trendColor="#6366f1" />
         )}
       </div>
 

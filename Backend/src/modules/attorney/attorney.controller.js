@@ -1,4 +1,6 @@
+const mongoose = require("mongoose");
 const Case = require("../../models/Case");
+const User = require("../../models/User");
 const Task = require("../../models/Task");
 const Feedback = require("../../models/Feedback");
 const caseService = require("../cases/case.service");
@@ -17,7 +19,8 @@ const LIST_PROJECTION = "caseId caseNumber clientName clientEmail visaType visaC
 
 function grantFor(caseDoc, attorneyId) {
   return (caseDoc.attorneyAccess || []).find(
-    (entry) => entry.status === "active" && String(entry.attorneyId) === String(attorneyId)
+    // attorneyId is a plain id on lean reads and a populated user on documents loaded by the shared case service
+    (entry) => entry.status === "active" && String(entry.attorneyId?._id || entry.attorneyId) === String(attorneyId)
   );
 }
 
@@ -49,16 +52,18 @@ const ACTIVITY_THROTTLE_MS = 60 * 1000;
 async function touchActivity(caseId, attorneyId) {
   const now = new Date();
   const mine = { attorneyId, status: "active" };
-  await Case.updateOne(
+  await Promise.all([
+  Case.updateOne(
     { _id: caseId, attorneyAccess: { $elemMatch: { ...mine, engagedAt: { $exists: false } } } },
     { $set: { "attorneyAccess.$.engagedAt": now, "attorneyAccess.$.lastActivityAt": now } },
     { timestamps: false }
-  );
-  await Case.updateOne(
+  ),
+  Case.updateOne(
     { _id: caseId, attorneyAccess: { $elemMatch: { ...mine, $or: [{ lastActivityAt: { $exists: false } }, { lastActivityAt: { $lt: new Date(now - ACTIVITY_THROTTLE_MS) } }] } } },
     { $set: { "attorneyAccess.$.lastActivityAt": now } },
     { timestamps: false }
-  );
+  ),
+  ]);
 }
 
 // Fire-and-forget from other handlers: recording activity must never break the action it follows.
@@ -122,11 +127,18 @@ async function loadAttorneyCases(attorneyId, { page = 1, limit = 25, status, sea
 
   const skip = (Math.max(Number(page), 1) - 1) * Math.min(Math.max(Number(limit), 1), 100);
   const [cases, total] = await Promise.all([
-    Case.find(filter).select(LIST_PROJECTION).populate("assignedCaseManager", "name displayName").sort(sort).skip(skip).limit(Math.min(Math.max(Number(limit), 1), 100)).lean(),
+    Case.find(filter).select(LIST_PROJECTION).sort(sort).skip(skip).limit(Math.min(Math.max(Number(limit), 1), 100)).lean(),
     Case.countDocuments(filter),
   ]);
 
-  const unreadByCase = await feedbackService.unreadCountsByCase(cases.map((c) => c._id), attorneyId);
+  // Case-manager names and unread counts are independent: fetch them together instead of one after the other.
+  const managerIds = [...new Set(cases.map((c) => c.assignedCaseManager).filter(Boolean).map(String))];
+  const [unreadByCase, managers] = await Promise.all([
+    feedbackService.unreadCountsByCase(cases.map((c) => c._id), attorneyId),
+    managerIds.length ? User.find({ _id: { $in: managerIds } }).select("name displayName").lean() : [],
+  ]);
+  const managerById = new Map(managers.map((m) => [String(m._id), m]));
+  for (const c of cases) c.assignedCaseManager = managerById.get(String(c.assignedCaseManager)) || null;
   return { cases, total, unreadByCase };
 }
 
@@ -143,27 +155,57 @@ exports.listCases = async (req, res, next) => {
   }
 };
 
+// Unread feedback for these cases, in ONE aggregation: the per-case counts (what the list badges add up to) and the
+// date of the oldest message still waiting. Same "unread" rule as feedbackService.unreadCountsByCase. Ids are cast
+// to ObjectIds because an aggregation bypasses Mongoose's schema casting.
+async function unreadSummary(caseIds, attorneyId) {
+  if (!caseIds.length) return { byCase: {}, oldestAt: null };
+  const rows = await Feedback.aggregate([
+    {
+      $match: {
+        caseId: { $in: caseIds.map((id) => new mongoose.Types.ObjectId(String(id))) },
+        deletedAt: { $exists: false },
+        "readBy.userId": { $ne: new mongoose.Types.ObjectId(String(attorneyId)) },
+      },
+    },
+    { $group: { _id: "$caseId", count: { $sum: 1 }, oldest: { $min: "$createdAt" } } },
+  ]);
+  const byCase = Object.fromEntries(rows.map((row) => [String(row._id), row.count]));
+  const oldestAt = rows.reduce((min, row) => (row.oldest && (!min || row.oldest < min) ? row.oldest : min), null);
+  return { byCase, oldestAt };
+}
+
+// The dashboard costs two database round trips, not one per number: (1) this attorney's cases + their tasks in
+// parallel, (2) one unread aggregation. Everything else - counts, recent list, charts, week-over-week trends - is
+// worked out in memory from those. (Each round trip to the database is ~300 ms away, so the number of sequential
+// queries, not their size, is what makes this page fast or slow.)
 exports.getDashboard = async (req, res, next) => {
   try {
     const attorneyId = req.user._id;
-    const baseFilter = { attorneyAccess: { $elemMatch: { attorneyId, status: "active" } } };
 
-    const [totalCases, activeCases, recentCaseDocs] = await Promise.all([
-      Case.countDocuments(baseFilter),
-      Case.countDocuments({ ...baseFilter, status: "active" }),
-      Case.find(baseFilter).select(LIST_PROJECTION).sort({ updatedAt: -1 }).limit(5).lean(),
+    const [grantCases, tasks] = await Promise.all([
+      // every case this attorney has (or had) a grant on: the active ones drive the page, revoked ones only feed the trends
+      Case.find({ attorneyAccess: { $elemMatch: { attorneyId } } }).select(LIST_PROJECTION).lean(),
+      Task.find({ assignedTo: attorneyId }).select("status dueDate").lean(),
     ]);
+    const cases = grantCases.filter((c) => grantFor(c, attorneyId));
+    const unread = await unreadSummary(cases.map((c) => c._id), attorneyId);
 
-    // Unread feedback is counted across every assigned case, not just the 5
-    // shown — the dashboard number must match what the case list badges add
-    // up to.
-    const allCaseIds = await Case.find(baseFilter).select("_id").lean();
-    const unreadByCase = await feedbackService.unreadCountsByCase(allCaseIds.map((c) => c._id), attorneyId);
-    const pendingFeedback = Object.values(unreadByCase).reduce((sum, count) => sum + count, 0);
+    const totalCases = cases.length;
+    const activeCases = cases.filter((c) => c.status === "active").length;
+    // Unread feedback is counted across every assigned case, not just the 5 shown - the dashboard number must match
+    // what the case list badges add up to.
+    const pendingFeedback = Object.values(unread.byCase).reduce((sum, count) => sum + count, 0);
+    const recentCases = [...cases].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
 
     // Chart data is purely additive: any failure here yields insights: null and the
     // dashboard's existing numbers/recent list are returned exactly as before.
-    const insights = await buildDashboardInsights(attorneyId, baseFilter, unreadByCase).catch(() => null);
+    let insights = null;
+    try {
+      insights = buildDashboardInsights({ attorneyId, cases, grantCases, tasks, unread });
+    } catch {
+      insights = null;
+    }
 
     res.json({
       success: true,
@@ -171,7 +213,7 @@ exports.getDashboard = async (req, res, next) => {
         totalCases,
         activeCases,
         pendingFeedback,
-        recentCases: recentCaseDocs.map((caseDoc) => serializeListCase(caseDoc, attorneyId, unreadByCase)),
+        recentCases: recentCases.map((caseDoc) => serializeListCase(caseDoc, attorneyId, unread.byCase)),
       },
       insights,
     });
@@ -191,24 +233,18 @@ function tally(items, keyOf) {
   return [...counts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
 }
 
-// "Reviewed" = the attorney pressed "Review complete" on the case (stored on their grant).
-async function buildDashboardInsights(attorneyId, baseFilter, unreadByCase) {
-  const [cases, tasks] = await Promise.all([
-    Case.find(baseFilter).select("status visaType priority attorneyAccess createdAt").lean(),
-    Task.find({ assignedTo: attorneyId }).select("status dueDate").lean(),
-  ]);
-  // The oldest message still waiting for this attorney (same "unread" rule as the badge counts).
-  const oldestUnread = cases.length
-    ? await Feedback.findOne({ caseId: { $in: cases.map((c) => c._id) }, deletedAt: { $exists: false }, "readBy.userId": { $ne: attorneyId } })
-        .sort({ createdAt: 1 })
-        .select("createdAt")
-        .lean()
-    : null;
+// "Reviewed" = the attorney pressed "Review complete" on the case (stored on their grant). Pure: no database access.
+function buildDashboardInsights({ attorneyId, cases, grantCases, tasks, unread }) {
   const reviewed = cases.filter((c) => reviewFor(c, attorneyId).status === "reviewed").length;
   const workCounts = { assigned: 0, active: 0, reviewed: 0 };
   for (const c of cases) workCounts[workStateFor(c, attorneyId)] += 1;
   // Week-over-week trends are optional extras: if they fail, every other chart still renders.
-  const trends = await attorneyTrends.loadTrends(attorneyId).catch(() => null);
+  let trends = null;
+  try {
+    trends = attorneyTrends.computeTrends({ cases: grantCases, userId: attorneyId });
+  } catch {
+    trends = null;
+  }
 
   const now = new Date();
   const months = [];
@@ -231,8 +267,8 @@ async function buildDashboardInsights(attorneyId, baseFilter, unreadByCase) {
     byVisaType: tally(cases, (c) => c.visaType).slice(0, 8),
     byPriority: tally(cases, (c) => c.priority),
     assignedByMonth: months.map(({ label, value }) => ({ label, value })),
-    oldestUnreadAt: oldestUnread?.createdAt || null,
-    casesWithUnread: Object.keys(unreadByCase).filter((id) => unreadByCase[id] > 0).length,
+    oldestUnreadAt: unread.oldestAt || null,
+    casesWithUnread: Object.keys(unread.byCase).filter((id) => unread.byCase[id] > 0).length,
     tasks: {
       open: openTasks.length,
       completed: tasks.filter((t) => t.status === "completed").length,
@@ -249,7 +285,11 @@ async function buildDashboardInsights(attorneyId, baseFilter, unreadByCase) {
 // intentional defense in depth, not redundancy to remove).
 exports.getCase = async (req, res, next) => {
   try {
-    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.caseId, req.user);
+    // A case document is ~520 KB (canonicalHistory alone ~400 KB) and every byte is paid for over the wire from the database.
+    // None of the attorney screens read these five bulky fields (verified: no reference in Attorney/src, and serializing the
+    // case without them changes only those keys), so they are left out - the staff case read already omits canonicalHistory
+    // for the same reason (case.controller.js, CASE_OMIT_HISTORY; the full list is CASE_OMIT_LOOKUP in case.service.js).
+    const caseData = await caseService.getAccessibleCaseOrThrow(req.params.caseId, req.user, { omit: caseService.CASE_OMIT_LOOKUP });
     res.json({
       success: true,
       case: caseService.serializeCaseForUser(caseData, req.user),
