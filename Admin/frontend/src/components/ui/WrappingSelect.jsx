@@ -4,7 +4,7 @@ import { ChevronDown, Search } from 'lucide-react'
 // A drop-down for long option labels: the list wraps each label onto as many lines as it needs (a native <select> clips them to the width of
 // the field) and can be searched. Keeps native form validation through a hidden `required` input, so a parent <form> behaves as before.
 // options: [{ value, label, group? }] - an option's `group` is shown once, as a small grey heading, above the first option of that group.
-export default function WrappingSelect({ value, onChange, options, placeholder = 'Select…', required = false, disabled = false, className = '' }) {
+export default function WrappingSelect({ value, onChange, options, placeholder = 'Select…', required = false, disabled = false, className = '', ariaLabel }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef(null)
@@ -37,6 +37,7 @@ export default function WrappingSelect({ value, onChange, options, placeholder =
         disabled={disabled}
         onClick={() => setOpen((current) => !current)}
         aria-haspopup="listbox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
       >

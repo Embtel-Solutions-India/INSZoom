@@ -13,8 +13,6 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CaseListPage = lazy(() => import('./pages/Cases/CaseListPage'))
 const CaseDetailLayout = lazy(() => import('./pages/Cases/CaseDetail/CaseDetailLayout'))
 const OverviewTab = lazy(() => import('./pages/Cases/CaseDetail/OverviewTab'))
-const DocumentsTab = lazy(() => import('./pages/Cases/CaseDetail/DocumentsTab'))
-const ChecklistsTab = lazy(() => import('./pages/Cases/CaseDetail/ChecklistsTab'))
 const PetitionTab = lazy(() => import('./pages/Cases/CaseDetail/PetitionTab'))
 const TrackingTab = lazy(() => import('./pages/Cases/CaseDetail/TrackingTab'))
 const FeedbackTab = lazy(() => import('./pages/Cases/CaseDetail/FeedbackTab'))
@@ -82,8 +80,9 @@ export default function App() {
                 <Route path="/cases/:caseId" element={<CaseDetailLayout />}>
                   <Route index element={<Navigate to="overview" replace />} />
                   <Route path="overview" element={<OverviewTab />} />
-                  <Route path="documents" element={<DocumentsTab />} />
-                  <Route path="checklists" element={<ChecklistsTab />} />
+                  {/* removed tabs: an old link lands on the Overview */}
+                  <Route path="documents" element={<Navigate to="../overview" replace />} />
+                  <Route path="checklists" element={<Navigate to="../overview" replace />} />
                   <Route path="petition" element={<PetitionTab />} />
                   <Route path="tracking" element={<TrackingTab />} />
                   <Route path="feedback" element={<FeedbackTab />} />

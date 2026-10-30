@@ -4,13 +4,13 @@ import {
   ArrowUpRight, Briefcase, Building2, Calendar, CheckCircle2, ChevronLeft, ChevronRight, FolderOpen, LayoutGrid, List, Mail, Search, UserRound, Users,
 } from 'lucide-react'
 import { attorneyApi } from '../../services/api'
+import { caseIdentity } from '../../utils/caseIdentity'
+import CaseMeta from '../../components/CaseMeta'
 import WorkStateBadge, { WORK_STATE, isNotableCaseStatus } from '../../components/WorkStateBadge'
 
 // The attorney's cases as cards (default) or a list, laid out like the Admin portal's Corporations / Clients pages.
-// Search, sort, the group filter and paging all run on the server (GET /attorney/cases).
+// Search, sort and paging all run on the server (GET /attorney/cases).
 const PAGE_SIZE = 24
-const GROUPS = [['', 'All'], ['corporations', 'Corporations'], ['clients', 'Clients']]
-
 const titleCase = (value) => String(value || '').replace(/_/g, ' ')
 const formatDate = (value) => {
   if (!value) return ''
@@ -29,7 +29,7 @@ const Segmented = ({ label, options, value, onChange }) => (
         type="button"
         aria-pressed={value === optionValue}
         onClick={() => onChange(optionValue)}
-        className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-colors ${value === optionValue ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${value === optionValue ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
       >
         {OptionIcon && <OptionIcon className="h-3.5 w-3.5" />}
         {optionLabel}
@@ -49,7 +49,6 @@ export default function CaseListPage() {
   // The navbar search sends people here as /cases?q=...; start from that term.
   const [search, setSearch] = useState(urlSearch)
   const [appliedSearch, setAppliedSearch] = useState(urlSearch)
-  const [group, setGroup] = useState('')
   const [sortOrder, setSortOrder] = useState('desc')
   const [view, setView] = useState('cards')
   const [page, setPage] = useState(1)
@@ -63,7 +62,6 @@ export default function CaseListPage() {
       setError('')
       const params = { page, limit: PAGE_SIZE, sortOrder }
       if (appliedSearch) params.search = appliedSearch
-      if (group) params.group = group
       const { data } = await attorneyApi.cases(params)
       if (seq !== fetchSeq.current) return
       setCases(data.cases || [])
@@ -75,7 +73,7 @@ export default function CaseListPage() {
     } finally {
       if (seq === fetchSeq.current) setLoading(false)
     }
-  }, [page, appliedSearch, group, sortOrder])
+  }, [page, appliedSearch, sortOrder])
 
   // The banner total ignores search and filters.
   useEffect(() => {
@@ -100,7 +98,7 @@ export default function CaseListPage() {
 
   const change = (setter) => (value) => { setLoading(true); setPage(1); setter(value) }
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const filtering = Boolean(appliedSearch || group)
+  const filtering = Boolean(appliedSearch)
   const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const lastShown = Math.min(total, page * PAGE_SIZE)
   const open = (item) => navigate(`/cases/${item._id}/overview`)
@@ -131,11 +129,10 @@ export default function CaseListPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by client, email, visa type or case number…"
-            className="w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
+            className="w-full rounded-full border border-border bg-card py-2 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
           />
         </div>
         <div className="flex flex-wrap gap-3">
-          <Segmented label="Filter by type" options={GROUPS} value={group} onChange={change(setGroup)} />
           <Segmented label="Sort by creation date" options={[['desc', 'Newest first'], ['asc', 'Oldest first']]} value={sortOrder} onChange={change(setSortOrder)} />
           <Segmented label="Switch view" options={[['cards', 'Cards', LayoutGrid], ['list', 'List', List]]} value={view} onChange={setView} />
         </div>
@@ -158,7 +155,7 @@ export default function CaseListPage() {
               <>
                 <h2 className="mt-5 text-lg font-semibold text-foreground">No cases match</h2>
                 <p className="mt-2 max-w-md text-sm text-muted-foreground">None of your cases match the current search or filter.</p>
-                <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); setGroup(''); setPage(1); setLoading(true) }} className="btn-secondary mt-5">Clear search and filters</button>
+                <button type="button" onClick={() => { setSearch(''); setAppliedSearch(''); setPage(1); setLoading(true) }} className="btn-secondary mt-5">Clear search</button>
               </>
             ) : (
               <>
@@ -172,7 +169,6 @@ export default function CaseListPage() {
             <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-3">Case</th>
                   <th className="px-4 py-3">Client</th>
                   <th className="px-4 py-3">Visa</th>
                   <th className="px-4 py-3">Status</th>
@@ -184,10 +180,9 @@ export default function CaseListPage() {
               <tbody className="divide-y divide-border">
                 {cases.map((item) => (
                   <tr key={item._id} onClick={() => open(item)} className="cursor-pointer transition-colors hover:bg-muted/40">
-                    <td className="whitespace-nowrap px-4 py-3 font-medium text-foreground">{item.caseNumber || item.caseId}</td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{item.clientName || 'Unnamed'}</p>
-                      <p className="text-xs text-muted-foreground">{item.clientEmail}{item.employeeCount > 0 ? `${item.clientEmail ? ' · ' : ''}${item.employeeCount} ${item.employeeCount === 1 ? 'employee' : 'employees'}` : ''}</p>
+                      <p className="font-semibold text-foreground">{caseIdentity(item).name}</p>
+                      <CaseMeta email={caseIdentity(item).email} caseId={item.caseNumber || item.caseId} className="text-xs" extra={item.employeeCount > 0 ? `${item.employeeCount} ${item.employeeCount === 1 ? 'employee' : 'employees'}` : ''} />
                     </td>
                     <td className="px-4 py-3 text-foreground">{item.visaType}</td>
                     <td className="px-4 py-3">
@@ -228,8 +223,8 @@ export default function CaseListPage() {
                         <CardIcon className="h-5 w-5" />
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-foreground">{item.clientName || 'Unnamed'}</p>
-                        <p className="text-xs text-muted-foreground">{item.caseNumber || item.caseId}</p>
+                        <p className="truncate font-semibold text-foreground">{caseIdentity(item).name}</p>
+                        <CaseMeta email={caseIdentity(item).email} caseId={item.caseNumber || item.caseId} className="text-xs" />
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

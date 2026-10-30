@@ -173,6 +173,7 @@ async function save(caseData, payload, user, req) {
   ImmigrationTimelineService.audit(caseData, "uscis_tracking_updated", user, { previousStatus, tracking }, req);
   await caseData.save();
   await ImmigrationTimelineService.writeAudit("USCIS_TRACKING_UPDATED", caseData, user, { previousStatus, tracking }, req);
+  try { require("../../realtime/caseLiveUpdates").notifyCaseDataChanged(caseData._id, "tracking", { actor: user, reason: "uscis_tracking_updated" }); } catch (_error) { /* live update only */ }
   if (previousStatus !== tracking.status) {
     await NotificationLifecycleService.caseStakeholders(caseData, {
       type: "case_stage_changed",

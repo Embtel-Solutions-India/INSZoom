@@ -1,185 +1,82 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
-import { Loader2, Eye, FileText, X } from 'lucide-react'
-import { caseDataApi, attorneyApi } from '../../../services/api'
+import { Loader2, Eye, FileText } from 'lucide-react'
+import { petitionReviewApi } from '../../../services/api'
+import { useSocket } from '../../../context/SocketContext'
+import PetitionViewer from '../../../components/petition/PetitionViewer'
+import { prefetchPetition } from '../../../components/petition/usePetitionStream'
 
-const STATUS_TONE = {
-  draft: 'badge-neutral',
-  assembling: 'badge-info',
-  assembled: 'badge-info',
-  needs_revision: 'badge-warning',
-  finalized: 'badge-success',
-  filed: 'badge-success',
-  superseded: 'badge-neutral',
-  failed: 'badge-danger',
+const dateLabel = (value) => {
+  const date = value ? new Date(value) : null
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
 }
 
-// Centered in-app preview - the only way to view a petition here, per
-// explicit product decision (no "Download" action on this tab). `fetcher`
-// is either caseDataApi.previewDocument (a manual upload) or
-// caseDataApi.previewPetitionPackage (an assembled version).
-function PetitionPreviewModal({ title, fetcher, onClose }) {
-  const [url, setUrl] = useState(null)
-  const [error, setError] = useState('')
-
-  // A big petition can take a while to read from storage. A timeout / server hiccup is retried quietly (the server keeps the file ready after the first read); only a
-  // document that is really not there - or many failed attempts in a row - ends in a message.
-  useEffect(() => {
-    let objectUrl
-    let cancelled = false
-    ;(async () => {
-      const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-      for (let attempt = 0; attempt < 8 && !cancelled; attempt += 1) {
-        try {
-          const { data } = await fetcher()
-          if (cancelled) return
-          objectUrl = URL.createObjectURL(data)
-          setUrl(objectUrl)
-          return
-        } catch (err) {
-          const status = err.response?.status
-          if ([401, 403, 404].includes(status) || attempt === 7) {
-            if (!cancelled) setError(err.response?.data?.message || 'Could not load this document.')
-            return
-          }
-          await pause(Math.min(1000 * 2 ** attempt, 8000))
-        }
-      }
-    })()
-    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl) }
-  }, [fetcher])
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4" onClick={onClose}>
-      <div className="bg-card w-full max-w-4xl h-[90vh] rounded-lg shadow-xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <p className="text-sm font-semibold text-foreground truncate">{title}</p>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 bg-muted/30">
-          {error && <p className="text-sm text-destructive p-4">{error}</p>}
-          {!error && !url && <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>}
-          {url && <iframe title="petition-preview" src={url} className="w-full h-full border-0" />}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Read-only view of the same petition package versions the case manager's
-// Petition tab shows (PetitionVersionList) — no assemble/finalize/unlock
-// actions, matching this portal's view + feedback/messages-only scope. Also
-// surfaces any petition the case manager manually uploaded (separate from
-// the assembled-package pipeline) in the same centered-preview shape.
+// The petitions the case manager sent for THIS attorney's review - only the list. Open shows the petition across the whole screen (80%) with the case's Feedback conversation
+// beside it (20%), exactly like the client's Petition page. Nothing the case manager has not sent is ever listed, and a new release appears here live (and is also e-mailed
+// and pushed to the browser).
 export default function PetitionTab() {
   const { caseId } = useParams()
   const { refreshToken } = useOutletContext()
-  const [packages, setPackages] = useState(null)
-  const [uploads, setUploads] = useState([])
+  const { subscribe, connected } = useSocket()
+  const [items, setItems] = useState(null)
   const [error, setError] = useState('')
-  const [preview, setPreview] = useState(null)
-  const [note, setNote] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState('')
-  const [sendError, setSendError] = useState('')
+  const [viewing, setViewing] = useState(null)
 
-  const sendReview = async (decision) => {
-    setSending(true)
-    setSendError('')
-    setSent('')
-    try {
-      const heading = decision === 'approve' ? 'PETITION APPROVED by attorney' : 'PETITION - CHANGES REQUESTED by attorney'
-      await attorneyApi.sendFeedback(caseId, note.trim() ? `${heading}\n${note.trim()}` : heading)
-      setSent(decision === 'approve' ? 'Approval sent to the case manager.' : 'Your requested changes were sent to the case manager.')
-      setNote('')
-    } catch (err) {
-      setSendError(err.response?.data?.message || 'Could not send your review. Please try again.')
-    } finally {
-      setSending(false)
-    }
-  }
+  const load = useCallback(
+    () =>
+      petitionReviewApi
+        .list(caseId)
+        .then(({ data }) => { setItems(data?.data?.items || []); setError('') })
+        .catch((err) => setError(err.response?.data?.message || 'Could not load the petitions.')),
+    [caseId]
+  )
 
+  useEffect(() => { load() }, [load, refreshToken])
+
+  // live: a petition sent for review while this page is open shows up at once
   useEffect(() => {
-    caseDataApi
-      .petitionPackages(caseId)
-      .then(({ data }) => setPackages(data.data || []))
-      .catch((err) => setError(err.response?.data?.message || 'Could not load petition packages.'))
-    caseDataApi
-      .petitionUploads(caseId)
-      .then(({ data }) => setUploads(data.documents || data.data || []))
-      .catch(() => {})
-  }, [caseId, refreshToken])
+    if (!connected) return undefined
+    return subscribe('petition:review', (payload) => {
+      if (String(payload?.caseId) === String(caseId)) load()
+    })
+  }, [connected, subscribe, caseId, load])
 
-  if (error) return <p className="text-sm text-destructive">{error}</p>
-  if (!packages) return <Loader2 className="w-6 h-6 animate-spin text-primary" />
+  if (error && !items) return <p className="text-sm text-destructive">{error}</p>
+  if (!items) return <Loader2 className="w-6 h-6 animate-spin text-primary" />
 
   return (
     <div className="space-y-4">
-      {uploads.length > 0 && (
-        <div className="card !p-0 divide-y divide-border">
-          {uploads.map((doc) => (
-            <button
-              key={doc._id}
-              onClick={() => setPreview({ title: doc.originalName || doc.fileName, fetcher: () => caseDataApi.previewDocument(doc._id) })}
-              className="w-full flex items-center gap-3 px-4 sm:px-5 py-4 text-left hover:bg-muted/50"
-            >
-              <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground truncate">{doc.originalName || doc.fileName}</p>
-                <p className="text-xs text-muted-foreground">Uploaded petition {doc.createdAt ? `· ${new Date(doc.createdAt).toLocaleString()}` : ''}</p>
-              </div>
-              <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary shrink-0"><Eye className="w-3.5 h-3.5" /> Preview</span>
-            </button>
-          ))}
+      {items.length === 0 ? (
+        <div className="card text-center py-10">
+          <FileText className="w-8 h-8 mx-auto text-muted-foreground/60" />
+          <p className="mt-3 text-sm font-semibold text-foreground">No petition has been sent for your review yet</p>
+          <p className="mt-1 text-sm text-muted-foreground">When the case manager sends the petition for attorney review it appears here, and you are notified by email and in your browser.</p>
         </div>
-      )}
-
-      {!packages.length && !uploads.length ? (
-        <p className="text-sm text-muted-foreground card text-center">No petition has been uploaded for this case yet.</p>
       ) : (
-        packages.length > 0 && (
-          <div className="card !p-0 divide-y divide-border">
-            {packages.map((pkg) => (
-              <div key={pkg._id} className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Version {pkg.versionNumber}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {pkg.packageDefinitionKey}
-                    {pkg.filing?.receiptNumber ? ` · Receipt ${pkg.filing.receiptNumber}` : ''}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className={`badge capitalize ${STATUS_TONE[pkg.status] || 'badge-neutral'}`}>{String(pkg.status || 'unknown').replace(/_/g, ' ')}</span>
-                  {pkg.outputs?.mailingPdfDocumentId && (
-                    <button
-                      onClick={() => setPreview({ title: `Petition — Version ${pkg.versionNumber}`, fetcher: () => caseDataApi.previewPetitionPackage(pkg._id) })}
-                      className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Preview
-                    </button>
-                  )}
-                </div>
+        <ul className="card !p-0 divide-y divide-border">
+          {items.map((item) => (
+            <li key={item.documentId} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileText className="w-5 h-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-foreground truncate">{item.fileName}</p>
+                <p className="text-xs text-muted-foreground">Sent for your review {dateLabel(item.sentAt)}</p>
+                {item.note && <p className="mt-1 text-xs text-foreground/80 whitespace-pre-wrap break-words">Note from the case manager: {item.note}</p>}
               </div>
-            ))}
-          </div>
-        )
+              <button
+                type="button"
+                onClick={() => setViewing(item)}
+                onMouseEnter={() => prefetchPetition(item.documentId)}
+                onFocus={() => prefetchPetition(item.documentId)}
+                className="btn-primary inline-flex items-center gap-1.5"
+              >
+                <Eye className="w-4 h-4" /> Open
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {(packages.length > 0 || uploads.length > 0) && (
-        <div className="card space-y-3">
-          <p className="text-sm font-semibold text-foreground">Your review</p>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Feedback for the case manager (optional for approval)" className="input w-full" />
-          <div className="flex flex-wrap items-center gap-3">
-            <button disabled={sending} onClick={() => sendReview('approve')} className="btn-primary">Approve petition</button>
-            <button disabled={sending || !note.trim()} onClick={() => sendReview('changes')} className="btn-secondary">Request changes</button>
-            {sending && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
-          </div>
-          {sent && <p className="text-sm text-success">{sent}</p>}
-          {sendError && <p className="text-sm text-destructive">{sendError}</p>}
-        </div>
-      )}
-
-      {preview && <PetitionPreviewModal title={preview.title} fetcher={preview.fetcher} onClose={() => setPreview(null)} />}
+      {viewing && <PetitionViewer item={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }

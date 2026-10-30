@@ -397,7 +397,7 @@ async function getCaseManagerAnalyticsPanel(req, res, next) {
   try {
     const role = normalizeRole(req.user.role);
     const requestedId = req.query.caseManagerId;
-    const period = ["90d", "ytd", "all"].includes(req.query.period) ? req.query.period : "90d";
+    const period = ["30d", "90d", "1y"].includes(req.query.period) ? req.query.period : "30d";
     const staleDays = Number(req.query.staleDays) > 0 ? Number(req.query.staleDays) : caseManagerAnalyticsService.DEFAULT_STALE_DAYS;
     const options = { period, staleDays };
 

@@ -197,11 +197,13 @@ describe('GhlVisaSelectBanner', () => {
     const onUpdated = vi.fn()
     casesApi.update.mockResolvedValue({ data: { case: { _id: 'case1', visaType: 'ZZ-1' } } })
     render(<GhlVisaSelectBanner caseData={caseData} onUpdated={onUpdated} />)
+    fireEvent.click(screen.getByLabelText('Visa type')) // open the dropdown, the same one "New case" uses
     await waitFor(() => expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ })).toBeTruthy())
     expect(screen.getByRole('option', { name: 'H-1B' }).disabled).toBe(false) // shared curated option, employer structure: selectable too
     expect(screen.queryByText(/not available/)).toBeNull()
     expect(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ }).disabled).toBe(false)
-    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'ZZ-1' } })
+    expect(screen.getByText('Employment based')).toBeTruthy() // grouped exactly like "New case"
+    fireEvent.click(screen.getByRole('option', { name: /ZZ-1 - ZZ-1 Student/ }))
     fireEvent.click(screen.getByText('Set visa type'))
     await waitFor(() => expect(casesApi.update).toHaveBeenCalledWith('case1', { visaType: 'ZZ-1' }))
     await waitFor(() => expect(onUpdated).toHaveBeenCalled())
@@ -212,8 +214,9 @@ describe('GhlVisaSelectBanner', () => {
     mockUser = { role: 'admin' }
     casesApi.update.mockRejectedValue({ response: { data: { message: 'needs an employer/employee case structure' } } })
     render(<GhlVisaSelectBanner caseData={caseData} />)
+    fireEvent.click(screen.getByLabelText('Visa type'))
     await waitFor(() => expect(screen.getByRole('option', { name: 'ZZ-2' })).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('Visa type'), { target: { value: 'ZZ-2' } })
+    fireEvent.click(screen.getByRole('option', { name: 'ZZ-2' }))
     fireEvent.click(screen.getByText('Set visa type'))
     await waitFor(() => expect(screen.getByText(/employer\/employee case structure/)).toBeTruthy())
     expect(screen.getByLabelText('Visa type')).toBeTruthy()

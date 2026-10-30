@@ -120,7 +120,12 @@ export const attorneyApi = {
   cases: (params = {}) => api.get('/attorney/cases', { params }),
   case: (caseId) => api.get(`/attorney/cases/${caseId}`),
   // Any movement on a case (opening it, a tab, a document, sending feedback) marks it active for this attorney.
-  recordActivity: (caseId) => api.post(`/attorney/cases/${caseId}/activity`),
+  recordActivity: (caseId, kind) => api.post(`/attorney/cases/${caseId}/activity`, kind ? { kind } : {}),
+  // the employee / beneficiary slots of the matter (read-only) and the attorney's own timeline of the case
+  // USCIS tracking exactly as Admin's tab shows it (status, filing, RFE, notices, case timeline), read-only
+  tracking: (caseId) => api.get(`/attorney/cases/${caseId}/tracking`),
+  children: (caseId) => api.get(`/attorney/cases/${caseId}/children`),
+  timeline: (caseId) => api.get(`/attorney/cases/${caseId}/timeline`),
   completeReview: (caseId) => api.post(`/attorney/cases/${caseId}/review-complete`),
   reopenReview: (caseId) => api.post(`/attorney/cases/${caseId}/review-reopen`),
   feedback: (caseId) => api.get(`/attorney/cases/${caseId}/feedback`),
@@ -148,6 +153,15 @@ export const attorneyApi = {
 // should never be pushed toward downloading a copy by default). Every
 // fetcher below is blob-fetched only because Bearer-token auth (not a
 // cookie) can't ride a plain <a href>/<iframe src> to these routes directly.
+// Petitions the case manager released for this attorney's review. They open in the portal's own viewer: a signed link for ONE petition, a long-poll that says when the server
+// has the file ready, and the stream the browser's PDF viewer loads by URL (the same mechanism the Client Portal uses).
+export const petitionReviewApi = {
+  list: (caseId) => api.get(`/petition-review/attorney/cases/${caseId}/petitions`),
+  viewLink: (documentId) => api.post(`/petition-review/documents/${encodeURIComponent(documentId)}/view-link`, {}, { _skipAuthRedirect: true }),
+  ready: (token) => api.get(`/petition-review/stream/${encodeURIComponent(token)}/ready`, { timeout: 30_000, _skipAuthRedirect: true }),
+  streamUrl: (token) => `${api.defaults.baseURL}/petition-review/stream/${encodeURIComponent(token)}`,
+}
+
 export const caseDataApi = {
   documents: (caseId) => api.get('/documents', { params: { caseId } }),
   previewDocument: (documentId) => api.get(`/documents/${documentId}/preview`, { responseType: 'blob' }),

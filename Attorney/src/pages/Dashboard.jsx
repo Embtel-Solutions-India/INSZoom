@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Briefcase, Activity, MessageSquare, CheckCircle2, ListChecks, AlertTriangle, Loader2, TrendingUp, TrendingDown, ArrowRight } from 'lucide-react'
 import { attorneyApi } from '../services/api'
+import { caseIdentity } from '../utils/caseIdentity'
+import CaseMeta from '../components/CaseMeta'
 import CaseStatusBadge from '../components/CaseStatusBadge'
 import WorkStateBadge, { isNotableCaseStatus } from '../components/WorkStateBadge'
 import { Panel, Empty, Donut, BarList, Columns, StatusDonut, Sparkline, weekDelta, SERIES, NEUTRAL } from '../components/DashboardCharts'
@@ -140,8 +142,8 @@ export default function Dashboard() {
               <li key={item._id} className="border-b border-border last:border-0">
                 <Link to={`/cases/${item._id}/overview`} className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 hover:bg-secondary transition-colors">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{item.caseNumber || item.caseId}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.clientName} · {item.visaType}</p>
+                    <p className="text-sm font-semibold text-foreground truncate">{caseIdentity(item).name}</p>
+                    <CaseMeta email={caseIdentity(item).email} caseId={item.caseNumber || item.caseId} visa={item.visaType} className="text-xs" />
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     {item.unreadFeedback > 0 && (

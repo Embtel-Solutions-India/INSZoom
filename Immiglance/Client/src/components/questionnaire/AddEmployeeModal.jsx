@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { casesApi } from "../../services/api";
+import WrappingSelect from "../ui/WrappingSelect";
 
-// "Add employee" - the visa (and filing type, e.g. H-1B Extension) is asked FIRST: each employee of one employer can be
+// "Add employee" - the visa dropdown is the SAME one the Admin portal uses (same component, and the list comes from the same server list, so the two always match).
+// The visa (and filing type, e.g. H-1B Extension) is asked FIRST: each employee of one employer can be
 // on a different visa, and their forms and checklists follow it. Then how their information is entered: the employer
 // fills it in, or the employee is invited (changeable later from the employee's card).
 export default function AddEmployeeModal({ principalId, defaultVisaType, onClose, onAdded }) {
@@ -61,10 +63,14 @@ export default function AddEmployeeModal({ principalId, defaultVisaType, onClose
 
         <div>
           <label className="mb-1 block text-xs font-semibold text-muted-foreground">Visa *</label>
-          <select className={field} value={visaType} onChange={(e) => { setVisaType(e.target.value); setPetitionSubType(""); }} disabled={busy}>
-            <option value="" disabled>Select the employee's visa</option>
-            {options.map((option) => <option key={option.visaType} value={option.visaType}>{option.label}</option>)}
-          </select>
+          <WrappingSelect
+            value={visaType}
+            onChange={(value) => { setVisaType(value); setPetitionSubType(""); }}
+            options={options.map((option) => ({ value: option.visaType, label: option.label }))}
+            placeholder="Select the employee's visa"
+            ariaLabel="Visa"
+            disabled={busy}
+          />
         </div>
 
         {subTypes.length > 0 && (

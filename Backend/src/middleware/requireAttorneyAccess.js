@@ -20,7 +20,7 @@ async function requireAttorneyAccess(req, res, next) {
 
     // Only the grants and the deleted flag are needed for this check. Loading the whole case here cost a full copy of
     // the document (~500 KB, ~2 s from the database) on EVERY attorney request, before the handler even started.
-    const caseDoc = await Case.findById(caseId).select("attorneyAccess deletedAt").lean();
+    const caseDoc = await Case.findById(caseId).select("attorneyAccess deletedAt parentCase caseRole caseStructure user dataEntryMode").lean();
     if (!caseDoc || caseDoc.deletedAt) {
       // Same response as "not granted" on purpose — an attorney probing IDs
       // must not be able to tell an existing case they lack access to apart
@@ -29,7 +29,12 @@ async function requireAttorneyAccess(req, res, next) {
     }
 
     if (!caseService.hasActiveAttorneyAccess(caseDoc, req.user._id)) {
-      return res.status(403).json({ success: false, message: "Access denied to this case" });
+      // An employee / beneficiary slot belongs to a matter: the attorney granted the MATTER may open its slots (read-only screens). Any other case stays closed.
+      const parent = caseDoc.parentCase ? await Case.findById(caseDoc.parentCase).select("attorneyAccess deletedAt").lean() : null;
+      if (!parent || parent.deletedAt || !caseService.hasActiveAttorneyAccess(parent, req.user._id)) {
+        return res.status(403).json({ success: false, message: "Access denied to this case" });
+      }
+      req.accessViaParent = String(caseDoc.parentCase);
     }
 
     req.authorizedCase = caseDoc;

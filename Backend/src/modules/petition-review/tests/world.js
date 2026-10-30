@@ -34,7 +34,7 @@ function makeWorld() {
   const claimed = new Set();
   const messages = [];
   let seq = 0;
-  const sent = { emails: [], events: [], bells: [], feedback: [] };
+  const sent = { emails: [], events: [], bells: [], feedback: [], timeline: [] };
   const data = {
     getCase: async (id) => Object.values(cases).find((row) => row._id === String(id)) || null,
     getCases: async (ids) => Object.values(cases).filter((row) => ids.map(String).includes(row._id)),
@@ -76,6 +76,7 @@ function makeWorld() {
     portalUrl: (portal) => `https://${portal}.example.test`,
     createNotification: async (payload) => { sent.bells.push(payload); },
     createFeedback: async (args) => { sent.feedback.push(args); },
+    recordTimeline: async (event) => { sent.timeline.push(event); },
   });
   return { service, data, sent, reviews, messages };
 }

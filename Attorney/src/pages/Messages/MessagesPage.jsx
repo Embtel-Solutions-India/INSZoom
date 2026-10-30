@@ -5,6 +5,8 @@ import { attorneyApi } from '../../services/api'
 import { useAuth } from '../../auth/AuthContext'
 import { useSocket } from '../../context/SocketContext'
 import MessageThread from '../../components/MessageThread'
+import { caseIdentity } from '../../utils/caseIdentity'
+import CaseMeta from '../../components/CaseMeta'
 
 // Top-level "Messages" page — the ONLY place messaging lives in this portal
 // (no per-case Messages/Feedback tab in the case navigation). Same split shape
@@ -105,8 +107,8 @@ export default function MessagesPage() {
                     {getInitials(item.clientName)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-foreground truncate">{item.caseNumber || item.caseId}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.clientName}{item.visaType ? ` · ${item.visaType}` : ''}</p>
+                    <p className="text-sm font-semibold text-foreground truncate">{caseIdentity(item).name}</p>
+                    <CaseMeta email={caseIdentity(item).email} caseId={item.caseNumber || item.caseId} visa={item.visaType} className="text-xs" />
                   </div>
                   {item.unreadFeedback > 0 && (
                     <span className="shrink-0 min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-semibold rounded-full bg-primary text-primary-foreground">
@@ -145,8 +147,8 @@ export default function MessagesPage() {
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold text-foreground truncate">{selected.caseNumber || selected.caseId}</h2>
-                <p className="text-xs text-muted-foreground truncate">{selected.clientName}{selected.visaType ? ` · ${selected.visaType}` : ''}</p>
+                <h2 className="text-sm font-semibold text-foreground truncate">{caseIdentity(selected).name}</h2>
+                <CaseMeta email={caseIdentity(selected).email} caseId={selected.caseNumber || selected.caseId} visa={selected.visaType} className="text-xs" />
               </div>
               <Link to={`/cases/${selected._id}`} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline shrink-0">
                 View case <ExternalLink className="w-3 h-3" />

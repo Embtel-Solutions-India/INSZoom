@@ -21,7 +21,7 @@ function sign({ documentId, userId, side }, { now = Date.now(), ttlSeconds = TTL
 function verify(token, { now = Date.now() } = {}) {
   try {
     const payload = jwt.verify(String(token || ""), secret(), { algorithms: ["HS256"], audience: AUDIENCE, clockTimestamp: Math.floor(now / 1000) });
-    return payload?.doc && payload?.uid && (payload.side === "client" || payload.side === "staff") ? { doc: payload.doc, uid: payload.uid, side: payload.side } : null;
+    return payload?.doc && payload?.uid && (payload.side === "client" || payload.side === "staff" || payload.side === "attorney") ? { doc: payload.doc, uid: payload.uid, side: payload.side } : null;
   } catch {
     return null;
   }

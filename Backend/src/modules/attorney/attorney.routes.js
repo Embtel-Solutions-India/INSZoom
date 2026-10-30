@@ -21,6 +21,9 @@ router.get("/dashboard", authenticate, requireAttorney, authorizePermissions("da
 router.get("/cases/:caseId", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.getCase);
 
 router.post("/cases/:caseId/activity", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.recordActivity);
+router.get("/cases/:caseId/children", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.getChildren);
+router.get("/cases/:caseId/tracking", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.getTracking);
+router.get("/cases/:caseId/timeline", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.getTimeline);
 router.post("/cases/:caseId/review-complete", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.completeReview);
 router.post("/cases/:caseId/review-reopen", authenticate, requireAttorney, authorizePermissions("cases:read"), requireAttorneyAccess, ctrl.reopenReview);
 

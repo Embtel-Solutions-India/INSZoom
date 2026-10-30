@@ -417,63 +417,8 @@ const AdminPanel = ({
 const CaseManagerPanel = ({ navigate, roleStats }) => {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">My Active Cases</p>
-              <p className="text-3xl font-bold text-foreground">{roleStats?.activeCases || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary">
-              <Briefcase className="w-6 h-6 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Pending Review</p>
-              <p className="text-3xl font-bold text-foreground">{roleStats?.pendingReview || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary">
-              <Clock className="w-6 h-6 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground mb-1">Documents Pending Review</p>
-              <p className="text-3xl font-bold text-foreground">{roleStats?.pendingDocumentReview || 0}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-secondary">
-              <FileText className="w-6 h-6 text-muted-foreground" />
-            </div>
-          </div>
-        </div>
-      </div>
-
       <CaseManagerAnalyticsPanel />
 
-      <div className="card">
-        <h3 className="text-lg font-semibold text-foreground mb-4">My Cases (By Priority)</h3>
-        <div className="space-y-3">
-          {roleStats?.urgentCases?.slice(0, 5).map((caseItem) => (
-            <div key={caseItem._id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-              <div>
-                <p className="font-medium text-foreground">{caseItem.caseNumber}</p>
-                <p className="text-sm text-muted-foreground">{caseItem.clientName}</p>
-              </div>
-              <button onClick={() => navigate(`/crm-cases/${caseItem._id}`)} className="btn-secondary text-sm">
-                View
-              </button>
-            </div>
-          ))}
-          {(!roleStats?.urgentCases || roleStats.urgentCases.length === 0) && (
-            <p className="text-muted-foreground text-center py-4">No urgent cases</p>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
@@ -1111,9 +1056,11 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       {!is(['super_admin', 'admin']) && (
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Welcome back! Here's what's happening today.</p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">Welcome back! Here's what's happening today.</p>
+          </div>
         </div>
       )}
 

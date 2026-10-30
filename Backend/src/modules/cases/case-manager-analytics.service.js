@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const Case = require("../../models/Case");
 const { caseManagerMatch } = require("./caseManagerAccess");
+const env = require("../../config/env");
+const GHLIntegration = require("../../models/GHLIntegration");
 const Payment = require("../../models/Payment");
 const PaymentLedgerEntry = require("../../models/PaymentLedgerEntry");
 
@@ -9,7 +11,12 @@ const PaymentLedgerEntry = require("../../models/PaymentLedgerEntry");
 // case-manager-analytics-panel plan. "rejected" is this schema's stand-in for
 // "denied" in Case.status (the dedicated denied value lives on
 // uscisDecision instead - see OUTCOME_FIELD note below).
-const ACTIVE_EXCLUDED_STATUSES = ["closed", "archived", "cancelled", "rejected"];
+// Active = assigned to this case manager and still being worked: not closed out and no final decision yet. Assignment
+// itself moves a case from pending_assignment to "assigned", which counts as active automatically.
+const CLOSED_STATUSES = ["closed", "completed", "archived", "cancelled"];
+const APPROVED_STATUSES = ["approved"];
+const REJECTED_STATUSES = ["rejected", "denied"];
+const ACTIVE_EXCLUDED_STATUSES = [...CLOSED_STATUSES, ...APPROVED_STATUSES, ...REJECTED_STATUSES];
 
 const DEFAULT_STALE_DAYS = 14;
 const RFE_LOOKAHEAD_DAYS = 7;
@@ -19,11 +26,12 @@ function objectId(value) {
   return mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : value;
 }
 
+const PERIOD_DAYS = { "30d": 30, "90d": 90, "1y": 365 };
+
+// Cases that came in during the selected window (by createdAt). Applied to every figure on the panel.
 function periodRange(period) {
-  const now = new Date();
-  if (period === "ytd") return { $gte: new Date(now.getFullYear(), 0, 1) };
-  if (period === "all") return null;
-  return { $gte: new Date(now.getTime() - 90 * DAY_MS) }; // "90d" default
+  const days = PERIOD_DAYS[period] || PERIOD_DAYS["30d"];
+  return { $gte: new Date(Date.now() - days * DAY_MS) };
 }
 
 // Shared by the analytics panel's overdueRfe bucket and the /cases deep-link
@@ -86,23 +94,42 @@ async function attentionSection(caseManagerFilter) {
   };
 }
 
-// Outcome (approved/denied) is read from case.uscisDecision - the field
-// purpose-built for the government's decision - not case.status/case.stage,
-// which reuse "approved"/"closed" for the internal pipeline and have no
-// "denied" value at all (only "rejected"). Confirmed product decision.
-async function closeSection(caseManagerFilter, period) {
-  const range = periodRange(period);
-  const decisionFilter = range ? { uscisDecisionDate: range } : {};
-  const closedFilter = range ? { updatedAt: range } : {}; // no dedicated closedAt field - documented proxy
-
+// Outcomes are counted from the case itself: the government decision (uscisDecision) or the matching case status.
+async function closeSection(caseManagerFilter) {
+  const decided = (decision, statuses) => ({ $or: [{ uscisDecision: decision }, { status: { $in: statuses } }] });
   const [approved, denied, closed] = await Promise.all([
-    Case.countDocuments({ ...caseManagerFilter, uscisDecision: "approved", ...decisionFilter }),
-    Case.countDocuments({ ...caseManagerFilter, uscisDecision: "denied", ...decisionFilter }),
-    Case.countDocuments({ ...caseManagerFilter, status: "closed", ...closedFilter }),
+    Case.countDocuments({ $and: [caseManagerFilter, decided("approved", APPROVED_STATUSES)] }),
+    Case.countDocuments({ $and: [caseManagerFilter, decided("denied", REJECTED_STATUSES)] }),
+    Case.countDocuments({ ...caseManagerFilter, status: { $in: CLOSED_STATUSES } }),
   ]);
+  const total = approved + denied;
+  return { approved, denied, rejected: denied, approvalRatio: total ? Math.round((approved / total) * 100) : null, closed };
+}
 
-  const decided = approved + denied;
-  return { approved, denied, approvalRatio: decided ? Math.round((approved / decided) * 100) : null, closed };
+// Stage names and order come from the GoHighLevel pipelines the Pipeline board uses. Same stage in both pipelines is merged by name.
+async function byStageBreakdown(caseManagerFilter) {
+  const [config, rows] = await Promise.all([
+    GHLIntegration.findOne({ locationId: env.ghl.locationId }).select("pipelines").lean().catch(() => null),
+    Case.aggregate([
+      { $match: caseManagerFilter },
+      { $group: { _id: { pipeline: "$integrations.ghl.pipelineId", stage: "$integrations.ghl.unifiedStageKey" }, count: { $sum: 1 } } },
+    ]),
+  ]);
+  const counts = new Map(rows.map((r) => [`${r._id.pipeline}:${r._id.stage}`, r.count]));
+  const seen = new Set();
+  const out = [];
+  (config?.pipelines || []).filter((p) => p.enabled !== false).forEach((pipeline) => {
+    [...(pipeline.stages || [])].sort((a, b) => (a.order || 0) - (b.order || 0)).forEach((stage) => {
+      const count = counts.get(`${pipeline.ghlPipelineId}:${stage.key}`) || 0;
+      seen.add(`${pipeline.ghlPipelineId}:${stage.key}`);
+      const existing = out.find((o) => o.stage === stage.name);
+      if (existing) existing.count += count;
+      else out.push({ stage: stage.name, count });
+    });
+  });
+  const unplaced = rows.filter((r) => !seen.has(`${r._id.pipeline}:${r._id.stage}`)).reduce((sum, r) => sum + r.count, 0);
+  if (unplaced) out.push({ stage: "Not in pipeline", count: unplaced });
+  return out;
 }
 
 // "Collected" is sourced from PaymentLedgerEntry - immutable rows written
@@ -110,10 +137,8 @@ async function closeSection(caseManagerFilter, period) {
 // markTransactionSucceeded / writeLedgerEntry) - not from Payment.reconciliation.status,
 // which no job in this codebase ever advances past "unreconciled". Confirmed
 // product decision; see plan for the reasoning.
-async function paymentsSection(caseIds, period) {
-  const range = periodRange(period);
+async function paymentsSection(caseIds) {
   const ledgerMatch = { "payment.resolvedCase": { $in: caseIds } };
-  if (range) ledgerMatch.createdAt = range;
 
   const [ledgerRows, balanceRows] = await Promise.all([
     PaymentLedgerEntry.aggregate([
@@ -174,18 +199,113 @@ async function activitySection(caseManagerFilter, staleDays) {
   };
 }
 
+// Cases assigned to this case manager over time, zero-filled so the line is continuous. There is no case-level "assigned on" date,
+// so createdAt (the same date the period filter uses) places each case: per day for 30d, per week for 90d, per month for 1y.
+async function assignedTrend(caseManagerFilter, period) {
+  const rows = await Case.find(caseManagerFilter).select("createdAt").lean();
+  const now = new Date();
+  const buckets = [];
+  let keyOf;
+  if (period === "1y") {
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleString("en-US", { month: "short" }), count: 0 });
+    }
+    keyOf = (d) => `${d.getFullYear()}-${d.getMonth()}`;
+  } else if (period === "90d") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 90);
+    for (let i = 0; i < 13; i += 1) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i * 7);
+      buckets.push({ key: i, start: d, label: d.toLocaleString("en-US", { month: "short", day: "numeric" }), count: 0 });
+    }
+    keyOf = (d) => { const i = buckets.findLastIndex((b) => b.start <= d); return i < 0 ? null : i; };
+  } else {
+    for (let i = 29; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      buckets.push({ key: d.toDateString(), label: d.toLocaleString("en-US", { month: "short", day: "numeric" }), count: 0 });
+    }
+    keyOf = (d) => d.toDateString();
+  }
+  const index = new Map(buckets.map((b) => [b.key, b]));
+  rows.forEach((row) => { const b = index.get(keyOf(new Date(row.createdAt))); if (b) b.count += 1; });
+  return { granularity: period === "1y" ? "month" : period === "90d" ? "week" : "day", points: buckets.map(({ label, count }) => ({ label, count })) };
+}
+
 async function byVisaTypeBreakdown(caseManagerFilter) {
   const rows = await Case.aggregate([
-    { $match: { ...caseManagerFilter, status: { $nin: ACTIVE_EXCLUDED_STATUSES } } },
+    { $match: caseManagerFilter },
     { $group: { _id: "$visaType", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
   ]);
   return rows.map((row) => ({ visaType: row._id || "Unspecified", count: row.count }));
 }
 
-async function buildPanel(caseManagerId, { period = "90d", staleDays = DEFAULT_STALE_DAYS } = {}) {
-  // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager.
-  const caseManagerFilter = { $and: [caseManagerMatch(objectId(caseManagerId))] };
+const PRIORITY_RANK = { urgent: 5, high: 4, "Premium Processing": 3, medium: 2, "Standard Processing": 1, low: 0 };
+
+// The case manager's currently assigned, still-active cases (not period-filtered): highest priority first, then newest.
+async function assignedCasesList(caseManagerId, limit = 8) {
+  const rows = await Case.find({ $and: [caseManagerMatch(objectId(caseManagerId)), { status: { $nin: ACTIVE_EXCLUDED_STATUSES } }] })
+    .select("caseNumber clientName visaType priority status createdAt")
+    .lean();
+  return rows
+    .sort((a, b) => (PRIORITY_RANK[b.priority] ?? 2) - (PRIORITY_RANK[a.priority] ?? 2) || new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit)
+    .map((c) => ({ _id: c._id, caseNumber: c.caseNumber, clientName: c.clientName, visaType: c.visaType, priority: c.priority, status: c.status, createdAt: c.createdAt }));
+}
+
+// GHL stages that mean the case is finished: Approved / Disapproved (rejected). Matched by stage name so renamed keys still work.
+const FINAL_STAGE_NAME = /approv|reject|denied/i;
+
+async function finalStageMatch() {
+  const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).select("pipelines").lean().catch(() => null);
+  const clauses = [];
+  (config?.pipelines || []).forEach((pipeline) => {
+    const keys = (pipeline.stages || []).filter((stage) => FINAL_STAGE_NAME.test(stage.name || "")).map((stage) => stage.key);
+    if (keys.length) clauses.push({ "integrations.ghl.pipelineId": pipeline.ghlPipelineId, "integrations.ghl.unifiedStageKey": { $in: keys } });
+  });
+  return clauses;
+}
+
+const trendOf = (current, previous) => {
+  if (!previous) return { direction: current > 0 ? "up" : "flat", percent: null, isNew: current > 0 };
+  const percent = Math.round(((current - previous) / previous) * 100);
+  return { direction: percent > 0 ? "up" : percent < 0 ? "down" : "flat", percent: Math.abs(percent), isNew: false };
+};
+
+// The three headline cards. Counts follow the selected period like the rest of the panel; the trend is always "last 30 days vs the
+// 30 days before": new cases for total/active (by createdAt), finished cases for closed (updatedAt is the proxy for when it closed).
+async function summarySection(caseManagerId, caseManagerFilter) {
+  const finals = await finalStageMatch();
+  const isClosed = { $or: [{ status: { $in: ["closed", "completed", "approved", "rejected", "denied"] } }, ...finals] };
+  const notClosed = { $nor: isClosed.$or };
+  const mine = caseManagerMatch(objectId(caseManagerId));
+  const now = Date.now();
+  const d30 = new Date(now - 30 * DAY_MS);
+  const d60 = new Date(now - 60 * DAY_MS);
+  const window = (field, from, to) => ({ [field]: to ? { $gte: from, $lt: to } : { $gte: from } });
+
+  const [total, active, closed, totalNow, totalPrev, activeNow, activePrev, closedNow, closedPrev] = await Promise.all([
+    Case.countDocuments(caseManagerFilter),
+    Case.countDocuments({ $and: [caseManagerFilter, notClosed] }),
+    Case.countDocuments({ $and: [caseManagerFilter, isClosed] }),
+    Case.countDocuments({ $and: [mine, window("createdAt", d30)] }),
+    Case.countDocuments({ $and: [mine, window("createdAt", d60, d30)] }),
+    Case.countDocuments({ $and: [mine, notClosed, window("createdAt", d30)] }),
+    Case.countDocuments({ $and: [mine, notClosed, window("createdAt", d60, d30)] }),
+    Case.countDocuments({ $and: [mine, isClosed, window("updatedAt", d30)] }),
+    Case.countDocuments({ $and: [mine, isClosed, window("updatedAt", d60, d30)] }),
+  ]);
+  return {
+    total: { value: total, trend: trendOf(totalNow, totalPrev) },
+    active: { value: active, trend: trendOf(activeNow, activePrev) },
+    closed: { value: closed, trend: trendOf(closedNow, closedPrev) },
+  };
+}
+
+async function buildPanel(caseManagerId, { period = "30d", staleDays = DEFAULT_STALE_DAYS } = {}) {
+  // $and (not $or): sections spread this next to filters that carry their own $or. Primary + additional case manager,
+  // limited to cases created in the selected period.
+  const caseManagerFilter = { $and: [caseManagerMatch(objectId(caseManagerId)), { createdAt: periodRange(period) }] };
 
   const [totalCasesInScope, activeTotal, caseIds] = await Promise.all([
     Case.countDocuments(caseManagerFilter),
@@ -193,12 +313,16 @@ async function buildPanel(caseManagerId, { period = "90d", staleDays = DEFAULT_S
     Case.find(caseManagerFilter).distinct("_id"),
   ]);
 
-  const [attention, close, payments, activity, byVisaType] = await Promise.all([
+  const [attention, close, payments, activity, byVisaType, byStage, assignedCases, trend, summary] = await Promise.all([
     attentionSection(caseManagerFilter),
-    closeSection(caseManagerFilter, period),
-    paymentsSection(caseIds, period),
+    closeSection(caseManagerFilter),
+    paymentsSection(caseIds),
     activitySection(caseManagerFilter, staleDays),
     byVisaTypeBreakdown(caseManagerFilter),
+    byStageBreakdown(caseManagerFilter),
+    assignedCasesList(caseManagerId),
+    assignedTrend(caseManagerFilter, period),
+    summarySection(caseManagerId, caseManagerFilter),
   ]);
 
   return {
@@ -209,6 +333,10 @@ async function buildPanel(caseManagerId, { period = "90d", staleDays = DEFAULT_S
     payments,
     activity,
     byVisaType,
+    byStage,
+    assignedCases,
+    trend,
+    summary,
   };
 }
 
