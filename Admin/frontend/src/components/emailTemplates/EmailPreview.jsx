@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { renderPreview } from '../../utils/emailPreviewRenderer'
+import { emailTemplatesApi } from '../../services/api'
 
 // Right-hand half of the editor. Renders instantly in the browser on every
 // keystroke (see utils/emailPreviewRenderer.js) using the sample data and the
@@ -11,7 +12,7 @@ import { renderPreview } from '../../utils/emailPreviewRenderer'
 // is full height, re-rendering on each keystroke never resets a scroll
 // position, and the previous height is kept until the new content has loaded
 // so the panel doesn't jump.
-const LOGICAL_WIDTH = 640 // the email card is 560px + page padding
+const LOGICAL_WIDTH = 640 // the email card is 600px + page padding
 const MIN_SCALE = 0.62
 
 function Row({ label, children }) {
@@ -29,6 +30,23 @@ export default function EmailPreview({ meta, subject, heading, body, triggerKey,
     () => renderPreview({ subject, heading, body, triggerKey, recipients }, meta),
     [meta, subject, heading, body, triggerKey, recipients],
   )
+
+  // The in-browser render is instant but only has the email's header/footer; the server also restyles the buttons, detail boxes and
+  // links in the body exactly as the real email does. A moment after typing stops, the server's render replaces it, so the preview
+  // always matches what recipients get. Until it arrives (or if it fails) the instant render stays on screen.
+  const [serverHtml, setServerHtml] = useState(null)
+  useEffect(() => {
+    let current = true
+    const timer = setTimeout(async () => {
+      try {
+        const res = await emailTemplatesApi.preview({ subject, heading, body, triggerKey, recipients })
+        const html = res?.data?.data?.html
+        if (current && html) setServerHtml(html)
+      } catch { /* keep the instant preview */ }
+    }, 400)
+    return () => { current = false; clearTimeout(timer) }
+  }, [subject, heading, body, triggerKey, recipients])
+  const shownHtml = serverHtml || preview.html
 
   const stageRef = useRef(null)
   const [stage, setStage] = useState({ width: 0, height: 0 })
@@ -68,14 +86,14 @@ export default function EmailPreview({ meta, subject, heading, body, triggerKey,
         <Row label="BCC">{preview.bcc.join(', ')}</Row>
         <Row label="Subject"><strong>{preview.subject || '(no subject)'}</strong></Row>
       </div>
-      <div ref={stageRef} className="min-h-[360px] flex-1 overflow-y-auto overflow-x-hidden bg-[#f1f5f9]">
+      <div ref={stageRef} className="min-h-[360px] flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fb]">
         <div className="mx-auto" style={{ width: LOGICAL_WIDTH * scale, height: contentHeight * scale }}>
           <iframe
             title="Email preview"
             // Scripts stay blocked (no allow-scripts); same-origin is only
             // needed so we can measure the rendered email's height.
             sandbox="allow-same-origin"
-            srcDoc={preview.html}
+            srcDoc={shownHtml}
             onLoad={handleLoad}
             scrolling="no"
             style={{ width: LOGICAL_WIDTH, height: contentHeight, border: 0, transform: `scale(${scale})`, transformOrigin: 'top left', display: 'block' }}

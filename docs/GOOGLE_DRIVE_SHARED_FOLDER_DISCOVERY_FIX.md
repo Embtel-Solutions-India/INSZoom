@@ -88,3 +88,11 @@ New automated coverage: My Drive query shape; nested/shared-drive folder query a
 - Shared drives are listed in Google's order (no modified time).
 - Google verification: the full `drive` scope is restricted (verification + security assessment) before non-test external users can connect.
 - Production env to confirm: `GOOGLE_DRIVE_SCOPES` (expected `https://www.googleapis.com/auth/drive`), plus the existing `GOOGLE_DRIVE_INTEGRATION_ENABLED`, `GOOGLE_DRIVE_OAUTH_REDIRECT_URI`, `ADMIN_PORTAL_URL`, `GOOGLE_TOKEN_ENCRYPTION_KEY`. No new environment variables were added; no CI/CD files were touched.
+
+## 8. Follow-up (2026-10-31): Back button and speed
+
+- **Back button** (in-app folder browser, left of the breadcrumb): goes up exactly one Drive folder, to the list of the parent folder. It stays in the same tab (My Drive / Shared with me / Shared drives) and never leaves the folder-choosing step. At the top of a tab it is disabled; on a search result list it closes the search. The footer button that returns to the file-selection step is now labelled "Back to files" so the two cannot be confused.
+- **Faster, nothing removed:**
+  - The browser shows a list it has already seen (Back, returning to a tab) at once and refreshes it quietly in the background; a failed refresh keeps the list on screen. The memory lives only while the browser is open and is never shared between accounts.
+  - The server remembers an identical folder list for 30 seconds per connected account and lets simultaneous identical requests share one Google call. Creating a folder clears that account's lists; errors are never remembered. Optional env `DRIVE_LIST_CACHE_MS` (default 30000, `0` turns it off) - nothing needs to be set on the production server.
+- Tests: backend Drive tests 60/60 (6 new in `folder-list-cache.test.js`), frontend Drive tests 42/42 (3 + 2 new), Admin build clean. Not measured against live Google (no real account here), so the real-world speed-up is not quantified.

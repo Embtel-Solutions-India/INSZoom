@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { AlertCircle, CheckCircle2, Cloud, ExternalLink, FolderOpen, FolderPlus, Loader2, RefreshCw, X } from 'lucide-react'
+import { AlertCircle, ArrowLeft, CheckCircle2, Cloud, ExternalLink, FolderOpen, FolderPlus, Loader2, RefreshCw, X } from 'lucide-react'
 import { googleDriveApi } from '../services/api'
 
 // "Add to Drive": copies the selected case documents into a Google Drive folder. The files stay in Immiglance; Drive gets a copy
@@ -121,12 +121,28 @@ function FolderBrowser({ onSelect, onLocation, disabled }) {
     return pageToken ? googleDriveApi.listFolders(here.id, { pageToken }) : googleDriveApi.listFolders(here.id)
   }
 
+  // A list that was already seen while this browser is open (going Back, switching tabs and returning) is shown at once and quietly
+  // refreshed in the background, so moving around is instant and the list is still current a moment later. The cache lives only as long
+  // as this browser instance (it never outlives the dialog or crosses to another Google account).
+  const seen = useRef(new Map())
   useEffect(() => {
     let active = true
-    setItems(null); setProblem(''); setNextPageToken(null)
+    const key = searching ? `q:${term}` : here.id
+    const cached = seen.current.get(key)
+    setProblem('')
+    if (cached) { setItems(cached.folders); setNextPageToken(cached.nextPageToken) } else { setItems(null); setNextPageToken(null) }
     request()
-      .then((res) => { if (active) { setItems(res.data.folders || []); setNextPageToken(res.data.nextPageToken || null) } })
-      .catch((err) => { if (active) { setItems([]); setProblem(err?.response?.data?.message || 'Could not list the folders.') } })
+      .then((res) => {
+        const folders = res.data.folders || []
+        const next = res.data.nextPageToken || null
+        seen.current.set(key, { folders, nextPageToken: next })
+        if (active) { setItems(folders); setNextPageToken(next) }
+      })
+      .catch((err) => {
+        if (!active) return
+        // a failed refresh keeps the list already on screen; with nothing to show it explains the problem as before
+        if (!cached) { setItems([]); setProblem(err?.response?.data?.message || 'Could not list the folders.') }
+      })
     return () => { active = false }
   }, [here.id, searching, term]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,6 +157,13 @@ function FolderBrowser({ onSelect, onLocation, disabled }) {
 
   const switchTab = (tab) => { setSearchText(''); setTerm(''); setTrail([tab]) }
   const open = (item) => setTrail([...trail, { id: item.id, name: item.name }])
+  // Back goes up ONE folder inside Drive (to the list of the parent folder) - never to the earlier step of choosing a folder.
+  // At the top of a tab it only closes a search, returning to that tab's normal list.
+  const canGoBack = trail.length > 1 || searching
+  const goBack = () => {
+    if (trail.length > 1) setTrail(trail.slice(0, -1))
+    else { setSearchText(''); setTerm('') }
+  }
   const emptyText = problem || (searching ? `No folders match “${term}”.` : here.id === '__shared' ? 'No folders have been shared with this Google account.' : here.id === '__drives' ? 'This Google account is not a member of any shared drive.' : 'No folders here.')
 
   return (
@@ -152,6 +175,7 @@ function FolderBrowser({ onSelect, onLocation, disabled }) {
         <input type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search folders" aria-label="Search folders" data-testid="drive-search" maxLength={100} className="input-field ml-auto h-8 w-full text-xs sm:w-48" />
       </div>
       <div className="flex flex-wrap items-center gap-1 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+        <button type="button" onClick={goBack} disabled={!canGoBack} data-testid="drive-folder-up" aria-label="Back to the previous folder" className="mr-1 inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"><ArrowLeft className="h-3.5 w-3.5" /> Back</button>
         {trail.map((crumb, index) => (
           <span key={crumb.id} className="flex items-center gap-1">
             {index > 0 && <span>/</span>}
@@ -505,7 +529,7 @@ export default function GoogleDriveExport({ caseId, documents = [], getName = (d
                 {job && !running && <button type="button" onClick={() => { setJob(null); setSelected(new Set()); setStep('files'); setFolder(null) }} className="btn-secondary text-sm">Add more</button>}
                 <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">{job && !running ? 'Close' : 'Cancel'}</button>
                 {connected && !job && step === 'files' && <button type="button" onClick={next} disabled={selected.size === 0} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60" data-testid="drive-next"><FolderOpen className="h-4 w-4" /> Next: choose folder</button>}
-                {connected && !job && step === 'folder' && <button type="button" onClick={() => setStep('files')} className="btn-secondary text-sm" data-testid="drive-back">Back</button>}
+                {connected && !job && step === 'folder' && <button type="button" onClick={() => setStep('files')} className="btn-secondary text-sm" data-testid="drive-back">Back to files</button>}
                 {connected && !job && step === 'folder' && <button type="button" onClick={start} disabled={!folder || selected.size === 0 || busy === 'sync' || busy === 'pick'} className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60" data-testid="drive-start"><Cloud className="h-4 w-4" /> {busy === 'sync' ? 'Starting…' : `Add ${selected.size || ''} file${selected.size === 1 ? '' : 's'} to Drive`}</button>}
               </div>
             </div>

@@ -5,6 +5,7 @@
 // path uses - so what an admin previews is exactly what recipients get.
 const { substitute, escapeHtml } = require("./emailVariables.registry");
 const { portalUrl } = require("./portalUrls");
+const layout = require("./emailLayoutV2");
 
 // Every email that goes to internal staff (case manager, team lead, admin, super admin) ends with a button to the Admin
 // login page. Skipped when the email already links to that page (e.g. the staff-credentials email).
@@ -23,50 +24,77 @@ function adminLoginText(existingText = "") {
   return String(existingText).includes(url) ? "" : `Log in to Admin: ${url}`;
 }
 
+// Every call-to-action button (any anchor styled display:inline-block, in built-in or admin-written bodies) gets the one button look:
+// the logo blue, squared-off corners and an arrow. A deliberately different colour (e.g. the red RFE button) is kept.
+const BUTTON_ANCHOR = /<a\b([^>]*?)style="([^"]*display:inline-block[^"]*)"([^>]*)>([\s\S]*?)<\/a>/gi;
+const OLD_BUTTON_BLUES = new Set(["#1e3a5f", "#1e40af", "#0f2a5c"]);
+function restyleButtons(html) {
+  return String(html || "").replace(BUTTON_ANCHOR, (_m, before, style, after, label) => {
+    const bg = (/background:\s*(#[0-9a-f]{3,8})/i.exec(style) || [])[1];
+    const color = !bg || OLD_BUTTON_BLUES.has(bg.toLowerCase()) ? layout.BRAND : bg;
+    const arrow = /&rarr;|→/.test(label) ? "" : " &rarr;";
+    return `<a${before}style="display:inline-block;padding:14px 26px;background:${color};color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;font-family:${layout.FONT};"${after}>${label}${arrow}</a>`;
+  });
+}
+
+// One button per email: the first call-to-action stays and any further button (e.g. the extra "Log in to Admin" button on a staff email
+// whose own button already opens the login page) is deleted, together with the paragraph/div that only held it.
+const ANCHOR = String.raw`<a\b[^>]*display:inline-block[^>]*>[\s\S]*?<\/a>`;
+const BUTTON_OR_WRAPPED = new RegExp(String.raw`(?:<p\b[^>]*>|<div style="margin:8px 0 16px;">)\s*(${ANCHOR})\s*(?:<\/p>|<\/div>)|(${ANCHOR})`, "gi");
+function keepOneButton(html, text) {
+  let seen = 0;
+  let removedAdmin = false;
+  const nextHtml = String(html || "").replace(BUTTON_OR_WRAPPED, (match, wrapped, bare) => {
+    seen += 1;
+    if (seen === 1) return match;
+    if (/Log in to Admin/i.test(wrapped || bare)) removedAdmin = true;
+    return "";
+  });
+  const nextText = removedAdmin && typeof text === "string" ? text.replace(/\n*Log in to Admin: \S+/i, "") : text;
+  return { html: nextHtml, text: nextText };
+}
+
+// Boxes written inside template bodies - the green case-details box (label / value paragraphs) and the task details box (label / value
+// table rows) - are re-drawn as the grey details strip: same words, one row of columns. A box that does not parse is left untouched.
+const textOf = (html) => String(html || "").replace(/<[^>]+>/g, "").trim();
+function stripFromPairs(pairs) {
+  const items = pairs.filter(([label, value]) => textOf(label) && textOf(value)).map(([label, value]) => ({ label: textOf(label), value: value.trim(), full: textOf(label) === "Details" }));
+  return items.length ? layout.detailsStrip(items) : null;
+}
+// A paragraph made only of bold "Label: value" lines (Case / Case Type / Client, Reason, Details ...) is shown in the same grey panel.
+// Short facts sit side by side; long text (reasons, messages, notes, lists) takes a full row.
+const LABEL_LINE = /<strong>([^<]{1,60}?):<\/strong>\s*(?:<br\s*\/?>)?\s*/gi;
+const LONG_LABEL = /^(details|message|reason|note|first comment|required documents|portal)/i;
+function labelParagraphToStrip(content) {
+  const marks = [...content.matchAll(LABEL_LINE)];
+  if (!marks.length || marks[0].index !== 0) return null;
+  const items = marks.map((mark, k) => {
+    const end = k + 1 < marks.length ? marks[k + 1].index : content.length;
+    const value = content.slice(mark.index + mark[0].length, end).replace(/(<br\s*\/?>\s*)+$/i, "").trim();
+    return { label: mark[1].trim(), value, full: LONG_LABEL.test(mark[1].trim()) || textOf(value).length > 50 };
+  }).filter((item) => textOf(item.value));
+  return items.length === marks.length ? layout.detailsStrip(items) : null;
+}
+
+function squareBoxes(html) {
+  return html
+    .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (paragraph, content) => labelParagraphToStrip(content.trim()) || paragraph)
+    .replace(/<table\b[^>]*background:#f0fdf4[^>]*>[\s\S]*?<\/table>/gi, (box) => {
+      const paragraphs = [...box.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map((m) => m[1]);
+      const pairs = [];
+      for (let k = 0; k + 1 < paragraphs.length; k += 2) pairs.push([paragraphs[k], paragraphs[k + 1]]);
+      return stripFromPairs(pairs) || box;
+    })
+    .replace(/<table\b[^>]*background:#f8fafc[^>]*>[\s\S]*?<\/table>/gi, (box) => {
+      const pairs = [...box.matchAll(/<tr>\s*<td\b[^>]*>([\s\S]*?)<\/td>\s*<td\b[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi)].map((m) => [m[1], m[2]]);
+      return stripFromPairs(pairs) || box;
+    })
+    .replace(/border-radius:10px/g, "border-radius:6px");
+}
+
 function layoutHtml({ title, heading, innerHtml, adminLogin = false }) {
   if (adminLogin) innerHtml = `${innerHtml}${adminLoginBlock(innerHtml)}`;
-  const year = new Date().getFullYear();
-  const headingHtml = heading
-    ? `<h1 style="margin:0 0 24px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${heading}</h1>
-            `
-    : "";
-  return `<!doctype html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
-        <tr>
-          <td style="background:#1e3a5f;padding:28px 36px;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td>
-                  <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:-0.5px;">Immiglance</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:36px 36px 28px;">
-            ${headingHtml}${innerHtml}
-          </td>
-        </tr>
-        <tr><td style="padding:0 36px;"><div style="height:1px;background:#e5e7eb;"></div></td></tr>
-        <tr>
-          <td style="padding:20px 36px 28px;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;">
-              This is an automated message from <strong>Immiglance</strong>. Please do not reply to this email.<br>
-              &copy; ${year} Immiglance. All rights reserved.
-            </p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+  return layout.cardLayout({ title, heading, innerHtml: `<div style="font-family:${layout.FONT};">${squareBoxes(restyleButtons(innerHtml)).replace(/color:#374151/g, `color:${layout.BODY}`)}</div>` });
 }
 
 const wrapBody = (bodyHtml) => `<div style="margin:0 0 16px;color:#374151;font-size:15px;line-height:1.7;">${bodyHtml}</div>`;
@@ -118,4 +146,4 @@ function renderCustom(template, ctx = {}, { mode = "live", highlightUnknown = fa
   return { subject, heading, html, text };
 }
 
-module.exports = { previewShells, layoutHtml, sanitizeEmailHtml, htmlToText, renderCustom, adminLoginUrl, adminLoginText };
+module.exports = { keepOneButton, previewShells, layoutHtml, sanitizeEmailHtml, htmlToText, renderCustom, adminLoginUrl, adminLoginText };
