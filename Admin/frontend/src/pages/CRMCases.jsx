@@ -13,6 +13,8 @@ import Card from '../components/ui/Card'
 import StatBadge from '../components/ui/StatBadge'
 import SearchInput from '../components/ui/SearchInput'
 import FilterBar, { FilterSelect } from '../components/ui/FilterBar'
+import { useVisaOptions, groupVisaOptions } from '../utils/visaOptions'
+import WrappingSelect from '../components/ui/WrappingSelect'
 
 // Board view groups the SAME page of cases already fetched via GET /cases
 // (no new API call, no new params) client-side by `status` - a purely
@@ -65,6 +67,10 @@ const CRMCases = ({ caseGroup } = {}) => {
   const [appliedSearch, setAppliedSearch] = useState(searchTerm)
   const [stageFilter, setStageFilter] = useState(searchParams.get('stage') || '')
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '')
+  // the same visa list as the New case dropdown (utils/visaOptions.js); the chosen option is sent as the case's visa type
+  const { options: visaOptions, registryTypes } = useVisaOptions()
+  const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
+  const [visaFilter, setVisaFilter] = useState('')
   // Newest / Oldest: the API sorts by creation order (GET /cases sortOrder), so it holds across every page, not just the one on screen.
   const [sortOrder, setSortOrder] = useState('desc') // 'desc' = newest first, 'asc' = oldest first
   // Deep-link-only filters from the case manager analytics panel's
@@ -123,7 +129,7 @@ const CRMCases = ({ caseGroup } = {}) => {
 
   useEffect(() => {
     fetchCases()
-  }, [stageFilter, statusFilter, page, appliedSearch, sortOrder])
+  }, [stageFilter, statusFilter, visaFilter, page, appliedSearch, sortOrder])
 
   // Search now happens server-side (the API already supported it) instead of
   // filtering only the current page's rows in the browser — debounced, and
@@ -217,6 +223,10 @@ const CRMCases = ({ caseGroup } = {}) => {
       const params = { page, limit, excludeChildCases: true, ...(caseGroup ? { caseGroup } : {}), ...deepLinkFilters }
       if (stageFilter) params.stage = stageFilter
       if (statusFilter) params.status = statusFilter
+      if (visaFilter) {
+        const chosen = visaOptions.find((opt) => opt.value === visaFilter)
+        params.visaType = chosen?.canonicalLabel || chosen?.label || visaFilter
+      }
       if (appliedSearch) params.search = appliedSearch
       params.sortOrder = sortOrder
 
@@ -257,6 +267,11 @@ const CRMCases = ({ caseGroup } = {}) => {
   const handleStatusFilter = (value) => {
     setPage(1)
     setStatusFilter(value)
+  }
+
+  const handleVisaFilter = (value) => {
+    setPage(1)
+    setVisaFilter(value)
   }
 
   const handleSortOrder = (value) => {
@@ -506,6 +521,13 @@ const CRMCases = ({ caseGroup } = {}) => {
               { value: 'archived', label: 'Archived' },
               { value: 'closed', label: 'Closed' },
             ]}
+          />
+          <WrappingSelect
+            value={visaFilter}
+            onChange={handleVisaFilter}
+            className="w-full sm:w-64"
+            ariaLabel="Visa type"
+            options={[{ value: '', label: 'All Visa Types' }, ...groupedVisaOptions]}
           />
         </FilterBar>
         {/* Newest / Oldest: two buttons side by side sharing the middle border, on the right just under the Stage / Status boxes */}

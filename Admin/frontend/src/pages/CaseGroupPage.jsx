@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext'
 import ConfirmModal from '../components/ConfirmModal'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { resolveDisplayVisa } from '../utils/visaDisplay'
+import { useVisaOptions, groupVisaOptions } from '../utils/visaOptions'
+import WrappingSelect from '../components/ui/WrappingSelect'
 
 // The Corporations and Clients sidebar pages. Read-only lists of one kind of case each (GET /cases?caseGroup=...), laid out as
 // cards (default) or a list - deliberately not the table screen the all-cases page uses. Cases are created from the Cases page only.
@@ -56,6 +58,10 @@ export default function CaseGroupPage({ caseGroup }) {
   const [appliedSearch, setAppliedSearch] = useState('')
   const [view, setView] = useState('cards') // 'cards' | 'list'
   const [sortOrder, setSortOrder] = useState('desc')
+  // the same grouped visa list as the New case dropdown (utils/visaOptions.js); the chosen option is sent as the case's visa type
+  const { options: visaOptions, registryTypes } = useVisaOptions()
+  const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
+  const [visaFilter, setVisaFilter] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [overallTotal, setOverallTotal] = useState(null)
@@ -73,6 +79,10 @@ export default function CaseGroupPage({ caseGroup }) {
       setError('')
       const params = { ...baseParams, page, limit: PAGE_SIZE, sortOrder }
       if (appliedSearch) params.search = appliedSearch
+      if (visaFilter) {
+        const chosen = visaOptions.find((opt) => opt.value === visaFilter)
+        params.visaType = chosen?.canonicalLabel || chosen?.label || visaFilter
+      }
       const response = await api.get('/cases', { params })
       if (seq !== fetchSeq.current) return
       setCases(response.data.cases || [])
@@ -85,7 +95,7 @@ export default function CaseGroupPage({ caseGroup }) {
       if (seq === fetchSeq.current) setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseGroup, page, appliedSearch, sortOrder])
+  }, [caseGroup, page, appliedSearch, sortOrder, visaFilter])
 
   // total shown in the banner (independent of search)
   const fetchOverallTotal = useCallback(async () => {
@@ -131,7 +141,7 @@ export default function CaseGroupPage({ caseGroup }) {
   }, [search])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const filtering = Boolean(appliedSearch)
+  const filtering = Boolean(appliedSearch || visaFilter)
   const firstShown = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const lastShown = Math.min(total, page * PAGE_SIZE)
 
@@ -181,6 +191,13 @@ export default function CaseGroupPage({ caseGroup }) {
               className="w-full rounded-full border border-border bg-card py-2.5 pl-10 pr-4 text-sm text-foreground outline-none transition focus:border-ring focus:ring-2 focus:ring-ring/20"
             />
           </div>
+          <WrappingSelect
+            value={visaFilter}
+            onChange={(value) => { setLoading(true); setPage(1); setVisaFilter(value) }}
+            className="w-full sm:w-64 sm:shrink-0"
+            ariaLabel="Visa type"
+            options={[{ value: '', label: 'All Visa Types' }, ...groupedVisaOptions]}
+          />
           <div className="inline-flex shrink-0 rounded-full border border-border bg-card p-0.5" role="group" aria-label="Sort by creation date">
             {[['desc', 'Newest first'], ['asc', 'Oldest first']].map(([value, label]) => (
               <button
