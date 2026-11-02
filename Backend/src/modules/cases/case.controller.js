@@ -927,9 +927,16 @@ exports.getCases = async (req, res, next) => {
     const skip = (page - 1) * limit;
     timer.mark("pagination_ready", { skip, sort });
 
+    // ?toneGroup=true: working cases first, then blue (filed / outcome), then red (on hold); the chosen sort applies inside each group
+    let grouped = ["true", "1"].includes(String(req.query.toneGroup));
+    let toneStages = [];
+    if (grouped) {
+      try { toneStages = [await caseService.toneRankStage()]; } catch (_error) { grouped = false; } // ordering only: never fail the list over it
+    }
+    const listSort = grouped ? { _toneRank: 1, ...sort } : sort;
     const [total, cases] = await Promise.all([
       Case.countDocuments(filter),
-      Case.collection.aggregate([{ $match: filter }, { $sort: sort }, { $skip: skip }, { $limit: limit }, ...[caseService.caseListSlimStage()].filter(Boolean)], { allowDiskUse: true }).toArray()
+      Case.collection.aggregate([{ $match: filter }, ...toneStages, { $sort: listSort }, { $skip: skip }, { $limit: limit }, ...(grouped ? [{ $project: { _toneRank: 0 } }] : []), ...[caseService.caseListSlimStage()].filter(Boolean)], { allowDiskUse: true }).toArray()
         .then((docs) => caseService.populateCaseListDocs(docs)),
     ]);
     timer.mark("case_query_completed", { total, count: cases.length });

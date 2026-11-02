@@ -841,6 +841,7 @@ export const eligibilityApi = {
 export const ghlApi = {
   status: () => api.get('/integrations/ghl/status'),
   board: (params = {}) => api.get('/integrations/ghl/board', { params }),
+  stageList: () => api.get('/integrations/ghl/stages'),
   caseStages: (caseId) => api.get(`/integrations/ghl/cases/${caseId}/stages`),
   moveStage: (caseId, payload) => api.patch(`/integrations/ghl/cases/${caseId}/pipeline-stage`, payload),
   setupPreview: () => api.get('/integrations/ghl/setup'),

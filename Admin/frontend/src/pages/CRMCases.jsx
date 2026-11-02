@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouteRevisit } from '../components/KeepAliveOutlet'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import api, { casesApi, invalidateCachedGet } from '../services/api'
+import api, { ghlApi, casesApi, invalidateCachedGet } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import { Download, Calendar, ArrowRight, ChevronLeft, ChevronRight, Bell, UserPlus, Plus, Inbox, List, LayoutGrid, Trash2 } from 'lucide-react'
@@ -15,7 +15,8 @@ import SearchInput from '../components/ui/SearchInput'
 import FilterBar, { FilterSelect } from '../components/ui/FilterBar'
 import { useVisaOptions, groupVisaOptions } from '../utils/visaOptions'
 import WrappingSelect from '../components/ui/WrappingSelect'
-
+import StageSummary from '../components/ui/StageSummary'
+import { rowToneStyle } from '../utils/stageTone'
 // Board view groups the SAME page of cases already fetched via GET /cases
 // (no new API call, no new params) client-side by `status` - a purely
 // presentational second view of existing data, not a new data source.
@@ -67,6 +68,14 @@ const CRMCases = ({ caseGroup } = {}) => {
   const [appliedSearch, setAppliedSearch] = useState(searchTerm)
   const [stageFilter, setStageFilter] = useState(searchParams.get('stage') || '')
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '')
+  // the Stage filter lists the GoHighLevel pipeline's stages (the CRM list is only a fallback while they cannot be loaded)
+  const [pipelineStages, setPipelineStages] = useState([])
+  const [pipelineStageFilter, setPipelineStageFilter] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    ghlApi.stageList().then((res) => { if (!cancelled) setPipelineStages(res.data?.stages || []) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
   // the same visa list as the New case dropdown (utils/visaOptions.js); the chosen option is sent as the case's visa type
   const { options: visaOptions, registryTypes } = useVisaOptions()
   const groupedVisaOptions = groupVisaOptions(visaOptions, registryTypes)
@@ -129,7 +138,7 @@ const CRMCases = ({ caseGroup } = {}) => {
 
   useEffect(() => {
     fetchCases()
-  }, [stageFilter, statusFilter, visaFilter, page, appliedSearch, sortOrder])
+  }, [stageFilter, pipelineStageFilter, statusFilter, visaFilter, page, appliedSearch, sortOrder])
 
   // Search now happens server-side (the API already supported it) instead of
   // filtering only the current page's rows in the browser — debounced, and
@@ -222,6 +231,7 @@ const CRMCases = ({ caseGroup } = {}) => {
       setError('')
       const params = { page, limit, excludeChildCases: true, ...(caseGroup ? { caseGroup } : {}), ...deepLinkFilters }
       if (stageFilter) params.stage = stageFilter
+      if (pipelineStageFilter) params.pipelineStage = pipelineStageFilter
       if (statusFilter) params.status = statusFilter
       if (visaFilter) {
         const chosen = visaOptions.find((opt) => opt.value === visaFilter)
@@ -229,6 +239,7 @@ const CRMCases = ({ caseGroup } = {}) => {
       }
       if (appliedSearch) params.search = appliedSearch
       params.sortOrder = sortOrder
+      params.toneGroup = true // working cases first, then blue (filed / outcome), then red (on hold); the sort applies inside each group
 
       const response = await api.get('/cases', { params, signal: controller.signal })
       if (seq !== activeFetchRef.current.seq) return
@@ -259,9 +270,15 @@ const CRMCases = ({ caseGroup } = {}) => {
   fetchCasesRef.current = fetchCases
 
   // Reset to the first page whenever filters change
+  const usePipelineStages = pipelineStages.length > 0
   const handleStageFilter = (value) => {
     setPage(1)
-    setStageFilter(value)
+    if (usePipelineStages) {
+      setStageFilter('') // a stage carried in by a link is replaced by the choice made here
+      setPipelineStageFilter(value)
+    } else {
+      setStageFilter(value)
+    }
   }
 
   const handleStatusFilter = (value) => {
@@ -492,10 +509,13 @@ const CRMCases = ({ caseGroup } = {}) => {
             className="w-full sm:flex-1 sm:min-w-[200px]"
           />
           <FilterSelect
-            value={stageFilter}
+            value={usePipelineStages ? pipelineStageFilter : stageFilter}
             onChange={handleStageFilter}
             className="w-full sm:w-auto"
-            options={[
+            options={usePipelineStages ? [
+              { value: '', label: 'All Stages' },
+              ...pipelineStages.map((stage) => ({ value: stage.key, label: stage.name })),
+            ] : [
               { value: '', label: 'All Stages' },
               { value: 'intake', label: 'Intake' },
               { value: 'strategy', label: 'Strategy' },
@@ -518,6 +538,21 @@ const CRMCases = ({ caseGroup } = {}) => {
               { value: 'assigned', label: 'Assigned' },
               { value: 'active', label: 'Active' },
               { value: 'on_hold', label: 'On Hold' },
+              { value: 'document_collection', label: 'Document Collection' },
+              { value: 'questionnaire', label: 'Questionnaire' },
+              { value: 'form_preparation', label: 'Form Preparation' },
+              { value: 'in_review', label: 'In Review' },
+              { value: 'under_review', label: 'Under Review' },
+              { value: 'ready_to_file', label: 'Ready to File' },
+              { value: 'ready_for_filing', label: 'Ready for Filing' },
+              { value: 'filed', label: 'Filed' },
+              { value: 'pending_approval', label: 'Pending Approval' },
+              { value: 'processing', label: 'Processing' },
+              { value: 'rfe', label: 'RFE' },
+              { value: 'approved', label: 'Approved' },
+              { value: 'rejected', label: 'Rejected' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'cancelled', label: 'Cancelled' },
               { value: 'archived', label: 'Archived' },
               { value: 'closed', label: 'Closed' },
             ]}
@@ -609,7 +644,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                           >
                             <div className="flex items-center justify-between gap-2 mb-1.5">
                               <span className="text-sm font-semibold text-foreground truncate">{caseItem.caseNumber}</span>
-                              <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
+                              <StageSummary caseItem={caseItem} className="shrink-0" />
                             </div>
                             <p className="text-xs text-muted-foreground truncate">{listName(caseItem)}</p>
                             <p className="text-xs text-muted-foreground truncate">{resolveDisplayVisa(caseItem)}</p>
@@ -646,6 +681,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                   <div
                     key={caseItem._id}
                     onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                    style={awaitingAssignment ? undefined : rowToneStyle(caseItem)}
                     className={`cursor-pointer p-4 space-y-2.5 ${awaitingAssignment ? 'new-row bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -662,7 +698,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                         <p className="text-sm text-foreground mt-0.5 truncate">{listName(caseItem)}</p>
                         <p className="text-xs text-muted-foreground truncate">{listEmail(caseItem)}</p>
                       </div>
-                      <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="shrink-0" />
+                      <StageSummary caseItem={caseItem} className="shrink-0" />
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
@@ -756,6 +792,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                     <tr
                       key={caseItem._id}
                       onClick={() => navigate(`/crm-cases/${caseItem._id}`)}
+                      style={awaitingAssignment ? undefined : rowToneStyle(caseItem)}
                       className={`cursor-pointer border-b border-border hover:bg-muted ${awaitingAssignment ? 'new-row bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
                     >
                       <td className="px-3 py-3 align-top">
@@ -784,7 +821,7 @@ const CRMCases = ({ caseGroup } = {}) => {
                         </p>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <StatBadge value={caseItem.pipelineStage || caseItem.stage} kind="stage" className="max-w-full truncate" />
+                        <StageSummary caseItem={caseItem} className="max-w-full truncate" />
                       </td>
                       <td className="px-3 py-3 align-top">
                         <StatBadge value={caseItem.status} kind="status" className="max-w-full truncate" />

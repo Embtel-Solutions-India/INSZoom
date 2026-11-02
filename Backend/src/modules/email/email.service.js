@@ -369,7 +369,7 @@ async function sendTemplateEmail(templateKey, { to, cc, data = {}, caseId, userI
   const subject = template.subject(data);
   const lines = template.bodyLines(data);
   const bodyText = lines.join("\n\n");
-  const { html, text } = toLogin(confine(wrapHtml(subject, lines, { adminLogin })), confine([bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n")));
+  const { html, text } = toLogin(confine(typeof template.bodyHtml === "function" ? layoutHtml({ title: subject, heading: subject, innerHtml: template.bodyHtml(data), adminLogin }) : wrapHtml(subject, lines, { adminLogin })), confine([bodyText, adminLogin && adminLoginText(bodyText)].filter(Boolean).join("\n\n")));
 
   return dispatch({ templateKey, to, cc, subject, html, text, data, caseId, userId, triggeredBy, source, attachments });
 }

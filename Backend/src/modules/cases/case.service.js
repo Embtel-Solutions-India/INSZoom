@@ -354,6 +354,13 @@ async function resolveCaseSearchFilter(query, user) {
 // search that matches an employee lists the employer's matter, and a case manager assigned only to some employees sees that
 // matter (opening it shows just their employees). Falls back to the plain path when there is nothing to roll up.
 async function resolveStaffListFilter(query, user) {
+  // Filter by GoHighLevel pipeline stage: a case matches on its own card; an employer matter (no card of its own) matches when any of its employees' cards is in the stage.
+  const stageKey = typeof query.pipelineStage === "string" ? query.pipelineStage.trim().slice(0, 100) : "";
+  if (stageKey) {
+    const base = await resolveStaffListFilter({ ...query, pipelineStage: undefined }, user);
+    const parentIds = (await Case.distinct("parentCase", { parentCase: { $ne: null }, "integrations.ghl.unifiedStageKey": stageKey, status: { $nin: ["removed", "archived"] } })).filter(Boolean);
+    return { $and: [base, { $or: [{ "integrations.ghl.unifiedStageKey": stageKey }, ...(parentIds.length ? [{ _id: { $in: parentIds } }] : [])] }] };
+  }
   const exclude = ["true", "1"].includes(String(query.excludeChildCases));
   const needsRollUp = exclude && !query.caseRole && (query.search || normalizeRole(user?.role) === "case_manager");
   if (!needsRollUp) return resolveCaseSearchFilter(query, user);
@@ -367,6 +374,47 @@ async function resolveStaffListFilter(query, user) {
   }
   // no $text here: it cannot sit inside an $or
   return { $or: [direct, { _id: { $in: parentIds } }] };
+}
+
+// The list's colour groups, for ?toneGroup=true: 0 = still being worked on (white), 1 = filed or has an outcome (blue), 2 = on hold (red), 3 = completed
+// (logo colour, last). The same
+// split the Admin list colours its rows by (utils/stageTone.js). A case with its own Pipeline card is grouped by that card's stage; an employer matter
+// (no card of its own) is blue / red only when every active employee card is, otherwise it still has work in progress and stays in group 0.
+const TONE_BLUE_STAGE_KEYS = ["submitted_fedex", "receipt_tracking", "rfe", "status_approved", "status_disapproved", "feedback"];
+async function toneRankStage() {
+  const Case = require("../../models/Case");
+  const stageKey = { $ifNull: ["$integrations.ghl.unifiedStageKey", ""] };
+  const isHold = { $regexMatch: { input: stageKey, regex: "hold" } };
+  const isBlue = { $in: [stageKey, TONE_BLUE_STAGE_KEYS] };
+  let blueParents = [];
+  let redParents = [];
+  try {
+    const rows = await Case.aggregate([
+      { $match: { parentCase: { $ne: null }, "integrations.ghl.opportunityId": { $exists: true, $ne: null }, status: { $nin: ["removed", "archived"] } } },
+      { $group: { _id: "$parentCase", total: { $sum: 1 }, blue: { $sum: { $cond: [isBlue, 1, 0] } }, red: { $sum: { $cond: [isHold, 1, 0] } } } },
+    ]);
+    blueParents = rows.filter((row) => row.blue === row.total).map((row) => row._id);
+    redParents = rows.filter((row) => row.red === row.total).map((row) => row._id);
+  } catch (_error) {
+    /* ordering only: without the employee roll-up those matters just stay in the first group */
+  }
+  const hasCard = { $ne: [{ $ifNull: ["$integrations.ghl.opportunityId", null] }, null] };
+  return {
+    $addFields: {
+      _toneRank: {
+        $switch: {
+          branches: [
+            { case: { $eq: ["$status", "completed"] }, then: 3 },
+            { case: { $and: [hasCard, isHold] }, then: 2 },
+            { case: { $and: [hasCard, isBlue] }, then: 1 },
+            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", redParents] }] }, then: 2 },
+            { case: { $and: [{ $not: [hasCard] }, { $in: ["$_id", blueParents] }] }, then: 1 },
+          ],
+          default: 0,
+        },
+      },
+    },
+  };
 }
 
 function buildCaseSort(query = {}) {
@@ -896,7 +944,7 @@ async function getCaseLinks(caseData) {
     // Phase 9 - also select clientEmail/dataEntryMode so the invite panel can tell "not yet invited" from "invited" (clientEmail is set by
     // inviteEmployee) without a second round-trip.
     Case.find({ parentCase: caseId })
-      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status stage caseRole childIndex createdAt petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden")
+      .select("caseNumber clientName clientEmail pendingEmployee employeeIdentity user visaType status stage caseRole childIndex createdAt petitionSubType dataEntryMode employeeDataEntryMode assignedCaseManager assignmentOverridden integrations.ghl.opportunityId integrations.ghl.pipelineId integrations.ghl.unifiedStageKey")
       .populate("assignedCaseManager", "name displayName email")
       .sort({ childIndex: 1, createdAt: 1 }),
   ]);
@@ -906,7 +954,24 @@ async function getCaseLinks(caseData) {
     Case.updateOne({ _id: caseId }, { $set: { childCaseCount: childCases.length } }, { timestamps: false }).catch(() => {});
     caseData.childCaseCount = childCases.length;
   }
-  return { parentCase, childCases: await withInviteStatus(childCases, caseData) };
+  const children = await withInviteStatus(childCases, caseData);
+  await attachChildPipelineStages(children);
+  return { parentCase, childCases: children };
+}
+
+// Each child's current Pipeline stage (name + key) for the Employees panel. Only those two are exposed: the GoHighLevel ids used to look
+// them up are dropped again, since portal users also receive this list. Display only, never throws.
+async function attachChildPipelineStages(children) {
+  try {
+    await require("../../integrations/ghl/ghlStageNames").attachStageNames(children, children);
+    children.forEach((child) => {
+      const ghl = child.integrations?.ghl;
+      if (ghl?.opportunityId && ghl.unifiedStageKey) child.pipelineStageKey = ghl.unifiedStageKey;
+      delete child.integrations;
+    });
+  } catch {
+    /* display only */
+  }
 }
 
 async function getRelatedRecords(caseData) {
@@ -1065,6 +1130,7 @@ module.exports = {
   resolveCaseSearchFilter,
   resolveStaffListFilter,
   buildCaseSort,
+  toneRankStage,
   canAccessCase,
   hasActiveAttorneyAccess,
   archiveCase,

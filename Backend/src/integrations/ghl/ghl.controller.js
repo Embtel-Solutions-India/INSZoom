@@ -61,6 +61,23 @@ exports.board = guard(async (req, res) => {
   });
 });
 
+// The pipeline's stage names, for the Cases page's Stage filter (both pipelines share the same stages; the first of each key wins).
+exports.stageList = guard(async (req, res) => {
+  const GHLIntegration = require("../../models/GHLIntegration");
+  const config = await GHLIntegration.findOne({ locationId: env.ghl.locationId }).lean();
+  if (!config?.mappingsConfirmedAt) return res.json({ success: true, stages: [] });
+  const seen = new Set();
+  const stages = [];
+  (config.pipelines || []).filter((p) => p.enabled).forEach((pipeline) => {
+    [...(pipeline.stages || [])].sort((x, y) => x.order - y.order).forEach((stage) => {
+      if (seen.has(stage.key)) return;
+      seen.add(stage.key);
+      stages.push({ key: stage.key, name: stage.name });
+    });
+  });
+  res.json({ success: true, stages });
+});
+
 // Drag-and-drop move. Saves locally and queues the GHL write, then answers
 // immediately; GHL failures are retried in the background and never reach the UI.
 exports.moveStage = guard(async (req, res) => {
@@ -69,6 +86,18 @@ exports.moveStage = guard(async (req, res) => {
   if (!mongoose.isValidObjectId(caseId)) return res.status(400).json({ success: false, message: "Invalid case id" });
   if (typeof unifiedStageKey !== "string" || !unifiedStageKey.trim() || unifiedStageKey.length > 100) {
     return res.status(400).json({ success: false, message: "unifiedStageKey is required" });
+  }
+  const caseOutbound = require("./ghlCaseOutbound");
+  const target = await require("../../models/Case").findById(caseId).select("caseRole caseStructure integrations.ghl.opportunityId").lean();
+  // an employer matter has no card of its own: the move goes to the one employee chosen
+  if (target && !target.integrations?.ghl?.opportunityId && caseOutbound.isEmployerMatter(target)) {
+    await outbound.assertCanWorkCase(req.user, caseId);
+    try {
+      const done = await caseOutbound.moveEmployerEmployee({ caseId, employeeCaseId: req.body?.employeeCaseId, unifiedStageKey: unifiedStageKey.trim(), moveId: typeof moveId === "string" ? moveId.slice(0, 64) : undefined, user: req.user });
+      return res.json({ success: true, ...done });
+    } catch (error) {
+      return res.status(error.status || 500).json({ success: false, code: error.code, message: error.message });
+    }
   }
   const result = await outbound.moveCaseStage({
     caseId,
