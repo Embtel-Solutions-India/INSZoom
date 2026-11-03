@@ -34,7 +34,9 @@ class PDFGenerationService {
     // formFields/formStructure/formLayout fields, and read by nothing in the
     // render or generation path. See uscis-form.service.js's
     // TEMPLATE_RENDER_EXCLUDE for the measurements behind this.
-    let query = CaseForm.findById(caseFormId).populate({ path: "formTemplateId", select: "-definition" });
+    // Speed fix: the template comes from the in-memory templateCache (checked fresh on every use - see uscis-forms/templateCache.js) instead of
+    // being re-read (~8 MB for the I-129) on every download; the original populate() is the fallback. The case form itself is loaded in full.
+    let query = CaseForm.findById(caseFormId);
     if (options.readOnly) query = query.read("secondaryPreferred");
     const caseForm = await query;
     if (!caseForm) {
@@ -42,6 +44,8 @@ class PDFGenerationService {
       error.status = 404;
       throw error;
     }
+    const attached = await require("../../uscis-forms/templateCache").attachTemplate(caseForm, { select: "-definition" });
+    if (!attached && typeof caseForm.populate === "function") await caseForm.populate({ path: "formTemplateId", select: "-definition" });
     if (!caseForm.formTemplateId) {
       const error = new Error("USCIS form template not found");
       error.status = 404;
